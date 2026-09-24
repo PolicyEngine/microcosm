@@ -691,6 +691,14 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
     out = result.table("household")
     assert set(UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS) <= set(out.columns)
     assert len(transform.fit_weight_records) == 18
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+    )
+
+    receipt = result.mass_log[-1]
+    assert receipt.reason == UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON
+    assert receipt.old_total == receipt.new_total > 0
+    assert receipt.declared_factor == 1.0
     assert set(UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS) <= set(
         transform.stage.operations[4].parameters["predictors"]
     )

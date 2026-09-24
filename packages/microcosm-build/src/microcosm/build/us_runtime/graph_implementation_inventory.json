@@ -816,6 +816,7 @@
         "microcosm.build.us_runtime.retirement_contributions",
         "microcosm.build.us_runtime.retirement_distributions",
         "microcosm.build.us_runtime.scf_wealth",
+        "microcosm.build.us_runtime.spm_independence_role",
         "microcosm.build.us_runtime.weeks_unemployed",
         "microcosm.build.us_runtime.wic_claim",
         "microcosm.build.us_runtime.workers_compensation",
@@ -823,7 +824,7 @@
         "pandas"
       ],
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "unbound_uses_sha256": "f3e52e09d1c5b005d16f083e716966bf60087b72eba71a149a8128faa7551617"
+      "unbound_uses_sha256": "484063e08b9c74d91286ad9632de2fa63b37d00eaa9ec0da1b11b164f913dfca"
     },
     "microcosm.build/us_runtime/operator_column_contracts.py": {
       "imports": [],
@@ -981,6 +982,7 @@
         "microcosm.frame.bundle",
         "microcosm.frame.materialize",
         "microcosm.frame.rules",
+        "microcosm.frame.scaling",
         "microcosm.frame.schema",
         "microcosm.frame.units",
         "microcosm.frame.weights"
@@ -1043,17 +1045,21 @@
         "microcosm.frame.bundle",
         "microcosm.frame.materialize",
         "microcosm.frame.rules",
+        "microcosm.frame.scaling",
         "microcosm.frame.schema",
         "microcosm.frame.units",
+        "microcosm.frame.weights",
         "numpy",
         "pandas",
         "policyengine_core.enums",
+        "policyengine_core.parameters.operations.get_parameter",
         "policyengine_core.periods",
         "policyengine_us",
-        "policyengine_us.data"
+        "policyengine_us.data",
+        "policyengine_us.data.economic_assumptions"
       ],
       "resource_accesses_sha256": "99645fb543d5ccbca2e4e7b7cbaec98aca16420ea9ee75899a0b9acefa7298d3",
-      "unbound_uses_sha256": "4bb7a9c3ca6b4f469b349a9509e3896bcd055b189ca0b023e823532c15850add"
+      "unbound_uses_sha256": "b206c181c2ff4a7d63b7470daeced343603136f5cf33e0790076a24ad584f6a4"
     },
     "microcosm.frame/bundle.py": {
       "imports": [
@@ -1094,6 +1100,13 @@
         "pandas"
       ],
       "resource_accesses_sha256": "bb3739bfa9c1bdb290ce2e1136dfd73bc4f2c40715a822ea87e3c91ef51a5760",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.frame/scaling.py": {
+      "imports": [
+        "numpy"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     "microcosm.frame/schema.py": {
@@ -1519,6 +1532,7 @@
     "microcosm.build.us_runtime.scf_wealth": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.source_csv_builtin": "Whole-module in acs_housing_universe_2024; stdlib-only checked CSV builtin capture, without source or resource access.",
     "microcosm.build.us_runtime.spine_assembly": "whole-module in explicit stages",
+    "microcosm.build.us_runtime.spm_independence_role": "live operator-output registry projection only; source derivation and source I/O routes inactive in these graph stages, with scoped-use tripwire retained",
     "microcosm.build.us_runtime.stacked_spine": "whole-module in explicit stages",
     "microcosm.build.us_runtime.support_provenance": "whole-module in explicit stages",
     "microcosm.build.us_runtime.survey_catalogue_selection": "whole-module pure complete-catalogue selection plan in authenticated_survey_population_v1",
@@ -1540,6 +1554,7 @@
     "microcosm.frame.bundle": "whole-module in explicit stages",
     "microcosm.frame.materialize": "whole-module in explicit stages",
     "microcosm.frame.rules": "whole-module in explicit stages",
+    "microcosm.frame.scaling": "whole-module positive and sign-specific numeric scaling in explicit stages; no I/O or country engine",
     "microcosm.frame.schema": "whole-module in explicit stages",
     "microcosm.frame.units": "whole-module in explicit stages",
     "microcosm.frame.weights": "whole-module in explicit stages",
@@ -1578,11 +1593,13 @@
     "pandas": "versioned dependency in explicit stages",
     "pandas.api.types": "versioned dependency in explicit stages",
     "policyengine_core.enums": "Optional explicit PolicyEngineUSEngine.validate_input_representation metadata route only; inactive in US source stages. Scoped Enum uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
+    "policyengine_core.parameters.operations.get_parameter": "Optional explicit static-aging uprating_series adapter route only; inactive in US source stages. Scoped parameter lookup uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
     "policyengine_core.periods": "Optional explicit PolicyEngineUSEngine.validate_input_representation metadata route only; inactive in US source stages. Scoped parse_period uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
     "policyengine_uk": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "policyengine_uk.data": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "policyengine_us": "live evaluation only, explicitly pinned installed runtime and parameter identity; inactive in other shared adapter routes",
     "policyengine_us.data": "live evaluation dataset adapter only, bound by pinned installed PE-US runtime identity; inactive in other stages",
+    "policyengine_us.data.economic_assumptions": "Optional explicit static-aging uprating_series and multi_year_dataset adapter routes only; inactive in US source stages. Scoped MICRODATA_UPRATING_OVERRIDES uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
     "spm_calculator": "Optional explicit ACS development construction only; default v1 never imports it. Captured source owner requires the reviewed PR45 defining-file SHA and native verifier checks the actual loaded callable. No global installed-package dependency or lock migration.",
     "yaml": "versioned dependency in explicit stages"
   },
@@ -1604,6 +1621,7 @@
       "kernels.py",
       "materialize.py",
       "rules.py",
+      "scaling.py",
       "schema.py",
       "units.py",
       "weights.py"
@@ -1691,6 +1709,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -1766,6 +1785,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -1837,6 +1857,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -1921,6 +1942,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -1996,6 +2018,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -2064,6 +2087,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -2175,6 +2199,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -2298,6 +2323,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -2419,6 +2445,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",
@@ -2492,6 +2519,7 @@
         "microcosm.frame/kernels.py",
         "microcosm.frame/materialize.py",
         "microcosm.frame/rules.py",
+        "microcosm.frame/scaling.py",
         "microcosm.frame/schema.py",
         "microcosm.frame/units.py",
         "microcosm.frame/weights.py",

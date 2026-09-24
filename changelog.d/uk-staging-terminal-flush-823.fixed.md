@@ -1,0 +1,1 @@
+Staging telemetry now delivers its terminal state even when mid-run upload failures had paused remote writes: completion and failure re-open the best-effort session for a bounded, backed-off final flush, so a run's remote `progress.json` no longer stays `running` after a rate-limited Hub (the v20 national run's last-mile gap).

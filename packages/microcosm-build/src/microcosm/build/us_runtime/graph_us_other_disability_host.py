@@ -568,7 +568,7 @@ def _verify_model(boundary, loaded, donor):
 
 
 def _compare_manifest_population(population, manifest, version):
-    """Compare the Frame/ledger surface without inventing execution owners."""
+    """Compare reconstructed values against the current materialized manifest."""
     physical.replay.same_replayed_population(
         population_ops.Population.from_frame(
             population.frame, version, mass_ledger=population.mass_ledger
@@ -593,7 +593,11 @@ def _compare_predecessor_populations(predecessor, observed, receiving_node):
             for n in reversed(predecessor.compiled.order)
             if predecessor.compiled.versions[n] == version
         )
-        _compare_manifest_population(inherited_terminal, predecessor.manifest, version)
+        host._compare_inherited_manifest_population(
+            expected_manifest=predecessor.manifest,
+            replayed_population=inherited_terminal,
+            version=version,
+        )
 
 
 def run_continuation(

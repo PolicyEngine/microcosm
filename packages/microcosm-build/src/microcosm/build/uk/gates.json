@@ -383,6 +383,36 @@
       "notes": "Stage-time CGT redraw summary gate wired through the existing UKCGTImputationSummary receipt rather than fabricating a terminal support verdict."
     },
     {
+      "id": "uk_stage_hmrc_cgt_asset_type_spine_summary",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "hmrc_cgt_asset_type_spine",
+        "check": "cgt_asset_type_summary",
+        "maximum_relative_deviation": 0.05,
+        "maximum_gains_sigma": 3.0,
+        "maximum_solve_relative_error": 1e-06
+      },
+      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the same two totals."
+    },
+    {
+      "id": "uk_stage_cgt_incidence_anchor_composition",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "cgt_incidence_anchor",
+        "check": "cgt_incidence_anchor",
+        "maximum_relative_composition_error": 1e-06,
+        "maximum_pair_relative_error": 0.0,
+        "minimum_pair_count": 1
+      },
+      "notes": "Stage-time gate over the CGT incidence anchor receipt (microcosm#970). Clone-side receipt: the groups, targets and masses are clone households paired to originals; band donors and originals are outside the anchor, so this gate certifies the anchor's own arithmetic against its declared composition, not a population count. The sub-exempt and loss-making clone groups sit at the reporter-composition targets derived from the redrawn liable mass whenever they were trimmed, never overshoot or gain mass, and stay untouched when already at or below target; zero-gain clone carriers are no reporters and are left untouched; liable clone mass is byte-identical before and after; every clone/original pair conserves its mass to floating-point rounding; the clone side never exceeds the original side; and at least one pair exists. The level is a modelling assumption (HMRC publishes no count below the exempt amount), so the gate fixes the anchor to its own declared composition rather than to a published target."
+    },
+    {
       "id": "uk_stage_salary_sacrifice_realization",
       "gate": "stage_health",
       "phase": "transferred",
@@ -610,6 +640,7 @@
           "household.household_is_cgt_band_donor",
           "household.household_is_spi_synthetic",
           "household.la_code_oa",
+          "household.local_authority",
           "household.lsoa_code",
           "household.mortgage_debt",
           "household.msoa_code",
@@ -626,6 +657,8 @@
           "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
+          "person.capital_gains_asset_type",
+          "person.capital_gains_residential_property",
           "person.care_hours",
           "person.charitable_investment_gifts",
           "person.dla_m_category",
@@ -699,6 +732,18 @@
       "notes": "The household ONS household-type value must be one of the ten Chronicle ons.household_type value ids the frs_relationships stage declares (the build supplies the declared domain as evidence; the column is a frame input, not a PolicyEngine-UK enum). Evaluated at the assembled boundary like the BRMA enum: membership is a property of the values themselves."
     },
     {
+      "id": "uk_capital_gains_asset_type_enum_domain",
+      "gate": "enum_domain",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "capital_gains_asset_type"
+        ]
+      },
+      "notes": "The person capital_gains_asset_type value must be one of the eight values the hmrc_cgt_asset_type_spine stage declares (none, sub_aea, the Chronicle Table 7 asset-type value ids); the build supplies the declared domain as evidence because the column is a frame input, not a PolicyEngine-UK enum (microcosm#725). Evaluated at the transferred boundary, after the stage that writes the column has run."
+    },
+    {
       "id": "uk_uc_deduction_combination_enum_domain",
       "gate": "enum_domain",
       "phase": "terminal",
@@ -750,6 +795,42 @@
       "notes": "Every calibration target within twenty-five percent absolute relative error, the certified June acceptance bound."
     },
     {
+      "id": "uk_cgt_projection_entrants",
+      "gate": "cgt_projection_entrants",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "horizon_year": 2030,
+        "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
+        "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "expected_yoy_growth_by_year": {
+          "2023": 0.0532,
+          "2024": 0.0372,
+          "2025": 0.0438,
+          "2026": 0.0292,
+          "2027": 0.0323,
+          "2028": 0.031,
+          "2029": 0.0296,
+          "2030": 0.0315
+        },
+        "expected_exempt_amount_by_year": {
+          "2023": 6000.0,
+          "2024": 3000.0,
+          "2025": 3000.0,
+          "2026": 3000.0,
+          "2027": 3000.0,
+          "2028": 3000.0,
+          "2029": 3000.0,
+          "2030": 3000.0
+        },
+        "maximum_growth_drift": 0.0005,
+        "bound_resource": "hmrc_cgt_conditioning_facts.json",
+        "bound_size_band_lower_bound": 3000
+      },
+      "notes": "Projection fence over the calibrated frame's sub-exempt gainers (microcosm#970). The engine freezes the annual exempt amount at its nominal value and uprates capital_gains by OBR per-capita GDP growth, so a gainer at or just below the exempt amount in the build period becomes a CGT taxpayer in a later projected year without any change in behaviour. For every year to the horizon the gate counts the cumulative stock of build-period sub-exempt gainers (gains in (0, exempt amount]) whose gains, uprated by the cumulative growth factor to that year, exceed that year's exempt amount; the stock is non-decreasing in the year, so the horizon year carries the largest count. The bound is the vendored HMRC Table 2.1a count of 2024-25 taxpayers with gains from 3,000 to 5,999 (73,000): people already above the exempt amount, not entrants, so the bound is a plausibility ceiling (the population of the thinnest liable band), not a published entrant count. The horizon 2030 is the last year of the OBR per-capita growth path in the engine's parameter tree; later years repeat the 2030 rate, so a longer horizon would only compound a constant. The growth path and the exempt amount by year the seam reads from the installed engine are pinned here and drift-checked (the exempt amount was 6,000 in 2023-24 and 3,000 from 2024-25, so a 2023-period frame's base year reads 6,000), so an engine bump cannot move the verdict silently and re-pinning is a reviewed change; without an installed engine the seam builds the projection from these pins and the receipt says so. The margin is thin by construction: on the first rebuilt candidate the stock ran from 12.7k in 2025 to 67.6k in 2030, about 13k a year, and 61k of the 67.6k were band donors the redraw had demoted below the exempt amount, a separate decision; the anchored clones contributed 6.4k. The v20 candidate would have failed with 10.8 million in the first projected year. The bound comes from the same vendored facts the amounts stage is pinned to, never from a literal."
+    },
+    {
       "id": "uk_input_mass_parity",
       "gate": "input_mass_parity",
       "phase": "terminal",
@@ -772,7 +853,7 @@
         "minimum_reference_total": 0.0,
         "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
       },
-      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the sole breach, charitable_investment_gifts at +15,168.8% on the post-#710 surface, is the per-reference exclusion. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector — the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
+      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the reviewed per-reference exclusions (charitable_investment_gifts, signed at +15,168.8% on the post-#710 surface; owned_land, signed for seed variance) were retired on 2026-09-22 when the first release-cut certification measured both inside the fence (-99.0% and -73.5% against the enhanced FRS reference, microcosm#967); the register is empty and the gate's current failures are the two genuine breaches it names. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector — the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
     },
     {
       "id": "uk_qrf_tail_concentration",

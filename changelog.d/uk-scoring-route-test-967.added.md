@@ -1,0 +1,1 @@
+`test_uk_scoring_route.py` drives `prepare_uk_target_frame` on a synthetic cross-grain surface (one input name injected at the person and the household entity): both targets materialize, the injected inputs are dropped from both tables, the same injection without the drop is refused by the prepared frame, and the band-edge register reaches materialization.

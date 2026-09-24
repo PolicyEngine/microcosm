@@ -1,6 +1,7 @@
 """Pinned source roles must explain complete, unchanged native SPM units."""
 
 import hashlib
+import zipfile
 from dataclasses import replace
 
 import numpy as np
@@ -8,11 +9,13 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.spm_role_source import (
+    _SOURCE_COLUMNS,
     ASEC_SPM_ROLE_SOURCES,
     EVIDENCE_SPM_ROLE,
     AsecSpmRoleSource,
     derive_spm_role_source,
     independent_minor_role,
+    read_pinned_asec_person_columns,
 )
 
 pytest.importorskip("tables")
@@ -204,10 +207,98 @@ def test_rejects_wrong_parent_identity(population):
         )
 
 
+def _archive(population, *, member="pppub25.csv", extra=()):
+    """The fixture CSV inside a Census-style archive, with pins updated."""
+
+    parent, source, pin = population
+    archive = source.parent / "asecpub25csv.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as out:
+        out.write(source, arcname=member)
+        for name in extra:
+            out.writestr(name, "x")
+    return parent, archive, replace(pin, archive_sha256=_digest(archive))
+
+
+def test_archive_source_derives_the_same_role_as_its_extracted_csv(population):
+    """``--asec-education-source`` names the official archive in production."""
+
+    parent, archive, pin = _archive(population)
+    _, source, _ = population
+    # Same pins either way; only the path form differs.
+    from_csv = _derive((parent, source, pin))
+    from_archive = _derive((parent, archive, pin))
+    np.testing.assert_array_equal(from_archive.role, from_csv.role)
+    pd.testing.assert_frame_equal(from_archive.evidence, from_csv.evidence)
+    assert from_archive.provenance == from_csv.provenance
+
+
+def test_rejects_unpinned_archive(population):
+    parent, archive, pin = _archive(population)
+    with pytest.raises(ValueError, match="archive SHA-256"):
+        _derive((parent, archive, replace(pin, archive_sha256="0" * 64)))
+
+
+def test_rejects_archive_without_exactly_one_pinned_member(population):
+    with pytest.raises(ValueError, match="exactly one"):
+        _derive(_archive(population, member="other.csv"))
+
+
+def test_rejects_archive_member_that_is_not_the_pinned_csv(population):
+    parent, archive, pin = _archive(population)
+    with pytest.raises(ValueError, match="CSV SHA-256"):
+        _derive((parent, archive, replace(pin, csv_sha256="0" * 64)))
+    with pytest.raises(ValueError, match="CSV byte length"):
+        _derive((parent, archive, replace(pin, csv_size_bytes=pin.csv_size_bytes + 1)))
+
+
 def test_rejects_unpinned_csv(population):
     parent, source, pin = population
     with pytest.raises(ValueError, match="CSV SHA-256"):
         _derive((parent, source, replace(pin, csv_sha256="0" * 64)))
+
+
+def test_shared_reader_default_is_the_role_read_from_either_form(population):
+    """Generalising the reader (#720) left the role stage's read unchanged."""
+
+    _, source, pin = population
+    _, archive, archive_pin = _archive(population)
+    expected = pd.read_csv(
+        source,
+        usecols=list(_SOURCE_COLUMNS),
+        dtype={"PERIDNUM": str, "SPM_ID": str},
+        low_memory=False,
+    )
+    from_csv, csv_form = read_pinned_asec_person_columns(source, pin, "ASEC 2025")
+    from_archive, archive_form = read_pinned_asec_person_columns(
+        archive, archive_pin, "ASEC 2025"
+    )
+    assert (csv_form, archive_form) == ("csv", "archive")
+    pd.testing.assert_frame_equal(from_csv, expected)
+    pd.testing.assert_frame_equal(from_archive, expected)
+
+
+def test_shared_reader_reads_other_columns_through_the_same_pins(population):
+    _, source, pin = population
+    _, archive, archive_pin = _archive(population)
+    columns = ("PERIDNUM", "A_AGE", "PECOHAB")
+    for path, path_pin in ((source, pin), (archive, archive_pin)):
+        frame, _ = read_pinned_asec_person_columns(path, path_pin, "ASEC 2025", columns)
+        assert set(frame.columns) == set(columns)
+        # Exact text keys (leading zeros kept); other columns parse as integers.
+        assert frame["PERIDNUM"].tolist() == [f"{n:022}" for n in range(1, 7)]
+        assert frame["A_AGE"].dtype == np.int64
+    with pytest.raises(ValueError, match="archive SHA-256"):
+        read_pinned_asec_person_columns(
+            archive, replace(archive_pin, archive_sha256="0" * 64), "x", columns
+        )
+    with pytest.raises(ValueError, match="CSV SHA-256"):
+        read_pinned_asec_person_columns(
+            source, replace(pin, csv_sha256="0" * 64), "x", columns
+        )
+    with pytest.raises(ValueError, match="CSV byte length"):
+        read_pinned_asec_person_columns(
+            source, replace(pin, csv_size_bytes=pin.csv_size_bytes + 1), "x", columns
+        )
 
 
 def test_rejects_missing_source_year(population):

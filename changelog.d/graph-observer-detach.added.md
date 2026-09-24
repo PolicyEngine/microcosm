@@ -1,0 +1,1 @@
+The graph executor accepts an opt-in flag that lets a seal-only population observer receive the live admitted population instead of a detached pickle snapshot per reached node; the default is unchanged and the flag enters no key, receipt or cache record.

@@ -60,6 +60,11 @@ UK_CGT_REQUIRED_COLUMNS: tuple[str, ...] = (
 )
 
 # Values are Ledger-owned and compile from UK target references.
+#: The three national facts are joined by the banded families declared in
+#: ``uk/uk_population_targets.json`` (Table 2.1a size of gain, Table 6 age,
+#: Table 5 region on the individuals basis; microcosm#467, #725). They
+#: compile from the same Ledger feed and need no coverage entry here: the
+#: fan-out authoring refuses a missing roster cell at generation time.
 UK_CGT_TARGET_SPECS: tuple = ()
 
 UK_CGT_TARGET_COVERAGE_REQUIREMENTS: tuple[TargetCoverageRequirement, ...] = (

@@ -63,6 +63,19 @@ This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` without updating production
 `latest.json`.
 
+The UK commands (`tools/build_uk_frs_spine.py` and
+`tools/build_uk_rowwise_candidate.py`, whose `--release-role` builds either
+the national or the dense line) stage version 2 telemetry to
+`policyengine/populace-uk-staging` under the same switch. The rowwise
+candidate command also **stages the finished dataset bundle** it built,
+national, dense or exact-count, under `staged/<run_id>/` in the
+private `policyengine/populace-uk-private` repository so the team can inspect
+it without publishing it: `releases/` and `latest.json` are untouched, the
+release contract is not consulted, and a `releasable: false` size run stages
+like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
+re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.
+See [docs/uk-staging-operations.md](docs/uk-staging-operations.md).
+
 See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
 disk, and CPU footprint of developing and building locally (and what to budget
 on a build machine — RAM is the binding constraint).
@@ -103,6 +116,28 @@ AT-RISK only, `0` clean):
    cannot express); a thin selection or a signed leaf whose net sign
    contradicts the probe's `expected_sign` is AT-RISK.
 
+**A new lineage** — a release built on a fresh base with no selection source
+([docs/us-release-build-rule.md](docs/us-release-build-rule.md) §3) — has no
+frozen selection to carry over. Say so explicitly with `--new-lineage` in place
+of `--selection-source-manifest` (the two are refused together; with neither,
+the manifest is required as before):
+
+```bash
+uv run python tools/preflight_us_release_gates.py \
+  --base-h5 out/base/base_populace_us_2024_puf_support.h5 \
+  --new-lineage \
+  --ledger-facts inputs/consumer_facts.jsonl
+```
+
+The report records `selection_carryover` as `SKIPPED` with reason
+`new_lineage`. The one refusal inside that check that belongs to the base
+rather than to a selection — the base must carry the materialized PUF
+capital-gains own-tail, which the release tool also requires on every arm —
+still runs, as `capital_gains_tail_presence`. Every other check runs unchanged
+on the whole base, which is what a release without a selection calibrates. Given
+`--release-manifest`, `--new-lineage` also requires that release to record no
+selection source.
+
 **Run it** at base-build exit, before any release launch, and after any change
 to the selection-source manifest or the target/coverage registry. The
 synthetic-fixture unit tests
@@ -115,7 +150,17 @@ The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enri
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original
 variables and schema-5 calibration evidence, and requires fresh country/wrapper
 compatibility checks. It has a local candidate builder and uses the regular
-publisher's contract with `--parent-h5` and `--preflight-only`.
+publisher's contract with `--parent-h5` and `--preflight-only`. The same release
+type publishes the [reported-receipt child of the national default](docs/us-reported-receipt-source-enrichment.md)
+as a tag-only donor for the ACS local chain. It is never the `latest.json`
+default.
+
+The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
+calibrates to the SOI `state` surface by default, the 4,459-target contract of
+Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
+opt-ins. See
+[the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
+for what each mode contains and where the build records it.
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs

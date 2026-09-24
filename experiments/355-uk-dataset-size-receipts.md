@@ -941,3 +941,160 @@ evaluation page's T6 tables).
 > **Erratum (2026-09-15, microcosm#929).** The "+3 to +12 %" on the VOA council-tax bands is the same keying artifact
 > as above (the Wales rollup summed into the England-pinned target); corrected, no VOA row diverges and the maximum
 > divergence is 6.2 % (`isc.private_school_students`); see the erratum under the D2 frozen-versus-recomputed paragraph.
+
+## Staging for the full build (María, 2026-09-17; plan `repos/uk-rowwise-staging-plan.md`)
+
+Branch `uk-rowwise-staging` (worktree `repos/populace-staging-rowwise`, cut from main d1196af1).
+Vocabulary settled with María: **staging** is telemetry to `runs/<run_id>/` in
+`policyengine/populace-uk-staging`; **publishing** is `publish_cli` into `releases/` of
+`policyengine/populace-uk-private` with or without moving `latest.json`; the **staged dataset** is
+the new lane, the run's outputs under `staged/<run_id>/` of the private repository, same run id,
+no release contract.
+
+### Code landed
+
+- `tools/build_uk_rowwise_candidate.py` adopts the shared `--staging-*` options and creates the
+  telemetry with the attempt (spine-builder shape; `run_kind=calibration`,
+  `operation_id=uk_rowwise_candidate`, `pipeline_id=uk-local-candidate`, `non_release=true`).
+  Stage events: `input_pinning`, `target_compilation`, `cloning`, `surface_resolution`,
+  `calibration`, `gate_battery`, `holdout`, `output_bundle`, `dataset_staging`. Epoch events reach
+  `calibration_progress` through a new `progress_events` fan-out on
+  `solve_uk_rowwise_weights_under_doctrine`, thinned in the driver to every tenth epoch and each
+  phase's last epoch (`_STAGING_EPOCH_EVERY = 10`): a 2,000-epoch size run emits up to 24,000
+  epochs (dense + ten full-length probes + refit) and the contract caps each file at 5 MiB. The
+  kernel's `budget_search: True` flag becomes `1` for the contract's integer field.
+- New country-neutral `microcosm.build.staging_dataset`: bundle from the manifest's `outputs`
+  (digests re-verified from disk), `staged_manifest.json` + `sha256sums.txt` sidecars, one
+  `create_commit` under `staged/<run_id>/`, idempotence on the outputs' digests
+  (`already_staged` / `REMOTE_DIFFERS`), best-effort with reviewed error codes, `fetch_bundle`.
+  `HuggingFaceDatasetStorage` gains `commit`, `head_revision`, `file_exists`, `download_file`;
+  `uk_runtime/staging.py` gains `UK_STAGED_DATASET_REPOSITORY`
+  (`policyengine/populace-uk-private`, env `POPULACE_UK_STAGED_DATASET_REPO_ID`) and the prefix
+  `staged`; `staging_cli` gains `--staged-dataset-repo-id` / `--no-staged-dataset`.
+- The manifest gains `staging_delivery` (v2) and `staged_dataset` (v1) after the bundle is on
+  disk (atomic rewrite; the uploaded manifest copy predates them, `staged_manifest.json` describes
+  the remote side). Two reviewed artifacts on the telemetry run: `staged_dataset.json` and
+  `fit_summary.json`. A remote dataset stage is refused up front without an ambient Hub credential
+  that can see the repository; an upload failure is recorded and never changes the exit code.
+- `tools/stage_uk_rowwise_candidate.py` (re-stage a finished directory) and
+  `tools/fetch_uk_staged_dataset.py` (digest-verified fetch by run id).
+- `tools/assemble_uk_dense_release_dir.py` requires `staging_delivery` and copies it into
+  `build_manifest.json` as `staging` (the national assembler's rule).
+- Tests: `test_staging_dataset.py` (20), storage/CLI additions in `test_staging_v2.py`, the solver
+  fan-out in `test_uk_local_rowwise.py`, seven driver tests in `test_uk_rowwise_candidate.py`
+  (local-only, size phases, `--no-staging`, remote upload + re-stage + fetch, recorded upload
+  failure, `--no-staged-dataset`, up-front refusals and dry run), dense assembler evidence tests,
+  size-evaluation tolerance. Every existing driver test passes `--staging-local-only` through the
+  shared flag helper.
+
+### Rehearsal on spine-q (2026-09-17, `data/ukds/acceptance/355-dataset-size/run_size_candidate_staging.sh`)
+
+The rehearsal is the size path at 100 epochs with local-only staging
+(`--dataset-households 55000 --epochs 100 --skip-holdout --selection-pi-hi 0.5 --baseline-pi-floor 0.001 --staging-local-only`),
+on the spine-q H5 (cf1f9dda…) from code 0cda403a (`git_dirty` 0, engine 2.98.0). Two input
+mismatches surfaced first, both about running the driver on today's main rather than about staging;
+each left the expected failure evidence.
+
+- **Feed.** With the `ec7169b` artifact the spine-q runs stood on, 631 national target references
+  failed to compile: main pins Chronicle `ec20085` (facts 47612c48…, manifest c91fa9ff…) since
+  #927/#937. The run refused in 130 s. Its telemetry closed as `failed` during
+  `target_compilation` with `error_type SystemExit` and the sanitised message only; because the
+  compile refusal is a `SystemExit`, the driver's `except Exception` wrote no Logbook row or error
+  receipt (pre-existing behaviour, worth a follow-up). Kept as
+  `…-staging-failed-compile-ec7169b/`.
+- **Ladder.** On `ec20085` with the `9c6d56b9…` ladder the pins file names, the ladder-versus-Chronicle
+  dispersion check refused: "NI DZ-to-PARLCON24 household dispersion exceeds the publisher oracle:
+  mean absolute delta 197.889, max absolute delta 694.000" (285 s, 5.1 GB). #887 (merged 2026-09-10)
+  rebuilt the ladder with NISRA's Data Zone lookup; the artifact from that build is
+  `bed3f13d3a82eea2d1f39248b71c0abf5ba6960a446ddd9415ae1dbcb7ae07fd` (present in the #887/#905/#929
+  worktrees; the ladder tool has not changed since). This `ValueError` took the full failure path:
+  telemetry `failed` at `target_compilation`, a `failed` Logbook row and an error receipt. Kept as
+  `…-staging-failed-ladder-9c6d56b9/`.
+
+Third attempt: feed `ec20085`, ladder `bed3f13d…`, same arguments; run id and results below.
+
+- **Spine.** On `ec20085` with ladder `bed3f13d…`, the run compiled 20,885 local and 564 national
+  targets, cloned the 792,690-row pool, and refused in surface resolution:
+  `MeasureResolutionError: provider does not know household.ons_household_type` (550 s, 8.4 GB).
+  The spine-q H5 predates the `frs_relationships` stage (#903, merged 2026-09-11), whose column the
+  national registry on main now resolves. Telemetry closed as `failed` at `surface_resolution`
+  after recording the compile and clone details; Logbook row and error receipt written. Run
+  `uk-local-candidate-f100-s42-20260917T175007Z-2acb7634`, kept as
+  `…-staging-failed-spine-q-stale/`. A spine on main's stages (`spine-r`, code 0cda403a) is built
+  with `834-childcare-tfc/build_twin_passthrough.sh … --staging-local-only` into
+  `data/ukds/acceptance/spine-r-355/`.
+
+### spine-r (2026-09-17 18:01Z, `data/ukds/acceptance/spine-r-355/`)
+
+Built from the worktree at 0ab7ac4f (code identical to 0cda403a; the two commits between are
+receipts) with `build_twin_passthrough.sh … --staging-local-only`: 29 stages (`frs_spine`,
+`age_tail`, `frs_relationships`, …), `rules_engine` policyengine-uk 2.98.0, all 18 spine gates
+passed, `spine-r.h5` sha `3ce8756ac6ce070be4eabf44e6969e03698ce23531021b622eadb94ce83dda58`
+(169 MB). The spine builder's own staging worked as on main: sidecar `staging_delivery` mode
+`local_only`, run `uk-frs-spine-20260917T180117Z` under `spine-r-355/staging/runs/`. Pins for the
+rehearsal in `355-dataset-size/pins-spine-r-ec20085.txt`; run root `355-dataset-size/spine-r/`.
+
+### Rehearsal r1 on spine-r (2026-09-17 18:07–18:35Z, run `uk-local-candidate-f100-s42-20260917T180755Z-a244651d`)
+
+End to end for the first time: 21,449 targets (564 national, 19,874 local, 1,011 ladder) on the
+792,690-row pool; dense solve 100 epochs to loss 0.01956; the search settled after 4 probes
+(λ 3.16e-06, open mass 54,674 for 55,000, 43,681 certainties); refit loss 0.04559 on 55,000 rows
+from the floored Horvitz–Thompson baseline; gates blocked on `uk_local_area_support`,
+`uk_local_target_fit`, `uk_local_weight_ratio` (866 blocking lines, the 55k pattern Q50f showed);
+exit 1 by design, bundle written, 27.4 min wall, 12.0 GB peak RSS.
+
+Staging (local-only): the telemetry bundle validates; `run_manifest.json` 1.9 KiB, `events.ndjson`
+32.6 KiB, `calibration_progress.json` 17.9 KiB with 60 rows (10 dense with `phase` null, 40 probe
+rows with `budget_search` 1 and their λ, 10 refit rows tagged `size_refit`), two reviewed
+artifacts (`fit_summary.json` 16.1 KiB, `staged_dataset.json` 1.6 KiB); every file far under the
+5 MiB cap. Completed stages in order: input_pinning, target_compilation, cloning,
+surface_resolution, calibration (details: final loss, 55,000 realized, checkpoint written),
+gate_battery, holdout (skipped), output_bundle, dataset_staging (`skipped`, 9 files), complete.
+The manifest carries `staging_delivery` (mode local_only, run id) and `staged_dataset` (mode
+local_only, prefix `staged/<run_id>`, 9 files with digests); `staged_manifest.json` and
+`sha256sums.txt` written beside the bundle (374 MB: H5 237 MB, diagnostics 49 MB, registry 29 MB,
+two CSVs 47 MB, manifest 6 MB).
+
+Two warts, both fixed before the second rehearsal: the local `sha256sums.txt` listed the manifest
+as uploaded rather than as rewritten with the evidence blocks (the driver and the re-stage tool now
+refresh that line after the rewrite, so the local and the remote directory each verify themselves);
+and the manifest recorded `git_dirty: true` because the receipts draft was edited in the worktree
+while the run was going (the code was unchanged; never touch the run tree during a run). r1 is kept
+as `spine-r/…-staging-r1/` and is not the bundle staged on the Hub.
+
+### Rehearsal r2 on spine-r (2026-09-17 18:41–19:08Z, run `uk-local-candidate-f100-s42-20260917T184110Z-4a5f5af3`)
+
+Same arguments and inputs as r1, code db40e56c, tree untouched during the run: `git_dirty`
+false in the manifest. Deterministic against r1: identical `solve_diagnostics.csv` and
+`dataset_size_selection.csv` digests, dense loss 0.019561, search settled after 4 probes on
+λ 3.16e-06, refit loss 0.045593, gates blocked on the same three ids; 26.9 min wall, 13.2 GB peak.
+Telemetry bundle valid (60 calibration rows, six files under the cap, ten stages completed in
+order), `staging_delivery` and `staged_dataset` in the manifest, and the local `sha256sums.txt`
+verifies every listed file after the evidence rewrite. This is the bundle staged on the Hub with
+`tools/stage_uk_rowwise_candidate.py` (results below).
+
+### Staging r2 on the Hub (2026-09-17, immediately after r2 closed; 2026-09-18 second attempt)
+
+`tools/stage_uk_rowwise_candidate.py --run-dir …/spine-r/f100-k15-h55000-e100-p50-f001-s42-staging`
+against `policyengine/populace-uk-private`: the repository was reachable (read), the remote
+prefix was absent, and the single commit was refused by the Hub with 403 "you must use a write
+token to upload to a repository". The credential cached on the build machine has the Hub role
+`read`. The lane recorded `status failed`, `error_code UPLOAD_FAILED`, nine
+files with digests, no revision, exit 1, no exception text in the evidence, the bundle and sidecars
+intact for a re-stage; 11 s. Because a read token also passes the reachability pre-flight (it can
+see the private repository), the pre-flight and the re-stage tool now refuse a credential whose
+Hub role is `read` before any work, naming the write requirement. The real upload waits on a write
+credential in María's environment (`HF_TOKEN` or `hf auth login`), then
+`tools/stage_uk_rowwise_candidate.py --run-dir <r2>` stages this bundle, and the fetch-back and
+scorecard checks follow.
+
+Second attempt (2026-09-18, María's shell) with a fine-grained write token: refused again with
+403, recorded again as `UPLOAD_FAILED`. The token's `repo.write` scope covered only her own user
+namespace, not the `policyengine` organisation that owns the repository, and a fine-grained token
+reports the role `fineGrained`, so the read-only pre-flight passed it. The pre-flight and the
+re-stage tool now read the token's scopes from the Hub and refuse a credential without
+`repo.write` on the repository or its owner; a scope the Hub does not describe is warned about and
+proven by the upload. Vahid's review also had the re-stage tool keep the driver's record when the
+same outputs are already uploaded (the bundle's own commit, not the repository head), made the epoch
+thinning size-aware with a content refusal reported rather than raised from inside the solve, and
+gave the dense assembler `--allow-missing-staging` for runs built before the lane.

@@ -1,0 +1,1 @@
+Write the UK rule-1 score receipt as the score block itself instead of wrapping it under a `score_vs_enhanced_frs` key, so `tools/certify_uk_release_cut.py` finds `artifacts.candidate.sha256` where it reads it and a CLI-produced receipt can be certified.\n

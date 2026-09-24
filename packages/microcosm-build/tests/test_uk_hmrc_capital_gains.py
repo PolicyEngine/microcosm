@@ -1,259 +1,245 @@
+"""The HMRC Table 3 joint distribution, typed from the vendored feed rows."""
+
 from __future__ import annotations
 
-from pathlib import Path
+import copy
 
 import pytest
 
+from microcosm.build.uk_runtime import hmrc_capital_gains
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
+    HMRC_CGT_BUILD_PERIOD,
+    HMRC_CGT_CONDITIONING_RECORD_SETS,
+    HMRC_CGT_CONDITIONING_RESOURCE,
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
-    HMRC_CGT_JOINT_ODS_FILENAME,
-    HMRC_CGT_JOINT_ODS_SHA256,
-    HMRC_CGT_JOINT_ODS_SIZE_BYTES,
-    HMRC_CGT_JOINT_SHEET_NAMES,
+    HMRC_CGT_JOINT_RECORD_SET_PREFIX,
+    HMRC_CGT_JOINT_SOURCE_FILE,
+    HMRC_CGT_JOINT_SOURCE_SHA256,
+    HMRC_CGT_SOURCE_VINTAGE,
     HMRC_CGT_TOTAL_GAINS_GBP,
     HMRC_CGT_TOTAL_INDIVIDUALS,
-    materialize_hmrc_capital_gains_joint_distribution,
+    load_hmrc_cgt_conditioning_facts,
+    load_hmrc_cgt_joint_distribution,
 )
-
-_REPO_ROOT = Path(__file__).resolve().parents[3]
-_PINNED_ODS_PATH = _REPO_ROOT / "inputs" / "hmrc" / HMRC_CGT_JOINT_ODS_FILENAME
-
-_NOTE_ROWS = 9
-_HEADER = ["Range of gain (Lower limit £)"] + [
-    heading
-    for bound in (*HMRC_CGT_INCOME_BAND_LOWER_BOUNDS, "All")
-    for heading in (f"Number of individuals ({bound})", f"Amounts of gains ({bound})")
-]
+from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
 
 
-def _synthetic_rows(*, notes: int = _NOTE_ROWS, suppress: bool = False):
-    """A sheet shaped like the published one, with small round numbers."""
-    rows: list[list[object]] = [[f"note {index}"] for index in range(notes)]
-    rows.append(list(_HEADER))
-    for band_index, lower_bound in enumerate(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS):
-        row: list[object] = [float(lower_bound)]
-        row_count = 0.0
-        row_amount = 0.0
-        for income_index in range(len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)):
-            count = float(band_index + income_index + 1)
-            amount = float(10 * (band_index + 1) + income_index)
-            # The published all-incomes pair covers suppressed cells too.
-            row_count += count
-            row_amount += amount
-            if suppress and band_index == 0 and income_index == 0:
-                row.extend(["[Fewer than 1]", "[x]"])
-            else:
-                row.extend([count, amount])
-        row.extend([row_count, row_amount])
-        rows.append(row)
+def _payload() -> dict:
+    return copy.deepcopy(load_vendored_resource(HMRC_CGT_CONDITIONING_RESOURCE))
 
-    published_amount = sum(
-        float(10 * (band_index + 1) + income_index)
-        for band_index in range(len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS))
-        for income_index in range(len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS))
-        if not (suppress and band_index == 0 and income_index == 0)
+
+def _joint_rows(payload: dict) -> list[dict]:
+    return [
+        row
+        for row in payload["rows"]
+        if row["layout"]["record_set_id"].startswith(HMRC_CGT_JOINT_RECORD_SET_PREFIX)
+    ]
+
+
+def _load_from(monkeypatch: pytest.MonkeyPatch, payload: dict):
+    monkeypatch.setattr(
+        hmrc_capital_gains, "load_vendored_resource", lambda _name: payload
     )
-    all_row: list[object] = ["All"]
-    for income_index in range(len(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)):
-        column_count = 0.0
-        column_amount = 0.0
-        for band_index in range(len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)):
-            column_count += float(band_index + income_index + 1)
-            column_amount += float(10 * (band_index + 1) + income_index)
-        all_row.extend([column_count, column_amount])
-    all_row.extend([1.0, published_amount])
-    rows.append(all_row)
-    return rows
+    return load_hmrc_cgt_joint_distribution()
 
 
-def _synthetic_ods(
-    ods,
-    tmp_path,
-    *,
-    notes: int = _NOTE_ROWS,
-    suppress: bool = False,
-    name: str = "cgt.ods",
-) -> Path:
-    sheet = HMRC_CGT_JOINT_SHEET_NAMES["2023-24"]
-    return ods.write(
-        tmp_path / name,
-        ods.sheet(sheet, _synthetic_rows(notes=notes, suppress=suppress)),
-    )
+class TestCommittedResource:
+    def test_types_every_published_cell(self) -> None:
+        distribution = load_hmrc_cgt_joint_distribution()
 
-
-def _load(path: Path, **kwargs):
-    return materialize_hmrc_capital_gains_joint_distribution(
-        path, verify_fingerprint=False, **kwargs
-    )
-
-
-def test_parses_every_published_cell(tmp_path, ods) -> None:
-    distribution = _load(_synthetic_ods(ods, tmp_path))
-
-    assert len(distribution.cells) == len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS) * len(
-        HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
-    )
-    assert {cell.gain_lower_bound for cell in distribution.cells} == set(
-        HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
-    )
-    assert {cell.income_lower_bound for cell in distribution.cells} == set(
-        HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
-    )
-
-
-def test_converts_source_units_to_people_and_pounds(tmp_path, ods) -> None:
-    """Counts publish in thousands and amounts in £ millions."""
-    distribution = _load(_synthetic_ods(ods, tmp_path))
-
-    cell = distribution.cell(gain_lower_bound=0, income_lower_bound=0)
-
-    assert cell.individuals == 1_000.0
-    assert cell.gains == 10_000_000.0
-
-
-def test_reports_suppressed_cells_as_unknown_rather_than_zero(tmp_path, ods) -> None:
-    """Counts publish in thousands: a withheld count means fewer than 1,000."""
-    distribution = _load(_synthetic_ods(ods, tmp_path, suppress=True))
-
-    cell = distribution.cell(gain_lower_bound=0, income_lower_bound=0)
-
-    assert cell.individuals is None
-    assert cell.individuals_suppressed
-    assert cell.gains is None
-    assert cell.gains_suppressed
-
-
-def test_income_totals_come_from_the_published_all_row(tmp_path, ods) -> None:
-    """Column totals cover suppressed cells, like the row totals do."""
-    distribution = _load(_synthetic_ods(ods, tmp_path, suppress=True))
-
-    column = distribution.income_total(0)
-
-    assert column.individuals is not None and column.individuals > 0
-    cell_sum = sum(
-        cell.individuals
-        for cell in distribution.cells
-        if cell.income_lower_bound == 0 and cell.individuals is not None
-    )
-    assert column.individuals > cell_sum
-
-
-def test_band_totals_come_from_the_published_row_pair(tmp_path, ods) -> None:
-    """Row totals cover suppressed cells, so they beat summing the cells."""
-    distribution = _load(_synthetic_ods(ods, tmp_path, suppress=True))
-
-    band = distribution.band_total(0)
-
-    assert band.gains > 0
-    assert distribution.gains_by_band()[0] == band.gains
-    cell_sum = sum(
-        cell.gains
-        for cell in distribution.cells
-        if cell.gain_lower_bound == 0 and cell.gains is not None
-    )
-    assert band.gains > cell_sum
-
-
-def test_finds_the_header_whatever_the_note_count(tmp_path, ods) -> None:
-    """2020-21 carries one fewer note than 2023-24."""
-    fewer_notes = _load(
-        _synthetic_ods(ods, tmp_path, notes=_NOTE_ROWS - 1, name="fewer.ods")
-    )
-    more_notes = _load(
-        _synthetic_ods(ods, tmp_path, notes=_NOTE_ROWS + 2, name="more.ods")
-    )
-
-    assert len(fewer_notes.cells) == len(more_notes.cells)
-    assert fewer_notes.cell(
-        gain_lower_bound=5_000_000, income_lower_bound=200_000
-    ) == more_notes.cell(gain_lower_bound=5_000_000, income_lower_bound=200_000)
-
-
-def test_rejects_an_unpublished_tax_year(tmp_path, ods) -> None:
-    with pytest.raises(ValueError, match="publishes"):
-        _load(_synthetic_ods(ods, tmp_path), tax_year="2019-20")
-
-
-def test_rejects_a_missing_sheet(tmp_path, ods) -> None:
-    path = ods.write(tmp_path / "other.ods", ods.sheet("Contents", [["a"]]))
-
-    with pytest.raises(ValueError, match="has no sheet"):
-        _load(path)
-
-
-def test_rejects_a_moved_header(tmp_path, ods) -> None:
-    rows = _synthetic_rows()
-    rows[_NOTE_ROWS][0] = "Something else entirely"
-    path = ods.write(
-        tmp_path / "moved.ods",
-        ods.sheet(HMRC_CGT_JOINT_SHEET_NAMES["2023-24"], rows),
-    )
-
-    with pytest.raises(ValueError, match="no column headed"):
-        _load(path)
-
-
-def test_rejects_a_reordered_band(tmp_path, ods) -> None:
-    rows = _synthetic_rows()
-    rows[_NOTE_ROWS + 1][0] = 999_999.0
-    path = ods.write(
-        tmp_path / "reordered.ods",
-        ods.sheet(HMRC_CGT_JOINT_SHEET_NAMES["2023-24"], rows),
-    )
-
-    with pytest.raises(ValueError, match="opens band"):
-        _load(path)
-
-
-def test_rejects_an_artifact_that_is_not_the_pinned_one(tmp_path, ods) -> None:
-    """Identity is checked before parsing, so a wrong file fails as itself."""
-    path = _synthetic_ods(ods, tmp_path)
-
-    with pytest.raises(ValueError, match="bytes, not the pinned"):
-        materialize_hmrc_capital_gains_joint_distribution(path)
-
-
-@pytest.mark.skipif(
-    not _PINNED_ODS_PATH.is_file(),
-    reason="reviewed HMRC capital gains ODS is an optional local input",
-)
-class TestPinnedPublication:
-    def test_matches_the_pinned_fingerprint(self) -> None:
-        distribution = materialize_hmrc_capital_gains_joint_distribution(
-            _PINNED_ODS_PATH
+        assert len(distribution.cells) == len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS) * len(
+            HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
         )
-
-        assert distribution.source.sha256 == HMRC_CGT_JOINT_ODS_SHA256
-        assert distribution.source.size_bytes == HMRC_CGT_JOINT_ODS_SIZE_BYTES
-        assert distribution.source.local_path == _PINNED_ODS_PATH.resolve()
-
-    def test_reproduces_the_published_2023_24_totals(self) -> None:
-        distribution = materialize_hmrc_capital_gains_joint_distribution(
-            _PINNED_ODS_PATH
+        assert {cell.gain_lower_bound for cell in distribution.cells} == set(
+            HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
         )
+        assert {cell.income_lower_bound for cell in distribution.cells} == set(
+            HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+        )
+        assert [total.gain_lower_bound for total in distribution.band_totals] == list(
+            HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+        )
+        assert [
+            total.income_lower_bound for total in distribution.income_totals
+        ] == list(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)
 
+    def test_values_are_people_and_pounds(self) -> None:
+        """The feed carries counts in people and amounts in pounds."""
+        distribution = load_hmrc_cgt_joint_distribution()
+
+        cell = distribution.cell(gain_lower_bound=0, income_lower_bound=0)
+        assert cell.individuals == 71_000.0
+        assert cell.gains == 414_000_000.0
         assert distribution.total_individuals == HMRC_CGT_TOTAL_INDIVIDUALS
         assert distribution.total_gains == HMRC_CGT_TOTAL_GAINS_GBP
 
-    @pytest.mark.parametrize("tax_year", sorted(HMRC_CGT_JOINT_SHEET_NAMES))
-    def test_every_published_year_parses(self, tax_year: str) -> None:
-        distribution = materialize_hmrc_capital_gains_joint_distribution(
-            _PINNED_ODS_PATH, tax_year=tax_year
+    def test_suppressed_cells_are_none_not_zero(self) -> None:
+        """A count too small to publish is absent from the feed, not zero."""
+        distribution = load_hmrc_cgt_joint_distribution()
+
+        top = distribution.cell(gain_lower_bound=5_000_000, income_lower_bound=0)
+        assert top.individuals_suppressed
+        assert not top.gains_suppressed
+        assert top.gains == 2_088_000_000.0
+        assert distribution.band_total(5_000_000).individuals == 3_000.0
+        assert distribution.unpublished_gains >= 0.0
+
+    def test_provenance_names_the_resource_and_the_publisher_workbook(self) -> None:
+        distribution = load_hmrc_cgt_joint_distribution()
+        conditioning = load_hmrc_cgt_conditioning_facts()
+
+        source = distribution.source
+        assert source.resource == HMRC_CGT_CONDITIONING_RESOURCE
+        assert source.resource_sha256 == conditioning.resource_sha256
+        assert source.source_commit == conditioning.source_commit
+        assert source.record_set_prefix == HMRC_CGT_JOINT_RECORD_SET_PREFIX
+        assert source.source_file == HMRC_CGT_JOINT_SOURCE_FILE
+        assert source.source_sha256 == HMRC_CGT_JOINT_SOURCE_SHA256
+        assert source.source_vintage == HMRC_CGT_SOURCE_VINTAGE
+        assert source.build_period == HMRC_CGT_BUILD_PERIOD
+
+    def test_joint_and_conditioning_rows_describe_one_universe(self) -> None:
+        """Table 3's all-gains row is the Table 1 individuals observation."""
+        distribution = load_hmrc_cgt_joint_distribution()
+        conditioning = load_hmrc_cgt_conditioning_facts()
+
+        assert (
+            distribution.total_individuals == conditioning.table1.individuals_taxpayers
         )
+        assert distribution.total_gains == conditioning.table1.individuals_gains
+        folded = conditioning.size_bands_aggregated(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)
+        for total in distribution.band_totals:
+            people, gains = folded[total.gain_lower_bound]
+            assert total.individuals == people
+            assert abs(total.gains - gains) <= 1_000_000.0
 
-        assert len(distribution.cells) == 60
-        assert distribution.total_gains > 0
-        # Suppressed cells hold a rounding-scale residual, not real mass.
-        assert abs(distribution.unpublished_gains) < 50_000_000
+    def test_every_record_set_the_manifests_declare_is_present(self) -> None:
+        payload = _payload()
+        record_sets = {row["layout"]["record_set_id"] for row in payload["rows"]}
+        for declared in HMRC_CGT_CONDITIONING_RECORD_SETS:
+            if declared.endswith("."):
+                assert any(name.startswith(declared) for name in record_sets), declared
+            else:
+                assert declared in record_sets
 
-    def test_carries_the_top_tail_the_percentile_source_cannot_reach(self) -> None:
-        """The reason for reading this table rather than a percentile one."""
-        distribution = materialize_hmrc_capital_gains_joint_distribution(
-            _PINNED_ODS_PATH
+
+class TestRefusals:
+    def test_refuses_a_resource_from_another_feed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = _payload()
+        payload["source_fact_feed"]["facts_sha256"] = "0" * 64
+
+        with pytest.raises(ValueError, match="differs from the committed UK pin"):
+            _load_from(monkeypatch, payload)
+
+    def test_refuses_rows_from_another_publisher_workbook(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = _payload()
+        for row in _joint_rows(payload):
+            row["source"]["source_sha256"] = "f" * 64
+
+        with pytest.raises(ValueError, match="not the pinned"):
+            _load_from(monkeypatch, payload)
+
+    def test_refuses_a_drifted_income_band_roster(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = _payload()
+        for row in _joint_rows(payload):
+            band = row["dimensions"].get("cgt_taxable_income_band")
+            if band == "income_125140_to_199999":
+                row["dimensions"]["cgt_taxable_income_band"] = "income_150000_to_199999"
+                row["measure_id"] = row["measure_id"].replace("125140", "150000")
+
+        with pytest.raises(ValueError, match="income-band roster drifted"):
+            _load_from(monkeypatch, payload)
+
+    def test_refuses_a_missing_gain_band(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        payload = _payload()
+        payload["rows"] = [
+            row
+            for row in payload["rows"]
+            if row["layout"]["record_set_id"]
+            != f"{HMRC_CGT_JOINT_RECORD_SET_PREFIX}gain_25000_to_49999"
+        ]
+        payload["row_count"] = len(payload["rows"])
+
+        with pytest.raises(ValueError, match="gain-band roster drifted"):
+            _load_from(monkeypatch, payload)
+
+    def test_refuses_a_drifted_published_total(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = _payload()
+        for row in _joint_rows(payload):
+            if row["measure_id"] == "taxpayers_all_incomes" and not row["dimensions"]:
+                row["value"] = 552_000
+
+        with pytest.raises(ValueError, match="published totals drifted"):
+            _load_from(monkeypatch, payload)
+
+    def test_refuses_cells_summing_past_the_published_total(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = _payload()
+        for row in _joint_rows(payload):
+            if row["measure_id"] == "gains_income_0_to_37699" and row["dimensions"].get(
+                "cgt_gain_band"
+            ):
+                row["value"] = row["value"] * 10
+
+        with pytest.raises(ValueError, match="above the published total"):
+            _load_from(monkeypatch, payload)
+
+    def test_refuses_a_measure_that_disagrees_with_its_band(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = _payload()
+        row = next(
+            row
+            for row in _joint_rows(payload)
+            if row["measure_id"] == "taxpayers_income_0_to_37699"
+            and row["dimensions"].get("cgt_gain_band") == "gain_0_to_9999"
         )
-        by_band = distribution.gains_by_band()
+        row["measure_id"] = "taxpayers_income_37700_to_49999"
 
-        assert by_band[5_000_000] > 20_000_000_000
-        top_two = by_band[2_000_000] + by_band[5_000_000]
-        assert top_two / distribution.total_gains > 0.5
+        with pytest.raises(ValueError, match="disagrees with its income band"):
+            _load_from(monkeypatch, payload)
+
+
+def test_conditioning_loader_refuses_a_size_band_that_disagrees_with_table_3(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _payload()
+    for row in payload["rows"]:
+        if (
+            row["layout"]["record_set_id"].startswith(
+                "hmrc.cgt_size_of_gain_2026.table2_1a.ty2024."
+            )
+            and row["dimensions"].get("cgt_gain_band") == "gain_25000_to_49999"
+            and row["measure_id"] == "taxpayers_individuals"
+        ):
+            row["value"] = row["value"] + 20_000
+    monkeypatch.setattr(
+        hmrc_capital_gains, "load_vendored_resource", lambda _name: payload
+    )
+
+    with pytest.raises(ValueError, match="disagree on the band from 25000"):
+        load_hmrc_cgt_conditioning_facts()
+
+
+def test_diagnostic_read_can_skip_the_feed_identity_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = _payload()
+    payload["source_fact_feed"]["source_commit"] = "0" * 40
+    monkeypatch.setattr(
+        hmrc_capital_gains, "load_vendored_resource", lambda _name: payload
+    )
+
+    distribution = load_hmrc_cgt_joint_distribution(verify_feed_identity=False)
+
+    assert distribution.source.source_commit == "0" * 40

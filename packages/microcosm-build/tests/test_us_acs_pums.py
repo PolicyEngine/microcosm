@@ -15,6 +15,7 @@ from microcosm.build.us_runtime.acs_pums import (
     build_acs_pums_unit_frame,
     load_acs_pums_tables,
 )
+from microcosm.build.us_runtime.graph_sources import load_graph_acs
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -133,6 +134,69 @@ def _axis_household(kinds: list[int]) -> pd.DataFrame:
             "TYPEHUGQ": kinds,
         }
     )
+
+
+def test_acs_loader_preserves_hours_and_allocation_without_filling_blanks(tmp_path):
+    household_zip = tmp_path / "hours-hh.zip"
+    person_zip = tmp_path / "hours-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("hours", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("hours", 1, 20, WKHP=40, WKL=1, FWKHP=1),
+                _person("hours", 2, 25, AGEP=12, WKHP=None, WKL=None, FWKHP=0),
+            ]
+        },
+    )
+    tables, _ = load_acs_pums_tables(AcsPumsSource(household_zip, person_zip))
+    assert tables["person"]["WKHP"].iloc[0] == 40
+    assert pd.isna(tables["person"]["WKHP"].iloc[1])
+    assert tables["person"]["FWKHP"].tolist() == [1, 0]
+    assert "weekly_hours_worked_before_lsr" not in tables["person"]
+
+
+def _graph_hours_source(tmp_path, **hours):
+    observed = {"WKHP": 40, "WKL": 1, "FWKHP": 1, **hours}
+    _write_csv_zip(
+        tmp_path / "csv_hus.zip", {"psam_husa.csv": [_household("hours", NP=2)]}
+    )
+    _write_csv_zip(
+        tmp_path / "csv_pus.zip",
+        {
+            "psam_pusa.csv": [
+                _person("hours", 1, 20, **observed),
+                _person("hours", 2, 25, AGEP=12, MAR=5, WKHP=None, WKL=None, FWKHP=0),
+            ]
+        },
+    )
+    return tmp_path
+
+
+def test_graph_acs_source_preserves_raw_hours_for_completion(tmp_path):
+    frame = load_graph_acs(_graph_hours_source(tmp_path))
+    person = frame.person
+    assert person["WKHP"].iloc[0] == 40
+    assert person["WKL"].iloc[0] == 1
+    assert pd.isna(person["WKHP"].iloc[1])
+    assert pd.isna(person["WKL"].iloc[1])
+    assert person["FWKHP"].tolist() == [1, 0]
+    assert person["age"].tolist() == [40, 12]
+    assert "weekly_hours_worked_before_lsr" not in person
+
+
+@pytest.mark.parametrize(
+    "hours, message",
+    (
+        ({"WKHP": 100}, "ACS WKHP requires"),
+        ({"WKL": 4}, "ACS WKL requires"),
+        ({"FWKHP": 2}, "ACS FWKHP requires"),
+        ({"WKL": 2}, "ACS WKHP/WKL contradict"),
+    ),
+)
+def test_graph_acs_source_still_rejects_invalid_raw_hours(tmp_path, hours, message):
+    with pytest.raises(ValueError, match=message):
+        load_graph_acs(_graph_hours_source(tmp_path, **hours))
 
 
 def _asec_shaped_frame() -> Frame:

@@ -35,6 +35,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "weeks_worked": [52.0, 26.0, 0.0],
             "weeks_unemployed": [0.0, 12.0, 4.0],
             "is_household_head": [True, True, False],
+            "is_spm_independent_minor_role": [True, True, False],
             "is_separated": [False, False, True],
             "is_surviving_spouse": [False, True, False],
             "is_disabled": [False, True, False],

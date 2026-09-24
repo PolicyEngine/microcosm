@@ -14,6 +14,7 @@ from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
+    uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -57,6 +58,12 @@ class UKETBVATResult:
             "stage": UK_ETB_VAT_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
         }
+
+
+#: The household-mass receipt this stage records (the manifest's
+#: ``record_mass_conservation_receipt`` operation repeats it): the terminal
+#: family gate requires exactly this reason on a valid mass-conserving record.
+UK_ETB_VAT_MASS_CONSERVATION_REASON = "ETB VAT expenditure-rate imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
 
 
 @dataclass
@@ -104,7 +111,12 @@ class UKETBVATStageTransform:
             time_period=uk_time_period(frame),
             weight_kind=uk_household_weight_kind(frame),
             household_weights=frame.weights_for("household").values,
-            mass_log=frame.mass_log,
+            mass_log=(
+                *frame.mass_log,
+                uk_household_mass_conservation_receipt(
+                    frame, UK_ETB_VAT_MASS_CONSERVATION_REASON
+                ),
+            ),
         )
         validate_uk_national_frame(result)
         self.last_fit_weight_records = (record,)
@@ -169,7 +181,9 @@ def clean_etb_vat_table(
     train["weight"] = data["hhold_adj_weight"]
     denominator = data["expdis"] - data["totvat"]
     if (denominator == 0).any():
-        raise ValueError("ETB VAT donor contains zero disposable-expenditure denominators.")
+        raise ValueError(
+            "ETB VAT donor contains zero disposable-expenditure denominators."
+        )
     train["full_rate_vat_expenditure_rate"] = (
         data["totvat"] * (1 - reduced_rate_share) / standard_rate
     ) / denominator
@@ -199,9 +213,7 @@ def etb_vat_configuration(
     }
     if stage is not None:
         derive = next(
-            operation
-            for operation in stage.operations
-            if operation.kind == "derive"
+            operation for operation in stage.operations if operation.kind == "derive"
         )
         for key, value in config.items():
             declared = derive.parameters.get(key)

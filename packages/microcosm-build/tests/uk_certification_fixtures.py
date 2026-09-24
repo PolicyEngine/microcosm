@@ -31,6 +31,10 @@ from microcosm.build.uk_runtime.release_certification import (
 )
 
 TEST_KEY = base64.b64encode(bytes(range(32))).decode("ascii")
+#: The projection source the stub seam records on its fence: the certifier
+#: requires an installed engine there. The version matches the runtime the
+#: assembler fixture signs into its diagnostics.
+STUB_PROJECTION_ENGINE = "policyengine-uk==2.89.0"
 
 
 @pytest.fixture(name="uk_certification_signing_key", autouse=True)
@@ -46,9 +50,15 @@ def stub_registry():
     for entry in spec.gates:
         parameter_keys.setdefault(entry.gate, set()).update(entry.parameters)
 
+    details_by_gate = {
+        "cgt_projection_entrants": {"projection_engine": STUB_PROJECTION_ENGINE},
+    }
+
     def passing(name):
         def gate(**_kwargs):
-            return GateResult(name=name, passed=True)
+            return GateResult(
+                name=name, passed=True, details=details_by_gate.get(name, {})
+            )
 
         return gate
 
@@ -104,6 +114,53 @@ def write_part(
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+#: The parent spine the green fixture's calibration recorded.
+GREEN_PARENT_SPINE_SHA256 = "a" * 64
+
+
+def green_score_receipt(candidate_sha: str) -> dict:
+    """A score receipt the certifier accepts: measured on the candidate's
+    bytes, scored on a closed common surface, rule 1 passed."""
+
+    return {
+        "artifacts": {
+            "candidate": {"sha256": candidate_sha, "size_bytes": 15},
+            "incumbent": {"sha256": "9" * 64, "size_bytes": 1},
+        },
+        "candidate_full_loss": 0.0096,
+        "incumbent_full_loss": 0.211,
+        "candidate_target_wins": 293,
+        "incumbent_target_wins": 12,
+        "incumbent_unresolvable_pruned": {
+            "n_pruned": 0,
+            "n_scored": 307,
+            "n_surface": 307,
+            "pruned_targets": {},
+            "measures": [],
+            "families": {},
+            "reviewed_register": {
+                "resource": "incumbent_unresolvable_measures.json",
+                "sha256": None,
+                "entries_used": {},
+            },
+            "note": "nothing pruned",
+        },
+        "evaluation": {
+            "schema_version": 1,
+            "rule": "microcosm#578 rule 1 on the common surface",
+            "scored_surface": {"n_scored": 307, "n_pruned": 0, "n_surface": 307},
+            "rule_1": {
+                "passed": True,
+                "candidate_full_loss": 0.0096,
+                "incumbent_full_loss": 0.211,
+                "candidate_target_wins": 293,
+                "incumbent_target_wins": 12,
+            },
+            "verdict": "passed",
+        },
+    }
 
 
 @pytest.fixture(name="green_certification_inputs")
@@ -169,6 +226,16 @@ def green_certification_inputs(tmp_path: Path):
         "spine_provenance": {
             "spine_gate_report": {"sha256": sha256(spine_report)},
         },
+        # The parent the calibration consumed, recorded twice as the seam
+        # writes it; the certifier binds the supplied spine to it.
+        "input_posture": {
+            "tier": "staging_candidate",
+            "sha256": GREEN_PARENT_SPINE_SHA256,
+            "size_bytes": 1,
+        },
+        "source_pins": {
+            "input_h5": {"sha256": GREEN_PARENT_SPINE_SHA256, "size_bytes": 1}
+        },
         "artifacts": {
             "staging_h5": {"sha256": candidate_sha},
             "diagnostics_json": {"sha256": diagnostics_sha},
@@ -177,22 +244,14 @@ def green_certification_inputs(tmp_path: Path):
     }
     score_receipt = tmp_path / "score_vs_enhanced_frs.json"
     score_receipt.write_text(
-        json.dumps(
-            {
-                "artifacts": {
-                    "candidate": {"sha256": candidate_sha, "size_bytes": 15},
-                    "incumbent": {"sha256": "9" * 64, "size_bytes": 1},
-                },
-                "candidate_target_wins": 293,
-            }
-        ),
-        encoding="utf-8",
+        json.dumps(green_score_receipt(candidate_sha)), encoding="utf-8"
     )
     return {
         "release_id": "uk-757-first-certified-cut",
         "candidate_name": "microcosm_uk_2024",
         "candidate_path": candidate,
         "candidate_sha256": candidate_sha,
+        "spine_sha256": GREEN_PARENT_SPINE_SHA256,
         "spine_report_path": spine_report,
         "seam_report_path": seam_report,
         "release_cut_report_path": release_cut_report,

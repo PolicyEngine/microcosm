@@ -1,11 +1,11 @@
 {
- "compiled_count": 631,
+ "compiled_count": 705,
  "counts_by_kind": {
-  "calibration_drift": 370,
-  "fixture_only": 71,
-  "ledger_only": 65
+  "calibration_drift": 388,
+  "fixture_only": 53,
+  "ledger_only": 121
  },
- "difference_count": 506,
+ "difference_count": 562,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -53,132 +53,6 @@
    "fixture_value": 3518.0,
    "kind": "fixture_only",
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_nan_to_nan",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 5805652941.176472,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_100000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 6567201680.67227,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_1000000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 1457322689.0756304,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_12300",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 9443821008.403362,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_2000000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 2718348739.4957986,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_25000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 4898166386.554623,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_250000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 3834464705.8823533,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_50000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 5863205882.3529415,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_500000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 23343884033.61345,
-   "kind": "fixture_only",
-   "name": "hmrc/capital_gains_band_5000000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 37000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_100000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 5000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_1000000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 79000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_12300",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 3000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_2000000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 74000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_25000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 14000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_250000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 53000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_50000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 8000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_500000",
-   "period": 2025,
-   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
-  },
-  {
-   "fixture_value": 2000.0,
-   "kind": "fixture_only",
-   "name": "hmrc/cgt_taxpayers_band_5000000",
    "period": 2025,
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
@@ -835,10 +709,360 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 319000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_16_to_24",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2499000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_25_to_34",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11775000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_35_to_44",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 28422000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_45_to_54",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38118000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_55_to_64",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24260000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_65_to_74",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11736000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_75_to_84",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2076000000.0,
+   "name": "hmrc.cgt.gains_by_age_band.age_85_plus",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1497797150.3974364,
+   "name": "hmrc.cgt.gains_by_region@E12000001",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8790074083.38308,
+   "name": "hmrc.cgt.gains_by_region@E12000002",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6970985861.949795,
+   "name": "hmrc.cgt.gains_by_region@E12000003",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6299365751.358824,
+   "name": "hmrc.cgt.gains_by_region@E12000004",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5890960774.765152,
+   "name": "hmrc.cgt.gains_by_region@E12000005",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11545870966.728456,
+   "name": "hmrc.cgt.gains_by_region@E12000006",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 32519714615.602127,
+   "name": "hmrc.cgt.gains_by_region@E12000007",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 25606804690.69088,
+   "name": "hmrc.cgt.gains_by_region@E12000008",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10341263627.509504,
+   "name": "hmrc.cgt.gains_by_region@E12000009",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1757265449.747086,
+   "name": "hmrc.cgt.gains_by_region@N92000002",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5680201325.83493,
+   "name": "hmrc.cgt.gains_by_region@S92000003",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2358632410.6946497,
+   "name": "hmrc.cgt.gains_by_region@W92000004",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 22503000000.0,
    "name": "hmrc.cgt.liability_total",
    "period": 2025,
    "reason": "PR #889 adds HMRC FY2024-25 individuals-only liability of GBP 22,503,000,000 to the observed-year fit. The historical fixture has no equivalent liability row; this is a declared ledger-only observation, not a cash-receipts reconciliation."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12242481474.688189,
+   "name": "hmrc.cgt.residential_property_gains.ty2024",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 202630.0578034682,
+   "name": "hmrc.cgt.residential_property_taxpayers.ty2024",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 59000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_16_to_24",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 456000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_25_to_34",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2246000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_35_to_44",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5522000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_45_to_54",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7152000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_55_to_64",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4409000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_65_to_74",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2260000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_75_to_84",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 390000000.0,
+   "name": "hmrc.cgt.tax_by_age_band.age_85_plus",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_16_to_24",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 27000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_25_to_34",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 65000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_35_to_44",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 98000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_45_to_54",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 144000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_55_to_64",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 125000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_65_to_74",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 68000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_75_to_84",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19000.0,
+   "name": "hmrc.cgt.taxpayers_by_age_band.age_85_plus",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11321.91780821918,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000001",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41513.69863013699,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000002",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 32078.767123287675,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000003",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 31135.273972602743,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000004",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 33022.260273972606,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000005",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 58496.57534246576,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000006",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 106614.72602739726,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000007",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 114162.67123287672,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000008",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 60383.56164383562,
+   "name": "hmrc.cgt.taxpayers_by_region@E12000009",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9434.931506849316,
+   "name": "hmrc.cgt.taxpayers_by_region@N92000002",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 34909.24657534247,
+   "name": "hmrc.cgt.taxpayers_by_region@S92000003",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16982.87671232877,
+   "name": "hmrc.cgt.taxpayers_by_region@W92000004",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
   },
   {
    "kind": "ledger_only",
@@ -874,6 +1098,48 @@
    "name": "hmrc.tfc.government_top_up",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 289000000.0,
+   "name": "hmrc/capital_gains_band_10000",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 311000000.0,
+   "name": "hmrc/capital_gains_band_3000",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 448000000.0,
+   "name": "hmrc/capital_gains_band_6000",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 26000.0,
+   "name": "hmrc/cgt_taxpayers_band_10000",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 73000.0,
+   "name": "hmrc/cgt_taxpayers_band_3000",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 57000.0,
+   "name": "hmrc/cgt_taxpayers_band_6000",
+   "period": 2025,
+   "reason": "Declared ledger-only observation: HMRC CGT statistics 2026 release, FY2024-25 individual rows by age band (Table 6), by country and region on the individuals basis via the Table 1 share (Table 5), and the size-of-gain bands the incumbent never carried (Table 2.1a), and the residential property taxpayers and gains on the individuals basis via the Table 8b share (Table 8a). The frozen incumbent fixture has no equivalent row (microcosm#725, #467)."
   },
   {
    "kind": "ledger_only",
@@ -1910,6 +2176,150 @@
    "name": "hmrc.salary_sacrifice.users_total",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5805652941.176472,
+   "kind": "calibration_drift",
+   "ledger_value": 9487000000.0,
+   "name": "hmrc/capital_gains_band_100000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 6567201680.67227,
+   "kind": "calibration_drift",
+   "ledger_value": 12806000000.0,
+   "name": "hmrc/capital_gains_band_1000000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 1457322689.0756304,
+   "kind": "calibration_drift",
+   "ledger_value": 1747000000.0,
+   "name": "hmrc/capital_gains_band_12300",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 9443821008.403362,
+   "kind": "calibration_drift",
+   "ledger_value": 16477000000.0,
+   "name": "hmrc/capital_gains_band_2000000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 2718348739.4957986,
+   "kind": "calibration_drift",
+   "ledger_value": 3516000000.0,
+   "name": "hmrc/capital_gains_band_25000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 4898166386.554623,
+   "kind": "calibration_drift",
+   "ledger_value": 8820000000.0,
+   "name": "hmrc/capital_gains_band_250000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 3834464705.8823533,
+   "kind": "calibration_drift",
+   "ledger_value": 5510000000.0,
+   "name": "hmrc/capital_gains_band_50000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 5863205882.3529415,
+   "kind": "calibration_drift",
+   "ledger_value": 11372000000.0,
+   "name": "hmrc/capital_gains_band_500000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 23343884033.61345,
+   "kind": "calibration_drift",
+   "ledger_value": 48474000000.0,
+   "name": "hmrc/capital_gains_band_5000000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 37000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 61000.0,
+   "name": "hmrc/cgt_taxpayers_band_100000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 5000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 9000.0,
+   "name": "hmrc/cgt_taxpayers_band_1000000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 79000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 97000.0,
+   "name": "hmrc/cgt_taxpayers_band_12300",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 3000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 5000.0,
+   "name": "hmrc/cgt_taxpayers_band_2000000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 74000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 98000.0,
+   "name": "hmrc/cgt_taxpayers_band_25000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 14000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 25000.0,
+   "name": "hmrc/cgt_taxpayers_band_250000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 53000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 78000.0,
+   "name": "hmrc/cgt_taxpayers_band_50000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 8000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 16000.0,
+   "name": "hmrc/cgt_taxpayers_band_500000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
+  },
+  {
+   "fixture_value": 2000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 3000.0,
+   "name": "hmrc/cgt_taxpayers_band_5000000",
+   "period": 2025,
+   "reason": "Vintage and basis class: the incumbent banded CGT row reads uk-data's 2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, while the current reference binds the published FY2024-25 individuals cell for the same band at identity (Chronicle cgt_size_of_gain_2026), measured in 2024 at calibration index 2025 like the national CGT observations (microcosm#467, #725). The frozen incumbent fixture keeps its historical value."
   },
   {
    "fixture_value": 557000.0,

@@ -37,6 +37,7 @@ def candidate(tmp_path, monkeypatch):
         }
     )
     with pd.HDFStore(parent, "w") as store:
+        store.put("_time_period", pd.Series([2024]), format="table")
         store.put("person", people, format="table", data_columns=True)
         for entity in ("household", "spm_unit", "tax_unit", "family", "marital_unit"):
             store.put(
@@ -381,6 +382,79 @@ def _qualify_candidate(candidate, tmp_path, monkeypatch, **claim):
     )
     assert result == output
     return output, calls
+
+
+def test_annual_cut_preserves_source_enrichment_qualification(
+    candidate, tmp_path, monkeypatch
+):
+    from microcosm.data.release import prepare_release
+
+    from .test_annual_projections import add_annual_extension
+
+    output, calls = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    _, parent, root = candidate
+    tag = add_annual_extension(output, root)
+    previous_calls = len(calls)
+    prepared = prepare_release(
+        output,
+        artifact_root=root,
+        parent_h5=parent,
+        compatibility_wheels=(tmp_path / "country.whl",),
+        tag_name=tag,
+        update_latest=False,
+    )
+    assert len(calls) == previous_calls + 1
+    assert calls[-1]["require_wheels"] is True
+    assert {
+        "annual_manifest.json",
+        "annual_acceptance.json",
+        "projection_2025.json",
+        enrichment.COMPATIBILITY_FILE,
+    }.issubset(prepared.filenames)
+    assert set(prepared.root_artifacts) == {"populace_us_2024.h5", "annual_2025.h5"}
+
+
+@pytest.mark.parametrize(
+    "problem", ["base_path", "extra_microdata", "missing_parent", "absent_annual"]
+)
+def test_annual_source_enrichment_retains_original_constraints(
+    candidate, tmp_path, monkeypatch, problem
+):
+    from .test_annual_projections import add_annual_extension
+
+    output, _ = _qualify_candidate(candidate, tmp_path, monkeypatch)
+    _, parent, root = candidate
+    add_annual_extension(output, root)
+    path = output / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    if problem == "base_path":
+        key, artifact = next(
+            (key, value)
+            for key, value in manifest["artifacts"].items()
+            if value["path"] == enrichment.SOURCE_EVIDENCE_FILE
+        )
+        manifest["artifacts"][key]["path"] = (
+            f"releases/{output.name}/{artifact['path']}"
+        )
+    elif problem == "extra_microdata":
+        manifest["artifacts"]["extra"] = {
+            **manifest["artifacts"]["dataset"],
+            "path": "extra.h5",
+        }
+        shutil.copyfile(root / "populace_us_2024.h5", output / "extra.h5")
+    elif problem == "missing_parent":
+        (output / "parent_build_manifest.json").unlink()
+    else:
+        del manifest["metadata"]
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ReleaseContractError):
+        enrichment.validate_source_enrichment_candidate(
+            output,
+            parent_h5=parent,
+            artifact_root=root,
+            require_compatibility=True,
+            compatibility_wheels=(tmp_path / "country.whl",),
+        )
 
 
 def test_certification_writes_new_bundle_and_preflight_replays(

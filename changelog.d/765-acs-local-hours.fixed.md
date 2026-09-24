@@ -1,0 +1,1 @@
+Recover native ACS usual hours with universe and allocation provenance, distinguish optional modeled child hours from observations, fill eligible unresolved cells from qualified ASEC donors including valid temporary-work follow-ups, and enforce per-spine hours coverage before staging and at local release boundaries.

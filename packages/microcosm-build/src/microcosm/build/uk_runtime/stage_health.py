@@ -53,6 +53,10 @@ def uk_stage_health_gate(
         return _cgt_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
+    if check == "cgt_asset_type_summary":
+        return _cgt_asset_type_summary_gate(stage, evidence, parameters)
+    if check == "cgt_incidence_anchor":
+        return _cgt_incidence_anchor_gate(stage, evidence, parameters)
     if check == "latent_attribute_realization":
         return _latent_attribute_realization_gate(stage, evidence)
     if check == "household_composition":
@@ -786,6 +790,296 @@ def _cgt_imputation_summary_gate(
         if value < 0.0:
             failures.append(f"{stage}: {key} is negative.")
     details = {"band_rows": len(rows), "taxpayer_mass": evidence.get("taxpayer_mass")}
+    # The conditioned redraw (microcosm#725) reports its rake and fallback;
+    # a receipt that carries them must carry them finite and non-negative.
+    # No threshold is held yet: the first measured builds set it.
+    allocation = evidence.get("allocation")
+    if allocation is not None:
+        if not isinstance(allocation, Mapping):
+            raise ValueError(f"{stage}.allocation must be a mapping.")
+        rake = allocation.get("rake")
+        if not isinstance(rake, Mapping):
+            raise ValueError(f"{stage}.allocation.rake must be a mapping.")
+        for key in (
+            "ipf_max_abs_margin_error",
+            "gains_margin_max_abs_error",
+            "ipf_zero_seed_cells",
+        ):
+            value = _finite_number(
+                rake.get(key), label=f"{stage}.allocation.rake.{key}"
+            )
+            if value < 0.0:
+                failures.append(f"{stage}: allocation.rake.{key} is negative.")
+        released = _finite_number(
+            allocation.get("fallback_released_mass"),
+            label=f"{stage}.allocation.fallback_released_mass",
+        )
+        if released < 0.0:
+            failures.append(f"{stage}: allocation.fallback_released_mass is negative.")
+        details["ipf_max_abs_margin_error"] = rake.get("ipf_max_abs_margin_error")
+        details["gains_margin_max_abs_error"] = rake.get("gains_margin_max_abs_error")
+        details["fallback_released_mass"] = released
+        # The sub-AEA remainder receipt (microcosm#970): every remainder
+        # amount must sit strictly above zero and at or below the exempt
+        # amount, or the projection fence downstream measures the wrong
+        # population. Optional so receipts predating the mapping still read.
+        remainder = allocation.get("remainder")
+        if remainder is not None:
+            if not isinstance(remainder, Mapping):
+                raise ValueError(f"{stage}.allocation.remainder must be a mapping.")
+            persons = _finite_number(
+                remainder.get("persons"), label=f"{stage}.allocation.remainder.persons"
+            )
+            remainder_mass = _finite_number(
+                remainder.get("mass"), label=f"{stage}.allocation.remainder.mass"
+            )
+            if persons < 0.0 or remainder_mass < 0.0:
+                failures.append(
+                    f"{stage}: allocation.remainder count or mass is negative."
+                )
+            if persons > 0.0:
+                exempt = _finite_number(
+                    remainder.get("annual_exempt_amount"),
+                    label=f"{stage}.allocation.remainder.annual_exempt_amount",
+                )
+                low = _finite_number(
+                    remainder.get("min_amount"),
+                    label=f"{stage}.allocation.remainder.min_amount",
+                )
+                high = _finite_number(
+                    remainder.get("max_amount"),
+                    label=f"{stage}.allocation.remainder.max_amount",
+                )
+                if not low > 0.0:
+                    failures.append(
+                        f"{stage}: allocation.remainder.min_amount is not positive."
+                    )
+                if high > exempt:
+                    failures.append(
+                        f"{stage}: allocation.remainder.max_amount exceeds the "
+                        "annual exempt amount."
+                    )
+            details["remainder_mass"] = remainder_mass
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _cgt_asset_type_summary_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The residential flag realised the Table 8a totals it was solved to.
+
+    The stage solves the logistic exactly in expectation and realises it by
+    systematic sampling. This gate holds the solve to its targets, the
+    realised weighted count to within one carrier row's weight of the
+    expectation (``max_liable_weight``, the weighted systematic walk's
+    deterministic bound; about 3,300 people at full scale), and the realised
+    gains to the wider of the reviewed relative band and a multiple of the
+    Bernoulli sigma the stage reports, which overstates a systematic draw's
+    noise and so is a conservative envelope, so a tiny frame is judged by its
+    noise floor and a production frame by the band. Every liable gainer must
+    carry an asset type and the composition receipt must be finite
+    (microcosm#725).
+    """
+
+    check = "cgt_asset_type_summary"
+    failures: list[str] = []
+    residential = _mapping(evidence.get("residential"), label=f"{stage}.residential")
+    max_relative = _finite_number(
+        parameters["maximum_relative_deviation"],
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    max_sigma = _finite_number(
+        parameters["maximum_gains_sigma"], label=f"{stage}.maximum_gains_sigma"
+    )
+    max_solve_error = _finite_number(
+        parameters["maximum_solve_relative_error"],
+        label=f"{stage}.maximum_solve_relative_error",
+    )
+    details: dict[str, object] = {}
+
+    def number(key: str) -> float:
+        return _finite_number(residential.get(key), label=f"{stage}.residential.{key}")
+
+    for measure in ("count", "gains"):
+        target = number(f"{measure}_target_individuals_basis")
+        expected = number(f"expected_{measure}")
+        if target <= 0.0:
+            failures.append(f"{stage}: residential {measure} target is not positive.")
+            continue
+        solve_error = abs(expected - target) / target
+        details[f"residential_{measure}_solve_relative_error"] = solve_error
+        if solve_error > max_solve_error:
+            failures.append(
+                f"{stage}: residential {measure} solve error {solve_error} "
+                f"exceeds {max_solve_error}."
+            )
+    count_gap = abs(number("achieved_count") - number("expected_count"))
+    count_bound = number("max_liable_weight") * (1.0 + 1e-9)
+    details["residential_count_gap"] = count_gap
+    if count_gap > count_bound:
+        failures.append(
+            f"{stage}: residential count gap {count_gap} exceeds one person "
+            f"({count_bound})."
+        )
+    gains_target = number("gains_target_individuals_basis")
+    gains_gap = abs(number("achieved_gains") - number("expected_gains"))
+    gains_bound = max(
+        max_relative * gains_target, max_sigma * number("gains_bernoulli_sigma")
+    )
+    details["residential_gains_gap"] = gains_gap
+    details["residential_gains_bound"] = gains_bound
+    if gains_target > 0.0 and gains_gap > gains_bound:
+        failures.append(
+            f"{stage}: residential gains gap {gains_gap} exceeds {gains_bound} "
+            f"(the wider of {max_relative} relative and {max_sigma} sigma)."
+        )
+    counts = _mapping(evidence.get("value_counts"), label=f"{stage}.value_counts")
+    for value, rows in counts.items():
+        if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:
+            failures.append(f"{stage}: value_counts[{value!r}] is not a row count.")
+    asset_type = _mapping(evidence.get("asset_type"), label=f"{stage}.asset_type")
+    shares = _mapping(
+        asset_type.get("achieved_gains_share"),
+        label=f"{stage}.asset_type.achieved_gains_share",
+    )
+    for name, share in shares.items():
+        value = _finite_number(share, label=f"{stage}.asset_type.{name}")
+        if value < 0.0 or value > 1.0:
+            failures.append(f"{stage}: {name} gains share {value} is not a share.")
+    details["residential_rows"] = residential.get("achieved_rows")
+    details["classified_values"] = sorted(counts)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _cgt_incidence_anchor_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The anchor realised its reporter composition without touching anyone else.
+
+    The stage derives a target for the sub-exempt and loss-making clone mass
+    from the redrawn liable mass and the Advani-Summers composition, then
+    moves the excess to the paired originals. This gate holds each group to
+    its target when it was trimmed (never overshooting, never gaining mass,
+    untouched when it was already at or below target), the liable clone mass
+    to exactly its pre-anchor value, every pair's mass to rounding, and the
+    clone side to no more than the original side; the pairing must cover at
+    least ``minimum_pair_count`` households (microcosm#970).
+    """
+
+    check = "cgt_incidence_anchor"
+    failures: list[str] = []
+    max_relative = _finite_number(
+        parameters["maximum_relative_composition_error"],
+        label=f"{stage}.maximum_relative_composition_error",
+    )
+    max_pair_error = max(
+        _finite_number(
+            parameters["maximum_pair_relative_error"],
+            label=f"{stage}.maximum_pair_relative_error",
+        ),
+        _FLOAT_RELATIVE_TOLERANCE,
+    )
+    minimum_pairs = parameters["minimum_pair_count"]
+    if not isinstance(minimum_pairs, int) or isinstance(minimum_pairs, bool):
+        raise ValueError(f"{stage}.minimum_pair_count must be an integer.")
+    liable_mass = _finite_number(
+        evidence.get("liable_mass"), label=f"{stage}.liable_mass"
+    )
+    transferred = _finite_number(
+        evidence.get("transferred_mass"), label=f"{stage}.transferred_mass"
+    )
+    pair_error = _finite_number(
+        evidence.get("max_pair_relative_error"),
+        label=f"{stage}.max_pair_relative_error",
+    )
+    pair_count = evidence.get("pair_count")
+    if not isinstance(pair_count, int) or isinstance(pair_count, bool):
+        raise ValueError(f"{stage}.pair_count must be an integer.")
+    targets = _mapping(evidence.get("targets"), label=f"{stage}.targets")
+    before = _mapping(evidence.get("before"), label=f"{stage}.before")
+    after = _mapping(evidence.get("after"), label=f"{stage}.after")
+    mass = _mapping(
+        evidence.get("mass_by_clone_flag"), label=f"{stage}.mass_by_clone_flag"
+    )
+    details: dict[str, object] = {
+        "liable_mass": liable_mass,
+        "transferred_mass": transferred,
+        "pair_count": pair_count,
+        "max_pair_relative_error": pair_error,
+        "effective_pair_relative_tolerance": max_pair_error,
+    }
+    if liable_mass <= 0.0:
+        failures.append(f"{stage}: liable mass must be positive.")
+    if transferred < 0.0:
+        failures.append(f"{stage}: transferred mass must be non-negative.")
+    if pair_count < minimum_pairs:
+        failures.append(
+            f"{stage}: {pair_count} clone/original pairs is below the required "
+            f"{minimum_pairs}."
+        )
+    if pair_error > max_pair_error:
+        failures.append(
+            f"{stage}: pair mass error {pair_error} exceeds {max_pair_error}."
+        )
+    removed = 0.0
+    for group in ("sub_exempt", "loss"):
+        target = _finite_number(targets.get(group), label=f"{stage}.targets.{group}")
+        was = _finite_number(before.get(group), label=f"{stage}.before.{group}")
+        now = _finite_number(after.get(group), label=f"{stage}.after.{group}")
+        removed += was - now
+        details[f"{group}_target"] = target
+        details[f"{group}_before"] = was
+        details[f"{group}_after"] = now
+        if target <= 0.0:
+            failures.append(f"{stage}: {group} target must be positive.")
+            continue
+        if now > was * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+            failures.append(f"{stage}: {group} clone mass rose from {was} to {now}.")
+        if was > target:
+            error = abs(now - target) / target
+            details[f"{group}_relative_error"] = error
+            if error > max(max_relative, _FLOAT_RELATIVE_TOLERANCE):
+                failures.append(
+                    f"{stage}: {group} clone mass {now} misses its target {target} "
+                    f"by {error} (allowed {max_relative})."
+                )
+        elif not np.isclose(now, was, rtol=_FLOAT_RELATIVE_TOLERANCE, atol=0.0):
+            failures.append(
+                f"{stage}: {group} clone mass {was} was already at or below its "
+                f"target {target} but moved to {now}."
+            )
+    liable_before = _finite_number(before.get("liable"), label=f"{stage}.before.liable")
+    liable_after = _finite_number(after.get("liable"), label=f"{stage}.after.liable")
+    details["liable_clone_mass"] = liable_after
+    if liable_after != liable_before:
+        failures.append(
+            f"{stage}: liable clone mass moved from {liable_before} to {liable_after}."
+        )
+    if not np.isclose(removed, transferred, rtol=1e-9, atol=0.0):
+        failures.append(
+            f"{stage}: removed group mass {removed} disagrees with the transferred "
+            f"mass {transferred}."
+        )
+    original = _finite_number(mass.get("false"), label=f"{stage}.mass.false")
+    clone = _finite_number(mass.get("true"), label=f"{stage}.mass.true")
+    details["original_mass"] = original
+    details["clone_mass"] = clone
+    if clone > original * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+        failures.append(
+            f"{stage}: clone mass {clone} exceeds original mass {original}."
+        )
     return (
         _fail(stage, check, failures, details)
         if failures

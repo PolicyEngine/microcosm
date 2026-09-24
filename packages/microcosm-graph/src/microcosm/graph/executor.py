@@ -2564,8 +2564,8 @@ def run_graph(
     given: no snapshot is allocated and the live admitted population is passed
     instead. The declaration is the caller's, not the executor's.
 
-    Both halves of the paragraph above are withdrawn in this mode, and the
-    second one matters more than the first. The executor no longer enforces
+    The execution and persistence guarantees stated above are withdrawn in
+    this mode, and the second matters more than the first. The executor no longer enforces
     that an observer cannot alter **execution**: a mutating observer corrupts
     the run it is in. It no longer enforces that an observer cannot alter
     **persistence** either, and that damage outlives the run -- a mutation

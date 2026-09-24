@@ -18,11 +18,13 @@ _UNRELATED_MODULES = (
     f"{_PACKAGE}.national_calibration",
     f"{_PACKAGE}.firm_generation",
 )
-# SHA256 of compact JSON for all 458 ordered entries (457 unique) from
-# ec3b306f3f9742ff..., recomputed unchanged against the merge of origin/main on
-# 17 September 2026: the UK runtime's exports moved on neither side.
+# SHA256 of compact JSON for all 479 ordered entries (478 unique): the
+# 458-entry roster of ec3b306f3f9742ff... (unchanged through the 17 September
+# merge) plus the 21 local-authority exports origin/main added by 23 September
+# 2026, in main's order; recomputed from main's eager __all__ (native
+# integration line, 2026-09-23).
 # This includes the existing duplicate ladder_vs_chronicle_household_dispersion.
-_ORDERED_ALL_SHA256 = "b1b27eaa0204f49402b2883b80c996ea460cbec388ebe64644a688aca430552d"
+_ORDERED_ALL_SHA256 = "ca34957708ffc5ca1d763f1763fbaeb5f09f4ee0edb57c282137966798c7764b"
 
 
 def _unrelated_modules() -> set[str]:
@@ -91,8 +93,8 @@ def test_discovery_preserves_the_frozen_ordered_export_contract_without_resoluti
 
     discovered = dir(package)
 
-    assert len(package.__all__) == 458
-    assert len(set(package.__all__)) == 457
+    assert len(package.__all__) == 479
+    assert len(set(package.__all__)) == 478
     assert package.__all__.count("ladder_vs_chronicle_household_dispersion") == 2
     encoded = json.dumps(package.__all__, separators=(",", ":")).encode()
     assert hashlib.sha256(encoded).hexdigest() == _ORDERED_ALL_SHA256

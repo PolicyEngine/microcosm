@@ -60,6 +60,10 @@ ignore = ["E501"]
 "experiments/native-retention-seal/harness19_diag.py" = ["F401"]
 # The 1/15 refusal diagnostic's harness, likewise.
 "experiments/native-retention-seal/harness19_diag_fifteenth.py" = ["F401"]
+# Evidence scripts are frozen receipts of one-off measurements: formatted and
+# import-sorted, but their logic stays exactly as it produced the committed
+# outputs, so style rules that would edit that logic are waived.
+"docs/evidence/*/scripts/*.py" = ["B023", "B905", "E402", "E731", "N806"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so

@@ -17,6 +17,23 @@ Example (read-only against the artifacts)::
         --selection-source-manifest inputs/buildm_keogh_swap_selection_source.json \
         --export-input-mass-reference-h5 forensics/populace_us_2024.h5
 
+A release built on a fresh base with no selection source (a new lineage,
+``docs/us-release-build-rule.md`` section 3) has no frozen selection to carry
+over. Say so explicitly with ``--new-lineage`` in place of
+``--selection-source-manifest``: the selection-carryover check is recorded as
+SKIPPED with that reason, the base-level half of it (the materialized PUF
+capital-gains own-tail) still runs, and every other check runs unchanged on the
+whole base. The two options are mutually exclusive; with neither, the manifest
+is required as before. With ``--release-manifest``, ``--new-lineage`` also
+requires that release to record no selection source.
+
+An SPM unit with no classified adult is a FAIL here: in spm-calculator 1.0.0
+one such unit raises ``SPM_COMPOSITION_REQUIRED`` for the whole population's SPM
+measurement. The release tool refuses the same composition by name in its
+batched pre-export gate report — but only after a full calibration, because it
+grades the calibrated export frame. This is the same verdict on the pool, in
+seconds, before the solve.
+
 Exit code: 1 on any static-check FAIL, 2 on static AT-RISK only, 0 clean. A
 carried red base-pool battery is human-review evidence and does not by itself
 change that exit code. When ``--release-manifest`` is supplied, its base-pool
@@ -41,11 +58,14 @@ from microcosm.build.us_runtime.h5_io import (  # noqa: E402
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
 )
 from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: E402
+    MAX_REPORTED_SPM_UNITS_HARD_CAP,
     run_preflight,
 )
 
 _ALLOW_GATE_FAILED_BASE_POOL_FLAG = "--allow-gate-failed-base-pool"
 _CARRIED_BATTERY_PAYLOAD_KEY = "carried_base_pool_agreement_battery"
+_NEW_LINEAGE_FLAG = "--new-lineage"
+_SELECTION_SOURCE_MANIFEST_FLAG = "--selection-source-manifest"
 
 
 def _json_object(value: object, *, label: str) -> dict[str, object]:
@@ -106,9 +126,7 @@ def _carried_base_pool_battery(
         )
     gate_reference = _json_object(
         agreement_gate_reference,
-        label=(
-            f"release manifest {path} build.base_pool.agreement_gate_reference"
-        ),
+        label=(f"release manifest {path} build.base_pool.agreement_gate_reference"),
     )
     failures = gate_reference.get("failures")
     failure_count = gate_reference.get("failure_count")
@@ -129,10 +147,7 @@ def _carried_base_pool_battery(
         or failure_count != len(failures)
         or not isinstance(gates_json_sha256, str)
         or len(gates_json_sha256) != 64
-        or any(
-            character not in "0123456789abcdef"
-            for character in gates_json_sha256
-        )
+        or any(character not in "0123456789abcdef" for character in gates_json_sha256)
         or not isinstance(verdict, dict)
         or verdict.get("passed") is not False
     ):
@@ -142,9 +157,7 @@ def _carried_base_pool_battery(
         )
     verdict_gates = verdict.get("gates")
     if not isinstance(verdict_gates, dict):
-        raise ValueError(
-            f"Release manifest {path} has no full carried gate verdict."
-        )
+        raise ValueError(f"Release manifest {path} has no full carried gate verdict.")
     verdict_failures: list[dict[str, str]] = []
     for gate_name, gate_payload in verdict_gates.items():
         if not isinstance(gate_name, str) or not isinstance(gate_payload, dict):
@@ -153,10 +166,10 @@ def _carried_base_pool_battery(
             )
         gate_failures = gate_payload.get("failures")
         gate_passed = gate_payload.get("passed")
-        if type(gate_passed) is not bool or not isinstance(
-            gate_failures, list
-        ) or not all(
-            isinstance(failure, str) for failure in gate_failures
+        if (
+            type(gate_passed) is not bool
+            or not isinstance(gate_failures, list)
+            or not all(isinstance(failure, str) for failure in gate_failures)
         ):
             raise ValueError(
                 f"Release manifest {path} has a malformed carried failure list."
@@ -186,6 +199,35 @@ def _carried_base_pool_battery(
         "publication_decision": "human_review_required",
         "affects_exit_code": False,
     }
+
+
+def _require_release_without_selection_source(path: Path) -> None:
+    """Refuse ``--new-lineage`` for a release that carried a frozen selection.
+
+    The release tool records ``build.selection_source`` as ``{"enabled":
+    false}`` when it ran without one, and as the selection report otherwise.
+    Skipping the carryover check is sound only for the former, so a built
+    release named beside ``--new-lineage`` must be the former.
+    """
+
+    release_manifest = _json_object(
+        json.loads(path.read_text()),
+        label=f"release manifest {path}",
+    )
+    build = release_manifest.get("build")
+    if not isinstance(build, dict):
+        raise ValueError(f"Release manifest {path} has no build object.")
+    selection_source = build.get("selection_source")
+    if not (
+        isinstance(selection_source, dict) and selection_source.get("enabled") is False
+    ):
+        raise ValueError(
+            f"{_NEW_LINEAGE_FLAG} was set, but release manifest {path} "
+            f"build.selection_source is {selection_source!r}, not a record of "
+            "a build without a selection source. A release built with a frozen "
+            "selection is not a new lineage: preflight it with "
+            f"{_SELECTION_SOURCE_MANIFEST_FLAG}."
+        )
 
 
 def _require_matching_release_base_pool(
@@ -223,12 +265,41 @@ def _carried_battery_banner(carried: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
-def _parser() -> argparse.ArgumentParser:
+def _non_negative_int(value: str) -> int:
+    """An argparse ``int`` that refuses a negative cap.
+
+    A negative value would reach the report's ``[:max_reported]`` slice and
+    silently mean "every offending unit except the last |N|" — the opposite of
+    a cap. The check clamps defensively too; refusing here is what tells the
+    operator their flag was wrong instead of quietly repairing it.
+    """
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"expected an integer, got {value!r}"
+        ) from None
+    if parsed < 0:
+        raise argparse.ArgumentTypeError(
+            f"must be zero or more, got {parsed}: a negative cap would report "
+            "every offending unit except the last few, not cap the report"
+        )
+    return parsed
+
+
+def _parser(*, selection_source_required: bool = True) -> argparse.ArgumentParser:
+    """The CLI parser.
+
+    ``selection_source_required`` is lifted only when the command line carries
+    ``--new-lineage`` (see :func:`main`), so a default invocation refuses a
+    missing manifest with argparse's usual required-arguments error, unchanged.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Statically preview the US release gates (selection carryover, "
             "zero-support, export-mass parity risk, reform-coverage smoke "
-            "support) without running a calibration solve."
+            "support, SPM measurement composition) without running a "
+            "calibration solve."
         )
     )
     parser.add_argument(
@@ -247,10 +318,27 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--selection-source-manifest",
-        required=True,
+        _SELECTION_SOURCE_MANIFEST_FLAG,
+        required=selection_source_required,
         type=Path,
-        help="Frozen selection-source manifest JSON.",
+        default=None,
+        help=(
+            "Frozen selection-source manifest JSON. Required unless "
+            f"{_NEW_LINEAGE_FLAG} is set; mutually exclusive with it."
+        ),
+    )
+    parser.add_argument(
+        _NEW_LINEAGE_FLAG,
+        action="store_true",
+        help=(
+            "The release is built on a fresh base with no selection source "
+            "(a new lineage): there is no prior selection to carry over, so "
+            "the selection-carryover check is recorded as SKIPPED with that "
+            "reason. The base-level PUF capital-gains own-tail refusal inside "
+            "it still runs, and every other check runs unchanged on the whole "
+            "base. Mutually exclusive with "
+            f"{_SELECTION_SOURCE_MANIFEST_FLAG}."
+        ),
     )
     parser.add_argument(
         "--release-manifest",
@@ -288,6 +376,18 @@ def _parser() -> argparse.ArgumentParser:
         help="Optional pin: expected SHA-256 of consumer_facts.jsonl.",
     )
     parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        default=None,
+        help=(
+            "CD vintage crosswalk the feed's congressional-district facts are "
+            "translated through before the target surface is compiled. "
+            "Defaults to the canonical packaged crosswalk, as the release "
+            "tool's option of the same name does; pass the release run's "
+            "replacement if it used one."
+        ),
+    )
+    parser.add_argument(
         "--target-period",
         default=2024,
         help="Build period the fiscal targets are compiled for (default 2024).",
@@ -312,6 +412,18 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--max-reported-spm-units",
+        type=_non_negative_int,
+        default=None,
+        help=(
+            "How many SPM units with no classified adult the composition check "
+            "names individually, with their members' age bands — under_15 / "
+            "15_to_17 / 18_plus / unknown, never an exact age (default 20, "
+            f"clamped to at most {MAX_REPORTED_SPM_UNITS_HARD_CAP}). The "
+            "failure line reports the full count either way."
+        ),
+    )
+    parser.add_argument(
         "--json-out",
         type=Path,
         default=None,
@@ -321,7 +433,21 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    # Only the explicit flag lifts the manifest requirement. An abbreviation
+    # that argparse would expand to it leaves the manifest required, which
+    # fails closed rather than skipping a check nobody named.
+    parser = _parser(selection_source_required=_NEW_LINEAGE_FLAG not in arguments)
+    args = parser.parse_args(arguments)
+    if args.new_lineage and args.selection_source_manifest is not None:
+        parser.error(
+            f"argument {_NEW_LINEAGE_FLAG}: not allowed with argument "
+            f"{_SELECTION_SOURCE_MANIFEST_FLAG} (a new lineage has no prior "
+            "selection to carry over; a release built with a frozen selection "
+            "must have that selection preflighted)"
+        )
+    if args.new_lineage and args.release_manifest is not None:
+        _require_release_without_selection_source(args.release_manifest)
     release_base_pool = (
         _load_release_base_pool_receipt(args.release_manifest)
         if args.release_manifest is not None
@@ -344,13 +470,22 @@ def main(argv: list[str] | None = None) -> int:
     report = run_preflight(
         base_h5=args.base_h5,
         selection_source_manifest=args.selection_source_manifest,
+        new_lineage=args.new_lineage,
         export_input_mass_reference_h5=args.export_input_mass_reference_h5,
         ledger_facts=args.ledger_facts,
         ledger_facts_sha256=args.ledger_facts_sha256,
+        congressional_district_vintage_crosswalk=(
+            args.congressional_district_vintage_crosswalk
+        ),
         target_period=target_period,
         relative_tolerance=args.relative_tolerance,
         minimum_reference_total=args.minimum_reference_total,
         allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
+        **(
+            {}
+            if args.max_reported_spm_units is None
+            else {"max_reported_spm_units": args.max_reported_spm_units}
+        ),
     )
     if args.release_manifest is not None:
         _require_matching_release_base_pool(

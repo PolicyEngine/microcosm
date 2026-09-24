@@ -213,6 +213,8 @@ def _collect_executable_content(
                 and not compiler_identity_field
             ):
                 offenders.append(child_location)
+            if compiler_identity_field:
+                continue
             _collect_executable_content(child, child_location, offenders)
     elif isinstance(value, list):
         for index, child in enumerate(value):
@@ -308,4 +310,12 @@ def _is_compiler_identity_field(*, key: str, value: object, location: str) -> bo
             "engine_abi.lock.json.remaining_stage_input_manifest.receipt"
         )
     )
-    return virtual_resource_label or generated_lock_count
+    # A Ledger fact identity (``ledger.aggregate_fact.v2:<hex>``) is content
+    # addressing data, never an entrypoint; the colon separates the key kind
+    # from its digest and the digest can happen to start with a letter.
+    ledger_fact_identity = (
+        key == "aggregate_fact_key"
+        and isinstance(value, str)
+        and re.fullmatch(r"ledger\.[a-z_]+\.v\d+:[0-9a-f]{24}", value) is not None
+    )
+    return virtual_resource_label or generated_lock_count or ledger_fact_identity

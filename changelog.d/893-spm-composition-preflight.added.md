@@ -1,0 +1,1 @@
+Add a US release-gate preflight check that names SPM units with no classified adult, and refuse them by name as a batched pre-export release gate — with every other failing gate on record, and before the export H5 and calibration NPZ are written — instead of letting the engine raise SPM_COMPOSITION_REQUIRED for the whole population during reform validation.

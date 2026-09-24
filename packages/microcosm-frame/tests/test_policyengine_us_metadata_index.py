@@ -25,17 +25,22 @@ _EXPECTED_STATE_MFS = frozenset(
     "mt_taxable_income".split()
 )
 # policyengine-us 2.x installs spm-calculator's measurement variables into the
-# default system through ``build_policyengine_variables``. Eight are
-# formula-owned; ``is_household_spouse`` is the one new input leaf, the
-# source-backed SPM independence role a stored dataset must supply.
+# default system through ``build_policyengine_variables``. Seven are
+# formula-owned. ``is_household_spouse`` is an ordinary input leaf, and
+# ``is_spm_independent_minor_role`` is one too despite carrying the head/spouse
+# fallback formula: ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` declares it
+# source-deliverable ("a population producer must retain its observed
+# boolean"), and the audit snapshot records that declaration.
 _EXPECTED_SPM_FORMULA_OWNED = frozenset(
-    "is_spm_independent_minor_role spm_measurement_adults "
+    "spm_measurement_adults "
     "spm_measurement_children spm_unit_geographic_adjustment "
     "spm_unit_reference_spm_threshold spm_unit_spm_threshold "
     "spm_unit_spm_threshold_housing_portion "
     "spm_unit_unadjusted_spm_threshold".split()
 )
-_EXPECTED_SPM_INPUTS = frozenset({"is_household_spouse"})
+_EXPECTED_SPM_INPUTS = frozenset(
+    {"is_household_spouse", "is_spm_independent_minor_role"}
+)
 
 
 def _write_variable_source(
@@ -217,7 +222,11 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
     # rejects them as stored dataset inputs, and the export contract must
     # never carry them.
     assert index.formula_owned_outputs(
-        ["spm_unit_spm_threshold", "is_household_spouse"]
+        [
+            "spm_unit_spm_threshold",
+            "is_household_spouse",
+            "is_spm_independent_minor_role",
+        ]
     ) == {"spm_unit_spm_threshold"}
 
 

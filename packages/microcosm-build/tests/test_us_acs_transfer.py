@@ -2925,6 +2925,38 @@ def test_explicit_family_is_seed_deterministic_and_preserves_recipient_index() -
     assert first.imputed_inputs[0].donor_channel == "puf_tax_detail"
 
 
+def test_local_usual_hours_transfer_preserves_reported_zero_and_forty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    column = "weekly_hours_worked_before_lsr"
+    donor = _with_columns(
+        _donor_frame(), "person", {column: [40.0, 0, 20, 0, 0, 0, 40, 10]}
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {column: pd.array([40.0, pd.NA, 0, pd.NA, 20, 10], dtype="Float64")},
+    )
+    original = recipient.person[column].copy()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"source_operator_hours_worked": (column,)}},
+        n_estimators=1,
+    )
+
+    after = result.frame.person[column]
+    observed = original.notna()
+    pd.testing.assert_series_equal(after.loc[observed], original.loc[observed])
+    assert after.notna().all()
+    assert _MeanQRF.calls
+    assert all(call["targets"].columns.tolist() == [column] for call in _MeanQRF.calls)
+    pd.testing.assert_series_equal(recipient.person[column], original)
+
+
 def test_nullable_recipient_target_fills_only_nulls_and_preserves_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

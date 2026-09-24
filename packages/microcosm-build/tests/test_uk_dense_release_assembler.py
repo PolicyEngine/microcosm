@@ -94,12 +94,30 @@ def _signed_report():
     return report
 
 
+def _staging_delivery(**overrides) -> dict:
+    """A validated version 2 telemetry receipt the run carried (local-only)."""
+
+    return {
+        "contract_version": 2,
+        "enabled": True,
+        "mode": "local_only",
+        "run_id": ATTEMPT,
+        "configured_repository": None,
+        "upload_attempts": 0,
+        "upload_successes": 0,
+        "read_back": "not_requested",
+        "last_error_code": None,
+        "opt_out_reason": None,
+        **overrides,
+    }
+
+
 def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
     candidate = root / "f100-k15-RC"
     (candidate / "logbook-spool").mkdir(parents=True)
     spine = root / "spine.h5"
     spine.write_bytes(b"spine-stand-in")
-    h5 = candidate / "microcosm_uk_2025_local.h5"
+    h5 = candidate / "microcosm_uk_2024_25_local.h5"
     h5.write_bytes(b"dense-candidate-stand-in")
     diagnostics = {
         "schema_version": 6,
@@ -125,7 +143,7 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
     }
     (candidate / "calibration_diagnostics.json").write_text(json.dumps(diagnostics))
     report = _signed_report()
-    (candidate / "microcosm_uk_2025_local.local_gates.json").write_text(
+    (candidate / "microcosm_uk_2024_25_local.local_gates.json").write_text(
         json.dumps(report)
     )
     (candidate / "score_vs_incumbent.json").write_text(
@@ -153,7 +171,8 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
         )
     )
     manifest = {
-        "schema_version": 2,
+        "schema_version": 4,
+        "release_role": "dense",
         "created_at": "2026-09-03T10:54:22+00:00",
         "git_commit": "b" * 40,
         "parameters": {
@@ -263,6 +282,7 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
                 "adjudication": "synthetic decision",
             }
         },
+        "staging_delivery": _staging_delivery(),
         "identity": {
             "spine": {
                 "pin_verified": True,
@@ -307,8 +327,10 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
                 "sha256": _sha(candidate / "calibration_diagnostics.json"),
             },
             "local_gate_report": {
-                "path": str(candidate / "microcosm_uk_2025_local.local_gates.json"),
-                "sha256": _sha(candidate / "microcosm_uk_2025_local.local_gates.json"),
+                "path": str(candidate / "microcosm_uk_2024_25_local.local_gates.json"),
+                "sha256": _sha(
+                    candidate / "microcosm_uk_2024_25_local.local_gates.json"
+                ),
             },
         },
     }
@@ -381,20 +403,20 @@ def test_assembler_stages_a_contract_valid_dense_release(
     assert release_dir.is_dir()
     for name in dc._UK_DENSE_REQUIRED_RELEASE_FILES:
         assert (release_dir / name).is_file(), name
-    published = candidate / "microcosm_uk_2025_dense.h5"
+    published = candidate / "microcosm_uk_2024_25_dense.h5"
     assert (
         published.read_bytes()
-        == (candidate / "microcosm_uk_2025_local.h5").read_bytes()
+        == (candidate / "microcosm_uk_2024_25_local.h5").read_bytes()
     )
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     assert manifest["dataset_role"] == "non_default_local_area"
     assert manifest["default_datasets"] == {} and manifest["is_default"] is False
     assert (
-        manifest["artifacts"]["microcosm_uk_2025_dense"]["revision"]
+        manifest["artifacts"]["microcosm_uk_2024_25_dense"]["revision"]
         == summary["cut_tag"]
     )
     assert (
-        manifest["artifacts"]["microcosm_uk_2025_dense"]["repo_id"]
+        manifest["artifacts"]["microcosm_uk_2024_25_dense"]["repo_id"]
         == "policyengine/populace-uk-private"
     )
     assert any(
@@ -412,10 +434,93 @@ def test_assembler_stages_a_contract_valid_dense_release(
         "--no-latest" in summary["publish_command"]
         and "populace-uk-private" in summary["publish_command"]
     )
+    # The national assembler's rule: the run's staging receipt rides into the
+    # build manifest unchanged, where publication reads it.
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["staging"] == _staging_delivery()
     # The contract re-validates the finished directory, and so does the pre-flight.
     dc.validate_release_dir(release_dir)
     preflight = _load("preflight_uk_local_release_candidate")
     assert preflight.main(["--release-dir", str(release_dir)]) == 0
+
+
+def test_assembler_override_assembles_a_pre_lane_run_with_a_recorded_opt_out(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    del manifest["staging_delivery"]
+    manifest_path.write_text(json.dumps(manifest))
+    # The incumbent surface evaluation pins the manifest bytes it evaluated.
+    surface_path = candidate / "incumbent_surface_evaluation.json"
+    evaluation = json.loads(surface_path.read_text())
+    evaluation["identity"]["candidate_manifest_sha256"] = _sha(manifest_path)
+    surface_path.write_text(json.dumps(evaluation))
+    out = tmp_path / "releases"
+    argv = [
+        "--candidate-dir",
+        str(candidate),
+        "--spine-h5",
+        str(spine),
+        "--incumbent-manifest",
+        str(incumbent),
+        "--out-dir",
+        str(out),
+    ]
+    with pytest.raises(SystemExit, match="--allow-missing-staging"):
+        assembler.main(argv)
+    assert not out.exists()
+    assert assembler.main([*argv, "--allow-missing-staging"]) == 0
+    capsys.readouterr()
+    build_manifest = json.loads(
+        (out / UK_DENSE_RELEASE_ID / "build_manifest.json").read_text()
+    )
+    assert build_manifest["staging"]["mode"] == "disabled"
+    assert build_manifest["staging"]["enabled"] is False
+    assert "--allow-missing-staging" in build_manifest["staging"]["opt_out_reason"]
+    dc.validate_release_dir(out / UK_DENSE_RELEASE_ID)
+
+
+@pytest.mark.parametrize(
+    ("staging_delivery", "message"),
+    [
+        (None, "missing valid staging-delivery evidence"),
+        ({"contract_version": 2, "enabled": True}, "invalid staging-delivery evidence"),
+    ],
+)
+def test_assembler_refuses_a_run_without_staging_evidence(
+    tmp_path: Path, monkeypatch, staging_delivery, message
+) -> None:
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if staging_delivery is None:
+        del manifest["staging_delivery"]
+    else:
+        manifest["staging_delivery"] = staging_delivery
+    manifest_path.write_text(json.dumps(manifest))
+    argv = [
+        "--candidate-dir",
+        str(candidate),
+        "--spine-h5",
+        str(spine),
+        "--incumbent-manifest",
+        str(incumbent),
+        "--out-dir",
+        str(tmp_path / "releases"),
+    ]
+    with pytest.raises(SystemExit, match=message):
+        assembler.main(argv)
+    if staging_delivery is not None:
+        # The override covers absent evidence only; invalid evidence stays refused.
+        with pytest.raises(SystemExit, match=message):
+            assembler.main([*argv, "--allow-missing-staging"])
+    assert not (tmp_path / "releases").exists()
 
 
 def test_assembler_refuses_a_dev_posture_run(tmp_path: Path, monkeypatch) -> None:
@@ -447,7 +552,7 @@ def test_assembler_refuses_tampered_candidate_bytes(
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
     assembler = _load("assemble_uk_dense_release_dir")
     candidate, spine, incumbent = _candidate_dir(tmp_path)
-    (candidate / "microcosm_uk_2025_local.h5").write_bytes(b"tampered")
+    (candidate / "microcosm_uk_2024_25_local.h5").write_bytes(b"tampered")
     with pytest.raises(SystemExit, match="candidate bytes"):
         assembler.main(
             [
@@ -649,4 +754,46 @@ def test_assembler_rejects_expired_or_missing_measure_approval(
     with pytest.raises(SystemExit, match="measure exclusion"):
         _load("assemble_uk_dense_release_dir").main(
             _assemble_args(candidate, spine, incumbent, tmp_path / "r")
+        )
+
+
+def test_assembler_refuses_a_national_role_manifest(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The dense assembler covers the dense line only (microcosm#823)."""
+
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    assembler = _load("assemble_uk_dense_release_dir")
+    candidate, spine, incumbent = _candidate_dir(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["release_role"] = "national"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit, match="release_role is 'national'"):
+        assembler.main(
+            [
+                "--candidate-dir",
+                str(candidate),
+                "--spine-h5",
+                str(spine),
+                "--incumbent-manifest",
+                str(incumbent),
+                "--out-dir",
+                str(tmp_path / "releases"),
+            ]
+        )
+    del manifest["release_role"]
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(SystemExit, match="release_role is None"):
+        assembler.main(
+            [
+                "--candidate-dir",
+                str(candidate),
+                "--spine-h5",
+                str(spine),
+                "--incumbent-manifest",
+                str(incumbent),
+                "--out-dir",
+                str(tmp_path / "releases"),
+            ]
         )

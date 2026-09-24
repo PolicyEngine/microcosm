@@ -112,6 +112,17 @@ FRAME_TABLE_SERIALIZERS = (
         nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
+        serializer_id="us_annual_static_aging",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/us_annual_static_aging.py",
+            "_write_year",
+        ),
+        backend="pandas.HDFStore table with direct fields",
+        routes=("US annual static-aging candidate",),
+        version_owner="schema-1 annual static-aging candidate native layout",
+        nullable_boolean_storage="numpy_bool_missing_rejected_v1",
+    ),
+    FrameSerializerSpec(
         serializer_id="legacy_us_two_spine",
         writer=HdfWriteSite(
             "tools/_legacy/build_us_acs_multispine_base.py",
@@ -143,6 +154,21 @@ FRAME_TABLE_SERIALIZERS = (
         routes=("US fiscal-refresh target-frame checkpoint",),
         version_owner="TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION",
         nullable_boolean_storage="bool_values_optional_uint8_mask",
+    ),
+    FrameSerializerSpec(
+        serializer_id="spm_role_derivation_projection",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/us_runtime/"
+            "spm_independence_role.py",
+            "_write_role_projection",
+        ),
+        backend="pandas.HDFStore fixed",
+        routes=(
+            "US SPM independence role stage: scratch parent H5 handed to the "
+            "certified derive_spm_role_source",
+        ),
+        version_owner="derive_spm_role_source parent person/spm_unit contract",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
 )
 
@@ -224,6 +250,18 @@ HDF_WRITE_EXCLUSIONS = (
             "_export_staged_result",
         ),
         reason="Adds geography provenance root attributes only.",
+    ),
+    HdfWriteExclusion(
+        exclusion_id="acs_donor_receipt_qualification_raw_append",
+        writer=HdfWriteSite(
+            "tools/build_us_acs_donor_receipt_qualification.py",
+            "append_boolean_fields",
+        ),
+        reason=(
+            "Copies existing HDF compound-record bytes and appends validated "
+            "non-nullable Boolean arrays to the person and spm_unit tables; "
+            "accepts no Frame or table collection."
+        ),
     ),
 )
 

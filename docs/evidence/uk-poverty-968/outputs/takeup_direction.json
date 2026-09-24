@@ -1,0 +1,38 @@
+[
+ {
+  "label": "baseline draw (v20 file)",
+  "uc_families_m": 6.366628264195442,
+  "uc_bn": 76.8327281872474,
+  "rel_bhc_pct": 15.301746413861888,
+  "abs_bhc_pct": 9.31103618296997,
+  "child_rel_pct": 18.759402482558862,
+  "median_week": 751.48046875
+ },
+ {
+  "label": "everyone entitled claims",
+  "uc_families_m": 8.608132566101313,
+  "uc_bn": 88.91328865039067,
+  "rel_bhc_pct": 14.84606087017068,
+  "abs_bhc_pct": 8.902365521388054,
+  "child_rel_pct": 18.27018418397132,
+  "median_week": 754.9448617788462
+ },
+ {
+  "label": "residual to the LARGEST entitlements (DWP take-up pattern)",
+  "uc_families_m": 6.573080968585253,
+  "uc_bn": 84.2527051892229,
+  "rel_bhc_pct": 14.877240034148723,
+  "abs_bhc_pct": 8.831401289249339,
+  "child_rel_pct": 18.650685879964268,
+  "median_week": 755.2512019230769
+ },
+ {
+  "label": "residual to the SMALLEST entitlements (opposite)",
+  "uc_families_m": 6.673590072171211,
+  "uc_bn": 68.11996854422748,
+  "rel_bhc_pct": 15.902036846491308,
+  "abs_bhc_pct": 10.054853150827075,
+  "child_rel_pct": 20.022619001341596,
+  "median_week": 745.8589242788462
+ }
+]

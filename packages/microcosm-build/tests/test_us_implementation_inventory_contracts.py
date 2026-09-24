@@ -60,6 +60,20 @@ def test_every_declared_stage_manifest_builds(stage):
     assert manifest["modules"]
 
 
+@pytest.mark.parametrize("stage", _stages())
+def test_stage_binds_every_module_in_each_closed_package(stage):
+    """A roster update must also put each new helper inside the stage identity."""
+    _, inventory = _inventory()
+    modules = set(inventory["stages"][stage]["modules"])
+    packages = {name.split("/", 1)[0] for name in modules}
+    for package in packages & inventory["package_rosters"].keys():
+        expected = {
+            f"{package}/{relative}"
+            for relative in inventory["package_rosters"][package]
+        }
+        assert expected <= modules
+
+
 def test_the_inventory_declares_a_contract_for_every_rostered_module():
     _, inventory = _inventory()
     rostered = {

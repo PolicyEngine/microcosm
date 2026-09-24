@@ -2244,6 +2244,24 @@ def _check_survey_enrichment_run(run, entry):
     )
 
 
+def _compare_inherited_manifest_population(
+    *, expected_manifest, replayed_population, version
+):
+    """Compare inherited cache replay against the retained parent manifest."""
+    physical.replay.same_replayed_population(
+        population_ops.Population.from_frame(
+            expected_manifest.population(version),
+            version,
+            mass_ledger=expected_manifest.mass_ledger(version),
+        ),
+        population_ops.Population.from_frame(
+            replayed_population.frame,
+            version,
+            mass_ledger=replayed_population.mass_ledger,
+        ),
+    )
+
+
 def run_us_survey_enrichment(
     run,
     *,
@@ -2392,15 +2410,10 @@ def run_us_survey_enrichment(
     for node_id in run.compiled.order:
         prefix_terminal[run.compiled.versions[node_id]] = observed[node_id]
     for version, population in prefix_terminal.items():
-        physical.replay.same_replayed_population(
-            population_ops.Population.from_frame(
-                population.frame, version, mass_ledger=population.mass_ledger
-            ),
-            population_ops.Population.from_frame(
-                run.manifest.population(version),
-                version,
-                mass_ledger=run.manifest.mass_ledger(version),
-            ),
+        _compare_inherited_manifest_population(
+            expected_manifest=run.manifest,
+            replayed_population=population,
+            version=version,
         )
     housing_attach = boundary.compiled.graph.node(housing_graph.ATTACH_NODE)
     housing_artifacts = parent._loaded_values(

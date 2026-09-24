@@ -1,0 +1,46 @@
+{
+ "pinned": {
+  "path": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl",
+  "rows": 37405,
+  "cells": 37399
+ },
+ "new": {
+  "path": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl",
+  "rows": 39158,
+  "cells": 39158
+ },
+ "join": [
+  "record_set_id",
+  "period.type",
+  "period.value",
+  "layout.source_row_id",
+  "layout.source_column_id"
+ ],
+ "shared_cells": 37399,
+ "shared_cells_equal_value": 37399,
+ "shared_cells_different_value": 0,
+ "differences": [],
+ "cells_only_in_pinned": 0,
+ "cells_only_in_pinned_by_record_set": {},
+ "cells_only_in_new": 1759,
+ "cells_only_in_new_by_record_set": {
+  "cms_medicaid.month2024_12.state_enrollment": 20,
+  "cms_medicaid.month2025_12.state_enrollment": 20,
+  "irs_soi.ty2020.table_1_4": 578,
+  "irs_soi.ty2021.table_1_4": 540,
+  "irs_soi.ty2022.table_1_1": 76,
+  "irs_soi.ty2022.table_1_4": 523,
+  "irs_soi.ty2023.form_w2_social_security_tips": 2
+ },
+ "duplicate_cells_in_pinned": 6,
+ "duplicate_cells_in_pinned_by_record_set": {
+  "cbo.revenue_projection.ty2023.income_by_source.adjusted_gross_income": 1,
+  "cbo.revenue_projection.ty2023.income_by_source.net_business_income": 1,
+  "cbo.revenue_projection.ty2023.income_by_source.net_capital_gain": 1,
+  "cbo.revenue_projection.ty2023.income_by_source.qualified_dividend_income": 1,
+  "cbo.revenue_projection.ty2023.income_by_source.taxable_interest_ordinary_dividends": 1,
+  "cbo.revenue_projection.ty2023.income_by_source.wages_and_salaries": 1
+ },
+ "duplicate_cells_in_new": 0,
+ "duplicate_cells_in_new_by_record_set": {}
+}

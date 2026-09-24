@@ -196,11 +196,21 @@ __all__ = [
     "US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS",
     "US_RELATIONSHIP_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_RELATIONSHIP_INPUTS_STAGE_NAME",
+    "US_SPM_INDEPENDENCE_ROLE_NONCONSTANT_PERSON_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_REQUIRED_SOURCE_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_STAGE_NAME",
     "derive_us_relationship_inputs_from_manifest",
+    "derive_us_spm_independence_role_from_manifest",
+    "resolve_asec_spm_role_source_paths",
     "us_relationship_inputs_signal_gate",
+    "us_spm_independence_role_signal_gate",
+    "us_spm_independence_role_stage_spec",
+    "us_spm_independence_role_summary",
     "us_relationship_inputs_stage_spec",
     "us_relationship_inputs_summary",
     "with_us_relationship_inputs",
+    "with_us_spm_independence_role",
     "ALIMONY_ASEC_ARCHIVED_DERIVATION_URL",
     "ALIMONY_PUF_ARCHIVED_DERIVATION_URL",
     "STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL",
@@ -869,6 +879,7 @@ __all__ = [
     "assert_validation_leaf_registry_current",
     "SSI_COUNTABLE_RESOURCE_ASSETS",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS",
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "ReformCoverageProbe",
@@ -1587,6 +1598,7 @@ _EXPORT_MODULES = {
     "microcosm.build.us_runtime.release_input_coverage": (
         "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
         "SSI_COUNTABLE_RESOURCE_ASSETS",
+        "US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS",
         "US_CGD_ROUTE_REQUIRED_INPUTS",
         "US_RELEASE_INPUT_COVERAGE_RESOURCE",
         "ReformCoverageProbe",
@@ -1827,6 +1839,18 @@ _EXPORT_MODULES = {
         "validate_spine_agreement_registry",
     ),
     "microcosm.build.us_runtime.spine_assembly": ("assemble_spines",),
+    "microcosm.build.us_runtime.spm_independence_role": (
+        "US_SPM_INDEPENDENCE_ROLE_NONCONSTANT_PERSON_COLUMNS",
+        "US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS",
+        "US_SPM_INDEPENDENCE_ROLE_REQUIRED_SOURCE_COLUMNS",
+        "US_SPM_INDEPENDENCE_ROLE_STAGE_NAME",
+        "derive_us_spm_independence_role_from_manifest",
+        "resolve_asec_spm_role_source_paths",
+        "us_spm_independence_role_signal_gate",
+        "us_spm_independence_role_stage_spec",
+        "us_spm_independence_role_summary",
+        "with_us_spm_independence_role",
+    ),
     "microcosm.build.us_runtime.ssi_disability_criteria": (
         "SIPP_2023_SSI_DISABILITY_DONOR_REVISION",
         "SIPP_2023_SSI_DISABILITY_DONOR_SHA256",
@@ -2180,6 +2204,9 @@ def _initialize_plan() -> None:
     )
     us_snap_state_take_up_stage = _resolve_export("US_SNAP_STATE_TAKE_UP_STAGE")
     us_snap_take_up_stage_name = _resolve_export("US_SNAP_TAKE_UP_STAGE_NAME")
+    us_spm_independence_role_stage_name = _resolve_export(
+        "US_SPM_INDEPENDENCE_ROLE_STAGE_NAME"
+    )
     us_ssi_disability_criteria_stage_name = _resolve_export(
         "US_SSI_DISABILITY_CRITERIA_STAGE_NAME"
     )
@@ -2360,6 +2387,18 @@ def _initialize_plan() -> None:
                 notes=(
                     "Measured household-head and marital-status flags mapped exactly "
                     "from P_SEQ and A_MARITL; nothing is imputed."
+                ),
+            ),
+            us_spm_independence_role_stage_name: DonorSpec(
+                survey="Census CPS ASEC",
+                source="https://www.census.gov/programs-surveys/cps.html",
+                notes=(
+                    "Measured SPM independence role (the engine's one declared dataset "
+                    "source input) restored from the SHA-pinned complete Census ASEC "
+                    "person files by exact income-year/PERIDNUM identity through the "
+                    "certified derive_spm_role_source: SPM_HEAD == 1 OR (A_FAMTYP in "
+                    "{1,4} AND A_FAMREL in {1,2}); reconciled against Census's own "
+                    "SPM_NUMADULTS/SPM_NUMKIDS/SPM_NUMPER; nothing is imputed."
                 ),
             ),
             us_medicare_take_up_stage_name: DonorSpec(
@@ -2573,6 +2612,7 @@ def _initialize_plan() -> None:
             us_hours_worked_stage_name,
             us_snap_take_up_stage_name,
             us_relationship_inputs_stage_name,
+            us_spm_independence_role_stage_name,
             us_medicare_take_up_stage_name,
             us_housing_inputs_stage_name,
             us_retirement_distribution_stage_name,

@@ -25,6 +25,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     _fact_matches_selector,
     compile_ledger_target_references,
+    reference_fact_selectors,
 )
 from microcosm.build.target_materialization import (
     TargetMaterializationResult,
@@ -1141,12 +1142,13 @@ def _candidate_facts_for_reference(
     facts: tuple[Mapping[str, Any], ...],
     reference: LedgerTargetReference,
 ) -> tuple[Mapping[str, Any], ...]:
-    if not reference.ledger_selector:
+    selectors = reference_fact_selectors(reference)
+    if not selectors:
         return facts
     return tuple(
         fact
         for fact in facts
-        if _fact_matches_selector(fact, reference.ledger_selector)
+        if any(_fact_matches_selector(fact, selector) for selector in selectors)
     )
 
 

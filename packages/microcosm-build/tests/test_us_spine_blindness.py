@@ -90,13 +90,16 @@ _RETIRED_LATE_ASSEMBLY_MODULES = frozenset(
     }
 )
 
-# These modules own source-spine provenance rather than applying population
-# treatments. Keep the allowlist exact so adding a new exception requires a
-# reviewed contract change.
+# These modules own reviewed source-spine boundaries, including the explicitly
+# selected legacy source completion described below. Keep the allowlist exact
+# so adding a new exception requires a reviewed contract change.
 _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
         # Declares and receipts exact ACS source universes; never mutates rows.
         "acs_income_universe.py",
+        # Legacy ACS-only under-15 modeled completion and read-only per-origin
+        # hours release diagnostics; exact boundary functions are pinned below.
+        "acs_local_hours.py",
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -110,6 +113,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
         "spine_assembly.py",  # New pre-operator assembly seam.
+        # Declares the SPM measurement universe per source arm. The ACS and
+        # ASEC rulings differ by construction, so the provenance tag is the
+        # producer's input rather than something it must be blind to.
+        "spm_universe_source.py",
         # Stacked-spine pilot (#578 revision): stacking, gap-fill donor
         # routing, activation authority, the completeness gate, and the
         # by-origin battery are origin-aware by charter.
@@ -309,18 +316,31 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
+        # Legacy source-hours completion and release gate; outside the registry.
+        "acs_local_hours.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
+        # Reviewed Census person columns restored into each raw ASEC vintage by
+        # exact pinned PERIDNUM identity before pooling (#720), through
+        # spm_role_source's pinned reader; no population treatment. Remains
+        # subject to the all-runtime source-identity scan.
+        "asec_census_person_columns.py",
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_raw_stage_v4.py",  # Authenticated source restoration; no treatment.
         "asec_pool.py",
+        # Pinned ASEC source coordinates and verified fetch; no population
+        # treatment. Remains subject to the all-runtime source-identity scan.
+        "asec_sources.py",
         "base_pool.py",
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Reviewed Chronicle feed pin loader; no population treatment. Remains
+        # subject to the all-runtime source-identity scan.
+        "chronicle_feed.py",
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
@@ -387,10 +407,19 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spine_assembly.py",
         # Data-only live battery authority extraction; never reads or mutates Frames.
         "stacked_battery_contract.py",
+        # Pure SPM measurement composition check over frame columns (age and the
+        # role); no population treatment. Re-exported by release_gate_preflight.
+        "spm_composition.py",
+        # Measured SPM independence role restored by exact pinned Census identity
+        # through spm_role_source; a manifest stage shaped like relationship_inputs.
+        "spm_independence_role.py",
         "spm_resources.py",
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.
         "spm_role_source.py",
+        # Source-owned SPM measurement-universe declaration; reads the source
+        # record type and no population attribute. Provenance owner above.
+        "spm_universe_source.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
@@ -423,6 +452,22 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
 # listed separately in _SOURCE_SPINE_PROVENANCE_OWNERS with their reason.
 _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
     {
+        # Exact raw-survey clone-prefix domain projection; retains its source owner.
+        "current_survey_household_domains.py",
+        # Qualified original ASEC disability amounts and ACS model applicability.
+        "current_survey_other_disability_completion.py",
+        # Optional other-disability QRF fragment with a canonical-version barrier.
+        "graph_current_survey_other_disability_completion.py",
+        # Invented-only whole-household EXPAND; no donor/source qualification.
+        "graph_native_puf_tail_expand.py",
+        # Opt-in disability continuation retaining the genuine predecessor owner.
+        "graph_us_other_disability_host.py",
+        # Pure invented donor declarations, AGI selection, and support thinning.
+        "native_puf_tail.py",
+        # Invented-only donor/household support matching; no amount placement.
+        "native_puf_tail_matching.py",
+        # Pure report-lot accounting and explicit singleton beneficiary convention.
+        "survey_social_security_beneficiaries.py",
         "current_survey_ss_completion.py",
         "graph_current_survey_ss_completion.py",
         # Four declared source-qualified mappings and exact maintained clone fanout.
@@ -1455,9 +1500,24 @@ def _active_static_string_choices(
     """Find loaded loop/comprehension choices used by one expression."""
 
     choices: list[tuple[str, _StaticStringChoices]] = []
+    # A bare dictionary resolves as its iterated keys. Ordinary values cannot
+    # change that result, and expanding their independent choices can create
+    # millions of identical key tuples. Unpacked mappings can contribute keys,
+    # so retain their dependencies. Other expression roots still walk the full
+    # subtree: percent formatting, for example, consumes dictionary values.
+    # The source-read visitor also visits every dictionary value separately.
+    dependencies = (
+        tuple(
+            key if key is not None else value
+            for key, value in zip(node.keys, node.values, strict=True)
+        )
+        if isinstance(node, ast.Dict)
+        else (node,)
+    )
     names = {
         child.id
-        for child in ast.walk(node)
+        for dependency in dependencies
+        for child in ast.walk(dependency)
         if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
     }
     for name in sorted(names):
@@ -3616,6 +3676,26 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Reviewed 2026-09-23: bounded CSV bytes and the fixed PRPERTYP token index.
+        "asec_coverage_authentication.py",
+        # Private retained-owner tuples; no column selector or treatment routing.
+        "current_acs_immigration_source_projection.py",
+        # Fixed original lineage keys and checked transfer/retained-owner tuples.
+        "current_survey_immigration_transfer.py",
+        # Artifact bytes selected by each node's exact declared input roster.
+        "graph_current_survey_state.py",
+        # Final-export estimates keyed by validated state and the two SNAP roles.
+        "snap_release_acceptance.py",
+        # Reviewed 2026-09-23: retained source-owner tuples and state records.
+        # Explicit provenance reads are confined to the separate boundary below.
+        "current_survey_household_domains.py",
+        # Fixed nullable report columns and typed model/artifact/population maps.
+        "graph_current_survey_other_disability_completion.py",
+        "graph_us_other_disability_host.py",
+        # Checked fixture tuples, schema columns, and household-keyed domain/weight
+        # maps. These entries grant no provenance access or source authentication.
+        "graph_native_puf_tail_expand.py",
+        "native_puf_tail_matching.py",
         # Qualified native source axes, fixed report families and typed artifacts.
         "current_survey_ss_completion.py",
         "graph_current_survey_ss_completion.py",
@@ -3718,16 +3798,50 @@ _DYNAMIC_SELECTOR_FINDING_MARKERS = (
     "hidden or expanded arguments",
 )
 
+# Reviewed 2026-09-23. Only these top-level function bodies own provenance;
+# declarations, defaults, decorators, and every other function remain scanned.
+# In particular, fitting, amount attachment, matching, and EXPAND execution do
+# not gain a module-wide exception from a source/fixture consistency boundary.
+_REVIEWED_PROVENANCE_BOUNDARY_FUNCTIONS = {
+    # Authenticate the exact selected origin and clone0/1 domain projection.
+    "current_survey_household_domains.py": frozenset({"_project"}),
+    # Qualify original ASEC observations and ACS age15+ gap applicability, then
+    # check the receiving origin/clone roster; unresolved ASEC stays unknown.
+    "current_survey_other_disability_completion.py": frozenset(
+        {"qualify_current_survey_other_disability_completion", "_receiver"}
+    ),
+    # Invented fixture-origin validation and column declarations only; this
+    # does not authenticate an actual source or admit a population.
+    "graph_native_puf_tail_expand.py": frozenset(
+        {"provenance_columns", "_validated_tables", "native_puf_tail_expand_nodes"}
+    ),
+    # Fixture-origin/type/member consistency only; recipient ranking stays scanned.
+    "native_puf_tail_matching.py": frozenset({"_frame_inputs"}),
+}
+
+
+def _outside_reviewed_provenance_boundaries(module_name: str, source: str) -> str:
+    boundaries = _REVIEWED_PROVENANCE_BOUNDARY_FUNCTIONS.get(module_name)
+    if boundaries is None:
+        return source
+    tree = ast.parse(source)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef) and node.name in boundaries:
+            node.body = [ast.Pass()]
+    return ast.unparse(tree)
+
 
 def _non_owner_source_spine_accesses(
     module_name: str,
     source: str,
 ) -> tuple[str, ...]:
-    """Apply the guard unless the module is a reviewed provenance owner."""
+    """Apply the guard outside reviewed module or exact function boundaries."""
 
     if module_name in _SOURCE_SPINE_PROVENANCE_OWNERS:
         return ()
-    accesses = _source_spine_accesses(source)
+    accesses = _source_spine_accesses(
+        _outside_reviewed_provenance_boundaries(module_name, source)
+    )
     if module_name in _REVIEWED_DYNAMIC_SELECTOR_MODULES:
         accesses = tuple(
             access
@@ -3741,6 +3855,16 @@ def _non_owner_source_spine_accesses(
     "reviewed",
     [
         next(iter(sorted(_REVIEWED_DYNAMIC_SELECTOR_MODULES))),
+        "asec_coverage_authentication.py",
+        "current_acs_immigration_source_projection.py",
+        "current_survey_immigration_transfer.py",
+        "graph_current_survey_state.py",
+        "snap_release_acceptance.py",
+        "current_survey_household_domains.py",
+        "graph_current_survey_other_disability_completion.py",
+        "graph_us_other_disability_host.py",
+        "graph_native_puf_tail_expand.py",
+        "native_puf_tail_matching.py",
         "current_survey_person_status.py",
         "current_survey_person_status_source.py",
         "current_child_property_income_source.py",
@@ -3804,6 +3928,85 @@ def pick(table):
         if not (_US_RUNTIME / name).is_file()
     )
     assert not missing, missing
+
+
+@pytest.mark.parametrize("module", sorted(_REVIEWED_PROVENANCE_BOUNDARY_FUNCTIONS))
+def test_source_provenance_is_confined_to_exact_reviewed_functions(module):
+    source = (_US_RUNTIME / module).read_text()
+    boundaries = _REVIEWED_PROVENANCE_BOUNDARY_FUNCTIONS[module]
+    tree = ast.parse(source)
+    for name in boundaries:
+        assert (
+            sum(
+                isinstance(node, ast.FunctionDef) and node.name == name
+                for node in tree.body
+            )
+            == 1
+        ), (module, name)
+    assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS
+    assert _source_spine_accesses(source)
+    assert _non_owner_source_spine_accesses(module, source) == ()
+
+    # Count references as well as calls: matching passes support_channel_column
+    # through a local loop alias, which a direct-call-only check would miss.
+    reference_owners = {
+        node.name if isinstance(node, ast.FunctionDef) else "<module>"
+        for node in tree.body
+        for use in ast.walk(node)
+        if (
+            isinstance(use, ast.Name)
+            and isinstance(use.ctx, ast.Load)
+            and use.id in _SOURCE_SPINE_COLUMN_FACTORIES
+        )
+        or (
+            isinstance(use, ast.Attribute)
+            and isinstance(use.ctx, ast.Load)
+            and use.attr in _SOURCE_SPINE_COLUMN_FACTORIES
+        )
+    }
+    assert reference_owners == boundaries
+    for factory in _SOURCE_SPINE_COLUMN_FACTORIES:
+        assert {
+            caller for caller, _line in _function_callers(source, factory)
+        } <= boundaries
+    if module == "native_puf_tail_matching.py":
+        assert {
+            caller for caller, _line in _function_callers(source, "provenance_columns")
+        } == {"_frame_inputs"}
+    elif module == "graph_native_puf_tail_expand.py":
+        assert {
+            caller for caller, _line in _function_callers(source, "provenance_columns")
+        } == {"run", "native_puf_tail_expand_nodes"}
+
+    injected = (
+        source
+        + """
+def unreviewed_population_derivation(frame):
+    return frame.table("person")["person_spine_source_id"]
+"""
+    )
+    assert _non_owner_source_spine_accesses(module, injected)
+    for name in boundaries:
+        renamed = source.replace(f"def {name}(", f"def unreviewed_{name}(", 1)
+        assert _non_owner_source_spine_accesses(module, renamed), (module, name)
+        for position in ("default", "decorator"):
+            mutated = ast.parse(source)
+            target = next(
+                node
+                for node in mutated.body
+                if isinstance(node, ast.FunctionDef) and node.name == name
+            )
+            read = ast.parse('frame["person_spine_source_id"]', mode="eval").body
+            if position == "default":
+                target.args.kwonlyargs.append(ast.arg(arg="unreviewed_provenance"))
+                target.args.kw_defaults.append(read)
+            else:
+                target.decorator_list.append(read)
+            assert _non_owner_source_spine_accesses(module, ast.unparse(mutated)), (
+                module,
+                name,
+                position,
+            )
 
 
 def test_native_immigration_projection_keeps_the_scoped_provenance_guard():
@@ -4179,6 +4382,40 @@ def test_registered_population_operators_do_not_read_any_source_channel() -> Non
     )
 
 
+def test_acs_local_hours_provenance_is_limited_to_reviewed_boundaries() -> None:
+    """Pin the ACS-only completion boundary and per-origin diagnostic gate."""
+
+    source = (_US_RUNTIME / "acs_local_hours.py").read_text()
+    boundaries = (
+        "acs_local_hours_signal_gate",
+        "complete_acs_local_under15_hours",
+    )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+
+    # A module-level owner entry must not exempt its remaining donor/transfer
+    # helpers or executable declarations from the ordinary provenance scanner.
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
 def test_physical_source_accessor_is_confined_to_reviewed_gates() -> None:
     """Origin-aware diagnostics must not become population treatments."""
 
@@ -4234,12 +4471,12 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # 73 since the US launch integration: the pool tool now also reaches
-        # _person_signal_summary.py, operator_column_contracts.py and
-        # reported_coverage_source.py (reviewed 2026-09-11; all three are
-        # listed in _REQUIRED_POOL_RUNTIME_MODULES so a silent drop fails).
-        assert len(runtime_graph) == 73, (
-            f"{tool.name} must reach the pinned 73-module runtime graph; "
+        # Re-derived from the integrated tool on 2026-09-23: 77 modules,
+        # including main's spm_independence_role.py, spm_role_source.py and
+        # spm_composition.py. These source-role dependencies are classified
+        # in _OTHER_US_RUNTIME_MODULES and scanned below with the full graph.
+        assert len(runtime_graph) == 77, (
+            f"{tool.name} must reach the pinned 77-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
@@ -7527,6 +7764,65 @@ def f(df):
         accesses = _source_spine_accesses(source)
         assert accesses, source
         assert any("fail-closed" in item for item in accesses)
+
+
+def test_dictionary_values_do_not_multiply_key_iteration_work(monkeypatch) -> None:
+    """Five tuple-bound fields must not expand 25**5 identical key tuples."""
+
+    source = """
+def f():
+    return [
+        {
+            "input": name,
+            "output": output,
+            "vintage": vintage,
+            "relation": relation,
+            "source": source,
+        }
+        for name, output, vintage, relation, source in (
+            ("state", "assigned_state_fips", "2020", "exact", "population"),
+            ("county", "county_fips", "2020", "exact", "population"),
+            ("tract", "census_tract_geoid", "2020", "exact", "population"),
+            ("puma", "assigned_puma_geoid", "2020", "exact", "puma"),
+            ("district", "district_geoid", "119th", "official", "district"),
+        )
+    ]
+"""
+    original = _static_string_values
+    calls = 0
+
+    def bounded_values(node, constants):
+        nonlocal calls
+        calls += 1
+        assert calls < 10_000, "dictionary values multiplied key-iteration work"
+        return original(node, constants)
+
+    monkeypatch.setitem(globals(), "_static_string_values", bounded_values)
+    assert _source_spine_accesses(source) == ()
+
+
+@pytest.mark.parametrize(
+    "expression",
+    (
+        '{"column": f"{entity}_support_channel"}',
+        '{f"{entity}_support_channel": entity}',
+        '"%(entity)s_support_channel" % {"entity": entity}',
+        '"{entity}_support_channel".format(**{"entity": entity})',
+        '{"column": entity, **{f"{entity}_support_channel": 1}}',
+        '{"%(entity)s_support_channel" % {"entity": entity}: 1}',
+    ),
+)
+def test_dictionary_choice_dependencies_preserve_provenance_guards(expression):
+    """Values, composed keys, formatting operands and unpacking stay guarded."""
+
+    source = f"""
+def f():
+    return [{expression} for entity in ("person", "household")]
+"""
+    accesses = _source_spine_accesses(source)
+    for column in ("person_support_channel", "household_support_channel"):
+        assert any(column in access for access in accesses), expression
+    assert all("fail-closed" not in access for access in accesses)
 
 
 def test_for_entity_format_repro_is_caught_by_name() -> None:

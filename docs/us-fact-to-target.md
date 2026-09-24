@@ -30,9 +30,11 @@ Rationale: microcosm replaces the survey's tax-benefit measurement with
 imputed, computed, and admin-calibrated values — that is the product.
 Fitting a survey-derived tax-benefit quantity launders the
 measured-with-error version back in and destroys the held-out validation
-signal (the scorecard's win column is held-out-only for the same reason).
-Release gates may *fail* a certification on a held-out poverty regression;
-*fitting* the statistic is categorically different and prohibited.
+signal. Poverty comparisons must also stay outside candidate-selection scores
+and release gates based on agreement with a survey estimate. Holding a measure
+out of the calibration objective does not justify tuning toward it afterward.
+Do not choose weights, imputations, take-up assignments, target deferrals or
+hyperparameters because they bring poverty closer to the published rate.
 
 For raw survey margins, prefer an administrative source when one covers the
 same cell and concept — e.g. congressional-district income binds from
@@ -46,12 +48,12 @@ because all of its facts are state-grain, while the compiler admits ACS only at
 congressional-district geography
 (`tools/build_us_target_parity_manifest.py::_FAMILY_EXCLUSIONS`).
 
-**Corollary: deviations from official poverty metrics are never inherently
-problematic.** A model that corrects benefit underreporting should, all
-else equal, sit below survey-based poverty rates; divergence from Census
-numbers is expected by construction. Treat official statistics as
-comparators — direction and composition anomalies are investigation flags,
-not "misses".
+**Poverty remains a comparison diagnostic.** Report differences using comparable
+definitions, populations and periods. A gap can prompt investigation, but does
+not establish a defect or require a change. Correct measurement and
+implementation errors on independent evidence, even if the correction moves
+the poverty rate farther from the survey estimate. Correctness checks remain
+release requirements; closeness to a survey poverty rate does not.
 
 ## 0. Mint the fact (ledger repo)
 

@@ -15,6 +15,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,6 +46,13 @@ from microcosm.build.us_runtime.take_up_contract import (  # noqa: E402
     seeded_take_up_programs,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec  # noqa: E402
+from microcosm.calibrate.hierarchy import (  # noqa: E402
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights  # noqa: E402
 
 UNIT_WEIGHT = 100.0
@@ -666,6 +674,40 @@ def _medicaid_state_spec(
     )
 
 
+def _labelled_state_spec(state_fips: str, state_name: str, value: float) -> TargetSpec:
+    """A natural state spec as a feed with Chronicle labels compiles it."""
+    spec = _medicaid_state_spec(state_fips, value)
+    return replace(
+        spec,
+        hierarchy=CalibrationHierarchy(
+            provider=HierarchyNode(id="cms_medicaid", label="CMS · Medicaid / CHIP"),
+            category=HierarchyCategory(
+                id="cms_medicaid.cms_medicaid",
+                label="Medicaid and CHIP",
+                provider_id="cms_medicaid",
+            ),
+            geography=HierarchyGeography(
+                id=f"0400000US{state_fips}", label=state_name, level="state"
+            ),
+            dimensions=(
+                HierarchyDimension(
+                    id="geography_state",
+                    label="State",
+                    value_id=state_fips,
+                    value_label=state_name,
+                ),
+                HierarchyDimension(
+                    id="cms_medicaid.measure",
+                    label="Measure",
+                    value_id="total",
+                    value_label="Total Medicaid enrollment",
+                ),
+            ),
+            target=HierarchyNode(id=spec.name, label="Medicaid and CHIP"),
+        ),
+    )
+
+
 def _medicaid_registry(
     state_values: dict[str, float], *, extra_specs: tuple[TargetSpec, ...] = ()
 ) -> TargetRegistry:
@@ -820,6 +862,83 @@ class TestReviewedSubstitutionRegister:
             and "cms_medicaid.month2024_11" in failure
             for failure in stale_failures
         )
+
+    def test_substituted_spec_carries_its_own_state_in_a_labelled_hierarchy(
+        self,
+    ) -> None:
+        # A feed with Chronicle labels gives every natural state spec a
+        # hierarchy whose target id is that spec's name. The clone must carry
+        # Rhode Island's geography, state dimension and its own target id, not
+        # the template state's: the registry refuses a hierarchy whose target
+        # id differs from the spec name, and a neighbouring state's geography
+        # would file the target under the wrong state.
+        registry = _medicaid_registry(
+            {}, extra_specs=(_labelled_state_spec("06", "California", 600.0),)
+        )
+
+        augmented, records = apply_us_medicaid_enrollment_substitutions(registry)
+
+        assert _record_for(records, "44")["applied"] is True
+        (spec,) = [
+            spec
+            for spec in augmented.specs
+            if spec.metadata.get("medicaid_enrollment_substitution") == "true"
+        ]
+        template = registry.specs[0]
+        assert spec.hierarchy is not None
+        assert spec.hierarchy.target.id == spec.name
+        assert spec.hierarchy.target.label == template.hierarchy.target.label
+        assert spec.hierarchy.provider == template.hierarchy.provider
+        assert spec.hierarchy.category == template.hierarchy.category
+        assert spec.hierarchy.geography == HierarchyGeography(
+            id="0400000US44", label="Rhode Island", level="state"
+        )
+        assert spec.hierarchy.dimensions == (
+            HierarchyDimension(
+                id="geography_state",
+                label="State",
+                value_id="ri",
+                value_label="Rhode Island",
+            ),
+            HierarchyDimension(
+                id="cms_medicaid.measure",
+                label="Measure",
+                value_id="total",
+                value_label="Total Medicaid enrollment",
+            ),
+        )
+        # The template is untouched.
+        assert template.hierarchy.geography.label == "California"
+
+    def test_labelled_family_refuses_a_register_entry_with_no_state_name(
+        self,
+    ) -> None:
+        # The label is reviewed data. It is never derived from the FIPS code.
+        registry = _medicaid_registry(
+            {}, extra_specs=(_labelled_state_spec("06", "California", 600.0),)
+        )
+        (entry,) = US_MEDICAID_ENROLLMENT_SUBSTITUTIONS
+        unnamed = replace(entry, state_name=" ")
+
+        with pytest.raises(ValueError, match="needs a reviewed state_name"):
+            apply_us_medicaid_enrollment_substitutions(
+                registry, substitutions=(unnamed,)
+            )
+
+    def test_unlabelled_family_needs_no_state_name(self) -> None:
+        registry = _medicaid_registry({"06": 600.0})
+        (entry,) = US_MEDICAID_ENROLLMENT_SUBSTITUTIONS
+
+        augmented, _ = apply_us_medicaid_enrollment_substitutions(
+            registry, substitutions=(replace(entry, state_name=""),)
+        )
+
+        (spec,) = [
+            spec
+            for spec in augmented.specs
+            if spec.metadata.get("medicaid_enrollment_substitution") == "true"
+        ]
+        assert spec.hierarchy is None
 
     def test_substitution_metadata_reaches_the_compiled_spec(self) -> None:
         # The substituted value ships as a first-class compiled target whose

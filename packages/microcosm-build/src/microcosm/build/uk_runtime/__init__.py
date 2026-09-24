@@ -188,7 +188,11 @@ if _TYPE_CHECKING:
         EW_OA_LAD23_URL,
         EW_OA_POPULATION_URL,
         EW_OA_WARD_URL,
+        LAD23_COUNT,
         LAD23_ITL_URL,
+        LAD23_NAMES_ITEM_ID,
+        LAD23_NAMES_SHA256,
+        LAD23_NAMES_URL,
         NI_DZ2021_COUNT,
         NI_DZ_GEOJSON_ZIP_URL,
         NI_DZ_HOUSEHOLDS_CSV_URL,
@@ -215,6 +219,7 @@ if _TYPE_CHECKING:
         load_england_wales_oa_population,
         load_england_wales_oa_ward_lookup,
         load_ew_oa_lad23_lookup,
+        load_lad23_names_lookup,
         load_lad_itl_lookup,
         load_ni_dz_hierarchy,
         load_ni_dz_households,
@@ -227,7 +232,9 @@ if _TYPE_CHECKING:
         load_scotland_oa_lau_lookup,
         load_scotland_oa_population,
         load_scotland_oa_ward_lookup,
+        normalise_lad23_names,
         update_england_wales_lad_codes,
+        verify_lad23_names_bytes,
         write_geography_crosswalk,
     )
     from microcosm.build.uk_runtime.hmrc_calibration import (
@@ -293,6 +300,22 @@ if _TYPE_CHECKING:
         uk_census_household_uprating,
         uk_ledger_households_total,
         uk_local_target_surface,
+    )
+    from microcosm.build.uk_runtime.local_authority_input import (
+        LOCAL_AUTHORITY_ENGINE_KEY_ALIASES,
+        UK_LOCAL_AUTHORITY_CODE_COLUMN,
+        UK_LOCAL_AUTHORITY_INPUT_COLUMN,
+        UK_LOCAL_AUTHORITY_NAMES_KIND,
+        UK_LOCAL_AUTHORITY_NAMES_RESOURCE,
+        UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION,
+        UK_LOCAL_AUTHORITY_VINTAGE,
+        load_uk_local_authority_names_resource,
+        local_authority_consistency_failures,
+        local_authority_engine_key,
+        local_authority_engine_key_by_code,
+        local_authority_keys_missing_from_engine,
+        resolve_local_authority_engine_keys,
+        verify_local_authority_engine_domain,
     )
     from microcosm.build.uk_runtime.local_doctrine import (
         UK_LOCAL_CLONE_COUNT,
@@ -1021,6 +1044,27 @@ __all__ = [
     "resolve_uk_year_rule",
     "uk_weight_ratio_gate",
     "uk_zero_weight_strata_gate",
+    "LAD23_COUNT",
+    "LAD23_NAMES_ITEM_ID",
+    "LAD23_NAMES_SHA256",
+    "LAD23_NAMES_URL",
+    "load_lad23_names_lookup",
+    "normalise_lad23_names",
+    "LOCAL_AUTHORITY_ENGINE_KEY_ALIASES",
+    "UK_LOCAL_AUTHORITY_CODE_COLUMN",
+    "UK_LOCAL_AUTHORITY_INPUT_COLUMN",
+    "UK_LOCAL_AUTHORITY_NAMES_KIND",
+    "UK_LOCAL_AUTHORITY_NAMES_RESOURCE",
+    "UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION",
+    "UK_LOCAL_AUTHORITY_VINTAGE",
+    "load_uk_local_authority_names_resource",
+    "local_authority_consistency_failures",
+    "local_authority_engine_key",
+    "local_authority_engine_key_by_code",
+    "local_authority_keys_missing_from_engine",
+    "resolve_local_authority_engine_keys",
+    "verify_lad23_names_bytes",
+    "verify_local_authority_engine_domain",
 ]
 
 
@@ -1569,9 +1613,22 @@ _EXPORTS = _MappingProxyType(
             "microcosm.build.uk_runtime.geography_sources",
             "EW_OA_WARD_URL",
         ),
+        "LAD23_COUNT": ("microcosm.build.uk_runtime.geography_sources", "LAD23_COUNT"),
         "LAD23_ITL_URL": (
             "microcosm.build.uk_runtime.geography_sources",
             "LAD23_ITL_URL",
+        ),
+        "LAD23_NAMES_ITEM_ID": (
+            "microcosm.build.uk_runtime.geography_sources",
+            "LAD23_NAMES_ITEM_ID",
+        ),
+        "LAD23_NAMES_SHA256": (
+            "microcosm.build.uk_runtime.geography_sources",
+            "LAD23_NAMES_SHA256",
+        ),
+        "LAD23_NAMES_URL": (
+            "microcosm.build.uk_runtime.geography_sources",
+            "LAD23_NAMES_URL",
         ),
         "NI_DZ2021_COUNT": (
             "microcosm.build.uk_runtime.geography_sources",
@@ -1677,6 +1734,10 @@ _EXPORTS = _MappingProxyType(
             "microcosm.build.uk_runtime.geography_sources",
             "load_ew_oa_lad23_lookup",
         ),
+        "load_lad23_names_lookup": (
+            "microcosm.build.uk_runtime.geography_sources",
+            "load_lad23_names_lookup",
+        ),
         "load_lad_itl_lookup": (
             "microcosm.build.uk_runtime.geography_sources",
             "load_lad_itl_lookup",
@@ -1725,9 +1786,17 @@ _EXPORTS = _MappingProxyType(
             "microcosm.build.uk_runtime.geography_sources",
             "load_scotland_oa_ward_lookup",
         ),
+        "normalise_lad23_names": (
+            "microcosm.build.uk_runtime.geography_sources",
+            "normalise_lad23_names",
+        ),
         "update_england_wales_lad_codes": (
             "microcosm.build.uk_runtime.geography_sources",
             "update_england_wales_lad_codes",
+        ),
+        "verify_lad23_names_bytes": (
+            "microcosm.build.uk_runtime.geography_sources",
+            "verify_lad23_names_bytes",
         ),
         "write_geography_crosswalk": (
             "microcosm.build.uk_runtime.geography_sources",
@@ -1934,6 +2003,62 @@ _EXPORTS = _MappingProxyType(
         "uk_local_target_surface": (
             "microcosm.build.uk_runtime.ledger_targets",
             "uk_local_target_surface",
+        ),
+        "LOCAL_AUTHORITY_ENGINE_KEY_ALIASES": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "LOCAL_AUTHORITY_ENGINE_KEY_ALIASES",
+        ),
+        "UK_LOCAL_AUTHORITY_CODE_COLUMN": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "UK_LOCAL_AUTHORITY_CODE_COLUMN",
+        ),
+        "UK_LOCAL_AUTHORITY_INPUT_COLUMN": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "UK_LOCAL_AUTHORITY_INPUT_COLUMN",
+        ),
+        "UK_LOCAL_AUTHORITY_NAMES_KIND": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "UK_LOCAL_AUTHORITY_NAMES_KIND",
+        ),
+        "UK_LOCAL_AUTHORITY_NAMES_RESOURCE": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "UK_LOCAL_AUTHORITY_NAMES_RESOURCE",
+        ),
+        "UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION",
+        ),
+        "UK_LOCAL_AUTHORITY_VINTAGE": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "UK_LOCAL_AUTHORITY_VINTAGE",
+        ),
+        "load_uk_local_authority_names_resource": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "load_uk_local_authority_names_resource",
+        ),
+        "local_authority_consistency_failures": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "local_authority_consistency_failures",
+        ),
+        "local_authority_engine_key": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "local_authority_engine_key",
+        ),
+        "local_authority_engine_key_by_code": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "local_authority_engine_key_by_code",
+        ),
+        "local_authority_keys_missing_from_engine": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "local_authority_keys_missing_from_engine",
+        ),
+        "resolve_local_authority_engine_keys": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "resolve_local_authority_engine_keys",
+        ),
+        "verify_local_authority_engine_domain": (
+            "microcosm.build.uk_runtime.local_authority_input",
+            "verify_local_authority_engine_domain",
         ),
         "UK_LOCAL_CLONE_COUNT": (
             "microcosm.build.uk_runtime.local_doctrine",

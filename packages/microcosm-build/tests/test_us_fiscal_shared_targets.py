@@ -14,6 +14,7 @@ def _args(tmp_path):
         ledger_manifest_sha256="b" * 64,
         age_targets=True,
         allow_unaged_dollar_targets=False,
+        allow_unpinned_feed=False,
     )
 
 
@@ -24,7 +25,7 @@ def test_shared_target_compilation_preserves_pins_configuration_and_gate_order(
     builder = _load_builder_module()
     args = _args(tmp_path)
     facts = object()
-    artifact = SimpleNamespace(facts=facts)
+    artifact = SimpleNamespace(facts=facts, facts_sha256="c" * 64, manifest_sha256=None)
     initial_registry, substituted_registry, crosswalk = object(), object(), object()
     records = ("invented-substitution",)
     gate = SimpleNamespace(passed=parity_passes, failures=("invented missing family",))
@@ -38,6 +39,11 @@ def test_shared_target_compilation_preserves_pins_configuration_and_gate_order(
         }
         events.append("load")
         return artifact
+
+    def check_pin(facts_sha256, *, manifest_sha256, allow_unpinned_feed):
+        assert (facts_sha256, manifest_sha256) == ("c" * 64, None)
+        assert allow_unpinned_feed is False
+        events.append("pin")
 
     def compile_targets(actual, **kwargs):
         assert actual is facts
@@ -65,6 +71,7 @@ def test_shared_target_compilation_preserves_pins_configuration_and_gate_order(
         return gate
 
     monkeypatch.setattr(builder, "load_ledger_consumer_artifact", load)
+    monkeypatch.setattr(builder, "_check_committed_us_ledger_feed_pin", check_pin)
     monkeypatch.setattr(builder, "compile_us_fiscal_target_registry", compile_targets)
     monkeypatch.setattr(
         builder, "apply_us_medicaid_enrollment_substitutions", substitute
@@ -90,7 +97,7 @@ def test_shared_target_compilation_preserves_pins_configuration_and_gate_order(
             builder._compile_fiscal_release_target_registry(
                 args, congressional_district_vintage_crosswalk=crosswalk
             )
-    assert events == ["load", "compile", "substitute", "manifest", "parity"]
+    assert events == ["load", "pin", "compile", "substitute", "manifest", "parity"]
 
 
 def test_failed_ledger_identity_stops_before_compilation(tmp_path, monkeypatch):

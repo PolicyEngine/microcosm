@@ -1,0 +1,319 @@
+{
+  "added_columns": [
+    {
+      "dtype": "bool",
+      "entity": "person",
+      "name": "receives_wic"
+    },
+    {
+      "dtype": "bool",
+      "entity": "spm_unit",
+      "name": "receives_snap"
+    },
+    {
+      "dtype": "bool",
+      "entity": "spm_unit",
+      "name": "receives_tanf"
+    }
+  ],
+  "archive_pins": {
+    "2022": {
+      "member": "pppub23.csv",
+      "member_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+      "member_size_bytes": 281065733,
+      "pinned_paw_positive_rows": 756,
+      "pinned_paw_positive_tanf_rows": 450,
+      "pinned_paw_type_counts": [
+        145377,
+        428,
+        306,
+        22
+      ],
+      "pinned_rows": 146133,
+      "survey_year": 2023,
+      "zip_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11"
+    },
+    "2023": {
+      "member": "pppub24.csv",
+      "member_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+      "member_size_bytes": 277250415,
+      "pinned_paw_positive_rows": 710,
+      "pinned_paw_positive_tanf_rows": 412,
+      "pinned_paw_type_counts": [
+        143555,
+        398,
+        298,
+        14
+      ],
+      "pinned_rows": 144265,
+      "survey_year": 2024,
+      "zip_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09"
+    },
+    "2024": {
+      "member": "pppub25.csv",
+      "member_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+      "member_size_bytes": 277882549,
+      "pinned_paw_positive_rows": 710,
+      "pinned_paw_positive_tanf_rows": 421,
+      "pinned_paw_type_counts": [
+        141415,
+        406,
+        289,
+        15
+      ],
+      "pinned_rows": 142125,
+      "survey_year": 2025,
+      "zip_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b"
+    }
+  },
+  "certification": "none; local build evidence. Not a release, staged bundle, calibration or latest pointer.",
+  "code": {
+    "git_commit": "10763a6df07a3c7845629fbacb94c20b8fe67baa",
+    "git_dirty": false,
+    "repository": "https://github.com/PolicyEngine/microcosm",
+    "runtime": {
+      "h5py": "3.16.0",
+      "hdf5": "2.0.0",
+      "microcosm-build": "0.1.0",
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "python": "3.14.4",
+      "tables": "3.11.1"
+    },
+    "source_files_sha256": {
+      "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py": "c4b229bcc40a2fe4392bb1865ac35a424ef7b7b7e2aeb4138546f07f21277145",
+      "packages/microcosm-build/src/microcosm/build/us_runtime/education_assistance_source.py": "e259e3fce64fdcab62953f79a1aa41719f81c64c7c5dc1a63f8b1e493ff5f83a",
+      "packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py": "342f76be56d67d2b465f0c5d121caa22ee7d271a165fc36edb6f0947bf108989",
+      "packages/microcosm-build/src/microcosm/build/us_runtime/public_assistance_type_source.py": "b88d30bdfb8fd8e9607c920001bb7ec4b650928f9cad52ab2c32172cccbe865b",
+      "packages/microcosm-build/src/microcosm/build/us_runtime/support_provenance.py": "3af0eeb07660656061f105a013bdc88e5f22cdf8c6e75f54d14db729092f33dc",
+      "packages/microcosm-data/src/microcosm/data/h5_enrichment.py": "60d1f747bc21d17c892a16abd78f1cf33699a96f26425a2e79b4db9d037ab323",
+      "tools/build_us_acs_donor_receipt_qualification.py": "5371d09ca8264f0df239be897401be4d63fb0984746b8a53f7a638a547694993"
+    }
+  },
+  "counts": {
+    "receives_snap": {
+      "by_source_year": {
+        "2022": {
+          "false": 17142,
+          "true": 2134
+        },
+        "2023": {
+          "false": 18049,
+          "true": 1916
+        },
+        "2024": {
+          "false": 18618,
+          "true": 2041
+        }
+      },
+      "by_support_role": {
+        "asec": {
+          "false": 20666,
+          "true": 2620
+        },
+        "puf_tax_detail": {
+          "false": 33143,
+          "true": 3471
+        }
+      },
+      "entity": "spm_unit",
+      "false": 53809,
+      "gate_selected_channel": {
+        "false": 33143,
+        "role": "puf_tax_detail",
+        "rows": 36614,
+        "true": 3471
+      },
+      "rows": 59900,
+      "true": 6091
+    },
+    "receives_tanf": {
+      "by_source_year": {
+        "2022": {
+          "false": 19123,
+          "true": 153
+        },
+        "2023": {
+          "false": 19834,
+          "true": 131
+        },
+        "2024": {
+          "false": 20512,
+          "true": 147
+        }
+      },
+      "by_support_role": {
+        "asec": {
+          "false": 23094,
+          "true": 192
+        },
+        "puf_tax_detail": {
+          "false": 36375,
+          "true": 239
+        }
+      },
+      "entity": "spm_unit",
+      "false": 59469,
+      "gate_selected_channel": {
+        "false": 36375,
+        "role": "puf_tax_detail",
+        "rows": 36614,
+        "true": 239
+      },
+      "rows": 59900,
+      "true": 431
+    },
+    "receives_wic": {
+      "by_source_year": {
+        "2022": {
+          "false": 53766,
+          "true": 698
+        },
+        "2023": {
+          "false": 53954,
+          "true": 700
+        },
+        "2024": {
+          "false": 56435,
+          "true": 768
+        }
+      },
+      "by_support_role": {
+        "asec": {
+          "false": 65023,
+          "true": 978
+        },
+        "puf_tax_detail": {
+          "false": 99132,
+          "true": 1188
+        }
+      },
+      "entity": "person",
+      "false": 164155,
+      "gate_selected_channel": {
+        "false": 99132,
+        "role": "puf_tax_detail",
+        "rows": 100320,
+        "true": 1188
+      },
+      "rows": 166321,
+      "true": 2166
+    }
+  },
+  "dataset": {
+    "filename": "populace_us_2024_receipt_qualified.h5",
+    "sha256": "009469727409e58c0c9c1252581292497b688b76f1d59b51947483fb0f89221c"
+  },
+  "operation": "add_reported_receipt_inputs",
+  "parent": {
+    "filename": "populace_us_2024.h5",
+    "lineage": "populace-us-2024-spm-20260915 (Build P plus the native SPM role)",
+    "sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
+  },
+  "pooled_income_years": [
+    2022,
+    2023,
+    2024
+  ],
+  "preservation": {
+    "all_preexisting_objects_exact": true,
+    "appended_columns": {
+      "receives_snap": {
+        "values_sha256": "26ad098e39b77f7a6031673538c00f2f63c393d7351443cc66c376ba90fdbf95"
+      },
+      "receives_tanf": {
+        "values_sha256": "906cc25c56e04829166cf93c5f51bea7a4b2ec5dba1df6b5627b934733066b78"
+      },
+      "receives_wic": {
+        "values_sha256": "4aec04bfc66b896e805e0de713c69ce5abd7d3c9ab34797ca370811cf51a0e9e"
+      }
+    },
+    "candidate_sha256": "009469727409e58c0c9c1252581292497b688b76f1d59b51947483fb0f89221c",
+    "column_registration_attributes": [
+      "data_columns",
+      "info",
+      "non_index_axes",
+      "values_cols"
+    ],
+    "datasets_checked": 3847,
+    "groups_checked_including_root": 399,
+    "parent_sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84",
+    "preexisting_attributes_checked": 21971,
+    "schema_version": 1,
+    "storage": "HDF bitfield8; pandas bool",
+    "tables_extended": {
+      "person/table": {
+        "appended_fields": [
+          "receives_wic"
+        ],
+        "preexisting_fields_checked_including_index": 319,
+        "rows": 166321
+      },
+      "spm_unit/table": {
+        "appended_fields": [
+          "receives_snap",
+          "receives_tanf"
+        ],
+        "preexisting_fields_checked_including_index": 12,
+        "rows": 59900
+      }
+    }
+  },
+  "reload_verification": {
+    "columns_compared": {
+      "family": 4,
+      "household": 21,
+      "marital_unit": 4,
+      "person": 318,
+      "spm_unit": 11,
+      "tax_unit": 18
+    },
+    "entities_compared": [
+      "person",
+      "household",
+      "tax_unit",
+      "spm_unit",
+      "family",
+      "marital_unit"
+    ],
+    "weighted_entities_compared": [
+      "household"
+    ]
+  },
+  "schema_version": 1,
+  "source_audit": {
+    "2022": {
+      "paw_positive_rows": 756,
+      "paw_positive_tanf_rows": 450,
+      "paw_type_counts": [
+        145377,
+        428,
+        306,
+        22
+      ],
+      "rows": 146133
+    },
+    "2023": {
+      "paw_positive_rows": 710,
+      "paw_positive_tanf_rows": 412,
+      "paw_type_counts": [
+        143555,
+        398,
+        298,
+        14
+      ],
+      "rows": 144265
+    },
+    "2024": {
+      "paw_positive_rows": 710,
+      "paw_positive_tanf_rows": 421,
+      "paw_type_counts": [
+        141415,
+        406,
+        289,
+        15
+      ],
+      "rows": 142125
+    }
+  }
+}

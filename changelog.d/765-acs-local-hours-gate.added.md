@@ -1,0 +1,1 @@
+Gate the ACS local-area release finalize stage on the usual-weekly-hours surface, refusing to package an artifact whose weekly_hours_worked_before_lsr is the engine's constant-40 default (which silently no-ops SNAP work-requirement analysis). Adds a required_columns scope to us_hours_worked_signal_gate for the pool/ACS surface, which drops weeks_worked.

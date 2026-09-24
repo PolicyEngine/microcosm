@@ -54,10 +54,12 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
-#: The shared exclusion-expiry clock, fixed inside the committed register's
-#: validity window (latest approval 2026-09-05, expires 2027-02-10) so the suite
-#: never drifts across an expiry boundary.
-CLOCK = date(2026, 9, 15)
+#: The shared exclusion-expiry clock, fixed inside the committed registers'
+#: validity window (latest approval 2026-09-18, the v20 self-employment
+#: 20-30k deferral on the target-fit register; earliest expiry 2026-10-16,
+#: the same entry) so the suite never drifts across an approval or expiry
+#: boundary. Move it forward when a register gains a later approval.
+CLOCK = date(2026, 9, 18)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
@@ -103,6 +105,9 @@ def _tables(*, n: int = 4, weights=None):
             "person_benunit_id": np.arange(201, 201 + n, dtype=np.int64),
             "employment_income": np.arange(1, n + 1, dtype=float),
             "universal_credit_reported": np.asarray([10.0, 0.0] * n)[:n],
+            # Distinct sub-exempt gains: not degenerate, and none crosses the
+            # frozen 3,000 under the fake projection's pinned growth path.
+            "capital_gains": np.linspace(500.0, 2_000.0, n),
         }
     )
     benunit = pd.DataFrame(
@@ -186,7 +191,58 @@ def _fixture_coverage_registry():
     }
 
 
-def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK):
+def _fake_cgt_projection(base_year: int = 2023, horizon_year: int = 2030):
+    """A projection on the manifest's pinned growth path and exempt amounts.
+
+    The seam reads the engine; tests supply the pins themselves, which is
+    also what the seam falls back to when no engine is installed.
+    """
+
+    from microcosm.build.uk_runtime.cgt_projection import (
+        UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+        UK_CGT_GAINS_GROWTH_PARAMETER,
+        UKCGTProjection,
+    )
+
+    parameters = next(
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_cgt_projection_entrants"
+    ).parameters
+    pinned_growth = parameters["expected_yoy_growth_by_year"]
+    pinned_exempt = parameters["expected_exempt_amount_by_year"]
+    growth: dict[str, float] = {}
+    cumulative: dict[str, float] = {}
+    factor = 1.0
+    for year in range(base_year + 1, horizon_year + 1):
+        rate = float(pinned_growth[str(year)])
+        factor *= 1.0 + rate
+        growth[str(year)] = rate
+        cumulative[str(year)] = factor
+    return UKCGTProjection(
+        base_year=base_year,
+        horizon_year=horizon_year,
+        growth_parameter=UK_CGT_GAINS_GROWTH_PARAMETER,
+        exempt_amount_parameter=UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+        yoy_growth_by_year=growth,
+        cumulative_gains_factor_by_year=cumulative,
+        exempt_amount_by_year={
+            str(year): float(pinned_exempt[str(year)])
+            for year in range(base_year, horizon_year + 1)
+        },
+        engine="test",
+    )
+
+
+def _run_battery(
+    tables,
+    *,
+    parity=None,
+    fit_records=None,
+    armed=True,
+    clock=CLOCK,
+    extra_artifacts=None,
+):
     person, benunit, household = tables
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
@@ -207,6 +263,9 @@ def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLO
         artifacts["aggregate_admin"] = {
             "nhs_spending_total": 202_000_000_000,
         }
+        artifacts["cgt_projection"] = _fake_cgt_projection()
+    if extra_artifacts:
+        artifacts.update(extra_artifacts)
     # Small synthetic totals exercise battery behavior without disclosing
     # the licensed 131-column reference (same patch as the legacy tests);
     # the binding's declared-pin check compares spec to runtime constant and
@@ -617,7 +676,10 @@ class TestBatteryRegressions:
         # unscoped compatibility probe. The local ladder gate fails because
         # this national fixture deliberately carries no ladder columns; the
         # three evidence-backed local arms are named gaps below.
-        assert len(passed) == 19
+        # Plus the #970 projection fence, armed here with the pinned growth
+        # path over distinct sub-exempt gains that never cross the exempt
+        # amount.
+        assert len(passed) == 20
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
@@ -672,6 +734,7 @@ class TestUnevidencedArms:
             "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
+            "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
             "uk_aggregate_admin",
             "uk_local_area_support",
@@ -690,6 +753,8 @@ class TestUnevidencedArms:
             "uk_local_geography_ladder_post_calibration",
             "uk_qrf_tail_concentration",
             "uk_weights_audit",
+            # The #970 projection fence cannot be skipped in any posture.
+            "uk_cgt_projection_entrants",
         }
         blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
@@ -739,11 +804,27 @@ class TestExclusionDiscipline:
         assert set(stamps.values()) == {CLOCK.isoformat()}, stamps
 
     def test_an_expired_register_fails_closed(self) -> None:
+        # The committed input-mass register carries no entry since the
+        # 2026-09-21 retirements, so the expiry discipline is exercised on an
+        # injected receipt that lapses before the clock below; the other two
+        # registers still expire from their committed entries.
+        lapsed = {
+            "efrs-post-calibration": {
+                "owned_land": {
+                    "reason": "injected: a reviewed exclusion whose window has closed",
+                    "approved_by": "juaristi22",
+                    "adjudication": "microcosm#714",
+                    "approved_on": "2026-08-26",
+                    "expires_on": "2026-09-26",
+                }
+            }
+        }
         battery = _run_battery(
             _tables(),
             parity=_parity(),
             fit_records=(FitWeightRecord("spi_qrf", "importance"),),
             clock=date(2027, 3, 1),
+            extra_artifacts={"reviewed_input_mass_exclusions": lapsed},
         )
         failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
         assert {
@@ -1338,3 +1419,73 @@ def test_measured_local_quality_failure_blocks_release(
     assert report["shippable"] is False
     assert report["gates"][gate_id]["status"] == "failed"
     assert report["gates"][gate_id]["criticality"] == "release_blocking"
+
+
+class TestEnumDomainResolution:
+    """The enum gates resolve their domain from whichever engine is armed."""
+
+    def _frame_with_plans(self):
+        import enum
+
+        person, benunit, household = _tables()
+        plans = ["NONE", "PLAN_2"] * len(person)
+        person["student_loan_plan"] = plans[: len(person)]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class StudentLoanPlan(enum.Enum):
+            NONE = "NONE"
+            PLAN_2 = "PLAN_2"
+
+        return frame, StudentLoanPlan
+
+    def test_public_accessor_is_the_contract(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, domain = self._frame_with_plans()
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "student_loan_plan"
+                return domain
+
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
+            {"columns": ["student_loan_plan"]},
+        )
+        assert result.passed
+
+    def test_private_variable_lookup_still_resolves(self) -> None:
+        from types import SimpleNamespace
+
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, domain = self._frame_with_plans()
+
+        class Legacy:
+            def _variable(self, column):
+                return SimpleNamespace(possible_values=domain)
+
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Legacy()}),
+            {"columns": ["student_loan_plan"]},
+        )
+        assert result.passed
+
+    def test_an_engine_with_neither_names_itself(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, _domain = self._frame_with_plans()
+
+        class Bare:
+            pass
+
+        # The first release-cut run failed both enum gates with an
+        # AttributeError from inside the evaluator; the refusal now names the
+        # adapter and the missing accessor.
+        with pytest.raises(ValueError, match="Bare.*neither enum_domain nor _variable"):
+            _evaluate_enum_domain(
+                EvidenceContext(frame=frame, artifacts={"rules_engine": Bare()}),
+                {"columns": ["student_loan_plan"]},
+            )

@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -70,6 +71,58 @@ def invented_code_pin(monkeypatch):
     return pin
 
 
+def _fake_cgt_projection(base_year: int = 2023, horizon_year: int = 2030):
+    """A flat 3 percent growth path against a frozen 3,000 exempt amount."""
+
+    from microcosm.build.uk_runtime.cgt_projection import (
+        UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+        UK_CGT_GAINS_GROWTH_PARAMETER,
+        UKCGTProjection,
+    )
+
+    # The manifest pins the engine's growth path; the fake must sit on it or
+    # the binding's drift check fails the gate.
+    parameters = next(
+        entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id == "uk_cgt_projection_entrants"
+    ).parameters
+    pinned = parameters["expected_yoy_growth_by_year"]
+    pinned_exempt = parameters["expected_exempt_amount_by_year"]
+    growth: dict[str, float] = {}
+    cumulative: dict[str, float] = {}
+    factor = 1.0
+    for year in range(base_year + 1, horizon_year + 1):
+        rate = float(pinned[str(year)])
+        factor *= 1.0 + rate
+        growth[str(year)] = rate
+        cumulative[str(year)] = factor
+    return UKCGTProjection(
+        base_year=base_year,
+        horizon_year=horizon_year,
+        growth_parameter=UK_CGT_GAINS_GROWTH_PARAMETER,
+        exempt_amount_parameter=UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+        yoy_growth_by_year=growth,
+        cumulative_gains_factor_by_year=cumulative,
+        exempt_amount_by_year={
+            str(year): float(pinned_exempt[str(year)])
+            for year in range(base_year, horizon_year + 1)
+        },
+        engine="test",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _cgt_projection(monkeypatch):
+    """The seam reads the projection from the engine; tests supply a flat one."""
+
+    monkeypatch.setattr(
+        calibration_run,
+        "uk_cgt_projection_artifact",
+        lambda frame, manifest: _fake_cgt_projection(),
+    )
+
+
 def _frame():
     ids = np.arange(4, dtype="int64")
     return uk_national_frame(
@@ -79,6 +132,7 @@ def _frame():
                 "person_benunit_id": ids,
                 "person_household_id": ids,
                 "nhs_spending": [50.0, 50.0, 50.0, 50.0],
+                "capital_gains": [0.0, 0.0, 0.0, 0.0],
             }
         ),
         benunit=pd.DataFrame(
@@ -1320,3 +1374,53 @@ def test_run_uk_calibration_refuses_unresolved_code_pin_before_io(
 
     assert probes == [calibration_run._REPOSITORY]
     assert list(tmp_path.iterdir()) == []
+
+
+def test_run_uk_calibration_accepts_a_caller_minted_attempt_id(monkeypatch, tmp_path):
+    """The rowwise driver mints the id before telemetry opens (microcosm#823)."""
+
+    pytest.importorskip("tables")
+    monkeypatch.setattr(
+        calibration_run,
+        "uk_aggregate_admin_totals",
+        lambda frame, manifest: (_admin_anchor_values(), []),
+    )
+    input_h5 = tmp_path / "input.h5"
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame)
+    paths = _paths(tmp_path)
+    paths = UKCalibrationRunPaths(
+        input_h5=input_h5,
+        staging_h5=paths.staging_h5,
+        diagnostics_json=paths.diagnostics_json,
+        build_record_json=paths.build_record_json,
+        terminal_gate_json=paths.terminal_gate_json,
+    )
+    minted = calibration_run.new_uk_calibration_attempt_id(
+        timestamp=__import__("datetime").datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    )
+    assert minted.startswith("uk-frs-calibration-attempt-20260920T120000Z-")
+    common = dict(
+        paths=paths,
+        input_sha256=_sha(input_h5),
+        ledger_artifact=object(),
+        register_registry=_registry(),
+        band_edge_registry=_registry(),
+        calibration_year=2025,
+        exclusion_receipt={},
+        doctrine=UKNationalSolveDoctrine(epochs=1),
+        doctrine_overrides={},
+        measure_resolver=None,
+        source_pins={
+            "input_h5": {"sha256": _sha(input_h5), "size_bytes": 1},
+            "ledger_facts": {"sha256": "a" * 64, "size_bytes": 1},
+        },
+        run_config_extra={"calibration_year": 2025},
+        release_id="test-run",
+    )
+    with pytest.raises(ValueError, match="uk-frs-calibration-attempt-"):
+        run_uk_calibration(build_id="uk-local-candidate-f100-s42-x", **common)
+    result = run_uk_calibration(build_id=minted, **common)
+    assert result.build_record["build_id"] == minted
+    assert result.logbook_spool is not None

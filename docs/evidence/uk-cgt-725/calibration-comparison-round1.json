@@ -1,0 +1,745 @@
+{
+  "control": {
+    "targets": 560,
+    "cgt_targets": 3,
+    "skipped": 0,
+    "initial_loss": 0.3131629526615143,
+    "final_loss": 0.011216285929440852,
+    "fraction_within_10pct": 0.9696428571428571,
+    "effective_sample_size": 10542.493176428226,
+    "realized_max_weight_ratio": 10.0,
+    "top_1pct_weight_share": 0.1552455511037512,
+    "non_cgt_within_10pct": 540,
+    "non_cgt_outside_25pct": [
+      "hmrc/self_employment_income_income_band_20_000_to_30_000@2025"
+    ],
+    "cgt_within_10pct": 3,
+    "cgt_within_25pct": 3,
+    "cgt_outside_25pct": []
+  },
+  "candidate": {
+    "targets": 634,
+    "cgt_targets": 77,
+    "skipped": 0,
+    "initial_loss": 0.3085462749004364,
+    "final_loss": 0.011204213042148744,
+    "fraction_within_10pct": 0.9621451104100947,
+    "effective_sample_size": 10482.578410789618,
+    "realized_max_weight_ratio": 10.0,
+    "top_1pct_weight_share": 0.15565981680366497,
+    "non_cgt_within_10pct": 540,
+    "non_cgt_outside_25pct": [
+      "hmrc/self_employment_income_income_band_20_000_to_30_000@2025"
+    ],
+    "cgt_within_10pct": 70,
+    "cgt_within_25pct": 75,
+    "cgt_outside_25pct": [
+      "hmrc.cgt.gains_by_age_band.age_16_to_24@2025",
+      "hmrc.cgt.tax_by_age_band.age_16_to_24@2025"
+    ]
+  },
+  "non_cgt_shared_targets": 557,
+  "non_cgt_crossed_10pct": {
+    "worse": [],
+    "better": []
+  },
+  "non_cgt_crossed_25pct": {
+    "worse": [],
+    "better": []
+  },
+  "cgt_rows": [
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_16_to_24@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 319000000.0,
+      "candidate_estimate": 93908318.06642029,
+      "candidate_relative_error": -0.7056165577855164
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_25_to_34@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 2499000000.0,
+      "candidate_estimate": 2264711938.653756,
+      "candidate_relative_error": -0.09375272562874905
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_35_to_44@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 11775000000.0,
+      "candidate_estimate": 11756694044.570152,
+      "candidate_relative_error": -0.0015546458963777254
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_45_to_54@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 28422000000.0,
+      "candidate_estimate": 28564262780.701237,
+      "candidate_relative_error": 0.005005375438084467
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_55_to_64@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 38118000000.0,
+      "candidate_estimate": 38112477377.60352,
+      "candidate_relative_error": -0.000144882270750741
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_65_to_74@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 24260000000.0,
+      "candidate_estimate": 24235467443.831024,
+      "candidate_relative_error": -0.0010112347967426146
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_75_to_84@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 11736000000.0,
+      "candidate_estimate": 11714316556.84219,
+      "candidate_relative_error": -0.0018476008144010065
+    },
+    {
+      "name": "hmrc.cgt.gains_by_age_band.age_85_plus@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 2076000000.0,
+      "candidate_estimate": 2038613306.6853666,
+      "candidate_relative_error": -0.018009004486817616
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000001@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 1497797150.3974364,
+      "candidate_estimate": 1497152683.5495627,
+      "candidate_relative_error": -0.0004302764547940822
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000002@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 8790074083.38308,
+      "candidate_estimate": 8756234355.975298,
+      "candidate_relative_error": -0.0038497658935267515
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000003@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 6970985861.949795,
+      "candidate_estimate": 6966113198.937089,
+      "candidate_relative_error": -0.0006989919516696469
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000004@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 6299365751.358824,
+      "candidate_estimate": 6301285595.220215,
+      "candidate_relative_error": 0.00030476780316763505
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000005@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 5890960774.765152,
+      "candidate_estimate": 5891921359.129771,
+      "candidate_relative_error": 0.00016306073004832553
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000006@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 11545870966.728456,
+      "candidate_estimate": 11523829363.024897,
+      "candidate_relative_error": -0.0019090464259540745
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000007@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 32519714615.602127,
+      "candidate_estimate": 32186918327.256603,
+      "candidate_relative_error": -0.01023367800976509
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000008@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 25606804690.69088,
+      "candidate_estimate": 25566605585.54138,
+      "candidate_relative_error": -0.0015698602631242001
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@E12000009@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 10341263627.509504,
+      "candidate_estimate": 10295403185.765337,
+      "candidate_relative_error": -0.00443470386173802
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@N92000002@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 1757265449.747086,
+      "candidate_estimate": 1766411686.0498238,
+      "candidate_relative_error": 0.005204812001541419
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@S92000003@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 5680201325.83493,
+      "candidate_estimate": 5672412469.308121,
+      "candidate_relative_error": -0.0013712289547527282
+    },
+    {
+      "name": "hmrc.cgt.gains_by_region@W92000004@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 2358632410.6946497,
+      "candidate_estimate": 2356163957.1955605,
+      "candidate_relative_error": -0.0010465613411808614
+    },
+    {
+      "name": "hmrc.cgt.gains_total@2025",
+      "control_target": 119258000000.0,
+      "control_estimate": 107931956702.93329,
+      "control_relative_error": -0.09497093106598058,
+      "candidate_target": 119258000000.0,
+      "candidate_estimate": 118780451766.95367,
+      "candidate_relative_error": -0.004004328707896541
+    },
+    {
+      "name": "hmrc.cgt.liability_total@2025",
+      "control_target": 22503000000.0,
+      "control_estimate": 22629780697.062336,
+      "control_relative_error": 0.005633946454354351,
+      "candidate_target": 22503000000.0,
+      "candidate_estimate": 25065767241.866356,
+      "candidate_relative_error": 0.11388558156096325
+    },
+    {
+      "name": "hmrc.cgt.residential_property_gains.ty2024@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 12242481474.688189,
+      "candidate_estimate": 12238960600.728003,
+      "candidate_relative_error": -0.00028759479583167434
+    },
+    {
+      "name": "hmrc.cgt.residential_property_taxpayers.ty2024@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 202630.0578034682,
+      "candidate_estimate": 202661.28561019897,
+      "candidate_relative_error": 0.00015411241090927363
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_16_to_24@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 59000000.0,
+      "candidate_estimate": 12050655.492611237,
+      "candidate_relative_error": -0.7957516018201485
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_25_to_34@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 456000000.0,
+      "candidate_estimate": 458723389.79726875,
+      "candidate_relative_error": 0.005972346046641992
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_35_to_44@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 2246000000.0,
+      "candidate_estimate": 2486943171.444068,
+      "candidate_relative_error": 0.10727656787358324
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_45_to_54@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 5522000000.0,
+      "candidate_estimate": 6110400482.883022,
+      "candidate_relative_error": 0.10655568324574834
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_55_to_64@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 7152000000.0,
+      "candidate_estimate": 8111413789.799624,
+      "candidate_relative_error": 0.13414622340598775
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_65_to_74@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 4409000000.0,
+      "candidate_estimate": 5081912631.686146,
+      "candidate_relative_error": 0.15262250661967472
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_75_to_84@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 2260000000.0,
+      "candidate_estimate": 2411014837.104593,
+      "candidate_relative_error": 0.06682072438256319
+    },
+    {
+      "name": "hmrc.cgt.tax_by_age_band.age_85_plus@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 390000000.0,
+      "candidate_estimate": 393308283.65903914,
+      "candidate_relative_error": 0.008482778612920872
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_16_to_24@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 4000.0,
+      "candidate_estimate": 4012.647476196289,
+      "candidate_relative_error": 0.0031618690490722657
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_25_to_34@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 27000.0,
+      "candidate_estimate": 27078.57518386841,
+      "candidate_relative_error": 0.0029101919951262296
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_35_to_44@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 65000.0,
+      "candidate_estimate": 64942.10457229614,
+      "candidate_relative_error": -0.0008906988877516527
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_45_to_54@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 98000.0,
+      "candidate_estimate": 97889.81784439087,
+      "candidate_relative_error": -0.0011243077102972537
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_55_to_64@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 144000.0,
+      "candidate_estimate": 143422.31245231628,
+      "candidate_relative_error": -0.004011719081136915
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_65_to_74@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 125000.0,
+      "candidate_estimate": 124932.23085594177,
+      "candidate_relative_error": -0.0005421531524658203
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_75_to_84@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 68000.0,
+      "candidate_estimate": 67895.72945785522,
+      "candidate_relative_error": -0.0015333903256584617
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_age_band.age_85_plus@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 19000.0,
+      "candidate_estimate": 19019.399349212646,
+      "candidate_relative_error": 0.0010210183796129728
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000001@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 11321.91780821918,
+      "candidate_estimate": 11346.488628387451,
+      "candidate_relative_error": 0.0021701994824970938
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000002@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 41513.69863013699,
+      "candidate_estimate": 41387.560134887695,
+      "candidate_relative_error": -0.0030384788494303124
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000003@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 32078.767123287675,
+      "candidate_estimate": 32046.018800258636,
+      "candidate_relative_error": -0.0010208722455940149
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000004@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 31135.273972602743,
+      "candidate_estimate": 31117.72386932373,
+      "candidate_relative_error": -0.0005636726785977741
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000005@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 33022.260273972606,
+      "candidate_estimate": 32994.58889770508,
+      "candidate_relative_error": -0.0008379613036160959
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000006@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 58496.57534246576,
+      "candidate_estimate": 58293.886348724365,
+      "candidate_relative_error": -0.003464971967243554
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000007@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 106614.72602739726,
+      "candidate_estimate": 106568.08265209198,
+      "candidate_relative_error": -0.0004374946786741085
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000008@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 114162.67123287672,
+      "candidate_estimate": 114015.95173072815,
+      "candidate_relative_error": -0.0012851793021668122
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@E12000009@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 60383.56164383562,
+      "candidate_estimate": 60122.20346212387,
+      "candidate_relative_error": -0.004328300196224567
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@N92000002@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 9434.931506849316,
+      "candidate_estimate": 9489.673076629639,
+      "candidate_relative_error": 0.00580201029976559
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@S92000003@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 34909.24657534247,
+      "candidate_estimate": 34843.238636016846,
+      "candidate_relative_error": -0.0018908439969669035
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_region@W92000004@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 16982.87671232877,
+      "candidate_estimate": 16967.400955200195,
+      "candidate_relative_error": -0.0009112565197708191
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_total@2025",
+      "control_target": 551000.0,
+      "control_estimate": 550625.616733551,
+      "control_relative_error": -0.0006794614636097542,
+      "candidate_target": 551000.0,
+      "candidate_estimate": 549192.8171920776,
+      "candidate_relative_error": -0.0032798236078445796
+    },
+    {
+      "name": "hmrc/capital_gains_band_1000000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 12806000000.0,
+      "candidate_estimate": 12828156004.771564,
+      "candidate_relative_error": 0.0017301268758054414
+    },
+    {
+      "name": "hmrc/capital_gains_band_100000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 9487000000.0,
+      "candidate_estimate": 9490842339.38142,
+      "candidate_relative_error": 0.00040501100257406297
+    },
+    {
+      "name": "hmrc/capital_gains_band_10000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 289000000.0,
+      "candidate_estimate": 288232751.16344905,
+      "candidate_relative_error": -0.0026548402648821834
+    },
+    {
+      "name": "hmrc/capital_gains_band_12300@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 1747000000.0,
+      "candidate_estimate": 1742762763.4591463,
+      "candidate_relative_error": -0.002425435913482392
+    },
+    {
+      "name": "hmrc/capital_gains_band_2000000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 16477000000.0,
+      "candidate_estimate": 16450541419.762945,
+      "candidate_relative_error": -0.0016057886895099122
+    },
+    {
+      "name": "hmrc/capital_gains_band_250000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 8820000000.0,
+      "candidate_estimate": 8802024947.038269,
+      "candidate_relative_error": -0.0020379878641418317
+    },
+    {
+      "name": "hmrc/capital_gains_band_25000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 3516000000.0,
+      "candidate_estimate": 3514018121.244543,
+      "candidate_relative_error": -0.0005636742762960536
+    },
+    {
+      "name": "hmrc/capital_gains_band_3000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 311000000.0,
+      "candidate_estimate": 310319001.087522,
+      "candidate_relative_error": -0.002189707114077266
+    },
+    {
+      "name": "hmrc/capital_gains_band_5000000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 48474000000.0,
+      "candidate_estimate": 48051623955.84032,
+      "candidate_relative_error": -0.00871345554647199
+    },
+    {
+      "name": "hmrc/capital_gains_band_500000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 11372000000.0,
+      "candidate_estimate": 11337989333.8238,
+      "candidate_relative_error": -0.002990737440749285
+    },
+    {
+      "name": "hmrc/capital_gains_band_50000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 5510000000.0,
+      "candidate_estimate": 5516355665.250963,
+      "candidate_relative_error": 0.0011534782669624702
+    },
+    {
+      "name": "hmrc/capital_gains_band_6000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 448000000.0,
+      "candidate_estimate": 447585464.12971497,
+      "candidate_relative_error": -0.000925303281886237
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_1000000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 9000.0,
+      "candidate_estimate": 9019.947410583496,
+      "candidate_relative_error": 0.0022163789537217884
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_100000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 61000.0,
+      "candidate_estimate": 61114.00471687317,
+      "candidate_relative_error": 0.0018689297848060483
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_10000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 26000.0,
+      "candidate_estimate": 25944.814949035645,
+      "candidate_relative_error": -0.002122501960167518
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_12300@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 97000.0,
+      "candidate_estimate": 96963.66179656982,
+      "candidate_relative_error": -0.00037462065391933794
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_2000000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 5000.0,
+      "candidate_estimate": 4993.589327812195,
+      "candidate_relative_error": -0.0012821344375610352
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_250000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 25000.0,
+      "candidate_estimate": 24967.479124069214,
+      "candidate_relative_error": -0.0013008350372314453
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_25000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 98000.0,
+      "candidate_estimate": 98987.91841125488,
+      "candidate_relative_error": 0.010080800114845743
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_3000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 73000.0,
+      "candidate_estimate": 72994.23070144653,
+      "candidate_relative_error": -7.903148703379174e-05
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_5000000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 3000.0,
+      "candidate_estimate": 2996.490288734436,
+      "candidate_relative_error": -0.0011699037551879882
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_500000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 16000.0,
+      "candidate_estimate": 15968.293199539185,
+      "candidate_relative_error": -0.0019816750288009642
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_50000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 78000.0,
+      "candidate_estimate": 78235.93495750427,
+      "candidate_relative_error": 0.0030248071474906725
+    },
+    {
+      "name": "hmrc/cgt_taxpayers_band_6000@2025",
+      "control_target": null,
+      "control_estimate": null,
+      "control_relative_error": null,
+      "candidate_target": 57000.0,
+      "candidate_estimate": 57006.452308654785,
+      "candidate_relative_error": 0.00011319839745237117
+    }
+  ]
+}

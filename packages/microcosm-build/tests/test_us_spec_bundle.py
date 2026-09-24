@@ -191,7 +191,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "b3ad16b1adb77a2cac6deae6c4d0f1779e4cf36a3f18820d9887a5434daaff1a"
+        "f22f56e32373c6de49a5d3923d6dd0fa916762e3aee637f57c6e024886343ef3"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -293,7 +293,7 @@ def test_us_package_has_twelve_typed_domains_and_loads_through_one_seam(
         resolved_us_spec.spec_sha256
     )
     assert resolved_country_spec.sources is not None
-    assert len(resolved_country_spec.sources.stages) == 37
+    assert len(resolved_country_spec.sources.stages) == 38
     assert resolved_country_spec.support_spine is not None
     assert len(resolved_country_spec.support_spine.support_spine.sources) == 2
 
@@ -312,7 +312,7 @@ def test_constant_derived_domain_counts_are_complete(
     catalogs = _domain(resolved_us_spec, ResourceKind.CATALOGS)
 
     assert len(sources["sources"]) == 8
-    assert len(sources["stages"]) == 37
+    assert len(sources["stages"]) == 38
 
     families = imputation["families"]
     family_counts = Counter(family["stage"] for family in families)
@@ -397,11 +397,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "75ea2d719acf50c6a37708e6401455edeb0c47be28326a5d241aeb06e1fdb2cb"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f"
+        == "e8aeb0dad04bcac2c11d3c788531c0487347e8be34d4bba1034e642d9b58b070"
     )
 
     assert len(take_up["programs"]) == 17

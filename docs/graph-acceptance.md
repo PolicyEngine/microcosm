@@ -512,6 +512,20 @@ lock unchanged:
     cost before scaling. Extracted with the independently reviewed observer
     isolation repair on 2026-09-12.
 
+25. **A caller may decline the observer snapshot.** `run_graph(...,
+    _population_observer_detach=False)` passes the live admitted population
+    to the private observer instead of the detached snapshot amendment 24
+    describes. The flag is the caller's declaration that its observer will
+    neither retain nor mutate what it is given; in this mode the executor no
+    longer enforces the execution or persistence guarantee of amendment 24,
+    and a mutating observer can leave the content store holding bytes the
+    node key does not name, served to every later run sharing that store as
+    a cache hit. The default is unchanged (detached); the flag is passed at
+    run time only and enters no node key, receipt or cache record; an
+    observer's exception still refuses the run. Runtime-only, the interface
+    lock is unchanged. Adopted 2026-09-18 for the retention seal's verifier,
+    which reads the live population and seals its content (#950, #951).
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.

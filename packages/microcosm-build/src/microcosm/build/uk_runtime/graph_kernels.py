@@ -88,7 +88,9 @@ _STAGE_MODULES = {
     "uc_deduction_attributes": "uc_deduction_attributes",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_band_donors": "cgt_structure",
+    "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
+    "hmrc_cgt_asset_type_spine": "cgt_asset_type",
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
     "age_tail": "age_tail",
@@ -267,10 +269,6 @@ def _fixture_cgt_distribution(path: Path):
 
     payload = _json_mapping(path, label="CGT distribution")
     raw_source = dict(_mapping(payload.get("source"), label="CGT source"))
-    local_path = raw_source.get("local_path")
-    if not isinstance(local_path, str):
-        raise ValueError("UK parity fixture CGT source.local_path must be a string.")
-    raw_source["local_path"] = Path(local_path)
 
     def records(name: str) -> list[Mapping[str, object]]:
         raw = payload.get(name)
@@ -290,6 +288,24 @@ def _fixture_cgt_distribution(path: Path):
         source=HMRCCapitalGainsSourceProvenance(**raw_source),
         total_individuals=float(payload["total_individuals"]),
         total_gains=float(payload["total_gains"]),
+    )
+
+
+def _fixture_asset_type_facts(path: Path):
+    from .cgt_asset_type import HMRCCGTAssetTypeFacts, HMRCCGTTable7Type
+
+    payload = dict(_json_mapping(path, label="CGT asset-type facts"))
+    raw_rows = payload.pop("table7_types")
+    if not isinstance(raw_rows, list):
+        raise ValueError(
+            "UK parity fixture CGT asset-type table7_types must be a list."
+        )
+    return HMRCCGTAssetTypeFacts(
+        **payload,
+        table7_types=tuple(
+            HMRCCGTTable7Type(**dict(_mapping(row, label="Table 7 row")))
+            for row in raw_rows
+        ),
     )
 
 
@@ -320,7 +336,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 29-stage spine "
+            "UK parity fixture must describe the current 30-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -332,9 +348,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
+    from .cgt_asset_type import UKCGTAssetTypeStageTransform
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_structure import (
         UKCGTBandDonorStageTransform,
+        UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
     )
     from .etb_services import UKETBServicesStageTransform
@@ -390,6 +408,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     income_targets = _fixture_hmrc_income_targets(hmrc_targets_path)
     cgt_distribution = _fixture_cgt_distribution(
         _fixture_input(source, inputs, "cgt_distribution")
+    )
+    cgt_asset_type_facts = _fixture_asset_type_facts(
+        _fixture_input(source, inputs, "cgt_asset_type_facts")
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
@@ -490,8 +511,16 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
                 stages["hmrc_cgt_gains_spine"],
-                cgt_distribution.source.local_path,
                 distribution=cgt_distribution,
+                parameters=cgt_parameters,
+            ),
+            "hmrc_cgt_asset_type_spine": UKCGTAssetTypeStageTransform(
+                stage=stages["hmrc_cgt_asset_type_spine"],
+                facts=cgt_asset_type_facts,
+                parameters=cgt_parameters,
+            ),
+            "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
+                stage=stages["cgt_incidence_anchor"],
                 parameters=cgt_parameters,
             ),
             "salary_sacrifice": UKSalarySacrificeStageTransform(
@@ -785,6 +814,16 @@ def _source_lineage(
     before_table = before.table(entity)
     after_table = after.table(entity)
     before_ids = pd.Index(before_table[id_column])
+    # A weights-only structural stage (the #970 incidence anchor) adds no
+    # row: every target is an incumbent, so the lineage is empty without
+    # walking the table row by row.
+    if pd.Index(after_table[id_column]).isin(before_ids).all():
+        return pd.Series(
+            [],
+            index=pd.Index([], name=id_column, dtype=before_table[id_column].dtype),
+            dtype=before_table[id_column].dtype,
+            name=id_column,
+        )
     targets: list[object] = []
     values: list[object] = []
     source_column = f"{entity}_source_id"
@@ -984,6 +1023,7 @@ def build_uk_registry(
             "spi_support_channel",
             "cgt_incidence_clone",
             "cgt_band_donors",
+            "cgt_incidence_anchor",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:

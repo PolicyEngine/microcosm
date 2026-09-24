@@ -22,6 +22,16 @@ from microcosm.build.us_runtime import graph_survey_completion_host as completio
 from microcosm.build.us_runtime.survey_population_replay import same_replayed_population
 
 
+@pytest.fixture(scope="module")
+def retained_financial_run(known_financial_run):
+    """Retain actual populations for tests deriving their frozen input records."""
+    return host.run_atomic_survey_financial(
+        **known_financial_run.call,
+        resume="require",
+        _retain_every_node_population=True,
+    )
+
+
 def _same_run(expected, actual):
     assert expected.manifest.key == actual.manifest.key
     assert expected.checked_view().payload == actual.checked_view().payload
@@ -215,9 +225,9 @@ def test_unknown_retention_profile_refuses_before_source_work(profile):
     "change", ["source", "implementation", "typed_contract", "capabilities", "writers"]
 )
 def test_frozen_population_inputs_rederive_current_union_obligations(
-    known_financial_run, monkeypatch, change
+    retained_financial_run, monkeypatch, change
 ):
-    run = known_financial_run.cold
+    run = retained_financial_run
     state = host._run_entry(run)[2]
     populations = dict(
         zip(run.compiled.order, (p for p, _ in state.node_populations), strict=True)
@@ -283,11 +293,11 @@ def test_frozen_population_inputs_rederive_current_union_obligations(
 
 @pytest.mark.parametrize("change", ["node", "version", "mass_partition"])
 def test_frozen_population_inputs_refuse_different_compiled_scope(
-    known_financial_run, change
+    retained_financial_run, change
 ):
     from microcosm.graph.canonical import canonical_json
 
-    run = known_financial_run.cold
+    run = retained_financial_run
     state = host._run_entry(run)[2]
     node = run.compiled.order[0]
     population = state.node_populations[0][0]
@@ -369,7 +379,7 @@ def test_compact_expected_population_still_sealed_between_checkpoints(
             and frame.f_code
             is host.financial.verify_materialized_current_survey_predictors.__code__
             and caller is not None
-            and caller.f_code is host.run_atomic_survey_financial.__code__
+            and caller.f_code is host._run_survey_financial.__code__
             and "result" in caller.f_locals
             and not fired
         ):

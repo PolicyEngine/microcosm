@@ -571,9 +571,9 @@ def test_exclusion_applier_warns_within_week_of_expiry():
 #: never absorbed.
 _PACKAGED_EXCLUSION_CENSUS = {
     "hmrc.salary_sacrifice.": 5,
-    "_1_000_000_to_inf": 11,
+    "_1_000_000_to_inf": 10,
     "slc.": 5,
-    "dwp/uc_payment_dist/": 18,
+    "dwp/uc_payment_dist/": 17,
     "obr.universal_credit_": 2,
     # microcosm#890 E1 (2026-09-11): the all-road-users obr.fuel_duties row
     # is signed out of the reference surface (target_reference_signed_
@@ -592,8 +592,11 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # microcosm#882 (2026-09-15): three UC element rows were held out of the
     # objective, signed by María in review of microcosm#921 with a one-month
     # window. The carer and childcare rows retired on 2026-09-16 with their
-    # repairs (care hours and the childcare take-up draw on policyengine-uk
-    # 2.98.0); the any-tenure housing row stays held out as a structural bias.
+    # repairs; the any-tenure housing row stays held out as the signed
+    # structural bias: the v20 measurement (-2.8 % unbound, at weights that
+    # never solved toward the row) reproduces the 2.79 % other/unknown-tenure
+    # gap the entry records, so it is a diagnostic, not a fit target
+    # (docs/evidence/uk-a16-v20/).
     "dwp.uc.households_": 1,
     # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
     # rows and the thirteen benefit-cap amount bands outside the 25 percent
@@ -601,12 +604,14 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # the A16 rows obr.housing_benefit and dwp.jsa_claimants were
     # re-adjudicated the same day on the mechanism receipts.
     "dwp.hb.": 3,
-    "dwp.benefit_cap.capped_households_": 13,
+    # Two amount bands (200.01-300, 400.01-500) retired 2026-09-21 on the
+    # v20 measurement (-10.1 % and -3.8 % unbound); the tail bands stay out.
+    "dwp.benefit_cap.capped_households_": 11,
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
 # (care hours and the childcare take-up draw on policyengine-uk 2.98.0);
-# only the any-tenure housing row remains held out.
+# only the any-tenure housing row remains held out (structural bias).
 _UC_ELEMENT_REGISTER_ROWS = ("dwp.uc.households_housing_element",)
 
 _A16_UNREACHABLE_ROWS = (
@@ -622,7 +627,7 @@ _A16_READJUDICATED_ROWS = ("obr.housing_benefit", "dwp.jsa_claimants")
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 67
+    assert len(names) == len(set(names)) == 62
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -641,8 +646,9 @@ def test_packaged_exclusions_load():
         matched = [name for name in names if marker in name]
         assert len(matched) == expected, (marker, matched)
     # The sparse HMRC band cells are whatever remains: hmrc/ band cells
-    # that are not the eleven 1m+ channel cells. After the #807 revision
-    # only the three genuinely thin 500k-1m cells stay excluded.
+    # that are not the 1m+ channel cells. After the #807 revision three
+    # genuinely thin 500k-1m cells stayed excluded; the self-employment one
+    # retired 2026-09-21 on the v20 measurement (+0.0 % unbound).
     sparse = [
         name
         for name in names
@@ -651,7 +657,6 @@ def test_packaged_exclusions_load():
     assert sorted(sparse) == [
         "hmrc/dividend_income_income_band_500_000_to_1_000_000",
         "hmrc/property_income_count_income_band_500_000_to_1_000_000",
-        "hmrc/self_employment_income_count_income_band_500_000_to_1_000_000",
     ], sparse
 
     # The 2026-08-26 tranche carries the uk_target_fit disposition
@@ -663,7 +668,8 @@ def test_packaged_exclusions_load():
     # the obr.fuel_duties entry (2026-09-11): the all-road-users row is
     # signed out of the reference surface and the cars receipts bind instead.
     tranche = [e for e in exclusions if e["approved_on"] == "2026-08-26"]
-    assert len(tranche) == 35
+    # Three 2026-08-26 rows retired 2026-09-21 on the v20 measurement.
+    assert len(tranche) == 32
     for entry in tranche:
         assert "5427936411" in entry["adjudication"], entry["name"]
         assert entry["expires_on"] == "2026-11-26", entry["name"]
@@ -704,7 +710,7 @@ def test_packaged_exclusions_load():
         for e in exclusions
         if e["approved_on"] == "2026-09-16" and e["name"] not in _A16_READJUDICATED_ROWS
     ]
-    assert len(repairs) == 16
+    assert len(repairs) == 14
     for entry in repairs:
         assert entry["expires_on"] == "2026-12-08", entry["name"]
         # Every entry of the tranche points at the ruling that exists (the
@@ -742,7 +748,8 @@ def test_packaged_exclusions_load():
         e for e in elements if e["name"] == "dwp.uc.households_housing_element"
     )
     assert "112,518 of 4,037,650" in housing["reason"]
-    # The four element rows that stay in the objective are not on the register.
+    # The other UC element rows ride in the objective and are not on the
+    # register.
     for riding in (
         "dwp.uc.households_carer_element",
         "dwp.uc.households_childcare_element",

@@ -9,8 +9,10 @@ import pytest
 from microcosm.build import us_runtime as facade
 
 # Derived independently from __all__ in pinned B 2ebca68e, F eba103bb and
-# J 6f6087cb. Hash preimage is UTF-8 newline-joined sorted unique export names.
-_UNION_SHA256 = "213ae67eab1640925fade5075a10eae62d7f219b15c1c04090a9feac8c692aa3"
+# J 6f6087cb (906 names), plus the 11 SPM-role and reported-receipt exports
+# origin/main added by 23 September 2026 (917 names; native integration line).
+# Hash preimage is UTF-8 newline-joined sorted unique export names.
+_UNION_SHA256 = "4bdfd75527a8b0dbd29ffc26fa87872a42c16e3850e0d8b965f2f22b79a12bd4"
 _CONSTANTS = (
     "PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN",
@@ -29,8 +31,8 @@ _CONSTANTS = (
 )
 
 
-def test_facade_preserves_exact_906_name_union_without_duplicates():
-    assert len(facade.__all__) == len(set(facade.__all__)) == 906
+def test_facade_preserves_exact_917_name_union_without_duplicates():
+    assert len(facade.__all__) == len(set(facade.__all__)) == 917
     preimage = "\n".join(sorted(facade.__all__)).encode()
     assert hashlib.sha256(preimage).hexdigest() == _UNION_SHA256
     assert set(facade.__all__) <= set(dir(facade))

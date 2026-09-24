@@ -929,7 +929,9 @@ def prepare_acs_housing_population(
             construction_evidence = _construction_evidence(
                 constructed, source, spm_implementation
             )
-            mapped = map_acs_native_inputs(raw)
+            # Native hours completion owns the canonical column across both
+            # survey arms; preserve and validate ACS raw hours for that owner.
+            mapped = map_acs_native_inputs(raw, include_usual_hours=False)
             frame = mapped.frame
             if construction_evidence is not None:
                 from microcosm.build.acs_spm_source_assembly import RECEIPT_KEY

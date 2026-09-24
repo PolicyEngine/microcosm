@@ -133,9 +133,8 @@ def test_substitution_rebinds_complete_hierarchy_without_mutating_template(
         template.hierarchy.dimensions[1],
     )
     assert hierarchy.target.id == spec.name
-    assert hierarchy.target.label == (
-        "Rhode Island Medicaid enrollment (2024-11 source substituted for 2024-12)"
-    )
+    # main's rule (948a79093): the family's target label carries over.
+    assert hierarchy.target.label == template.hierarchy.target.label
     assert (
         spec.metadata.items()
         >= {
@@ -200,7 +199,7 @@ def test_backfilled_hierarchical_target_still_marks_substitution_stale() -> None
 def test_legacy_target_without_hierarchy_remains_supported() -> None:
     template = replace(_state_spec(), hierarchy=None)
     # Existing callers need not supply the new label for hierarchy-free specs.
-    substitution = replace(US_MEDICAID_ENROLLMENT_SUBSTITUTIONS[0], state_label=None)
+    substitution = replace(US_MEDICAID_ENROLLMENT_SUBSTITUTIONS[0], state_name="")
     augmented, records = apply_us_medicaid_enrollment_substitutions(
         TargetRegistry([template], country="us"), substitutions=[substitution]
     )
@@ -209,14 +208,12 @@ def test_legacy_target_without_hierarchy_remains_supported() -> None:
     assert records[0]["applied"] is True
 
 
-@pytest.mark.parametrize("state_label", [None, "", "  "])
-def test_hierarchical_substitution_requires_explicit_state_label(
-    state_label: str | None,
+@pytest.mark.parametrize("state_name", ["", "  "])
+def test_hierarchical_substitution_requires_explicit_state_name(
+    state_name: str,
 ) -> None:
-    substitution = replace(
-        US_MEDICAID_ENROLLMENT_SUBSTITUTIONS[0], state_label=state_label
-    )
-    with pytest.raises(ValueError, match="requires a reviewed state_label"):
+    substitution = replace(US_MEDICAID_ENROLLMENT_SUBSTITUTIONS[0], state_name=state_name)
+    with pytest.raises(ValueError, match="needs a reviewed state_name"):
         apply_us_medicaid_enrollment_substitutions(
             TargetRegistry([_state_spec()], country="us"),
             substitutions=[substitution],

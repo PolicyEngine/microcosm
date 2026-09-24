@@ -10,7 +10,7 @@ from test_us_other_disability_filter_reconstruction import _incoming
 
 from microcosm.build.us_runtime import graph_us_other_disability_host as host
 from microcosm.frame import Frame, WeightKind, Weights
-from microcosm.graph import KernelResult, Node, StructuralDelta
+from microcosm.graph import ContentStore, KernelResult, Node, StructuralDelta
 from microcosm.graph.decl import Owned, WeightTransition
 
 
@@ -166,3 +166,102 @@ def test_manifest_frame_and_ledger_mutations_still_refuse(defect):
             _manifest(population, frame=frame, ledger=ledger),
             population.version,
         )
+
+
+def _nullable_roundtrip(tmp_path, dtype):
+    """Real storage normalization on literal populations, without source authority."""
+    population = _receiving()
+    mask = np.array([False, True, True])
+    values = (
+        pd.arrays.IntegerArray(np.array([11, 71, 73], dtype=np.int64), mask)
+        if dtype == "Int64"
+        else pd.arrays.BooleanArray(np.array([True, True, True]), mask)
+    )
+    tables = {
+        entity: population.frame.table(entity).copy(deep=True)
+        for entity in population.frame.entities
+    }
+    tables["person"]["nullable_observation"] = values
+    frame = Frame(
+        tables,
+        population.frame.schema,
+        {
+            entity: population.frame.weights_for(entity)
+            for entity in population.frame.weighted_entities
+        },
+        population.frame.strata.copy(),
+        mass_log=population.frame.mass_log,
+        metadata=population.frame.metadata,
+    )
+    original = replace(
+        population,
+        frame=frame,
+        owners={
+            **population.owners,
+            ("person", "nullable_observation"): "invented.nullable_writer",
+        },
+    )
+    before = frame.person.nullable_observation.array._data.tobytes()
+    store = ContentStore(tmp_path / "invented-nullable-store")
+    store.put_frame("a" * 64, frame)
+    replayed = replace(original, frame=store.load_frame("a" * 64))
+    assert frame.person.nullable_observation.array._data.tobytes() == before
+    cached = replayed.frame.person.nullable_observation.array
+    assert bool(np.all(cached._data[cached._mask] == 0))
+    assert cached._data.tobytes() != before
+    return original, replayed
+
+
+@pytest.mark.parametrize("dtype", ["Int64", "boolean"])
+@pytest.mark.parametrize("boundary", ["retained", "reconstructed"])
+def test_manifest_comparison_accepts_directional_nullable_store_roundtrip(
+    tmp_path, dtype, boundary
+):
+    original, replayed = _nullable_roundtrip(tmp_path, dtype)
+    if boundary == "retained":
+        manifest = _manifest(original)
+        host.host._compare_inherited_manifest_population(
+            expected_manifest=manifest,
+            replayed_population=replayed,
+            version=original.version,
+        )
+        host._compare_predecessor_populations(
+            _predecessor(original, manifest),
+            {"invented.writer": replayed},
+            "invented.writer",
+        )
+    else:
+        host._compare_manifest_population(
+            original, _manifest(replayed), original.version
+        )
+
+
+@pytest.mark.parametrize("dtype", ["Int64", "boolean"])
+@pytest.mark.parametrize("defect", ["present", "mask", "null_backing"])
+@pytest.mark.parametrize("boundary", ["retained", "reconstructed"])
+def test_manifest_comparison_refuses_nullable_replay_mutations(
+    tmp_path, dtype, defect, boundary
+):
+    original, replayed = _nullable_roundtrip(tmp_path, dtype)
+    changed = replayed.frame.person.nullable_observation.array
+    if defect == "present":
+        changed._data[0] = 12 if dtype == "Int64" else False
+        reason = "PRESENT_BITS"
+    elif defect == "mask":
+        changed._mask[0] = True
+        reason = "MASKED_STORAGE"
+    else:
+        # Neither the original backing nor the store's canonical zero backing.
+        changed._data[1] = 99 if dtype == "Int64" else True
+        reason = "NONCANONICAL_NULL_BACKING"
+    with pytest.raises(ValueError, match="SURVEY_POPULATION_REPLAY_" + reason):
+        if boundary == "retained":
+            host.host._compare_inherited_manifest_population(
+                expected_manifest=_manifest(original),
+                replayed_population=replayed,
+                version=original.version,
+            )
+        else:
+            host._compare_manifest_population(
+                original, _manifest(replayed), original.version
+            )

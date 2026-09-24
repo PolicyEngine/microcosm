@@ -1,0 +1,156 @@
+{
+ "scope": "SPM unit composition under the locked engine's adult rule, counts only; poverty is not used. Candidate and incumbent are the packaged consumer files; the decomposition reconciles the candidate's count from two independent measurements of its inputs.",
+ "rule": "adult = (age >= 18) | ((age >= 15) & role)",
+ "candidate": {
+  "file": "populace_us_2024_acs_local.h5 (this build; sha256 b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae)",
+  "role_source": "household_structure_fallback",
+  "role_column_present": false,
+  "fallback_columns_present": [
+   "is_household_head"
+  ],
+  "person_columns_read": [
+   "age",
+   "is_household_head",
+   "person_spm_unit_id"
+  ],
+  "unit_columns_available": 14,
+  "every_membership_value_is_a_unit_id": true,
+  "n_persons": 3589209,
+  "n_spm_units": 1591514,
+  "n_units_without_classified_adult": 5274,
+  "n_units_without_member_aged_18_or_over": 5391,
+  "n_units_with_no_member_rows": 0,
+  "n_offending_single_member_units": 5273,
+  "n_offending_units_oldest_under_15": 1946,
+  "n_offending_units_oldest_15_to_17": 3328,
+  "ages_unreadable_as_numbers": 0
+ },
+ "incumbent": {
+  "file": "populace_us_2024_acs_local.h5 of the published Build O release populace-us-2024-buildo-acs-local-77e2061-20260724T110908Z (Hub snapshot 515b7398d7b4414694865b7a95e4c3f1faa2edb5; sha256 71763290ded993789af0ad818fd833a6aabb9ca7ff7d14f78315340d8617c6f4)",
+  "role_source": "household_structure_fallback",
+  "role_column_present": false,
+  "fallback_columns_present": [
+   "is_household_head"
+  ],
+  "person_columns_read": [
+   "age",
+   "is_household_head",
+   "person_spm_unit_id"
+  ],
+  "unit_columns_available": 12,
+  "every_membership_value_is_a_unit_id": true,
+  "n_persons": 3589209,
+  "n_spm_units": 1591514,
+  "n_units_without_classified_adult": 5274,
+  "n_units_without_member_aged_18_or_over": 5391,
+  "n_units_with_no_member_rows": 0,
+  "n_offending_single_member_units": 5273,
+  "n_offending_units_oldest_under_15": 1946,
+  "n_offending_units_oldest_15_to_17": 3328,
+  "ages_unreadable_as_numbers": 0,
+  "measurement": "four named columns read from the fixed-format person blocks (the maintained loader refuses this file at its string-dtype boundary)"
+ },
+ "decomposition": {
+  "acs_spine_before_transfer": {
+   "measurement": "legacy ACS 2024 1-year spine audit before the donor transfer, uncapped; rule with the engine's own fallback role (RELSHIPP reference person or spouse)",
+   "rule": "adult = (age >= 18) | ((age >= 15) & (RELSHIPP in {20, 21, 23}))",
+   "n_persons": 3422888,
+   "n_group_quarters_persons": 183206,
+   "n_spm_units": {
+    "all": 1531614,
+    "housing_unit": 1348408,
+    "group_quarters": 183206
+   },
+   "n_units_without_member_aged_18_or_over": {
+    "all": 5363,
+    "housing_unit": 117,
+    "group_quarters": 5246
+   },
+   "n_units_without_classified_adult": {
+    "all": 5246,
+    "housing_unit": 0,
+    "group_quarters": 5246
+   },
+   "unresolved_units_by_oldest_member": {
+    "oldest_under_15": {
+     "all": 1946,
+     "housing_unit": 0,
+     "group_quarters": 1946
+    },
+    "oldest_15_to_17": {
+     "all": 3300,
+     "housing_unit": 0,
+     "group_quarters": 3300
+    }
+   },
+   "unresolved_single_member_units": {
+    "all": 5246,
+    "housing_unit": 0,
+    "group_quarters": 5246
+   },
+   "units_resolved_only_by_the_role": {
+    "all": 117,
+    "housing_unit": 117,
+    "group_quarters": 0
+   }
+  },
+  "asec_arm": {
+   "measurement": "the national donor population (166,321 persons, 59,900 SPM units) under the same rule",
+   "july_build_p_donor": {
+    "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "role_source": "household_structure_fallback",
+    "n_persons": 166321,
+    "n_spm_units": 59900,
+    "n_units_without_classified_adult": 28,
+    "n_units_without_member_aged_18_or_over": 28,
+    "n_units_with_no_member_rows": 0,
+    "n_offending_single_member_units": 27,
+    "n_persons_aged_15_to_17": 8669,
+    "n_persons_aged_15_to_17_with_role": 104
+   },
+   "role_carrying_parent_6496cc43_and_its_qualified_child_00946972": {
+    "release_names": [
+     "populace-us-2024-spm-20260909",
+     "populace-us-2024-spm-20260915"
+    ],
+    "role_source": "source_column",
+    "n_persons": 166321,
+    "n_spm_units": 59900,
+    "n_units_without_classified_adult": 0,
+    "n_units_without_member_aged_18_or_over": 28,
+    "n_units_with_no_member_rows": 0,
+    "n_offending_single_member_units": 0,
+    "n_persons_aged_15_to_17": 8669,
+    "n_persons_aged_15_to_17_with_role": 132,
+    "parent_equal_to_child": true,
+    "parent_acquisition": {
+     "url": "https://huggingface.co/datasets/policyengine/populace-us/resolve/8ab57ffc2ca41d8af631ff62ebbce95e966299f3/populace_us_2024.h5",
+     "hub_revision": "8ab57ffc2ca41d8af631ff62ebbce95e966299f3",
+     "latest_json_release_id_at_that_revision": "populace-us-2024-spm-20260909",
+     "bytes": 826917837,
+     "sha256": "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84",
+     "acquired_at": "2026-09-20T04:36:49.346173+00:00"
+    },
+    "note": "The 28-under-fallback figure is measured on the July Build P donor (48b9d479\u2026), which shares this population; the qualified child was measured only with its native role column (0 unresolved; 28 units without a member aged 18 or over, the same 28)."
+   }
+  },
+  "reconciliation": {
+   "consumer_file_units_without_classified_adult": 5274,
+   "acs_group_quarters_minors": 5246,
+   "asec_arm_under_the_head_spouse_fallback": 28,
+   "sum_equals_consumer_count": true,
+   "oldest_15_to_17": {
+    "consumer": 3328,
+    "acs_group_quarters": 3300,
+    "asec_arm": 28
+   },
+   "oldest_under_15": {
+    "consumer": 1946,
+    "acs_group_quarters": 1946,
+    "asec_arm": 0
+   },
+   "note": "The consumer file was not split by spine; the ASEC arm counts 28 there because the export holds the independence-role column back on this tree, so the engine's head/spouse fallback applies to the role-carrying donor's rows as it does to the July donor's. The incumbent's counts equal the candidate's on every field."
+  }
+ },
+ "poverty_used": false
+}

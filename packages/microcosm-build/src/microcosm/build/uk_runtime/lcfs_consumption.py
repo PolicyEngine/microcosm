@@ -57,6 +57,7 @@ from microcosm.build.uk_runtime.fact_raking import (
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
+    uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -283,6 +284,12 @@ class UKLCFSConsumptionResult:
         return evidence
 
 
+#: The household-mass receipt this stage records (the manifest's
+#: ``record_mass_conservation_receipt`` operation repeats it): the terminal
+#: family gate requires exactly this reason on a valid mass-conserving record.
+UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON = "LCFS consumption imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
+
+
 @dataclass
 class UKLCFSConsumptionStageTransform:
     """Whole-stage callable for LCFS-trained consumption imputation."""
@@ -413,7 +420,12 @@ class UKLCFSConsumptionStageTransform:
             time_period=uk_time_period(frame),
             weight_kind=uk_household_weight_kind(frame),
             household_weights=frame.weights_for("household").values,
-            mass_log=frame.mass_log,
+            mass_log=(
+                *frame.mass_log,
+                uk_household_mass_conservation_receipt(
+                    frame, UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON
+                ),
+            ),
         )
         validate_uk_national_frame(result)
         self.last_fit_weight_records = imputation.fit_weight_records

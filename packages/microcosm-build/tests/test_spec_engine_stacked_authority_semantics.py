@@ -73,7 +73,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
     assert projected == live
     assert stacked_identity_bytes(projected) == _canonical_bytes(live)
     assert projected["sha256"] == (
-        "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2"
+        "c7168518b68ab3ef28eba3086e8447ea48e7b73004dc7dbe78450176a50feaa4"
     )
     assert {
         name: component["sha256"] for name, component in projected["components"].items()
@@ -88,7 +88,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
             "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
         ),
         "late_producer_schedule": (
-            "777979b267e7307581b39d14b7232b6ee2712e3da0029fffc090396ebd849166"
+            "f12436f4694c3a0e141a6abd2a518246752a32f7d000d2b33aefdc50353fa7f2"
         ),
         "metric_registry": (
             "d75cb9b29f8b0a9a085471a11f4c19c32ba04cbe5419053df94ea81cbe6125a9"
@@ -191,7 +191,7 @@ def test_checkpoint_projection_is_field_and_byte_identical_to_live_oracle(
     ]
     assert (
         projected["pool_code"]["late_producer_schedule"]["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "75ea2d719acf50c6a37708e6401455edeb0c47be28326a5d241aeb06e1fdb2cb"
     )
 
 

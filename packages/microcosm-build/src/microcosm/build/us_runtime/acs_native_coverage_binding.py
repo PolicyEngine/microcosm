@@ -39,11 +39,13 @@ MAX_SOURCE_ROWS = 6_000_000  # per role, before full-source construction
 # source) was the most this issuer admitted. See docs/us-native-byte-transports.md.
 MAX_EVIDENCE_BYTES = 2 * 1024**2
 # Exact accepted direct AGEP -> A_AGE and AGEP -> age implementation, and owners.
+# Includes reviewed optional WKHP/WKL/FWKHP preservation and annual-hours mapping;
+# absent hours stay absent, and the direct age transformations are unchanged.
 # A new transform/owner version requires explicit review of this successor.
 _ACCEPTED = {
-    "acs_pums.py": "82fc2d3ca969b0c9f68f86efeb0a68a58271fb5d141f1b2eee93106e1b002814",
-    "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
-    "acs_housing_universe_source.py": "0e6ed87395837ccf852611229010a5c021dd75ae8e4ca8d30f206b8f85f588bd",
+    "acs_pums.py": "3bc556fff5da8b8887dcef6c21ae00a996ed951e884130146554a47cbdd5999a",
+    "acs_inputs.py": "1fb4f911f9e80cc77d946e201491c5633046e6b3be5d61afa3986861f2247240",
+    "acs_housing_universe_source.py": "7c060f4ab40f7b0722a3e9a2e51b3a2c84253b0d1a5614de5d6e56bea66857e7",
     "acs_person_coverage_authentication.py": "b8400706d44fd76f6d9495dafde984c37d261041c38efd5803286a67ca124977",
 }
 _TOKEN = object()

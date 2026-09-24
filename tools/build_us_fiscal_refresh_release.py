@@ -164,6 +164,7 @@ from microcosm.build.us_runtime import (
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_spm_independence_role_signal_gate,
     us_ssi_disability_criteria_signal_gate,
     us_ssi_take_up_delivery_gate,
     us_ssi_take_up_diagnostics,
@@ -199,6 +200,7 @@ from microcosm.build.us_runtime import (
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_state_take_up,
     with_us_snap_take_up_inputs,
+    with_us_spm_independence_role,
     with_us_ssi_disability_criteria,
     with_us_ssi_take_up,
     with_us_take_up_inputs,
@@ -213,6 +215,10 @@ from microcosm.build.us_runtime import (
 )
 from microcosm.build.us_runtime.acs_release_predictors import (
     join_acs_release_predictors,
+)
+from microcosm.build.us_runtime.chronicle_feed import (
+    USChronicleFeed,
+    load_us_chronicle_feed,
 )
 from microcosm.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
@@ -229,6 +235,8 @@ from microcosm.build.us_runtime.exact_k_ladder import (
     exact_k_ladder_manifest_payload,
 )
 from microcosm.build.us_runtime.fiscal_targets import (
+    AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS,
+    AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
 from microcosm.build.us_runtime.h5_io import (
@@ -264,6 +272,9 @@ from microcosm.build.us_runtime.reform_validation import (
     load_default_reform_specs,
     reform_validation_payload,
     write_reform_validation,
+)
+from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
+    CheckResult,
 )
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
@@ -650,6 +661,124 @@ IDENTITY_LEDGER_FILTER_METADATA_KEYS = frozenset(
     }
 )
 
+#: Restated constraints, a third class distinct from both sets above: a
+#: labelled feed re-expresses a fact's universe constraint in the Ledger's own
+#: concept vocabulary (``us:statutes/26/62#adjusted_gross_income_lower_bound``)
+#: alongside the compiled metadata the materializer actually slices on
+#: (``agi_lower_bound``). These keys are NOT inert — they restrict the
+#: microdata — so they can never join the supported set outright: a future
+#: feed whose labelled bound disagreed with the compiled one would then be
+#: silently ignored, materializing a wider population than the published cell
+#: covers, which is the failure the guard exists to stop. Each key here is
+#: accepted only per spec, and only when that spec also carries the filter the
+#: materializer applies and the two select the same population; a restatement
+#: that disagrees, or that has no compiled counterpart, stays fatal and the
+#: refusal names the values. Values are the restated-constraint rule that
+#: decides the comparison (see ``_restated_ledger_filter_refusal``).
+RESTATED_LEDGER_FILTER_CONCEPTS = {
+    "us:statutes/26/62#adjusted_gross_income": "agi_band",
+    "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
+    "age": "age_band",
+}
+
+#: Bound-side suffixes a restated constraint key may carry. A key with no
+#: suffix restates an exact value of the concept.
+RESTATED_LEDGER_FILTER_BOUND_SIDES = (
+    ("_lower_bound", "lower"),
+    ("_upper_bound", "upper"),
+)
+
+#: Compiled metadata the materializer slices the AGI band on, by bound
+#: side: the ``irs_soi`` loop in :func:`_materialize_target_frame` reads
+#: both through :func:`_as_bound` into one half-open mask. A restated AGI
+#: bound is accepted only against its own side; the sibling side is judged
+#: by its own key.
+RESTATED_AGI_BAND_COMPILED_KEYS = {
+    "lower": "agi_lower_bound",
+    "upper": "agi_upper_bound",
+}
+
+#: Qualifying-child counts probed when deciding whether a restated EITC
+#: child-count bound selects the same returns as the compiled filter.
+#: :func:`_eitc_child_count_mask` resolves every compiled value to ``== 0``,
+#: ``== 1``, ``== 2`` or ``>= 3``, and a compared restatement is ``>= n`` or
+#: ``== n`` (an upper bound is refused before any comparison; see
+#: :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`); evaluating both over
+#: 0..16 separates every such pair, so equal masks over the probe mean equal
+#: populations. Counts above the probe are refused rather than compared.
+RESTATED_EITC_CHILD_COUNT_PROBE_MAX = 16
+
+#: Bound sides on which a restated EITC qualifying-child key is refused
+#: outright, whatever its value and whatever the spec compiles. What an upper
+#: bound selects turns on the Ledger's operator — ``< 1`` is the childless
+#: returns, ``<= 1`` adds the one-child returns — and that operator is
+#: unconfirmed for count constraints. The metadata key does not settle it:
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` stamps a
+#: ``<`` row as ``_upper_bound`` (``<=`` becomes ``_upper_bound_inclusive``,
+#: which no restated concept names, so it is refused by bare key), but the
+#: dimension stamp in ``_ledger_metadata`` runs first and wins through
+#: ``setdefault``, and can carry the same key with no operator at all. So no
+#: reading is guessed until the Ledger confirms one (Max, 2026-09-22). Lower
+#: and exact restatements stay under the agreement rule.
+RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset({"upper"})
+
+#: Compiled metadata the materializer slices a person-age band on, by bound
+#: side. Both age paths in :func:`_materialize_target_frame` read these
+#: through :func:`_as_bound` into one half-open mask ``lower <= age < upper``
+#: — the ``population_age`` loop in :func:`_population_age_household_values`
+#: and the age-banded ``policyengine_variable`` branch (the SSA SSI
+#: recipients-by-age counts) — so a restated age bound is judged, like an AGI
+#: bound, against its own side only.
+#:
+#: Numeric equality of the edges is equality of populations only for a
+#: restated key whose operator is the mask's: ``age < 10`` and ``age <= 10``
+#: differ by everyone aged exactly ten, so the operator decides.
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` writes
+#: ``age_lower_bound`` only for a ``>=`` row and ``age_upper_bound`` only for
+#: a ``<`` row, the two operators of the materializer's mask. A ``>`` or
+#: ``<=`` row is stamped ``age_lower_bound_exclusive`` /
+#: ``age_upper_bound_inclusive``, which no restated concept names, so it stays
+#: refused by bare key — as it must, because the compiled bound comes from
+#: ``us_runtime.fiscal_targets._age_bounds``, which drops the operator: a
+#: ``<= 4`` row compiles to ``age_upper_bound=4`` and the materializer's
+#: ``age < 4`` would leave out the four-year-olds the published cell counts.
+#: But the same ``ledger_filter_age_{lower,upper}_bound`` key can also be a
+#: dimension's, which carries no operator (the ambiguity that keeps restated
+#: qualifying-child upper bounds refused), so the key name alone does not
+#: settle it; the compile's attestation does
+#: (:data:`microcosm.build.us_runtime.fiscal_targets.AGE_BOUND_STAMP_SOURCE_KEY`).
+RESTATED_AGE_BAND_COMPILED_KEYS = {
+    "lower": "age_lower_bound",
+    "upper": "age_upper_bound",
+}
+
+#: Materializers that apply the compiled age band, and so the only ones for
+#: which ignoring an agreeing age restatement changes nothing. Both are read
+#: in :func:`_materialize_target_frame`: ``population_age`` through
+#: :func:`_population_age_household_values`, and ``policyengine_variable``
+#: through its age-banded branch, entered whenever either compiled age key is
+#: present. Every other materializer (the ``irs_soi`` slice, the direct
+#: household-variable measures) never reads an age bound, so a restated age
+#: bound there would be silently ignored however well it agreed with metadata
+#: the materializer also ignores; it is refused instead.
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+
+#: The exact-value age key the dimension stamp writes when ``age`` is itself
+#: a dimension of the fact.
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` skips
+#: every constraint row whose variable is already a dimension key, so on
+#: such a fact an ``age_{lower,upper}_bound`` restatement cannot have come
+#: from an operator-checked ``>=``/``<`` row — only from a dimension of that
+#: name, which carries no operator at all. A restated age bound on a spec
+#: carrying this key is refused, whatever its value, including ``all``.
+#: ``_ledger_metadata`` stamps a dimension only when its value is not
+#: ``None`` and then drops empty values, so an ``age`` dimension valued
+#: ``None`` or ``""`` leaves no key here; the compile's attestation
+#: (:data:`AGE_BOUND_STAMP_SOURCE_KEY`, which checks dimension keys whatever
+#: their value) is what refuses that case. The pinned feeds have no age
+#: dimension of any kind.
+RESTATED_AGE_DIMENSION_KEY = "ledger_filter_age"
+
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
     "cms_aca": "CMS ACA marketplace enrollment public use files",
@@ -701,6 +830,15 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "s_corp_income": (
         "Combined partnership/S-corp income is carried in partnership_income "
         "in pre-PUF-support bases; the S-corp leaf is constant zero there."
+    ),
+    "strike_benefits": (
+        "No respondent in the pinned public ASEC files reports strike benefits: "
+        "OI_OFF code 12 ('strike benefits', ASEC 2024 public use data "
+        "dictionary) has zero person rows in pppub23, pppub24 and pppub25 "
+        "(income years 2022-2024), and the PUF half carries no strike-benefit "
+        "field, so the OI_OFF == 12 split in alimony.py is identically zero. "
+        "The mapping is correct; a vintage with a code-12 reporter makes this "
+        "entry stale and fails the gate."
     ),
 }
 
@@ -923,6 +1061,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Pin: expected SHA-256 of the Ledger consumer artifact "
             "manifest.json. Requires an artifact directory feed."
+        ),
+    )
+    parser.add_argument(
+        "--allow-unpinned-feed",
+        action="store_true",
+        help=(
+            "Build from a Chronicle feed whose facts (and, for an artifact "
+            "pin, manifest) digest differs from the committed US pin in "
+            "us/chronicle_feed.json. Only for an explicitly reviewed "
+            "diagnostic run; a release build must use the pinned feed."
         ),
     )
     parser.add_argument(
@@ -4437,6 +4585,17 @@ def _is_noop_ledger_filter_value(value: str) -> bool:
 
 
 def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, ...]:
+    """Ledger filter keys the SOI slice does not act on, for one spec.
+
+    A non-empty result drops the spec from SOI materialization silently in
+    the ``irs_soi`` loop of :func:`_materialize_target_frame`, so an
+    accepted restatement must clear here too — otherwise
+    accepting it at the fatal guard would only move the spec from a refusal
+    to a silent disappearance. A restatement that disagrees stays listed, and
+    :func:`_assert_supported_ledger_filter_metadata` refuses it before the
+    materializer ever reaches this skip.
+    """
+
     return tuple(
         sorted(
             key
@@ -4444,6 +4603,8 @@ def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, .
             if key.startswith("ledger_filter_")
             and key not in SUPPORTED_SOI_LEDGER_FILTERS
             and not _is_noop_ledger_filter_value(str(value))
+            and _restated_ledger_filter_refusal(str(key), str(value), metadata)
+            is not None
         )
     )
 
@@ -4513,6 +4674,230 @@ def _population_age_household_values(
     return values
 
 
+def _restated_ledger_filter_concept(key: str) -> tuple[str, str | None]:
+    """Split a ``ledger_filter_*`` key into its concept and bound side.
+
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound``
+    splits into ``("us:statutes/26/62#adjusted_gross_income", "lower")``; a
+    key with no bound suffix keeps the whole concept and side ``None``,
+    meaning it restates an exact value.
+    """
+
+    if not key.startswith("ledger_filter_"):
+        return "", None
+    concept = key[len("ledger_filter_") :]
+    for suffix, side in RESTATED_LEDGER_FILTER_BOUND_SIDES:
+        if concept.endswith(suffix) and len(concept) > len(suffix):
+            return concept[: -len(suffix)], side
+    return concept, None
+
+
+def _restated_bound_value(value: str) -> float | None:
+    try:
+        return _as_bound(value.strip())
+    except ValueError:
+        return None
+
+
+def _restated_count_value(value: str) -> float | None:
+    try:
+        count = float(value.strip())
+    except ValueError:
+        return None
+    if not count.is_integer() or not 0 <= count <= RESTATED_EITC_CHILD_COUNT_PROBE_MAX:
+        return None
+    return count
+
+
+def _restated_band_edge_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    compiled_key: str,
+) -> str | None:
+    """Judge one restated half-open band edge against the edge it restates.
+
+    Shared by the AGI and age rules, whose materializers both slice
+    ``lower <= x < upper`` on the compiled edge read through
+    :func:`_as_bound`, so a restated edge is ignorable exactly when it parses
+    to the same number. A missing compiled edge refuses: the age paths would
+    read it as the open end and the ``irs_soi`` loop indexes it directly, and
+    neither is the restated edge being checked.
+    """
+
+    compiled = metadata.get(compiled_key)
+    if compiled is None:
+        return f"{key}={value} restates a bound the spec does not compile: no {compiled_key}"
+    restated = _restated_bound_value(value)
+    applied = _restated_bound_value(str(compiled))
+    if restated is None or applied is None or restated != applied:
+        return f"{key}={value} disagrees with {compiled_key}={compiled}"
+    return None
+
+
+def _restated_agi_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact AGI, but the materializer "
+            "slices a half-open AGI band and applies no exact-value AGI filter"
+        )
+    return _restated_band_edge_refusal(
+        key, value, metadata, compiled_key=RESTATED_AGI_BAND_COMPILED_KEYS[side]
+    )
+
+
+def _restated_age_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact age, but the materializer "
+            "slices a half-open age band and applies no exact-age filter"
+        )
+    if RESTATED_AGE_DIMENSION_KEY in metadata:
+        return (
+            f"{key}={value} restates an age bound on a fact whose dimensions "
+            f"include age ({RESTATED_AGE_DIMENSION_KEY}="
+            f"{metadata[RESTATED_AGE_DIMENSION_KEY]}), so the bound came from "
+            "the dimension stamp, which carries no operator"
+        )
+    materializer = metadata.get("materializer")
+    if materializer not in RESTATED_AGE_BAND_MATERIALIZERS:
+        return (
+            f"{key}={value} restates an age bound on a spec whose materializer "
+            f"({materializer!r}) applies no age band"
+        )
+    stamp_source = metadata.get(AGE_BOUND_STAMP_SOURCE_KEY)
+    if stamp_source != AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS:
+        return (
+            f"{key}={value} restates an age bound whose operator is ambiguous: "
+            f"{AGE_BOUND_STAMP_SOURCE_KEY}={stamp_source} does not attest it "
+            "was stamped from a constraint row (>= or <), and a dimension of "
+            "that name carries no operator"
+        )
+    return _restated_band_edge_refusal(
+        key, value, metadata, compiled_key=RESTATED_AGE_BAND_COMPILED_KEYS[side]
+    )
+
+
+def _restated_eitc_child_count_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side in RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES:
+        return (
+            f"{key}={value} restates a qualifying-child {side} bound, refused "
+            "outright: the Ledger's operator for it (< or <=) is unconfirmed, "
+            "and the two readings select different returns"
+        )
+    compiled = _soi_eitc_child_count_filter(metadata)
+    if compiled is None:
+        return (
+            f"{key}={value} restates a qualifying-child bound on a spec that "
+            "carries no child-count filter for the materializer to apply"
+        )
+    bound = _restated_count_value(value)
+    if bound is None:
+        return (
+            f"{key}={value} is not a qualifying-child count in "
+            f"0..{RESTATED_EITC_CHILD_COUNT_PROBE_MAX}"
+        )
+    counts = np.arange(RESTATED_EITC_CHILD_COUNT_PROBE_MAX + 1, dtype=np.float64)
+    if side == "lower":
+        restated_mask = counts >= bound
+    elif side is None:
+        restated_mask = counts == bound
+    else:
+        raise ValueError(
+            f"{key}: bound side {side!r} reached the qualifying-child "
+            "comparison, which reads only lower and exact restatements"
+        )
+    try:
+        applied_mask = _eitc_child_count_mask(counts, compiled)
+    except ValueError:
+        return (
+            f"{key}={value} cannot be compared: compiled child-count filter "
+            f"{compiled!r} is not one the materializer understands"
+        )
+    if not np.array_equal(restated_mask, applied_mask):
+        return (
+            f"{key}={value} selects different returns than the compiled "
+            f"child-count filter {compiled!r}"
+        )
+    return None
+
+
+def _restated_ledger_filter_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+) -> str | None:
+    """Judge one otherwise-unsupported ``ledger_filter_*`` key for one spec.
+
+    Returns ``None`` only when *key* restates, in the labelled feed's concept
+    vocabulary, a constraint the materializer already applies to this spec,
+    and the two select the same population — ignoring that restatement then
+    changes nothing. Every other key returns the entry to refuse with: the
+    bare key for a filter the materializer does not model (unchanged from
+    before this rule existed), or the key with both values when a restatement
+    disagrees with its compiled counterpart, or has none, or is applied by
+    no materializer for this spec, or — for a
+    qualifying-child upper bound, whose operator is unconfirmed (see
+    :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`) — the key with that
+    reason, whatever the spec compiles.
+
+    Two compiled counterparts — the AGI band in
+    :data:`RESTATED_AGI_BAND_COMPILED_KEYS` and
+    :func:`_soi_eitc_child_count_filter` — are the ``irs_soi`` slice's, read
+    in the loop :func:`_materialize_target_frame` runs over ``irs_soi``
+    specs, and this rule reads them off metadata without consulting the
+    spec's family. That family-blindness is the guard's existing shape:
+    ``ledger_filter_eitc_child_count`` is likewise a blanket supported key. A
+    spec of another family carries neither counterpart, so it refuses on the
+    "does not compile" arm rather than being accepted by accident.
+
+    The third, the person-age band in :data:`RESTATED_AGE_BAND_COMPILED_KEYS`,
+    is read by two materializers (``population_age`` and the age-banded
+    ``policyengine_variable`` branch), so that rule is family-blind too but
+    names the materializers that apply the band
+    (:data:`RESTATED_AGE_BAND_MATERIALIZERS`) and refuses on every other; it
+    also refuses a bound on a fact whose dimensions include ``age``
+    (:data:`RESTATED_AGE_DIMENSION_KEY`), and any bound the compile does not
+    attest was stamped from a ``>=`` / ``<`` constraint row
+    (:data:`AGE_BOUND_STAMP_SOURCE_KEY`): a dimension-stamped bound carries no
+    operator, and ``age < 10`` and ``age <= 10`` select different people.
+    """
+
+    concept, side = _restated_ledger_filter_concept(key)
+    rule = RESTATED_LEDGER_FILTER_CONCEPTS.get(concept) if concept else None
+    if rule is None:
+        return key
+    if rule == "agi_band":
+        return _restated_agi_band_refusal(key, value, metadata, side=side)
+    if rule == "eitc_child_count":
+        return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
+    if rule == "age_band":
+        return _restated_age_band_refusal(key, value, metadata, side=side)
+    raise ValueError(
+        f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
+        "which has no comparison implemented."
+    )
+
+
 def _unsupported_ledger_filter_metadata(
     target_specs: Iterable[object],
 ) -> dict[str, tuple[str, ...]]:
@@ -4521,18 +4906,24 @@ def _unsupported_ledger_filter_metadata(
         metadata = getattr(spec, "metadata", None)
         if not isinstance(metadata, Mapping):
             continue
-        keys = tuple(
-            sorted(
-                str(key)
-                for key, value in metadata.items()
-                if str(key).startswith("ledger_filter")
-                and str(key) not in SUPPORTED_LEDGER_FILTER_METADATA_KEYS
-                and str(key) not in IDENTITY_LEDGER_FILTER_METADATA_KEYS
-                and not _is_noop_ledger_filter_value(str(value))
+        refusals = []
+        for key, value in metadata.items():
+            key = str(key)
+            if not key.startswith("ledger_filter"):
+                continue
+            if key in SUPPORTED_LEDGER_FILTER_METADATA_KEYS:
+                continue
+            if key in IDENTITY_LEDGER_FILTER_METADATA_KEYS:
+                continue
+            if _is_noop_ledger_filter_value(str(value)):
+                continue
+            refusal = _restated_ledger_filter_refusal(key, str(value), metadata)
+            if refusal is not None:
+                refusals.append(refusal)
+        if refusals:
+            unsupported[str(getattr(spec, "name", "<unnamed target>"))] = tuple(
+                sorted(refusals)
             )
-        )
-        if keys:
-            unsupported[str(getattr(spec, "name", "<unnamed target>"))] = keys
     return unsupported
 
 
@@ -5250,6 +5641,11 @@ def _compile_fiscal_release_target_registry(
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
+    _check_committed_us_ledger_feed_pin(
+        ledger_artifact.facts_sha256,
+        manifest_sha256=ledger_artifact.manifest_sha256,
+        allow_unpinned_feed=args.allow_unpinned_feed,
+    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -5672,6 +6068,74 @@ def _with_calibrated_weights(
             factor=calibrated_weights.sum() / base_frame.weights_for("household").total,
             reason="US fiscal target refresh calibration",
         ),
+    )
+
+
+def _spm_composition_report(frame: Frame) -> CheckResult:
+    """The engine's SPM measurement classification of ``frame``, without a solve.
+
+    ``check_spm_composition`` reproduces spm-calculator 1.0.0's rule
+    (``adult = (age >= 18) | ((age >= 15) & role)``) over frame columns. The
+    role resolution it mirrors is exactly what this export can produce:
+    ``is_spm_independent_minor_role`` is the engine's declared dataset source
+    input (``policyengine_us.spm.DATASET_SOURCE_INPUTS``), which the adapter
+    classifies as an input leaf and ``write_dataset`` persists when the frame
+    carries it (the ``spm_independence_role`` stage writes it), and
+    ``is_household_head`` / ``is_household_spouse`` are persisted too — so a
+    frame check here and the engine's own reading of the written H5 agree.
+    """
+
+    from microcosm.build.us_runtime.release_gate_preflight import (
+        check_spm_composition,
+    )
+
+    return check_spm_composition(frame)
+
+
+def _spm_composition_gate_failures(
+    frame: Frame, *, stage: str
+) -> tuple[list[str], dict[str, object]]:
+    """The SPM measurement composition as one more batched pre-export gate.
+
+    ``reform_validation`` measures the release's 104 state SPM poverty levels on
+    one whole-dataset ``Microsimulation``, and one SPM unit with no classified
+    adult raises ``SPMInputError("SPM_COMPOSITION_REQUIRED")`` for the *whole
+    population* — a traceback naming neither the unit nor a remedy. This
+    classifies the same composition off the export frame, which exists as soon
+    as the calibrated weights are attached, so the refusal joins the batched
+    pre-export report: named, with every other failing gate, and before the H5
+    and NPZ writes rather than after them.
+
+    Returns the gate's failure lines (empty when the engine would accept this
+    export) and the detail keys its telemetry stage records. It never raises on
+    a frame it cannot classify: an unevaluable export frame is itself one of
+    those failure lines, so the run dies in the tool's ``Release gates failed:``
+    report naming the reason instead of with a bare ``ValueError`` traceback out
+    of the check.
+    """
+
+    try:
+        report = _spm_composition_report(frame)
+    except (KeyError, ValueError) as error:
+        return (
+            [
+                f"SPM measurement composition failed ({stage}): the export "
+                "frame cannot be classified, so the rule the engine applies to "
+                f"it cannot be checked: {error}"
+            ],
+            {"evaluated": False, "error": str(error)},
+        )
+    details = {"evaluated": True, **report.details}
+    if report.status != "FAIL":
+        return [], details
+    return (
+        [
+            f"SPM measurement composition failed ({stage}): "
+            + report.summary
+            + ". "
+            + " ".join(report.failures)
+        ],
+        details,
     )
 
 
@@ -9285,6 +9749,44 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise
 
 
+def _check_committed_us_ledger_feed_pin(
+    facts_sha256: str,
+    *,
+    manifest_sha256: str | None,
+    allow_unpinned_feed: bool,
+    pin: USChronicleFeed | None = None,
+) -> None:
+    """Hold the loaded Chronicle feed to the committed US pin.
+
+    ``us/chronicle_feed.json`` names the feed the release's target registry
+    compiles from; ``--ledger-facts-sha256`` only says what the operator
+    expected. Without this check a build could compile any feed that matched
+    the operator's flags and record it as the release's target identity while
+    the pin, the parity manifests and the release rule name another. The
+    facts digest always has to match; the manifest digest only when the pin
+    describes an artifact rather than a bare feed. ``--allow-unpinned-feed``
+    is for a reviewed diagnostic run and never for a release.
+    """
+
+    pin = pin or load_us_chronicle_feed()
+    comparisons = [("facts", facts_sha256, pin.facts_sha256)]
+    if not pin.is_bare_feed:
+        comparisons.append(("manifest", manifest_sha256, pin.manifest_sha256))
+    mismatches = [
+        f"{label}: loaded {loaded}, committed {committed}"
+        for label, loaded, committed in comparisons
+        if loaded != committed
+    ]
+    if mismatches and not allow_unpinned_feed:
+        raise SystemExit(
+            "error: Chronicle feed differs from the committed US pin "
+            "(us/chronicle_feed.json): "
+            + "; ".join(mismatches)
+            + "; pass --allow-unpinned-feed only for an explicitly reviewed "
+            "diagnostic run"
+        )
+
+
 def _main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     if _git_dirty():
@@ -10191,6 +10693,37 @@ def _main(argv: Sequence[str] | None = None) -> None:
             + "; ".join(
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "spm_independence_role",
+            message=(
+                "Restoring the measured SPM independence role from the pinned "
+                "Census ASEC person files."
+            ),
+        )
+    if pool_frame is None:
+        base_frame = with_us_spm_independence_role(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
+    spm_independence_role_gate = us_spm_independence_role_signal_gate(base_frame)
+    if not spm_independence_role_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "spm_independence_role_gate",
+                status="failed",
+                message="SPM independence role signal gate failed.",
+                failures=list(spm_independence_role_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SPM independence role signal failed: {failure}"
+                for failure in spm_independence_role_gate.failures
             )
         )
     if telemetry is not None:
@@ -11156,6 +11689,63 @@ def _main(argv: Sequence[str] | None = None) -> None:
                     for failure in ecps_parity_gate.failures
                 )
             )
+    # SPM measurement composition, hours before the engine would say so.
+    #
+    # Advisory, never a raise: the L0/refit export path *selects* a subset of
+    # this pool (``attach_l0_refit_entity_weights`` calls ``base_frame.select``),
+    # so a pool unit with no classified adult may simply not ship, and a hard
+    # refusal here would reject a run that would have succeeded. The exact,
+    # blocking answer is the batched pre-export gate taken on the export frame
+    # below. What this buys the operator is the pool-level number now rather
+    # than after the solve: a pool that carries the defect needs the SPM
+    # independence role whether or not today's selection happens to dodge it.
+    # Advisory means advisory: a pool that cannot be classified at all (no age
+    # column, no spm_unit table) must not abort the build from here. The export
+    # frame below is the graded point, and it fails with the same diagnosis.
+    try:
+        base_frame_spm_composition = _spm_composition_report(base_frame)
+    except (KeyError, ValueError) as error:
+        base_frame_spm_composition = None
+        print(
+            "BASE-POOL SPM COMPOSITION: not classifiable on the base frame "
+            f"({error}); the export frame below is still graded."
+        )
+        if telemetry is not None:
+            telemetry.stage(
+                "base_frame_spm_composition",
+                status="skipped",
+                message="Base pool carries no readable SPM composition inputs.",
+                error=str(error),
+            )
+    if base_frame_spm_composition is not None:
+        if base_frame_spm_composition.status != "PASS":
+            print(
+                "\n"
+                + "!" * 72
+                + f"\nBASE-POOL SPM COMPOSITION: {base_frame_spm_composition.summary}\n"
+                + "\n".join(base_frame_spm_composition.failures)
+                + "\nThis is advisory here — the export frame below is graded. "
+                "Preflight it next time: tools/preflight_us_release_gates.py\n"
+                + "!"
+                * 72
+            )
+        if telemetry is not None:
+            telemetry.stage(
+                "base_frame_spm_composition",
+                message="Classified the base pool's SPM measurement composition.",
+                status=base_frame_spm_composition.status,
+                **{
+                    key: value
+                    for key, value in base_frame_spm_composition.details.items()
+                    if key
+                    in (
+                        "n_units",
+                        "n_units_without_classified_adult",
+                        "n_units_without_member_aged_18_or_over",
+                        "role_source",
+                    )
+                },
+            )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
@@ -11850,6 +12440,55 @@ def _main(argv: Sequence[str] | None = None) -> None:
             force_upload=True,
         )
 
+    # SPM measurement composition, as a batched pre-export gate.
+    #
+    # The export frame exists here — it is the calibrated/refit weights attached
+    # to the base support, built before any of this batch's gates — so the
+    # cheapest of them (pure pandas; the #893 lane journal measured the check at
+    # 0.05 s on the 907k-person phase-2 base pool) runs first and its failure
+    # joins the same list. That keeps BOTH properties the batch
+    # exists for: the run refuses by name rather than through the engine's
+    # anonymous population-wide SPM_COMPOSITION_REQUIRED, and it refuses with
+    # every other failing pre-export gate on record, before the H5 write and
+    # before the NPZ write, instead of after them.
+    #
+    # It rides the batch like every other pre-export gate, which also means
+    # --evidence-release can convert it into an owned known failure and export
+    # anyway (microcosm#506) — the conversion contract
+    # test_evidence_mode_conversion_is_pinned_structurally enforces on every
+    # terminal raise past the accumulator. Such an export still cannot be
+    # SPM-measured, so reform validation below reaches the engine's own
+    # refusal; that is the declared, owner-checked, manifest-recorded choice an
+    # evidence release makes about any pre-export gate, not a hole here.
+    spm_composition_failures, export_frame_spm_composition = (
+        _spm_composition_gate_failures(export_frame, stage="export frame")
+    )
+    terminal_gate_failures.extend(spm_composition_failures)
+    terminal_batch_telemetry.stage(
+        "export_frame_spm_composition",
+        message="Classified the export frame's SPM measurement composition.",
+        **{
+            key: value
+            for key, value in export_frame_spm_composition.items()
+            if key
+            in (
+                "evaluated",
+                "n_units",
+                "n_units_without_classified_adult",
+                "n_units_without_member_aged_18_or_over",
+                "role_source",
+            )
+        },
+    )
+    if spm_composition_failures:
+        terminal_batch_telemetry.stage(
+            "export_frame_spm_composition",
+            status="failed",
+            message="SPM measurement composition gate failed.",
+            failures=spm_composition_failures,
+            force_upload=True,
+        )
+
     terminal_batch_telemetry.stage(
         "export_dataset",
         message="Writing PolicyEngine-US H5.",
@@ -12102,7 +12741,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 failures=list(qrf_tail_gate.failures),
                 force_upload=True,
             )
-    # Batched pre-export raise: the calibration battery, input coverage,
+    # Batched pre-export raise: the calibration battery, SPM measurement
+    # composition, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
     # at this point, so one failed
     # run reports every failing pre-export group at once (Build M attempts 9

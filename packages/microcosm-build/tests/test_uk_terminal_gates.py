@@ -389,7 +389,18 @@ def test_target_fit_out_of_force_exclusion_fails_even_without_a_breach() -> None
 def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     register = uk_default_target_fit_reviewed_exclusions()
 
-    assert register == {}
+    # The v20 (2026-09-18, main ce76b358) national line: the 638-target
+    # surface after the #906 region fan-out and #939 CGT bands pushes one
+    # national SPI band 0.34pp past the fence while spine-s itself improved
+    # the cell. One live deferral, signed for four weeks.
+    assert set(register) == {
+        "hmrc/self_employment_income_income_band_20_000_to_30_000@2025",
+    }
+    record = register["hmrc/self_employment_income_income_band_20_000_to_30_000@2025"]
+    assert record.approved_by == "juaristi22"
+    assert record.adjudication == "microcosm#796"
+    assert record.approved_on == "2026-09-18"
+    assert record.expires_on == "2026-10-16"
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
@@ -414,7 +425,7 @@ def test_restored_fit_checks_leave_empty_payment_tail_cells_blocked() -> None:
             **empty_tail,
         },
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 9),
+        now=date(2026, 9, 18),
     )
 
     assert not fit.passed
@@ -436,7 +447,7 @@ def test_restored_fit_checks_apply_if_a_later_run_breaches_again(
     fit = uk_target_fit_gate(
         {name: relative_error},
         reviewed_exclusions=uk_default_target_fit_reviewed_exclusions(),
-        now=date(2026, 9, 9),
+        now=date(2026, 9, 18),
     )
 
     assert fit.passed is passes
@@ -451,7 +462,7 @@ def test_observed_liability_has_no_retired_cash_exemption() -> None:
     fit = uk_target_fit_gate(
         {"hmrc.cgt.liability_total@2025": 0.30},
         reviewed_exclusions=register,
-        now=date(2026, 9, 15),
+        now=date(2026, 9, 18),
     )
     assert not fit.passed
     assert fit.details["failing_targets"] == {"hmrc.cgt.liability_total@2025": 0.30}

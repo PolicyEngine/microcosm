@@ -289,7 +289,8 @@ def _decode_graph_acs(path: Path, *, store=None) -> Frame:
         raise ValueError("US ACS graph source archives must be regular files.")
     source = AcsPumsSource(path / "csv_hus.zip", path / "csv_pus.zip", vintage=2024)
     raw, _receipt = build_acs_pums_unit_frame(source)
-    mapped = map_acs_native_inputs(raw)
+    # Native graph preparation leaves canonical hours to the completion owner.
+    mapped = map_acs_native_inputs(raw, include_usual_hours=False)
     assert_operator_free_source_frame(
         mapped.frame, label="US graph ACS source", native_inputs=mapped.native_inputs
     )
