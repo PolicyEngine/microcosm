@@ -946,8 +946,15 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
     module = _load_head_to_head_module()
     _patch_release_seams(module, monkeypatch)
     stub_materialize = module.release._materialize_target_frame
+    guard_receipt = {
+        "armed": True,
+        "population_aggregate_variables_checked": list(
+            module.release.US_POPULATION_AGGREGATE_VARIABLES
+        ),
+    }
 
     def _materialize_with_receipt(frame, specs, **kwargs):
+        assert kwargs["refuse_population_aggregates"] is True
         target_frame, registry, compilation = stub_materialize(frame, specs, **kwargs)
         return (
             target_frame,
@@ -958,6 +965,7 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
                     "households": frame.n("household"),
                     "batches": 1,
                 },
+                "target_materialization_population_aggregate_guard": guard_receipt,
             },
         )
 
@@ -1001,8 +1009,64 @@ def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> Non
         assert compilation["household_slices"] == 2
         assert compilation["household_slice_row_counts"] == [2, 1]
         assert "target_materialization_batching" not in compilation
+        assert (
+            compilation["target_materialization_population_aggregate_guard"]
+            == guard_receipt
+        )
         assert len(compilation["slice_compilation_sha256s"]) == 2
         assert len(set(compilation["slice_compilation_sha256s"])) == 1
+        digested_compilation = {
+            key: value
+            for key, value in compilation.items()
+            if key
+            not in {
+                "household_slices",
+                "household_slice_size",
+                "household_slice_row_counts",
+                "slice_compilation_sha256s",
+            }
+        }
+        assert compilation["slice_compilation_sha256s"][0] == module._canonical_sha256(
+            digested_compilation
+        )
+        del digested_compilation["target_materialization_population_aggregate_guard"]
+        assert compilation["slice_compilation_sha256s"][0] != module._canonical_sha256(
+            digested_compilation
+        )
+
+
+def test_household_slices_refuse_population_aggregates(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    fixture_spec = importlib.util.spec_from_file_location(
+        "batched_materialization_fixtures",
+        Path(__file__).with_name("test_us_batched_target_materialization.py"),
+    )
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    assert fixture_spec.loader is not None
+    fixture_spec.loader.exec_module(fixtures)
+    aggregate = "medicaid_slcsp_state_denominator"
+    ledger = fixtures._install_fake_engine(
+        module.release,
+        monkeypatch,
+        reform_specs=(),
+        aggregate_reads={"aggregate_probe": (aggregate,)},
+    )
+    specs = (fixtures._variable("aggregate_total", base_variable="aggregate_probe"),)
+
+    with pytest.raises(
+        ValueError,
+        match=rf"household batch 1/1 computed .*{aggregate}@2024",
+    ):
+        module._score_chunk_household_sliced(
+            fixtures._nested_frame(),
+            specs,
+            chunk_loss_weights=np.ones(len(specs)),
+            artifact_name="fixture",
+            chunk_label="aggregate probe",
+            maximum_microsim_batch_size=2,
+        )
+    assert len(ledger.simulations) == 1
+    assert ledger.simulations[0].dataset is None
 
 
 def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:

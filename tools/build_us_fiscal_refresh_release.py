@@ -43,9 +43,10 @@ import sys
 import time
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MethodType
 from typing import Any
 
 import numpy as np
@@ -460,7 +461,7 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # canonical bool values plus an explicit uint8 null mask. Older checkpoints
 # cannot attest this lossless physical representation.
 # 12: the identity now carries staged_frame_sha256, a digest of the staged
-# frame handed to the materializer (microcosm#956), so a staging change that
+# frame handed to the materializer (microcosm#1018), so a staging change that
 # forgets this bump can no longer reuse stale target columns. Checkpoints
 # written without the digest cannot attest their staged frame.
 # 13: the base simulation runs over household batches and its compilation
@@ -4399,6 +4400,7 @@ def _reform_household_income_tax(
     microsimulation_cls,
     n_households: int,
     batch_size: int | None,
+    refuse_population_aggregates: bool | None = None,
 ) -> np.ndarray:
     _assert_no_formula_owned_columns(base_frame)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
@@ -4414,6 +4416,13 @@ def _reform_household_income_tax(
     # per batch — and hand it to every batch simulation explicitly.
     reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
     batches = tuple(_household_position_batches(n_households, batch_size))
+    guard_armed = (
+        len(batches) > 1
+        if refuse_population_aggregates is None
+        else refuse_population_aggregates
+    )
+    if guard_armed:
+        _assert_medicaid_claiming_tax_units_local(base_frame)
     if len(batches) > 1:
         print(
             "Materializing reform target "
@@ -4421,7 +4430,7 @@ def _reform_household_income_tax(
             f"of up to {batch_size:,} households.",
             flush=True,
         )
-    for household_positions in batches:
+    for batch, household_positions in enumerate(batches, start=1):
         with _automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
@@ -4441,13 +4450,25 @@ def _reform_household_income_tax(
                 dataset=reformed_dataset,
                 reform=reform,
             )
-            batch_income_tax = _collapse_tax_unit(
-                _calculate_array(reformed, "income_tax"),
-                batch_tax_unit_positions,
-                batch_frame.n("household"),
-            )
+            try:
+                with (
+                    _record_engine_branches(reformed) if guard_armed else nullcontext()
+                ):
+                    batch_income_tax = _collapse_tax_unit(
+                        _calculate_array(reformed, "income_tax"),
+                        batch_tax_unit_positions,
+                        batch_frame.n("household"),
+                    )
+                    if guard_armed:
+                        _refuse_batch_population_aggregates(
+                            reformed,
+                            batch=batch,
+                            batches=len(batches),
+                            n_households=n_households,
+                        )
+            finally:
+                release_engine_simulation(reformed)
             reform_income_tax[household_positions] = batch_income_tax
-            release_engine_simulation(reformed)
             del batch_income_tax, reformed, reformed_dataset, batch_frame
         _collect_batch_garbage()
     del reform_system
@@ -5516,8 +5537,8 @@ def _base_simulation_household_columns(
 #: ``medicaid_slcsp_state_denominator`` sum person weights by state
 #: (``sum_by_state``) and feed ``medicaid_cost_if_enrolled``, and through it
 #: ``medicaid_cost`` and ``medicaid``; the two income deciles are weighted
-#: ranks over every household or SPM unit. PR-4 defines the same list for
-#: post-export scoring; the two will share one constant at integration.
+#: ranks over every household or SPM unit. The pattern scan pinning this list
+#: is a drift detector, not a proof of household locality (microcosm#956).
 US_POPULATION_AGGREGATE_VARIABLES = (
     "household_income_decile",
     "medicaid_slcsp_state_average_cost_index",
@@ -5526,8 +5547,67 @@ US_POPULATION_AGGREGATE_VARIABLES = (
 )
 
 
+@contextmanager
+def _record_engine_branches(simulation):
+    """Retain branches created through get_branch until the batch is checked.
+
+    Core's clone copies instance attributes, including a wrapped get_branch.
+    Rebind that method to each child before it can create its own branches.
+    Retained branches are released even if a formula detached them.
+    """
+
+    retained: list[object] = []
+    originals: dict[int, tuple[object, object, bool]] = {}
+    seen: set[int] = set()
+
+    def get_branch(current, *args, **kwargs):
+        branch = originals[id(current)][1](*args, **kwargs)
+        retain(branch)
+        return branch
+
+    def retain(current):
+        if current is None or id(current) in seen:
+            return
+        seen.add(id(current))
+        retained.append(current)
+        original = getattr(current, "get_branch", None)
+        if callable(original):
+            had_instance_method = "get_branch" in vars(current)
+            if getattr(original, "__func__", None) is get_branch:
+                # clone copied the parent's bound wrapper; recover the
+                # underlying method and bind it to the child.
+                _, parent_original, had_instance_method = originals[
+                    id(original.__self__)
+                ]
+                original = MethodType(parent_original.__func__, current)
+            originals[id(current)] = (current, original, had_instance_method)
+            current.get_branch = MethodType(get_branch, current)
+        branches = getattr(current, "branches", None)
+        if isinstance(branches, dict):
+            for branch in tuple(branches.values()):
+                retain(branch)
+        retain(getattr(current, "baseline", None))
+
+    retain(simulation)
+    simulation._target_materialization_branches = retained
+    try:
+        yield
+    finally:
+        for current, original, had_instance_method in originals.values():
+            if had_instance_method:
+                current.get_branch = original
+            else:
+                del current.get_branch
+        for current in retained:
+            # Core's shallow clone also copies the retained-list reference.
+            if "_target_materialization_branches" in vars(current):
+                del current._target_materialization_branches
+            if current is not simulation:
+                release_engine_simulation(current)
+
+
 def _engine_known_periods(simulation, variables: Sequence[str]) -> set[tuple[str, str]]:
-    """The (variable, period) values an engine or any live branch holds."""
+    """Read holders in the engine, live branches and recorded detached branches."""
 
     known: set[tuple[str, str]] = set()
     stack = [simulation]
@@ -5545,6 +5625,10 @@ def _engine_known_periods(simulation, variables: Sequence[str]) -> set[tuple[str
         branches = getattr(current, "branches", None)
         if isinstance(branches, dict):
             stack.extend(branches.values())
+        stack.extend(getattr(current, "_target_materialization_branches", ()))
+        baseline = getattr(current, "baseline", None)
+        if baseline is not None:
+            stack.append(baseline)
     return known
 
 
@@ -5563,15 +5647,15 @@ def _refuse_batch_population_aggregates(
     if not computed:
         return
     raise ValueError(
-        "Base target materialization is not batch-invariant: the engine for "
+        "Target materialization is not batch-invariant: the engine for "
         f"household batch {batch}/{batches} computed "
         f"{', '.join(f'{variable}@{period}' for variable, period in computed)}. "
         "These policyengine-us formulas aggregate over the whole simulated "
         "population, here one household batch instead of the pool, so a "
         "target that reaches them cannot be materialized in household batches. "
-        "Drop the target from the surface, or run the whole pool in one "
-        "simulation with --maximum-microsim-batch-size 0 (or at least "
-        f"{n_households:,})."
+        "Drop the target from the surface, or run the whole pool unbatched "
+        "in one simulation with one slice or chunk. Disabling only inner "
+        "batching still leaves slice- or chunk-local aggregates."
     )
 
 
@@ -5590,6 +5674,34 @@ def _assert_group_entities_nest_in_households(frame: Frame) -> None:
         _group_to_household_positions(frame, entity)
 
 
+def _assert_medicaid_claiming_tax_units_local(frame: Frame) -> None:
+    """Require positive Medicaid claiming IDs to resolve within the household.
+
+    The engine's claiming-tax-unit helpers join IDs across persons. Requiring
+    local references keeps those joins inside each household; an unresolved
+    positive ID is refused too, since a pre-sliced caller may have omitted it.
+    """
+
+    person = frame.table("person")
+    column = "medicaid_claiming_tax_unit_id"
+    if column not in person:
+        return
+    claims = person.loc[person[column] > 0]
+    if claims.empty:
+        return
+    local_units = pd.MultiIndex.from_frame(
+        person[["person_household_id", "person_tax_unit_id"]]
+    )
+    claimed_units = pd.MultiIndex.from_frame(claims[["person_household_id", column]])
+    if not claimed_units.isin(local_units).all():
+        raise ValueError(
+            "Target materialization is not batch-invariant: a positive "
+            "medicaid_claiming_tax_unit_id does not resolve within the "
+            "person's own household. Run the whole pool unbatched in one "
+            "simulation with one slice or chunk."
+        )
+
+
 def _materialize_base_simulation_columns(
     base_frame: Frame,
     target_specs: tuple,
@@ -5597,6 +5709,7 @@ def _materialize_base_simulation_columns(
     system,
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
+    refuse_population_aggregates: bool | None = None,
 ) -> tuple[dict[str, np.ndarray], dict[str, object]]:
     """Run the target materializer's base simulation over household batches.
 
@@ -5604,10 +5717,12 @@ def _materialize_base_simulation_columns(
     before the next is built. Columns are invariant to batch size only when
     their engine values are computed within households. A multi-batch pass
     refuses known periods of ``US_POPULATION_AGGREGATE_VARIABLES`` in each
-    engine and its live branches, including aggregates reached by downstream
-    targets. Such targets require one whole-pool batch. Group entities must
-    nest in households, each batch must preserve pool order, and all batches
-    must return the same columns.
+    engine and its recorded branches, including detached branches and aggregates
+    reached by downstream targets. Pre-sliced callers arm the same guard with
+    ``refuse_population_aggregates=True``. Such targets require one whole-pool
+    batch. Group entities and stored Medicaid claiming-tax-unit references must
+    stay within households. Each batch must preserve pool order, and all
+    batches must return the same columns.
 
     Returns the columns in write order, plus a receipt for the compilation
     record.
@@ -5621,8 +5736,16 @@ def _materialize_base_simulation_columns(
     if not batches:
         raise ValueError("Target materialization requires at least one household.")
     batched = len(batches) > 1
-    if batched:
+    guard_armed = (
+        batched
+        if refuse_population_aggregates is None
+        else refuse_population_aggregates
+    )
+    if batched or guard_armed:
         _assert_group_entities_nest_in_households(base_frame)
+    if guard_armed:
+        _assert_medicaid_claiming_tax_units_local(base_frame)
+    if batched:
         print(
             "Materializing base target columns in "
             f"{len(batches)} batches of up to "
@@ -5656,20 +5779,25 @@ def _materialize_base_simulation_columns(
                 )
             )
             try:
-                batch_columns = _base_simulation_household_columns(
-                    batch_frame,
-                    target_specs,
-                    simulation=batch_simulation,
-                    system=system,
-                )
-                if batched:
-                    # Before the release below drops the engine's holders.
-                    _refuse_batch_population_aggregates(
-                        batch_simulation,
-                        batch=batch,
-                        batches=len(batches),
-                        n_households=n_households,
+                with (
+                    _record_engine_branches(batch_simulation)
+                    if guard_armed
+                    else nullcontext()
+                ):
+                    batch_columns = _base_simulation_household_columns(
+                        batch_frame,
+                        target_specs,
+                        simulation=batch_simulation,
+                        system=system,
                     )
+                    if guard_armed:
+                        # Before the release below drops the engine's holders.
+                        _refuse_batch_population_aggregates(
+                            batch_simulation,
+                            batch=batch,
+                            batches=len(batches),
+                            n_households=n_households,
+                        )
             finally:
                 # microcosm#456: an engine's system keeps a ``simulation``
                 # backref, so a finished engine can outlive its ``del``.
@@ -5724,10 +5852,10 @@ def _materialize_base_simulation_columns(
         "batches": len(batches),
         "largest_batch_households": max(len(positions) for positions in batches),
         "base_household_columns": len(column_order),
-        "group_nesting_verified": batched,
-        # The formulas every batch engine was checked for; none of them ran.
-        "population_aggregate_variables_refused": (
-            list(US_POPULATION_AGGREGATE_VARIABLES) if batched else []
+        "group_nesting_verified": batched or guard_armed,
+        "population_aggregate_guard_armed": guard_armed,
+        "population_aggregate_variables_checked": (
+            list(US_POPULATION_AGGREGATE_VARIABLES) if guard_armed else []
         ),
     }
     return columns, receipt
@@ -5741,6 +5869,7 @@ def _materialize_target_frame(
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = False,
+    refuse_population_aggregates: bool | None = None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
@@ -5763,6 +5892,7 @@ def _materialize_target_frame(
         system=system,
         microsimulation_cls=Microsimulation,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
     )
 
     materialized = {
@@ -5837,6 +5967,7 @@ def _materialize_target_frame(
                 microsimulation_cls=Microsimulation,
                 n_households=n_households,
                 batch_size=maximum_microsim_batch_size,
+                refuse_population_aggregates=refuse_population_aggregates,
             )
             jct_reform_families_simulated += 1
             if (
@@ -5886,6 +6017,12 @@ def _materialize_target_frame(
     compilation = {
         **compilation,
         "target_materialization_cache": cache_stats,
+        "target_materialization_population_aggregate_guard": {
+            "armed": base_simulation_batching["population_aggregate_guard_armed"],
+            "population_aggregate_variables_checked": base_simulation_batching[
+                "population_aggregate_variables_checked"
+            ],
+        },
         # Every engine this materializer ran used one household partition:
         # the base simulation and each JCT reform family simulated here
         # (cache hits simulate nothing).

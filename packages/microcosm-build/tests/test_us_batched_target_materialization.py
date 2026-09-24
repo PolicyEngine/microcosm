@@ -9,6 +9,8 @@ whole-pool batch. Multi-batch passes refuse known population aggregates.
 from __future__ import annotations
 
 import ast
+import copy
+import hashlib
 import importlib.util
 import re
 import sys
@@ -103,6 +105,16 @@ class _FakeHolders:
 
     def __init__(self, known: dict[str, tuple[str, ...]] | None = None) -> None:
         self.known = {name: list(periods) for name, periods in (known or {}).items()}
+        self.branches: dict[str, _FakeHolders] = {}
+        self.clone_branches = False
+
+    def get_branch(self, name: str):
+        if name not in self.branches:
+            branch = copy.copy(self) if self.clone_branches else _FakeHolders()
+            branch.branches = {}
+            branch.known = {}
+            self.branches[name] = branch
+        return self.branches[name]
 
     def get_holder(self, variable: str):
         periods = tuple(self.known.get(variable, ()))
@@ -119,10 +131,15 @@ def _install_fake_engine(
     reform_specs,
     aggregate_reads: dict[str, tuple[str, ...]] | None = None,
     aggregate_branch: str | None = None,
+    aggregate_delete_branch: bool = False,
+    aggregate_household: int | None = None,
+    aggregate_reform_only: bool = False,
+    aggregate_in_baseline: bool = False,
+    clone_branches: bool = False,
     stored_inputs: dict[str, tuple[str, ...]] | None = None,
 ):
     """``aggregate_reads`` maps a variable to the population aggregates its
-    formula computes (in the branch named ``aggregate_branch`` if given);
+    formula computes (in the slash-delimited ``aggregate_branch`` if given);
     ``stored_inputs`` are known from construction, as dataset inputs are."""
 
     ledger = _FakeEngineLedger()
@@ -165,6 +182,10 @@ def _install_fake_engine(
             self.reform = reform
             self.tax_benefit_system = tax_benefit_system
             self.branches: dict[str, _FakeHolders] = {}
+            self.clone_branches = clone_branches
+            self.baseline = _FakeHolders() if reform is not None else None
+            if self.baseline is not None:
+                self.baseline.clone_branches = clone_branches
             ledger.simulations.append(self)
 
         def _ids(self, entity: str) -> np.ndarray:
@@ -187,12 +208,21 @@ def _install_fake_engine(
             assert self.dataset is not None, "calculate on a released engine"
             self.record(variable, period)
             for aggregate in aggregate_reads.get(variable, ()):
-                holders = (
-                    self
-                    if aggregate_branch is None
-                    else self.branches.setdefault(aggregate_branch, _FakeHolders())
-                )
+                if aggregate_reform_only and self.reform is None:
+                    continue
+                if (
+                    aggregate_household is not None
+                    and aggregate_household not in self._ids("household")
+                ):
+                    continue
+                holders = self.baseline if aggregate_in_baseline else self
+                branch_parent = holders
+                if aggregate_branch is not None:
+                    for branch_name in aggregate_branch.split("/"):
+                        holders = holders.get_branch(branch_name)
                 holders.record(aggregate, period)
+                if aggregate_delete_branch:
+                    del branch_parent.branches[aggregate_branch.split("/")[0]]
             values = self._values(variable)
             entity = _VARIABLE_ENTITIES[variable]
             if map_to is None or map_to == entity:
@@ -581,7 +611,8 @@ def test_batched_base_engines_partition_the_pool_and_are_released(
             "base_household_columns"
         ],
         "group_nesting_verified": True,
-        "population_aggregate_variables_refused": list(
+        "population_aggregate_guard_armed": True,
+        "population_aggregate_variables_checked": list(
             builder.US_POPULATION_AGGREGATE_VARIABLES
         ),
         "jct_reform_families_simulated": 1,
@@ -613,7 +644,8 @@ def test_unbatched_base_simulation_runs_once_over_the_whole_frame(
     assert receipt["batches"] == 1
     assert receipt["largest_batch_households"] == frame.n("household")
     assert receipt["group_nesting_verified"] is False
-    assert receipt["population_aggregate_variables_refused"] == []
+    assert receipt["population_aggregate_guard_armed"] is False
+    assert receipt["population_aggregate_variables_checked"] == []
 
 
 @pytest.mark.parametrize(
@@ -656,6 +688,61 @@ _AGGREGATE_PROBE_TARGETS = (
 )
 
 
+@pytest.mark.parametrize("claiming_tax_unit_id", [20, 50, 999])
+def test_batched_base_simulation_refuses_nonlocal_claiming_tax_units(
+    monkeypatch, claiming_tax_unit_id
+) -> None:
+    builder = _load_builder_module()
+    frame = _nested_frame()
+    person = frame.table("person").copy()
+    person["medicaid_claiming_tax_unit_id"] = 0
+    person.loc[0, "medicaid_claiming_tax_unit_id"] = claiming_tax_unit_id
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+    )
+    ledger = _install_fake_engine(builder, monkeypatch, reform_specs=())
+    with pytest.raises(ValueError, match="medicaid_claiming_tax_unit_id.*household"):
+        builder._materialize_target_frame(
+            frame, _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
+        )
+    assert ledger.constructions == []
+
+
+@pytest.mark.parametrize("claiming_tax_unit_id", [0, 10, 11])
+def test_batched_base_simulation_allows_household_local_claiming_tax_units(
+    monkeypatch, claiming_tax_unit_id
+) -> None:
+    builder = _load_builder_module()
+    frame = _nested_frame()
+    person = frame.table("person").copy()
+    person["medicaid_claiming_tax_unit_id"] = 0
+    person.loc[0, "medicaid_claiming_tax_unit_id"] = claiming_tax_unit_id
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+    )
+    ledger = _install_fake_engine(builder, monkeypatch, reform_specs=())
+    _, _, compilation = builder._materialize_target_frame(
+        frame, _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
+    )
+    assert len(ledger.constructions) == 3
+    assert compilation["target_materialization_population_aggregate_guard"] == {
+        "armed": True,
+        "population_aggregate_variables_checked": list(
+            builder.US_POPULATION_AGGREGATE_VARIABLES
+        ),
+    }
+
+
 def test_batched_base_simulation_refuses_each_population_aggregate(
     monkeypatch,
 ) -> None:
@@ -680,10 +767,9 @@ def test_batched_base_simulation_refuses_each_population_aggregate(
         with pytest.raises(
             ValueError,
             match=(
-                "Base target materialization is not batch-invariant: the "
+                "Target materialization is not batch-invariant: the "
                 rf"engine for household batch 1/3 computed {aggregate}@"
-                rf"{builder.PERIOD}\. .*--maximum-microsim-batch-size 0 "
-                r"\(or at least 5\)"
+                rf"{builder.PERIOD}\. .*unbatched.*one slice or chunk"
             ),
         ):
             builder._materialize_target_frame(
@@ -704,11 +790,36 @@ def test_batched_base_simulation_refuses_each_population_aggregate(
         assert ledger.simulations[-1].known[aggregate] == [str(builder.PERIOD)]
         receipt = compilation["target_materialization_batching"]
         assert receipt["batches"] == 1
-        assert receipt["population_aggregate_variables_refused"] == []
+        assert receipt["population_aggregate_guard_armed"] is False
+        assert receipt["population_aggregate_variables_checked"] == []
 
 
-def test_batched_base_simulation_reads_aggregates_held_by_live_branches(
+def test_batched_base_simulation_refuses_an_aggregate_first_reached_in_last_batch(
     monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    ledger = _install_fake_engine(
+        builder,
+        monkeypatch,
+        reform_specs=(),
+        aggregate_reads={"aggregate_probe": ("medicaid_slcsp_state_denominator",)},
+        aggregate_household=5,
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"household batch 3/3 computed medicaid_slcsp_state_denominator@",
+    ):
+        builder._materialize_target_frame(
+            _nested_frame(), _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
+        )
+    assert len(ledger.constructions) == 3
+    assert all(simulation.dataset is None for simulation in ledger.simulations)
+
+
+@pytest.mark.parametrize("branch_depth", [1, 2])
+@pytest.mark.parametrize("clone_branches", [False, True])
+def test_batched_base_simulation_reads_aggregates_held_by_live_branches(
+    monkeypatch, branch_depth, clone_branches
 ) -> None:
     builder = _load_builder_module()
     _install_fake_engine(
@@ -716,12 +827,35 @@ def test_batched_base_simulation_reads_aggregates_held_by_live_branches(
         monkeypatch,
         reform_specs=(),
         aggregate_reads={"aggregate_probe": ("spm_unit_income_decile",)},
-        aggregate_branch="fixture_branch",
+        aggregate_branch="/".join(f"branch_{depth}" for depth in range(branch_depth)),
+        clone_branches=clone_branches,
     )
     with pytest.raises(ValueError, match=r"computed spm_unit_income_decile@"):
         builder._materialize_target_frame(
             _nested_frame(), _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
         )
+
+
+@pytest.mark.parametrize("clone_branches", [False, True])
+def test_batched_base_simulation_reads_aggregates_held_by_deleted_branches(
+    monkeypatch, clone_branches
+) -> None:
+    builder = _load_builder_module()
+    ledger = _install_fake_engine(
+        builder,
+        monkeypatch,
+        reform_specs=(),
+        aggregate_reads={"aggregate_probe": ("spm_unit_income_decile",)},
+        aggregate_branch="temporary_parent/temporary_child",
+        aggregate_delete_branch=True,
+        clone_branches=clone_branches,
+    )
+    with pytest.raises(ValueError, match=r"computed spm_unit_income_decile@"):
+        builder._materialize_target_frame(
+            _nested_frame(), _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
+        )
+    assert ledger.simulations[0].branches == {}
+    assert ledger.simulations[0].dataset is None
 
 
 def test_batched_base_simulation_refuses_a_stored_aggregate_input(
@@ -741,6 +875,31 @@ def test_batched_base_simulation_refuses_a_stored_aggregate_input(
             _nested_frame(), _AGGREGATE_PROBE_TARGETS, maximum_microsim_batch_size=2
         )
     assert len(ledger.constructions) == 1
+    assert all(simulation.dataset is None for simulation in ledger.simulations)
+
+
+@pytest.mark.parametrize("aggregate_in_baseline", [False, True])
+def test_batched_reform_simulation_refuses_population_aggregates(
+    monkeypatch, aggregate_in_baseline
+) -> None:
+    builder = _load_builder_module()
+    ledger = _install_fake_engine(
+        builder,
+        monkeypatch,
+        reform_specs=_REFORMS,
+        aggregate_reads={"income_tax": ("medicaid_slcsp_state_denominator",)},
+        aggregate_branch="baseline/temporary",
+        aggregate_delete_branch=True,
+        aggregate_reform_only=True,
+        aggregate_in_baseline=aggregate_in_baseline,
+        clone_branches=True,
+    )
+    with pytest.raises(ValueError, match=r"computed medicaid_slcsp_state_denominator@"):
+        builder._materialize_target_frame(
+            _nested_frame(), _TARGETS, maximum_microsim_batch_size=2
+        )
+    assert sum(entry["reform"] is None for entry in ledger.constructions) == 3
+    assert sum(entry["reform"] is not None for entry in ledger.constructions) == 1
     assert all(simulation.dataset is None for simulation in ledger.simulations)
 
 
@@ -1021,8 +1180,8 @@ def test_real_engine_base_batches_build_no_system_and_release_engines(
 
 
 def _medicaid_frame() -> Frame:
-    """Four California households, each a low-income parent and a young
-    child, so the engine allocates state Medicaid spending to enrollees."""
+    """Four California parents with children; the first parent's earnings
+    exceed the other three parents' earnings."""
 
     n_households = 4
     household_ids = np.arange(1, n_households + 1, dtype="int64")
@@ -1037,7 +1196,7 @@ def _medicaid_frame() -> Frame:
             * 10_000,
             "age": np.tile([30.0, 5.0], n_households),
             "employment_income_before_lsr": np.asarray(
-                [8_000.0, 0.0, 12_000.0, 0.0, 15_000.0, 0.0, 5_000.0, 0.0]
+                [400_000.0, 0.0, 12_000.0, 0.0, 15_000.0, 0.0, 5_000.0, 0.0]
             ),
         }
     )
@@ -1076,7 +1235,7 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
         maximum_microsim_batch_size=None,
     )
     assert receipt["batches"] == 1
-    assert receipt["population_aggregate_variables_refused"] == []
+    assert receipt["population_aggregate_variables_checked"] == []
     pool_cost = whole["medicaid_cost_total"]
     single_batch, receipt = builder._materialize_base_simulation_columns(
         frame,
@@ -1090,6 +1249,7 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
 
     unguarded_cost = []
     enrolled = 0
+    aggregate_periods = []
     for position in range(frame.n("household")):
         batch_frame = builder._select_households_by_position(
             frame, np.asarray([position], dtype=np.int64)
@@ -1109,12 +1269,23 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
                     simulation.calculate("medicaid_enrolled", builder.PERIOD)
                 ).sum()
             )
+            aggregate_periods.append(
+                builder._engine_known_periods(
+                    simulation, builder.US_POPULATION_AGGREGATE_VARIABLES
+                )
+            )
         finally:
             builder.release_engine_simulation(simulation)
     unguarded_cost = np.asarray(unguarded_cost)
     weights = frame.weights_for("household").values
     assert enrolled > 0
-    assert np.all(pool_cost > 0)
+    assert aggregate_periods[0] == set()
+    assert (
+        "medicaid_slcsp_state_denominator",
+        str(builder.PERIOD),
+    ) in aggregate_periods[1]
+    assert pool_cost[0] == 0
+    assert np.all(pool_cost[1:] > 0)
     assert np.any(unguarded_cost != pool_cost)
     assert np.dot(unguarded_cost, weights) > np.dot(pool_cost, weights)
     print(
@@ -1125,10 +1296,12 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
     )
 
     for batch_size in (1, 2):
+        first_aggregate_batch = 2 if batch_size == 1 else 1
         with pytest.raises(
             ValueError,
             match=(
-                rf"household batch 1/{frame.n('household') // batch_size} computed .*"
+                rf"household batch {first_aggregate_batch}/"
+                rf"{frame.n('household') // batch_size} computed .*"
                 rf"medicaid_slcsp_state_denominator@{builder.PERIOD}"
             ),
         ):
@@ -1144,7 +1317,8 @@ def test_real_engine_refuses_a_batched_medicaid_cost_target() -> None:
 _POPULATION_AGGREGATE_MARKER = re.compile(
     r"\bsum_by_state\(|\bMicroSeries\(|\.decile_rank\(|\bquantile\(|\bpercentile\("
     r"|\bnp\.(?:sum|mean|median|average|nansum|nanmean|nanmedian|sort|argsort"
-    r"|cumsum)\((?![^\n]*\baxis\s*=)"
+    r"|cumsum|isin|in1d|unique|bincount|searchsorted)\((?![^\n]*\baxis\s*=)"
+    r"|\.(?:sum|mean|max|min|median)\(\s*\)"
 )
 _WEIGHT_READ = re.compile(r"[\"'](\w+_weight)[\"']")
 
@@ -1155,35 +1329,47 @@ def _is_variable_class(node: ast.AST) -> bool:
     )
 
 
-def _engine_population_aggregate_sources() -> dict[str, list[str]]:
-    """Scan Variable classes and module helpers for aggregation markers."""
-    spec = importlib.util.find_spec("policyengine_us")
-    root = Path(next(iter(spec.submodule_search_locations)))
-    modules = []
-    for package in ("variables", "reforms"):
-        for path in sorted((root / package).rglob("*.py")):
-            source = path.read_text()
-            modules.append((source, ast.parse(source)))
+def _engine_population_aggregate_sources(
+    root: Path | None = None,
+    *,
+    source_digests: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
+    """Scan package Variable classes and module helpers for aggregation markers.
 
-    helpers: dict[str, str] = {}
+    Pattern matches identify formulas to inspect; they do not prove household
+    locality or recognize every possible cross-record computation.
+    """
+    if root is None:
+        spec = importlib.util.find_spec("policyengine_us")
+        root = Path(next(iter(spec.submodule_search_locations)))
+    modules = []
+    for path in sorted(root.rglob("*.py")):
+        relative = path.relative_to(root)
+        if "tests" in relative.parts or path.name.startswith("test_"):
+            continue
+        source = path.read_text()
+        modules.append((source, ast.parse(source)))
+
+    helpers: dict[str, list[str]] = {}
     for source, tree in modules:
-        if not any(_is_variable_class(node) for node in ast.walk(tree)):
-            helpers.update(
-                (node.name, ast.get_source_segment(source, node))
-                for node in tree.body
-                if isinstance(node, ast.FunctionDef)
-            )
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                helpers.setdefault(node.name, []).append(
+                    ast.get_source_segment(source, node)
+                )
     reaching = {
         name
-        for name, body in helpers.items()
-        if _POPULATION_AGGREGATE_MARKER.search(body)
+        for name, bodies in helpers.items()
+        if any(_POPULATION_AGGREGATE_MARKER.search(body) for body in bodies)
     }
     grew = True
     while grew:
         grew = False
-        for name, body in helpers.items():
+        for name, bodies in helpers.items():
             if name not in reaching and any(
-                re.search(rf"\b{other}\(", body) for other in reaching
+                re.search(rf"\b{other}\(", body)
+                for body in bodies
+                for other in reaching
             ):
                 reaching.add(name)
                 grew = True
@@ -1206,16 +1392,251 @@ def _engine_population_aggregate_sources() -> dict[str, list[str]]:
                 evidence += _WEIGHT_READ.findall(body)
             if evidence:
                 found[node.name] = evidence
+                if source_digests is not None:
+                    sources = [body]
+                    pending = [
+                        helper
+                        for helper in reaching
+                        if re.search(rf"\b{helper}\(", body)
+                    ]
+                    seen = set()
+                    while pending:
+                        helper = pending.pop()
+                        if helper in seen:
+                            continue
+                        seen.add(helper)
+                        sources.extend(helpers[helper])
+                        pending.extend(
+                            other
+                            for helper_body in helpers[helper]
+                            for other in reaching - seen
+                            if re.search(rf"\b{other}\(", helper_body)
+                        )
+                    source_digests[node.name] = hashlib.sha256(
+                        "\n".join(sorted(sources)).encode()
+                    ).hexdigest()
     return found
+
+
+def test_population_aggregate_scan_follows_helpers_and_cross_record_markers(
+    tmp_path,
+) -> None:
+    (tmp_path / "variables").mkdir()
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "variables" / "allocation.py").write_text(
+        "def _state_total(values, state):\n"
+        "    return np.sum(values[state == 6])\n"
+        "def _axis_total(values):\n"
+        "    return np.sum(values, axis=1)\n"
+        "class helper_share(Variable):\n"
+        "    def formula(person, period):\n"
+        "        return _state_total(values, state)\n"
+        "class direct_share(Variable):\n"
+        "    def formula(person, period):\n"
+        "        return values / np.sum(values)\n"
+        "class axis_local(Variable):\n"
+        "    def formula(person, period):\n"
+        "        return _axis_total(values)\n"
+        "class tools_rank(Variable):\n"
+        "    def formula(person, period):\n"
+        "        return _rank(values)\n"
+    )
+    (tmp_path / "tools" / "rank.py").write_text(
+        "def _rank(values):\n"
+        "    return _ordered(values)\n"
+        "def _ordered(values):\n"
+        "    return np.argsort(values)\n"
+    )
+    (tmp_path / "tests" / "fixture.py").write_text(
+        "class ignored_test_fixture(Variable):\n"
+        "    def formula(person, period):\n"
+        "        return values.sum()\n"
+    )
+    markers = {
+        "method_sum": "values.sum()",
+        "method_mean": "values.mean()",
+        "method_max": "values.max()",
+        "method_min": "values.min()",
+        "method_median": "values.median()",
+        "join_isin": "np.isin(values, ids)",
+        "join_in1d": "np.in1d(values, ids)",
+        "join_unique": "np.unique(values)",
+        "join_bincount": "np.bincount(values)",
+        "join_searchsorted": "np.searchsorted(values, ids)",
+    }
+    (tmp_path / "variables" / "markers.py").write_text(
+        "\n".join(
+            f"class {name}(Variable):\n"
+            "    def formula(person, period):\n"
+            f"        return {expression}\n"
+            for name, expression in markers.items()
+        )
+    )
+    found = _engine_population_aggregate_sources(tmp_path)
+    assert set(found) == {"direct_share", "helper_share", "tools_rank", *markers}
+    assert found["helper_share"] == ["_state_total()"]
+    assert found["tools_rank"] == ["_rank()"]
+
+
+# These inspected 2.2.1 formulas compare a record's status or geography with
+# parameter lists, literal lists or enum members, rather than another record.
+_CONSTANT_MEMBERSHIP_FORMULAS = {
+    "additional_senior_deduction_eligible_person",
+    "ak_ccap_rate_region",
+    "al_ccsp_region",
+    "american_worker_tax_rebate_eligible",
+    "ar_sra_zone",
+    "ca_ala_general_assistance_immigration_status_eligible",
+    "ca_calworks_child_care_immigration_status_eligible_person",
+    "ca_cc_general_assistance_immigration_status_eligible",
+    "ca_marin_general_relief_immigration_status_eligible_person",
+    "ca_oc_general_relief_immigration_status_eligible",
+    "ca_riv_general_relief_immigration_status_eligible",
+    "ca_sbd_general_relief_immigration_status_eligible",
+    "ca_scc_general_assistance_immigration_status_eligible",
+    "ca_sf_caap_immigration_status_eligible",
+    "ca_smc_general_assistance_immigration_status_eligible_person",
+    "ca_snap_immigration_status_eligible",
+    "ca_tanf_immigration_status_eligible_person",
+    "ca_tanf_region1",
+    "co_ccap_fpg_eligible",
+    "ct_c4k_region",
+    "dc_ccsp_immigration_status_eligible_person",
+    "dc_ccsp_is_full_time",
+    "dc_tanf_immigration_status_eligible_person",
+    "ga_caps_zone",
+    "id_iccp_county_cluster",
+    "il_aabd_area",
+    "il_aabd_immigration_status_eligible_person",
+    "il_ccap_county_group",
+    "il_dhs_csfp_county_eligible",
+    "il_hfs_immigration_status_eligible",
+    "il_tanf_county_group",
+    "il_tanf_immigration_status_eligible_person",
+    "in_ny_mctd_zone_2",
+    "in_nyc",
+    "is_aca_ptc_immigration_status_eligible",
+    "is_basic_health_program_eligible",
+    "is_basic_health_program_immigration_status_eligible",
+    "is_ca_medicaid_immigration_status_eligible",
+    "is_ccdf_immigration_eligible_child",
+    "is_chip_fcep_eligible_person",
+    "is_citizen_or_legal_immigrant",
+    "is_in_snap_abawd_waived_area",
+    "is_medicaid_immigration_status_eligible",
+    "is_snap_gross_test_full_income_count_alien",
+    "is_snap_immigration_status_eligible",
+    "is_snap_prorated_income_member",
+    "is_snap_state_discretion_ineligible_alien",
+    "is_ssi_qualified_noncitizen",
+    "ks_ccap_rate_group",
+    "ks_dcf_csfp_county_eligible",
+    "ks_tanf_county_group",
+    "ky_ccap_rate_region",
+    "ma_ccfa_immigration_status_eligible",
+    "ma_ccfa_region",
+    "ma_dese_csfp_county_eligible",
+    "md_ccs_region",
+    "me_ccap_region",
+    "meets_ctc_child_identification_requirements",
+    "meets_ctc_identification_requirements",
+    "mo_ccs_region",
+    "ms_ccpp_facility_location",
+    "mt_tanf_immigration_status_eligible_person",
+    "ne_child_care_subsidy_location",
+    "nh_ccap_immigration_status_eligible_person",
+    "ny_ccap_county_group",
+    "oh_ccap_county_rate_category",
+    "or_healthier_oregon_immigration_status_eligible",
+    "overtime_income_deduction_ssn_requirement_met",
+    "pa_ccw_region",
+    "pa_ccw_stepparent_county_group",
+    "pa_tanf_county_group",
+    "sc_ccap_geography",
+    "sd_cca_region",
+    "state_group",
+    "state_itemized_deductions",
+    "state_standard_deduction",
+    "taxsim_state_agi",
+    "tip_income_deduction_ssn_requirement_met",
+    "tn_ccap_county_tier",
+    "trump_dividend_eligible",
+    "tx_ccs_workforce_board_region",
+    "va_ccsp_income_eligible",
+    "va_ccsp_locality_group",
+    "va_ccsp_ready_region",
+    "va_medicaid_lifc_locality_group",
+    "va_tanf",
+    "va_tanf_grant_standard",
+    "va_tanf_need_standard",
+    "va_tanf_up_grant_standard",
+    "wa_rca_immigration_status_eligible",
+    "wa_tanf_immigration_status_eligible",
+    "wa_wccc_center_region",
+    "wa_wccc_region",
+    "wic_income_limit",
+}
 
 
 @pytest.mark.requires_us
 def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     """Pin the guard list to weight reads and aggregation markers in US sources.
 
-    The scan covers Variable classes in ``variables`` and ``reforms``, and
-    calls to helpers in modules without Variable classes, as in PR-4.
+    The scan covers the package except tests, including module helpers beside
+    Variable classes and in tools. It is not a proof of household locality.
     """
     builder = _load_builder_module()
-    found = _engine_population_aggregate_sources()
-    assert sorted(found) == sorted(builder.US_POPULATION_AGGREGATE_VARIABLES), found
+    source_digests = {}
+    found = _engine_population_aggregate_sources(source_digests=source_digests)
+    triaged = {name: {"np.isin("} for name in _CONSTANT_MEMBERSHIP_FORMULAS}
+    # These search sorted parameter brackets or literal earnings thresholds.
+    triaged.update(
+        {
+            name: {"np.searchsorted("}
+            for name in (
+                "aca_required_contribution_percentage",
+                "ca_premium_subsidy_applicable_percentage",
+                "md_premium_assistance_target_contribution_percentage",
+                "nm_premium_assistance_target_contribution_percentage",
+                "substitution_elasticity",
+            )
+        }
+    )
+    triaged.update(
+        {
+            # np.unique groups the loop by indexing year; each person still
+            # reads their own earnings and the year's common wage index.
+            "ss_aime": {"_compute_aime()"},
+            # The helper groups a packaged county schedule by effective year,
+            # then each household joins its own county and bedroom count.
+            "hud_utility_allowance": {"utility_allowance_schedule()"},
+            # A lexical collision: ndarray.reshape matches the converter's
+            # module helper named reshape. Actual sums use axis=1 on brackets.
+            "ny_supplemental_tax": {"get_previous_threshold()"},
+            # These cross-person joins are permitted only after the frame
+            # precondition proves positive claiming IDs stay in the household.
+            "medicaid_has_known_claiming_tax_unit": {"np.isin("},
+            "medicaid_household_income": {
+                "medicaid_claiming_tax_unit_value()",
+                "medicaid_external_claimed_sum()",
+            },
+            "medicaid_household_size": {
+                "medicaid_claiming_tax_unit_value()",
+                "medicaid_external_claimed_sum()",
+            },
+        }
+    )
+    assert set(found) == set(builder.US_POPULATION_AGGREGATE_VARIABLES) | set(
+        triaged
+    ), found
+    for name, evidence in triaged.items():
+        assert set(found[name]) == evidence, (name, found[name])
+    # Pin the reviewed exceptions' class and reachable helper source bodies;
+    # adding another aggregate to an allowed name still requires a fresh review.
+    triaged_digest = hashlib.sha256(
+        "\n".join(f"{name}:{source_digests[name]}" for name in sorted(triaged)).encode()
+    ).hexdigest()
+    assert triaged_digest == (
+        "f26eb560e474207fc1fa1d8828b62ba4791fb763089ea2ce7a85b57a259f2755"
+    ), triaged_digest

@@ -797,6 +797,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         staged_frame_sha256="staged-frame-sha",
     )
     current = builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
+    assert current >= 13  # microcosm#1018 uses version 12.
     assert identity["materializer_version"] == current
     # The two preceding versions must both miss against the current version.
     stale_identity = {**dict(identity), "materializer_version": current - 1}
@@ -9875,7 +9876,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert len(list(tmp_path.glob("*.json"))) == 1
     assert len(list(tmp_path.glob("*.npy"))) == 1
     # The base simulation runs over the same one-household batches as the
-    # reform family (route A F-1), so both build one dataset per household.
+    # reform family, so both build one dataset per household.
     assert [dataset[1] for dataset in datasets] == [
         (),
         (),

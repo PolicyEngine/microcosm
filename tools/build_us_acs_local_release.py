@@ -563,13 +563,19 @@ def materialize_chunked(
     matrix = None
     chunk_stats = []
     n_chunks = (n_households + hh_chunk - 1) // hh_chunk
+    if n_chunks > 1:
+        release_tool._assert_group_entities_nest_in_households(projected)
+        release_tool._assert_medicaid_claiming_tax_units_local(projected)
     for chunk_index, low in enumerate(range(0, n_households, hh_chunk)):
         high = min(low + hh_chunk, n_households)
         started = time.time()
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
         target_frame, compiled_registry, _ = release_tool._materialize_target_frame(
-            sub_frame, tuple(specs), maximum_microsim_batch_size=batch
+            sub_frame,
+            tuple(specs),
+            maximum_microsim_batch_size=batch,
+            refuse_population_aggregates=True if n_chunks > 1 else None,
         )
         names = [spec.measure for spec in compiled_registry.specs]
         if measure_names is None:
