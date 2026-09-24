@@ -69,9 +69,15 @@ benchmark comparisons live outside this package.
 ## Release contract
 
 Published releases live under `releases/<release_id>/` in the Hub dataset repo.
-Each release must include `build_manifest.json`, `release_manifest.json`, and
-`calibration_diagnostics.json`; US releases must also include
-`us_source_coverage.json`. The release manifest records the build environment
+Each release must include `build_manifest.json` and `release_manifest.json`;
+US releases must also include `us_source_coverage.json`. A current release
+manifest contains a typed `calibration_diagnostics` status. `available` binds a
+schema-8 `calibration_diagnostics.json` file and its SHA-256. `failed` records
+the expected schema, error code, and sanitized message and deliberately omits
+the file and artifact entry. Publication logs a warning but continues, because
+the diagnostics document reports a completed calibration and is not an input
+to the dataset itself. Historical manifests without the status retain the old
+required-file behavior. The release manifest records the build environment
 under `build.built_with_*_package` and separately records certified runtime
 compatibility through `compatible_model_packages` and `compatible_core_packages`
 using PEP 440 specifiers. By default those entries pin exactly the versions the

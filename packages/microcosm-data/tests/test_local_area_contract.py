@@ -14,7 +14,7 @@ from microcosm.data.contract import (
     release_dataset_role,
     validate_release_dir,
 )
-from microcosm.data.release import publish_release
+from microcosm.data.release import prepare_release, publish_release
 
 RELEASE_ID = "populace-us-2024-buildo-acs-local-abc1234-20260723T000000Z"
 
@@ -134,6 +134,46 @@ def test_valid_local_area_bundle_passes(tmp_path: Path) -> None:
 
     assert release_dataset_role(release_dir) == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE
     validate_release_dir(release_dir)
+
+
+def test_explicit_diagnostics_failure_does_not_block_local_release(
+    tmp_path: Path,
+) -> None:
+    release_dir = _write_local_bundle(tmp_path)
+    diagnostics_path = release_dir / "calibration_diagnostics.json"
+    diagnostics_path.unlink()
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["calibration_diagnostics"] = {
+        "status": "failed",
+        "expected_schema_version": 8,
+        "error_code": "validation_error",
+        "message": "Target hierarchy is incomplete.",
+    }
+    manifest_text = json.dumps(manifest, indent=1)
+    manifest_path.write_text(manifest_text)
+    ledger_path = release_dir / "sha256sums.txt"
+    ledger = {
+        name: digest
+        for digest, name in (
+            line.split(maxsplit=1) for line in ledger_path.read_text().splitlines()
+        )
+        if name != "calibration_diagnostics.json"
+    }
+    ledger["release_manifest.json"] = _sha256_bytes(manifest_text.encode())
+    ledger_path.write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in sorted(ledger.items()))
+    )
+
+    validate_release_dir(release_dir)
+    with pytest.warns(UserWarning, match="generation failed"):
+        prepared = prepare_release(
+            release_dir,
+            artifact_root=tmp_path,
+            update_latest=False,
+        )
+    assert prepared.calibration_diagnostics_available is False
+    assert "calibration_diagnostics.json" not in prepared.filenames
 
 
 def test_local_area_dispatch_does_not_bypass_uk_tier_identity(tmp_path: Path) -> None:

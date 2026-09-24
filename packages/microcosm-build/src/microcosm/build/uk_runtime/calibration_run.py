@@ -72,6 +72,7 @@ from microcosm.build.uk_runtime.target_support import (
     write_uk_target_support_sidecars,
 )
 from microcosm.calibrate import TargetRegistry
+from microcosm.diagnostics import DiagnosticsWriteFailure
 from microcosm.frame import Frame
 
 _REPOSITORY = Path(__file__).resolve().parents[6]
@@ -612,7 +613,7 @@ def _run_uk_calibration_attempt(
         "score_vs_enhanced_frs": None,
     }
     _notify_run_event(event_callback, "diagnostics", "started")
-    write_uk_calibration_diagnostics(
+    diagnostics_outcome = write_uk_calibration_diagnostics(
         stage.solve_result,
         paths.diagnostics_json,
         calibrated,
@@ -620,7 +621,13 @@ def _run_uk_calibration_attempt(
         target_registry=stage.registry,
         build=build_block,
     )
-    diagnostics_sha = _sha256_file(paths.diagnostics_json)
+    if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):
+        raise RuntimeError(
+            "UK release validation requires calibration diagnostics, but their "
+            f"canonical write failed [{diagnostics_outcome.error_code}]: "
+            f"{diagnostics_outcome.message}"
+        )
+    diagnostics_sha = diagnostics_outcome.sha256
     append_phase(state, "diagnostics_written")
     _notify_run_event(
         event_callback,

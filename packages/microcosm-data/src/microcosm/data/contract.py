@@ -46,6 +46,7 @@ from pathlib import Path
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
+from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
 from microcosm.data.us_critical_targets import (
@@ -56,6 +57,13 @@ from microcosm.data.us_critical_targets import (
 )
 from microcosm.data.us_critical_targets import (
     is_congressional_district_target,
+)
+from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
+    UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_TARGET_GEOGRAPHY_LEVELS,
+    parse_calibration_diagnostics,
 )
 
 __all__ = [
@@ -158,14 +166,9 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
     "donor_release",
 )
 
-# Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 8 = a complete producer-supplied hierarchy on every registry-backed
-# target row).
-# microcosm-data cannot import
-# microcosm-calibrate (dependency direction), so the builder test suite pins the
-# two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
-_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8})
+_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
+    SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+)
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -176,7 +179,6 @@ _UK_EXACT_K_RELEASE_ID_RE = re.compile(
 _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 _UK_LEGACY_RELEASE_IDS = frozenset({_UK_JUNE_RELEASE_ID})
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
-_UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 _UK_TERMINAL_GATE_SCHEMA_VERSION = 3
 _UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 5
@@ -391,9 +393,6 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     ),
     "support": frozenset({"columns_checked"}),
 }
-_UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
-    {"national", "region", "country", "local_authority", "constituency"}
-)
 
 # ---------------------------------------------------------------------------
 # Schema-4 gate-battery verification. Every constant here mirrors the shared
@@ -1333,17 +1332,7 @@ def _check_release_manifest(
         )
     else:
         line_cut_tag_re = _uk_line_cut_tag_re(release_id)
-        diagnostics_artifact = artifacts.get("calibration_diagnostics")
-        if not isinstance(diagnostics_artifact, Mapping):
-            failures.append(
-                "release_manifest.json artifacts must include "
-                "'calibration_diagnostics'."
-            )
-        elif diagnostics_artifact.get("path") != "calibration_diagnostics.json":
-            failures.append(
-                "release_manifest.json artifact 'calibration_diagnostics' "
-                "must point to calibration_diagnostics.json."
-            )
+        _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
             if not isinstance(entry, Mapping):
                 failures.append(
@@ -1452,6 +1441,99 @@ def _check_release_manifest(
                         f"points to artifact {national!r}, whose kind is "
                         f"{default_artifact.get('kind')!r}, not 'microdata'."
                     )
+
+
+def _calibration_diagnostics_required(manifest: object) -> bool:
+    """Return whether this release must contain the diagnostics document."""
+
+    if not isinstance(manifest, Mapping):
+        return True
+    declaration = manifest.get("calibration_diagnostics")
+    return not (
+        isinstance(declaration, Mapping) and declaration.get("status") == "failed"
+    )
+
+
+def _check_calibration_diagnostics_declaration(
+    manifest: Mapping,
+    artifacts: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate the release-level available/failed diagnostics declaration."""
+
+    declaration = manifest.get("calibration_diagnostics")
+    artifact = artifacts.get("calibration_diagnostics")
+    if declaration is None:
+        if not isinstance(artifact, Mapping):
+            failures.append(
+                "release_manifest.json artifacts must include "
+                "'calibration_diagnostics'."
+            )
+        elif artifact.get("path") != "calibration_diagnostics.json":
+            failures.append(
+                "release_manifest.json artifact 'calibration_diagnostics' "
+                "must point to calibration_diagnostics.json."
+            )
+        return
+    if not isinstance(declaration, Mapping):
+        failures.append(
+            "release_manifest.json 'calibration_diagnostics' must be an object."
+        )
+        return
+    status = declaration.get("status")
+    if status == "available":
+        if declaration.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+            failures.append(
+                "release_manifest.json available calibration diagnostics must "
+                f"declare schema_version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+            )
+        _check_sha256_field(
+            filename="release_manifest.json",
+            owner="calibration_diagnostics.sha256",
+            value=declaration.get("sha256"),
+            failures=failures,
+        )
+        if not isinstance(artifact, Mapping):
+            failures.append(
+                "release_manifest.json available calibration diagnostics require "
+                "the 'calibration_diagnostics' artifact entry."
+            )
+        else:
+            if artifact.get("path") != "calibration_diagnostics.json":
+                failures.append(
+                    "release_manifest.json artifact 'calibration_diagnostics' "
+                    "must point to calibration_diagnostics.json."
+                )
+            if artifact.get("sha256") != declaration.get("sha256"):
+                failures.append(
+                    "release_manifest.json calibration diagnostics status and "
+                    "artifact sha256 values must match."
+                )
+        return
+    if status == "failed":
+        if declaration.get("expected_schema_version") != (
+            CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        ):
+            failures.append(
+                "release_manifest.json failed calibration diagnostics must "
+                "declare the current expected_schema_version."
+            )
+        for field in ("error_code", "message"):
+            if not isinstance(declaration.get(field), str) or not declaration[field]:
+                failures.append(
+                    "release_manifest.json failed calibration diagnostics require "
+                    f"a non-empty {field!r}."
+                )
+        if artifact is not None:
+            failures.append(
+                "release_manifest.json must not declare a calibration diagnostics "
+                "artifact when generation failed."
+            )
+        return
+    failures.append(
+        "release_manifest.json calibration diagnostics status must be "
+        "'available' or 'failed'."
+    )
 
 
 def _check_uk_release_identity(
@@ -3404,6 +3486,17 @@ def _check_calibration_diagnostics(
     """
 
     schema_version = diagnostics.get("schema_version")
+    if not grandfathered_uk_june and schema_version == (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    ):
+        try:
+            parse_calibration_diagnostics(diagnostics)
+        except ValidationError as error:
+            failures.append(
+                "calibration_diagnostics.json does not satisfy the shared "
+                f"schema: {error}"
+            )
+        return
     if schema_version is None:
         failures.append("calibration_diagnostics.json is missing 'schema_version'.")
     elif grandfathered_uk_june and schema_version != 2:
@@ -3507,12 +3600,6 @@ def _check_calibration_diagnostics(
                         if isinstance(dimension_definitions, Mapping)
                         else {}
                     ),
-                    failures=failures,
-                )
-            elif schema_version == 8:
-                _check_hierarchy_diagnostics_target(
-                    target,
-                    index=index,
                     failures=failures,
                 )
             if not grandfathered_uk_june:
@@ -3657,81 +3744,6 @@ def _check_structured_diagnostics_target(
         failures.append(f"{owner} may populate at most one geography-role dimension.")
 
 
-def _check_hierarchy_diagnostics_target(
-    target: Mapping,
-    *,
-    index: int,
-    failures: list[str],
-) -> None:
-    """Validate one complete schema-8 provider-to-target hierarchy."""
-
-    owner = f"calibration_diagnostics.json target row {index}"
-    hierarchy = target.get("hierarchy")
-    if not isinstance(hierarchy, Mapping):
-        failures.append(f"{owner} schema 8 requires a 'hierarchy' object.")
-        return
-    provider = hierarchy.get("provider")
-    category = hierarchy.get("category")
-    geography = hierarchy.get("geography")
-    target_node = hierarchy.get("target")
-    for field, node in (
-        ("provider", provider),
-        ("category", category),
-        ("geography", geography),
-        ("target", target_node),
-    ):
-        if not isinstance(node, Mapping):
-            failures.append(f"{owner} hierarchy.{field} must be an object.")
-            continue
-        for required in ("id", "label"):
-            value = node.get(required)
-            if not isinstance(value, str) or not value.strip():
-                failures.append(
-                    f"{owner} hierarchy.{field}.{required} must be a non-empty string."
-                )
-    if isinstance(category, Mapping) and isinstance(provider, Mapping):
-        if category.get("provider_id") != provider.get("id"):
-            failures.append(
-                f"{owner} hierarchy.category.provider_id must equal "
-                "hierarchy.provider.id."
-            )
-    if isinstance(geography, Mapping):
-        level = geography.get("level")
-        if not isinstance(level, str) or not level.strip():
-            failures.append(
-                f"{owner} hierarchy.geography.level must be a non-empty string."
-            )
-    if isinstance(target_node, Mapping) and target_node.get("id") != target.get(
-        "target_name"
-    ):
-        failures.append(
-            f"{owner} hierarchy.target.id must equal the row's target_name."
-        )
-    dimensions = hierarchy.get("dimensions")
-    if not isinstance(dimensions, list):
-        failures.append(f"{owner} hierarchy.dimensions must be an array.")
-        return
-    seen: set[str] = set()
-    for dimension_index, dimension in enumerate(dimensions):
-        dimension_owner = f"{owner} hierarchy.dimensions[{dimension_index}]"
-        if not isinstance(dimension, Mapping):
-            failures.append(f"{dimension_owner} must be an object.")
-            continue
-        for required in ("id", "label", "value_id", "value_label"):
-            value = dimension.get(required)
-            if not isinstance(value, str) or not value.strip():
-                failures.append(
-                    f"{dimension_owner}.{required} must be a non-empty string."
-                )
-        dimension_id = dimension.get("id")
-        if isinstance(dimension_id, str):
-            if dimension_id in seen:
-                failures.append(
-                    f"{owner} hierarchy dimensions repeat id {dimension_id!r}."
-                )
-            seen.add(dimension_id)
-
-
 def _uk_non_negative_int(
     value: object,
     *,
@@ -3780,11 +3792,11 @@ def _uk_finite_number(
     return number
 
 
-def _check_uk_calibration_diagnostics(
+def _check_legacy_uk_calibration_diagnostics(
     diagnostics: Mapping,
     failures: list[str],
 ) -> None:
-    """Require the versioned UK release diagnostics on canonical exact-k ids."""
+    """Validate the UK extension retained in historical schemas 6 and 7."""
 
     uk = diagnostics.get("uk_diagnostics")
     if not isinstance(uk, Mapping):
@@ -3793,11 +3805,11 @@ def _check_uk_calibration_diagnostics(
             "'uk_diagnostics' object."
         )
         return
-    if uk.get("schema_version") != _UK_DIAGNOSTICS_SCHEMA_VERSION:
+    if uk.get("schema_version") != UK_DIAGNOSTICS_SCHEMA_VERSION:
         failures.append(
             "calibration_diagnostics.json 'uk_diagnostics.schema_version' is "
             f"{uk.get('schema_version')!r}; expected "
-            f"{_UK_DIAGNOSTICS_SCHEMA_VERSION}."
+            f"{UK_DIAGNOSTICS_SCHEMA_VERSION}."
         )
 
     weights = uk.get("weights")
@@ -4069,7 +4081,7 @@ def _check_uk_calibration_diagnostics(
             )
             continue
         level = row.get("geography_level")
-        if not isinstance(level, str) or level not in _UK_TARGET_GEOGRAPHY_LEVELS:
+        if not isinstance(level, str) or level not in UK_TARGET_GEOGRAPHY_LEVELS:
             failures.append(
                 "calibration_diagnostics.json UK geography pass-rate row "
                 f"{index} has unknown level {level!r}."
@@ -4136,7 +4148,7 @@ def _check_uk_calibration_diagnostics(
         total_targets += n_targets
         total_scored += n_scored
         total_skipped += n_skipped
-    missing_levels = sorted(_UK_TARGET_GEOGRAPHY_LEVELS - seen_levels)
+    missing_levels = sorted(set(UK_TARGET_GEOGRAPHY_LEVELS) - seen_levels)
     if missing_levels:
         failures.append(
             "calibration_diagnostics.json UK geography pass rates are missing "
@@ -4504,16 +4516,21 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     """
 
     failures: list[str] = []
-    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
-        if not (release_dir / filename).is_file():
-            failures.append(f"required file {filename!r} is missing.")
-
     release_manifest: Mapping | None = None
     manifest_path = release_dir / "release_manifest.json"
     if manifest_path.is_file():
         release_manifest = _load_json(manifest_path, failures)
     if release_manifest is not None:
         _check_local_area_release_manifest(release_manifest, release_id, failures)
+
+    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(release_manifest)
+        ):
+            continue
+        if not (release_dir / filename).is_file():
+            failures.append(f"required file {filename!r} is missing.")
 
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
@@ -4534,11 +4551,27 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
 
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     if diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
-            _check_local_area_calibration_diagnostics(diagnostics, failures)
+            if "schema_version" in diagnostics:
+                _check_calibration_diagnostics(
+                    diagnostics,
+                    failures,
+                )
+            else:
+                _check_local_area_calibration_diagnostics(diagnostics, failures)
+            if (
+                _is_uk_exact_k_release_id(release_id)
+                and diagnostics.get("schema_version")
+                != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            ):
+                _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
-                _check_uk_calibration_diagnostics(diagnostics, failures)
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
                 )
@@ -4562,7 +4595,18 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                     "--donor-release-manifest)."
                 )
 
-    _check_local_area_checksum_ledger(release_dir, release_manifest, failures)
+    required_checksum_files = tuple(
+        filename
+        for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES
+        if _calibration_diagnostics_required(release_manifest)
+        or filename != "calibration_diagnostics.json"
+    )
+    _check_local_area_checksum_ledger(
+        release_dir,
+        release_manifest,
+        failures,
+        required_files=required_checksum_files,
+    )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
 
     if failures:
@@ -4640,6 +4684,10 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
+            if diagnostics.get("schema_version") == (
+                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            ):
+                _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
@@ -4999,6 +5047,8 @@ def _check_local_area_release_manifest(
             "release_manifest.json must declare a non-empty 'artifacts' map."
         )
         return
+    if manifest.get("calibration_diagnostics") is not None:
+        _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
     microdata = [
         name
         for name, entry in artifacts.items()
@@ -5064,11 +5114,26 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
-    n_targets = diagnostics.get("n_targets")
+    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        target_surface = diagnostics.get("target_surface")
+        n_targets = (
+            target_surface.get("n_targets")
+            if isinstance(target_surface, Mapping)
+            else None
+        )
+        households = diagnostics.get("n_records")
+        n_targets_label = "target_surface.n_targets"
+        households_label = "n_records"
+    else:
+        n_targets = diagnostics.get("n_targets")
+        households = diagnostics.get("households")
+        n_targets_label = "n_targets"
+        households_label = "households"
     targets = diagnostics.get("targets")
     if not isinstance(n_targets, int) or n_targets <= 0:
         failures.append(
-            "calibration_diagnostics.json must carry a positive integer 'n_targets'."
+            "calibration_diagnostics.json must carry a positive integer "
+            f"{n_targets_label!r}."
         )
     if not isinstance(targets, list) or not targets:
         failures.append(
@@ -5118,10 +5183,10 @@ def _check_local_area_calibration_diagnostics(
                     f"calibration_diagnostics.json target row {index} field "
                     f"{field!r} must be a finite number."
                 )
-    households = diagnostics.get("households")
     if not isinstance(households, int) or households <= 0:
         failures.append(
-            "calibration_diagnostics.json must carry a positive integer 'households'."
+            "calibration_diagnostics.json must carry a positive integer "
+            f"{households_label!r}."
         )
     for field in ("final_loss", "fraction_within_10pct"):
         value = diagnostics.get(field)
@@ -5213,6 +5278,7 @@ def validate_release_dir(
     # than a silent fallback.
     role: str = NATIONAL_DEFAULT_DATASET_ROLE
     manifest_probe_path = release_dir / "release_manifest.json"
+    manifest_probe: object = None
     annual_extension = None
     if manifest_probe_path.is_file():
         try:
@@ -5285,6 +5351,11 @@ def validate_release_dir(
     source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(manifest_probe)
+        ):
+            continue
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
@@ -5309,6 +5380,11 @@ def validate_release_dir(
 
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         calibration_diagnostics_sha256 = _sha256(calibration_diagnostics_path)
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
@@ -5321,8 +5397,10 @@ def validate_release_dir(
             if (
                 _is_uk_exact_k_release_id(release_id)
                 or release_id == _UK_NATIONAL_RELEASE_ID
-            ):
-                _check_uk_calibration_diagnostics(diagnostics, failures)
+            ) and diagnostics.get(
+                "schema_version"
+            ) != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+                _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
@@ -5727,6 +5805,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         )
 
     manifest_probe_path = release_dir / "release_manifest.json"
+    manifest_probe: object = None
     if manifest_probe_path.is_file():
         try:
             manifest_probe = json.loads(manifest_probe_path.read_text())
@@ -5760,6 +5839,11 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(manifest_probe)
+        ):
+            continue
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
@@ -5786,10 +5870,18 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     recomputed_critical_failures: list[str] = []
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
-            _check_calibration_diagnostics(diagnostics, failures)
+            _check_calibration_diagnostics(
+                diagnostics,
+                failures,
+            )
             # Critical-fit breaches are permitted at the evidence tier — but
             # never silently. Recompute the certified verdicts into a scratch
             # list and require each breach to be acknowledged in
@@ -6346,20 +6438,37 @@ def _check_uk_dense_surface_files(
         )
         original_diagnostics = loaded["source_calibration_diagnostics.json"]
         if shipped_diagnostics:
-            if (
-                shipped_diagnostics.get("source_diagnostics_sha256")
-                != expected["candidate_diagnostics_sha256"]
+            if original_diagnostics.get("schema_version") == (
+                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
             ):
-                failures.append(
-                    "calibration_diagnostics.json source hash does not match the evaluated source."
-                )
-            if any(
-                shipped_diagnostics.get(key) != value
-                for key, value in original_diagnostics.items()
-            ):
-                failures.append(
-                    "calibration_diagnostics.json changed original evaluated diagnostic values."
-                )
+                shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
+                if shipped_sha256 != expected["candidate_diagnostics_sha256"]:
+                    failures.append(
+                        "calibration_diagnostics.json bytes do not match the "
+                        "evaluated canonical diagnostics."
+                    )
+                if shipped_diagnostics != original_diagnostics:
+                    failures.append(
+                        "calibration_diagnostics.json changed original evaluated "
+                        "diagnostic values."
+                    )
+            else:
+                if (
+                    shipped_diagnostics.get("source_diagnostics_sha256")
+                    != expected["candidate_diagnostics_sha256"]
+                ):
+                    failures.append(
+                        "calibration_diagnostics.json source hash does not match "
+                        "the evaluated source."
+                    )
+                if any(
+                    shipped_diagnostics.get(key) != value
+                    for key, value in original_diagnostics.items()
+                ):
+                    failures.append(
+                        "calibration_diagnostics.json changed original evaluated "
+                        "diagnostic values."
+                    )
         score = _load_json(release_dir / _UK_DENSE_SCORE_RECEIPT_FILE, failures)
         for key, identity_key in (
             ("candidate_diagnostics", "candidate_diagnostics_sha256"),

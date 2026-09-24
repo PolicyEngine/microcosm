@@ -89,6 +89,7 @@ from microcosm.calibrate.diagnostics import (  # noqa: E402 - after the compat g
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     diagnostics_payload,
     past_cap_census,
+    target_surface_payload,
     write_calibration_diagnostics,
 )
 from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
@@ -157,6 +158,12 @@ from microcosm.calibrate.variable_labels import (  # noqa: E402 - after compat g
     US_CALIBRATION_VARIABLE_LABELS,
     calibration_variable_label,
 )
+from microcosm.diagnostics import (  # noqa: E402 - after the compat gate
+    DiagnosticsWriteFailure,
+    DiagnosticsWriteOutcome,
+    DiagnosticsWriteSuccess,
+    parse_calibration_diagnostics,
+)
 
 __version__ = "0.1.0"
 
@@ -169,6 +176,9 @@ __all__ = [
     "ssa_population_projection",
     "static_aging",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
+    "DiagnosticsWriteFailure",
+    "DiagnosticsWriteOutcome",
+    "DiagnosticsWriteSuccess",
     "CALIBRATION_PROVIDER_LABELS_BY_COUNTRY",
     "CALIBRATION_VARIABLE_LABELS_BY_COUNTRY",
     "CONSERVE_MASS",
@@ -212,6 +222,8 @@ __all__ = [
     "score_targets",
     "select_exact_k",
     "specs_from_pe_surface",
+    "target_surface_payload",
     "write_calibration_diagnostics",
+    "parse_calibration_diagnostics",
     "__version__",
 ]

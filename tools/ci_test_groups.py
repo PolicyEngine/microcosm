@@ -118,6 +118,7 @@ def is_calibrate_data_fit(path: str) -> bool:
     return package(path) in {
         "microcosm-calibrate",
         "microcosm-data",
+        "microcosm-diagnostics",
         "microcosm-fit",
         "microcosm-graph",
     }

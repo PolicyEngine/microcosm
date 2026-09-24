@@ -695,6 +695,65 @@ def population_measure_arrays(frame, ladder_populations, geographies: list[str])
     return names, arrays, values, dropped
 
 
+def population_target_specs(names, values):
+    """Declare ladder population targets with the shared diagnostics hierarchy."""
+
+    from microcosm.calibrate import TargetSpec
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+    from microcosm.calibrate.hierarchy import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+    )
+
+    provider = HierarchyNode("census_population", "Census population")
+    category = HierarchyCategory(
+        "census_population.resident_population",
+        "Resident population",
+        provider.id,
+    )
+    specs = []
+    for name, value in zip(names, values, strict=True):
+        if name.startswith("pop_state_"):
+            fips = name.removeprefix("pop_state_")
+            label = US_STATE_FIPS_TO_POSTAL.get(fips, f"State {fips}")
+            geography = HierarchyGeography(f"0400000US{fips}", label, "state")
+        elif name.startswith("pop_cd_"):
+            geoid = name.removeprefix("pop_cd_")
+            state_fips, district = geoid[:2], geoid[2:]
+            state = US_STATE_FIPS_TO_POSTAL.get(state_fips, state_fips)
+            district_label = (
+                "at-large" if district == "00" else f"district {int(district)}"
+            )
+            label = f"{state} congressional {district_label}"
+            geography = HierarchyGeography(
+                f"5001800US{geoid}", label, "congressional_district"
+            )
+        else:  # pragma: no cover - names originate in population_measure_arrays
+            raise ValueError(f"Unknown population target name {name!r}.")
+        specs.append(
+            TargetSpec(
+                name=name,
+                entity="household",
+                measure=name,
+                value=value,
+                period=PERIOD,
+                source="US Census Bureau 2020 PUMA population ladder",
+                family="census_population",
+                metadata={"geography_level": geography.level},
+                hierarchy=CalibrationHierarchy(
+                    provider=provider,
+                    category=category,
+                    geography=geography,
+                    dimensions=(),
+                    target=HierarchyNode(name, f"{label} resident population"),
+                ),
+            )
+        )
+    return tuple(specs)
+
+
 def extract_struct_tables(frame):
     """Small structural/geography copies so the big frame can be freed early."""
 
@@ -727,14 +786,15 @@ def write_lean_checkpoint(
     struct,
     admin_matrix,
     admin_names,
-    admin_targets,
+    admin_specs,
     pop_names,
     pop_arrays,
     pop_values,
     checkpoint_dir: Path,
 ):
-    """Assemble the lean target-frame H5 + targets.json (memory-bounded)."""
+    """Assemble the lean target frame and its versioned target registry."""
 
+    from microcosm.calibrate import TargetRegistry
     from microcosm.frame import put_frame_table
 
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -774,35 +834,17 @@ def write_lean_checkpoint(
                 preferred_format="fixed",
             )
         store.put("_time_period", pd.Series([PERIOD]), format="table")
-    targets = [
-        dict(
-            name=target["name"],
-            entity="household",
-            measure=target["measure"],
-            value=target["value"],
-            period=PERIOD,
-            source=target.get("source", "ledger_feed"),
-        )
-        for target in admin_targets
-    ]
-    targets += [
-        dict(
-            name=name,
-            entity="household",
-            measure=name,
-            value=value,
-            period=PERIOD,
-            source="us_puma_ladder_2020",
-        )
-        for name, value in zip(pop_names, pop_values, strict=True)
-    ]
-    (checkpoint_dir / "targets.json").write_text(json.dumps(targets, indent=2))
+    registry = TargetRegistry(
+        (*admin_specs, *population_target_specs(pop_names, pop_values)),
+        country="us",
+    )
+    registry.to_json(checkpoint_dir / "target_registry.json")
     log(
         f"checkpoint: {checkpoint_h5.name} ({len(lean_households)} hh, "
-        f"{len(admin_names) + len(pop_names)} measures), targets.json "
-        f"({len(targets)} targets)"
+        f"{len(admin_names) + len(pop_names)} measures), target_registry.json "
+        f"({len(registry)} targets)"
     )
-    return checkpoint_h5, targets
+    return checkpoint_h5, registry
 
 
 def load_lean_frame(checkpoint_h5: Path):
@@ -900,11 +942,6 @@ def do_materialize(args) -> None:
             f"{len(registry)} specs were declared; admin targets must never "
             "disappear silently between compile and materialization."
         )
-    admin_targets = [
-        dict(name=spec.name, measure=spec.measure, value=spec.value, source=spec.source)
-        for spec in compiled_specs
-    ]
-
     populations = ladder_population(args.ladder, geographies)
     pop_names, pop_arrays, pop_values, pop_dropped = population_measure_arrays(
         frame, populations, geographies
@@ -931,7 +968,7 @@ def do_materialize(args) -> None:
         struct,
         matrix,
         admin_names,
-        admin_targets,
+        compiled_specs,
         pop_names,
         pop_arrays,
         pop_values,
@@ -940,7 +977,7 @@ def do_materialize(args) -> None:
     del matrix, struct, pop_arrays
     gc.collect()
     matrix_path.unlink(missing_ok=True)
-    targets_digest = _sha256(args.checkpoint_dir / "targets.json")
+    registry_digest = _sha256(args.checkpoint_dir / "target_registry.json")
     (args.checkpoint_dir / "run_identity.json").write_text(
         json.dumps(
             {
@@ -949,7 +986,7 @@ def do_materialize(args) -> None:
                 "ladder_sha256": ladder_sha,
                 "households": n_households,
                 "n_targets": len(admin_names) + len(pop_names),
-                "targets_sha256": targets_digest,
+                "target_registry_sha256": registry_digest,
                 "declared_admin_specs": len(registry),
                 "compiled_admin_specs": len(admin_names),
                 "population_cells_dropped": pop_dropped,
@@ -998,18 +1035,22 @@ def _verify_run_identity(args, *, require: bool = True) -> dict:
 
 
 def do_calibrate(args) -> None:
-    from microcosm.calibrate import calibrate
-    from microcosm.calibrate.target import Target, TargetSet
+    from microcosm.calibrate import (
+        TargetRegistry,
+        calibrate,
+        write_calibration_diagnostics,
+    )
 
     identity = _verify_run_identity(args)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
-    targets_json = json.loads((args.checkpoint_dir / "targets.json").read_text())
-    targets_sha = _sha256(args.checkpoint_dir / "targets.json")
-    if targets_sha != identity.get("targets_sha256"):
+    registry_path = args.checkpoint_dir / "target_registry.json"
+    registry_sha = _sha256(registry_path)
+    if registry_sha != identity.get("target_registry_sha256"):
         raise SystemExit(
-            "targets.json changed since materialize; the checkpoint and "
+            "target_registry.json changed since materialize; the checkpoint and "
             "surface no longer agree. Re-run --stage materialize."
         )
+    registry = TargetRegistry.from_json(registry_path)
     frame, design_weights = load_lean_frame(checkpoint_h5)
     n_households = frame.n("household")
     if n_households != identity.get("households"):
@@ -1017,19 +1058,7 @@ def do_calibrate(args) -> None:
             f"Lean checkpoint has {n_households} households but the run "
             f"identity pins {identity.get('households')}."
         )
-    target_set = TargetSet(
-        [
-            Target(
-                name=target["name"],
-                entity=target["entity"],
-                measure=target["measure"],
-                value=target["value"],
-                period=target["period"],
-                source=target["source"],
-            )
-            for target in targets_json
-        ]
-    )
+    target_set = registry.to_target_set()
     log(
         f"calibrate: households={n_households}, targets={len(target_set)}, "
         f"design_total={design_weights.sum():,.0f}"
@@ -1057,11 +1086,11 @@ def do_calibrate(args) -> None:
             )
         log(f"RESUME from {done} epochs")
     if done >= args.epochs:
-        diagnostics_path = args.checkpoint_dir / "calibration_diagnostics.json"
-        if diagnostics_path.exists():
+        summary_path = args.checkpoint_dir / "calibration_summary.json"
+        if summary_path.exists():
             log(
                 f"calibration already complete at {done} epochs and "
-                "diagnostics exist; nothing to do (delete "
+                "the calibration summary exists; nothing to do (delete "
                 "weights_latest.npz to recalibrate)."
             )
             _write_calibrated_artifact(
@@ -1070,7 +1099,7 @@ def do_calibrate(args) -> None:
             return
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
-            f"{args.epochs}) but calibration_diagnostics.json is missing. "
+            f"{args.epochs}) but calibration_summary.json is missing. "
             "Delete the checkpoint to recalibrate, or raise --epochs."
         )
     batch = args.epoch_batch if args.epoch_batch > 0 else args.epochs
@@ -1117,24 +1146,7 @@ def do_calibrate(args) -> None:
             f"(e.g. {skipped[:5]}); the surface silently shrank. Fix the "
             "measures or the targets before shipping."
         )
-    initial_estimates = result.problem.matrix @ design_weights
-    final_estimates = result.problem.matrix @ result.weights
-    per_target = [
-        {
-            "name": target.name,
-            "target": float(target.value),
-            "compiled_target": float(target.value),
-            "initial_estimate": float(initial),
-            "final_estimate": float(final),
-        }
-        for target, initial, final in zip(
-            result.problem.targets,
-            initial_estimates,
-            final_estimates,
-            strict=True,
-        )
-    ]
-    diagnostics = {
+    summary = {
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
@@ -1158,18 +1170,48 @@ def do_calibrate(args) -> None:
         ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
-        "targets": per_target,
     }
-    (args.checkpoint_dir / "calibration_diagnostics.json").write_text(
-        json.dumps(diagnostics, indent=2)
-    )
-    log(
-        f"calibrate stage complete: loss={diagnostics['final_loss']}, "
-        f"within10%={diagnostics['fraction_within_10pct']:.2%}"
-    )
-
     _write_calibrated_artifact(
         args, np.asarray(result.weights, dtype=np.float64), identity
+    )
+
+    outcome = write_calibration_diagnostics(
+        result,
+        args.checkpoint_dir / "calibration_diagnostics.json",
+        target_registry=registry,
+        build={
+            "dataset_role": "non_default_local_area",
+            "families": args.families,
+            "geographies": args.geographies,
+            "epochs": args.epochs,
+            "epoch_batch": args.epoch_batch,
+            "total_wall_seconds": summary["total_wall_seconds"],
+            "peak_rss_gb": summary["peak_rss_gb"],
+            "ess_fraction": summary["ess_fraction"],
+            "mass_conserved_ratio": summary["mass_conserved_ratio"],
+        },
+    )
+    summary["calibration_diagnostics"] = (
+        {
+            "status": "available",
+            "schema_version": outcome.schema_version,
+            "sha256": outcome.sha256,
+        }
+        if outcome.status == "available"
+        else {
+            "status": "failed",
+            "expected_schema_version": outcome.expected_schema_version,
+            "error_code": outcome.error_code,
+            "message": outcome.message,
+        }
+    )
+    (args.checkpoint_dir / "calibration_summary.json").write_text(
+        json.dumps(summary, indent=2)
+    )
+    log(
+        f"calibrate stage complete: loss={summary['final_loss']}, "
+        f"within10%={summary['fraction_within_10pct']:.2%}, "
+        f"diagnostics={outcome.status}"
     )
 
 
@@ -1552,12 +1594,13 @@ def do_finalize(args) -> None:
         load_us_puma_ladder,
         us_puma_ladder_gate,
     )
+    from microcosm.calibrate import TargetRegistry
 
     staging_summary = _load_json(_staging_summary_path(args))
-    diagnostics = _load_json(args.checkpoint_dir / "calibration_diagnostics.json")
+    diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     if not diagnostics:
         raise SystemExit(
-            f"No calibration diagnostics under {args.checkpoint_dir}; run "
+            f"No calibration summary under {args.checkpoint_dir}; run "
             "--stage calibrate first."
         )
     identity = _verify_run_identity(args)
@@ -1569,7 +1612,17 @@ def do_finalize(args) -> None:
             f"({str(identity.get('ladder_sha256'))[:12]}…)."
         )
     materialize_rss = _load_json(args.checkpoint_dir / "materialize_rss.json")
-    targets = _load_json(args.checkpoint_dir / "targets.json") or []
+    registry_path = args.checkpoint_dir / "target_registry.json"
+    if registry_path.is_file():
+        registry = TargetRegistry.from_json(registry_path)
+        targets = [
+            {"name": spec.name, "family": spec.family} for spec in registry.specs
+        ]
+    else:
+        # Read-only compatibility for checkpoints created before the target
+        # registry became the materialize-stage artifact. Current materialize
+        # runs always write target_registry.json.
+        targets = _load_json(args.checkpoint_dir / "targets.json") or []
     spine_qa = _load_json(args.checkpoint_dir / "spine_qa.json")
     consumer_export = _load_json(args.checkpoint_dir / "consumer_export.json")
 
@@ -1823,7 +1876,15 @@ def _require_recorded_soi_mode(materialize_rss: dict) -> str:
 
 
 def do_package(args) -> dict:
-    diagnostics = _load_json(args.checkpoint_dir / "calibration_diagnostics.json")
+    diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
+    diagnostics_status = diagnostics.get("calibration_diagnostics")
+    if not isinstance(diagnostics_status, dict) or diagnostics_status.get(
+        "status"
+    ) not in {"available", "failed"}:
+        raise SystemExit(
+            "calibration_summary.json has no valid calibration_diagnostics status; "
+            "run --stage calibrate with the current builder."
+        )
     gate_report = _load_json(args.gate_report)
     staging_summary = _load_json(_staging_summary_path(args))
     final_summary = _load_json(args.out_summary)
@@ -2031,7 +2092,6 @@ def do_package(args) -> dict:
 
     contract_files = {
         "build_manifest.json": build_manifest,
-        "calibration_diagnostics.json": diagnostics,
         "us_source_coverage.json": source_coverage,
         "gate_summary.json": gate_report,
         "held_back_columns.json": held_back,
@@ -2052,6 +2112,19 @@ def do_package(args) -> dict:
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
+    if diagnostics_status["status"] == "available":
+        source_diagnostics = args.checkpoint_dir / "calibration_diagnostics.json"
+        if not source_diagnostics.is_file():
+            raise SystemExit(
+                "calibration_summary.json declares available diagnostics but "
+                "calibration_diagnostics.json is missing."
+            )
+        if _sha256(source_diagnostics) != diagnostics_status.get("sha256"):
+            raise SystemExit(
+                "calibration_diagnostics.json no longer matches the validated "
+                "digest recorded by the calibration stage."
+            )
+        shutil.copy2(source_diagnostics, release_dir / "calibration_diagnostics.json")
 
     def _artifact(path_name: str, kind: str, local: Path) -> dict:
         return {
@@ -2061,6 +2134,32 @@ def do_package(args) -> dict:
             "revision": release_id,
             "sha256": _sha256(local),
         }
+
+    artifacts = {
+        ARTIFACT_NAME: {
+            "kind": "microdata",
+            "path": ARTIFACT_FILENAME,
+            "repo_id": HF_REPO_ID,
+            "revision": release_id,
+            "sha256": h5_sha,
+        },
+        "gate_summary": _artifact(
+            "gate_summary.json",
+            "diagnostics",
+            release_dir / "gate_summary.json",
+        ),
+        "us_source_coverage": _artifact(
+            "us_source_coverage.json",
+            "diagnostics",
+            release_dir / "us_source_coverage.json",
+        ),
+    }
+    if diagnostics_status["status"] == "available":
+        artifacts["calibration_diagnostics"] = _artifact(
+            "calibration_diagnostics.json",
+            "diagnostics",
+            release_dir / "calibration_diagnostics.json",
+        )
 
     release_manifest = {
         "schema_version": 1,
@@ -2084,30 +2183,8 @@ def do_package(args) -> dict:
                 "version": _version("policyengine-us"),
             },
         },
-        "artifacts": {
-            ARTIFACT_NAME: {
-                "kind": "microdata",
-                "path": ARTIFACT_FILENAME,
-                "repo_id": HF_REPO_ID,
-                "revision": release_id,
-                "sha256": h5_sha,
-            },
-            "calibration_diagnostics": _artifact(
-                "calibration_diagnostics.json",
-                "diagnostics",
-                release_dir / "calibration_diagnostics.json",
-            ),
-            "gate_summary": _artifact(
-                "gate_summary.json",
-                "diagnostics",
-                release_dir / "gate_summary.json",
-            ),
-            "us_source_coverage": _artifact(
-                "us_source_coverage.json",
-                "diagnostics",
-                release_dir / "us_source_coverage.json",
-            ),
-        },
+        "calibration_diagnostics": diagnostics_status,
+        "artifacts": artifacts,
         "reviewed_limitations": gate_report.get("reviewed_limitations", []),
         "donor_release": donor_release,
         "refresh_recipe": refresh_recipe,

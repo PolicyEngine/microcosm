@@ -439,13 +439,28 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     holdout = {
         "report_only": True,
         "method": "rotated_folds",
+        "target_loss_cap": 10.0,
+        "loss_weight_scale": "held_local_grains_only",
+        "target_weight_rule": "grain_equal",
+        "population": "held_out_local_targets",
+        "grains": ["constituency", "local_authority"],
         "n_folds": 5,
         "seed": 20260529,
         "solve_seed": 7,
         "mean_holdout_loss": 0.1,
         "worst_holdout_loss": 0.2,
         "fold_losses": [0.1, 0.1, 0.2, 0.05, 0.05],
-        "folds": [],
+        "folds": [
+            {
+                "fold": fold,
+                "n_train_targets": 3,
+                "n_holdout_targets": 1,
+                "holdout_target_indices": [fold % 4],
+                "training_national_rows": 0,
+                "holdout_loss": loss,
+            }
+            for fold, loss in enumerate([0.1, 0.1, 0.2, 0.05, 0.05])
+        ],
     }
     monkeypatch.setattr(
         builder,
