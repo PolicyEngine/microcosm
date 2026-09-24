@@ -640,6 +640,30 @@ def test_malformed_clone_index_fails_closed_before_canonical_selection(
     assert not _FakeQRF.instances
 
 
+def test_assembled_frame_without_clone_indices_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Microcosm #992 gate finding: with the clone-index column dropped, an
+    # assembled ASEC-channel frame once fell back to role ranks and passed
+    # canonical selection. Assembled channels name physical sources, so they
+    # cannot tell a native row from a donor copy; the base raised here.
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _frame([10, 11], ages=[4, 4], channels=["asec", "asec"])
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = [100, 101]
+    person = person.drop(columns=["person_support_clone_index"], errors="ignore")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"clone-role metadata: assembled support metadata requires "
+            r"'person_support_clone_index'"
+        ),
+    ):
+        impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

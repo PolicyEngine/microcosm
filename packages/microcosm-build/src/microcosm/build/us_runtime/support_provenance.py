@@ -515,6 +515,14 @@ def support_copy_rank_series(
             clone_index_column,
             owner="PUF support metadata",
         )
+    elif has_assembled_support_metadata(table, entity=entity):
+        # An assembled channel names a physical source, not a copy, so without
+        # clone indices a surviving row cannot be told native from donor copy.
+        raise ValueError(
+            f"assembled support metadata requires {clone_index_column!r} to "
+            "rank support copies; only channel-only historical frames may "
+            "rank by role."
+        )
     else:
         ranks = np.where(
             roles.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy(),

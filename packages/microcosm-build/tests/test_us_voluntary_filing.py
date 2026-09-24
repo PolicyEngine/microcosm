@@ -804,6 +804,38 @@ def test_historical_duplicate_clone_index_still_fails_closed() -> None:
         impute_us_voluntary_filing(duplicated, _donor(), seed=17)
 
 
+def test_assembled_frame_without_clone_indices_fails_closed() -> None:
+    # Microcosm #992 gate finding: with the clone-index column dropped, an
+    # assembled ASEC-channel frame once fell back to role ranks. Assembled
+    # channels name physical sources, so the copy rank needs clone indices.
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": [100, 200],
+            "tax_unit_source_id": [10, 20],
+            "tax_unit_spine_source_id": [1, 2],
+            "tax_unit_support_channel": ["asec", "asec"],
+        }
+    )
+    receiver = pd.DataFrame(
+        {
+            predictor: np.arange(2, dtype=np.float64)
+            for predictor in SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS
+        },
+        index=tax_unit["tax_unit_id"],
+    )
+
+    class TaxUnitFrame:
+        def table(self, entity: str) -> pd.DataFrame:
+            assert entity == "tax_unit"
+            return tax_unit
+
+    with pytest.raises(
+        ValueError,
+        match=r"assembled support metadata requires 'tax_unit_support_clone_index'",
+    ):
+        module._source_receiver_rows(TaxUnitFrame(), receiver)
+
+
 def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> None:
     tax_unit = pd.DataFrame(
         {
@@ -817,9 +849,7 @@ def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> Non
     receiver = pd.DataFrame(
         {
             predictor: np.arange(5, dtype=np.float64) + offset
-            for offset, predictor in enumerate(
-                SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS
-            )
+            for offset, predictor in enumerate(SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS)
         },
         index=tax_unit["tax_unit_id"],
     )
@@ -829,9 +859,7 @@ def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> Non
             assert entity == "tax_unit"
             return tax_unit
 
-    prediction_rows, fan_keys = module._source_receiver_rows(
-        TaxUnitFrame(), receiver
-    )
+    prediction_rows, fan_keys = module._source_receiver_rows(TaxUnitFrame(), receiver)
     assert prediction_rows.index.tolist() == ["10", "20"]
     assert fan_keys.tolist() == ["10", "10", "10", "20", "20"]
     # Source 10 prefers clone 0; source 20 has no native survivor and picks
