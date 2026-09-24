@@ -531,11 +531,13 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
-    # 11 = target checkpoints preserve nullable booleans explicitly; schema 2
-    # distinguishes the new values+mask codec from schema-1 checkpoints.
+    # 12 = the identity carries the staged-frame digest (microcosm#956);
+    # schema 2 distinguishes the values+mask codec from schema-1 checkpoints.
     assert identity["schema_version"] == 2
-    assert identity["materializer_version"] == 11
+    assert identity["materializer_version"] == 12
+    assert identity["staged_frame_sha256"] == "staged-frame-sha"
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -547,6 +549,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         frame=frame,
         identity=identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
     loaded = builder._read_target_frame_checkpoint(
         path,
@@ -622,6 +625,7 @@ def test_target_frame_checkpoint_nullable_boolean_storage_is_explicit(
         frame=frame,
         identity=identity,
         compilation={},
+        build_commit="fixture-commit",
     )
     loaded = builder._read_target_frame_checkpoint(
         path,
@@ -698,6 +702,7 @@ def test_target_frame_checkpoint_rejects_malformed_boolean_storage(
         frame=frame,
         identity={},
         compilation={},
+        build_commit="fixture-commit",
     )
 
     with h5py.File(path, mode="r+") as h5:
@@ -732,6 +737,7 @@ def test_target_frame_checkpoint_rejects_schema_one(
         frame=small_frame,
         identity={},
         compilation={},
+        build_commit="fixture-commit",
     )
     with h5py.File(path, mode="r+") as h5:
         h5.attrs["schema_version"] = 1
@@ -747,9 +753,9 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    Version 11 adds the lossless nullable-boolean checkpoint codec. The version
-    constant participates in the identity comparison; this pins stored-10
-    versus current-11 rejection directly.
+    Version 12 adds the staged-frame digest to the identity (microcosm#956).
+    The version constant participates in the identity comparison; this pins
+    stored-11 versus current-12 rejection directly.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -782,17 +788,19 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
-    # 10 = the pre-nullable-boolean-codec world; 9 = the still-older pre-#557
-    # release-refit world. Both must miss against expected version 11.
-    stale_identity = {**dict(identity), "materializer_version": 10}
-    older_identity = {**dict(identity), "materializer_version": 9}
+    # 11 = the pre-staged-frame-digest world; 10 = the still-older
+    # pre-nullable-boolean-codec world. Both must miss against version 12.
+    stale_identity = {**dict(identity), "materializer_version": 11}
+    older_identity = {**dict(identity), "materializer_version": 10}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
         frame=frame,
         identity=stale_identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
 
     loaded = builder._read_target_frame_checkpoint(
@@ -808,6 +816,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         frame=frame,
         identity=older_identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
     assert (
         builder._read_target_frame_checkpoint(
@@ -835,6 +844,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         # frozen-assignment digest is covered separately below.
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
         ssi_take_up_prior_weight_basis_sha256="basis-artifact-sha",
     )
     basis_path = tmp_path / "target_frame_checkpoint_basis.h5"
@@ -843,6 +853,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         frame=frame,
         identity=identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
 
     loaded_with_basis = builder._read_target_frame_checkpoint(
@@ -968,6 +979,7 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
     stale_identity = {
         **fresh_identity,
@@ -979,6 +991,7 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         frame=small_frame,
         identity=stale_identity,
         compilation={},
+        build_commit="fixture-commit",
     )
 
     loaded = builder._read_target_frame_checkpoint(
@@ -1014,6 +1027,7 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
         congressional_district_vintage_crosswalk_sha256=None,
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
 
     def fail_materialize(*args, **kwargs):
@@ -1036,12 +1050,426 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
             (target,),
             target_frame_checkpoint_path=tmp_path / "target_frame_checkpoint.h5",
             target_frame_checkpoint_identity=identity,
+            target_frame_checkpoint_build_commit="reading-commit",
         )
     )
 
     assert loaded_frame is small_frame
     assert loaded_registry is registry
     assert compilation["target_frame_checkpoint"]["status"] == "hit"
+
+
+def _restaged_frame(
+    frame: Frame,
+    *,
+    person: pd.DataFrame | None = None,
+    weights: Weights | None = None,
+    strata: pd.Series | None = None,
+) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    if person is not None:
+        tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household") if weights is None else weights},
+        frame.strata if strata is None else strata,
+    )
+
+
+def test_staged_frame_digest_moves_with_any_one_staged_input(small_frame) -> None:
+    """microcosm#956: one changed staged column, dtype, name, weight or
+    stratum changes the digest; an equal frame rebuilt from copies does not."""
+
+    builder = _load_builder_module()
+    digest = builder._staged_frame_sha256
+    baseline = digest(small_frame)
+    person = small_frame.table("person")
+
+    assert len(baseline) == 64
+    assert digest(_restaged_frame(small_frame, person=person.copy())) == baseline
+
+    one_value = person.copy()
+    one_value.loc[3, "income"] = 51.0
+    narrower = person.copy()
+    narrower["income"] = narrower["income"].astype(np.float32)
+    renamed = person.rename(columns={"income": "income_renamed"})
+    reordered = person[["person_id", "income", "person_household_id"]]
+    one_stratum = small_frame.strata.copy()
+    one_stratum.iloc[3] = "puf"
+    variants = {
+        "one staged value": _restaged_frame(small_frame, person=one_value),
+        "same values, narrower dtype": _restaged_frame(small_frame, person=narrower),
+        "renamed column": _restaged_frame(small_frame, person=renamed),
+        "reordered columns": _restaged_frame(small_frame, person=reordered),
+        "one weight": _restaged_frame(
+            small_frame,
+            weights=Weights(np.asarray([1000.0, 2001.0]), WeightKind.DESIGN),
+        ),
+        "weight kind": _restaged_frame(
+            small_frame,
+            weights=Weights(np.asarray([1000.0, 2000.0]), WeightKind.IMPORTANCE),
+        ),
+        "one stratum": _restaged_frame(small_frame, strata=one_stratum),
+    }
+    digests = {name: digest(frame) for name, frame in variants.items()}
+    assert all(value != baseline for value in digests.values()), digests
+    assert len(set(digests.values())) == len(digests)
+
+
+def test_staged_frame_digest_covers_every_entity_table() -> None:
+    """microcosm#956: every US entity table feeds the digest, not only person.
+
+    The materializer reads group-entity inputs too (household ``state_fips``,
+    for one), so one changed value or one added column in any table must move
+    the digest, as must a weight vector on a group entity. The loop runs over
+    the real ``US_SCHEMA``, so a new entity is covered as soon as it exists.
+    """
+
+    builder = _load_builder_module()
+    base = _multi_reform_frame(builder)
+    assert tuple(base.entities) == tuple(builder.US_SCHEMA.entities)
+    assert len(base.entities) == 6
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    for entity, table in tables.items():
+        # Column names are globally unique across tables (the flattening rule).
+        table[f"{entity}_staged_input"] = np.arange(len(table), dtype="int64")
+    household_weights = {"household": base.weights_for("household")}
+
+    def digest(
+        changed: dict[str, pd.DataFrame] | None = None,
+        weights: dict[str, Weights] | None = None,
+    ) -> str:
+        return builder._staged_frame_sha256(
+            Frame(
+                tables if changed is None else changed,
+                builder.US_SCHEMA,
+                household_weights if weights is None else weights,
+            )
+        )
+
+    def copied() -> dict[str, pd.DataFrame]:
+        return {entity: table.copy() for entity, table in tables.items()}
+
+    baseline = digest()
+    assert digest(copied()) == baseline
+    variants: dict[str, str] = {}
+    for entity in builder.US_SCHEMA.entities:
+        one_value = copied()
+        one_value[entity].loc[0, f"{entity}_staged_input"] = 7
+        variants[f"{entity}: one value"] = digest(one_value)
+        added = copied()
+        added[entity][f"{entity}_added_input"] = 0
+        variants[f"{entity}: added column"] = digest(added)
+    recoded = copied()
+    recoded["household"].loc[1, "state_fips"] = 34
+    variants["household: state_fips recode"] = digest(recoded)
+    variants["tax_unit: weights added"] = digest(
+        weights={
+            **household_weights,
+            "tax_unit": Weights(np.ones(3), WeightKind.DESIGN),
+        }
+    )
+    assert baseline not in variants.values(), variants
+    assert len(set(variants.values())) == len(variants)
+
+
+#: The staged-frame digest of ``_golden_staged_frame`` under
+#: ``us_fiscal_refresh_staged_frame_v1``. A pass-B checkpoint hit needs a new
+#: process to reproduce pass A's digest for an equal frame, so the value is
+#: pinned, not only compared within one process. If this assertion moves, the
+#: byte framing (or a dtype name it hashes) changed: rename
+#: ``STAGED_FRAME_DIGEST_CODEC`` and repin, never repin alone.
+GOLDEN_STAGED_FRAME_SHA256 = (
+    "26eb1cb211ad6f5c4fce85bca76a52986ba1bd390ca9db5c006ea5a477504305"
+)
+
+
+def _golden_staged_frame() -> Frame:
+    """A fixed frame that reaches every encoding branch of the digest."""
+
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(4, dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+            "income": np.asarray([100.5, 0.0, -250.25, np.nan]),
+            "is_flag": np.asarray([True, False, True, False]),
+            "masked_flag": pd.arrays.BooleanArray(
+                np.asarray([True, True, False, True]),
+                np.asarray([False, True, False, True]),
+            ),
+            "label": pd.Series(["a", "", None, "é"], dtype=object),
+            "mixed": pd.Series([1, "1", 1.5, None], dtype=object),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([1, 2], dtype="int64"),
+            "state_fips": np.asarray([6, 36], dtype="int32"),
+        }
+    )
+    return Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {
+            "household": Weights(np.asarray([1000.0, 2000.0]), WeightKind.DESIGN),
+            "person": Weights(np.asarray([1.0, 2.0, 3.0, 4.0]), WeightKind.IMPORTANCE),
+        },
+        pd.Series(["asec", "asec", "puf", "puf"], index=person.index),
+    )
+
+
+def test_staged_frame_digest_is_pinned_across_processes() -> None:
+    """microcosm#956: the digest of a fixed frame is a known constant."""
+
+    builder = _load_builder_module()
+    assert builder.STAGED_FRAME_DIGEST_CODEC == "us_fiscal_refresh_staged_frame_v1"
+    assert (
+        builder._staged_frame_sha256(_golden_staged_frame())
+        == GOLDEN_STAGED_FRAME_SHA256
+    )
+
+
+def _staged_digest_with_person_column(builder, frame: Frame, column) -> str:
+    """Digest ``frame`` with ``column`` appended to its person table."""
+
+    person = frame.table("person").copy()
+    person["staged"] = column
+    return builder._staged_frame_sha256(_restaged_frame(frame, person=person))
+
+
+def test_staged_frame_digest_names_the_dtype_of_same_width_values(
+    small_frame,
+) -> None:
+    """Equal bytes under another dtype still move the digest.
+
+    Each pair below has identical value bytes and byte length, so only the
+    digest's dtype field tells the columns apart; a staging cast between them
+    must not reuse a checkpoint materialized from the other dtype.
+    """
+
+    builder = _load_builder_module()
+    flags = [True, False, True, False]
+    pairs = {
+        "bool vs uint8 flags": (
+            np.asarray(flags, dtype=np.bool_),
+            np.asarray(flags, dtype=np.uint8),
+        ),
+        "int64 vs float64 zeros": (
+            np.zeros(4, dtype=np.int64),
+            np.zeros(4, dtype=np.float64),
+        ),
+        "int64 vs uint64 zeros": (
+            np.zeros(4, dtype=np.int64),
+            np.zeros(4, dtype=np.uint64),
+        ),
+    }
+    for name, (left, right) in pairs.items():
+        assert left.tobytes() == right.tobytes(), name
+        assert _staged_digest_with_person_column(
+            builder, small_frame, left
+        ) != _staged_digest_with_person_column(builder, small_frame, right), name
+
+
+def test_staged_frame_digest_frames_variable_width_and_masked_values(
+    small_frame,
+) -> None:
+    """Missing is not "", string boundaries cannot shift, mixed objects carry
+    their types, and bits hidden under a nullable mask cannot move the digest."""
+
+    builder = _load_builder_module()
+
+    def staged(column: pd.Series) -> str:
+        return _staged_digest_with_person_column(builder, small_frame, column)
+
+    assert staged(pd.Series(["ab", "c", "", None], dtype=object)) != staged(
+        pd.Series(["a", "bc", "", None], dtype=object)
+    )
+    assert staged(pd.Series(["a", "b", "", None], dtype=object)) != staged(
+        pd.Series(["a", "b", None, ""], dtype=object)
+    )
+    # A mixed column takes the typed encoding and an all-string column the
+    # utf8 one, so the two never collide.
+    assert staged(pd.Series([1, "1", "x", "y"], dtype=object)) != staged(
+        pd.Series(["1", "1", "x", "y"], dtype=object)
+    )
+    # Within the typed encoding every value carries its type, so swapping an
+    # integer with its spelling still moves the digest.
+    assert staged(pd.Series([1, "1", "x", "y"], dtype=object)) != staged(
+        pd.Series(["1", 1, "x", "y"], dtype=object)
+    )
+    mask = np.asarray([False, True, False, True])
+    hidden_true = pd.Series(
+        pd.arrays.BooleanArray(np.asarray([True, True, False, True]), mask)
+    )
+    hidden_false = pd.Series(
+        pd.arrays.BooleanArray(np.asarray([True, False, False, False]), mask)
+    )
+    assert staged(hidden_true) == staged(hidden_false)
+    assert staged(hidden_false) != staged(
+        pd.Series([True, False, False, False], dtype="boolean")
+    )
+
+
+def test_target_frame_checkpoint_hit_records_source_commit_not_identity(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    """microcosm#956: the build commit is provenance, never identity.
+
+    A checkpoint written at one commit serves a later commit that stages the
+    same frame, and the hit names the commit that wrote it. A frame that
+    differs in one staged column misses, whatever the commit.
+    """
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    target = TargetSpec(
+        name="mock.measure",
+        entity="household",
+        measure="household_id",
+        value=1.0,
+        source="Mock source",
+    )
+    materialized: list[str] = []
+
+    def fake_materialize(base_frame, target_specs, **kwargs):
+        materialized.append(builder._staged_frame_sha256(base_frame))
+        return (
+            base_frame,
+            TargetRegistry(target_specs, country="us"),
+            {"declared_targets": len(target_specs)},
+        )
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", fake_materialize)
+
+    def identity_for(frame: Frame) -> dict[str, object]:
+        return builder._target_frame_checkpoint_identity(
+            base_dataset_sha256="base-sha",
+            policyengine_us_version="1.2.3",
+            seed=0,
+            target_period=builder.PERIOD,
+            target_registry_version="registry-sha",
+            weeks_unemployed_source_sha256="weeks-source-sha",
+            congressional_district_vintage_crosswalk_sha256=None,
+            ssi_take_up_assignment_sha256="ssi-flags-sha",
+            selection_identities_sha256=None,
+            staged_frame_sha256=builder._staged_frame_sha256(frame),
+        )
+
+    def load(frame: Frame, commit: str) -> dict[str, object]:
+        _, _, compilation = builder._load_or_materialize_target_frame(
+            frame,
+            (target,),
+            target_frame_checkpoint_path=path,
+            target_frame_checkpoint_identity=identity_for(frame),
+            target_frame_checkpoint_build_commit=commit,
+        )
+        return compilation["target_frame_checkpoint"]
+
+    # The identity takes no commit, so no commit can move it.
+    parameters = inspect.signature(builder._target_frame_checkpoint_identity)
+    assert not [name for name in parameters.parameters if "commit" in name]
+    identity = identity_for(small_frame)
+    assert not [key for key in identity if "commit" in key]
+    path = tmp_path / "target_frame_checkpoint.h5"
+    writer_commit = "a" * 40
+    reader_commit = "b" * 40
+
+    written = load(small_frame, writer_commit)
+    assert written["status"] == "miss_written"
+    assert written["source_build_commit"] == writer_commit
+    assert written["staged_frame_sha256"] == identity["staged_frame_sha256"]
+    with h5py.File(path, "r") as h5:
+        assert str(h5.attrs["build_commit"]) == writer_commit
+        assert json.loads(str(h5.attrs["identity_json"])) == identity
+
+    rebuilt = _restaged_frame(small_frame)
+    hit = load(rebuilt, reader_commit)
+    assert hit["status"] == "hit"
+    assert hit["source_build_commit"] == writer_commit
+    assert hit["identity_sha256"] == written["identity_sha256"]
+    assert hit["staged_frame_sha256"] == written["staged_frame_sha256"]
+    assert len(materialized) == 1
+
+    person = small_frame.table("person").copy()
+    person.loc[0, "income"] = 101.0
+    restaged = _restaged_frame(small_frame, person=person)
+    missed = load(restaged, writer_commit)
+    assert missed["status"] == "miss_written"
+    assert missed["identity_sha256"] != written["identity_sha256"]
+    assert len(materialized) == 2
+    assert materialized[-1] == missed["staged_frame_sha256"]
+
+    with pytest.raises(ValueError, match="build_commit is required"):
+        builder._load_or_materialize_target_frame(
+            small_frame,
+            (target,),
+            target_frame_checkpoint_path=path,
+            target_frame_checkpoint_identity=identity,
+        )
+
+
+def test_reform_vector_cache_tightens_with_staged_frame_via_materializer_identity(
+    small_frame,
+) -> None:
+    """microcosm#956 leaves the reform-vector keys alone: they still bind the
+    materializer identity digest, which now moves with the staged frame, and
+    they still exclude the raw build commit (#217/#557)."""
+
+    builder = _load_builder_module()
+    keys = builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    assert "target_frame_materializer_identity_sha256" in keys
+    assert "staged_frame_sha256" not in keys
+    assert "build_commit" not in keys
+    person = small_frame.table("person").copy()
+    person.loc[0, "income"] = 101.0
+    restaged = _restaged_frame(small_frame, person=person)
+    reform_spec = SimpleNamespace(
+        measure="jct_mock_tax_expenditure",
+        neutralized_variable="mock_credit",
+    )
+
+    def cache_digest(frame: Frame, commit: str) -> tuple[str, str]:
+        materializer_identity = builder._target_frame_checkpoint_digest(
+            builder._target_frame_checkpoint_identity(
+                base_dataset_sha256="base-sha",
+                policyengine_us_version="1.2.3",
+                seed=0,
+                target_period=builder.PERIOD,
+                target_registry_version="registry-sha",
+                weeks_unemployed_source_sha256="weeks-source-sha",
+                congressional_district_vintage_crosswalk_sha256=None,
+                ssi_take_up_assignment_sha256="ssi-flags-sha",
+                selection_identities_sha256=None,
+                staged_frame_sha256=builder._staged_frame_sha256(frame),
+            )
+        )
+        cache_identity = builder._target_materialization_cache_identity(
+            context={
+                "base_dataset_sha256": "base-sha",
+                "build_commit": commit,
+                "target_frame_materializer_identity_sha256": materializer_identity,
+            },
+            reform_spec=reform_spec,
+            n_households=2,
+        )
+        assert (
+            cache_identity["context"]["target_frame_materializer_identity_sha256"]
+            == materializer_identity
+        )
+        assert "build_commit" not in cache_identity["context"]
+        return (
+            materializer_identity,
+            builder._target_materialization_cache_digest(cache_identity),
+        )
+
+    baseline = cache_digest(small_frame, "a" * 40)
+    assert cache_digest(small_frame, "b" * 40) == baseline
+    changed = cache_digest(restaged, "a" * 40)
+    assert changed[0] != baseline[0]
+    assert changed[1] != baseline[1]
 
 
 def test_runtime_versions_use_local_workspace_package_version(
@@ -5490,6 +5918,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         "spm_missing_pool",
         "qrf_tail_register",
         "qrf_tail_register_clean",
+        "target_frame_checkpoint",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -5530,11 +5959,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     premortem path: the old register raise escaped the batch here, before the
     tail JSON and the #568 final-weight sidecar were written. The run must
     now reach the batched raise with both on disk.
+    ``target_frame_checkpoint``: the ``merge`` run with the target-frame
+    checkpoint enabled, as release runs have it by default (microcosm#956).
+    main() must hand the checkpoint writer this build's full commit, and the
+    writer's payload, source commit included, must reach the written
+    diagnostics. Every other mode passes ``--no-target-frame-checkpoint`` and
+    must record the checkpoint as disabled.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
     qrf_tail_register_modes = {"qrf_tail_register", "qrf_tail_register_clean"}
     clean_run = terminal_mode == "qrf_tail_register_clean"
+    checkpoint_run = terminal_mode == "target_frame_checkpoint"
+    # Outside ``out``, so the no-H5-under-out sweep below still pins that a
+    # failed run leaves no release artifact.
+    target_frame_checkpoint_path = (
+        tmp_path / "checkpoints" / "target_frame_checkpoint.h5"
+    )
+    # What ``git rev-parse HEAD`` returns here; distinct from the short-commit
+    # sentinel so the checkpoint can only have received the full commit.
+    harness_full_commit = "c0de" * 10
     release_id = (
         "populace-us-2024-k2-gate-failure-test"
         if terminal_mode == "puf_tail"
@@ -5707,7 +6151,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             release_id,
             "--asec-2023-weeks-unemployed-source",
             str(weeks_source),
-            "--no-target-frame-checkpoint",
+            *(
+                ["--target-frame-checkpoint", str(target_frame_checkpoint_path)]
+                if checkpoint_run
+                else ["--no-target-frame-checkpoint"]
+            ),
         ]
     if terminal_mode != "telemetry" and not prepared_pool:
         argv.append("--no-staging")
@@ -5755,7 +6203,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_sha256",
         fake_sha256,
     )
-    monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: (
+            harness_full_commit if args == ("rev-parse", "HEAD") else "commit"
+        ),
+    )
     monkeypatch.setattr(
         builder,
         "_assert_cd_vintage_support_matches",
@@ -7134,8 +7588,53 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     def fake_materialize_target_frame(frame, specs, **kwargs):
+        captured["materialize_frame"] = frame
         captured["materialize_kwargs"] = kwargs
         return frame, registry, {"dropped_target_names": []}
+
+    def fake_staged_frame_sha256(frame):
+        # The digest itself is tested on real frames; this harness's frame is a
+        # household-only fake. Record which frame main() digests, so the run
+        # can prove it is the very frame handed to the materializer.
+        captured.setdefault("staged_digest_frames", []).append(frame)
+        return "staged-frame-sentinel"
+
+    real_write_target_frame_checkpoint = builder._write_target_frame_checkpoint
+
+    def recording_write_target_frame_checkpoint(
+        path, *, frame, identity, compilation, build_commit
+    ):
+        captured["checkpoint_write"] = {
+            "path": path,
+            "frame": frame,
+            "identity": dict(identity),
+            "build_commit": build_commit,
+        }
+        # The harness frame is a household-only fake the HDF writer cannot
+        # serialize. The real writer runs on a one-household stand-in, so the
+        # payload that reaches the diagnostics is the writer's own.
+        stand_in = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": np.asarray([1], dtype="int64"),
+                        "person_household_id": np.asarray([1], dtype="int64"),
+                    }
+                ),
+                "household": pd.DataFrame(
+                    {"household_id": np.asarray([1], dtype="int64")}
+                ),
+            },
+            EntitySchema(group_entities=("household",)),
+            {"household": Weights(np.ones(1), WeightKind.DESIGN)},
+        )
+        return real_write_target_frame_checkpoint(
+            path,
+            frame=stand_in,
+            identity=identity,
+            compilation=compilation,
+            build_commit=build_commit,
+        )
 
     def fake_degenerate_input_signal_gate(frame, engine):
         # In retirement mode this gate ALSO fails: the production masking
@@ -7166,6 +7665,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_materialize_target_frame",
         fake_materialize_target_frame,
     )
+    monkeypatch.setattr(builder, "_staged_frame_sha256", fake_staged_frame_sha256)
+    monkeypatch.setattr(
+        builder,
+        "_write_target_frame_checkpoint",
+        recording_write_target_frame_checkpoint,
+    )
 
     def fake_calibrate_l0_refit(*args, **kwargs):
         captured["l0_args"] = args
@@ -7187,8 +7692,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 {
                     "build": {
                         "release_gates": dict(build["release_gates"]),
+                        # The real writer copies ``build`` whole; this block
+                        # carries the checkpoint provenance (microcosm#956).
+                        "target_compilation": build["target_compilation"],
                     }
-                }
+                },
+                allow_nan=False,
             )
         )
         return path
@@ -7525,6 +8034,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ],
         ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
         selection_identities_sha256=cache_context["selection_identities_sha256"],
+        staged_frame_sha256="staged-frame-sentinel",
     )
     assert evidence_identity == dict(expected_evidence_identity)
     ids_block = final_weights_metadata.pop("household_ids")
@@ -7867,10 +8377,47 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ],
         ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
         selection_identities_sha256=cache_context["selection_identities_sha256"],
+        staged_frame_sha256="staged-frame-sentinel",
     )
     assert cache_context[
         "target_frame_materializer_identity_sha256"
     ] == builder._target_frame_checkpoint_digest(expected_materializer_identity)
+    # microcosm#956: one staged digest per run, taken on the exact frame
+    # object the materializer received.
+    assert len(captured["staged_digest_frames"]) == 1
+    assert captured["staged_digest_frames"][0] is captured["materialize_frame"]
+    assert cache_context["build_commit"] == harness_full_commit
+    checkpoint_payload = written_diagnostics["build"]["target_compilation"][
+        "target_frame_checkpoint"
+    ]
+    if checkpoint_run:
+        # microcosm#956: main() hands the writer this build's full commit and
+        # the materialized frame, and the writer's payload reaches the written
+        # diagnostics unchanged.
+        checkpoint_write = captured["checkpoint_write"]
+        assert checkpoint_write["path"] == target_frame_checkpoint_path
+        assert checkpoint_write["frame"] is captured["materialize_frame"]
+        assert checkpoint_write["identity"] == dict(expected_materializer_identity)
+        assert checkpoint_write["build_commit"] == harness_full_commit
+        assert checkpoint_payload == {
+            "enabled": True,
+            "status": "miss_written",
+            "path": str(target_frame_checkpoint_path),
+            "identity_sha256": builder._target_frame_checkpoint_digest(
+                expected_materializer_identity
+            ),
+            "schema_version": builder.TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+            "staged_frame_sha256": "staged-frame-sentinel",
+            "source_build_commit": harness_full_commit,
+        }
+        with h5py.File(target_frame_checkpoint_path, "r") as h5:
+            assert str(h5.attrs["build_commit"]) == harness_full_commit
+            assert json.loads(str(h5.attrs["identity_json"])) == dict(
+                expected_materializer_identity
+            )
+    else:
+        assert "checkpoint_write" not in captured
+        assert checkpoint_payload == {"enabled": False, "status": "disabled"}
     # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
     # the #548 batched terminal gates): the final measurement hits disk
     # BEFORE the final integrity gate runs. Delivery still evaluates after
@@ -12613,6 +13160,7 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
     legacy = builder._target_frame_checkpoint_identity(**common)
     default_kwarg = builder._target_frame_checkpoint_identity(
@@ -12649,6 +13197,7 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         frame=small_frame,
         identity=legacy,
         compilation={"declared_targets": 0},
+        build_commit="fixture-commit",
     )
     assert (
         builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
@@ -12679,6 +13228,7 @@ def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
         "weeks_unemployed_source_sha256": "weeks-source-sha",
         "congressional_district_vintage_crosswalk_sha256": None,
         "ssi_take_up_assignment_sha256": "ssi-flags-sha",
+        "staged_frame_sha256": "staged-frame-sha",
     }
     full_pool = builder._target_frame_checkpoint_identity(
         **common, selection_identities_sha256=None
@@ -12704,6 +13254,7 @@ def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
         frame=small_frame,
         identity=prefix_shape,
         compilation={},
+        build_commit="fixture-commit",
     )
     assert (
         builder._read_target_frame_checkpoint(

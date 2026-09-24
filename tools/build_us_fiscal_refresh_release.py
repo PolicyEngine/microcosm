@@ -459,7 +459,11 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # 11: target-frame checkpoint columns now preserve nullable booleans as
 # canonical bool values plus an explicit uint8 null mask. Older checkpoints
 # cannot attest this lossless physical representation.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 11
+# 12: the identity now carries staged_frame_sha256, a digest of the staged
+# frame handed to the materializer (microcosm#956), so a staging change that
+# forgets this bump can no longer reuse stale target columns. Checkpoints
+# written without the digest cannot attest their staged frame.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 12
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -2346,6 +2350,149 @@ def _selection_mass_protection_specs(
     return tuple(specs)
 
 
+# The byte framing of _staged_frame_sha256. It is the first field hashed, so a
+# framing change must rename it and digests under two codecs never compare
+# equal.
+STAGED_FRAME_DIGEST_CODEC = "us_fiscal_refresh_staged_frame_v1"
+
+
+def _update_staged_frame_digest(digest, field: str, payload) -> None:
+    """Append one named, length-prefixed field to the staged-frame digest.
+
+    Prefixing every field with its name and byte length keeps the stream
+    unambiguous: bytes cannot shift between adjacent columns or tables and
+    reproduce another frame's digest.
+    """
+
+    field_bytes = field.encode("utf-8")
+    view = memoryview(payload).cast("B")
+    digest.update(len(field_bytes).to_bytes(8, "little"))
+    digest.update(field_bytes)
+    digest.update(view.nbytes.to_bytes(8, "little"))
+    digest.update(view)
+
+
+def _update_staged_frame_digest_with_series(
+    digest, field: str, series: pd.Series
+) -> None:
+    """Hash one column: its dtype, row count, missing mask and value bytes."""
+
+    dtype = series.dtype
+    _update_staged_frame_digest(digest, f"{field}/dtype", str(dtype).encode("utf-8"))
+    _update_staged_frame_digest(
+        digest, f"{field}/rows", len(series).to_bytes(8, "little")
+    )
+    if isinstance(dtype, np.dtype) and dtype.kind in "biufcmM":
+        # NumPy-backed fixed-width values: hash the raw bytes. A NaN is its
+        # own bit pattern, so no separate mask is needed. Datetimes hash as
+        # their int64 ticks (the buffer protocol refuses them); the dtype
+        # field above already names the unit.
+        values = series.to_numpy(copy=False)
+        if dtype.kind in "mM":
+            values = values.view(np.int64)
+        _update_staged_frame_digest(
+            digest,
+            f"{field}/values",
+            np.ascontiguousarray(
+                values.astype(values.dtype.newbyteorder("<"), copy=False)
+            ),
+        )
+        return
+    missing = series.isna().to_numpy(dtype=np.bool_)
+    _update_staged_frame_digest(digest, f"{field}/missing", missing)
+    if getattr(dtype, "kind", "O") in "biuf" and hasattr(dtype, "numpy_dtype"):
+        # Masked extension arrays (boolean, Int64, Float64): canonical zero
+        # under the mask, so hidden bits cannot move the digest.
+        numpy_dtype = np.dtype(dtype.numpy_dtype)
+        values = series.to_numpy(dtype=numpy_dtype, na_value=numpy_dtype.type(0))
+        _update_staged_frame_digest(
+            digest,
+            f"{field}/values",
+            np.ascontiguousarray(
+                values.astype(numpy_dtype.newbyteorder("<"), copy=False)
+            ),
+        )
+        return
+    # Variable-width values (strings, objects, categoricals). A missing slot
+    # encodes as empty bytes; the mask above tells it apart from "".
+    values = series.to_numpy(dtype=object, na_value=None)
+    if pd.api.types.infer_dtype(values, skipna=True) in {"string", "empty"}:
+        kind = b"utf8"
+        encoded = [
+            b"" if value is None else value.encode("utf-8", "surrogatepass")
+            for value in values
+        ]
+    else:
+        # Mixed objects: tag each value with its type so 1, 1.0 and "1" differ.
+        kind = b"typed"
+        encoded = [
+            b""
+            if value is None
+            else (
+                f"{type(value).__module__}.{type(value).__qualname__}\x00{value}"
+            ).encode("utf-8", "surrogatepass")
+            for value in values
+        ]
+    _update_staged_frame_digest(digest, f"{field}/encoding", kind)
+    _update_staged_frame_digest(
+        digest,
+        f"{field}/lengths",
+        np.fromiter((len(item) for item in encoded), dtype="<u8", count=len(encoded)),
+    )
+    _update_staged_frame_digest(digest, f"{field}/payload", b"".join(encoded))
+
+
+def _staged_frame_sha256(frame: Frame) -> str:
+    """Digest the staged frame handed to the target materializer.
+
+    microcosm#956. The rest of the checkpoint identity hashes the on-disk
+    base dataset, the run settings (seed, PolicyEngine-US version, target
+    registry, congressional-district crosswalk, selection-mass protections),
+    a few named stage-input digests (the weeks-unemployed source, the SSI
+    take-up assignment and prior-weight basis, the selection support) and a
+    hand-bumped materializer version. A change to any other stage that forgot
+    the bump would silently reuse stale target columns. This digest
+    covers what the materializer reads and the checkpoint restores: each
+    entity table's column names, dtypes and value bytes in column order,
+    every weight vector with its kind, and the person strata. It streams one
+    column at a time, so it never copies the whole frame.
+    """
+
+    digest = hashlib.sha256()
+    _update_staged_frame_digest(
+        digest, "codec", STAGED_FRAME_DIGEST_CODEC.encode("ascii")
+    )
+    _update_staged_frame_digest(
+        digest, "entities", _strict_json_bytes(list(frame.entities))
+    )
+    for entity in frame.entities:
+        table = frame.table(entity)
+        _update_staged_frame_digest(
+            digest,
+            f"tables/{entity}/columns",
+            _strict_json_bytes([str(column) for column in table.columns]),
+        )
+        for index in range(table.shape[1]):
+            _update_staged_frame_digest_with_series(
+                digest, f"tables/{entity}/{index}", table.iloc[:, index]
+            )
+    _update_staged_frame_digest(
+        digest, "weighted_entities", _strict_json_bytes(list(frame.weighted_entities))
+    )
+    for entity in frame.weighted_entities:
+        weights = frame.weights_for(entity)
+        _update_staged_frame_digest(
+            digest, f"weights/{entity}/kind", weights.kind.value.encode("utf-8")
+        )
+        _update_staged_frame_digest(
+            digest,
+            f"weights/{entity}/values",
+            np.ascontiguousarray(weights.values, dtype="<f8"),
+        )
+    _update_staged_frame_digest_with_series(digest, "strata", frame.strata)
+    return digest.hexdigest()
+
+
 def _target_frame_checkpoint_identity(
     *,
     base_dataset_sha256: str,
@@ -2357,6 +2504,7 @@ def _target_frame_checkpoint_identity(
     congressional_district_vintage_crosswalk_sha256: object,
     ssi_take_up_assignment_sha256: str,
     selection_identities_sha256: str | None,
+    staged_frame_sha256: str,
     selection_mass_protections: tuple[str, ...] = (),
     ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
@@ -2366,6 +2514,12 @@ def _target_frame_checkpoint_identity(
         "kind": "us_fiscal_refresh_target_frame",
         "country": "us",
         "base_dataset_sha256": str(base_dataset_sha256),
+        # The exact staged frame the materializer reads (microcosm#956). The
+        # base hash above cannot see the stages that run after the base
+        # load. The build commit stays out: a new commit that stages the
+        # same frame still hits, and the writing commit is recorded beside
+        # the identity as information only.
+        "staged_frame_sha256": str(staged_frame_sha256),
         "weeks_unemployed_source_sha256": str(weeks_unemployed_source_sha256),
         "policyengine_us_version": str(policyengine_us_version),
         "seed": int(seed),
@@ -2426,6 +2580,7 @@ def _write_target_frame_checkpoint(
     frame: Frame,
     identity: Mapping[str, object],
     compilation: Mapping[str, object],
+    build_commit: str,
 ) -> dict[str, object]:
     import h5py
 
@@ -2438,6 +2593,9 @@ def _write_target_frame_checkpoint(
         h5.attrs["identity_json"] = _strict_json_text(identity)
         h5.attrs["identity_sha256"] = _target_frame_checkpoint_digest(identity)
         h5.attrs["compilation_json"] = _strict_json_text(compilation)
+        # Provenance only, never identity: a hit reports which build wrote
+        # the frame it reuses (microcosm#956).
+        h5.attrs["build_commit"] = str(build_commit)
         tables_group = h5.create_group("tables")
         for entity in frame.entities:
             _write_checkpoint_dataframe(
@@ -2464,6 +2622,8 @@ def _write_target_frame_checkpoint(
         "path": str(path),
         "identity_sha256": _target_frame_checkpoint_digest(identity),
         "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "staged_frame_sha256": identity.get("staged_frame_sha256"),
+        "source_build_commit": str(build_commit),
     }
 
 
@@ -2511,6 +2671,7 @@ def _read_target_frame_checkpoint(
             weights[str(entity)] = Weights(values, kind)
         strata = _read_checkpoint_series(h5["strata"])
         stored_compilation = json.loads(str(h5.attrs.get("compilation_json", "{}")))
+        stored_build_commit = h5.attrs.get("build_commit")
     frame = Frame(tables, US_SCHEMA, weights, strata)
     registry, compilation = _compile_materialized_target_registry(
         frame,
@@ -2525,6 +2686,12 @@ def _read_target_frame_checkpoint(
             "path": str(path),
             "identity_sha256": _target_frame_checkpoint_digest(identity),
             "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+            "staged_frame_sha256": identity.get("staged_frame_sha256"),
+            # The build that wrote the reused frame, which may differ from
+            # this one: the identity deliberately excludes the commit.
+            "source_build_commit": (
+                None if stored_build_commit is None else str(stored_build_commit)
+            ),
             "stored_compilation": stored_compilation,
         },
         "target_materialization_cache": {
@@ -4951,6 +5118,7 @@ def _load_or_materialize_target_frame(
     *,
     target_frame_checkpoint_path: Path | None = None,
     target_frame_checkpoint_identity: Mapping[str, object] | None = None,
+    target_frame_checkpoint_build_commit: str | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
@@ -4962,6 +5130,14 @@ def _load_or_materialize_target_frame(
     ):
         raise ValueError(
             "target_frame_checkpoint_identity is required when "
+            "target_frame_checkpoint_path is set."
+        )
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_build_commit is None
+    ):
+        raise ValueError(
+            "target_frame_checkpoint_build_commit is required when "
             "target_frame_checkpoint_path is set."
         )
     if (
@@ -4994,6 +5170,7 @@ def _load_or_materialize_target_frame(
             frame=target_frame,
             identity=target_frame_checkpoint_identity,
             compilation=compilation,
+            build_commit=str(target_frame_checkpoint_build_commit),
         )
     else:
         checkpoint_payload = {
@@ -11523,6 +11700,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
             base_frame, selection_mass_protections
         )
         target_specs = (*target_specs, *selection_mass_protection_specs)
+    # microcosm#956: digest the very frame handed to the materializer below,
+    # so a checkpoint hit proves the same staged inputs, not only the same base.
+    staged_frame_sha256 = _staged_frame_sha256(base_frame)
     target_frame_checkpoint_identity = _target_frame_checkpoint_identity(
         base_dataset_sha256=base_dataset_sha256,
         policyengine_us_version=policyengine_us_version,
@@ -11537,6 +11717,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         selection_identities_sha256=(
             None if selection_source is None else selection_source.identities_sha256
         ),
+        staged_frame_sha256=staged_frame_sha256,
         selection_mass_protections=selection_mass_protections,
         ssi_take_up_prior_weight_basis_sha256=(
             None
@@ -11552,6 +11733,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_specs,
         target_frame_checkpoint_path=target_frame_checkpoint_path,
         target_frame_checkpoint_identity=target_frame_checkpoint_identity,
+        target_frame_checkpoint_build_commit=full_commit,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context={
