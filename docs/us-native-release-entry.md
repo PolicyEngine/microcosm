@@ -51,13 +51,19 @@ by a manifest. Diagnostics carry codes, declared names, counts and digests.
 The consumer file and import-origin refusals also name installed file paths
 as `RECORD` lists them and loaded module names; none carries a cell value.
 
-Run with exclusive control of the output tree. Descriptor-relative operations
-protect directory traversal and final manifest publication; diagnostics and H5
-writers still use ordinary paths and can be redirected by concurrent directory
-replacement. Final checks refuse detected path changes, but do not prevent those
-earlier writes. Portable `mkdir` followed by `open` also cannot prove that an
-uncooperative actor did not replace the new directory between those calls. The
-retained inode is the first one opened after `mkdir` succeeds.
+Run with exclusive control of the output tree. `native-releases` and the
+release directory are created and opened relative to held directory
+descriptors, and the final manifest is published through them. `<out>` and any
+missing parents are created and opened by path and then checked for their
+canonical location, so a concurrently swapped ancestor is refused only after
+`<out>` may have been created at the link's target. The final reopen of the
+release directory likewise detects an ancestor swap but does not prevent it.
+Diagnostics and H5 writers still use ordinary paths and can be redirected by
+concurrent directory replacement. Final checks refuse detected path changes,
+but do not prevent those earlier writes. Portable `mkdir` followed by `open`
+also cannot prove that an uncooperative actor did not replace the new directory
+between those calls. The retained inode is the first one opened after `mkdir`
+succeeds.
 
 1. **Owner.** `check_survey_enrichment_run(run)` runs first. A Frame, a
    development checkpoint or its report, a projection, a descriptive checked
@@ -105,11 +111,15 @@ retained inode is the first one opened after `mkdir` succeeds.
    can do to script shebangs), the runtime refuses. Every file-backed module
    already loaded under a listed distribution's import packages must come
    from one of its verified files. A namespace package without `__file__` is
-   accepted only when every search location is authenticated by that
-   distribution's verified contents; its file-backed descendants are checked
-   separately. A checkout earlier on `sys.path` or an unverified namespace
-   location refuses with `NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN`. A distribution
-   that is not installed is recorded as `null`, and only while none of its import
+   accepted only when every search location, resolved, ends in the module's
+   own name and is either an ancestor of a resolved verified file or a
+   directory that a verified `RECORD` row of that distribution names under the
+   installation root. The second form covers installs that symlink each file
+   into a cache (uv's `--link-mode symlink`); a directory that is neither an
+   ancestor of a resolved verified file nor named by a verified row refuses. Its file-backed descendants are checked separately. A
+   checkout earlier on `sys.path` or an unverified namespace location refuses
+   with `NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN`. A distribution that is not
+   installed is recorded as `null`, and only while none of its import
    packages is loaded. Expected identities must be recorded against this
    schema, including `input_defaults`; none is checked in. The static part is
    compared before the country system is built. The effective settings come
@@ -132,17 +142,18 @@ retained inode is the first one opened after `mkdir` succeeds.
    is not a source-signal or applicability qualification. A
    `--target-family-loss-multiplier` that names no compiled family also
    refuses here, before any output.
-8. **Materialization.** Only now is the output directory created. The output
-   directory is opened without following a final symlink and must still be
-   canonical; `native-releases` and the release directory are created and
-   opened relative to those descriptors. A detected symlink replacement at
-   those components refuses with `NATIVE_RELEASE_DIRECTORY`, and an existing
-   release directory refuses with `NATIVE_RELEASE_DIRECTORY_EXISTS` and is
-   left alone. The opened directory must still be reachable at its canonical
-   path and must accept hard links (`NATIVE_RELEASE_OUTPUT_FILESYSTEM`
-   otherwise). Failure leaves directory paths in place because cleanup by
-   name could remove another actor's replacement. Inspect retained paths
-   before cleaning them or choosing a new release ID. Targets are
+8. **Materialization.** Only now is the output directory created, by path
+   together with any missing parents. It is opened without following a final
+   symlink and must still be canonical; `native-releases` and the release
+   directory are created and opened relative to those descriptors. A
+   replacement detected at those components (symlink or directory), or an
+   opened release directory no longer at its canonical path, refuses with
+   `NATIVE_RELEASE_DIRECTORY`; an existing release directory refuses with
+   `NATIVE_RELEASE_DIRECTORY_EXISTS` and is left alone. An output that cannot
+   hold hard links refuses with `NATIVE_RELEASE_OUTPUT_FILESYSTEM`. Failure
+   leaves directory paths in place because cleanup by name could remove
+   another actor's replacement. Inspect retained paths before cleaning them or
+   choosing a new release ID. Targets are
    materialized from the projected Frame with the admitted consumer's dataset,
    simulation and system constructors, a copy of the explicit SPM selection,
    the adapter as formula-ownership metadata, and target caches disabled.
@@ -219,7 +230,9 @@ The engine-free tests in
   refuses edited, resized, removed and editable installs of an invented
   distribution, an unparseable `RECORD`, and loaded modules that come from a
   checkout, have neither a verified file nor authenticated namespace search
-  locations, or belong to a distribution that is not installed;
+  locations, or belong to a distribution that is not installed; a namespace
+  in an install whose files are symlinks into another tree is accepted, while
+  mirrored, unrecorded and hash-less directories in that layout still refuse;
 - the input gate reports codes and name-only counts, including unknown
   values, and a projection report that does not bind the owner and consumer
   refuses;

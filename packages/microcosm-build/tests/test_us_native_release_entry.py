@@ -2340,13 +2340,26 @@ def test_full_distribution_roster_names_every_import_package(builder):
 
 
 @pytest.fixture
-def installed_namespace(monkeypatch, tmp_path):
-    """Import a real synthetic PEP 420 child from a hashed wheel-style RECORD."""
+def installed_namespace(request, monkeypatch, tmp_path):
+    """Import a real synthetic PEP 420 child from a hashed wheel-style RECORD.
+
+    The indirect parameter ``"symlinked"`` moves every hashed file into a
+    separate cache tree and leaves a symlink in its place, keeping the package
+    directories real, as ``uv pip install --link-mode symlink`` lays out files.
+    That installation is also reached through a symlinked ancestor, so its
+    recorded directories only match search locations once both are resolved.
+    """
     import base64
     import hashlib
     import importlib
 
-    distribution, package_file = _invented_distribution(tmp_path)
+    symlinked = getattr(request, "param", "copied") == "symlinked"
+    root = tmp_path
+    if symlinked:
+        root = tmp_path / "linked"
+        (tmp_path / "real").mkdir()
+        root.symlink_to(tmp_path / "real")
+    distribution, package_file = _invented_distribution(root)
     namespace = package_file.parent / "reforms"
     namespace.mkdir()
     child = namespace / "rule.py"
@@ -2358,6 +2371,14 @@ def installed_namespace(monkeypatch, tmp_path):
         record.read_text()
         + f"invented_consumer/reforms/rule.py,sha256={digest.decode()},{len(contents)}\n"
     )
+    if symlinked:
+        site = package_file.parent.parent
+        metadata = record.with_name("METADATA")
+        for installed in (package_file, child, metadata):
+            cached = tmp_path / "cache" / installed.relative_to(site)
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            installed.rename(cached)
+            installed.symlink_to(cached)
     _serve(monkeypatch, distribution)
     monkeypatch.syspath_prepend(str(package_file.parent.parent))
     names = (
@@ -2365,7 +2386,8 @@ def installed_namespace(monkeypatch, tmp_path):
         "invented_consumer.reforms",
         "invented_consumer.reforms.rule",
     )
-    # Register absence so monkeypatch also removes modules loaded by importlib.
+    # Set aside any existing modules of these names (monkeypatch restores them);
+    # the finally block removes the ones importlib loads here.
     for name in names:
         monkeypatch.delitem(sys.modules, name, raising=False)
     try:
@@ -2384,6 +2406,60 @@ def test_distribution_identity_accepts_verified_namespace(builder, installed_nam
     assert identity["verified_files"] == 3
 
 
+@pytest.mark.parametrize("installed_namespace", ["symlinked"], indirect=True)
+def test_symlinked_install_accepts_its_real_namespace_directory(
+    builder, installed_namespace
+):
+    namespace, child = installed_namespace
+    (location,) = namespace.__path__
+    # Every verified file resolves into the cache; the search location does not.
+    assert child.is_symlink() and not Path(location).is_symlink()
+    assert Path(location).resolve() != Path(location)
+    assert Path(location).resolve() not in child.resolve().parents
+    identity = builder._native_release_distribution_identity("invented-consumer")
+    assert identity["verified_files"] == 3
+
+
+@pytest.mark.parametrize("installed_namespace", ["symlinked"], indirect=True)
+@pytest.mark.parametrize("spoof", ["mirror", "unrecorded", "unhashed"])
+def test_symlinked_install_refuses_directories_record_does_not_verify(
+    builder, installed_namespace, monkeypatch, tmp_path, spoof
+):
+    import importlib
+
+    namespace, child = installed_namespace
+    name = namespace.__name__
+    drafts_name = "invented_consumer.drafts"
+    try:
+        if spoof == "mirror":
+            # The same cached file linked from a directory RECORD does not name.
+            mirror = tmp_path / "mirror" / "invented_consumer" / "reforms"
+            mirror.mkdir(parents=True)
+            (mirror / child.name).symlink_to(child.resolve())
+            monkeypatch.setattr(namespace, "__path__", [str(mirror)])
+        else:
+            # A real directory beside the recorded ones, holding either nothing
+            # or a file RECORD lists without a hash.
+            drafts = child.parent.parent / "drafts"
+            drafts.mkdir()
+            if spoof == "unhashed":
+                (drafts / "notes.txt").write_text("unhashed\n")
+                record = child.parents[2] / "invented_consumer-1.0.dist-info/RECORD"
+                record.write_text(
+                    record.read_text() + "invented_consumer/drafts/notes.txt,,\n"
+                )
+            name = drafts_name
+            importlib.invalidate_caches()
+            assert importlib.import_module(name).__file__ is None
+        with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+            builder._native_release_distribution_identity("invented-consumer")
+        assert refused.value.code == "NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN"
+        assert refused.value.diagnostics["unverified_module_examples"] == [name]
+    finally:
+        sys.modules.pop(drafts_name, None)
+
+
+@pytest.mark.parametrize("installed_namespace", ["copied", "symlinked"], indirect=True)
 @pytest.mark.parametrize(
     "change", ["outside", "unlisted", "empty", "no_spec", "parent"]
 )
@@ -2416,6 +2492,7 @@ def test_namespace_requires_every_search_location_verified(
     ]
 
 
+@pytest.mark.parametrize("installed_namespace", ["copied", "symlinked"], indirect=True)
 def test_verified_namespace_does_not_admit_unlisted_child(
     builder, installed_namespace, monkeypatch
 ):

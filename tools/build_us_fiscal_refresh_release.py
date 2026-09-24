@@ -2952,19 +2952,25 @@ def _native_release_code_identity(value) -> dict:
 
 
 def _native_release_unverified_modules(
-    packages: Iterable[str], verified_files: set[Path]
+    packages: Iterable[str],
+    verified_files: set[Path],
+    recorded_directories: set[Path],
 ) -> list[str]:
     """Loaded modules whose file or namespace search locations are unverified.
 
     A namespace must have nonempty search locations, each a package directory
-    containing verified distribution files. File-backed descendants are checked
-    separately; a verified namespace never admits an unlisted child module.
-    A fileless module without namespace metadata still refuses.
+    containing verified distribution files: an ancestor of a resolved verified
+    file, or one of ``recorded_directories``, the resolved directories that
+    verified RECORD rows name under the distribution root. The latter admits
+    installs that symlink each file into a cache while keeping real package
+    directories. File-backed descendants are checked separately; a verified
+    namespace never admits an unlisted child module. A fileless module
+    without namespace metadata still refuses.
     """
     packages = set(packages)
     verified_directories = {
         parent for path in verified_files for parent in path.parents
-    }
+    } | recorded_directories
     unverified = []
     for module_name, module in list(sys.modules.items()):
         if module_name.partition(".")[0] not in packages:
@@ -3015,11 +3021,16 @@ def _native_release_distribution_identity(name: str) -> dict | None:
     """
     import base64
     import csv
+    from pathlib import PurePosixPath
 
     packages = set(NATIVE_RELEASE_CONSUMER_IMPORT_PACKAGES.get(name, ()))
 
-    def require_verified_imports(verified_files: set[Path]) -> None:
-        unverified = _native_release_unverified_modules(packages, verified_files)
+    def require_verified_imports(
+        verified_files: set[Path], recorded_directories: set[Path]
+    ) -> None:
+        unverified = _native_release_unverified_modules(
+            packages, verified_files, recorded_directories
+        )
         _native_release_require(
             not unverified,
             "NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN",
@@ -3033,7 +3044,7 @@ def _native_release_distribution_identity(name: str) -> dict | None:
     try:
         distribution = importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
-        require_verified_imports(set())
+        require_verified_imports(set(), set())
         return None
     record = distribution.read_text("RECORD")
     _native_release_require(
@@ -3058,6 +3069,10 @@ def _native_release_distribution_identity(name: str) -> dict | None:
     verified = unhashed = 0
     mismatched = []
     verified_files: set[Path] = set()
+    recorded_directories: set[Path] = set()
+    # Rows share parents (pe-us 2.2.1: 17k rows, 7k directories); resolve each
+    # named directory once.
+    resolved_parents: dict[str, Path] = {}
     for row in rows:
         path, recorded_hash, recorded_size = (row + ["", ""])[:3]
         top = path.split("/", 1)[0]
@@ -3070,6 +3085,7 @@ def _native_release_distribution_identity(name: str) -> dict | None:
         digest = hashlib.sha256() if algorithm == "sha256" and expected else None
         size = 0
         located = Path(distribution.locate_file(path))
+        relative = PurePosixPath(path)
         try:
             with located.open("rb") as stream:
                 for block in iter(lambda: stream.read(1024 * 1024), b""):
@@ -3077,6 +3093,19 @@ def _native_release_distribution_identity(name: str) -> dict | None:
                     if digest is not None:
                         digest.update(block)
             located = located.resolve()
+            # Package directories this row names under the distribution root,
+            # resolved like namespace search locations. An install that
+            # symlinks each file into a cache (uv --link-mode symlink) keeps
+            # these directories real while ``located`` resolves elsewhere.
+            directories = set()
+            if not (relative.is_absolute() or ".." in relative.parts):
+                for parent in relative.parents[:-1]:
+                    key = str(parent)
+                    if key not in resolved_parents:
+                        resolved_parents[key] = Path(
+                            distribution.locate_file(key)
+                        ).resolve()
+                    directories.add(resolved_parents[key])
         except (OSError, RuntimeError):
             digest = None
         if (
@@ -3089,6 +3118,7 @@ def _native_release_distribution_identity(name: str) -> dict | None:
         else:
             verified += 1
             verified_files.add(located)
+            recorded_directories |= directories
     _native_release_require(
         not mismatched,
         "NATIVE_RELEASE_CONSUMER_FILES",
@@ -3098,7 +3128,7 @@ def _native_release_distribution_identity(name: str) -> dict | None:
             "mismatched_examples": sorted(mismatched)[:5],
         },
     )
-    require_verified_imports(verified_files)
+    require_verified_imports(verified_files, recorded_directories)
     return {
         "version": distribution.version,
         "record_sha256": hashlib.sha256(record.encode("utf-8")).hexdigest(),
@@ -3650,9 +3680,13 @@ def _native_release_manifest_payload(
     )
 
 
-# Directory operations and final manifest publication use held descriptors.
-# H5 and diagnostics still use ordinary paths; callers must exclusively own
-# the output tree. Final checks refuse detected directory/file substitutions.
+# native-releases and the release directory are created and opened relative
+# to held descriptors, and the manifest is published through them. <out> and
+# its missing parents are created and opened by path, then checked for their
+# canonical location; the final reopen detects ancestor swaps but does not
+# prevent them. H5 and diagnostics still use ordinary paths; callers must
+# exclusively own the output tree. Final checks refuse detected
+# directory/file substitutions.
 _NATIVE_RELEASE_DIRECTORY_FLAGS = (
     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 )
@@ -3731,18 +3765,21 @@ def _probe_native_release_links(directory_fd: int) -> None:
 def _create_native_release_directory(
     native_root: Path, release_id: str
 ) -> _NativeReleaseDirectory:
-    """Create ``<out>/native-releases/<release-id>`` without following links.
+    """Create ``<out>/native-releases/<release-id>`` through held descriptors.
 
     ``native_root`` is ``<resolved out>/native-releases``. The output directory
-    is opened without following a final symlink and must still be canonical;
-    ``native-releases`` and the release directory are then created and opened
-    relative to those descriptors, so a symlink swapped in at any of those
-    components refuses during these operations. The opened directory must
-    still be reachable at its canonical path and must accept hard links.
-    Failed directories are retained: checking an inode then removing its name
-    cannot atomically exclude another actor's replacement. Callers must own
-    the output tree exclusively, including the portable mkdir-to-open gap;
-    mkdir supplies no descriptor that proves the newly created inode.
+    and any missing parents are created by path, following links in its
+    ancestors, so a swapped ancestor is detected here rather than prevented.
+    The output directory is opened without following a final symlink and must
+    still be canonical; ``native-releases`` and the release directory are then
+    created and opened relative to those descriptors, so a symlink swapped in
+    at any of those components refuses during these operations. The opened
+    directory must still be reachable at its canonical path and must accept
+    hard links. Failed directories are retained: checking an inode then
+    removing its name cannot atomically exclude another actor's replacement.
+    Callers must own the output tree exclusively, including the portable
+    mkdir-to-open gap; mkdir supplies no descriptor that proves the newly
+    created inode.
     """
     out = native_root.parent
     release_dir = native_root / release_id
@@ -4104,8 +4141,9 @@ def build_native_survey_release(
             ),
         }
     )
-    # First output side effect: a fresh directory owned by this build, created
-    # relative to descriptors that follow no links, since admission took time.
+    # First output side effect, since admission took time: <out> is created by
+    # path and checked for its canonical location, then this build's fresh
+    # release directory is created relative to held descriptors.
     created = _create_native_release_directory(native_root, args.release_id)
     prepared = _run_prepared_native_fiscal_release(
         projection.frame,
