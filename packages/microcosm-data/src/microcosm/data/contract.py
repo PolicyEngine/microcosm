@@ -417,13 +417,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "3981a7d1fa1c141b6426eb55e0d1b7b38b5b238f5ad33ebbdda2e12f37e352c7"
+    "77c39b24d445a1c71ae4a2eee370442dff00d03154041fa97941343f846c8d8c"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "84cd0ebfd29b5ac1c7a51bd42b769f341a5c5a87b16dd51831b6b64a5cb23c00"
+    "70a5c753347fa33e146bf22110054b7c26f5e6a2546703abe6f7e91831b4237a"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "aecc898089f015b30cbe65cff3de097367337ce8cbb06e7181c9895d6fd245a1"
+    "2dddbd1ed4f7dcd644a8d6ab126e680ad0fc947b5f910eed776894877f2ba9e1"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -834,10 +834,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "81782e03c6cf6504b25f9372b3e66385bbd31acf4c5bc6de0724ead327601c36"
+            "a6033d487b3643800bd4691b91f52c07106686cb822d5028e76c76a0fc4664bb"
         ),
         "policy_sha256": (
-            "10bca98c83aae6decd1d584ec55f34ffcd054f64527c60583ae3e93cccc25535"
+            "3c08258a6eba824287b50300b3438b4a2b241757457e8a9a8388349dbf227e7a"
         ),
     },
     "calibration_seam": {
@@ -850,10 +850,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "7e03311af04b1f1ae3bb38aafa5d8df1fca6898cfd4b437e2acd9151f72558c9"
+            "5f9681b56b64156c1fba9119b253416952cc35bd798dcc71fc2ffae4e79d386d"
         ),
         "policy_sha256": (
-            "183b897c7809f7a6bb74f63b0ced789990d7340a37597d4f8bd00e5d0ac80f5c"
+            "ab39a3466feca64067a3b37106c2125196f7d53b1eb448f0415a5e6846379de8"
         ),
     },
 }
