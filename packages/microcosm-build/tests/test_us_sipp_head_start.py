@@ -600,6 +600,46 @@ def test_historical_duplicate_clone_index_still_fails_closed(
         impute_us_sipp_head_start(duplicated, _donor(), seed=3)
 
 
+@pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])
+@pytest.mark.parametrize(
+    "bad_index",
+    [np.inf, -np.inf, np.nan, 1.5, -1.0],
+    ids=["inf", "negative_inf", "nan", "non_integer", "negative_float"],
+)
+def test_malformed_clone_index_fails_closed_before_canonical_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    assembled: bool,
+    bad_index: float,
+) -> None:
+    # Microcosm #992 gate finding: an assembled [0, inf] once ranked as
+    # INT64_MAX and passed canonical selection; a historical tail copy set to
+    # inf was likewise accepted as a distinct PUF-role copy. A float -1.0
+    # would rank ahead of the native row and silently replace it.
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    column = "person_support_clone_index"
+    if assembled:
+        frame = _frame([10, 10], ages=[4, 4], channels=["acs", "acs"])
+        person = frame.table("person").copy()
+        person["person_spine_source_id"] = [100, 100]
+        person[column] = [0.0, bad_index]
+    else:
+        frame = _historical_tail_frame()
+        person = frame.table("person").copy()
+        tail = person[column].eq(2)
+        person[column] = person[column].astype(np.float64)
+        person.loc[tail, column] = bad_index
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"clone-role metadata: PUF support metadata column "
+            r"'person_support_clone_index' must contain nonnegative integers"
+        ),
+    ):
+        impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

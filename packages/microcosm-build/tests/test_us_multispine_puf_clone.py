@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import warnings
+from collections.abc import Callable
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -276,3 +280,123 @@ def test_support_copy_rank_uses_clone_index_on_every_frame_kind() -> None:
         support_copy_rank_series(inconsistent, entity="person")
     with pytest.raises(ValueError, match="missing both"):
         support_copy_rank_series(pd.DataFrame({"x": [1]}), entity="person")
+
+
+_CLONE_INDEX_ACCESSORS = pytest.mark.parametrize(
+    "accessor",
+    [support_role_series, support_copy_rank_series, puf_tax_detail_clone_mask],
+    ids=["role", "copy_rank", "puf_detail_mask"],
+)
+_SUPPORT_FRAME_KINDS = pytest.mark.parametrize(
+    "assembled",
+    [True, False],
+    ids=["assembled", "historical_puf_support"],
+)
+_MALFORMED_CLONE_INDEX = (
+    r"PUF support metadata column 'person_support_clone_index' must contain "
+    r"nonnegative integers \(finite and representable as int64\)"
+)
+
+
+def _support_copies(clone_indices: Any, *, assembled: bool) -> pd.DataFrame:
+    """Support copies of source 7: its native row, then PUF-role copies.
+
+    Historical PUF-support frames carry the exact ASEC/PUF roles as channels;
+    assembled frames carry a raw spine ID and a receipt-declared channel.
+    """
+
+    count = len(clone_indices)
+    table = pd.DataFrame(
+        {
+            support_source_id_column("person"): [7] * count,
+            support_channel_column("person"): [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                *[PUF_TAX_DETAIL_SUPPORT_CHANNEL] * (count - 1),
+            ],
+            support_clone_index_column("person"): clone_indices,
+        },
+        index=[20 + position for position in range(count)],
+    )
+    if assembled:
+        table[spine_source_id_column("person")] = [1] * count
+        table[support_channel_column("person")] = ["acs"] * count
+    return table
+
+
+@_CLONE_INDEX_ACCESSORS
+@_SUPPORT_FRAME_KINDS
+@pytest.mark.parametrize(
+    "clone_indices",
+    [
+        pytest.param([0, np.inf], id="inf"),
+        pytest.param([0, -np.inf], id="negative_inf"),
+        pytest.param([0, np.nan], id="nan"),
+        pytest.param([0, 1.5], id="non_integer"),
+        pytest.param([0, -1], id="negative"),
+        # A finite negative float takes the float branch, not the integer
+        # one, so it pins that branch's own nonnegativity check.
+        pytest.param([0.0, -1.0], id="negative_float"),
+        pytest.param([0, 2.0**63], id="float_past_int64"),
+        pytest.param([0, "inf"], id="string_inf"),
+        pytest.param(pd.array([0, pd.NA], dtype="Int64"), id="nullable_missing"),
+        pytest.param(
+            np.asarray([0, 2**63], dtype=np.uint64),
+            id="unsigned_past_int64",
+        ),
+    ],
+)
+def test_clone_index_conversions_reject_malformed_provenance_before_casting(
+    accessor: Callable[..., object],
+    assembled: bool,
+    clone_indices: Any,
+) -> None:
+    # Microcosm #992 gate finding: a raw NumPy cast maps +inf (and any float
+    # past the int64 range) to an arbitrary int64 with only a RuntimeWarning,
+    # so [0, inf] once passed Head Start canonical selection as a copy rank.
+    # Escalating that warning proves the refusal happens before any cast.
+    table = _support_copies(clone_indices, assembled=assembled)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        with pytest.raises(ValueError, match=_MALFORMED_CLONE_INDEX):
+            accessor(table, entity="person")
+
+
+@_SUPPORT_FRAME_KINDS
+@pytest.mark.parametrize(
+    ("clone_indices", "expected_ranks"),
+    [
+        pytest.param(np.asarray([0, 1, 2], dtype=np.int64), [0, 1, 2], id="int64"),
+        pytest.param(np.asarray([0.0, 1.0, 2.0]), [0, 1, 2], id="float64"),
+        pytest.param(pd.array([0, 1, 2], dtype="Int64"), [0, 1, 2], id="nullable"),
+        pytest.param(np.asarray([0, 1, 2], dtype=np.uint64), [0, 1, 2], id="uint64"),
+        pytest.param(["0", "1", "2"], [0, 1, 2], id="numeric_strings"),
+        # Integer dtypes are validated exactly, never through a float64 view
+        # that would round an index past 2**53.
+        pytest.param(
+            np.asarray([0, 1, 2**53 + 1], dtype=np.int64),
+            [0, 1, 2**53 + 1],
+            id="exact_past_float_precision",
+        ),
+    ],
+)
+def test_clone_index_conversions_leave_valid_encodings_unchanged(
+    assembled: bool,
+    clone_indices: Any,
+    expected_ranks: list[int],
+) -> None:
+    table = _support_copies(clone_indices, assembled=assembled)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        roles = support_role_series(table, entity="person")
+        ranks = support_copy_rank_series(table, entity="person")
+        mask = puf_tax_detail_clone_mask(table, entity="person")
+
+    assert roles.tolist() == [
+        BASE_ASEC_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    ]
+    assert ranks.tolist() == expected_ranks
+    assert ranks.dtype == np.int64
+    assert ranks.index.tolist() == table.index.tolist()
+    assert mask.tolist() == [False, True, False]

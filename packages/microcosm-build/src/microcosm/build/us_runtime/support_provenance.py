@@ -40,6 +40,10 @@ PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 PUF_TAX_DETAIL_CLONE_INDEX = 1
 SPINE_ASSEMBLY_MANIFEST_KEY = "us_spine_assembly_manifest"
 _SPINE_ASSEMBLY_MANIFEST_VERSION = 1
+_INT64_MAX = int(np.iinfo(np.int64).max)
+# 2**63 is exactly representable in float64 and is the first float past the
+# int64 range, so every integral float strictly below it casts exactly.
+_INT64_FLOAT_EXCLUSIVE_BOUND = float(2**63)
 
 
 class _ProvenanceSchema(Protocol):
@@ -175,20 +179,11 @@ def validate_assembly_provenance(
                 f"channel(s) {unknown}."
             )
 
-        numeric_clone_indices = pd.to_numeric(
-            table[clone_index_column],
-            errors="coerce",
+        clone_indices = _validated_clone_indices(
+            table,
+            clone_index_column,
+            owner=f"{boundary}: assembly manifest provenance",
         )
-        clone_indices = numeric_clone_indices.to_numpy(dtype=np.float64)
-        if (
-            numeric_clone_indices.isna().any()
-            or (clone_indices < 0.0).any()
-            or not np.equal(clone_indices, np.floor(clone_indices)).all()
-        ):
-            raise ValueError(
-                f"{boundary}: assembly manifest provenance column "
-                f"{clone_index_column!r} must contain nonnegative integers."
-            )
         expected_by_channel = raw_counts.get(entity)
         if (
             not isinstance(expected_by_channel, Mapping)
@@ -198,7 +193,7 @@ def validate_assembly_provenance(
                 f"{boundary}: assembly manifest row counts for {entity!r} "
                 "do not exactly cover its declared channels."
             )
-        native = clone_indices == 0.0
+        native = clone_indices == 0
         actual_counts = {
             channel: int(
                 np.count_nonzero(
@@ -291,10 +286,14 @@ def spine_provenance_counts(
     for entity in frame.entities:
         table = frame.table(entity)
         source = table[support_channel_column(entity)].astype(str)
-        clone_index = pd.to_numeric(
-            table[support_clone_index_column(entity)],
-            errors="raise",
-        ).astype("int64")
+        clone_index = pd.Series(
+            _validated_clone_indices(
+                table,
+                support_clone_index_column(entity),
+                owner=f"{boundary}: assembly manifest provenance",
+            ),
+            index=table.index,
+        )
         observed_clone_indices = sorted(int(value) for value in clone_index.unique())
         counts[entity] = {
             "rows": int(len(table)),
@@ -430,19 +429,11 @@ def support_role_series(
             index=table.index,
             name=f"{entity}_support_role",
         )
-    numeric = pd.to_numeric(table[clone_index_column], errors="coerce")
-    if numeric.isna().any():
-        raise ValueError(
-            f"PUF support metadata column {clone_index_column!r} must be integral."
-        )
-    clone_indices = numeric.to_numpy(dtype=np.float64)
-    if (clone_indices < 0).any() or not np.equal(
-        clone_indices, np.floor(clone_indices)
-    ).all():
-        raise ValueError(
-            f"PUF support metadata column {clone_index_column!r} must contain "
-            "nonnegative integers."
-        )
+    clone_indices = _validated_clone_indices(
+        table,
+        clone_index_column,
+        owner="PUF support metadata",
+    )
     channel_column = support_channel_column(entity)
     if channel_column not in table:
         raise ValueError(
@@ -519,11 +510,10 @@ def support_copy_rank_series(
     roles = support_role_series(table, entity=entity)
     clone_index_column = support_clone_index_column(entity)
     if clone_index_column in table:
-        # support_role_series has validated nonnegative integral indices.
-        ranks = (
-            pd.to_numeric(table[clone_index_column], errors="raise")
-            .to_numpy(dtype=np.float64)
-            .astype(np.int64)
+        ranks = _validated_clone_indices(
+            table,
+            clone_index_column,
+            owner="PUF support metadata",
         )
     else:
         ranks = np.where(
@@ -576,16 +566,63 @@ def puf_tax_detail_clone_mask(
     clone_index_column = support_clone_index_column(entity)
     if clone_index_column not in table:
         return roles.eq(PUF_TAX_DETAIL_SUPPORT_CHANNEL).to_numpy()
-    clone_indices = pd.to_numeric(
-        table[clone_index_column],
-        errors="raise",
-    ).to_numpy(dtype=np.int64)
+    clone_indices = _validated_clone_indices(
+        table,
+        clone_index_column,
+        owner="PUF support metadata",
+    )
     return clone_indices == PUF_TAX_DETAIL_CLONE_INDEX
 
 
 def _require_entity_name(entity: str) -> None:
     if not isinstance(entity, str) or not entity:
         raise ValueError("entity must be a non-empty string.")
+
+
+def _validated_clone_indices(
+    table: pd.DataFrame,
+    column: str,
+    *,
+    owner: str,
+) -> np.ndarray:
+    """Return a clone-index column as int64 after proving every value casts.
+
+    This is the module's only clone-index conversion, and validation precedes
+    the cast. NumPy maps NaN, infinities and out-of-range floats to an
+    arbitrary int64 (INT64_MIN or INT64_MAX, by platform) with at most a
+    RuntimeWarning, so an unchecked cast would turn malformed provenance into
+    a plausible clone role or copy rank. Every value must be a finite,
+    nonnegative integer representable as int64.
+    """
+
+    values = table[column]
+    numeric = pd.to_numeric(values, errors="coerce")
+    integer_dtype = pd.api.types.is_integer_dtype(numeric.dtype)
+    if integer_dtype:
+        # Compare integer dtypes exactly (including nullable and unsigned
+        # ones); a float64 view would round values past 2**53 before the
+        # representability check.
+        valid = (
+            (numeric.ge(0) & numeric.le(_INT64_MAX)).fillna(False).to_numpy(dtype=bool)
+        )
+    else:
+        as_float = numeric.to_numpy(dtype=np.float64, na_value=np.nan)
+        valid = (
+            np.isfinite(as_float)
+            & (as_float >= 0.0)
+            & (as_float < _INT64_FLOAT_EXCLUSIVE_BOUND)
+            & np.equal(as_float, np.floor(as_float))
+        )
+    if not valid.all():
+        invalid = values.to_numpy(dtype=object)[~valid]
+        raise ValueError(
+            f"{owner} column {column!r} must contain nonnegative integers "
+            f"(finite and representable as int64); found {invalid.size} "
+            f"invalid value(s), e.g. {invalid[:5].tolist()}."
+        )
+    if integer_dtype:
+        return numeric.to_numpy(dtype=np.int64)
+    return as_float.astype(np.int64)
 
 
 def _json_ready_mapping(value: Mapping[str, Any]) -> dict[str, object]:
