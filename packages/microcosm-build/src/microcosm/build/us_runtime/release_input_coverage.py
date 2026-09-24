@@ -49,7 +49,7 @@ must stay hard requirements.
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -81,6 +81,7 @@ from microcosm.build.us_runtime.medicare_take_up import (
 from microcosm.build.us_runtime.other_health_insurance import (
     US_OTHER_HEALTH_INSURANCE_NONCONSTANT_PERSON_COLUMNS,
 )
+from microcosm.build.us_runtime.parity_reference import load_ecps_parity_known_gaps
 from microcosm.build.us_runtime.prior_year_income import (
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
 )
@@ -129,6 +130,7 @@ __all__ = [
     "ReleaseInputCoverageManifest",
     "assert_release_input_coverage_manifest_current",
     "load_release_input_coverage_manifest",
+    "project_ecps_parity_known_gap_names",
     "us_release_input_coverage_gate",
     "us_release_input_coverage_required_columns",
     "us_release_input_coverage_reviewed_exclusions",
@@ -694,10 +696,52 @@ def _ecps_populated_layers() -> frozenset[str]:
     return frozenset(projected)
 
 
+def project_ecps_parity_known_gap_names(names: Iterable[str]) -> dict[str, str]:
+    """Resolve eCPS parity known-gap names onto the live layers they exempt.
+
+    ``ecps_parity_known_gaps.json`` may name a gap by the pinned reference's
+    historical spelling (``would_claim_wic``), while every consumer grades the
+    reference under the live names projected through
+    ``REFERENCE_ECPS_LAYER_RENAMES``. An unprojected historical entry would
+    exempt no live layer and slip past every guard keyed on live names, so the
+    parity gate, the coverage-manifest generator, the restored-input anti-rot
+    check and the cross-register check all resolve register names here.
+
+    Returns:
+        ``{live_name: register_name}`` in input order, keeping each entry's
+        register spelling for provenance.
+
+    Raises:
+        ValueError: If two register names resolve onto one live layer. Like two
+            reference layers, two exemptions are never merged: the register
+            must say once which reason and issue own the gap.
+    """
+    projected: dict[str, str] = {}
+    for name in names:
+        register_name = str(name)
+        live = REFERENCE_ECPS_LAYER_RENAMES.get(register_name, register_name)
+        if live in projected:
+            raise ValueError(
+                f"eCPS parity known-gap exemption {register_name!r} projects onto "
+                f"{live!r}, which register entry {projected[live]!r} already "
+                "exempts; the rename register would merge two exemptions."
+            )
+        projected[live] = register_name
+    return projected
+
+
+def _registered_as(live: str, register_name: str) -> str:
+    """A live layer name, suffixed with its register spelling when renamed."""
+    if register_name == live:
+        return live
+    return f"{live} (registered as {register_name!r})"
+
+
 def assert_release_input_coverage_manifest_current(
     *,
     engine: Any | None = None,
     manifest: ReleaseInputCoverageManifest | None = None,
+    parity_known_gaps: Iterable[str] | None = None,
 ) -> None:
     """Fail if the coverage manifest has drifted from its authoritative sources.
 
@@ -714,6 +758,11 @@ def assert_release_input_coverage_manifest_current(
       ``receives_snap``, ``receives_tanf``) must be ``required`` with no
       reviewed exclusion — #978 option 1: a national default that drops them
       cannot serve as the ACS local-area donor.
+    - No restored reference input may sit in the eCPS parity known-gap register
+      (``ecps_parity_known_gaps.json``, or ``parity_known_gaps`` names when
+      given) under either its live or its historical spelling: the parity gate
+      honours both, so a restored input filed as a gap would be exempted there
+      even while this manifest still requires it.
     - Every declared column must be a real PolicyEngine-US input leaf, and every
       probe's ``binding_inputs`` / ``budget_measure`` must resolve on the live
       engine, so the contract cannot guard names the engine no longer has.
@@ -722,9 +771,13 @@ def assert_release_input_coverage_manifest_current(
     test environment); the checked-in-facts half always runs.
 
     Raises:
-        ValueError: Naming every drift found.
+        ValueError: Naming every drift found, or if two parity known-gap names
+            resolve onto one live layer.
     """
     manifest = manifest or load_release_input_coverage_manifest()
+    if parity_known_gaps is None:
+        parity_known_gaps = tuple(gap.variable for gap in load_ecps_parity_known_gaps())
+    parity_gap_layers = project_ecps_parity_known_gap_names(parity_known_gaps)
     failures: list[str] = []
 
     declared = set(manifest.declared_columns)
@@ -797,6 +850,15 @@ def assert_release_input_coverage_manifest_current(
             failures.append(
                 f"{column}: restored reference eCPS input must remain required."
             )
+    for column in sorted(
+        RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS & parity_gap_layers.keys()
+    ):
+        failures.append(
+            f"{_registered_as(column, parity_gap_layers[column])}: restored "
+            "reference eCPS input cannot return to the parity known-gap "
+            "register (ecps_parity_known_gaps.json); the parity gate would "
+            "exempt it."
+        )
 
     if engine is None:
         engine = _coverage_engine()
