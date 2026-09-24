@@ -95,14 +95,25 @@ jobs:
       - name: Sync workspace with the US engine
         run: uv sync --all-packages --locked --extra us
       - name: Run US engine tests
+        env:
+          MEMORY_TRACE: ${{ runner.temp }}/engine-us-memory-${{ matrix.python-version }}.jsonl
         run: |
           mapfile -t files < <(
             uv run --no-sync python tools/ci_test_groups.py --list engine-us
           )
-          # Country engines retain substantial process-local state. Running
-          # concurrent pytest workers can exceed the hosted runner's memory.
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -v --tb=short --maxfail=1 --durations=25 -p no:cacheprovider
+          uv run --no-sync python tools/ci_memory_monitor.py \
+            --output "$MEMORY_TRACE" --interval-seconds 5 -- \
+            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
+              -n 2 --dist loadfile -v --tb=short --maxfail=1 \
+              --durations=25 -p no:cacheprovider
+      - name: Upload US engine memory trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-us-memory-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/engine-us-memory-${{ matrix.python-version }}.jsonl
+          if-no-files-found: warn
+          retention-days: 7
 
   engine-uk:
     needs: changes

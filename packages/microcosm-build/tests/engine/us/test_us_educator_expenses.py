@@ -37,7 +37,7 @@ def test_weighted_qrf_writes_only_puf_channel_and_allocates_by_employment(
             outputs,
             *,
             weights,
-        ) -> FakeQRF:
+        ) -> "FakeQRF":
             assert predictors == [
                 "puf_predictor_filing_status_code",
                 "puf_predictor_tax_unit_person_count",
