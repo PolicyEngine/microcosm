@@ -383,7 +383,7 @@ def impute_uk_spi_income_support(
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
 
     ``band_donor_resample`` (``lower_bounds``, ``regional_pool_minimum``,
-    ``seed``) gives the reserved band carriers (microcosm#280 lane) a
+    ``seed``) gives the reserved band carriers (PolicyEngine/chronicle#280 lane) a
     band-conditional draw from the full prepared tape after the stage-1
     forest draw; ``None`` leaves every synthetic adult on the forest draw.
     """
@@ -722,13 +722,19 @@ def _resample_band_donor_leaves(
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Give every reserved band carrier a band-conditional tape draw.
 
-    The pool for a carrier is every prepared tape record whose published total
-    income (TEI + TII) lies in the carrier's band, narrowed to the carrier's
-    region when that regional pool holds at least ``regional_pool_minimum``
-    records. One record is drawn FACT-weighted with replacement and all
-    stage-1 leaves are copied from it, then uprated exactly as the forest
-    draws were; the accounting aggregates derive after the draw as usual.
-    Composite records stay in the pools as published.
+    The pool for a carrier is every prepared tape record whose total income
+    *as it will be realised* lies in the carrier's band: the record's stage-1
+    leaves at the stage's uprating factors plus the published remainder of its
+    total income (TEI + TII) held nominal. The bands are the calibration
+    year's Table 2.5 bands and the reserved weights are that year's taxpayer
+    counts, so membership is asserted on the uprated amount, not on the
+    tape's 2022-23 nominal one. The pool narrows to the carrier's region when
+    that regional pool holds at least ``regional_pool_minimum`` records. One
+    record is drawn FACT-weighted with replacement and all stage-1 leaves are
+    copied from it, then uprated exactly as the forest draws were; the
+    accounting aggregates derive after the draw as usual. Composite records
+    stay in the pools as published. Every carrier's realised total income is
+    checked against its band after the draw and any breach refuses the stage.
     """
 
     if not isinstance(regional_pool_minimum, int) or regional_pool_minimum <= 0:
@@ -779,7 +785,16 @@ def _resample_band_donor_leaves(
     unknown = sorted({int(value) for value in bands} - set(lowers))
     if unknown:
         raise ValueError(f"band donor carriers name undeclared band(s) {unknown}.")
-    total_income = donor["total_income"].to_numpy(dtype=float)
+    columns = list(SPI_INCOME_QRF_OUTPUT_COLUMNS)
+    factors = np.asarray([float(uprating_factors[column]) for column in columns])
+    published_total = donor["total_income"].to_numpy(dtype=float)
+    leaf_values = donor[columns].to_numpy(dtype=np.float64)
+    # The total income a drawn record realises on the frame: its leaves at the
+    # stage's factors plus whatever of the published total the leaves do not
+    # carry, held nominal.
+    total_income = leaf_values @ factors + np.maximum(
+        published_total - leaf_values.sum(axis=1), 0.0
+    )
     donor_region = donor["region"].astype(str).to_numpy()
     fact = donor["FACT"].to_numpy(dtype=float)
     composite = donor["is_composite"].to_numpy(dtype=bool)
@@ -791,7 +806,8 @@ def _resample_band_donor_leaves(
         )
         if pool.size == 0:
             raise ValueError(
-                f"the SPI donor tape carries no record with total income from {lower}."
+                "the SPI donor tape carries no record whose uprated total income "
+                f"lies in the band from {lower}."
             )
         pools[lower] = pool
     rng = np.random.default_rng(seed)
@@ -814,20 +830,29 @@ def _resample_band_donor_leaves(
         matched[index] = bool(regional_cache[(lower, region, "matched")])  # type: ignore[index]
         weights = fact[pool]
         drawn[index] = int(rng.choice(pool, p=weights / weights.sum()))
-    columns = list(SPI_INCOME_QRF_OUTPUT_COLUMNS)
-    factors = np.asarray([float(uprating_factors[column]) for column in columns])
-    leaves = donor.iloc[drawn][columns].to_numpy(dtype=np.float64) * factors
+    leaves = leaf_values[drawn] * factors
     person = person.copy()
     person.loc[carriers, columns] = leaves
+    realised_all = total_income[drawn]
+    uppers = np.asarray([edges[position + 1] for position in range(len(lowers))])
+    upper_by_carrier = uppers[np.searchsorted(np.asarray(lowers), bands)]
+    outside = (realised_all < bands) | (realised_all >= upper_by_carrier)
+    if outside.any():
+        raise ValueError(
+            f"{int(outside.sum())} reserved band carrier(s) realise a total income "
+            "outside their band after the uprated draw; the pools are cut on the "
+            "same uprated total, so this is a stage defect."
+        )
     band_rows = []
     for lower in lowers:
         mask = bands == lower
         pool = pools[lower]
-        realized = total_income[drawn[mask]] if mask.any() else np.asarray([])
+        realized = realised_all[mask] if mask.any() else np.asarray([])
         band_rows.append(
             {
                 "lower_bound": lower,
                 "carriers": int(mask.sum()),
+                "carriers_outside_band": int(outside[mask].sum()),
                 "pool_records": int(pool.size),
                 "pool_composite_records": int(composite[pool].sum()),
                 "pool_weighted_taxpayers": float(fact[pool].sum()),
@@ -845,6 +870,11 @@ def _resample_band_donor_leaves(
         )
     receipt = {
         "carriers": int(carriers.sum()),
+        "carriers_outside_band": int(outside.sum()),
+        "pool_basis": (
+            "uprated total income: stage-1 leaves at the stage's uprating factors "
+            "plus the published remainder held nominal"
+        ),
         "regional_pool_minimum": regional_pool_minimum,
         "seed": seed,
         "weighting": "FACT",

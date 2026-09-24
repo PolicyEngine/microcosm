@@ -351,6 +351,57 @@ def test_resample_gives_carriers_band_conditional_leaves_and_receipts() -> None:
     )
 
 
+def test_resample_cuts_the_pools_on_the_total_income_a_record_realises() -> None:
+    # Given: pay uprated threefold, so the tape's 80k records (published total
+    # 84.8k, below every reserved band) realise 240k-and-over on the frame
+    # while the 260k records realise 780k-and-over.
+    donor = prepare_spi_donor_table(_raw_tape(), seed=1)
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2],
+            "region": ["LONDON", "LONDON"],
+            SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN: [200_000.0, 500_000.0],
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [11, 21],
+            "person_household_id": [1, 2],
+            PERSON_IS_SPI_INCOME_BAND_CARRIER: [True, True],
+        }
+    )
+    for column in SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        person[column] = 1.0
+    factors = dict.fromkeys(SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
+    factors["hmrc_spi_pay"] = 3.0
+    updated, receipt = _resample_band_donor_leaves(
+        person,
+        donor,
+        household=household,
+        spi_people=pd.Series([True, True], index=person.index),
+        uprating_factors=factors,
+        lower_bounds=BANDS,
+        regional_pool_minimum=5,
+        seed=44,
+    )
+    # Then: the 200k carrier drew an 80k record (its uprated pay is 240k), the
+    # 500k carrier a 260k record, and the pools are the uprated bands.
+    pay = updated.loc[updated[PERSON_IS_SPI_INCOME_BAND_CARRIER], "hmrc_spi_pay"]
+    assert pay.tolist() == [240_000.0, 780_000.0]
+    rows = {row["lower_bound"]: row for row in receipt["bands"]}
+    assert rows[200_000]["pool_records"] == int(
+        (donor["hmrc_spi_pay"] == 80_000.0).sum()
+    )
+    assert rows[500_000]["pool_records"] == int(
+        (donor["hmrc_spi_pay"] == 260_000.0).sum()
+    )
+    assert 200_000 <= rows[200_000]["realized_mean_total_income"] < 500_000
+    assert 500_000 <= rows[500_000]["realized_mean_total_income"] < 1_000_000
+    assert receipt["carriers_outside_band"] == 0
+    assert all(row["carriers_outside_band"] == 0 for row in receipt["bands"])
+    assert receipt["pool_basis"].startswith("uprated total income")
+
+
 def test_resample_refuses_missing_carriers_or_undeclared_band() -> None:
     donor = prepare_spi_donor_table(_raw_tape(), seed=1)
     household = pd.DataFrame(

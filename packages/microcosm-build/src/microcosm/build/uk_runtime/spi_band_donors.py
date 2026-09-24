@@ -11,7 +11,7 @@ way ``cgt_band_donors`` reserves rows for the HMRC gain bands: whole FRS
 households copied into the SPI channel, one carrier adult each, drawn by the
 tape's own propensity for the band given region, sex and age, at the band's
 published taxpayer count over the donors per band. The income stage then
-gives each carrier a band-conditional draw from the tape (microcosm#280 lane).
+gives each carrier a band-conditional draw from the tape (PolicyEngine/chronicle#280 lane).
 """
 
 from __future__ import annotations
