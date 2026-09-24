@@ -104,8 +104,9 @@ Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step (`tools/publish_release.sh` →
 `microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
-see README "Releasing & alerts". Publication also refuses a release whose
-build recorded staging telemetry that never reached its repo
+reviewed line promotion is a separate deliberate call to the same CLI with
+`--promote-line`. See README "Releasing & alerts". Publication also refuses a
+release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
 publishes without the flag. Never publish or promote artifacts as a side
 effect of another task. A UK rowwise run's **staged** bundle

@@ -2171,6 +2171,19 @@ def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
     )
 
 
+@pytest.mark.parametrize(
+    ("release_id", "line"),
+    [
+        (UK_NATIONAL_RELEASE_ID, "national"),
+        ("microcosm-uk-2024-25-local-k55000", "local-k55000"),
+        ("microcosm-uk-2024-25-dense", None),
+        (UK_RELEASE_ID, None),
+    ],
+)
+def test_line_for_release_id(release_id: str, line: str | None) -> None:
+    assert contract.line_for_release_id(release_id) == line
+
+
 def test_uk_national_release_dir_validates(tmp_path: Path) -> None:
     validate_release_dir(_write_uk_national_release_dir(tmp_path))
 

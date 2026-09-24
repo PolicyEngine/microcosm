@@ -71,6 +71,7 @@ __all__ = [
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
+    "line_for_release_id",
     "release_dataset_role",
     "required_release_files",
     "validate_evidence_release_dir",
@@ -623,6 +624,38 @@ _UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
 # microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
 # data shard cannot import the build shard); lockstep-tested.
 _UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+_UK_LOCAL_LINE_RELEASE_ID_RE = re.compile(
+    r"^microcosm-uk-2024-25-local-k(?P<n>[1-9][0-9]*)$"
+)
+
+
+def line_for_release_id(release_id: str) -> str | None:
+    """Return the promotable UK publication line for ``release_id``."""
+    if release_id == _UK_NATIONAL_RELEASE_ID:
+        return "national"
+    match = _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id)
+    if match is not None:
+        return f"local-k{match.group('n')}"
+    return None
+
+
+def dataset_role_for_line(line: str) -> str:
+    """The one dataset role a publication line may carry.
+
+    The national line publishes national-default releases; every local-area
+    line publishes non-default local-area releases. The publisher refuses a
+    line promotion whose manifest declares another role, and the loader
+    refuses a manifest that reached a line pointer with the wrong role, so a
+    local-area release can never ride the national pointer (or the reverse)
+    on the strength of its release id alone.
+    """
+    if line == "national":
+        return NATIONAL_DEFAULT_DATASET_ROLE
+    if re.fullmatch(r"local-k[1-9][0-9]*", line):
+        return NON_DEFAULT_LOCAL_AREA_DATASET_ROLE
+    raise ValueError(f"{line!r} is not a publication line.")
+
+
 # The dense joint national + local line (microcosm#762 A18, ruling
 # 2026-09-03): the same constant-id approach, published on the inspect lane
 # under the non-default local-area role. Mirrored from
@@ -690,6 +723,17 @@ _UK_DENSE_SOURCE_COVERAGE_KEYS = (
 # a hand-edited or stale revision cannot claim a cut the attempt chain never
 # produced.
 _UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
+
+
+def _uk_line_cut_tag_re(release_id: str) -> re.Pattern[str] | None:
+    """Return the immutable cut-tag grammar for a promotable UK line."""
+    if line_for_release_id(release_id) is None:
+        return None
+    return re.compile(
+        re.escape(release_id) + "-" + _UK_NATIONAL_REVISION_SUFFIX_RE.pattern
+    )
+
+
 # The canonical release-dir filenames of the evidence the certification signs
 # (tools/assemble_uk_release_dir.py copies each byte-for-byte). Validation
 # binds every local file to its signed digest: a certification whose evidence
@@ -1288,6 +1332,7 @@ def _check_release_manifest(
             "release_manifest.json must declare a non-empty 'artifacts' mapping."
         )
     else:
+        line_cut_tag_re = _uk_line_cut_tag_re(release_id)
         diagnostics_artifact = artifacts.get("calibration_diagnostics")
         if not isinstance(diagnostics_artifact, Mapping):
             failures.append(
@@ -1315,13 +1360,9 @@ def _check_release_manifest(
                 revision == release_id
                 or (annual_revision is not None and revision == annual_revision)
                 or (
-                    release_id == _UK_NATIONAL_RELEASE_ID
+                    line_cut_tag_re is not None
                     and isinstance(revision, str)
-                    and revision.startswith(release_id + "-")
-                    and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
-                        revision[len(release_id) + 1 :]
-                    )
-                    is not None
+                    and line_cut_tag_re.fullmatch(revision) is not None
                 )
             )
             # A present-but-non-string revision must fail here rather than
@@ -1334,7 +1375,7 @@ def _check_release_manifest(
                 expected = (
                     f"the release id {release_id!r} or a "
                     f"'{release_id}-<YYYYMMDDTHHMMSSZ>-<uuid8>' per-cut tag"
-                    if release_id == _UK_NATIONAL_RELEASE_ID
+                    if line_cut_tag_re is not None
                     else f"the release id {release_id!r}"
                 )
                 failures.append(
