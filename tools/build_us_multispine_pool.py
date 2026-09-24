@@ -30,7 +30,6 @@ validity-domain receipt, not a relaxed tolerance. Example (the committed
      --asec-raw-stage-h5 "$ASEC_H5" --asec-raw-stage-h5-sha256 "$ASEC_SHA" \\
      --acs-household-zip "$ACS_H_ZIP" --acs-household-zip-sha256 "$ACS_H_SHA" \\
      --acs-person-zip "$ACS_P_ZIP" --acs-person-zip-sha256 "$ACS_P_SHA" \\
-     --acs-rent-h5 "$RENT_H5" --acs-rent-h5-sha256 "$RENT_SHA" \\
      --puf-h5 "$PUF_H5" --puf-h5-sha256 "$PUF_SHA" \\
      --puf-source-year-csv "$PUF_CSV" \\
      --puf-source-year-csv-sha256 "$PUF_CSV_SHA" \\
@@ -127,8 +126,7 @@ from microcosm.build.us_runtime.h5_io import (
     write_nullable_us_h5,
 )
 from microcosm.build.us_runtime.housing_inputs import (
-    ACS_2022_RENT_ARTIFACT_SHA256,
-    load_acs_2022_rent_donor,
+    load_acs_pums_rent_donor,
 )
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
@@ -526,18 +524,6 @@ def _parser() -> argparse.ArgumentParser:
         required=True,
         type=_sha256_argument,
         help="Expected SHA-256 of --acs-person-zip.",
-    )
-    parser.add_argument(
-        "--acs-rent-h5",
-        required=True,
-        type=Path,
-        help="Local canonical ACS 2022 rent-donor H5.",
-    )
-    parser.add_argument(
-        "--acs-rent-h5-sha256",
-        required=True,
-        type=_sha256_argument,
-        help="Expected canonical SHA-256 of --acs-rent-h5.",
     )
     parser.add_argument(
         "--puf-h5",
@@ -951,12 +937,6 @@ def _verify_inputs(
         raise ValueError(f"Pool outputs must not overwrite inputs: {collisions}.")
 
     acs_source_manifest = load_acs_source_manifest()
-    if args.acs_rent_h5_sha256 != ACS_2022_RENT_ARTIFACT_SHA256:
-        raise ValueError(
-            "ACS rent donor CLI pin differs from the canonical archived pin: "
-            f"got {args.acs_rent_h5_sha256}, expected "
-            f"{ACS_2022_RENT_ARTIFACT_SHA256}."
-        )
     verified = {
         "asec_raw_stage": _verify_file(
             "ASEC raw-stage checkpoint",
@@ -974,11 +954,6 @@ def _verify_inputs(
             args.acs_person_zip,
             args.acs_person_zip_sha256,
             acs_source_manifest.artifact("person"),
-        ),
-        "acs_rent_donor": _verify_file(
-            "ACS rent donor",
-            args.acs_rent_h5,
-            args.acs_rent_h5_sha256,
         ),
         "processed_puf": _verify_file(
             "processed PUF H5",
@@ -1009,6 +984,17 @@ def _verify_inputs(
     return verified, acs_source_manifest
 
 
+def _load_acs_rent_donor(args: argparse.Namespace) -> pd.DataFrame:
+    """Build the rent donor from the same verified ACS PUMS archives as the spine."""
+
+    return load_acs_pums_rent_donor(
+        args.acs_household_zip,
+        args.acs_person_zip,
+        expected_household_sha256=args.acs_household_zip_sha256,
+        expected_person_sha256=args.acs_person_zip_sha256,
+    )
+
+
 def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
     """Resolve immutable input locations without opening them."""
 
@@ -1016,7 +1002,6 @@ def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
         Path(args.asec_raw_stage_h5).resolve(),
         Path(args.acs_household_zip).resolve(),
         Path(args.acs_person_zip).resolve(),
-        Path(args.acs_rent_h5).resolve(),
         Path(args.puf_h5).resolve(),
         Path(args.puf_source_year_csv).resolve(),
     }
@@ -1097,7 +1082,7 @@ def _load_inputs(
     )
     acs_frame, acs_build = build_acs_pums_unit_frame(acs_source)
     mapped_acs = map_acs_native_inputs(acs_frame)
-    acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
+    acs_rent_donor = _load_acs_rent_donor(args)
     puf_donor, donor_build = _load_puf_donor(args)
     return _LoadedInputs(
         asec=asec,
@@ -1305,7 +1290,6 @@ def _configured_input_pins_digest(args: argparse.Namespace) -> str:
     payload = {
         "acs_household": args.acs_household_zip_sha256,
         "acs_person": args.acs_person_zip_sha256,
-        "acs_rent_donor": args.acs_rent_h5_sha256,
         "asec_raw_stage": args.asec_raw_stage_h5_sha256,
         "processed_puf": args.puf_h5_sha256,
         "puf_source_year": args.puf_source_year_csv_sha256,
@@ -4922,7 +4906,7 @@ def _main_legacy(args: argparse.Namespace) -> int:
         puf_donor = loaded.puf_donor
         source_native_inputs = {"acs": loaded.acs_native_inputs}
     elif resume.stage == "assembled":
-        acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
+        acs_rent_donor = _load_acs_rent_donor(args)
         puf_donor, _puf_build = _load_puf_donor(args)
         _validate_resumed_puf_donor(
             puf_donor,
@@ -5329,7 +5313,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 )
                 _append_phase(state, "checkpoint_loaded")
                 if resume.stage == "assembled":
-                    acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
+                    acs_rent_donor = _load_acs_rent_donor(args)
                     puf_donor, _puf_donor_build = _load_puf_donor(args)
                     _validate_resumed_puf_donor(
                         puf_donor,

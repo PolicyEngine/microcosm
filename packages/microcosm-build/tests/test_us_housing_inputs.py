@@ -5,14 +5,13 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
-import h5py
 import numpy as np
 import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.housing_inputs as module
+from microcosm.build.us_runtime.acs_sources import load_acs_source_manifest
 from microcosm.build.us_runtime.housing_inputs import (
-    ACS_2022_RENT_ARTIFACT_SHA256,
     HOUSING_INPUTS_ARCHIVED_ACS_DERIVATION_URL,
     HOUSING_INPUTS_ARCHIVED_CPS_RENT_URL,
     HOUSING_INPUTS_ARCHIVED_CPS_SPM_URL,
@@ -26,7 +25,6 @@ from microcosm.build.us_runtime.housing_inputs import (
     US_HOUSING_NONCONSTANT_SPM_UNIT_COLUMNS,
     derive_us_housing_inputs,
     impute_us_housing_assistance_to_puf_support,
-    load_acs_2022_rent_donor,
     load_acs_pums_rent_donor,
     us_housing_inputs_signal_gate,
     us_housing_inputs_stage_spec,
@@ -205,8 +203,17 @@ def test_stage_manifest_pins_exact_archived_sources_and_two_qrfs() -> None:
             HOUSING_TAKE_UP_ARCHIVED_HUD_ETL_URL,
         )
     )
-    artifact = next(artifact for artifact in spec.artifacts if artifact.get("sha256"))
-    assert artifact["sha256"] == ACS_2022_RENT_ARTIFACT_SHA256
+    acs = load_acs_source_manifest()
+    pinned = {
+        artifact["sha256"] for artifact in spec.artifacts if artifact.get("sha256")
+    }
+    assert pinned == {
+        acs.artifact("household").sha256,
+        acs.artifact("person").sha256,
+    }
+    assert not any(
+        artifact["kind"] == "versioned_derived_microdata" for artifact in spec.artifacts
+    )
     assert HOUSING_TAKE_UP_ARCHIVED_DERIVATION_URL.endswith(
         "/datasets/cps/cps.py#L664-L682"
     )
@@ -424,76 +431,6 @@ def test_signal_gate_rejects_missing_or_invalid_take_up(bad_value: object) -> No
     assert any("takes_up_housing_assistance" in failure for failure in gate.failures)
 
 
-def _write_tiny_acs(path: Path) -> None:
-    arrays = {
-        "person_id": np.array([1, 2, 3, 4]),
-        "person_household_id": np.array([10, 10, 20, 30]),
-        "is_household_head": np.array([True, False, True, True]),
-        "age": np.array([40, 38, 50, 60]),
-        "is_male": np.array([True, False, True, False]),
-        "employment_income": np.array([50_000, 20_000, 0, 10_000]),
-        "self_employment_income": np.array([0, 0, 5_000, 0]),
-        "social_security": np.array([0, 0, 10_000, 12_000]),
-        "taxable_private_pension_income": np.array([0, 0, 3_000, 4_000]),
-        "rent": np.array([12_000, 0, 0, 18_000]),
-        "rent_is_allocated": np.array([False, False, True, False]),
-        "real_estate_taxes": np.array([0, 0, 8_000, 4_000]),
-        "real_estate_taxes_is_allocated": np.array([False, False, False, True]),
-        "household_id": np.array([10, 20, 30]),
-        "household_weight": np.array([100.0, 200.0, 300.0]),
-        "state_fips": np.array([6, 36, 48]),
-        "tenure_type": np.array([b"RENTED", b"OWNED_OUTRIGHT", b"OWNED_WITH_MORTGAGE"]),
-    }
-    with h5py.File(path, "w") as h5:
-        for name, values in arrays.items():
-            h5[name] = values
-
-
-def test_acs_loader_aligns_entities_collapses_tenure_and_marks_allocations(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "acs_2022.h5"
-    _write_tiny_acs(path)
-
-    donor = load_acs_2022_rent_donor(path, expected_sha256=None)
-
-    assert len(donor) == 3
-    assert donor["household_size"].tolist() == [2.0, 1.0, 1.0]
-    assert donor["tenure_type"].tolist() == [
-        "RENTED",
-        "OWNED_WITH_MORTGAGE",
-        "OWNED_WITH_MORTGAGE",
-    ]
-    assert donor["state_code_str"].tolist() == ["06", "36", "48"]
-    assert donor["rent"].tolist() == [12_000.0, 0.0, 18_000.0]
-    assert donor["rent_is_allocated"].tolist() == [False, True, False]
-    assert donor["real_estate_taxes"].tolist() == [0.0, 8_000.0, 4_000.0]
-    assert donor["real_estate_taxes_is_allocated"].tolist() == [False, False, True]
-    assert donor["household_weight"].tolist() == [100.0, 200.0, 300.0]
-
-
-def test_acs_loader_rejects_wrong_artifact_hash(tmp_path: Path) -> None:
-    path = tmp_path / "acs_2022.h5"
-    _write_tiny_acs(path)
-
-    with pytest.raises(ValueError, match="SHA-256 mismatch"):
-        load_acs_2022_rent_donor(path, expected_sha256="0" * 64)
-
-
-def test_acs_loader_retains_zero_weight_heads_for_archived_sampling(
-    tmp_path: Path,
-) -> None:
-    path = tmp_path / "acs_2022.h5"
-    _write_tiny_acs(path)
-    with h5py.File(path, "a") as h5:
-        h5["household_weight"][1] = 0.0
-
-    donor = load_acs_2022_rent_donor(path, expected_sha256=None)
-
-    assert len(donor) == 3
-    assert donor["household_weight"].tolist() == [100.0, 0.0, 300.0]
-
-
 def test_release_wiring_promotes_all_five_inputs_and_probes() -> None:
     manifest = load_release_input_coverage_manifest()
     for column in US_HOUSING_INPUTS_OUTPUT_COLUMNS:
@@ -650,15 +587,35 @@ def _load_tiny_pums(tmp_path: Path, **kwargs: object) -> pd.DataFrame:
     )
 
 
-def test_pums_rent_donor_matches_the_processed_donor_schema(tmp_path: Path) -> None:
-    processed = tmp_path / "acs_2022.h5"
-    _write_tiny_acs(processed)
-    reference = load_acs_2022_rent_donor(processed, expected_sha256=None)
-
+def test_pums_rent_donor_carries_the_rent_fit_schema(tmp_path: Path) -> None:
     donor = _load_tiny_pums(tmp_path)
 
-    assert list(donor.columns) == list(reference.columns)
-    assert dict(donor.dtypes.astype(str)) == dict(reference.dtypes.astype(str))
+    string_columns = {"tenure_type", "state_code_str"}
+    assert list(donor.columns) == [
+        "is_household_head",
+        "age",
+        "is_male",
+        "tenure_type",
+        "employment_income",
+        "self_employment_income",
+        "social_security",
+        "pension_income",
+        "state_code_str",
+        "household_size",
+        "rent",
+        "rent_is_allocated",
+        "real_estate_taxes",
+        "real_estate_taxes_is_allocated",
+        "household_weight",
+    ]
+    for column in donor.columns:
+        if column in string_columns:
+            assert pd.api.types.is_string_dtype(donor[column]), column
+        elif column.endswith("_is_allocated"):
+            assert donor[column].dtype == bool, column
+        else:
+            assert donor[column].dtype == np.float64, column
+    assert set(module.ACS_RENT_PREDICTORS) <= set(donor.columns)
 
 
 def test_pums_rent_donor_derives_one_row_per_reference_person(tmp_path: Path) -> None:

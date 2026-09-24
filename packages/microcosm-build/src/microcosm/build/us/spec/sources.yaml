@@ -36,17 +36,6 @@ sources:
   loader: kernel:build_acs_pums_unit_frame
   vintages:
   - vintage:acs_2024
-- id: acs_rent_donor
-  role: acs_rent_donor
-  sha256: 0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4
-  byte_size: 472220686
-  loader: kernel:load_acs_2022_rent_donor
-  vintages:
-  - vintage:acs_2022
-  vintage_authorities:
-  - id: acs_2022
-    kind: survey_period
-    value: 2022
 - id: processed_puf
   role: processed_puf
   sha256: 7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df
@@ -99,7 +88,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: 9f4f983091fb18dea8f4524cc100be20f9fca2b006435461592f8edf53c9a5d8
+  sha256: f5b1d37cef8c76dd92913ca4f1a63deec881880529cecda8412dd5bf3dcea520
 stage_manifest:
   version: 1
   country: us
@@ -2403,7 +2392,7 @@ stages:
     to derive mortgage balances and person-carried mortgage inputs; it neither constructs nor overwrites
     investment_interest_expense.
 - stage: acs_rent
-  survey: Census ACS 2022
+  survey: Census ACS 2024
   source: https://www.census.gov/programs-surveys/acs
   grain: household
   artifacts:
@@ -2416,18 +2405,46 @@ stages:
     - SPM_CAPHOUSESUB
     - SPM_TENMORTSTATUS
     - SPM_ID
-  - kind: versioned_derived_microdata
-    format: hdf5_arrays
-    vintage: '2022'
-    locator: Census ACS 2022 PUMS processed person/household arrays (acs_2022.h5)
-    sha256: 0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4
-    official_person_source: https://www2.census.gov/programs-surveys/acs/data/pums/2022/1-Year/csv_pus.zip
-    official_household_source: https://www2.census.gov/programs-surveys/acs/data/pums/2022/1-Year/csv_hus.zip
-    integrity_note: The runtime validates the immutable artifact hash, entity alignment, archived head-only
-      annual-rent construction, tenure collapse, both target-allocation flags, nonnegative weights, and
-      positive total household support. Zero-WGTP group-quarters heads remain in the deterministic archived
-      sample and receive zero mass in Microcosm's weighted fit; the runtime does not import or trust a
-      local generating checkout.
+  - kind: public_microdata
+    format: census_pums_csv_zip
+    vintage: '2024'
+    locator: Census ACS 2024 one-year PUMS household archive (csv_hus.zip)
+    source: https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_hus.zip
+    sha256: 8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0
+    size_bytes: 251500587
+    source_columns:
+    - SERIALNO
+    - ST
+    - STATE
+    - WGTP
+    - TEN
+    - RNTP
+    - FRNTP
+    - TAXAMT
+    - FTAXP
+    - ADJHSG
+    integrity_note: The runtime checks each archive against this pin, keeps one row per household reference
+      person (SPORDER 1), annualizes monthly contract rent RNTP by twelve, puts housing amounts in ADJHSG
+      dollars and incomes in ADJINC dollars, and marks allocated rent and property taxes from FRNTP and
+      FTAXP. Census blanks outside a question's universe become zero. Zero-WGTP group-quarters heads stay
+      in the sample and receive zero mass in the weighted fit.
+  - kind: public_microdata
+    format: census_pums_csv_zip
+    vintage: '2024'
+    locator: Census ACS 2024 one-year PUMS person archive (csv_pus.zip)
+    source: https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_pus.zip
+    sha256: afdc6d90c6e2f0bab365ed32d95ba4c4d8ac651162f46ac7861295b2dc469894
+    size_bytes: 602847146
+    source_columns:
+    - SERIALNO
+    - SPORDER
+    - AGEP
+    - SEX
+    - ADJINC
+    - WAGP
+    - SEMP
+    - SSP
+    - RETP
   - kind: archived_derivation_evidence
     repository_owner: PolicyEngine
     repository_name_parts:
@@ -2493,11 +2510,11 @@ stages:
       '2': OWNER_WITHOUT_MORTGAGE
       '3': RENTER
   - kind: read_acs_rent_donor
-    table: acs_2022_arrays
+    table: acs_2024_pums_reference_persons
     target: rent
     allocation_flag: rent_is_allocated
-    source_unit: annual_usd
-    source_already_annualized: true
+    source_unit: monthly_usd
+    source_already_annualized: false
     household_head_only: true
   - kind: fit_weighted_acs_rent_qrf
     predictors:

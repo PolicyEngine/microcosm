@@ -10,8 +10,6 @@ set -euo pipefail
 : "${ACS_H_SHA:?}"
 : "${ACS_P_ZIP:?}"
 : "${ACS_P_SHA:?}"
-: "${RENT_H5:?}"
-: "${RENT_SHA:?}"
 : "${PUF_H5:?}"
 : "${PUF_SHA:?}"
 : "${PUF_CSV:?}"
@@ -35,8 +33,6 @@ env \
   --acs-household-zip-sha256 "${ACS_H_SHA}" \
   --acs-person-zip "${ACS_P_ZIP}" \
   --acs-person-zip-sha256 "${ACS_P_SHA}" \
-  --acs-rent-h5 "${RENT_H5}" \
-  --acs-rent-h5-sha256 "${RENT_SHA}" \
   --puf-h5 "${PUF_H5}" \
   --puf-h5-sha256 "${PUF_SHA}" \
   --puf-source-year-csv "${PUF_CSV}" \

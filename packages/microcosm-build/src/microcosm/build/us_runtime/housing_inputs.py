@@ -42,7 +42,6 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
-    "ACS_2022_RENT_ARTIFACT_SHA256",
     "HOUSING_INPUTS_ARCHIVED_ACS_DERIVATION_URL",
     "HOUSING_INPUTS_ARCHIVED_CPS_RENT_URL",
     "HOUSING_INPUTS_ARCHIVED_CPS_SPM_URL",
@@ -65,7 +64,6 @@ __all__ = [
     "derive_us_housing_inputs",
     "impute_us_pre_subsidy_rent",
     "impute_us_housing_assistance_to_puf_support",
-    "load_acs_2022_rent_donor",
     "load_acs_pums_rent_donor",
     "ACS_RENT_DONOR_PUMS_VINTAGE",
     "us_housing_inputs_signal_gate",
@@ -142,14 +140,6 @@ US_HOUSING_REQUIRED_PERSON_SOURCE_COLUMNS: tuple[str, ...] = (
 US_HOUSING_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS: tuple[str, ...] = (
     "H_TENURE",
     "state_fips",
-)
-
-# SHA-256 of the hermetic processed ACS_2022 ARRAYS artifact used by Build J.
-# The loader below does not trust the local generating checkout: it validates
-# the exact arrays and entity relationships documented by the immutable
-# archived implementation before exposing a donor.
-ACS_2022_RENT_ARTIFACT_SHA256 = (
-    "0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4"
 )
 
 ACS_RENT_PREDICTORS: tuple[str, ...] = (
@@ -232,198 +222,6 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _decode_strings(values: np.ndarray) -> np.ndarray:
-    raw = np.asarray(values)
-    if raw.dtype.kind == "S":
-        return np.char.decode(raw, "utf-8")
-    return raw.astype(str)
-
-
-def _numeric_array(values: Any, *, name: str) -> np.ndarray:
-    result = pd.to_numeric(pd.Series(np.asarray(values)), errors="coerce").to_numpy(
-        dtype=np.float64
-    )
-    if not np.isfinite(result).all():
-        raise ValueError(f"Housing source column {name!r} contains nonfinite values.")
-    return result
-
-
-def load_acs_2022_rent_donor(
-    path: str | Path,
-    *,
-    expected_sha256: str | None = ACS_2022_RENT_ARTIFACT_SHA256,
-) -> pd.DataFrame:
-    """Load the archived processed ACS 2022 household-head rent donor.
-
-    The loader reads entity arrays directly, aligns household variables through
-    ``person_household_id``, collapses ACS owned-outright tenure exactly as the
-    retired rent stage did, and retains only household heads.  Both archived
-    target-allocation flags remain attached so the exact joint target sample
-    can be replayed before the rent-specific fit.
-    """
-
-    import h5py
-
-    source = Path(path)
-    if not source.exists():
-        raise FileNotFoundError(f"ACS 2022 rent donor not found: {source}")
-    if expected_sha256 is not None:
-        actual = _sha256(source)
-        if actual != expected_sha256:
-            raise ValueError(
-                f"ACS 2022 rent donor SHA-256 mismatch: {actual} != {expected_sha256}."
-            )
-
-    person_columns = (
-        "person_id",
-        "person_household_id",
-        "is_household_head",
-        "age",
-        "is_male",
-        "employment_income",
-        "self_employment_income",
-        "social_security",
-        "taxable_private_pension_income",
-        "rent",
-        "rent_is_allocated",
-        "real_estate_taxes",
-        "real_estate_taxes_is_allocated",
-    )
-    household_columns = (
-        "household_id",
-        "household_weight",
-        "state_fips",
-        "tenure_type",
-    )
-    with h5py.File(source, mode="r") as h5:
-        missing = [
-            column
-            for column in (*person_columns, *household_columns)
-            if column not in h5
-        ]
-        if missing:
-            raise ValueError(f"ACS 2022 rent donor missing array(s): {missing}.")
-        arrays = {
-            column: np.asarray(h5[column])
-            for column in (*person_columns, *household_columns)
-        }
-
-    person_n = len(arrays["person_id"])
-    household_n = len(arrays["household_id"])
-    bad_person_lengths = {
-        column: len(arrays[column])
-        for column in person_columns
-        if len(arrays[column]) != person_n
-    }
-    bad_household_lengths = {
-        column: len(arrays[column])
-        for column in household_columns
-        if len(arrays[column]) != household_n
-    }
-    if bad_person_lengths or bad_household_lengths:
-        raise ValueError(
-            "ACS 2022 rent donor entity-array lengths disagree: "
-            f"person={bad_person_lengths}, household={bad_household_lengths}."
-        )
-
-    household_ids = np.asarray(arrays["household_id"])
-    if pd.Index(household_ids).duplicated().any():
-        raise ValueError("ACS 2022 household_id must be unique.")
-    person_household_ids = np.asarray(arrays["person_household_id"])
-    household_index = pd.Index(household_ids)
-    positions = household_index.get_indexer(person_household_ids)
-    if (positions < 0).any():
-        bad = np.unique(person_household_ids[positions < 0])[:5].tolist()
-        raise ValueError(
-            f"ACS 2022 people reference missing household_id value(s): {bad}."
-        )
-
-    head_mask = np.asarray(arrays["is_household_head"], dtype=bool)
-    head_household_ids = person_household_ids[head_mask]
-    if pd.Index(head_household_ids).duplicated().any():
-        raise ValueError("ACS 2022 rent donor has multiple heads in a household.")
-    household_size = pd.Series(person_household_ids).value_counts(sort=False)
-
-    household_tenure = _decode_strings(arrays["tenure_type"])
-    normalized_tenure = np.asarray(
-        [
-            "OWNED_WITH_MORTGAGE" if value == "OWNED_OUTRIGHT" else value
-            for value in household_tenure
-        ],
-        dtype=object,
-    )
-    unknown_tenure = sorted(set(normalized_tenure) - _HOUSEHOLD_TENURE_VALUES)
-    if unknown_tenure:
-        raise ValueError(
-            f"ACS 2022 rent donor has unknown tenure value(s): {unknown_tenure}."
-        )
-
-    head_positions = positions[head_mask]
-    donor = pd.DataFrame(
-        {
-            "is_household_head": np.ones(int(head_mask.sum()), dtype=np.float64),
-            "age": _numeric_array(arrays["age"][head_mask], name="age"),
-            "is_male": np.asarray(arrays["is_male"][head_mask], dtype=np.float64),
-            "tenure_type": normalized_tenure[head_positions].astype(str),
-            "employment_income": _numeric_array(
-                arrays["employment_income"][head_mask], name="employment_income"
-            ),
-            "self_employment_income": _numeric_array(
-                arrays["self_employment_income"][head_mask],
-                name="self_employment_income",
-            ),
-            "social_security": _numeric_array(
-                arrays["social_security"][head_mask], name="social_security"
-            ),
-            "pension_income": _numeric_array(
-                arrays["taxable_private_pension_income"][head_mask],
-                name="taxable_private_pension_income",
-            ),
-            "state_code_str": np.asarray(
-                [f"{int(value):02d}" for value in arrays["state_fips"][head_positions]],
-                dtype=object,
-            ),
-            "household_size": household_size.reindex(head_household_ids).to_numpy(
-                dtype=np.float64
-            ),
-            "rent": _numeric_array(arrays["rent"][head_mask], name="rent"),
-            _DONOR_ALLOCATION_COLUMN: np.asarray(
-                arrays["rent_is_allocated"][head_mask], dtype=bool
-            ),
-            _DONOR_REAL_ESTATE_TAX_COLUMN: _numeric_array(
-                arrays["real_estate_taxes"][head_mask], name="real_estate_taxes"
-            ),
-            _DONOR_REAL_ESTATE_TAX_ALLOCATION_COLUMN: np.asarray(
-                arrays["real_estate_taxes_is_allocated"][head_mask], dtype=bool
-            ),
-            _DONOR_WEIGHT_COLUMN: _numeric_array(
-                arrays["household_weight"][head_positions], name="household_weight"
-            ),
-        }
-    )
-    if (donor["rent"] < 0.0).any():
-        raise ValueError("ACS 2022 rent donor contains negative rent values.")
-    if (donor[_DONOR_REAL_ESTATE_TAX_COLUMN] < 0.0).any():
-        raise ValueError(
-            "ACS 2022 rent donor contains negative real-estate-tax values."
-        )
-    # Keep zero-WGTP group-quarters heads through the archived joint-target
-    # sampler.  The retired unweighted fit retained them; Microcosm's deliberate
-    # design-weighting strengthening gives them zero modeling mass without
-    # changing which deterministic 10,000-row sample was selected.
-    if (donor[_DONOR_WEIGHT_COLUMN] < 0.0).any():
-        raise ValueError("ACS 2022 rent donor contains negative weights.")
-    if float(donor[_DONOR_WEIGHT_COLUMN].sum()) <= 0.0:
-        raise ValueError("ACS 2022 rent donor has no positive household weight.")
-    if not (~donor[_DONOR_ALLOCATION_COLUMN]).any():
-        raise ValueError("ACS 2022 rent donor has no unallocated rent observations.")
-    if not (~donor[_DONOR_REAL_ESTATE_TAX_ALLOCATION_COLUMN]).any():
-        raise ValueError(
-            "ACS 2022 rent donor has no unallocated real-estate-tax observations."
-        )
-    return donor
-
-
 #: The raw ACS PUMS vintage the rent donor reads. It is the base year's own
 #: one-year file, so donor rents and property taxes need no aging.
 ACS_RENT_DONOR_PUMS_VINTAGE = 2024
@@ -453,8 +251,8 @@ _PUMS_RENT_PERSON_COLUMNS = (
 )
 # ACS TEN: 1 owned with a mortgage or loan, 2 owned free and clear, 3 rented,
 # 4 occupied without payment of rent; blank for vacant units and group quarters.
-# Owned-free-and-clear collapses into the owned-with-mortgage category exactly
-# as the 2022 donor loader collapses OWNED_OUTRIGHT.
+# Owned-free-and-clear collapses into the owned-with-mortgage category, as the
+# household tenure map this donor feeds has no separate owned-outright code.
 _PUMS_TENURE = {1: "OWNED_WITH_MORTGAGE", 2: "OWNED_WITH_MORTGAGE", 3: "RENTED"}
 
 
@@ -469,8 +267,8 @@ def load_acs_pums_rent_donor(
     """Build the household-head rent donor from raw Census ACS PUMS archives.
 
     Reads the one-year ``csv_hus.zip`` and ``csv_pus.zip`` archives Census
-    publishes and returns the same frame :func:`load_acs_2022_rent_donor`
-    returns, one row per household reference person (``SPORDER == 1``).
+    publishes and returns one row per household reference person
+    (``SPORDER == 1``), with the columns the rent and property-tax fit reads.
 
     Rent is monthly contract rent (``RNTP``) times twelve, and property taxes
     are ``TAXAMT``, both in the survey's housing dollars (``ADJHSG``). Incomes

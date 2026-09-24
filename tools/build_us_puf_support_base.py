@@ -79,7 +79,7 @@ from microcosm.build.us_runtime import (
     finalize_puf_e01000_reconciliation,
     impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
-    load_acs_2022_rent_donor,
+    load_acs_pums_rent_donor,
     load_asec_2023_weeks_unemployed_source,
     load_asec_education_assistance_sources,
     load_asec_public_assistance_type_sources,
@@ -347,12 +347,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--acs-h5",
+        "--acs-household-zip",
         type=Path,
         help=(
-            "SHA-pinned processed ACS 2022 ARRAYS artifact used by the "
-            "housing/rent stage. Required unless --base-h5 already carries "
+            "Census ACS 2024 one-year household PUMS archive (csv_hus.zip), "
+            "checked against the packaged pin, for the housing/rent stage. "
+            "Required with --acs-person-zip unless --base-h5 already carries "
             "a green housing-input surface."
+        ),
+    )
+    parser.add_argument(
+        "--acs-person-zip",
+        type=Path,
+        help=(
+            "Census ACS 2024 one-year person PUMS archive (csv_pus.zip), "
+            "checked against the packaged pin."
         ),
     )
     parser.add_argument("--out", required=True, type=Path)
@@ -737,7 +746,8 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     )
     for value in args.asec_education_source or ():
         command.extend(("--asec-education-source", value))
-    _append_path_argument(command, "--acs-h5", args.acs_h5)
+    _append_path_argument(command, "--acs-household-zip", args.acs_household_zip)
+    _append_path_argument(command, "--acs-person-zip", args.acs_person_zip)
     command.extend(("--out", str(args.out)))
     command.extend(("--stage", stage))
     command.extend(("--checkpoint-dir", str(args.checkpoint_dir)))
@@ -765,6 +775,29 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     if getattr(args, "equivalence_deterministic_h5_metadata", False):
         command.append("--equivalence-deterministic-h5-metadata")
     return command
+
+
+def _load_acs_rent_donor(args: argparse.Namespace) -> pd.DataFrame:
+    """Build the rent donor from the pinned Census ACS PUMS archives."""
+
+    if args.acs_household_zip is None or args.acs_person_zip is None:
+        raise SystemExit(
+            "Housing-input signal gate is not already green and "
+            "--acs-household-zip/--acs-person-zip were not provided; "
+            "pre_subsidy_rent restoration needs the pinned ACS PUMS archives."
+        )
+    return load_acs_pums_rent_donor(args.acs_household_zip, args.acs_person_zip)
+
+
+def _acs_archive_receipt(args: argparse.Namespace) -> dict[str, str | None]:
+    receipt: dict[str, str | None] = {}
+    for role, path in (
+        ("acs_household", args.acs_household_zip),
+        ("acs_person", args.acs_person_zip),
+    ):
+        receipt[f"{role}_zip"] = str(path.resolve()) if path is not None else None
+        receipt[f"{role}_sha256"] = _sha256(path) if path is not None else None
+    return receipt
 
 
 def _append_path_argument(command: list[str], flag: str, value: Path | None) -> None:
@@ -865,7 +898,8 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
                 )
             }
         ),
-        "acs_h5": path(args.acs_h5),
+        "acs_household_zip": path(args.acs_household_zip),
+        "acs_person_zip": path(args.acs_person_zip),
         "assign_congressional_districts": bool(args.assign_congressional_districts),
         "base_h5": path(args.base_h5),
         "block_ladder_artifact": path(args.block_ladder_artifact),
@@ -1119,13 +1153,7 @@ def _run_all(
     housing_inputs_gate = us_housing_inputs_signal_gate(base)
     acs_rent_donor: pd.DataFrame | None = None
     if not housing_inputs_gate.passed:
-        if args.acs_h5 is None:
-            raise SystemExit(
-                "Housing-input signal gate is not already green and --acs-h5 "
-                "was not provided; exact pre_subsidy_rent restoration requires "
-                "the pinned ACS 2022 donor."
-            )
-        acs_rent_donor = load_acs_2022_rent_donor(args.acs_h5)
+        acs_rent_donor = _load_acs_rent_donor(args)
         base = with_us_housing_inputs(
             base,
             seed=args.seed,
@@ -1637,8 +1665,7 @@ def _run_all(
             if args.puf_source_year_csv is not None
             else None
         ),
-        "acs_h5": str(args.acs_h5.resolve()) if args.acs_h5 is not None else None,
-        "acs_sha256": _sha256(args.acs_h5) if args.acs_h5 is not None else None,
+        **_acs_archive_receipt(args),
         "acs_rent_donor_rows": (
             int(len(acs_rent_donor)) if acs_rent_donor is not None else None
         ),
@@ -2237,13 +2264,7 @@ def _pre_clone_enrichment_stage(
     housing_gate = us_housing_inputs_signal_gate(base)
     acs_rent_donor: pd.DataFrame | None = None
     if not housing_gate.passed:
-        if args.acs_h5 is None:
-            raise SystemExit(
-                "Housing-input signal gate is not already green and --acs-h5 "
-                "was not provided; exact pre_subsidy_rent restoration requires "
-                "the pinned ACS 2022 donor."
-            )
-        acs_rent_donor = load_acs_2022_rent_donor(args.acs_h5)
+        acs_rent_donor = _load_acs_rent_donor(args)
         base = with_us_housing_inputs(
             base,
             seed=args.seed,
@@ -2329,8 +2350,7 @@ def _pre_clone_enrichment_stage(
         time_period=args.target_year,
     )
     return base, {
-        "acs_h5": str(args.acs_h5.resolve()) if args.acs_h5 is not None else None,
-        "acs_sha256": _sha256(args.acs_h5) if args.acs_h5 is not None else None,
+        **_acs_archive_receipt(args),
         "acs_rent_donor_rows": (
             int(len(acs_rent_donor)) if acs_rent_donor is not None else None
         ),
@@ -3058,8 +3078,10 @@ def _export_staged_result(
         "puf_sha256": clone["puf_sha256"],
         "puf_source_year_csv": clone["puf_source_year_csv"],
         "puf_source_year_csv_sha256": clone["puf_source_year_csv_sha256"],
-        "acs_h5": pre_clone["acs_h5"],
-        "acs_sha256": pre_clone["acs_sha256"],
+        "acs_household_zip": pre_clone["acs_household_zip"],
+        "acs_household_sha256": pre_clone["acs_household_sha256"],
+        "acs_person_zip": pre_clone["acs_person_zip"],
+        "acs_person_sha256": pre_clone["acs_person_sha256"],
         "acs_rent_donor_rows": pre_clone["acs_rent_donor_rows"],
         "weeks_unemployed_source": pre_clone["weeks_unemployed_source"],
         "output_h5": str(output_h5),

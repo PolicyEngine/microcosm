@@ -57,25 +57,25 @@ _CANONICAL_INPUT_PIN_BUILD_ID = "populace-us-2024-pool-inc2-run7"
 _CD_CROSSWALK_PACKAGE = "microcosm.build.us_runtime.data"
 _CD_CROSSWALK_RESOURCE = "congressional_district_vintage_crosswalk.csv"
 _CD_CROSSWALK_PROVENANCE_RESOURCE = f"{_CD_CROSSWALK_RESOURCE}.provenance.json"
-_CD_CROSSWALK_SOURCE_ID = (
-    "us_congressional_district_vintage_crosswalk_117_to_119"
-)
+_CD_CROSSWALK_SOURCE_ID = "us_congressional_district_vintage_crosswalk_117_to_119"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _EXPECTED_INPUT_ROLES = frozenset(
     {
         "asec_raw_stage",
         "acs_household",
         "acs_person",
-        "acs_rent_donor",
         "processed_puf",
         "puf_source_year",
     }
 )
+# Roles the run-7 receipt records but the stack no longer reads.  The processed
+# ACS 2022 rent donor was replaced by the ACS 2024 PUMS archives already pinned
+# as acs_household and acs_person (microcosm#983).
+_RETIRED_INPUT_ROLES = frozenset({"acs_rent_donor"})
 _SOURCE_ROLE_ORDER = (
     "asec_raw_stage",
     "acs_household",
     "acs_person",
-    "acs_rent_donor",
     "processed_puf",
     "puf_source_year",
 )
@@ -83,7 +83,6 @@ _LOADER_BY_ROLE = {
     "asec_raw_stage": "kernel:load_asec_raw_stage_checkpoint",
     "acs_household": "kernel:build_acs_pums_unit_frame",
     "acs_person": "kernel:build_acs_pums_unit_frame",
-    "acs_rent_donor": "kernel:load_acs_2022_rent_donor",
     "processed_puf": "kernel:load_puf_tax_unit_donor",
     "puf_source_year": "kernel:load_puf_tax_unit_donor",
 }
@@ -91,7 +90,6 @@ _VINTAGES_BY_ROLE = {
     "asec_raw_stage": ("vintage:asec_2024", "vintage:asec_2023"),
     "acs_household": ("vintage:acs_2024",),
     "acs_person": ("vintage:acs_2024",),
-    "acs_rent_donor": ("vintage:acs_2022",),
     "processed_puf": ("vintage:tax_2015", "vintage:target_2024"),
     "puf_source_year": ("vintage:tax_2015",),
 }
@@ -191,6 +189,7 @@ def _publication_rung_rows(
 ) -> list[dict[str, int | float | str]]:
     return publication_rung_rows(publication)
 
+
 def _compiled_publication_regex(
     *,
     pattern: str,
@@ -203,10 +202,12 @@ def _compiled_publication_regex(
         rung_tokens=rung_tokens,
     )
 
+
 def project_publication_legacy_release(
     publication: Mapping[str, Any],
 ) -> dict[str, Any]:
     return _project_publication_legacy_release(publication)
+
 
 def project_spine_legacy_sampling(
     spine: Mapping[str, Any],
@@ -214,6 +215,7 @@ def project_spine_legacy_sampling(
     publication: Mapping[str, Any],
 ) -> dict[str, Any]:
     return _project_spine_legacy_sampling(spine, publication=publication)
+
 
 def _source_stage_compatibility() -> dict[str, Any]:
     from microcosm.build.source_manifest import SourceManifest
@@ -254,9 +256,7 @@ def _congressional_district_vintage_crosswalk_provenance() -> dict[str, Any]:
         _CD_CROSSWALK_PROVENANCE_RESOURCE,
     )
     expected_digest = payload.get("crosswalk_sha256")
-    if not isinstance(expected_digest, str) or not _SHA256.fullmatch(
-        expected_digest
-    ):
+    if not isinstance(expected_digest, str) or not _SHA256.fullmatch(expected_digest):
         raise ValueError("US CD-vintage crosswalk has no valid crosswalk_sha256.")
     raw = (
         importlib_resources.files(_CD_CROSSWALK_PACKAGE)
@@ -286,19 +286,20 @@ def _congressional_district_vintage_crosswalk_provenance() -> dict[str, Any]:
 
 
 def canonical_input_pins() -> dict[str, dict[str, int | str]]:
-    """Return the six immutable file identities used by the canonical stack.
+    """Return the five immutable file identities used by the canonical stack.
 
     Three roles are not Python constants.  Their current authority is the
     chained run-7 terminal receipt, so this extractor selects that named row,
     verifies the complete Logbook chain and input-pins digest, and then checks
-    the independently packaged ACS and rent constants where those exist.
+    the independently packaged ACS constants.
+
+    The receipt also records roles the stack has since retired (see
+    ``_RETIRED_INPUT_ROLES``).  They stay inside the digest check, so the
+    historical receipt is verified whole, but they are not returned.
     """
 
     from microcosm.build.logbook import canonical_json_bytes, load_logbook_file
     from microcosm.build.us_runtime.acs_sources import load_acs_source_manifest
-    from microcosm.build.us_runtime.housing_inputs import (
-        ACS_2022_RENT_ARTIFACT_SHA256,
-    )
 
     rows = load_logbook_file(_REPOSITORY_ROOT / "logbook" / "us.jsonl")
     matches = [row for row in rows if row.build_id == _CANONICAL_INPUT_PIN_BUILD_ID]
@@ -312,14 +313,15 @@ def canonical_input_pins() -> dict[str, dict[str, int | str]]:
     if not isinstance(terminal, Mapping):
         raise ValueError("Canonical US input-pin receipt has no terminal gate object.")
     raw_pins = terminal.get("input_pins")
-    if not isinstance(raw_pins, Mapping) or set(raw_pins) != _EXPECTED_INPUT_ROLES:
+    recorded_roles = _EXPECTED_INPUT_ROLES | _RETIRED_INPUT_ROLES
+    if not isinstance(raw_pins, Mapping) or set(raw_pins) != recorded_roles:
         raise ValueError(
             "Canonical US input-pin receipt roles differ: "
             f"got={sorted(raw_pins) if isinstance(raw_pins, Mapping) else raw_pins!r}."
         )
 
-    pins: dict[str, dict[str, int | str]] = {}
-    for role in sorted(_EXPECTED_INPUT_ROLES):
+    recorded: dict[str, dict[str, int | str]] = {}
+    for role in sorted(recorded_roles):
         raw_pin = raw_pins[role]
         if not isinstance(raw_pin, Mapping) or set(raw_pin) != {
             "sha256",
@@ -332,14 +334,15 @@ def canonical_input_pins() -> dict[str, dict[str, int | str]]:
             raise ValueError(f"Canonical input pin {role!r} has an invalid SHA-256.")
         if isinstance(size, bool) or not isinstance(size, int) or size < 1:
             raise ValueError(f"Canonical input pin {role!r} has an invalid byte size.")
-        pins[role] = {"sha256": digest, "size_bytes": size}
+        recorded[role] = {"sha256": digest, "size_bytes": size}
 
-    observed_digest = hashlib.sha256(canonical_json_bytes(pins)).hexdigest()
+    observed_digest = hashlib.sha256(canonical_json_bytes(recorded)).hexdigest()
     if observed_digest != row.input_pins_digest:
         raise ValueError(
             "Canonical US input-pin payload differs from its Logbook digest: "
             f"{observed_digest} != {row.input_pins_digest}."
         )
+    pins = {role: recorded[role] for role in sorted(_EXPECTED_INPUT_ROLES)}
 
     acs = load_acs_source_manifest()
     for manifest_role, pin_role in (
@@ -352,10 +355,6 @@ def canonical_input_pins() -> dict[str, dict[str, int | str]]:
             raise ValueError(
                 f"Canonical {pin_role} receipt differs from packaged ACS authority."
             )
-    if pins["acs_rent_donor"]["sha256"] != ACS_2022_RENT_ARTIFACT_SHA256:
-        raise ValueError(
-            "Canonical ACS-rent receipt differs from the runtime artifact pin."
-        )
     return pins
 
 
@@ -423,7 +422,6 @@ def build_sources() -> dict[str, Any]:
                 "value": ACS_2024_1YR_VINTAGE,
             }
         ],
-        "acs_rent_donor": [{"id": "acs_2022", "kind": "survey_period", "value": 2022}],
         "puf_source_year": [
             {"id": "tax_2015", "kind": "tax_period", "value": PUF_SOURCE_YEAR}
         ],
@@ -793,15 +791,6 @@ def build_vintages() -> dict[str, Any]:
 
     records = [
         {
-            "id": "acs_2022",
-            "kind": "survey_period_ref",
-            "authority_ref": {
-                "kind": "source_record",
-                "source": "source:acs_rent_donor",
-                "authority": "acs_2022",
-            },
-        },
-        {
             "id": "acs_2024",
             "kind": "survey_period_ref",
             "authority_ref": {
@@ -945,7 +934,6 @@ def build_vintages() -> dict[str, Any]:
     # the two additional cliques are the actual multi-vintage source groups
     # consumed by the pooled ASEC input and the PUMA geography ladder.
     reviewed_compatibility = {
-        "acs_2022": {"target_2024"},
         "acs_2024": {"target_2024"},
         "asec_2022": {"target_2024"},
         "asec_2023": {"asec_2024", "target_2024"},
@@ -960,7 +948,6 @@ def build_vintages() -> dict[str, Any]:
         "scf_2022": {"target_2024"},
         "sipp_2023": {"target_2024"},
         "target_2024": {
-            "acs_2022",
             "acs_2024",
             "asec_2022",
             "asec_2023",
