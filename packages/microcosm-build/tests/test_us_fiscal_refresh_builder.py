@@ -2125,6 +2125,72 @@ def test_acs_predictor_join_precedes_all_six_archived_model_stages() -> None:
     assert receipt_keyword.value.id == "acs_predictor_join_receipt"
 
 
+def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverage() -> (
+    None
+):
+    """The receipt sees the compile's facts, period and crosswalk, and ships.
+
+    No _main test reaches the us_source_coverage.json write, so pin the wiring
+    (microcosm#956): the receipt call must replay exactly the arguments the
+    registry compile saw, and its result must land in the coverage payload
+    before that payload is written.
+    """
+
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    tree = ast.parse(inspect.getsource(builder._main))
+    calls = {
+        name: [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        ]
+        for name in (
+            "compile_us_fiscal_target_registry",
+            "us_fiscal_target_exclusion_receipt",
+            "write_us_source_coverage_diagnostics",
+        )
+    }
+    assert [len(found) for found in calls.values()] == [1, 1, 1]
+    compile_call = calls["compile_us_fiscal_target_registry"][0]
+    receipt_call = calls["us_fiscal_target_exclusion_receipt"][0]
+    assert ast.dump(receipt_call.args[0]) == ast.dump(compile_call.args[0])
+    compile_keywords = {
+        keyword.arg: ast.dump(keyword.value) for keyword in compile_call.keywords
+    }
+    for keyword in receipt_call.keywords:
+        assert keyword.arg in {
+            "target_period",
+            "congressional_district_vintage_crosswalk",
+        }
+        assert ast.dump(keyword.value) == compile_keywords[keyword.arg]
+    assert {keyword.arg for keyword in receipt_call.keywords} == {
+        "target_period",
+        "congressional_district_vintage_crosswalk",
+    }
+
+    coverage_writes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.targets[0], ast.Subscript)
+        and isinstance(node.targets[0].value, ast.Name)
+        and node.targets[0].value.id == "coverage"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "fiscal_target_exclusion_receipt"
+    ]
+    assert len(coverage_writes) == 1
+    assert (
+        receipt_call.lineno
+        < coverage_writes[0].lineno
+        < calls["write_us_source_coverage_diagnostics"][0].lineno
+    )
+
+
 def test_scf_full_extract_override_parses(monkeypatch) -> None:
     builder = _load_builder_module()
     monkeypatch.setattr(
