@@ -145,7 +145,7 @@ UK_FIXTURE_STAGE_COUNT = 33
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 31-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 33-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -1452,7 +1452,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 31-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 33-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")

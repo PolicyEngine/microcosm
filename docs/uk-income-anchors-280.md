@@ -1,4 +1,4 @@
-# UK income targets at the calibration year (microcosm#280 lane)
+# UK income targets at the calibration year (PolicyEngine/chronicle#280 lane)
 
 How the UK national calibration binds the HMRC income facts at its period, why
 the 2023-24 SPI rows move before they bind, and what the calendar-year window
@@ -119,11 +119,14 @@ FY2024-25 outturn, nine twelfths of the FY2025-26 forecast, from the March
 2026 EFO series), the same rule as the HMRC liabilities anchors. Income tax
 moves from £331.4bn to £325.1bn, the window of the £305.9bn outturn and the
 £331.4bn forecast, and sits 0.7 percent above the HMRC liabilities window
-(£322.7bn): the two anchors now share a basis. Two OBR rows keep their
-declaration: the Universal
-Credit total is the sum of its two capped-and-uncapped rows (each of which
-takes the window on its own), and the cars share of fuel duty is pinned to the
-FY2024-25 outturn where the vehicle split is published.
+(£322.7bn): the two anchors now share a basis. The Universal Credit total
+takes the window of the sum of its two welfare-cap cells (`calendar_year_window`
+over a two-concept selector: one series per declared concept, both years of
+each), so the total and its two components bind on one basis. One OBR row keeps
+a fiscal-year declaration: the cars share of fuel duty is pinned to the
+FY2024-25 outturn, the only year the vehicle split is published for, and the
+contract row says so in a `period_basis` field the generator writes onto the
+compiled spec's metadata rather than in prose alone.
 
 ## The region tier
 
@@ -159,18 +162,39 @@ over 120 (359k/120 = 2,992 for 200k-500k on the 2024-25 projection, 61k/120
 = 508, 20k/120 = 167 and 10k/120 = 83), mass added and receipted as the CGT
 band donors' is. The income stage's `resample_band_donor_leaves` operation
 then gives every carrier a band-conditional draw: one tape record whose
-published total income (TEI + TII) lies in the band, FACT-weighted with
-replacement from the carrier's region where that regional pool holds at
-least 20 records, otherwise nationally, all eighteen stage-1 leaves copied
-together and uprated as the forest draws are. Composite records stay in the
-pools as published. Non-carrier adults in donor households keep the ordinary
-forest draw; stage 2 refills their FRS-only inputs as for every synthetic
-row. The stage-health gate `uk_stage_spi_income_band_donors_support` checks
-that every band carries its donors at positive band-exact weight with one
-carrier each. The methodology and the evidence for it are in
-`repos/uk-spi-income-band-donors-plan-2026-09-23.md` and
-`repos/uk-upper-tail-investigation-2026-09-23.md`: before this stage the
-spine, like the enhanced FRS, carried no record above £1.51m of total income.
+total income *as realised on the frame* (its stage-1 leaves at the stage's
+uprating factors plus the published remainder of TEI + TII held nominal) lies
+in the band, FACT-weighted with replacement from the carrier's region where
+that regional pool holds at least 20 records, otherwise nationally, all
+eighteen stage-1 leaves copied together and uprated as the forest draws are.
+The bands and the reserved weights are the calibration year's (Table 2.5
+counts for the build tax year), so membership is asserted on the uprated
+amount: the operation refuses any carrier whose realised total lands outside
+its band and receipts `carriers_outside_band` per band (zero by construction).
+The propensity that seats carriers by region, sex and age reads the tape's
+published bands; the pools that give them their amounts read the uprated ones.
+Composite records stay in the pools as published. Non-carrier adults in donor
+households keep the ordinary forest draw; stage 2 refills their FRS-only
+inputs as for every synthetic row. The stage-health gate
+`uk_stage_spi_income_band_donors_support` checks that every band carries its
+donors at positive band-exact weight with one carrier each. The methodology
+memo and the upper-tail investigation are summarised in microcosm#1006 and
+the aggregate receipts of the v21c run are under `docs/evidence/uk-income-280/`:
+before this stage the spine, like the enhanced FRS, carried no record above
+£1.51m of total income.
+
+Two uprating conventions sit side by side by design. The national SPI amount
+rows move by the engine's own component indices (earnings, mixed income, GDP
+per head, the private-pension index, household interest, the new State
+Pension rate), because each row is one income component and the engine uprates
+that component by that index: the target and the model then agree on what
+"2025 employment income" means. The regional Table 3.11 rows are totals and
+tax by band with no component split, so no engine index applies; they move by
+HMRC's own projected per-band growth in taxpayers, income and tax (Table 2.5),
+the publisher's forecast of the very quantity the row measures. Counts move by
+the HMRC growth on both tiers. Mixing an engine index into the regional rows,
+or a publisher growth rate into a single component, would bind a quantity
+neither source defines.
 
 ## Not done here
 
