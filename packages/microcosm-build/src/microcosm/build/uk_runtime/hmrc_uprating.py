@@ -29,10 +29,12 @@ published by fiscal or tax year use the months to the end of that year.
 from __future__ import annotations
 
 import importlib.metadata
+import json
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from functools import cache, partial
+from importlib.resources import files
 from typing import Any
 
 from microcosm.build.ledger_targets import (
@@ -179,6 +181,20 @@ _LEDGER_FILTER_PREFIX = "ledger_filter_"
 _ANNUAL_PERIOD_TYPES = frozenset(("tax_year", "fiscal_year"))
 
 
+_UK_PACKAGE = "microcosm.build.uk"
+#: The vendored engine values the compile reads instead of the engine: one
+#: value per declared parameter per 1 January of ``UK_ENGINE_PIN_YEARS``,
+#: written by ``UK_ENGINE_PINS_TOOL`` from the installed policyengine-uk and
+#: held in lockstep with it by a ``requires_uk`` test. The compile itself
+#: therefore runs, and reproduces, without the engine (the fast CI tiers
+#: carry no country package).
+UK_ENGINE_PINS_RESOURCE = "hmrc_uprating_engine_pins.json"
+UK_ENGINE_PINS_TOOL = "tools/pin_uk_uprating_engine_values.py"
+#: The 1 January instants the pins carry: every opening year an SPI or Table
+#: 2.5 fact can have, and every calibration year the lane binds.
+UK_ENGINE_PIN_YEARS: tuple[int, ...] = tuple(range(2019, 2027))
+
+
 @cache
 def _engine_system() -> Any:
     from policyengine_uk import CountryTaxBenefitSystem
@@ -186,19 +202,64 @@ def _engine_system() -> Any:
     return CountryTaxBenefitSystem()
 
 
-@cache
-def engine_parameter_value(path: str, instant: str) -> float:
-    """The pinned engine's value of ``path`` at ``instant`` (``YYYY-MM-DD``).
+def installed_engine_version() -> str:
+    """The policyengine-uk version the environment carries (``absent`` if none)."""
 
-    Cached per (path, instant): the engine materialises a whole parameter
-    snapshot per instant, which is seconds of work, and a compile asks for
-    the same handful of values once per SPI band row.
+    try:
+        return importlib.metadata.version("policyengine-uk")
+    except importlib.metadata.PackageNotFoundError:
+        return "absent"
+
+
+@cache
+def live_engine_parameter_value(path: str, instant: str) -> float:
+    """The installed engine's value of ``path`` at ``instant`` (``YYYY-MM-DD``).
+
+    Only the pin tool and its lockstep test read the engine; the compile reads
+    the vendored pins. Cached per (path, instant): the engine materialises a
+    whole parameter snapshot per instant, which is seconds of work.
     """
 
     node = _engine_system().parameters(instant)
     for part in path.split("."):
         node = getattr(node, part)
-    value = float(node)
+    return float(node)
+
+
+@cache
+def engine_parameter_pins() -> Mapping[str, Any]:
+    """The vendored engine values (``UK_ENGINE_PINS_RESOURCE``), read once."""
+
+    text = (
+        files(_UK_PACKAGE).joinpath(UK_ENGINE_PINS_RESOURCE).read_text(encoding="utf-8")
+    )
+    payload = json.loads(text)
+    engine = payload.get("engine") or {}
+    if (
+        payload.get("schema_version") != 1
+        or engine.get("package") != "policyengine-uk"
+        or not str(engine.get("version") or "").strip()
+        or tuple(payload.get("values") or ()) != UK_ENGINE_INDEX_PARAMETERS
+    ):
+        raise ValueError(
+            f"{UK_ENGINE_PINS_RESOURCE} does not carry schema 1 policyengine-uk pins "
+            f"for exactly {list(UK_ENGINE_INDEX_PARAMETERS)}; re-run "
+            f"{UK_ENGINE_PINS_TOOL} with the uk extra installed."
+        )
+    return payload
+
+
+def engine_parameter_value(path: str, instant: str) -> float:
+    """The pinned engine's value of ``path`` at ``instant``, from the vendored pins."""
+
+    try:
+        value = float(engine_parameter_pins()["values"][path][instant])
+    except KeyError:
+        raise ValueError(
+            f"policyengine-uk parameter {path!r} at {instant} is not in the "
+            f"vendored engine pins ({UK_ENGINE_PINS_RESOURCE}); re-run "
+            f"{UK_ENGINE_PINS_TOOL} with the uk extra installed."
+        ) from None
     if not value > 0:
         raise ValueError(
             f"policyengine-uk parameter {path!r} is {value!r} at {instant}; an "
@@ -208,10 +269,7 @@ def engine_parameter_value(path: str, instant: str) -> float:
 
 
 def _engine_version() -> str:
-    try:
-        return importlib.metadata.version("policyengine-uk")
-    except importlib.metadata.PackageNotFoundError:  # pragma: no cover - refused below
-        return "unknown"
+    return str(engine_parameter_pins()["engine"]["version"])
 
 
 def _opening_year(spec: Any, reference: LedgerTargetReference) -> int:
@@ -527,6 +585,9 @@ __all__ = [
     "align_hmrc_row_by_engine_index",
     "align_hmrc_row_by_itl_growth",
     "itl_bands_spanned",
+    "engine_parameter_pins",
     "engine_parameter_value",
+    "installed_engine_version",
+    "live_engine_parameter_value",
     "hmrc_uprating_appliers",
 ]

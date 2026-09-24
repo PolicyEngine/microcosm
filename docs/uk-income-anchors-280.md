@@ -53,8 +53,13 @@ membership carries the uprated value with its receipt.
   private pensions `obr.private_pension_index`, savings interest
   `ons.household_interest_income`; the state pension follows
   `gov.dwp.state_pension.new_state_pension.amount`, the rate the engine pays
-  (203.85 to 230.25 a week, 1.1295). On policyengine-uk 2.98.0 the 2023 to 2025
-  factors are 1.1067, 1.0344, 1.0826, 1.0877 and 1.1819.
+  (203.85 to 230.25 a week, 1.1295). On policyengine-uk 2.98.0 and 2.100.0 the
+  2023 to 2025 factors are 1.1067, 1.0344, 1.0826, 1.0877 and 1.1819. The compile
+  reads the values from the vendored `hmrc_uprating_engine_pins.json` (the six
+  parameters at every 1 January 2019 to 2026, written from the installed engine
+  by `tools/pin_uk_uprating_engine_values.py`, whose `--check` refuses drift), so
+  it runs and reproduces without policyengine-uk; a `requires_uk` test holds the
+  pins in lockstep with the installed engine, and an engine bump re-runs the tool.
 - Count rows: `hmrc.itl_2026.taxpayer_count_growth_by_total_income_band`, HMRC's
   own projected growth in Income Tax payers for the Table 2.5 band that contains
   the SPI band (Income Tax liabilities statistics, July 2026), as the
