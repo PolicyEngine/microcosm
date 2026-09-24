@@ -212,19 +212,11 @@ microcosm#1006, comments 5812328880 and 5814299594):
   on everything upstream, the band donors included. The limit stays at 1.0 in
   this tree; the fix belongs in the gate (a tolerance for a top-up of a couple
   of rows) and needs a ruling. Assessment builds raised it to 2.0 locally only.
-- **The SPI copies, band donors included, inherit their FRS parent's wealth,
-  spending and VAT.** The support channel and the band donors copy whole
-  households after `was_wealth`, `regional_property_uprating`,
-  `nts_bus_travel`, `lcfs_consumption`, `etb_vat` and `etb_services` have run,
-  and only incomes, pension contributions and reported benefits are replaced
-  afterwards. On spine-u all 45 WAS, LCFS and ETB columns on the SPI rows equal
-  the parent's; the rank correlation of investment income with gross financial
-  wealth is 0.14 on the SPI half against 0.54 on the FRS half; and the band
-  donors' median gross financial wealth is flat across the bands (£48k, £67k,
-  £50k and £44k from the 200k band to the 2m-and-over band, where median income
-  is £3.57m). The order is inherited from the enhanced FRS. The reorder that
-  runs the SPI block right after `frs_brma` is microcosm#1012, stacked on this
-  branch; it is deferred there, not folded in here.
+- **The SPI copies, band donors included, inherited their FRS parent's wealth,
+  spending and VAT** while this lane was open: on spine-u all 45 WAS, LCFS and
+  ETB columns on the SPI rows equalled the parent's, and the band donors' median
+  gross financial wealth was flat across the bands (£48k, £67k, £50k and £44k).
+  The next section runs the SPI block before those stages (microcosm#1012).
 - **The national calibration at this head blocks on the CGT projection
   fence.** With the spine rebuilt from the rebased head, the terminal gate
   `uk_cgt_projection_entrants` (introduced by #979) refuses: 146,920 weighted
@@ -240,6 +232,38 @@ microcosm#1006, comments 5812328880 and 5814299594):
   a certified cut until the fence is settled on the #970/#979 side (bind the
   count, spread the band-donor mass over lighter rows, or cap their weight
   ratio).
+
+## SPI rows before the donor imputations
+
+The SPI block (`frs_hmrc_spine_leaves`, `spi_support_channel`,
+`spi_income_band_donors`, `hmrc_spi_income_spine`) runs right after
+`frs_brma`, ahead of `was_wealth`, `regional_property_uprating`,
+`nts_bus_travel`, `lcfs_consumption`, `etb_vat` and `etb_services`. Those six
+stages condition on income, and the support stages copy whole FRS households.
+In the enhanced FRS order, which the spine used to follow, each SPI copy kept
+the wealth, spending, VAT rate, public-service use and bus travel drawn for its
+FRS parent's income, while its adults' incomes were replaced by SPI draws. A
+£2m band donor then carried the financial wealth of the median FRS household it
+was copied from.
+
+With the SPI block first, every row, the FRS base rows included, is imputed
+from its final incomes. On the base rows this includes the SPI stage-1
+dividend redraw.
+
+Three details follow from the order:
+
+- `uc_reporter_redraw` stays after the six stages. Its award screen runs the
+  engine, and for benefit units without an FRS capital answer, UC capital falls
+  back to the household's WAS `savings`, property and `corporate_wealth`. The
+  graph opens a reader-isolation version before it, as it does for
+  `uc_capital_coherence`.
+- `regional_property_uprating` takes each region's factor over FRS-base owners
+  only, the population the factor was defined on, and applies it to every
+  owner, the SPI rows included.
+- The six stages now see the SPI support mass allocation, so their
+  weight-dependent steps run at the frame's prior (importance) weights: the
+  gas-connection walk, the NEED rake and DESNZ level, the ETB NHS
+  normalisation and the NTS receipts.
 
 ## Not done here
 

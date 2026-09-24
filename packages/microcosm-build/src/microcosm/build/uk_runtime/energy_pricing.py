@@ -14,13 +14,13 @@ operation, ``price_domestic_energy``:
 * connection: the published gas-connected share by region, gas meters over
   electricity meters from the DESNZ subnational statistics; households the
   diary marked with a trace of gas are disconnected lowest drawn gas first
-  until the region's design-weighted share is the published one;
+  until the region's prior-weighted share is the published one;
 * shape: the NEED mean kWh by household income band, tenure, property type
   and region (England and Wales; Scotland by income, tenure and property),
   raked in kWh with gas over connected households;
 * level: DESNZ Energy Trends domestic consumption at actual temperature,
   summed over the four quarters of the fiscal year, one factor per fuel on
-  the raked kWh so the frame's design-weighted total is the published one.
+  the raked kWh so the frame's prior-weighted total is the published one.
 
 Every price, share, margin, factor and fit is returned in receipts the stage
 records; the ``energy_rake`` stage-health gate recomputes the published
@@ -512,7 +512,7 @@ def impose_gas_connection(
     """The gas-connected mask after imposing each region's published share.
 
     A greedy weight-fitting walk, not a fitted threshold. Within a region
-    whose design-weighted share of gas-positive households exceeds the
+    whose prior-weighted share of gas-positive households exceeds the
     published share, gas-positive households are walked in ascending order of
     drawn gas kWh (a trace of diary gas is the likeliest false connection):
     a household is disconnected when its weight fits inside the remaining
@@ -1028,7 +1028,7 @@ def _rake_fit(
     weights: np.ndarray,
     level_factor: Mapping[str, float],
 ) -> dict[str, Any]:
-    """Per margin: the design-weighted cell means after the rake against NEED x level.
+    """Per margin: the prior-weighted cell means after the rake against NEED x level.
 
     Electricity is averaged over every row of a cell, gas over its connected
     rows, the populations the rake itself used. Each cell records the NEED
@@ -1036,7 +1036,7 @@ def _rake_fit(
     the ``target`` the levelled frame is held to. The stage-time
     ``energy_rake`` health check reads the maximum absolute relative
     deviation per margin and fuel from this block (microcosm#890: NEED is
-    checked where the rake acts, at design weights, not on the calibrated
+    checked where the rake acts, at prior weights, not on the calibrated
     frame).
     """
 

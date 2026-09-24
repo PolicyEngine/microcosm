@@ -89,12 +89,16 @@ _STRUCTURAL_WEIGHT_KIND = {
     "cgt_incidence_anchor": "importance",
 }
 
-# ``hmrc_spi_income_spine`` has an intentionally conservative open input
-# surface.  Opening a version before the following UC rewrite prevents that
-# earlier reader from resolving its incumbent UC cells to the later owner and
-# forming a declaration cycle.
+# Open-surface readers (``_STAGE_CONSUMES`` of ``None``) bind every live cell
+# of their version, including cells a later stage in the same version rewrites.
+# Opening a version before each UC rewrite keeps those earlier readers on the
+# incumbent UC cells instead of the later owner, which would otherwise form a
+# declaration cycle.  ``uc_reporter_redraw`` follows the WAS, LCFS and ETB
+# stages because its engine screen reads the WAS capital proxy for benefit
+# units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
+        "uc_reporter_redraw",
         "uc_capital_coherence",
         # ``frs_education_grant_split`` rewrites the root cell
         # ``education_grants`` that the open-surface ``frs_legacy_proxies``
@@ -207,11 +211,14 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "frs_household_draws": frozenset(),
     "frs_brma": None,
     "was_wealth": None,
+    # The factor's mean is taken over FRS-base owners only, so the support
+    # channel is a direct read.
     "regional_property_uprating": frozenset(
         {
             ("household", "region"),
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
+            ("household", "household_support_channel"),
         }
     ),
     # The NTS band model materializes an engine predictor (household gross
