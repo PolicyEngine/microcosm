@@ -14533,7 +14533,7 @@ def _parity_reference(builder, shares):
 
     return EcpsParityReference(
         source=EcpsParitySource(
-            repo_id="policyengine/policyengine-us-data",
+            repo_id="synthetic/ecps-parity-fixture",
             repo_type="model",
             filename="enhanced_cps_2024.h5",
             revision="synthetic",
