@@ -23,7 +23,10 @@ detail the models never read:
 * ``sipp_tips.CENSUS_OCCUPATION_CODE_TO_TTOC`` consumes detailed Census
   occupation codes directly;
 * ``org_wages.FLSA_OVERTIME_OCCUPATION_CODES`` and its EAP set consume the
-  53-category CPS detailed occupation recode; and
+  53-category CPS detailed occupation recode;
+* ``org_wages.derive_us_org_occupation_inputs`` carries the CPS longest-job
+  industry recodes (``WEIND`` detailed, ``WEMIND`` major) and derives
+  ``worked_last_year`` from weeks worked (``WKSWORK``); and
 * ``sipp_vehicles._household_tenure_status`` consumes only mortgaged owner,
   outright owner, and non-owner tenure codes.
 
@@ -46,6 +49,7 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
 from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
@@ -58,6 +62,7 @@ __all__ = [
     "ACS_2024_HOUSEHOLD_ZIP_SHA256",
     "ACS_2024_PERSON_ZIP_SHA256",
     "ACS_DIFFICULTY_TO_CPS",
+    "ACS_INDP_TO_WEIND",
     "ACS_OCCP_TO_POCCU2",
     "ACS_RAC1P_TO_CONSUMED_PRDTRACE",
     "ACS_RELEASE_PREDICTOR_CROSSWALK_SHA256",
@@ -73,9 +78,9 @@ ACS_2024_PERSON_ZIP_SHA256 = (
 ACS_2024_HOUSEHOLD_ZIP_SHA256 = (
     "8281008e53de98f0ef81e7a2ee5a8725991dda1ecfd2713ead73246425e515d0"
 )
-ACS_RELEASE_PREDICTOR_CROSSWALK_VERSION = 1
+ACS_RELEASE_PREDICTOR_CROSSWALK_VERSION = 2
 ACS_RELEASE_PREDICTOR_CROSSWALK_SHA256 = (
-    "1d4906242e9c73e31b3283659e5cad8242b8cbc42914ab6fa59547a10c8770e9"
+    "a9b8410493084f7002f1a617757dafba1ef9c451efdce200d9f2ef2c8541a194"
 )
 
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
@@ -99,6 +104,8 @@ _PERSON_RAW_COLUMNS = (
     "RAC1P",
     "HISP",
     "OCCP",
+    "INDP",
+    "WKWN",
     "ESR",
     "SSIP",
     "ADJINC",
@@ -686,6 +693,287 @@ ACS_OCCP_TO_POCCU2: Mapping[int, int] = {
     9920: 53,
 }
 
+# 2022 Census industry codes (ACS 2024 INDP; CPS ASEC from survey year 2025)
+# mapped to the 23 CPS longest-job detailed industry groups (WEIND). Every
+# civilian code's group is read from the pinned 2025 ASEC person member
+# (pppub25.csv), where INDUSTRY determines WEIND exactly; codes shared with
+# the 2017-list 2023/2024 members keep the same group there. The ACS-only
+# codes are reviewed: 9670-9870 are the Armed Forces branches (Army, Air
+# Force, Navy, Marines, Coast Guard, branch not specified, Reserves or National
+# Guard) that CPS collapses into 9890 (WEIND 22), and 9920 ("unemployed, no
+# work experience in the last 5 years or never worked") is the CPS
+# did-not-work group 23. WEMIND follows from WEIND by the pinned
+# ``WEIND_TO_WEMIND`` nesting.
+ACS_INDP_TO_WEIND: Mapping[int, int] = {
+    170: 1,
+    180: 1,
+    190: 1,
+    270: 1,
+    280: 1,
+    290: 1,
+    370: 2,
+    380: 2,
+    390: 2,
+    470: 2,
+    480: 2,
+    490: 2,
+    570: 9,
+    580: 9,
+    590: 9,
+    670: 9,
+    680: 9,
+    690: 9,
+    770: 3,
+    1070: 5,
+    1080: 5,
+    1090: 5,
+    1170: 5,
+    1180: 5,
+    1190: 5,
+    1270: 5,
+    1280: 5,
+    1290: 5,
+    1370: 5,
+    1390: 5,
+    1470: 5,
+    1480: 5,
+    1490: 5,
+    1570: 5,
+    1590: 5,
+    1670: 5,
+    1691: 5,
+    1770: 5,
+    1790: 5,
+    1870: 5,
+    1880: 5,
+    1890: 5,
+    1990: 5,
+    2070: 5,
+    2090: 5,
+    2170: 5,
+    2180: 5,
+    2190: 5,
+    2270: 5,
+    2280: 5,
+    2290: 5,
+    2370: 5,
+    2380: 5,
+    2390: 5,
+    2470: 4,
+    2480: 4,
+    2490: 4,
+    2570: 4,
+    2590: 4,
+    2670: 4,
+    2680: 4,
+    2690: 4,
+    2770: 4,
+    2780: 4,
+    2790: 4,
+    2870: 4,
+    2880: 4,
+    2890: 4,
+    2970: 4,
+    2980: 4,
+    2990: 4,
+    3070: 4,
+    3080: 4,
+    3095: 4,
+    3170: 4,
+    3180: 4,
+    3291: 4,
+    3365: 4,
+    3370: 4,
+    3380: 4,
+    3390: 4,
+    3470: 4,
+    3490: 4,
+    3570: 4,
+    3580: 4,
+    3590: 4,
+    3670: 4,
+    3680: 4,
+    3690: 4,
+    3770: 4,
+    3780: 4,
+    3790: 4,
+    3875: 4,
+    3895: 4,
+    3960: 4,
+    3970: 4,
+    3980: 4,
+    3990: 4,
+    4070: 6,
+    4080: 6,
+    4090: 6,
+    4170: 6,
+    4180: 6,
+    4195: 6,
+    4265: 6,
+    4270: 6,
+    4280: 6,
+    4290: 6,
+    4370: 6,
+    4380: 6,
+    4390: 6,
+    4470: 6,
+    4480: 6,
+    4490: 6,
+    4560: 6,
+    4570: 6,
+    4580: 6,
+    4585: 6,
+    4590: 6,
+    4670: 7,
+    4681: 7,
+    4691: 7,
+    4771: 7,
+    4796: 7,
+    4871: 7,
+    4881: 7,
+    4891: 7,
+    4971: 7,
+    4973: 7,
+    4981: 7,
+    4991: 7,
+    5071: 7,
+    5081: 7,
+    5090: 7,
+    5171: 7,
+    5181: 7,
+    5191: 7,
+    5276: 7,
+    5281: 7,
+    5296: 7,
+    5371: 7,
+    5382: 7,
+    5392: 7,
+    5471: 7,
+    5481: 7,
+    5491: 7,
+    5571: 7,
+    5581: 7,
+    5680: 7,
+    5791: 7,
+    6070: 8,
+    6080: 8,
+    6090: 8,
+    6170: 8,
+    6180: 8,
+    6190: 8,
+    6270: 8,
+    6280: 8,
+    6290: 8,
+    6370: 8,
+    6380: 8,
+    6390: 8,
+    6471: 10,
+    6481: 10,
+    6490: 10,
+    6570: 10,
+    6590: 10,
+    6671: 10,
+    6680: 10,
+    6690: 10,
+    6695: 10,
+    6770: 10,
+    6781: 10,
+    6871: 11,
+    6881: 11,
+    6890: 11,
+    6970: 11,
+    6991: 11,
+    6992: 11,
+    7071: 12,
+    7072: 12,
+    7080: 12,
+    7181: 12,
+    7190: 12,
+    7270: 13,
+    7280: 13,
+    7290: 13,
+    7370: 13,
+    7380: 13,
+    7390: 13,
+    7460: 13,
+    7470: 13,
+    7480: 13,
+    7490: 13,
+    7570: 14,
+    7580: 14,
+    7590: 14,
+    7670: 14,
+    7680: 14,
+    7690: 14,
+    7770: 14,
+    7780: 14,
+    7790: 14,
+    7860: 15,
+    7870: 15,
+    7880: 15,
+    7890: 15,
+    7970: 16,
+    7980: 16,
+    7990: 16,
+    8070: 16,
+    8080: 16,
+    8090: 16,
+    8170: 16,
+    8180: 16,
+    8191: 16,
+    8192: 16,
+    8270: 16,
+    8290: 16,
+    8370: 16,
+    8380: 16,
+    8390: 16,
+    8470: 16,
+    8561: 17,
+    8562: 17,
+    8563: 17,
+    8564: 17,
+    8570: 17,
+    8580: 17,
+    8590: 17,
+    8660: 18,
+    8670: 18,
+    8680: 18,
+    8690: 18,
+    8770: 20,
+    8780: 20,
+    8790: 20,
+    8870: 20,
+    8891: 20,
+    8970: 20,
+    8980: 20,
+    8990: 20,
+    9070: 20,
+    9080: 20,
+    9090: 20,
+    9160: 20,
+    9170: 20,
+    9180: 20,
+    9190: 20,
+    9290: 19,
+    9370: 21,
+    9380: 21,
+    9390: 21,
+    9470: 21,
+    9480: 21,
+    9490: 21,
+    9570: 21,
+    9590: 21,
+    9670: 22,
+    9680: 22,
+    9690: 22,
+    9770: 22,
+    9780: 22,
+    9790: 22,
+    9870: 22,
+    9890: 22,
+    9920: 23,
+}
+
 ACS_TEN_TO_SPM_TENMORTSTATUS: Mapping[int, int] = {
     1: 1,  # owned with a mortgage or loan
     2: 2,  # owned free and clear
@@ -706,7 +994,7 @@ _MODEL_PREDICTORS: Mapping[str, tuple[str, ...]] = {
     "scf_auto_loans": ("PRDTRACE", "PRDTHSP"),
     "sipp_vehicles": ("SPM_TENMORTSTATUS",),
     "sipp_tips": ("PEIOOCC",),
-    "org_wages": ("PRDTRACE", "PRDTHSP", "POCCU2"),
+    "org_wages": ("PRDTRACE", "PRDTHSP", "POCCU2", "WEIND", "WEMIND", "WKSWORK"),
 }
 _OUTPUT_COLUMNS = tuple(
     dict.fromkeys(
@@ -761,6 +1049,37 @@ def acs_release_predictor_crosswalk_payload() -> dict[str, Any]:
                     "instead of fabricating CPS no-occupation code 53"
                 ),
             },
+        },
+        "industry": {
+            "INDP_to_WEIND": {
+                str(key): value for key, value in ACS_INDP_TO_WEIND.items()
+            },
+            "blank_INDP_to_WEIND": {
+                "age_below_16": 0,
+                "age_16_plus": 23,
+                "age_15_source_target_universe_gap": (
+                    "ACS INDP is not asked; retain the out-of-universe sentinel "
+                    "instead of fabricating CPS did-not-work code 23"
+                ),
+            },
+            "WEIND_to_WEMIND": {
+                str(key): value for key, value in WEIND_TO_WEMIND.items()
+            },
+            "observed_INDP_reference": (
+                "most recent job in the past 5 years (CPS WEIND: longest job "
+                "last year)"
+            ),
+        },
+        "work_experience": {
+            "WKWN_to_WKSWORK": {
+                "observed": "identity (weeks worked in the past 12 months, 1-52)",
+                "blank": 0,
+                "reference_period_gap": (
+                    "ACS past 12 months before interview; CPS WKSWORK prior "
+                    "calendar year"
+                ),
+            },
+            "invariant": "WKSWORK > 0 implies WEIND in 1..22",
         },
         "tenure": {
             "TEN_to_SPM_TENMORTSTATUS": {
@@ -1452,6 +1771,68 @@ def _crosswalk_people(joined: pd.DataFrame) -> pd.DataFrame:
     # no-occupation / never-worked bin 53.
     poccu2.loc[occupation.isna()] = np.where(age.loc[occupation.isna()].ge(16), 53, 0)
     result["POCCU2"] = poccu2.to_numpy(dtype=np.int16)
+
+    # INDP shares OCCP's universe (age 16+, worked in the past 5 years, or
+    # unemployed with code 9920); a blank from age 16 is admitted only for
+    # ESR=6 and maps to the CPS did-not-work group 23.
+    industry_raw = joined["INDP"]
+    industry = pd.to_numeric(industry_raw, errors="coerce")
+    invalid_industry = (industry_raw.notna() & industry.isna()) | (
+        industry.notna() & age.lt(16)
+    )
+    if invalid_industry.any():
+        bad = joined.loc[invalid_industry, ["SERIALNO", "SPORDER", "AGEP", "INDP"]]
+        raise ValueError(
+            "ACS INDP code/universe mismatch (blank below age 16); examples="
+            f"{bad.head().to_dict('records')}."
+        )
+    blank_industry = industry.isna() & age.ge(16) & ~employment.eq(6)
+    if blank_industry.any():
+        bad = joined.loc[
+            blank_industry, ["SERIALNO", "SPORDER", "AGEP", "INDP", "ESR"]
+        ]
+        raise ValueError(
+            "ACS INDP is blank inside its observed employment universe; examples="
+            f"{bad.head().to_dict('records')}."
+        )
+    observed_industry = industry.loc[industry.notna()].to_numpy(dtype=np.float64)
+    if not np.equal(observed_industry, np.floor(observed_industry)).all():
+        raise ValueError("ACS INDP contains non-integer code(s).")
+    unknown_industry = sorted(
+        set(industry.dropna().astype(np.int64)) - set(ACS_INDP_TO_WEIND)
+    )
+    if unknown_industry:
+        raise ValueError(f"ACS INDP contains unsupported code(s): {unknown_industry}.")
+    weind = industry.map(ACS_INDP_TO_WEIND)
+    weind.loc[industry.isna()] = np.where(age.loc[industry.isna()].ge(16), 23, 0)
+    weind = weind.astype(np.int64)
+
+    weeks_raw = joined["WKWN"]
+    weeks = pd.to_numeric(weeks_raw, errors="coerce")
+    invalid_weeks = (
+        (weeks_raw.notna() & weeks.isna())
+        | (weeks.notna() & age.lt(16))
+        | (weeks.notna() & ~weeks.isin(range(1, 53)))
+    )
+    if invalid_weeks.any():
+        bad = joined.loc[invalid_weeks, ["SERIALNO", "SPORDER", "AGEP", "WKWN"]]
+        raise ValueError(
+            "ACS WKWN code/universe mismatch (blank below age 16; 1--52 weeks "
+            f"from age 16); examples={bad.head().to_dict('records')}."
+        )
+    wkswork = weeks.fillna(0).astype(np.int64)
+    worked_without_industry = wkswork.gt(0) & ~weind.between(1, 22)
+    if worked_without_industry.any():
+        bad = joined.loc[
+            worked_without_industry, ["SERIALNO", "SPORDER", "AGEP", "INDP", "WKWN"]
+        ]
+        raise ValueError(
+            "ACS WKWN reports weeks worked without a worker INDP code; examples="
+            f"{bad.head().to_dict('records')}."
+        )
+    result["WEIND"] = weind.to_numpy(dtype=np.int16)
+    result["WEMIND"] = weind.map(WEIND_TO_WEMIND).to_numpy(dtype=np.int16)
+    result["WKSWORK"] = wkswork.to_numpy(dtype=np.int16)
     return result
 
 

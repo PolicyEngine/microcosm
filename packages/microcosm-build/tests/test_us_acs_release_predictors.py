@@ -12,11 +12,13 @@ from pandas.testing import assert_frame_equal
 
 import microcosm.build.us_runtime.acs_release_predictors as module
 from microcosm.build.us_runtime.acs_release_predictors import (
+    ACS_INDP_TO_WEIND,
     ACS_OCCP_TO_POCCU2,
     ACS_RELEASE_PREDICTOR_CROSSWALK_SHA256,
     acs_release_predictor_crosswalk_payload,
     join_acs_release_predictors,
 )
+from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -33,8 +35,15 @@ _CPS_PREDICTORS = (
     "PRDTHSP",
     "PEIOOCC",
     "POCCU2",
+    "WEIND",
+    "WEMIND",
+    "WKSWORK",
     "SPM_TENMORTSTATUS",
 )
+
+
+#: ACS 2024 Armed Forces branch codes CPS collapses into industry 9890.
+_ACS_ARMED_FORCES_INDP = (9670, 9680, 9690, 9770, 9780, 9790, 9870)
 
 
 def _source_frame(*, acs: bool) -> Frame:
@@ -87,6 +96,9 @@ def _source_frame(*, acs: bool) -> Frame:
         person["PRDTHSP"] = 0.0
         person["PEIOOCC"] = 1005.0
         person["POCCU2"] = 8.0
+        person["WEIND"] = 13.0
+        person["WEMIND"] = 9.0
+        person["WKSWORK"] = 52.0
         person["SPM_TENMORTSTATUS"] = 1.0
 
     return Frame(
@@ -125,6 +137,8 @@ def _raw_person() -> pd.DataFrame:
             "RAC1P": [1, 6, 2],
             "HISP": [1, 1, 2],
             "OCCP": [np.nan, 1005, 9800],
+            "INDP": [np.nan, 7380, 9670],
+            "WKWN": [np.nan, 52, 48],
             "ESR": [np.nan, 1, 4],
             "SSIP": [np.nan, 900.0, 0.0],
             "ADJINC": [1_000_000, 1_000_000, 1_000_000],
@@ -210,8 +224,29 @@ def test_crosswalk_digest_and_every_consumed_occupation_bin_are_pinned() -> None
     assert ACS_OCCP_TO_POCCU2[6005] == 41
     assert ACS_OCCP_TO_POCCU2[9800] == 52
     assert ACS_OCCP_TO_POCCU2[9920] == 53
+    assert len(ACS_INDP_TO_WEIND) == 267
+    assert set(ACS_INDP_TO_WEIND.values()) == set(range(1, 24))
+    assert ACS_INDP_TO_WEIND[170] == 1
+    assert ACS_INDP_TO_WEIND[7380] == 13
+    assert ACS_INDP_TO_WEIND[8191] == 16
+    assert {ACS_INDP_TO_WEIND[code] for code in _ACS_ARMED_FORCES_INDP} == {22}
+    assert ACS_INDP_TO_WEIND[9920] == 23
 
     payload = acs_release_predictor_crosswalk_payload()
+    assert payload["version"] == 2
+    assert payload["industry"]["blank_INDP_to_WEIND"]["age_16_plus"] == 23
+    assert payload["industry"]["WEIND_to_WEMIND"] == {
+        str(key): value for key, value in WEIND_TO_WEMIND.items()
+    }
+    assert payload["work_experience"]["WKWN_to_WKSWORK"]["blank"] == 0
+    assert payload["model_predictors"]["org_wages"] == [
+        "PRDTRACE",
+        "PRDTHSP",
+        "POCCU2",
+        "WEIND",
+        "WEMIND",
+        "WKSWORK",
+    ]
     assert payload["disability"]["DREM"]["minimum_question_age"] == 5
     assert payload["disability"]["DOUT"]["minimum_question_age"] == 15
     assert payload["disability"]["DOUT"]["codes"]["below_universe_blank"] == -1
@@ -257,6 +292,9 @@ def test_release_join_is_exact_total_clone_stable_and_receipted(
             "PRDTHSP",
             "PEIOOCC",
             "POCCU2",
+            "WEIND",
+            "WEMIND",
+            "WKSWORK",
             "SPM_TENMORTSTATUS",
         ],
     ].drop_duplicates("person_source_id")
@@ -265,6 +303,9 @@ def test_release_join_is_exact_total_clone_stable_and_receipted(
     assert sorted(by_source["PRDTHSP"].tolist()) == [0.0, 0.0, 1.0]
     assert sorted(by_source["PEIOOCC"].tolist()) == [-1.0, 1005.0, 9800.0]
     assert sorted(by_source["POCCU2"].tolist()) == [0.0, 8.0, 52.0]
+    assert sorted(by_source["WEIND"].tolist()) == [0.0, 13.0, 22.0]
+    assert sorted(by_source["WEMIND"].tolist()) == [0.0, 9.0, 14.0]
+    assert sorted(by_source["WKSWORK"].tolist()) == [0.0, 48.0, 52.0]
     assert sorted(by_source["SPM_TENMORTSTATUS"].tolist()) == [1.0, 1.0, 3.0]
 
     for _, clones in person.loc[acs].groupby("person_source_id"):
@@ -304,6 +345,8 @@ def test_occupation_crosswalk_preserves_age_15_source_universe_gap() -> None:
     rows["SPORDER"] = [1, 1]
     rows["AGEP"] = [15, 16]
     rows["OCCP"] = np.nan
+    rows["INDP"] = np.nan
+    rows["WKWN"] = np.nan
     rows["ESR"] = [np.nan, 6]
     rows["person_source_id"] = [1, 2]
 
@@ -311,6 +354,62 @@ def test_occupation_crosswalk_preserves_age_15_source_universe_gap() -> None:
 
     assert mapped["PEIOOCC"].tolist() == [-1, -1]
     assert mapped["POCCU2"].tolist() == [0, 53]
+
+
+def test_industry_crosswalk_preserves_age_15_source_universe_gap() -> None:
+    rows = pd.concat([_raw_person().iloc[[1]]] * 2, ignore_index=True)
+    rows["SERIALNO"] = ["age15", "age16"]
+    rows["SPORDER"] = [1, 1]
+    rows["AGEP"] = [15, 16]
+    rows["OCCP"] = np.nan
+    rows["INDP"] = np.nan
+    rows["WKWN"] = np.nan
+    rows["ESR"] = [np.nan, 6]
+    rows["person_source_id"] = [1, 2]
+
+    mapped = module._crosswalk_people(rows)
+
+    assert mapped["WEIND"].tolist() == [0, 23]
+    assert mapped["WEMIND"].tolist() == [0, 15]
+    assert mapped["WKSWORK"].tolist() == [0, 0]
+
+
+def test_industry_is_carried_for_a_job_held_in_the_past_five_years() -> None:
+    """ACS INDP covers the last 5 years; only the weeks say who worked lately."""
+
+    row = _raw_person().iloc[[1]].copy()
+    row["ESR"] = 6
+    row["WKWN"] = np.nan
+    row["person_source_id"] = 1
+
+    mapped = module._crosswalk_people(row)
+
+    assert mapped[["WEIND", "WEMIND", "WKSWORK"]].to_numpy().tolist() == [[13, 9, 0]]
+
+
+@pytest.mark.parametrize(
+    ("changes", "match"),
+    [
+        ({"INDP": np.nan}, "INDP is blank inside its observed employment universe"),
+        ({"INDP": 1}, r"INDP contains unsupported code\(s\): \[1\]"),
+        ({"INDP": 9920, "OCCP": 9920, "ESR": 3}, "weeks worked without a worker"),
+        ({"WKWN": 53}, "WKWN code/universe mismatch"),
+        (
+            {"AGEP": 12, "DOUT": np.nan, "OCCP": np.nan, "INDP": np.nan, "ESR": np.nan},
+            "WKWN code/universe mismatch",
+        ),
+    ],
+)
+def test_industry_crosswalk_refuses_incoherent_source_rows(
+    changes: dict[str, object], match: str
+) -> None:
+    row = _raw_person().iloc[[1]].copy()
+    for column, value in changes.items():
+        row[column] = value
+    row["person_source_id"] = 1
+
+    with pytest.raises(ValueError, match=match):
+        module._crosswalk_people(row)
 
 
 def test_occupation_crosswalk_refuses_malformed_esr_universe() -> None:
