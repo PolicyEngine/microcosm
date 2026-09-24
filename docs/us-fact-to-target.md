@@ -119,6 +119,16 @@ changes (a source stage lands, carriers appear), update the reason in the
 same PR — a stale "no support exists" claim over real-but-thin support is a
 data-integrity bug of its own.
 
+An entry excludes one vintage. Latest-vintage selection would hand its key
+to any other vintage of the same cell the feed carries, so the compile
+refuses such a fallback (microcosm#956). When a feed adds a vintage of an
+excluded cell, decide which of two things it is. If the reason holds at
+every vintage, as #564's concept mismatch does, add the key to
+`US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS`. If the other vintage
+should calibrate, add its id to `US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`
+with a reason. `us_source_coverage.json`'s `fiscal_target_exclusion_receipt`
+lists the ids each rule dropped or allowed in a release.
+
 ## 5. Add a reform-coverage probe
 
 Probes are **generated data**: author them in

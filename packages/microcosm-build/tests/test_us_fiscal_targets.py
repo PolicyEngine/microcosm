@@ -1,5 +1,7 @@
+import importlib.util
 import inspect
 import json
+import math
 import re
 from hashlib import sha256
 from importlib.resources import files
@@ -10,7 +12,9 @@ import pytest
 from microcosm.build import nonnegative_columns_gate, target_profile_coverage_gate
 from microcosm.build.us_runtime import (
     US_FISCAL_MACRO_REALISM_BANDS,
+    US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
     US_FISCAL_TARGET_REFERENCES,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
@@ -19,10 +23,14 @@ from microcosm.build.us_runtime import (
     US_STATE_INCOME_TAX_TARGET_REFERENCES,
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
+    fiscal_targets,
+    us_fiscal_target_exclusion_receipt,
 )
 from microcosm.build.us_runtime.fiscal_targets import (
+    _M_CHIP_STATE_FIPS,
     US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
 )
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "salt_deduction": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
@@ -545,21 +553,45 @@ def test_zero_support_ledger_facts_are_reviewed_exclusions() -> None:
     assert all(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.values())
 
 
+_OTHER_INCOME_TABLE_1_4_MEASURES = tuple(
+    f"other_income_net_{side}_{measure}"
+    for side in ("income", "loss")
+    for measure in ("amount", "returns")
+)
+
+
+def _other_income_table_1_4_facts(tax_years) -> list[dict[str, object]]:
+    return [
+        _soi_taxable_interest_fact(
+            tax_year,
+            source_record_id=f"irs_soi.ty{tax_year}.table_1_4.all.{measure}",
+            value=1_000_000_000,
+            measure_id=measure,
+            layout_record_set_id=f"irs_soi.ty{tax_year}.table_1_4",
+        )
+        for tax_year in tax_years
+        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+    ]
+
+
 def test_other_income_rows_are_reviewed_concept_exclusions() -> None:
     """E01200 — the field mapped to miscellaneous_income — is Form 4797 /
     Form 1040 line-14 business-property net gain/loss, not SOI Table 1.4's
     line-21 'other income' concept (microcosm#393 final determination), so
     all four other-income rows compare incompatible concepts regardless of
-    sign. They must be registry-excluded AND absent from a compiled
-    registry, with a sibling Table 1.4 row surviving as the control."""
+    sign and regardless of tax year. They must be registry-excluded at every
+    vintage AND absent from a compiled registry, with a sibling Table 1.4 row
+    surviving as the control. The pinned feed carries ty2020-ty2023 cells,
+    and a ty2023-only exclusion let latest-vintage selection calibrate ty2022
+    in its place (microcosm#956)."""
     row_keys = [
-        f"irs_soi.ty2023.table_1_4.all.other_income_net_{side}_{measure}"
-        for side in ("income", "loss")
-        for measure in ("amount", "returns")
+        f"irs_soi.ty2023.table_1_4.all.{measure}"
+        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
     ]
     for key in row_keys:
         assert key in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
         assert "4797" in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS[key]
+    assert set(row_keys) == US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
 
     control_source_record_id = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
     facts = [
@@ -570,16 +602,7 @@ def test_other_income_rows_are_reviewed_concept_exclusions() -> None:
             value=240_000_000_000,
             layout_record_set_id="irs_soi.ty2023.table_1_4",
         ),
-        *(
-            _soi_taxable_interest_fact(
-                2023,
-                source_record_id=key,
-                value=1_000_000_000,
-                measure_id=key.split(".")[-1],
-                layout_record_set_id="irs_soi.ty2023.table_1_4",
-            )
-            for key in row_keys
-        ),
+        *_other_income_table_1_4_facts((2020, 2021, 2022, 2023)),
     ]
     registry = compile_us_fiscal_target_registry(
         facts, allow_unaged_dollar_targets=True
@@ -587,9 +610,351 @@ def test_other_income_rows_are_reviewed_concept_exclusions() -> None:
     by_source_record_id = {
         spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
     }
-    for key in row_keys:
-        assert key not in by_source_record_id
+    assert not [
+        source_record_id
+        for source_record_id in by_source_record_id
+        if ".table_1_4.all.other_income_" in source_record_id
+    ]
     assert control_source_record_id in by_source_record_id
+
+
+def test_other_income_older_vintages_are_live_rows_the_scope_must_drop(
+    monkeypatch,
+) -> None:
+    """The ty2020-ty2022 facts above are not inert: without the all-vintage
+    scope the ty2023 keys still drop only their own vintage, latest-vintage
+    selection hands every key to ty2022, and the compile refuses that
+    fallback by name. With the exclusions lifted too, all four ty2023 rows
+    compile, so the fact shape binds."""
+    facts = [
+        *packaged_reference_facts(),
+        *_other_income_table_1_4_facts((2020, 2021, 2022, 2023)),
+    ]
+    monkeypatch.setattr(
+        fiscal_targets, "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS", frozenset()
+    )
+    with pytest.raises(ValueError, match="bypassed by another source vintage") as error:
+        compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    for measure in _OTHER_INCOME_TABLE_1_4_MEASURES:
+        assert (
+            f"irs_soi.ty2022.table_1_4.all.{measure} would calibrate in place of "
+            f"excluded irs_soi.ty2023.table_1_4.all.{measure}"
+        ) in str(error.value)
+
+    for measure in _OTHER_INCOME_TABLE_1_4_MEASURES:
+        monkeypatch.delitem(
+            US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
+            f"irs_soi.ty2023.table_1_4.all.{measure}",
+        )
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    compiled = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    assert {
+        f"irs_soi.ty2023.table_1_4.all.{measure}"
+        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+    } <= compiled
+
+
+_W2_TIPS_RETURN_COUNT = (
+    "irs_soi.ty{year}.form_w2_social_security_tips."
+    "box_7_social_security_tips.return_count"
+)
+
+
+def _w2_tips_return_count_fact(tax_year: int) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=_W2_TIPS_RETURN_COUNT.format(year=tax_year),
+        source_name="irs_soi",
+        measure_id="return_count",
+        value=6_038_613,
+        period_value=tax_year,
+        layout_record_set_id=f"irs_soi.ty{tax_year}.form_w2_social_security_tips",
+        groupby_dimension="irs_soi.form_w2_item",
+        groupby_value_id="box_7_social_security_tips",
+    )
+
+
+@pytest.mark.parametrize(
+    ("excluded_year", "other_year"),
+    [(2023, 2022), (2022, 2023)],
+    ids=["older-vintage-fallback", "newer-vintage"],
+)
+def test_exclusion_vintage_bypass_fails_closed_naming_the_id(
+    monkeypatch, excluded_year, other_year
+) -> None:
+    """A reviewed exclusion keyed to one vintage must not quietly hand its
+    target to another vintage of the same cell. The compile, and the receipt
+    that replays it, refuse the selected fact by name; without the other
+    vintage the exclusion holds and nothing raises."""
+    excluded = f"irs_soi.ty{excluded_year}.table_1_4.all.taxable_interest_amount"
+    other = f"irs_soi.ty{other_year}.table_1_4.all.taxable_interest_amount"
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_SUPPORT_EXCLUSIONS, excluded, "test: synthetic exclusion"
+    )
+
+    def fact(tax_year: int, source_record_id: str) -> dict[str, object]:
+        return _soi_taxable_interest_fact(
+            tax_year,
+            source_record_id=source_record_id,
+            value=240_000_000_000,
+            layout_record_set_id=f"irs_soi.ty{tax_year}.table_1_4",
+        )
+
+    facts = [
+        *packaged_reference_facts(),
+        fact(excluded_year, excluded),
+        fact(other_year, other),
+    ]
+    message = f"{other} would calibrate in place of excluded {excluded}"
+    with pytest.raises(ValueError, match=re.escape(message)):
+        compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+    with pytest.raises(ValueError, match=re.escape(message)):
+        us_fiscal_target_exclusion_receipt(facts)
+
+    registry = compile_us_fiscal_target_registry(
+        facts[:-1], allow_unaged_dollar_targets=True
+    )
+    compiled = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    assert excluded not in compiled
+
+
+def test_allowlisted_tips_vintage_bypass_compiles_and_is_receipted() -> None:
+    """The ty2020 W-2 Box 7 return count falls back past the #451 ty2023
+    exclusion. It stays calibrated as a reviewed bypass pending Max's ruling
+    (decision d179), and the receipt discloses it with the exclusion it
+    bypasses."""
+    excluded = _W2_TIPS_RETURN_COUNT.format(year=2023)
+    bypass = _W2_TIPS_RETURN_COUNT.format(year=2020)
+    assert excluded in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+    facts = [
+        *packaged_reference_facts(),
+        _w2_tips_return_count_fact(2023),
+        _w2_tips_return_count_fact(2020),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    compiled = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    assert bypass in compiled
+    assert excluded not in compiled
+
+    receipt = us_fiscal_target_exclusion_receipt(facts)
+    rules = receipt["rules"]
+    assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == [bypass]
+    assert rules["allowlisted_vintage_bypass"]["bypasses"] == [
+        {
+            "source_record_id": bypass,
+            "bypassed_exclusions": [excluded],
+            "reason": US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES[bypass],
+        }
+    ]
+    assert rules["reviewed_exclusion"]["source_record_ids"] == [excluded]
+
+
+def test_exclusion_vintage_scope_registers_are_consistent() -> None:
+    """Each all-vintage entry is a register key, and each bypass is another
+    vintage of exactly one register key that is not all-vintage scoped (else
+    it could never be selected) and says why it may calibrate. The bypass
+    list holds only the tips row until decision d179 rules on it."""
+    period_free = fiscal_targets._period_free_source_record_id
+    assert US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS <= set(
+        US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+    )
+    assert set(US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES) == {
+        _W2_TIPS_RETURN_COUNT.format(year=2020)
+    }
+    for source_record_id, reason in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES.items():
+        assert reason
+        assert source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+        matches = [
+            key
+            for key in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+            if period_free(key) == period_free(source_record_id)
+        ]
+        assert len(matches) == 1, (source_record_id, matches)
+        assert matches[0] not in US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
+    assert period_free(
+        "cms_medicaid.month2024_12.state_enrollment.ca.total_chip_enrollment"
+    ) == ("cms_medicaid.state_enrollment.ca.total_chip_enrollment")
+
+
+def test_exclusion_receipt_lists_the_ids_each_rule_acts_on() -> None:
+    """One synthetic feed exercises all four rules. The M-CHIP and all-vintage
+    rules list every vintage the feed carries (both CMS months even though a
+    2024 build selects only 2024-12), exact-key hits land under
+    reviewed_exclusion, and the allowlisted bypass is the fact selection
+    activates. The receipt is plain JSON."""
+    tanf = (
+        "hhs_acf_tanf.fy2024.cash_assistance.ar."
+        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
+        "all_funds"
+    )
+    facts = [
+        *packaged_reference_facts(),
+        *_other_income_table_1_4_facts((2020, 2021, 2022, 2023)),
+        *(
+            _cms_state_enrollment_fact(
+                month, state=state, state_fips=state_fips, value=100_000
+            )
+            for state, state_fips in (("ca", "06"), ("oh", "39"), ("tx", "48"))
+            for month in ("2024-12", "2025-12")
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=tanf,
+            source_name="hhs_acf_tanf",
+            measure_id="all_funds",
+            value=123_000_000,
+            geography_level="state",
+            geography_id="0400000US05",
+            groupby_value_id="ar",
+        ),
+        _w2_tips_return_count_fact(2023),
+        _w2_tips_return_count_fact(2020),
+    ]
+
+    receipt = us_fiscal_target_exclusion_receipt(facts, target_period=2024)
+
+    assert json.loads(json.dumps(receipt, allow_nan=False)) == receipt
+    assert receipt["target_period"] == "2024"
+    rules = receipt["rules"]
+    assert {name: rule["action"] for name, rule in rules.items()} == {
+        "reviewed_exclusion": "dropped",
+        "all_vintage_reviewed_exclusion": "dropped",
+        "m_chip_state_chip_enrollment": "dropped",
+        "allowlisted_vintage_bypass": "allowed",
+    }
+    assert rules["reviewed_exclusion"]["source_record_ids"] == sorted(
+        [tanf, _W2_TIPS_RETURN_COUNT.format(year=2023)]
+    )
+    assert rules["all_vintage_reviewed_exclusion"]["source_record_ids"] == sorted(
+        f"irs_soi.ty{tax_year}.table_1_4.all.{measure}"
+        for tax_year in (2020, 2021, 2022, 2023)
+        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+    )
+    assert rules["all_vintage_reviewed_exclusion"]["entries"] == sorted(
+        US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
+    )
+    assert rules["m_chip_state_chip_enrollment"]["source_record_ids"] == sorted(
+        f"cms_medicaid.month{month}.state_enrollment.{state}.total_chip_enrollment"
+        for state in ("ca", "oh")
+        for month in ("2024_12", "2025_12")
+    )
+    assert rules["m_chip_state_chip_enrollment"]["state_fips"] == sorted(
+        _M_CHIP_STATE_FIPS
+    )
+    assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == [
+        _W2_TIPS_RETURN_COUNT.format(year=2020)
+    ]
+
+
+# The pinned-feed checks below run only where the pinned Chronicle feed sits at
+# the target-parity generator's default path; CI has no feed and skips them, so
+# the compile-time vintage guard is the enforcement and these pin the outcome.
+
+
+def _load_repo_tool(name: str):
+    path = Path(__file__).resolve().parents[3] / "tools" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def pinned_feed_national_state_surface():
+    """Compile the pinned feed as the release does: compile, Medicaid
+    substitutions, then ``--target-surface national_state``."""
+    feed_path = _load_repo_tool("build_us_target_parity_manifest").DEFAULT_FEED_PATH
+    if not feed_path.exists():
+        pytest.skip(f"pinned feed not present at {feed_path}")
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        apply_us_medicaid_enrollment_substitutions,
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+    from microcosm.calibrate import TargetRegistry
+
+    facts = load_ledger_consumer_artifact(
+        feed_path,
+        expected_facts_sha256=load_us_chronicle_feed().facts_sha256,
+        expected_manifest_sha256=None,
+    ).facts
+    crosswalk = load_congressional_district_vintage_crosswalk(
+        default_congressional_district_vintage_crosswalk_path()
+    )
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        congressional_district_vintage_crosswalk=crosswalk,
+        age_targets=True,
+    )
+    registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
+    builder = _load_repo_tool("build_us_fiscal_refresh_release")
+    specs, _ = builder._select_target_surface(registry.specs, "national_state")
+    receipt = us_fiscal_target_exclusion_receipt(
+        facts,
+        target_period=2024,
+        congressional_district_vintage_crosswalk=crosswalk,
+    )
+    return registry, TargetRegistry(specs, country="us"), receipt
+
+
+def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> None:
+    """On the pinned feed the receipt names the 40 M-CHIP CHIP ids (20 states
+    x 2 CMS months), the 16 other-income ids (ty2020-ty2023) and the one
+    allowlisted tips id."""
+    _, _, receipt = pinned_feed_national_state_surface
+    rules = receipt["rules"]
+    m_chip_ids = rules["m_chip_state_chip_enrollment"]["source_record_ids"]
+    assert len(m_chip_ids) == 40
+    assert {
+        (source_record_id.split(".")[1], source_record_id.split(".")[3])
+        for source_record_id in m_chip_ids
+    } == {
+        (month, US_STATE_FIPS_TO_POSTAL[state_fips].lower())
+        for month in ("month2024_12", "month2025_12")
+        for state_fips in _M_CHIP_STATE_FIPS
+    }
+    assert rules["all_vintage_reviewed_exclusion"]["source_record_ids"] == sorted(
+        f"irs_soi.ty{tax_year}.table_1_4.all.{measure}"
+        for tax_year in (2020, 2021, 2022, 2023)
+        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+    )
+    assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == [
+        _W2_TIPS_RETURN_COUNT.format(year=2020)
+    ]
+
+
+def test_pinned_feed_national_state_surface_restores_the_fences(
+    pinned_feed_national_state_surface,
+) -> None:
+    """The release surface on the pinned feed: 32,843 compiled targets after
+    Medicaid substitution, 5,695 national_state targets at registry
+    386fac439e77, 32 CHIP rows none of them for an M-CHIP state, and no
+    other-income row. Before microcosm#956 it was 32,867 / 5,719 at
+    d5f9d854fe11 (docs/us-chronicle-feed-repin.md erratum)."""
+    registry, surface, _ = pinned_feed_national_state_surface
+    assert len(registry.specs) == 32_843
+    assert len(surface.specs) == 5_695
+    assert surface.version == "386fac439e77"
+    chip = [
+        spec
+        for spec in surface.specs
+        if spec.family == "cms_medicaid"
+        and spec.metadata.get("target_role") == "chip_enrollment"
+    ]
+    assert len(chip) == 32
+    assert not [
+        spec.name
+        for spec in chip
+        if spec.metadata.get("state_fips") in _M_CHIP_STATE_FIPS
+    ]
+    assert not [spec.name for spec in surface.specs if "other_income" in spec.name]
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
@@ -1025,6 +1390,116 @@ def test_m_chip_state_chip_enrollment_target_is_not_derived() -> None:
         spec.name for spec in registry.specs if "ca.total_chip_enrollment" in spec.name
     ]
     assert derived == []
+
+
+@pytest.mark.parametrize(
+    ("target_period", "selected_month"), [(2024, "2024_12"), (2025, "2025_12")]
+)
+def test_direct_m_chip_state_chip_rows_never_compile(
+    target_period, selected_month
+) -> None:
+    """The 2026-09-18 feed re-pin added direct CMS total_chip_enrollment rows
+    for exactly the M-CHIP states, and a direct row compiles to the same
+    chip_enrolled role the #321 derivation skip guards, so the fence leaked
+    (microcosm#956). The rule drops the row whichever month wins
+    latest-vintage selection: 2024-12 at a 2024 build, 2025-12 at 2025. TX,
+    a separate-CHIP state, keeps its row. Facts use the pinned feed's id and
+    layout (``...state_enrollment.<st>.total_chip_enrollment``)."""
+    states = {"ca": "06", "oh": "39", "tx": "48"}
+    facts = [
+        *packaged_reference_facts(),
+        *(
+            _cms_state_enrollment_fact(
+                month,
+                state=state,
+                state_fips=state_fips,
+                value=100_000 + index,
+            )
+            for index, (state, state_fips) in enumerate(states.items())
+            for month in ("2024-12", "2025-12")
+        ),
+    ]
+    registry = compile_us_fiscal_target_registry(
+        facts, target_period=target_period, allow_unaged_dollar_targets=True
+    )
+
+    chip = {
+        spec.metadata["ledger_source_record_id"]: spec
+        for spec in registry.specs
+        if spec.metadata.get("target_role") == "chip_enrollment"
+    }
+    assert set(chip) == {
+        f"cms_medicaid.month{selected_month}.state_enrollment.tx.total_chip_enrollment"
+    }
+    (tx,) = chip.values()
+    assert tx.metadata["state_fips"] == "48"
+    assert tx.metadata["base_variable"] == "chip_enrolled"
+    assert {"06", "39"} <= _M_CHIP_STATE_FIPS
+    assert "48" not in _M_CHIP_STATE_FIPS
+
+
+def test_m_chip_rule_drops_a_chip_row_whatever_its_provenance() -> None:
+    """The concept rule reads the compiled spec's role and state, so a direct
+    CHIP row in the older helper's id format is dropped too, while the national
+    row survives."""
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=1_700_000,
+                measure_id="total_chip_enrollment",
+                geography_level="state",
+                geography_id="0400000US06",
+                geography_slug="ca",
+            ),
+            _cms_medicaid_enrollment_fact(
+                "2024-12",
+                value=7_000_000,
+                measure_id="total_chip_enrollment",
+            ),
+        ]
+    )
+
+    chip = [
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("target_role") == "chip_enrollment"
+    ]
+    assert chip == ["cms_medicaid.month2024_12.us.total_chip_enrollment"]
+
+
+@pytest.mark.requires_us
+def test_m_chip_state_set_matches_engine_separate_chip_child_limits() -> None:
+    """Two-way engine consistency for the #321 state set.
+
+    PolicyEngine-US marks a state that runs no separate CHIP for children
+    with a -inf ``gov.hhs.chip.child.income_limit``; its children are covered
+    through Medicaid (M-CHIP), so ``chip_enrolled`` there can come only from
+    the pregnant-person paths. That -inf set must equal ``_M_CHIP_STATE_FIPS``
+    plus one reviewed carve-out: Rhode Island ("44") has a -inf child limit
+    but sits outside the #321 set, so its CHIP row stays on the surface (the
+    pinned feed's 2024-12 RI CHIP count is 0, the month RI did not report
+    Medicaid enrollment either per the #386 substitution register; 2025-12
+    is 33,661).
+    An engine bump that adds or removes a -inf state fails here, so the set
+    is re-reviewed instead of silently drifting from the engine.
+    """
+    from policyengine_us import CountryTaxBenefitSystem
+
+    limits = (
+        CountryTaxBenefitSystem()
+        .parameters("2024-01-01")
+        .gov.hhs.chip.child.income_limit
+    )
+    no_separate_child_chip = {
+        state_fips
+        for state_fips, postal in US_STATE_FIPS_TO_POSTAL.items()
+        if limits[postal.upper()] == -math.inf
+    }
+    reviewed_carve_outs = {"44"}
+    assert no_separate_child_chip == _M_CHIP_STATE_FIPS | reviewed_carve_outs
+    assert not reviewed_carve_outs & _M_CHIP_STATE_FIPS
 
 
 def test_direct_chip_enrollment_fact_maps_to_chip_enrolled() -> None:
@@ -4184,10 +4659,20 @@ def test_soi_eitc_layout_child_count_filter_reaches_compiled_target() -> None:
     )
 
 
-def test_soi_form_w2_social_security_tips_return_count_targets_tip_income() -> None:
+def test_soi_form_w2_social_security_tips_return_count_targets_tip_income(
+    monkeypatch,
+) -> None:
     source_record_id = (
         "irs_soi.ty2024.form_w2_social_security_tips."
         "box_7_social_security_tips.return_count"
+    )
+    # Every vintage of this cell is another vintage of the #451 ty2023
+    # exclusion, so the compile refuses it unless it is a reviewed bypass.
+    # This test pins only the variable mapping, so it allowlists its own id.
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
+        source_record_id,
+        "test: mapping only",
     )
     registry = compile_us_fiscal_target_registry(
         [
@@ -5896,6 +6381,71 @@ def _cms_medicaid_enrollment_fact(
             "source_table": "Medicaid and CHIP enrollment",
             "source_file": f"enrollment_{normalized_period}.csv",
             "vintage": f"month_{normalized_period}",
+            "url": "https://data.medicaid.gov/",
+        },
+    }
+
+
+def _cms_state_enrollment_fact(
+    source_period: str,
+    *,
+    state: str,
+    state_fips: str,
+    value: float,
+    measure_id: str = "total_chip_enrollment",
+) -> dict[str, object]:
+    """A CMS state-enrollment fact in the pinned feed's id and layout format.
+
+    The pinned feed's ids carry a ``state_enrollment`` record-set token and
+    group by state, e.g. ``cms_medicaid.month2024_12.state_enrollment.ca.
+    total_chip_enrollment``; ``_cms_medicaid_enrollment_fact`` builds the
+    older ``cms_medicaid.month2024_12.ca.<measure>`` form.
+    """
+
+    normalized_period = source_period.replace("-", "_")
+    record_set_id = f"cms_medicaid.month{normalized_period}.state_enrollment"
+    source_record_id = f"{record_set_id}.{state}.{measure_id}"
+    fact_id = source_record_id.replace(".", "_")
+    return {
+        "label": f"Test label for {source_record_id}",
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_id}",
+        "legacy_fact_key": f"ledger.fact.v1:{fact_id}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "month", "value": source_period},
+        "entity": {"name": "person", "role": "medicaid_or_chip_enrollee"},
+        "aggregation": {"method": "sum"},
+        "geography": {
+            "level": "state",
+            "id": f"0400000US{state_fips}",
+            "name": f"Test state {state}",
+        },
+        "dimensions": {},
+        "dimension_labels": {"cms_medicaid.state_abbreviation": "State"},
+        "dimension_value_labels": {
+            "cms_medicaid.state_abbreviation": {state: f"Test state {state}"}
+        },
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": record_set_id,
+            "groupby_dimension": "cms_medicaid.state_abbreviation",
+            "groupby_dimension_label": "State",
+            "groupby_value_id": state,
+            "groupby_value_label": f"Test state {state}",
+            "measure_id": measure_id,
+        },
+        "observed_measure": {
+            "source_name": "cms_medicaid",
+            "source_table": "Medicaid and CHIP enrollment",
+            "source_measure_id": measure_id,
+            "source_concept": f"cms_medicaid.{measure_id}",
+            "unit": "count",
+        },
+        "source": {
+            "source_name": "cms_medicaid",
+            "source_table": "Medicaid and CHIP enrollment",
+            "vintage": "april_2026_release",
             "url": "https://data.medicaid.gov/",
         },
     }

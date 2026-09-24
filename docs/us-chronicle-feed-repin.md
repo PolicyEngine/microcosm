@@ -131,6 +131,40 @@ register's 32,842. The previous pin cannot compile on main, so the two
 registers are not compared target by target; the only input difference is
 the added rows above, since every shared cell is equal.
 
+**Erratum (23 September 2026, microcosm#956).** The added rows did move the
+target surface. Two reviewed fences reopened, and the route A release
+(`8f63bf000`) failed its zero-support and SOI Table 1.4 gates on the rows
+that leaked:
+
+- Twenty of the added Medicaid cells per month are direct
+  `total_chip_enrollment` rows for exactly the twenty M-CHIP states that #321
+  fences. The fence lived only in the combined-minus-Medicaid CHIP
+  derivation, so the 2024-12 rows compiled as `chip_enrolled` targets (the
+  2025-12 rows fall after the 2024 target period).
+- The Table 1.4 cells for tax years 2020-2022 bypassed #564. Its four
+  `other_income` exclusions were keyed to the ty2023 ids, so latest-vintage
+  selection calibrated the ty2022 rows in their place.
+
+The fix drops every CMS CHIP row for an M-CHIP state after latest-vintage
+selection, scopes the #564 entries to every vintage, and makes the compile
+refuse any other fallback to another vintage of an excluded cell unless the
+id is a reviewed bypass (`US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`).
+`us_source_coverage.json` now records the concrete ids each rule drops or
+allows (`fiscal_target_exclusion_receipt`). The one reviewed bypass is the
+ty2020 W-2 Box 7 tips return count, which falls back past the #451 ty2023
+exclusion. The route A remediation plan found it calibrated in the certified
+parent `populace-us-2024-spm-receipts-20260923` too, so it is not a re-pin
+effect; it stays calibrated pending Max's ruling (decision d179).
+
+On this feed, compiled as above and then narrowed with
+`--target-surface national_state`, the surface diff is 24 targets removed,
+none added and none changed: the 2024-12 CHIP rows for AK CA DC HI IL KY MD
+ME MI MN NC ND NE NH NM OH OK SC VT WY, and the ty2022
+`table_1_4.all.other_income_net_{income,loss}_{amount,returns}` rows. The
+compiled register goes from 32,867 to 32,843 targets, and the
+`national_state` surface from 5,719 targets (registry `d5f9d854fe11`) to
+5,695 (`386fac439e77`).
+
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
 substituted spec by cloning a neighbouring state's spec and kept that state's

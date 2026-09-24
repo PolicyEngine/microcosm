@@ -129,6 +129,7 @@ from microcosm.build.us_runtime import (
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
     us_farm_business_income_signal_gate,
+    us_fiscal_target_exclusion_receipt,
     us_form_4952_election_signal_gate,
     us_hours_worked_signal_gate,
     us_housing_inputs_signal_gate,
@@ -9697,6 +9698,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
     )
+    # The exclusion register's keys do not say which feed facts a compile
+    # dropped or let through by vintage (microcosm#956), so record the concrete
+    # ids per rule now, while the facts and crosswalk are at hand; it lands in
+    # us_source_coverage.json beside the register.
+    fiscal_target_exclusion_receipt = us_fiscal_target_exclusion_receipt(
+        ledger_artifact.facts,
+        target_period=PERIOD,
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
+        ),
+    )
     # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
     # whose point-in-time snapshot is unreported at source ships its cited
     # nearest-prior-month count instead of failing the take-up gate closed.
@@ -12704,6 +12716,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
         )
     ]
+    coverage["fiscal_target_exclusion_receipt"] = fiscal_target_exclusion_receipt
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
