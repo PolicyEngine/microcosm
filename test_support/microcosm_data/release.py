@@ -29,8 +29,11 @@ from microcosm.data.release import (
     LATEST_POINTER_SCHEMA_VERSION,
     latest_evidence_pointer_payload,
     latest_evidence_release,
+    latest_line_release,
     latest_pointer_payload,
     latest_release,
+    line_pointer_path,
+    line_pointer_payload,
     publish_release,
 )
 
@@ -44,12 +47,24 @@ def _no_slack_webhook(monkeypatch):
 
 
 RELEASE_ID = "populace-us-2024-9f1260b-20260611"
+JUNE_UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef"
+UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k55000"
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
 CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 TARGET_COUNT = 20
+#: Terminal gate verdicts the US release tool binds as release-dir
+#: diagnostics artifacts (route A remediation PR-3): key -> file name.
+GATE_EVIDENCE_FILES = {
+    "input_coverage": "input_coverage.json",
+    "input_mass_parity": "input_mass_parity.json",
+    "qrf_tail_concentration": "qrf_tail_concentration.json",
+    "reform_coverage_smoke": "reform_coverage_smoke.json",
+}
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -378,7 +393,8 @@ def _source_coverage_diagnostics() -> dict:
 class FakeHub:
     """Model atomic Hub commits, refs, and downloads with an ordered event log."""
 
-    def __init__(self) -> None:
+    def __init__(self, repo_id: str = "policyengine/populace-us") -> None:
+        self.repo_id = repo_id
         self.uploads: list[tuple[str, bytes]] = []
         self.tags: list[dict[str, str | None]] = []
         self.events: list[tuple[str, dict]] = []
@@ -395,7 +411,7 @@ class FakeHub:
 
     def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type) -> None:
         assert repo_type == "dataset"
-        assert repo_id == "policyengine/populace-us"
+        assert repo_id == self.repo_id
         content = self._content(path_or_fileobj)
         self.uploads.append((path_in_repo, content))
         self._commit_number += 1
@@ -417,7 +433,7 @@ class FakeHub:
         exist_ok=False,
     ) -> None:
         assert repo_type == "dataset"
-        assert repo_id == "policyengine/populace-us"
+        assert repo_id == self.repo_id
         if branch in self._refs and not exist_ok:
             raise ValueError(f"branch exists: {branch}")
         base = revision or "main"
@@ -426,7 +442,7 @@ class FakeHub:
 
     def repo_info(self, *, repo_id, repo_type, revision=None) -> dict[str, str]:
         assert repo_type == "dataset"
-        assert repo_id == "policyengine/populace-us"
+        assert repo_id == self.repo_id
         ref = revision or "main"
         return {"sha": self._refs[ref]}
 
@@ -441,7 +457,7 @@ class FakeHub:
         parent_commit=None,
     ):
         assert repo_type == "dataset"
-        assert repo_id == "policyengine/populace-us"
+        assert repo_id == self.repo_id
         ref = revision or "main"
         current_commit = self._refs[ref]
         if parent_commit is not None:
@@ -479,7 +495,7 @@ class FakeHub:
         self, *, repo_id, tag, repo_type, revision=None, exist_ok=False
     ) -> None:
         assert repo_type == "dataset"
-        assert repo_id == "policyengine/populace-us"
+        assert repo_id == self.repo_id
         if tag in self._refs and not exist_ok:
             raise ValueError(f"tag exists: {tag}")
         self._refs[tag] = revision or self._refs["main"]
@@ -488,7 +504,7 @@ class FakeHub:
 
     def delete_branch(self, *, repo_id, branch, repo_type) -> None:
         assert repo_type == "dataset"
-        assert repo_id == "policyengine/populace-us"
+        assert repo_id == self.repo_id
         del self._refs[branch]
         self.events.append(("delete_branch", {"branch": branch}))
 
@@ -498,6 +514,7 @@ class FakeHub:
 
     def hf_hub_download(self, *, repo_id, filename, repo_type, revision=None) -> str:
         assert repo_type == "dataset"
+        assert repo_id == self.repo_id
         ref = revision or "main"
         commit = self._refs.get(ref, ref)
         try:
@@ -577,6 +594,22 @@ def release_dir(tmp_path: Path) -> Path:
     )
     diagnostics_sha = _sha256(directory / "calibration_diagnostics.json")
     source_coverage_sha = _sha256(directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
+    # The release tool's terminal gate verdicts ride as manifest artifacts so
+    # the publisher uploads them; the register block records the waiver.
+    for key, filename in GATE_EVIDENCE_FILES.items():
+        (directory / filename).write_text(
+            json.dumps({"schema_version": 1, "enforced": True, key: {"passed": True}})
+        )
+    gate_evidence_artifacts = {
+        key: {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": "policyengine/populace-us",
+            "revision": RELEASE_ID,
+            "sha256": _sha256(directory / filename),
+        }
+        for key, filename in GATE_EVIDENCE_FILES.items()
+    }
     (directory / "release_manifest.json").write_text(
         json.dumps(
             {
@@ -592,6 +625,13 @@ def release_dir(tmp_path: Path) -> Path:
                     "built_with_model_package": {
                         "name": "policyengine-us",
                         "version": "1.729.0",
+                    },
+                    "qrf_tail_register": {
+                        "path": "/runtime/qrf_tail_exclusions.json",
+                        "sha256": "d" * 64,
+                        "entries": {"farm_income": "donor tail, tracked #481"},
+                        "mismatch": {"stale": [], "unused": []},
+                        "enforced": True,
                     },
                 },
                 "compatible_core_packages": [
@@ -629,6 +669,7 @@ def release_dir(tmp_path: Path) -> Path:
                         "revision": RELEASE_ID,
                         "sha256": source_coverage_sha,
                     },
+                    **gate_evidence_artifacts,
                 },
             }
         )
@@ -649,6 +690,35 @@ def artifact_root(tmp_path: Path) -> Path:
     return directory
 
 
+def _as_uk_national_line_release(release_dir: Path) -> Path:
+    """Retarget the publisher fixture to the constant UK national line id."""
+    national = release_dir.with_name(UK_NATIONAL_RELEASE_ID)
+    release_dir.rename(national)
+
+    build_path = national / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["build_id"] = UK_NATIONAL_RELEASE_ID
+    build_path.write_text(json.dumps(build))
+
+    certification_path = national / "release_certification.json"
+    certification_path.write_text("{}")
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["build"]["build_id"] = UK_NATIONAL_RELEASE_ID
+    for artifact in manifest["artifacts"].values():
+        artifact["repo_id"] = "policyengine/populace-uk-private"
+        artifact["revision"] = UK_NATIONAL_CUT_TAG
+    manifest["artifacts"]["release_certification"] = {
+        "kind": "diagnostics",
+        "path": certification_path.name,
+        "repo_id": "policyengine/populace-uk-private",
+        "revision": UK_NATIONAL_CUT_TAG,
+        "sha256": _sha256(certification_path),
+    }
+    manifest_path.write_text(json.dumps(manifest))
+    return national
+
+
 @pytest.fixture
 def annual_release(release_dir, artifact_root):
     from .annual_projections import _h5, add_annual_extension
@@ -665,6 +735,106 @@ def annual_release(release_dir, artifact_root):
     manifest["artifacts"]["populace_us_2024"]["sha256"] = sha
     path.write_text(json.dumps(manifest))
     return add_annual_extension(release_dir, artifact_root)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -693,9 +863,11 @@ def evidence_release_dir(release_dir: Path) -> Path:
     diagnostics build.release_gates)."""
     directory = release_dir.parent / EVIDENCE_RELEASE_ID
     directory.mkdir()
-    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
-        (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).read_text()
-    )
+    for filename in (
+        US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        *GATE_EVIDENCE_FILES.values(),
+    ):
+        (directory / filename).write_text((release_dir / filename).read_text())
     diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
     diagnostics["build"] = {
         "release_gates": {"passed": False, "failures": [EVIDENCE_KNOWN_FAILURE]}
@@ -727,6 +899,32 @@ def evidence_release_dir(release_dir: Path) -> Path:
     return directory
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
     manifest_path = release_dir / "release_manifest.json"
     manifest = json.loads(manifest_path.read_text())
@@ -739,5 +937,30 @@ def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
     }
     manifest_path.write_text(json.dumps(manifest))
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def _uk_hub(tmp_path: Path) -> FakeHub:
+    hub = FakeHub("policyengine/populace-uk-private")
+    hub._download_dir = tmp_path / "uk-hub-cache"
+    june_pointer = latest_pointer_payload(
+        JUNE_UK_RELEASE_ID, updated_at="2026-06-19T02:38:00+00:00"
+    )
+    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
+    return hub
 
 __all__ = [name for name in globals() if not name.startswith("__")]

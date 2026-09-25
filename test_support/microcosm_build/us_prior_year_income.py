@@ -49,6 +49,18 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
 
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
+
+
 def _frame(person: pd.DataFrame) -> Frame:
     person = person.reset_index(drop=True).copy()
     n = len(person)
@@ -119,6 +131,18 @@ def _source_frame() -> Frame:
     )
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 class _Fitted:
     def predict(self, test: pd.DataFrame, **kwargs) -> pd.DataFrame:
         n = len(test)
@@ -159,6 +183,10 @@ class _QRF:
         return _Fitted()
 
 
+
+
+
+
 def _signal_frame() -> Frame:
     n = 100
     return _frame(
@@ -195,5 +223,66 @@ def _with_stack_manifest(
         metadata={"us_stacked_spine_manifest": manifest},
     )
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def _verdict_flip_person(**overrides: object) -> pd.DataFrame:
+    """20 source persons with ASEC and PUF copies plus a disagreeing tail copy.
+
+    Source person 1 carries a second PUF-role (own-tail) copy whose
+    availability disagrees with its siblings. Every other gate check passes,
+    so the clone comparison alone decides the verdict.
+    """
+
+    sources = [source for source in range(1, 21) for _ in range(2)] + [1]
+    channels = [BASE_ASEC_SUPPORT_CHANNEL, PUF_TAX_DETAIL_SUPPORT_CHANNEL] * 20 + [
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL
+    ]
+    available = [source <= 6 for source in sources]
+    available[-1] = False
+    person = pd.DataFrame(
+        {
+            "person_source_id": sources,
+            "person_support_channel": channels,
+            "self_employment_income_last_year": [
+                (-50.0 if channel == BASE_ASEC_SUPPORT_CHANNEL else 100.0)
+                if source <= 3
+                else 0.0
+                for source, channel in zip(sources, channels, strict=True)
+            ],
+            "previous_year_income_available": available,
+        }
+    )
+    for column, values in overrides.items():
+        person[column] = values
+    return person
+
+
+
+
+def _assembled_pair_person(**columns: object) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_source_id": [10, 10, 20, 20],
+            "person_spine_source_id": [1, 1, 2, 2],
+            "self_employment_income_last_year": [10.0, 10.0, -5.0, -5.0],
+            "previous_year_income_available": [False, True, True, True],
+            **columns,
+        }
+    )
 
 __all__ = [name for name in globals() if not name.startswith("__")]

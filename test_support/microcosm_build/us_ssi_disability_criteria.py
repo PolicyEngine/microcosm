@@ -44,6 +44,22 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 _OUTPUT = US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS[0]
 
 
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
+
+
+
+
+
+
 def _source_row(
     ssuid: str,
     pnum: int,
@@ -244,6 +260,5 @@ def _clear_fake_instances() -> None:
     _FakeQRF.instances.clear()
     _FakeQRF.predict_receivers.clear()
     _FakeQRF.predict_start_offsets.clear()
-
 
 __all__ = [name for name in globals() if not name.startswith("__")]

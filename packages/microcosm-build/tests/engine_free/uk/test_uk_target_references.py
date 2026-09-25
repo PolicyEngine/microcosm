@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 705
+ACTIVE_REFERENCE_COUNT = 1124
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -226,6 +226,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
+        "calendar_year_window",
         "linear_combination",
         "monthly_window_average",
         "monthly_window_sum_average",
@@ -292,6 +293,10 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         observation_basis = target["measurement"].get("observation_basis")
         if observation_basis is not None:
             expected_metadata["observation_basis"] = observation_basis
+        period_basis = target["measurement"].get("period_basis")
+        if period_basis is not None:
+            # A declared exception to the period convention rides the spec.
+            expected_metadata["period_basis"] = period_basis
         source_months = target["measurement"].get("source_months")
         if source_months is not None:
             expected_metadata["uk_uc_expected_source_months"] = json.dumps(
@@ -744,7 +749,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 705,
+        "active": 1124,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 13,
     }
@@ -761,7 +766,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "hmrc_spi",
             "status": "active_with_signed_property_amount_exclusion",
-            "active_reference_count": 143,
+            "active_reference_count": 169,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
                 "dimension pins, except the HMRC property-income amount "
@@ -771,6 +776,40 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "property-income undercount adjustment traced to "
                 f"{UK_DATA_REPO} PR #311 / issue #230 and HMRC Property Rental "
                 "Income Statistics."
+            ),
+        },
+        {
+            "family": "hmrc_itl",
+            "status": "active_calendar_year_window_anchors",
+            "active_reference_count": 33,
+            "signed_rationale": (
+                "The three HMRC Income Tax liabilities statistics targets "
+                "(Income Tax payers, total income and Income Tax liabilities "
+                "by eleven total-income bands, Table 2.5, July 2026) fan out "
+                "by strict total-income-band pins and bind at the calendar-"
+                "2025 window of HMRC's 2024-25 and 2025-26 source projections "
+                "(three twelfths and nine twelfths; PolicyEngine/chronicle#280 lane, "
+                "María's ruling of 2026-09-22). They are the calibration-year "
+                "anchors the SPI component bands lack; the OBR fiscal-year "
+                "receipts row stays bound beside them."
+            ),
+        },
+        {
+            "family": "hmrc_spi_region",
+            "status": "active_region_tier_fanout_uprated",
+            "active_reference_count": 360,
+            "signed_rationale": (
+                "The thirty SPI 2023-24 Table 3.11 targets (Income Tax payers, "
+                "total income and Income Tax liabilities by ten regional "
+                "total-income bands) fan out over the twelve-area region tier "
+                "(microcosm#905), one reference per area scoped by the "
+                "household-region predicate, each row moved to the calendar-"
+                "2025 calibration period by HMRC's own projected growth for "
+                "the measure in the Table 2.5 band(s) the regional band spans "
+                "(Income Tax liabilities statistics, July 2026; PolicyEngine/chronicle#280 "
+                "lane). The publisher's regional bands stop at 200,000 and "
+                "over, so that row takes the window over the 200k-500k, "
+                "500k-1m, 1m-2m and 2m+ bands together."
             ),
         },
         {
@@ -924,7 +963,11 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert set(targets) == FIXTURE_REFERENCE_NAMES
 
     income_tax = targets["obr.income_tax"]
-    assert income_tax.value == pytest.approx(331_437_583_074.4429)
+    # The calendar-2025 window of the FY2024-25 outturn (305.905bn) and the
+    # FY2025-26 forecast (331.438bn): three twelfths and nine twelfths.
+    assert income_tax.value == pytest.approx(
+        0.25 * 305_905_000_000 + 0.75 * 331_437_583_074.4429
+    )
     assert income_tax.period == 2025
     assert income_tax.metadata["ledger_assertion"] == "source_projection"
     assert income_tax.metadata["ledger_assertion_policy"] == ("allow_source_projection")
@@ -1035,14 +1078,25 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         for target_id in uc_target_ids - monthly_sum_ids - monthly_average_ids
     )
     facts = _fixture_feed_rows()
+    # Author the UC family alone: the fixture feed carries a 2023 SPI row whose
+    # reference now declares an engine-index uprating, and the country's
+    # appliers need the engine this test does not require.
+    uc_contract = {
+        **contract,
+        "targets": [
+            target
+            for target in contract["targets"]
+            if target["family"] == "dwp_universal_credit"
+        ],
+    }
     authored = author_target_references(
-        contract,
+        uc_contract,
         facts,
         TargetReferenceAuthoringConfig(
             target_period=2025,
-            geography_pins=_geography_pins(contract),
+            geography_pins=_geography_pins(uc_contract),
             value_operation_by_target_id=operations,
-            reference_metadata_by_target_id=_reference_metadata(contract),
+            reference_metadata_by_target_id=_reference_metadata(uc_contract),
             binding_vocabulary=POLICYENGINE_BINDING_KEYS,
             source_fact_feed="uk_target_reference_feed_rows.jsonl",
         ),
@@ -1426,11 +1480,17 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         for target in contract["targets"]
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
-    assert len(two_level) == 20
+    assert len(two_level) == 50
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
-    hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.")]
+    hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
+    # SPI 2023-24 Table 3.11 by region: three measures by ten regional
+    # total-income bands.
+    spi_region = [
+        target_id for target_id in two_level if target_id.startswith("hmrc.spi_region.")
+    ]
     assert len(ons) == 9 and len(mhclg) == 9 and len(hmrc) == 2
+    assert len(spi_region) == 30
     by_contract: dict[str, list[dict]] = {}
     for reference in resource["target_references"]:
         by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
@@ -1444,7 +1504,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         # The retired single country row is gone: every row is a tier cell.
         assert all("@" in row["name"] for row in rows), target_id
         assert cells == (
-            tier_codes if target_id in ons or target_id in hmrc else english
+            tier_codes
+            if target_id in ons or target_id in hmrc or target_id in spi_region
+            else english
         ), target_id
         assert [row["measure"] for row in rows] == [row["name"] for row in rows]
         assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
@@ -1464,6 +1526,12 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
                     "numerator",
                     "denominator",
                 ]
+            if target_id in spi_region:
+                # One published regional row per cell, moved to the calibration
+                # year by the declared Table 2.5 growth index.
+                assert row.get("value_operation") in (None, "identity")
+                assert row["uprating_index"].startswith("hmrc.itl_2026.")
+                assert row["ledger_selector"]["dimension_values"]["sex"] == "all"
             if target_id in mhclg:
                 # The English stock cells are composed from their authorities'
                 # MHCLG taxbase rows (microcosm#929): the selector names the
@@ -1489,8 +1557,8 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         candidates = membership["targets"][target_id]["candidates"]
         assert [entry["geography_id"] for entry in candidates] == cells
         assert {entry["status"] for entry in candidates} == {"active"}
-    # 108 ONS + 81 MHCLG + 24 CGT region-tier rows (microcosm#725).
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 213
+    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows.
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 573
     # The twelve ONS cells of a band sum to the retired UK row of the same
     # publication (the 0-9 band: 7,553,013 at mid-2024).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]

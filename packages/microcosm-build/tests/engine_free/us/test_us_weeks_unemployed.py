@@ -30,7 +30,6 @@ def test_public_stage_contract_is_exactly_manifest_pinned() -> None:
     assert artifact["member_crc32"] == ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_CRC32
     assert artifact["member_sha256"] == ASEC_2023_WEEKS_UNEMPLOYED_MEMBER_SHA256
 
-
 def test_loader_verifies_zip_member_identity_and_attaches_audit(tmp_path: Path) -> None:
     path, pins = _mini_source(tmp_path)
 
@@ -55,7 +54,6 @@ def test_loader_verifies_zip_member_identity_and_attaches_audit(tmp_path: Path) 
         "weighted_weeks": pytest.approx(8.0),
         "pinned_transform": 0,
     }
-
 
 def test_fetch_verifies_both_parent_and_member_and_reuses_cache(
     monkeypatch: pytest.MonkeyPatch,
@@ -83,7 +81,6 @@ def test_fetch_verifies_both_parent_and_member_and_reuses_cache(
     assert result_again == result
     assert calls == 1
 
-
 @pytest.mark.parametrize("tamper", ["parent", "member"])
 def test_loader_rejects_tampered_source(
     tmp_path: Path,
@@ -102,7 +99,6 @@ def test_loader_rejects_tampered_source(
             expected_rows=3,
             expected_unique_keys=3,
         )
-
 
 def test_loader_rejects_duplicate_or_non_fixed_width_person_keys(
     tmp_path: Path,
@@ -134,7 +130,6 @@ def test_loader_rejects_duplicate_or_non_fixed_width_person_keys(
             expected_unique_keys=3,
         )
 
-
 def test_fill_repairs_only_2022_and_accepts_cloned_duplicate_peridnum() -> None:
     source = pd.DataFrame(
         {
@@ -162,7 +157,6 @@ def test_fill_repairs_only_2022_and_accepts_cloned_duplicate_peridnum() -> None:
     assert result["LKWEEKS"].tolist() == [7.0, 11.0, 7.0]
     assert person["LKWEEKS"].isna().sum() == 2
 
-
 def test_fill_prefers_raw_source_household_id_over_transformed_ph_seq() -> None:
     source = pd.DataFrame(
         {
@@ -189,7 +183,6 @@ def test_fill_prefers_raw_source_household_id_over_transformed_ph_seq() -> None:
     result = fill_asec_2022_weeks_unemployed_source(person, source)
 
     assert result["LKWEEKS"].tolist() == [7.0]
-
 
 @pytest.mark.parametrize(
     ("mutation", "message"),
@@ -225,7 +218,6 @@ def test_fill_fails_closed_on_key_identity_or_existing_value_mismatch(
     with pytest.raises(ValueError, match=message):
         fill_asec_2022_weeks_unemployed_source(pd.DataFrame([row]), source)
 
-
 def test_direct_carry_maps_only_minus_one_and_rejects_invalid_values() -> None:
     operation = _operation("derive_weeks_unemployed")
     source = pd.DataFrame({"LKWEEKS": [-1, 0, 1, 51, 52]})
@@ -238,7 +230,6 @@ def test_direct_carry_maps_only_minus_one_and_rejects_invalid_values() -> None:
             derive_us_weeks_unemployed_from_manifest(
                 pd.DataFrame({"LKWEEKS": [bad]}), operation, None
             )
-
 
 def test_puf_qrf_uses_seed_weights_round_clip_and_uc_zero_rule(
     monkeypatch: pytest.MonkeyPatch,
@@ -262,7 +253,6 @@ def test_puf_qrf_uses_seed_weights_round_clip_and_uc_zero_rule(
     assert fitted.predictors == [*_REQUIRED_PREDICTORS, "unemployment_compensation"]
     assert fitted.weights.tolist() == [2.0, 3.0]
 
-
 def test_puf_qrf_omits_uc_predictor_and_rule_when_source_is_unavailable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -278,7 +268,6 @@ def test_puf_qrf_omits_uc_predictor_and_rule_when_source_is_unavailable(
 
     assert result[_OUTPUT].tolist() == [0.0, 6.0, 0.0, 52.0]
     assert _CapturingQRF.instances[-1].predictors == list(_REQUIRED_PREDICTORS)
-
 
 @pytest.mark.parametrize(
     ("prediction", "message"),
@@ -302,7 +291,6 @@ def test_puf_qrf_rejects_adversarial_predictions(
             _operation("impute_weeks_unemployed_to_puf_support"),
             SourceRuntimeContext(SourceRuntimeConfig(seed=1), tables={}),
         )
-
 
 def test_puf_qrf_caps_training_at_5000_with_build_seed(
     monkeypatch: pytest.MonkeyPatch,
@@ -333,7 +321,6 @@ def test_puf_qrf_caps_training_at_5000_with_build_seed(
     assert fitted.weights is not None
     assert len(fitted.weights) == 5_000
 
-
 def test_wrapper_runs_before_and_after_support_cloning(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -346,8 +333,9 @@ def test_wrapper_runs_before_and_after_support_cloning(
     supported = with_us_weeks_unemployed(_frame(), seed=7, time_period=2024)
     assert supported.table("person")[_OUTPUT].tolist() == [2.0, 4.0, 3.0, 0.0]
 
-
-def test_signal_gate_requires_exact_asec_and_nondefault_integer_both_channels() -> None:
+def test_signal_gate_requires_exact_asec_and_nondefault_integer_both_channels() -> (
+    None
+):
     frame = _gate_frame()
     assert us_weeks_unemployed_signal_gate(frame).passed
 
@@ -372,7 +360,6 @@ def test_signal_gate_requires_exact_asec_and_nondefault_integer_both_channels() 
     assert not gate.passed
     assert any("puf_tax_detail" in failure for failure in gate.failures)
 
-
 def test_signal_gate_derives_legacy_asec_puf_roster_and_constraint_scope() -> None:
     frame = _gate_frame()
     summary = module.us_weeks_unemployed_summary(frame)
@@ -385,14 +372,14 @@ def test_signal_gate_derives_legacy_asec_puf_roster_and_constraint_scope() -> No
 
     person = frame.table("person").copy()
     first_puf_carrier = person.index[
-        person["person_support_channel"].eq("puf_tax_detail") & person[_OUTPUT].gt(0.0)
+        person["person_support_channel"].eq("puf_tax_detail")
+        & person[_OUTPUT].gt(0.0)
     ][0]
     person.loc[first_puf_carrier, "unemployment_compensation"] = 0.0
     gate = us_weeks_unemployed_signal_gate(module._replace_person_table(frame, person))
 
     assert not gate.passed
     assert any("unemployment-compensation constraint" in item for item in gate.failures)
-
 
 def test_signal_gate_derives_stacked_asec_acs_roster_and_reviewed_scopes() -> None:
     frame = _stacked_gate_frame()
@@ -408,7 +395,6 @@ def test_signal_gate_derives_stacked_asec_acs_roster_and_reviewed_scopes() -> No
     assert summary["source_mismatch_count"] == 0
     assert summary["uc_constraint_rows"] == 1_500
     assert summary["uc_constraint_mismatch_count"] == 0
-
 
 def test_signal_gate_stacked_source_and_uc_checks_ignore_unowned_rows() -> None:
     frame = _stacked_gate_frame()
@@ -439,7 +425,6 @@ def test_signal_gate_stacked_source_and_uc_checks_ignore_unowned_rows() -> None:
     assert not uc_mismatch.passed
     assert uc_mismatch.details["uc_constraint_mismatch_count"] == 1
 
-
 def test_signal_gate_rejects_collapsed_puf_share_and_weighted_weeks() -> None:
     frame = _gate_frame()
     person = frame.table("person").copy()
@@ -466,7 +451,6 @@ def test_signal_gate_rejects_collapsed_puf_share_and_weighted_weeks() -> None:
     assert not any("positive share" in failure for failure in gate.failures)
     assert any("weighted mean weeks" in failure for failure in gate.failures)
 
-
 def test_pinned_weighted_weeks_tolerates_only_binary_float_residue() -> None:
     audit = {
         "raw_rows": ASEC_2023_WEEKS_UNEMPLOYED_RAW_ROWS,
@@ -479,7 +463,6 @@ def test_pinned_weighted_weeks_tolerates_only_binary_float_residue() -> None:
     audit["weighted_weeks"] = ASEC_2023_WEEKS_UNEMPLOYED_WEIGHTED_WEEKS + 2e-6
     with pytest.raises(ValueError, match="weighted_weeks"):
         module._assert_pinned_source_audit(audit)
-
 
 def test_optional_full_pinned_source_audit() -> None:
     candidates = [

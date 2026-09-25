@@ -58,7 +58,6 @@ def test_stage_manifest_pins_archived_join_signedness_and_puf_qrf() -> None:
         )
     )
 
-
 def test_adjacent_join_matches_flags_sentinels_fallback_and_signed_losses() -> None:
     result = with_us_prior_year_income_inputs(
         _source_frame(), seed=0, time_period=2024
@@ -95,7 +94,6 @@ def test_adjacent_join_matches_flags_sentinels_fallback_and_signed_losses() -> N
         60,
     ]
 
-
 def test_valid_zero_prior_values_are_available_not_fallbacks() -> None:
     frame = _frame(
         pd.DataFrame(
@@ -118,7 +116,6 @@ def test_valid_zero_prior_values_are_available_not_fallbacks() -> None:
     assert person["employment_income_last_year"].tolist() == [0, 0]
     assert person["self_employment_income_last_year"].tolist() == [0, 0]
 
-
 def test_existing_default_outputs_rederive_when_raw_sources_remain() -> None:
     frame = _source_frame()
     person = frame.table("person").copy()
@@ -133,7 +130,6 @@ def test_existing_default_outputs_rederive_when_raw_sources_remain() -> None:
 
     assert result["previous_year_income_available"].any()
     assert result["self_employment_income_last_year"].tolist() != [0.0] * len(result)
-
 
 def test_join_rejects_duplicate_source_year_person_key() -> None:
     frame = _source_frame()
@@ -152,14 +148,12 @@ def test_join_rejects_duplicate_source_year_person_key() -> None:
             pd.concat([person, duplicate], ignore_index=True), operation, None
         )
 
-
 def test_join_refuses_missing_allocation_source() -> None:
     person = _source_frame().table("person").drop(columns=["I_SEVAL"])
     operation = us_prior_year_income_stage_spec().operations[1]
 
     with pytest.raises(SourceRuntimeError, match="I_SEVAL"):
         derive_us_prior_year_income_from_manifest(person, operation, None)
-
 
 def test_puf_support_joint_qrf_is_weighted_signed_and_drops_formula_output(
     monkeypatch: pytest.MonkeyPatch,
@@ -194,7 +188,6 @@ def test_puf_support_joint_qrf_is_weighted_signed_and_drops_formula_output(
     assert np.all(np.asarray(call["weights"]) > 0)
     assert call["kwargs"] == {"n_estimators": 100, "seed": 7}
 
-
 def test_puf_qrf_rejects_zero_weight_capped_training_sample() -> None:
     n_asec = 5_001
     sampled = (
@@ -221,7 +214,6 @@ def test_puf_qrf_rejects_zero_weight_capped_training_sample() -> None:
             person, operation, None
         )
 
-
 def test_signal_gate_accepts_signed_source_signal_and_rejects_defaults() -> None:
     passing = us_prior_year_income_signal_gate(_signal_frame())
     assert passing.passed, passing.failures
@@ -235,7 +227,6 @@ def test_signal_gate_accepts_signed_source_signal_and_rejects_defaults() -> None
     )
     assert not failing.passed
     assert "availability" in " ".join(failing.failures)
-
 
 def test_sampled_rung_scales_only_prior_year_availability_floor() -> None:
     frame = _with_stack_manifest(
@@ -265,7 +256,6 @@ def test_sampled_rung_scales_only_prior_year_availability_floor() -> None:
         0.25,
     ]
 
-
 def test_sampled_rung_preserves_applied_floor_and_authored_upper_bound() -> None:
     below_floor = us_prior_year_income_signal_gate(
         _with_stack_manifest(
@@ -282,7 +272,6 @@ def test_sampled_rung_preserves_applied_floor_and_authored_upper_bound() -> None
 
     assert any("outside [0.012500, 0.500000]" in row for row in below_floor.failures)
     assert any("outside [0.012500, 0.500000]" in row for row in above_upper.failures)
-
 
 def test_full_rung_gate_manifest_is_byte_identical_to_legacy_gate() -> None:
     frame = _signal_frame_with_availability_rows(6)
@@ -309,7 +298,6 @@ def test_full_rung_gate_manifest_is_byte_identical_to_legacy_gate() -> None:
         "applied" in key or "survival_factor" in key for key in full_rung.details
     )
 
-
 def test_legacy_acs_only_sampling_does_not_scale_asec_match_floor() -> None:
     frame = _signal_frame_with_availability_rows(6)
     legacy = us_prior_year_income_signal_gate(frame)
@@ -322,7 +310,6 @@ def test_legacy_acs_only_sampling_does_not_scale_asec_match_floor() -> None:
 
     assert not legacy.passed
     assert pilot == legacy
-
 
 @pytest.mark.parametrize(
     "manifest",
@@ -341,7 +328,6 @@ def test_signal_gate_rejects_malformed_stacked_sampling_metadata(
         us_prior_year_income_signal_gate(
             _with_stack_manifest(_signal_frame(), manifest)
         )
-
 
 def test_clone_availability_checks_all_assembled_clones_and_legacy_pairs() -> None:
     assembled = _frame(
@@ -378,6 +364,168 @@ def test_clone_availability_checks_all_assembled_clones_and_legacy_pairs() -> No
     legacy_summary = module.us_prior_year_income_summary(legacy)
     assert legacy_summary["clone_availability_mismatches"] == 0
 
+def test_clone_availability_checks_the_historical_tail_copy() -> None:
+    native = _frame(
+        pd.DataFrame(
+            {
+                "self_employment_income_last_year": [10.0, -5.0, 0.0],
+                "previous_year_income_available": [True, False, True],
+            }
+        )
+    )
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(native), [1, 3]
+    )
+    person = tailed.table("person")
+    assert "person_spine_source_id" not in person
+    assert person["person_support_clone_index"].tolist() == [0, 0, 0, 1, 1, 1, 2, 2]
+
+    agreeing = module.us_prior_year_income_summary(tailed)
+    assert agreeing["clone_availability_mismatches"] == 0
+
+    # The own-tail copy is a PUF-role row of its source person: under the old
+    # (source, role-occurrence) pairing it sat alone and was never compared.
+    divergent_person = person.copy()
+    clone_index = divergent_person["person_support_clone_index"]
+    tail_of_source_one = clone_index.eq(2) & divergent_person["person_source_id"].eq(1)
+    divergent_person.loc[tail_of_source_one, "previous_year_income_available"] = False
+    divergent = module._replace_person_table(tailed, divergent_person)
+    summary = module.us_prior_year_income_summary(divergent)
+    assert summary["clone_availability_mismatches"] == 1
+    gate = us_prior_year_income_signal_gate(divergent)
+    assert any("1 source person" in failure for failure in gate.failures)
+
+def test_gate_refuses_assembled_frame_without_clone_indices() -> None:
+    # Microcosm #992 gate finding: with raw spine IDs present but the
+    # clone-index column gone, the summary paired copies by (source, role)
+    # occurrence. The tail copy of source 1 sat alone, the mismatch count
+    # dropped from 1 to 0 and this gate flipped from FAIL to PASS. The
+    # summary reads roles before it compares copies, and the role reader now
+    # refuses an assembled table missing either provenance column.
+    sources = _verdict_flip_person()["person_source_id"].to_numpy()
+    assembled = _frame(_verdict_flip_person(person_spine_source_id=sources))
+    pattern = (
+        r"assembled support metadata requires 'person_support_clone_index' "
+        r"alongside 'person_spine_source_id'"
+    )
+    with pytest.raises(ValueError, match=pattern):
+        module.us_prior_year_income_summary(assembled)
+    with pytest.raises(ValueError, match=pattern):
+        us_prior_year_income_signal_gate(assembled)
+
+    # Same shape with every channel 'asec' (a physical source name): the
+    # role-label fallback must not read it as a role either.
+    all_asec = _frame(
+        _verdict_flip_person(
+            person_spine_source_id=sources,
+            person_support_channel=[BASE_ASEC_SUPPORT_CHANNEL] * len(sources),
+        )
+    )
+    with pytest.raises(ValueError, match=pattern):
+        us_prior_year_income_signal_gate(all_asec)
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        pytest.param({"person_support_channel": ["asec"] * 4}, id="all_asec"),
+        pytest.param(
+            {"person_support_channel": ["asec", "puf_tax_detail"] * 2},
+            id="role_labels",
+        ),
+        pytest.param(
+            {"person_support_clone_index": [0, 1, 0, 1]},
+            id="clone_index_without_channel",
+        ),
+        pytest.param({}, id="no_channel_no_clone"),
+    ],
+)
+def test_gate_refuses_assembled_pair_without_complete_support_provenance(
+    columns: dict[str, list[object]],
+) -> None:
+    # Exact sweep regression: IDs [10, 10, 20, 20], availability [F, T, T, T].
+    # Without clone indices, occurrence pairing split source 10's disagreeing
+    # copies. Even without either role column, a spine ID must route through
+    # the shared validator before any historical fallback can run.
+    frame = _frame(_assembled_pair_person(**columns))
+    with pytest.raises(ValueError, match="assembled support metadata requires"):
+        module.us_prior_year_income_summary(frame)
+    with pytest.raises(ValueError, match="assembled support metadata requires"):
+        us_prior_year_income_signal_gate(frame)
+
+def test_assembled_frame_with_complete_provenance_groups_every_copy() -> None:
+    # Complete assembled provenance: every copy of a source person joins one
+    # group, whatever its physical channel, so the disagreement is counted.
+    summary = module.us_prior_year_income_summary(
+        _frame(
+            _assembled_pair_person(
+                person_support_channel=["asec", "acs", "asec", "acs"],
+                person_support_clone_index=[0, 1, 0, 1],
+            )
+        )
+    )
+    assert summary["clone_availability_mismatches"] == 1
+
+@pytest.mark.parametrize("source_state", ["missing", "nan", "nullable"])
+def test_prior_year_gate_refuses_assembled_missing_source_ids(
+    source_state: str,
+) -> None:
+    person = _assembled_pair_person(
+        person_support_channel=["asec"] * 4,
+        person_support_clone_index=[0, 1, 0, 1],
+    )
+    if source_state == "missing":
+        person = person.drop(columns="person_source_id")
+    elif source_state == "nan":
+        person["person_source_id"] = [np.nan, np.nan, 20, 20]
+    else:
+        person["person_source_id"] = pd.array([pd.NA, pd.NA, 20, 20], dtype="Int64")
+    frame = _frame(person)
+    for reader in (
+        module.us_prior_year_income_summary,
+        us_prior_year_income_signal_gate,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="assembled support metadata requires.*person_source_id",
+        ):
+            reader(frame)
+
+def test_clone_availability_compares_repeated_historical_clone_index() -> None:
+    # A malformed historical table whose tail copy repeats clone index 1:
+    # grouping by source ID still compares that copy (the old role-occurrence
+    # pairing left it unpaired and hid the disagreement).
+    native = _frame(
+        pd.DataFrame(
+            {
+                "self_employment_income_last_year": [10.0, -5.0, 0.0],
+                "previous_year_income_available": [True, False, True],
+            }
+        )
+    )
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(native), [1]
+    )
+    person = tailed.table("person").copy()
+    tail = person["person_support_clone_index"].eq(2)
+    person.loc[tail, "person_support_clone_index"] = 1
+    person.loc[tail, "previous_year_income_available"] = False
+    duplicated = module._replace_person_table(tailed, person)
+
+    summary = module.us_prior_year_income_summary(duplicated)
+    assert summary["clone_availability_mismatches"] == 1
+
+def test_gate_refuses_clone_index_past_int64() -> None:
+    # float(2**63) is the first float past int64; the base let it wrap to
+    # INT64_MAX and the gate ran normally.
+    person = _verdict_flip_person()
+    clone_index = [0, 1] * 20 + [2]
+    person["person_support_clone_index"] = np.asarray(clone_index, dtype=np.float64)
+    person.loc[len(person) - 1, "person_support_clone_index"] = float(2**63)
+    with pytest.raises(
+        ValueError,
+        match=r"must contain nonnegative integers \(finite and representable as int64\)",
+    ):
+        us_prior_year_income_signal_gate(_frame(person))
 
 def test_source_reconciliation_detects_plausible_but_wrong_asec_carry() -> None:
     derived = with_us_prior_year_income_inputs(
@@ -397,6 +545,25 @@ def test_source_reconciliation_detects_plausible_but_wrong_asec_carry() -> None:
         "previous_year_income_available": 0,
     }
 
+def test_source_reconciliation_accepts_complete_assembled_provenance() -> None:
+    derived = with_us_prior_year_income_inputs(
+        _source_frame(), seed=0, time_period=2024
+    )
+    expanded = clone_us_frame_for_puf_support(derived)
+    person = expanded.table("person").copy()
+    person["person_spine_source_id"] = person["person_source_id"]
+    # Assembly channels identify physical sources; clone indices own roles.
+    person["person_support_channel"] = "asec"
+    assembled = module._replace_person_table(expanded, person)
+
+    # Reconciliation strips provenance for its temporary source-only input.
+    # The raw spine ID must leave with the role columns, so that input is not
+    # mistaken for a malformed assembly when it replays the derivation.
+    gate = us_prior_year_income_source_reconciliation_gate(assembled)
+
+    assert gate.passed, gate.failures
+    assert gate.details["asec_rows"] == len(derived.table("person"))
+    pd.testing.assert_frame_equal(assembled.table("person"), person)
 
 def test_release_contract_promotes_both_persisted_inputs_without_wage_formula() -> None:
     manifest = load_release_input_coverage_manifest()

@@ -13,12 +13,10 @@ def test_acs_housing_unit_is_included():
     )
     assert statuses == {1: INCLUDED}
 
-
 @pytest.mark.parametrize("kind", ACS_GROUP_QUARTERS_KINDS)
 def test_acs_group_quarters_are_outside_for_each_code(kind):
     statuses = _classify([{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": kind}])
     assert statuses == {1: OUTSIDE}
-
 
 def test_asec_records_are_included():
     """The ASEC ruling is spine-level: no record-type field is consulted."""
@@ -30,7 +28,6 @@ def test_asec_records_are_included():
         ]
     )
     assert statuses == {1: INCLUDED, 2: INCLUDED, 3: INCLUDED}
-
 
 def test_a_zero_adult_housing_unit_is_included():
     """The anti-inference test.
@@ -50,7 +47,6 @@ def test_a_zero_adult_housing_unit_is_included():
 
     group_quarters = [dict(spec, kind=2) for spec in children[:1]]
     assert _classify(group_quarters, person_extra_columns={"age": [3]}) == {1: OUTSIDE}
-
 
 def test_the_declaration_is_invariant_to_age_and_role():
     """Composition cannot move the answer, in either direction."""
@@ -74,7 +70,6 @@ def test_the_declaration_is_invariant_to_age_and_role():
     )
     assert children == adults == {1: INCLUDED, 2: OUTSIDE}
 
-
 def test_a_clone_inherits_its_native_rows_status():
     """Cloning a record carries its record type, so it carries its universe."""
     statuses = _classify(
@@ -88,7 +83,6 @@ def test_a_clone_inherits_its_native_rows_status():
         ]
     )
     assert statuses == {1: OUTSIDE, 2: OUTSIDE, 3: INCLUDED, 4: INCLUDED}
-
 
 def test_a_pooled_frame_declares_each_arm_from_its_own_rule():
     household, person, unit_ids = _tables(
@@ -109,7 +103,6 @@ def test_a_pooled_frame_declares_each_arm_from_its_own_rule():
     assert result.provenance["units_outside"] == 1
     assert result.provenance["units_unresolved"] == 0
 
-
 def test_the_support_channel_column_is_read_when_no_spine_tag_is_present():
     statuses = _classify(
         [
@@ -120,7 +113,6 @@ def test_the_support_channel_column_is_read_when_no_spine_tag_is_present():
     )
     assert statuses == {1: INCLUDED, 2: INCLUDED}
 
-
 def test_the_spine_tag_takes_precedence_over_the_support_channel():
     """A PUF clone's support channel names its operator role, not its spine."""
     statuses = _classify(
@@ -128,7 +120,6 @@ def test_the_spine_tag_takes_precedence_over_the_support_channel():
         household_extra={1: {HOUSEHOLD_SUPPORT_CHANNEL_COLUMN: "puf_tax_detail"}},
     )
     assert statuses == {1: INCLUDED}
-
 
 def test_an_explicit_channel_column_overrides_the_default_order():
     household, person, unit_ids = _tables(
@@ -145,7 +136,6 @@ def test_an_explicit_channel_column_overrides_the_default_order():
     )
     assert result.status.tolist() == [OUTSIDE]
     assert result.provenance["channel_source"] == "operator_channel"
-
 
 @pytest.mark.parametrize(
     ("channel_column", "declared_channel", "reason"),
@@ -171,7 +161,6 @@ def test_refuses_a_bad_explicit_channel_column(
             declared_channel=declared_channel,
         )
 
-
 def test_an_untagged_table_accepts_an_explicit_caller_declaration():
     household = pd.DataFrame(
         {"household_id": [1], ACS_HOUSEHOLD_KIND_COLUMN: [2]},
@@ -187,7 +176,6 @@ def test_an_untagged_table_accepts_an_explicit_caller_declaration():
     )
     assert result.status.tolist() == [OUTSIDE]
     assert result.provenance["channel_source"] == f"declared:{_ACS_CHANNEL}"
-
 
 def test_the_status_is_stored_as_the_enum_member_name():
     household, person, unit_ids = _tables(
@@ -208,13 +196,11 @@ def test_the_status_is_stored_as_the_enum_member_name():
     # UNRESOLVED is the engine's absence sentinel; a producer never emits it.
     assert UNRESOLVED not in set(status.tolist())
 
-
 def test_refuses_a_preexisting_declaration():
     frame = _frame([{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 1}])
     declared = attach_spm_universe_status(frame).frame
     with _refuses("SPM_UNIVERSE_COLUMN_EXISTS"):
         attach_spm_universe_status(declared)
-
 
 def test_refuses_a_declaration_already_on_another_entity_table():
     frame = _frame(
@@ -224,11 +210,9 @@ def test_refuses_a_declaration_already_on_another_entity_table():
     with _refuses("SPM_UNIVERSE_COLUMN_EXISTS"):
         attach_spm_universe_status(frame)
 
-
 def test_refuses_a_channel_with_no_universe_ruling():
     with _refuses("SPM_UNIVERSE_UNDECLARED_SPINE"):
         _classify([{"hid": 1, "unit": 1, "chan": "puf_tax_detail", "kind": 1}])
-
 
 def test_refuses_a_frame_with_no_provenance_tag_and_no_declaration():
     household = pd.DataFrame({"household_id": [1], ACS_HOUSEHOLD_KIND_COLUMN: [1]})
@@ -240,7 +224,6 @@ def test_refuses_a_frame_with_no_provenance_tag_and_no_declaration():
             household=household, person=person, unit_ids=np.asarray([1])
         )
 
-
 def test_refuses_a_caller_declaration_over_a_tagged_frame():
     with _refuses("SPM_UNIVERSE_UNDECLARED_SPINE"):
         _classify(
@@ -248,12 +231,10 @@ def test_refuses_a_caller_declaration_over_a_tagged_frame():
             declared_channel=_ASEC_CHANNEL,
         )
 
-
 @pytest.mark.parametrize("kind", [4, 0, -1, None, float("nan")])
 def test_refuses_an_unknown_acs_record_type(kind):
     with _refuses("SPM_UNIVERSE_UNKNOWN_HOUSEHOLD_KIND"):
         _classify([{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": kind}])
-
 
 def test_refuses_an_acs_record_type_on_a_non_acs_row():
     """``TYPEHUGQ == 1`` means "ACS housing unit", never "not group quarters"."""
@@ -261,7 +242,6 @@ def test_refuses_an_acs_record_type_on_a_non_acs_row():
         _classify(
             [{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "kind": 1, "spm_id": 11}]
         )
-
 
 def test_refuses_a_household_resolving_to_more_than_one_kind():
     household = pd.DataFrame(
@@ -279,7 +259,6 @@ def test_refuses_a_household_resolving_to_more_than_one_kind():
             household=household, person=person, unit_ids=np.asarray([1])
         )
 
-
 def test_refuses_a_group_quarters_placeholder_with_two_native_persons():
     with _refuses("SPM_UNIVERSE_GQ_MULTI_PERSON"):
         _classify(
@@ -288,7 +267,6 @@ def test_refuses_a_group_quarters_placeholder_with_two_native_persons():
                 {"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 2, "clone": 0},
             ]
         )
-
 
 def test_a_group_quarters_placeholder_with_a_clone_is_accepted():
     """Negative control for the refusal above: clones are expected."""
@@ -300,7 +278,6 @@ def test_a_group_quarters_placeholder_with_a_clone_is_accepted():
     )
     assert statuses == {1: OUTSIDE}
 
-
 def test_refuses_a_member_of_no_declared_unit():
     with _refuses("SPM_UNIVERSE_ORPHAN_MEMBER"):
         household, person, _ = _tables(
@@ -310,7 +287,6 @@ def test_refuses_a_member_of_no_declared_unit():
             household=household, person=person, unit_ids=np.asarray([1])
         )
 
-
 def test_refuses_a_member_of_no_declared_household():
     household, person, unit_ids = _tables(
         [{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 1}]
@@ -319,14 +295,12 @@ def test_refuses_a_member_of_no_declared_household():
     with _refuses("SPM_UNIVERSE_ORPHAN_MEMBER"):
         classify_spm_universe(household=household, person=person, unit_ids=unit_ids)
 
-
 def test_refuses_a_unit_with_no_members():
     with _refuses("SPM_UNIVERSE_EMPTY_UNIT"):
         _classify(
             [{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 1}],
             extra_unit_ids=[2],
         )
-
 
 def test_refuses_a_unit_spanning_two_record_types():
     """Natively unreachable; a majority vote here would fabricate a universe."""
@@ -338,7 +312,6 @@ def test_refuses_a_unit_spanning_two_record_types():
             ]
         )
 
-
 def test_refuses_a_unit_spanning_two_arms():
     with _refuses("SPM_UNIVERSE_UNIT_SPANS_KINDS"):
         _classify(
@@ -348,11 +321,9 @@ def test_refuses_a_unit_spanning_two_arms():
             ]
         )
 
-
 def test_refuses_an_asec_arm_with_no_native_unit_column():
     with _refuses("SPM_UNIVERSE_DEGRADED_PARTITION"):
         _classify([{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL}])
-
 
 def test_refuses_a_missing_native_unit_id_on_the_asec_arm():
     """One missing ``SPM_ID`` degrades every SPM unit in the frame."""
@@ -364,7 +335,6 @@ def test_refuses_a_missing_native_unit_id_on_the_asec_arm():
             ]
         )
 
-
 def test_refuses_an_asec_partition_that_is_not_the_native_one():
     """Two native units collapsed into one frame unit: the fallback's shape."""
     with _refuses("SPM_UNIVERSE_DEGRADED_PARTITION"):
@@ -374,7 +344,6 @@ def test_refuses_an_asec_partition_that_is_not_the_native_one():
                 {"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 12},
             ]
         )
-
 
 def test_a_support_cloned_asec_frame_keeps_its_native_partition():
     """Each support-clone copy is its own instance of the native partition.
@@ -395,7 +364,6 @@ def test_a_support_cloned_asec_frame_keeps_its_native_partition():
         ]
     )
     assert statuses == dict.fromkeys((1, 2, 3, 11, 12, 13), INCLUDED)
-
 
 @pytest.mark.parametrize(
     "clone_rows",
@@ -425,7 +393,6 @@ def test_the_clone_copy_key_still_refuses_a_degraded_clone_copy(clone_rows):
     with _refuses("SPM_UNIVERSE_DEGRADED_PARTITION"):
         _classify(native + [dict(row, clone=1) for row in clone_rows])
 
-
 def test_a_missing_clone_index_is_refused_on_the_asec_arm():
     """A clone row that lost its index has an undecidable copy: refused."""
     with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
@@ -442,7 +409,6 @@ def test_a_missing_clone_index_is_refused_on_the_asec_arm():
             ]
         )
 
-
 def test_a_missing_clone_index_is_refused_in_group_quarters():
     """A lost clone index cannot make the one-person GQ check pass vacuously."""
     with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
@@ -452,7 +418,6 @@ def test_a_missing_clone_index_is_refused_in_group_quarters():
                 {"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 2, "clone": None},
             ]
         )
-
 
 def test_a_missing_clone_index_cannot_collapse_a_cross_copy_collision():
     """The gate's counterexample: two copies sharing one frame unit.
@@ -470,8 +435,7 @@ def test_a_missing_clone_index_cannot_collapse_a_cross_copy_collision():
     with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
         _classify([dict(row, clone=None) for row in rows])
 
-
-@pytest.mark.parametrize("bad", [-1.0, 0.5, float("inf")])
+@pytest.mark.parametrize("bad", [-1.0, 0.5, float("inf"), float(2**63), 2**63])
 def test_an_invalid_clone_index_is_refused(bad):
     with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
         _classify(
@@ -487,6 +451,50 @@ def test_an_invalid_clone_index_is_refused(bad):
             ]
         )
 
+@pytest.mark.parametrize(
+    "missing_column",
+    ["person_support_clone_index", "person_support_channel"],
+)
+def test_assembled_missing_support_provenance_is_refused(missing_column):
+    household, person, unit_ids = _tables(
+        [{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11}],
+        person_extra_columns={
+            "person_source_id": [10],
+            "person_spine_source_id": [10],
+            "person_support_channel": ["asec"],
+        },
+    )
+    person = person.drop(columns=[missing_column])
+
+    with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
+        classify_spm_universe(household=household, person=person, unit_ids=unit_ids)
+
+def test_large_assembled_clone_indices_keep_distinct_native_partitions():
+    statuses = _classify(
+        [
+            {
+                "hid": 1,
+                "unit": 1,
+                "chan": _ASEC_CHANNEL,
+                "spm_id": 11,
+                "clone": 2**62,
+            },
+            {
+                "hid": 2,
+                "unit": 2,
+                "chan": _ASEC_CHANNEL,
+                "spm_id": 11,
+                "clone": 2**62 + 1,
+            },
+        ],
+        person_extra_columns={
+            "person_source_id": [10, 10],
+            "person_spine_source_id": [10, 10],
+            "person_support_channel": ["asec", "asec"],
+        },
+    )
+
+    assert statuses == {1: INCLUDED, 2: INCLUDED}
 
 def test_the_degraded_partition_check_does_not_fire_on_the_acs_arm():
     """ACS PUMS supplies no ``SPM_ID``; one unit per household is native there."""
@@ -497,7 +505,6 @@ def test_the_degraded_partition_check_does_not_fire_on_the_acs_arm():
         ]
     ) == {1: INCLUDED, 2: INCLUDED}
 
-
 @pytest.mark.parametrize("field", ASEC_RECORD_TYPE_FIELDS)
 def test_refuses_an_asec_vintage_carrying_a_record_type_field(field):
     with _refuses("SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED"):
@@ -506,7 +513,6 @@ def test_refuses_an_asec_vintage_carrying_a_record_type_field(field):
             household_extra={1: {field: 1}},
         )
 
-
 def test_refuses_an_asec_record_type_field_on_the_person_table():
     with _refuses("SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED"):
         _classify(
@@ -514,14 +520,12 @@ def test_refuses_an_asec_record_type_field_on_the_person_table():
             person_extra_columns={"H_TYPE": [1]},
         )
 
-
 def test_an_acs_only_frame_is_unaffected_by_the_asec_record_type_guard():
     """Negative control: the guard is scoped to the arm whose ruling it guards."""
     assert _classify(
         [{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 1}],
         household_extra={1: {"H_LIVQRT": 1}},
     ) == {1: INCLUDED}
-
 
 def test_attach_declares_the_status_and_changes_nothing_else():
     frame = _frame(
@@ -554,7 +558,6 @@ def test_attach_declares_the_status_and_changes_nothing_else():
     assert declared.metadata == frame.metadata
     assert declared.mass_log == frame.mass_log
 
-
 def test_attach_reports_the_classification_it_declared():
     frame = _frame(
         [
@@ -568,7 +571,6 @@ def test_attach_reports_the_classification_it_declared():
     assert result.provenance["declared_entity"] == "spm_unit"
     assert result.provenance["stored_encoding"] == "enum member name string"
 
-
 def test_the_provenance_states_what_the_producer_is_not():
     frame = _frame([{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 1}])
     provenance = attach_spm_universe_status(frame).provenance
@@ -577,7 +579,6 @@ def test_the_provenance_states_what_the_producer_is_not():
     assert provenance["composition_read"] is False
     assert provenance["is_calibration_target"] is False
     assert provenance["is_spine_agreement_surface"] is False
-
 
 @pytest.mark.parametrize(
     ("module", "constant", "arm"),
@@ -595,7 +596,6 @@ def test_every_ruled_channel_matches_its_canonical_definition(module, constant, 
         f"{SPM_UNIVERSE_CHANNEL_ARMS.get(value)!r} rather than {arm!r}"
     )
 
-
 def test_the_ruling_table_declares_nothing_beyond_the_canonical_channels():
     canonical = {
         _module_constant("acs_pums.py", "ACS_2024_1YR_SPINE"),
@@ -604,7 +604,6 @@ def test_the_ruling_table_declares_nothing_beyond_the_canonical_channels():
         _module_constant("support_provenance.py", "BASE_ASEC_SUPPORT_CHANNEL"),
     }
     assert set(SPM_UNIVERSE_CHANNEL_ARMS) == canonical
-
 
 def test_the_spine_column_name_matches_its_canonical_factory():
     tree = ast.parse((_US_RUNTIME / "base_pool.py").read_text())
@@ -620,7 +619,6 @@ def test_the_spine_column_name_matches_its_canonical_factory():
         part.value for part in template.values if isinstance(part, ast.Constant)
     )
     assert HOUSEHOLD_SPINE_COLUMN == f"household{suffix}"
-
 
 def test_every_refusal_the_module_raises_is_declared():
     """No refusal code may exist only inside a message string."""

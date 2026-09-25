@@ -1,68 +1,7 @@
-"""Contract tests for the replacement head-to-head scorer.
-
-The scorer is one common path for incumbent and candidate; these tests pin
-the pieces that make the head-to-head honest without running the heavy
-microsim materialization: the signature has no target-membership switches,
-the scored-column contract cannot go silently missing on either side, the
-terminal-battery receipt is observed rather than asserted, and the fixture
-end-to-end run is deterministic byte-for-byte.
-"""
+"""Tests split from packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py."""
 
 # ruff: noqa: F403, F405
-
-from __future__ import annotations
-
-import inspect
-from pathlib import Path
-from types import SimpleNamespace
-
-import numpy as np
-import pytest
-
-from microcosm.calibrate import TargetRegistry
-from microcosm.calibrate.registry import TargetSpec
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.microcosm_build.us_release_head_to_head_scorer import *
-
-
-def _complete_battery_comparisons(module) -> dict[str, dict[str, object]]:
-    comparisons: dict[str, dict[str, object]] = {}
-    for label, row in module._canonical_battery_contract().items():
-        metric = row["metric"]
-        if metric == "boolean_incidence":
-            receipt = {
-                "status": "tested",
-                "metric": metric,
-                "asec_incidence": 0.5,
-                "acs_incidence": 0.5,
-                "incidence_ratio_acs_over_asec": 1.0,
-            }
-        elif metric == "categorical_tvd":
-            receipt = {
-                "status": "tested",
-                "metric": metric,
-                "total_variation_distance": 0.0,
-                "category_shares": {
-                    "asec": {"fixture": 1.0},
-                    "acs": {"fixture": 1.0},
-                },
-            }
-        else:
-            receipt = {
-                "status": "tested",
-                "metric": metric,
-                "legs": {
-                    sign: {
-                        "asec_incidence": 0.5,
-                        "acs_incidence": 0.5,
-                        "incidence_ratio_acs_over_asec": 1.0,
-                        "quantile_envelope_distance": 0.0,
-                    }
-                    for sign in ("positive", "negative")
-                },
-            }
-        comparisons[label] = receipt
-    return comparisons
 
 
 def test_head_to_head_signature_has_no_target_membership_switches() -> None:
@@ -79,7 +18,6 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "candidate_manifest_sha256",
         "candidate_worker_identity_attestation",
     }
-
 
 def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
     monkeypatch: pytest.MonkeyPatch,
@@ -150,7 +88,6 @@ def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
         (candidate, pin, attestation),
     ]
 
-
 def test_pool_scorecard_preserves_worker_authentication_receipts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -213,7 +150,6 @@ def test_pool_scorecard_preserves_worker_authentication_receipts(
     assert loaded.identity["worker_execution_authentication"] == authentication
     assert loaded.loader["worker_execution_authentication"] == authentication
 
-
 def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> None:
     module = _load_head_to_head_module()
     dense_25pct_households = 918_350
@@ -232,7 +168,6 @@ def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> N
     assert planned < 1024**3
     assert planned < module.MAX_RSS_BYTES
     assert one_dense_copy > module.MAX_RSS_BYTES
-
 
 def test_canonical_battery_contract_matches_production_registries() -> None:
     module = _load_head_to_head_module()
@@ -257,7 +192,6 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
     )
     for row in contract.values():
         assert row["metric_legs"] == list(module._metric_legs(row["metric"]))
-
 
 def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     module = _load_head_to_head_module()
@@ -306,7 +240,6 @@ def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
             row["status"] == "inapplicable" for row in payload["comparisons"].values()
         )
 
-
 def test_pool_battery_receipt_refuses_a_silently_missing_scalar_leg() -> None:
     module = _load_head_to_head_module()
     comparisons = _complete_battery_comparisons(module)
@@ -328,7 +261,6 @@ def test_pool_battery_receipt_refuses_a_silently_missing_scalar_leg() -> None:
 
     with pytest.raises(ValueError, match="omits computed leg"):
         module._battery_payload_from_pool_receipt(terminal_gates)
-
 
 def test_origin_probe_uses_clone_zero_positive_weight_scope() -> None:
     module = _load_head_to_head_module()
@@ -363,7 +295,6 @@ def test_origin_probe_uses_clone_zero_positive_weight_scope() -> None:
             assert receipt["raw_origin_row_counts"] == {"acs": 1, "asec": 1}
             assert receipt["origin_row_counts"] == {"asec": 1}
 
-
 def test_scored_column_contract_refuses_silently_missing_columns() -> None:
     module = _load_head_to_head_module()
     registry = _tiny_registry()
@@ -390,7 +321,6 @@ def test_scored_column_contract_refuses_silently_missing_columns() -> None:
         module._assert_identical_scored_contracts(
             {"incumbent": contract, "candidate": contract[:-1]}
         )
-
 
 def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     monkeypatch, tmp_path
@@ -463,7 +393,6 @@ def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     markdown = first[1].read_text()
     assert "US release replacement scorecard" in markdown
     assert "empty ACS side" in markdown
-
 
 def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
     """Chunked materialize-and-score must reproduce a one-shot score_targets
@@ -570,6 +499,132 @@ def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
             == attribution_row["final_loss_contribution"]
         )
 
+def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> None:
+    """A shorter tail changes counts without changing the compiled contract."""
+
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    stub_materialize = module.release._materialize_target_frame
+    guard_receipt = {
+        "armed": True,
+        "population_aggregate_variables_checked": list(
+            module.release.US_POPULATION_AGGREGATE_VARIABLES
+        ),
+    }
+
+    def _materialize_with_receipt(frame, specs, **kwargs):
+        assert kwargs["refuse_population_aggregates"] is True
+        target_frame, registry, compilation = stub_materialize(frame, specs, **kwargs)
+        return (
+            target_frame,
+            registry,
+            {
+                **compilation,
+                "target_materialization_batching": {
+                    "households": frame.n("household"),
+                    "batches": 1,
+                },
+                "target_materialization_population_aggregate_guard": guard_receipt,
+            },
+        )
+
+    monkeypatch.setattr(
+        module.release, "_materialize_target_frame", _materialize_with_receipt
+    )
+
+    artifact = _fixture_artifact(module, sha256="e" * 64, measure_values=(1.0, 2.0))
+    tables = {}
+    for entity in artifact.frame.entities:
+        table = artifact.frame.table(entity)
+        third_row = table.iloc[[-1]].copy()
+        for column in table.columns:
+            if column.endswith("_id"):
+                third_row[column] = 3
+        tables[entity] = pd.concat([table, third_row], ignore_index=True)
+    artifact = replace(
+        artifact,
+        frame=Frame(
+            tables,
+            US_SCHEMA,
+            {
+                "household": Weights(
+                    np.asarray([10.0, 20.0, 30.0]),
+                    WeightKind.CALIBRATED,
+                )
+            },
+        ),
+    )
+    payload, _ = module.score_loaded_artifact(
+        artifact=artifact,
+        artifact_name="incumbent",
+        yardstick=_fixture_yardstick(module),
+        maximum_microsim_batch_size=2,
+    )
+
+    chunks = payload["normalization_receipts"]["materialize_score_chunking"]["chunks"]
+    assert chunks
+    for chunk in chunks:
+        compilation = chunk["target_compilation"]
+        assert compilation["household_slices"] == 2
+        assert compilation["household_slice_row_counts"] == [2, 1]
+        assert "target_materialization_batching" not in compilation
+        assert (
+            compilation["target_materialization_population_aggregate_guard"]
+            == guard_receipt
+        )
+        assert len(compilation["slice_compilation_sha256s"]) == 2
+        assert len(set(compilation["slice_compilation_sha256s"])) == 1
+        digested_compilation = {
+            key: value
+            for key, value in compilation.items()
+            if key
+            not in {
+                "household_slices",
+                "household_slice_size",
+                "household_slice_row_counts",
+                "slice_compilation_sha256s",
+            }
+        }
+        assert compilation["slice_compilation_sha256s"][0] == module._canonical_sha256(
+            digested_compilation
+        )
+        del digested_compilation["target_materialization_population_aggregate_guard"]
+        assert compilation["slice_compilation_sha256s"][0] != module._canonical_sha256(
+            digested_compilation
+        )
+
+def test_household_slices_refuse_population_aggregates(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    fixture_spec = importlib.util.spec_from_file_location(
+        "batched_materialization_fixtures",
+        Path(__file__).with_name("test_us_batched_target_materialization.py"),
+    )
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    assert fixture_spec.loader is not None
+    fixture_spec.loader.exec_module(fixtures)
+    aggregate = "medicaid_slcsp_state_denominator"
+    ledger = fixtures._install_fake_engine(
+        module.release,
+        monkeypatch,
+        reform_specs=(),
+        aggregate_reads={"aggregate_probe": (aggregate,)},
+    )
+    specs = (fixtures._variable("aggregate_total", base_variable="aggregate_probe"),)
+
+    with pytest.raises(
+        ValueError,
+        match=rf"household batch 1/1 computed .*{aggregate}@2024",
+    ):
+        module._score_chunk_household_sliced(
+            fixtures._nested_frame(),
+            specs,
+            chunk_loss_weights=np.ones(len(specs)),
+            artifact_name="fixture",
+            chunk_label="aggregate probe",
+            maximum_microsim_batch_size=2,
+        )
+    assert len(ledger.simulations) == 1
+    assert ledger.simulations[0].dataset is None
 
 def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
     module = _load_head_to_head_module()
@@ -601,7 +656,6 @@ def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
             maximum_microsim_batch_size=None,
         )
 
-
 def test_artifact_path_keeps_h5_symlink_name(tmp_path) -> None:
     """A Hugging Face cache snapshot is an .h5-named symlink to an
     extensionless blob; the scorer must keep the snapshot name so the
@@ -622,7 +676,6 @@ def test_artifact_path_keeps_h5_symlink_name(tmp_path) -> None:
     assert kept.suffix == ".h5"
     with pytest.raises(FileNotFoundError):
         module._resolved_artifact_path(tmp_path / "missing.h5")
-
 
 def test_live_incumbent_identity_annotation() -> None:
     module = _load_head_to_head_module()

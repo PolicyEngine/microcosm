@@ -9,7 +9,6 @@ a pinned source, or a release.
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -38,7 +37,6 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
-
 _US_RUNTIME = _TEST_PATHS.package / "src" / "microcosm" / "build" / "us_runtime"
 _ACS_CHANNEL = "acs_2024_1yr"
 _ASEC_CHANNEL = "asec_puf"
@@ -159,9 +157,35 @@ def _frame(persons: list[dict[str, object]], **kwargs) -> Frame:
 # --------------------------------------------------------------------------
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # --------------------------------------------------------------------------
 # Stored encoding
 # --------------------------------------------------------------------------
+
+
 
 
 # --------------------------------------------------------------------------
@@ -173,9 +197,77 @@ def _refuses(code: str):
     return pytest.raises(ValueError, match=rf"^{code}: ")
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # --------------------------------------------------------------------------
 # The frame wrapper
 # --------------------------------------------------------------------------
+
+
+
+
+
+
 
 
 # --------------------------------------------------------------------------
@@ -198,6 +290,5 @@ def _module_constant(module: str, name: str) -> str:
             assert isinstance(node.value, ast.Constant), (module, name)
             return node.value.value
     raise AssertionError(f"{module} declares no module-level {name}")
-
 
 __all__ = [name for name in globals() if not name.startswith("__")]
