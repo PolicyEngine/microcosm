@@ -89,7 +89,7 @@ def build_uk_country_graph(
     from microcosm.graph import compile_graph
     from microcosm.graph.canonical import canonical_json
 
-    from .graph import UK_SPINE_EXCLUSIONS, uk_spine_graph
+    from .graph import uk_spine_graph
     from .graph_build import UKFullBuildConfig, uk_full_graph
     from .graph_evidence import add_uk_spine_gate_nodes
     from .graph_terminal import append_uk_full_gate_nodes
@@ -123,15 +123,8 @@ def build_uk_country_graph(
     graph = append_uk_full_gate_nodes(
         full.graph,
         calibration=full.calibration,
-        # The same roster uk_spine_graph builds: main still declares the
-        # retired HMRC pair in the manifest and keeps it out of the spine
-        # through UK_SPINE_EXCLUSIONS, so the preflight binds evidence only
-        # from stages the spine graph actually runs.
-        spine_stage_names=tuple(
-            stage.stage
-            for stage in spec.sources.stages
-            if stage.stage not in UK_SPINE_EXCLUSIONS
-        ),
+        # The same roster uk_spine_graph builds: every manifest stage.
+        spine_stage_names=tuple(stage.stage for stage in spec.sources.stages),
         engine_identity=engine_identity,
         review_date=review_date,
         sample_fraction=config.effective_sample_fraction,

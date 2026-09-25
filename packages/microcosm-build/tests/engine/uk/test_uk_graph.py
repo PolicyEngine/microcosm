@@ -59,11 +59,7 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     from microcosm.build.uk_runtime import spine_build as driver
 
     country = load_country_spec("uk")
-    stages = [
-        stage
-        for stage in country.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    ]
+    stages = list(country.sources.stages)
     _, implementations = fixture_stage_plan_inputs(fixture / "sources")
     graph = uk_spine_graph()
     compiled = compile_graph(graph)
