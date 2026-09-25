@@ -8940,8 +8940,13 @@
       },
       "disconnect_rule": {
        "enum": [
-        "lowest_drawn_gas_first"
+        "lowest_drawn_gas_first",
+        "identity_uniform_order"
        ]
+      },
+      "seed": {
+       "type": "integer",
+       "minimum": 0
       },
       "margins_resource": {
        "type": "string"

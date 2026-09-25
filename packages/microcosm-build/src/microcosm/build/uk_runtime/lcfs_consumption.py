@@ -28,6 +28,7 @@ from microcosm.build.uk_runtime.donor_uprating import (
     uprating_operation,
 )
 from microcosm.build.uk_runtime.energy_pricing import (
+    DISCONNECT_IDENTITY_UNIFORM_ORDER,
     DISCONNECT_LOWEST_DRAWN_GAS_FIRST,
     ELECTRICITY_KWH,
     GAS_CONNECTED_POSITIVE_SPEND,
@@ -367,6 +368,7 @@ class UKLCFSConsumptionStageTransform:
                 accommodation=recipient["accommodation_type"].astype(str).to_numpy(),
                 weights=weights,
                 iterations=_recipient_energy_rake_iterations(self.stage),
+                identity=frame.table("household")["household_id"].to_numpy(),
             )
         household_draws, bus_pricing_receipt = lcfs_bus_fare_pricing(
             self.stage, household_draws, frame
@@ -547,6 +549,7 @@ class LCFSEnergyPricing:
     disconnect_rule: str
     level: Mapping[str, float]
     receipt: dict[str, Any]
+    disconnect_seed: int = 0
 
 
 def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
@@ -586,12 +589,22 @@ def lcfs_energy_pricing(stage: SourceStageSpec) -> LCFSEnergyPricing | None:
     disconnect_rule = str(
         parameters.get("disconnect_rule") or DISCONNECT_LOWEST_DRAWN_GAS_FIRST
     )
+    disconnect_seed = parameters.get("seed", 0)
+    if disconnect_rule == DISCONNECT_IDENTITY_UNIFORM_ORDER and not (
+        isinstance(disconnect_seed, int) and disconnect_seed >= 0
+    ):
+        raise ValueError(
+            f"{PRICE_DOMESTIC_ENERGY_KIND} with disconnect_rule "
+            f"{DISCONNECT_IDENTITY_UNIFORM_ORDER!r} must declare a non-negative "
+            "integer seed."
+        )
     return LCFSEnergyPricing(
         prices=prices,
         margins=margins,
         gas_connected=gas_connected,
         connection_shares=shares,
         disconnect_rule=disconnect_rule,
+        disconnect_seed=int(disconnect_seed),
         level=level,
         receipt={
             **prices_receipt,
@@ -652,9 +665,13 @@ def rake_recipient_energy(
     accommodation: np.ndarray,
     weights: np.ndarray,
     iterations: int,
+    identity: np.ndarray | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Price the drawn spend to kWh, impose the published gas connection, rake the
-    NEED shape at the DESNZ level, price back."""
+    NEED shape at the DESNZ level, price back.
+
+    ``identity`` (the household ids, row-aligned) keys the disconnection walk
+    when the declared rule is ``identity_uniform_order``."""
 
     in_kwh = energy_spend_to_kwh(household_draws, energy=energy, region=region)
     drawn_gas = in_kwh[GAS_KWH].to_numpy(dtype=float)
@@ -666,6 +683,8 @@ def rake_recipient_energy(
             weights=weight_values,
             shares=energy.connection_shares or {},
             disconnect_rule=energy.disconnect_rule,
+            identity=identity,
+            seed=energy.disconnect_seed,
         )
         in_kwh.loc[~connected, GAS_KWH] = 0.0
     else:
