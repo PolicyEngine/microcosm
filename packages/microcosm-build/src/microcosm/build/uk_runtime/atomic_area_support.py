@@ -31,6 +31,17 @@ SYSTEMS = (
 )
 SOURCES = {system: system + "_support" for system in SYSTEMS}
 IDENTITY_COLUMN = "geography_household_key"
+#: Assignment outputs the shared operators write on the household table.
+ASSIGNMENT_COLUMNS = ("atomic_area_code", "atomic_area_system", "atomic_area_basis")
+#: Nation-native aliases of derived layers; NA outside their own nation and
+#: dropped at the single-year export boundary.
+UK_NATIVE_ALIAS_COLUMNS = (
+    "output_area_code",
+    "data_zone_code",
+    "intermediate_zone_code",
+    "super_data_zone_code",
+    "district_electoral_area_code",
+)
 _INPUT_COLUMNS = (
     "oa_code",
     "population",
@@ -288,6 +299,8 @@ def uk_atomic_assignment_definition(
     Source names are fixed by system, not file paths. The host must bind admitted
     bytes to those SourceRefs and authenticate the supplied full-spine identity.
     This function neither creates a graph barrier nor admits a native artifact.
+    The sampling law is single-stage: one draw of the atomic area by census
+    household count within the household's FRS region.
     """
     _require(
         type(supports) is dict and set(supports) == set(SYSTEMS),
@@ -356,10 +369,9 @@ def uk_atomic_assignment_definition(
                     {"input": "region", "support": "frs_region", "required": True}
                 ],
                 "observed_area": None,
-                "stages": [
-                    {"level": "constituency_code", "weight": "households"},
-                    {"level": "area", "weight": "population"},
-                ],
+                # Single-stage law (2026-09-15 ruling): draw the atomic area by
+                # census household count within the household's FRS region.
+                "stages": [{"level": "area", "weight": "households"}],
                 "layers": [
                     {
                         "input": column,

@@ -144,6 +144,7 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
         "build_uk_frs_spine",
         "assign_uk_geography_ladder",
         "uk_geography_ladder_gate",
+        "load_uk_atomic_area_support",
     }
 
     assert country_contract_ids == F0_CONTRACT_ONLY_KERNEL_IDS

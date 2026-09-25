@@ -167,13 +167,20 @@ acceptance. The separate atomic survey graph now provides that block assignment
 and derivation connection before enrichment. Its population-only national block
 support and source review are recorded below.
 
-The UK already has an area-based ladder in `uk_runtime/geography_ladder.py`.
-Its sampler selects a constituency within FRS region using household counts,
-then an OA within constituency using population; one selected ladder row supplies
-the other geographies. It currently consumes a shared seeded random stream, so
-stable household-keyed assignment under reordering and subsets still needs work.
-The graph should expose the final OA/Data Zone assignment and the mapping
-derivations explicitly, including that sampling convention.
+The UK full build assigns geography with the shared operators on three
+support artifacts (E&W 2021 Output Areas, Scotland 2022 Output Areas, NI 2021
+Data Zones) rebuilt from published ONS/NRS/NISRA lookups and pinned in
+`uk/spec/sources.yaml` and `uk/uk_atomic_area_supports.provenance.json`; every
+mapping column carries its publisher relation (`exact`, `best_fit`,
+`official_tabulation`) and vintage. The draw is single-stage, one atomic area
+by census household count within the household's FRS region, keyed by the
+post-clone household identity (`uk.full.identity`, `household_draw_key`), so
+assignment is stable under row reordering, subsets and pool growth. The
+previous area-based ladder in `uk_runtime/geography_ladder.py` (constituency
+within region by household counts, then OA within constituency by population,
+on a shared seeded stream) remains available as `--geography-assignment
+legacy` for measurement builds only, and still supplies the rosters and
+dispersion checks used by target compilation.
 
 The Northern Ireland source builder currently infers Data Zone constituencies
 using the modal active-postcode constituency. Review the official

@@ -4,11 +4,15 @@ import json
 from dataclasses import replace
 
 import pytest
-from test_uk_full_population_graph import Source, graph_and_registry
+from test_uk_full_population_graph import SOURCE_VINTAGE, Source, graph_and_registry
 from test_uk_full_target_graph import target_inputs as target_inputs
 from test_uk_ladder_rowwise_clone import toy_ladder as toy_ladder
+from uk_atomic_support_fixtures import toy_support_sources, write_toy_supports
 
 from microcosm.build.uk_runtime import graph_calibration
+from microcosm.build.uk_runtime.atomic_area_support import (
+    uk_atomic_assignment_definition,
+)
 from microcosm.build.uk_runtime.full_build_cli import _through
 from microcosm.build.uk_runtime.full_certification import (
     append_uk_full_certification_node,
@@ -84,16 +88,19 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         tuple(item for item in primitive.sources if item.name == "fixture"),
         (source,),
     )
+    payloads, support_paths = write_toy_supports(tmp_path / "supports")
     full = uk_full_graph(
         UKFullBuildConfig(
             calibration_year=2026,
             time_period="2023",
             source_year=2023,
             seed=7,
+            source_vintage=SOURCE_VINTAGE,
             calibration=UKGraphCalibrationConfig(epochs=2, seed=7),
         ),
         spine=base,
         spine_population="source",
+        atomic_geography_definition=uk_atomic_assignment_definition(payloads, seed=7),
     )
     # Keep maintained K so the tiny fixture can reach every selected area;
     # zero-support targets still refuse before gates at deliberately smaller K.
@@ -146,9 +153,11 @@ def test_real_full_graph_preflight_replays_and_blocks_dense_export_and_certifica
         "fixture": ladder_path,
         "uk_ladder": ladder_path,
         "uk_ledger_facts": ladder_path,
+        **toy_support_sources(support_paths),
     }
     store = ContentStore(tmp_path / "store")
     checkpoint = compile_graph(_through(graph, "uk.full.gates.preflight"))
+    assert "uk.full.geography.gate" in checkpoint.order
     cold = run_graph(checkpoint, sources=sources, store=store, kernels=registry())
     key = cold.nodes["uk.full.gates.preflight"].opaque_artifacts["gate_report"]
     payload = store.load_bytes(key)

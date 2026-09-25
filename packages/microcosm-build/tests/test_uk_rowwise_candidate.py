@@ -283,6 +283,13 @@ def _write_staging_h5(
                 f"2023:{source_id}" for source_id in source_household_ids
             ],
             "household_source_id": source_household_ids,
+            # The support channel the identity kernel keys on (microcosm#932)
+            # agrees with the support clone index: a non-zero index is an
+            # SPI support copy.
+            "household_support_channel": pd.array(
+                ["spi" if index else "frs" for index in support_clone_indices],
+                dtype="string",
+            ),
             "household_support_clone_index": support_clone_indices,
             "household_is_spi_synthetic": spi_flags,
             "household_is_capital_gains_clone": [False] * len(household_ids),
@@ -475,6 +482,7 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
         str(ladder_path),
         "--ladder-sha256",
         hashlib.sha256(ladder_path.read_bytes()).hexdigest(),
+        *_toy_support_flags(tmp_path),
         "--ledger-facts",
         str(tmp_path / "ledger"),
         "--ledger-facts-sha256",
@@ -533,6 +541,7 @@ def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
                 str(tmp_path / "out"),
                 "--candidate-clone-counts",
                 "1,2,4",
+                *_SUPPORT_FLAGS,
                 "--input-sha256",
                 "0" * 64,
                 "--ladder-sha256",
@@ -656,6 +665,8 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
         pin,
         "--out",
         str(tmp_path / "out"),
+        *_SUPPORT_FLAGS,
+        *_SUPPORT_PINS,
         "--release-candidate",
     ]
     # The doctrine defaults are the release posture: nothing to refuse.
@@ -896,6 +907,38 @@ def _staging_run_setup(builder, monkeypatch, tmp_path, *, remote: bool = False):
     return input_h5, ladder_path, flags
 
 
+#: Unread stand-in atomic-area supports (microcosm#932): every dense request
+#: names the three, and these runs refuse or stub before the supports are read.
+_SUPPORT_FLAGS = (
+    "--atomic-support-ew",
+    "supports/ew.npz",
+    "--atomic-support-scotland",
+    "supports/scotland.npz",
+    "--atomic-support-ni",
+    "supports/ni.npz",
+)
+_SUPPORT_PINS = (
+    "--atomic-support-sha256-ew",
+    "c" * 64,
+    "--atomic-support-sha256-scotland",
+    "d" * 64,
+    "--atomic-support-sha256-ni",
+    "e" * 64,
+)
+
+
+def _toy_support_flags(tmp_path: Path) -> list[str]:
+    """The three toy supports written to disk, for a preparation that reads them."""
+    from uk_atomic_support_fixtures import write_toy_supports
+
+    _, paths = write_toy_supports(tmp_path / "supports")
+    flags = []
+    # ``write_toy_supports`` keeps ``SYSTEMS`` order: E&W, Scotland, NI.
+    for system, label in zip(paths, ("ew", "scotland", "ni"), strict=True):
+        flags += [f"--atomic-support-{label}", str(paths[system])]
+    return flags
+
+
 def _build_args(input_h5, ladder_path, flags, out, *extra):
     return [
         "--input-h5",
@@ -904,6 +947,7 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
         "dense",
         "--ladder",
         str(ladder_path),
+        *_SUPPORT_FLAGS,
         *flags,
         "--out",
         str(out),
@@ -1043,6 +1087,7 @@ def _dense_argv(tmp_path: Path, *extra: str) -> list[str]:
         str(tmp_path / "ladder.npz"),
         "--ladder-sha256",
         "3" * 64,
+        *_SUPPORT_FLAGS,
         *extra,
     )
 

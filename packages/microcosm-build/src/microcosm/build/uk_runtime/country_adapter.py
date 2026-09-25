@@ -8,6 +8,7 @@ it never loads a historical candidate H5 or creates a second execution graph.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import replace
 from datetime import date
 from importlib import metadata
@@ -58,9 +59,21 @@ def validate_uk_country_source_projection(spec: CountrySpec) -> None:
         for artifact in root.artifacts
         if artifact["role"] == "frs_table"
     ]
-    if sources["sources"] != expected:
+    # The atomic-area supports (microcosm#932) are declared beside the raw FRS
+    # tables with their own role and loader; every other row is an FRS table.
+    declared = [row for row in sources["sources"] if row["role"] == "frs_raw_table"]
+    if declared != expected:
         raise ValueError(
             "UK country raw-source pins differ from the canonical FRS spine stage."
+        )
+    others = [row for row in sources["sources"] if row["role"] != "frs_raw_table"]
+    if any(
+        row["role"] != "uk_atomic_area_support"
+        or row["loader"] != "kernel:load_uk_atomic_area_support"
+        for row in others
+    ):
+        raise ValueError(
+            "UK country sources beyond the raw FRS tables must be atomic-area supports."
         )
     if spine["channels"] != [
         {
@@ -84,8 +97,14 @@ def build_uk_country_graph(
     review_date: date | None = None,
     release_candidate: bool = False,
     skip_holdout: bool = False,
+    atomic_geography_definition: Mapping | None = None,
 ) -> UKFullGraph:
-    """Compile the canonical full graph; default target scope is all geographies."""
+    """Compile the canonical full graph; default target scope is all geographies.
+
+    ``atomic_geography_definition`` is the UK assignment declaration over the
+    admitted support bytes (``uk_atomic_assignment_definition``), required
+    while the config's ``geography_assignment`` is ``atomic`` (the default).
+    """
     from microcosm.graph import compile_graph
     from microcosm.graph.canonical import canonical_json
 
@@ -119,7 +138,12 @@ def build_uk_country_graph(
         engine_identity=engine_identity,
         release_candidate=release_candidate,
     )
-    full = uk_full_graph(config, spine=spine, review_date=review_date.isoformat())
+    full = uk_full_graph(
+        config,
+        spine=spine,
+        review_date=review_date.isoformat(),
+        atomic_geography_definition=atomic_geography_definition,
+    )
     graph = append_uk_full_gate_nodes(
         full.graph,
         calibration=full.calibration,

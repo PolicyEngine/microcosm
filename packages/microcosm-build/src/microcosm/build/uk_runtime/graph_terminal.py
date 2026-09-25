@@ -44,6 +44,7 @@ from microcosm.graph.codecs import SOURCE_CODECS
 
 from ..artifact_files import file_artifact
 from . import geography_ladder, national_frame
+from .atomic_area_support import UK_NATIVE_ALIAS_COLUMNS
 from .geography_ladder import uk_geography_ladder_gate
 from .graph_population import context_frame, population_columns, population_slices
 from .national_frame import (
@@ -77,6 +78,12 @@ def _tables(frame: Frame) -> dict[str, pd.DataFrame]:
         renamed[entity] = tables[entity].rename(
             columns={column: ARTIFACT_CLONE_INDEX_COLUMN}
         )
+    # Nation-native aliases of derived layers are NA outside their own nation;
+    # the single-year artifact carries the ten ladder columns plus the
+    # identity-keyed assignment columns, never the aliases.
+    aliases = [c for c in UK_NATIVE_ALIAS_COLUMNS if c in renamed["household"]]
+    if aliases:
+        renamed["household"] = renamed["household"].drop(columns=aliases)
     return renamed
 
 
@@ -1262,6 +1269,17 @@ def rowwise_candidate_manifest_from_graph(
         )
         or {}
     )
+    # The request's geography binding (assignment mode, definition digest,
+    # support pins, identity column, stream) travels in the export descriptor.
+    export_descriptor = (
+        _optional_graph_json(
+            final_manifest, store, "uk.full.export.prepare", "export_descriptor"
+        )
+        or {}
+    )
+    geography_binding = dict(
+        (export_descriptor.get("bindings") or {}).get("geography") or {}
+    )
     enforcement = dict(gate_document["enforcement"])
     gate_rows = _gate_rows(gate_document)
     local_scope = {
@@ -1409,6 +1427,7 @@ def rowwise_candidate_manifest_from_graph(
             ),
             "missing_geography_rows": 0,
             "ladder_gate": {**geography_gate, "phase": "post_calibration"},
+            "assignment": geography_binding,
         },
         "gate": {**geography_gate, "phase": "post_calibration"},
         "weights": {
