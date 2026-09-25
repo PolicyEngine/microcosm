@@ -121,8 +121,8 @@ _SUPPORT_SOURCE_ID = (
     "Support provenance: the {entity} record's assembly-unique pre-clone source "
     "id (microcosm.build.us_runtime.support_provenance."
     "support_source_id_column). It identifies the record across clones and "
-    "enters the seeded-draw key grammar (microcosm.build.spec_engine.seeds); "
-    "it is not a model input."
+    "can key seeded draws (microcosm.build.spec_engine.seeds, "
+    "microcosm.build.us_runtime.take_up); it is not a model input."
 )
 _SUPPORT_CHANNEL = (
     "Support provenance: the support channel the {entity} record came from, "
@@ -219,7 +219,10 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
             use=_POOLED_SOURCE_SEED_KEY,
         ),
         "source_person_id": _POOLED_SOURCE.format(
-            detail="the source person id (the ASEC PERIDNUM, or the ACS SPORDER)",
+            detail=(
+                "the source person id (the ASEC PERIDNUM where present, or the "
+                "ACS SPORDER)"
+            ),
             use=_POOLED_SOURCE_SEED_KEY,
         ),
         "source_row_id": _POOLED_SOURCE.format(
