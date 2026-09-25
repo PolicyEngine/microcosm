@@ -31,7 +31,10 @@ ENGINE_ONLY = (
 # prefix or the spec-engine ``test_spec_*`` prefix. Listing them makes their
 # shared-lane placement reviewed rather than a silent classifier default.
 EXPLICIT_SHARED_SPEC = (
+    "packages/microcosm-build/tests/test_artifact_files.py",
     "packages/microcosm-build/tests/test_cross_grain.py",
+    "packages/microcosm-build/tests/test_gate_battery_replay.py",
+    "packages/microcosm-build/tests/test_stage_evidence.py",
     "packages/microcosm-frame/tests/test_scaling.py",
 )
 

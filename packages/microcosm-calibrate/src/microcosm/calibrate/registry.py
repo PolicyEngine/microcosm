@@ -34,6 +34,7 @@ import math
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 from microcosm.calibrate.hierarchy import CalibrationHierarchy
 from microcosm.calibrate.target import Target, TargetSet
@@ -180,6 +181,30 @@ class TargetSpec:
         """The ``(name, period)`` identity of the fact."""
         return (self.name, self.period)
 
+    def to_dict(self) -> dict[str, Any]:
+        """The JSON-ready mapping form of the spec (``dataclasses.asdict``).
+
+        ``hierarchy`` becomes a nested mapping; :meth:`from_dict` restores it.
+        This is the one encoding every artifact that carries specs uses, so a
+        registry JSON file and a graph artifact serialize a spec identically.
+        """
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, raw: Mapping[str, Any]) -> TargetSpec:
+        """Rebuild a spec from :meth:`to_dict` output.
+
+        ``hierarchy`` may be the nested mapping :meth:`to_dict` wrote, an
+        already-decoded :class:`CalibrationHierarchy`, or ``None``. Every other
+        field is passed through to the constructor, whose validation still
+        applies (including the hierarchy target-id check).
+        """
+        fields_ = dict(raw)
+        hierarchy = fields_.get("hierarchy")
+        if isinstance(hierarchy, Mapping):
+            fields_["hierarchy"] = CalibrationHierarchy.from_dict(dict(hierarchy))
+        return cls(**fields_)
+
     def to_target(self) -> Target:
         """Compile the spec into a calibration :class:`Target`."""
         return Target(
@@ -251,7 +276,7 @@ class TargetRegistry:
         canonical = json.dumps(
             {
                 "country": self._country,
-                "specs": [asdict(spec) for spec in self._specs],
+                "specs": [spec.to_dict() for spec in self._specs],
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -309,7 +334,7 @@ class TargetRegistry:
             "country": self._country,
             "version": self.version,
             "n_specs": len(self._specs),
-            "specs": [asdict(spec) for spec in self._specs],
+            "specs": [spec.to_dict() for spec in self._specs],
         }
         path.write_text(json.dumps(payload, indent=1), encoding="utf-8")
         return path
@@ -333,19 +358,7 @@ class TargetRegistry:
                 f"{sorted(_READABLE_FORMAT_VERSIONS)!r})."
             )
         raw_specs = payload["specs"]
-        specs = tuple(
-            TargetSpec(
-                **{
-                    **raw,
-                    "hierarchy": (
-                        CalibrationHierarchy.from_dict(raw["hierarchy"])
-                        if raw.get("hierarchy") is not None
-                        else None
-                    ),
-                }
-            )
-            for raw in raw_specs
-        )
+        specs = tuple(TargetSpec.from_dict(raw) for raw in raw_specs)
         registry = cls(specs, country=payload["country"])
         stored = payload.get("version")
         if format_version == 2:

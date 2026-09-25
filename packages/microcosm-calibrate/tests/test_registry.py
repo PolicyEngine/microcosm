@@ -156,6 +156,30 @@ class TestRegistryIdentity:
         assert len(soi) == 1 and next(iter(soi)).name == "irs_soi/agi"
 
 
+class TestSpecDictCodec:
+    def test_to_dict_from_dict_round_trip_with_and_without_hierarchy(self) -> None:
+        with_hierarchy = _spec(se=12.5, metadata={"kind": "x"}, hierarchy=_hierarchy())
+        without = _spec(name="puf/agi", family="irs_soi", value=5e12)
+        for spec in (with_hierarchy, without):
+            raw = spec.to_dict()
+            assert TargetSpec.from_dict(raw) == spec
+            # JSON turns tuples into lists; the decode must not care.
+            assert TargetSpec.from_dict(json.loads(json.dumps(raw))) == spec
+        assert isinstance(with_hierarchy.to_dict()["hierarchy"], dict)
+        assert without.to_dict()["hierarchy"] is None
+
+    def test_from_dict_accepts_an_already_decoded_hierarchy(self) -> None:
+        spec = _spec(hierarchy=_hierarchy())
+        raw = {**spec.to_dict(), "hierarchy": spec.hierarchy}
+        assert TargetSpec.from_dict(raw) == spec
+
+    def test_from_dict_keeps_the_hierarchy_target_id_check(self) -> None:
+        raw = _spec(hierarchy=_hierarchy()).to_dict()
+        raw["name"] = "another/name"
+        with pytest.raises(ValueError, match="hierarchy target id"):
+            TargetSpec.from_dict(raw)
+
+
 class TestArtifactRoundTrip:
     def test_round_trip_preserves_everything(self, tmp_path) -> None:
         registry = TargetRegistry(
