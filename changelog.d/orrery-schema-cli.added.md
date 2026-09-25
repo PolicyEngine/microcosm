@@ -1,0 +1,1 @@
+Add a Microcosm schema adapter and `python -m microcosm.graph.explorer` CLI for the Orrery shared viewer, preserving field identities and exact large integers while refusing invalid or oversized input and existing output files.

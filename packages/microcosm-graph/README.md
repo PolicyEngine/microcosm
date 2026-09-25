@@ -29,6 +29,11 @@ Module map:
 | `executor.py` | `run_graph`: projection, patching, ownership enforcement, receipts |
 | `manifest.py` | `RunManifest`, `NodeReceipt`, human decision records |
 | `view.py` | `describe(node)`: the one-screen view |
+| `explorer.py` | Pure adapter from schema metadata to the shared `graph-explorer/v1` presentation contract |
 
 The shard depends on `microcosm-frame` only. Kernels that wrap fit,
 calibrate, or a rules engine live in those shards and register here.
+
+See [the shared graph explorer adapter](../../docs/shared-graph-explorer-adapter.md) for
+versioned field inspection, offline integration and evidence boundaries. The
+existing deterministic `explain_html` export remains available unchanged.
