@@ -100,7 +100,7 @@ WEIGHT_KINDS = ("design", "importance", "calibrated")
 MASS_POLICIES = frozenset({"conserve", "free", "declared"})
 
 #: Mass policies a same-kind :class:`WeightUpdate` may declare. ``free`` is
-#: deliberately absent (amendment 25).
+#: deliberately absent (amendment 26).
 WEIGHT_UPDATE_MASS_POLICIES = frozenset({"conserve", "declared"})
 
 #: The dtypes a mass-partition column may have.
@@ -362,7 +362,7 @@ class WeightUpdate:
     stage that recomputes the numbers of weights it already holds — a
     sampling normalization is the case this was extracted for — cannot be
     declared at all. This is that declaration, and it is deliberately
-    narrower than a transition (amendment 25):
+    narrower than a transition (amendment 26):
 
     - The kind does not move. The executor checks the incumbent kind, the
       declared kind and the returned weights' kind are the same one.
@@ -582,7 +582,7 @@ class Node:
                 )
             if self.mass != self.weights.mass:
                 # Reached by a WeightTransition and a WeightUpdate alike, so
-                # the text names neither (amendment 25).
+                # the text names neither (amendment 26).
                 raise GraphError(
                     f"Node {self.id!r}: mass policy {self.mass!r} disagrees with "
                     f"its declared weight change's {self.weights.mass!r}."

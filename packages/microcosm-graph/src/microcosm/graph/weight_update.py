@@ -7,7 +7,7 @@ replayed receipt would show the difference. A kernel therefore binds the
 ordered entity axis its values were computed against, and the executor
 recomputes that binding from the incumbent axis it is about to apply them
 to — on cold execution and on every replay of the cached receipt
-(amendment 25).
+(amendment 26).
 
 The binding is a digest, not the ids: an axis of millions of rows does not
 belong in a manifest, and the executor only ever needs to answer whether

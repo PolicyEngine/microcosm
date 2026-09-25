@@ -1987,7 +1987,7 @@ def _apply_weight_update(
     binding is recomputed against the incumbent axis these values are
     about to be applied to. A cached hit re-enters this function with the
     restored weights and receipt, so replay is checked by the same code
-    rather than a parallel rule (amendment 25).
+    rather than a parallel rule (amendment 26).
     """
 
     update = node.weights

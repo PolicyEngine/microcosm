@@ -289,7 +289,7 @@ def _weights_payload(
     ``WeightUpdate`` exposes ``to_kind`` as a property, so projecting it
     the way a transition is projected would round-trip it back as a
     transition and silently change what the node means. The transition
-    payload is byte-for-byte what it was before amendment 25, so every
+    payload is byte-for-byte what it was before amendment 26, so every
     declaration serialized before it restores unchanged.
     """
 
