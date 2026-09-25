@@ -51,6 +51,8 @@ def uk_stage_health_gate(
         return _age_tail_targets_gate(stage, evidence, parameters)
     if check == "cgt_band_donor_support":
         return _cgt_band_donor_support_gate(stage, evidence, parameters)
+    if check == "spi_income_band_donor_support":
+        return _spi_income_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
     if check == "cgt_asset_type_summary":
@@ -771,6 +773,72 @@ def _cgt_band_donor_support_gate(
                 f"{stage}: realized gain {realized_max} exceeds open upper bound."
             )
     details = {"bands_checked": len(bands), "minimum_lower_limit": global_lower}
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _spi_income_band_donor_support_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Every reserved band carries its donors at positive band-exact weight."""
+
+    check = "spi_income_band_donor_support"
+    donors_per_band = int(parameters["donors_per_band"])
+    expected_bands = [int(value) for value in parameters["band_lower_bounds"]]
+    bands = evidence.get("bands")
+    if not isinstance(bands, list | tuple):
+        raise ValueError(f"{stage}.bands must be a list.")
+    failures: list[str] = []
+    seen: list[int] = []
+    for row in bands:
+        if not isinstance(row, Mapping):
+            failures.append(f"{stage}: band row is not an object.")
+            continue
+        lower = int(
+            _finite_number(row.get("lower_bound"), label=f"{stage}.lower_bound")
+        )
+        seen.append(lower)
+        donors = int(
+            _finite_number(
+                row.get("donor_households"), label=f"{stage}.donor_households"
+            )
+        )
+        carriers = int(_finite_number(row.get("carriers"), label=f"{stage}.carriers"))
+        weight = _finite_number(row.get("donor_weight"), label=f"{stage}.donor_weight")
+        if donors != carriers:
+            failures.append(
+                f"{stage}: band from {lower} has {donors} donors but {carriers} carriers."
+            )
+        if weight <= 0.0:
+            failures.append(
+                f"{stage}: band from {lower} donor weight {weight} is not positive."
+            )
+        published = _finite_number(
+            row.get("published_taxpayers"), label=f"{stage}.published_taxpayers"
+        )
+        if abs(weight * donors - published) > 0.5 and donors > 0:
+            # A scaled rung stacks fewer donors than the declared count; its
+            # weighted taxpayers then fall short of the published band mass by
+            # construction, which the evidence still has to show honestly.
+            if donors == donors_per_band:
+                failures.append(
+                    f"{stage}: band from {lower} weighted taxpayers "
+                    f"{weight * donors} differ from the published {published}."
+                )
+    if sorted(seen) != sorted(expected_bands):
+        failures.append(
+            f"{stage}: bands {sorted(seen)} differ from the declared {sorted(expected_bands)}."
+        )
+    details = {
+        "bands_checked": len(bands),
+        "donors_per_band": donors_per_band,
+        "evidence_donors_per_band": evidence.get("donors_per_band"),
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

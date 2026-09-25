@@ -8173,6 +8173,154 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "taxpayer_count_resource",
+      "taxpayer_count_measure",
+      "taxpayer_count_period",
+      "band_lower_bounds",
+      "donors_per_band",
+      "expected_band_count",
+      "expected_donor_count",
+      "candidate_population",
+      "candidate_order",
+      "draw",
+      "propensity",
+      "seed",
+      "clone_index",
+      "flag_column",
+      "band_column",
+      "carrier_column",
+      "initial_weight",
+      "never_zero_weight",
+      "weight_kind_out",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "stack_income_band_donor_households"
+      },
+      "taxpayer_count_resource": {
+       "type": "string"
+      },
+      "taxpayer_count_measure": {
+       "type": "string"
+      },
+      "taxpayer_count_period": {
+       "type": "string"
+      },
+      "band_lower_bounds": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "integer"
+       }
+      },
+      "donors_per_band": {
+       "type": "integer"
+      },
+      "expected_band_count": {
+       "type": "integer"
+      },
+      "expected_donor_count": {
+       "type": "integer"
+      },
+      "candidate_population": {
+       "type": "string"
+      },
+      "candidate_order": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "propensity": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "clone_index": {
+       "type": "integer"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "band_column": {
+       "type": "string"
+      },
+      "carrier_column": {
+       "type": "string"
+      },
+      "initial_weight": {
+       "type": "string"
+      },
+      "never_zero_weight": {
+       "type": "boolean"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "carrier_column",
+      "band_column",
+      "band_lower_bounds",
+      "pool",
+      "regional_pool_minimum",
+      "weighting",
+      "with_replacement",
+      "outputs",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "resample_band_donor_leaves"
+      },
+      "carrier_column": {
+       "type": "string"
+      },
+      "band_column": {
+       "type": "string"
+      },
+      "band_lower_bounds": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "integer"
+       }
+      },
+      "pool": {
+       "type": "string"
+      },
+      "regional_pool_minimum": {
+       "type": "integer"
+      },
+      "weighting": {
+       "type": "string"
+      },
+      "with_replacement": {
+       "type": "boolean"
+      },
+      "outputs": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "resource",
       "target",
       "donor_pool",

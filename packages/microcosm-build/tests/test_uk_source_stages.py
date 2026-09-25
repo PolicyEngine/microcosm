@@ -52,6 +52,7 @@ E6_STAGE_NAMES = [
 E7_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
+    "spi_income_band_donors",
     "hmrc_spi_income_spine",
 ]
 UC_REPORTER_REDRAW_STAGE_NAMES = [
@@ -319,6 +320,7 @@ class TestUKSourceStagesManifest:
                     "etb_services": _identity,
                     "frs_hmrc_spine_leaves": _identity,
                     "spi_support_channel": _identity,
+                    "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
@@ -695,6 +697,7 @@ class TestE3ManifestLockstep:
             "verify_pinned_hmrc_source_pair",
             "strict_read_private_table",
             "fit_weighted_qrf_stage1",
+            "resample_band_donor_leaves",
             "fit_weighted_qrf_stage2",
             "redraw_columns_from_fitted_qrf",
             "materialize_hmrc_income_bands_fail_closed",
@@ -725,6 +728,28 @@ class TestE3ManifestLockstep:
         assert [op.kind for op in stages["cgt_band_donors"].operations] == [
             "stack_band_donor_households"
         ]
+        assert [op.kind for op in stages["spi_income_band_donors"].operations] == [
+            "stack_income_band_donor_households"
+        ]
+        assert stages["spi_income_band_donors"].outputs == (
+            "household_is_spi_income_band_donor",
+            "spi_income_band_donor_lower_bound",
+            "person_is_spi_income_band_carrier",
+        )
+        # The reserved copies join the synthetic channel, so the stage
+        # rewrites the support channel's lineage cells on its new rows.
+        assert stages["spi_income_band_donors"].rewrites == (
+            "household_is_spi_synthetic",
+            "person_support_channel",
+            "person_support_clone_index",
+            "person_source_id",
+            "benunit_support_channel",
+            "benunit_support_clone_index",
+            "benunit_source_id",
+            "household_support_channel",
+            "household_support_clone_index",
+            "household_source_id",
+        )
         assert [op.kind for op in stages["hmrc_cgt_gains_spine"].operations] == [
             "verify_vendored_fact_resource",
             "taxable_income_proxy",
@@ -958,7 +983,10 @@ class TestE3ManifestLockstep:
 
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
-        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
+        # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
+        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 44
+        assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 43
+        assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
         assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
 

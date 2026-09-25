@@ -2627,6 +2627,23 @@
           "training_artifact_role": "qrf_donor"
         },
         {
+          "band_column": "spi_income_band_donor_lower_bound",
+          "band_lower_bounds": [
+            200000,
+            500000,
+            1000000,
+            2000000
+          ],
+          "carrier_column": "person_is_spi_income_band_carrier",
+          "kind": "resample_band_donor_leaves",
+          "outputs": "stage-1 outputs, uprated as the stage-1 draws",
+          "pool": "full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's region where that pool holds the minimum",
+          "regional_pool_minimum": 20,
+          "seed": 44,
+          "weighting": "FACT",
+          "with_replacement": true
+        },
+        {
           "categorical_predictors": [
             "gender",
             "region"
@@ -4129,6 +4146,89 @@
       "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
       "stage": "salary_sacrifice",
       "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis"
+    },
+    "spi_income_band_donors": {
+      "artifacts": [
+        {
+          "access": "private_local_input",
+          "doi": "10.5255/UKDA-SN-9422-1",
+          "filename": "put2223uk.tab",
+          "format": "tab_delimited",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "reviewed_source": "PolicyEngine licensed UKDS mirror (private Hugging Face repository), spi_2022_23.zip",
+          "role": "qrf_donor",
+          "runtime_sha256_required": true,
+          "sha256": "5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66",
+          "size_bytes": 141323762,
+          "survey": "Survey of Personal Incomes Public Use Tape 2022-23",
+          "tax_year_start": 2022,
+          "ukds_study_number": "SN 9422",
+          "vintage": "2022-23"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_itl_taxpayer_counts.json",
+          "role": "band_taxpayer_counts",
+          "runtime_sha256_required": true
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [
+        "spi_income_band_donor_lower_bound"
+      ],
+      "notes": "Reserves 120 SPI-channel households per Table 2.5 band from GBP 200,000 (480 in all) so the top of the income distribution has support before calibration. Carriers are FRS adults drawn by the tape's own band propensity given region, sex and age band, their households are copied whole at clone index 2 with the synthetic flag, and each starts at the build tax year's published taxpayers over 120. The income stage gives every carrier a band-conditional draw from the tape (resample_band_donor_leaves).",
+      "operations": [
+        {
+          "band_column": "spi_income_band_donor_lower_bound",
+          "band_lower_bounds": [
+            200000,
+            500000,
+            1000000,
+            2000000
+          ],
+          "candidate_order": "person_id ascending",
+          "candidate_population": "raw FRS base channel adults aged 16 and over",
+          "carrier_column": "person_is_spi_income_band_carrier",
+          "clone_index": 2,
+          "donors_per_band": 120,
+          "draw": "weighted_without_replacement",
+          "expected_band_count": 4,
+          "expected_donor_count": 480,
+          "flag_column": "household_is_spi_income_band_donor",
+          "initial_weight": "published band taxpayers / donors_per_band",
+          "kind": "stack_income_band_donor_households",
+          "never_zero_weight": true,
+          "propensity": "SPI 2022-23 FACT-weighted band share by region, sex and age band",
+          "reason": "SPI income band donors stack positive-weight support households per HMRC Table 2.5 total-income band from GBP 200,000, one carrier adult each; the published band taxpayer mass is added explicitly and the base and synthetic channels keep their weights.",
+          "seed": 3,
+          "taxpayer_count_measure": "total_taxpayer_count",
+          "taxpayer_count_period": "build_period_tax_year",
+          "taxpayer_count_resource": "hmrc_itl_taxpayer_counts.json",
+          "weight_kind_out": "importance"
+        }
+      ],
+      "outputs": [
+        "household_is_spi_income_band_donor",
+        "spi_income_band_donor_lower_bound",
+        "person_is_spi_income_band_carrier"
+      ],
+      "rewrites": [
+        "household_is_spi_synthetic",
+        "person_support_channel",
+        "person_support_clone_index",
+        "person_source_id",
+        "benunit_support_channel",
+        "benunit_support_clone_index",
+        "benunit_source_id",
+        "household_support_channel",
+        "household_support_clone_index",
+        "household_source_id"
+      ],
+      "source": "Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (PolicyEngine/chronicle#280 lane).",
+      "stage": "spi_income_band_donors",
+      "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Income Tax liabilities statistics July 2026 Table 2.5"
     },
     "spi_support_channel": {
       "artifacts": [],

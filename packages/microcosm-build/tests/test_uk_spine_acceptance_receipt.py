@@ -83,6 +83,10 @@ def _apply_pending_roster_transformations(
     # consumption stage prices, so it runs right before lcfs_consumption.
     assert "nts_bus_travel" not in roster
     roster.insert(roster.index("lcfs_consumption"), "nts_bus_travel")
+    # PolicyEngine/chronicle#280 lane re-mint pending: the reserved income band donors run
+    # right after the support channel and before the income draw.
+    assert "spi_income_band_donors" not in roster
+    roster.insert(roster.index("spi_support_channel") + 1, "spi_income_band_donors")
     return tuple(roster)
 
 

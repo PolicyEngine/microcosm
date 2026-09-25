@@ -170,9 +170,6 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.uc_deduction_type_random_draw",
     "benunit.uc_latent_deduction_rate",
     "benunit.uc_reported_capital",
-    # #882: engine inputs the incumbent never carried (policyengine-uk 2.98.0
-    # reads them); the coverage manifest measures the incumbent surface, so
-    # net-new inputs are declared here like the deduction draws above.
     "benunit.would_claim_uc_childcare",
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
@@ -185,9 +182,11 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.has_fuel_consumption",
     "household.household_is_capital_gains_clone",
     "household.household_is_cgt_band_donor",
+    "household.household_is_spi_income_band_donor",
     "household.household_is_spi_synthetic",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
+    "household.spi_income_band_donor_lower_bound",
     "household.la_code_oa",
     # #953: the engine's household local_authority enum input, written by the
     # rowwise geography ladder from local_authority_code. The incumbent never
@@ -250,6 +249,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
+    "person.person_is_spi_income_band_carrier",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (

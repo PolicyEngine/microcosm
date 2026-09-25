@@ -2,12 +2,19 @@
   "schema_version": 2,
   "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
   "exclusions": {
-    "hmrc/self_employment_income_income_band_20_000_to_30_000@2025": {
-      "reason": "Calibration-competition regression from the 2026-09-18 surface expansion, not a data defect: spine-s IMPROVED this cell's raw error (+10.6% on spine-m to +6.4%), the SPI 15.7bn target is unchanged, and the 638-target solve (region-grain fan-out #906: 108 age-by-region cells, 24 regional CGT rows, regional council-tax stock; CGT bands #939) pushed the band +6.4% -> +25.3% where v18's 364-target solve left it at +10.5%. The 30_000_to_40_000 neighbour shows the same signature inside the bound (+17.5%) and every other self_employment band fits within 0.2%; no aggregate self_employment_income anchor exists to hold banded mass against the regional reshuffle. Deferred four weeks to unblock the first post-#906/#939 national line while the anchor/loss-weight fix is scoped.",
+    "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025": {
+      "reason": "Calibration-competition residual in the region tier's lowest band, not a data defect: the South East Income Tax liabilities row for total income GBP 12,570 to 15,000 (SPI 2023-24 Table 3.11, uprated to 2025 by HMRC's Table 2.5 growth) fitted at +15.1% on v21 and sits at +30.4% on v21b (target GBP 78.3m, a few hundred pounds of tax a head) once the reserved income band donors (spi_income_band_donors) re-seated the top of the distribution and the solver moved the South East's low-band mass; the region's other bands and the national 12,570-15,000 liabilities row fit within 3%. Deferred four weeks while the low-band regional loss weight is scoped (PolicyEngine/chronicle#280 lane).",
       "approved_by": "juaristi22",
-      "adjudication": "microcosm#796",
-      "approved_on": "2026-09-18",
-      "expires_on": "2026-10-16"
+      "adjudication": "PolicyEngine/microcosm#1006 (issue comment 5812206367, the register rulings María gave in session: ruling D6 of 2026-09-23; income-anchor lane, PolicyEngine/chronicle#280)",
+      "approved_on": "2026-09-23",
+      "expires_on": "2026-10-21"
+    },
+    "hmrc/state_pension_income_band_50_000_to_70_000@2025": {
+      "reason": "Calibration-competition residual, not a data defect: the SPI state-pension amount band for total income GBP 50,000 to 70,000 (2023-24 Table 3.7, uprated by the new State Pension rate the engine pays) fitted at +23.4% on v21 and +27.6% on v21b (target GBP 5.26bn); the state-pension family sums 6.9% over its target because the engine pays every recipient the 2025-26 rate while the taxpayer counts by band fit within 1%, and this band carries the residual after the reserved income band donors moved the surrounding bands. Deferred four weeks while the state-pension amount anchor is scoped (PolicyEngine/chronicle#280 lane).",
+      "approved_by": "juaristi22",
+      "adjudication": "PolicyEngine/microcosm#1006 (issue comment 5812206367, the register rulings María gave in session: ruling D6 of 2026-09-23; income-anchor lane, PolicyEngine/chronicle#280)",
+      "approved_on": "2026-09-23",
+      "expires_on": "2026-10-21"
     }
   }
 }

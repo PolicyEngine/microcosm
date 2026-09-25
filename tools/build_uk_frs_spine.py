@@ -118,6 +118,9 @@ from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
 from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTransform
+from microcosm.build.uk_runtime.spi_band_donors import (
+    UKSPIIncomeBandDonorStageTransform,
+)
 from microcosm.build.uk_runtime.spi_spine import (
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
@@ -667,6 +670,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "stack_band_donor_households":
                     stage_seeds["stack_band_donor_households"] = seed
+                elif operation.kind == "stack_income_band_donor_households":
+                    stage_seeds["stack_income_band_donor_households"] = seed
+                elif operation.kind == "resample_band_donor_leaves":
+                    stage_seeds["band_donor_resample"] = seed
                 elif operation.kind == "within_band_draws":
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind in (
@@ -1587,6 +1594,14 @@ def main(argv: list[str] | None = None) -> int:
             stage=stages_by_name["spi_support_channel"],
             sample_fraction=args.sample_fraction,
         )
+        if "spi_income_band_donors" in stage_names:
+            implementations["spi_income_band_donors"] = _GraphSourceTransform(
+                lambda sources: UKSPIIncomeBandDonorStageTransform(
+                    sources["spi"],
+                    stage=stages_by_name["spi_income_band_donors"],
+                    sample_fraction=args.sample_fraction,
+                )
+            )
         implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
         if "uc_reporter_redraw" in stage_names:
             implementations["uc_reporter_redraw"] = UKUCReporterRedrawStageTransform(
@@ -1719,6 +1734,8 @@ def main(argv: list[str] | None = None) -> int:
                 graph_sources["lcfs_person"] = args.lcfs_person_tab
             if "etb_vat" in stage_names or "etb_services" in stage_names:
                 graph_sources["etb"] = args.etb_tab
+            if "spi_income_band_donors" in stage_names:
+                graph_sources["spi"] = args.spi_tab
             if "hmrc_spi_income_spine" in stage_names:
                 graph_sources["spi"] = args.spi_tab
                 graph_sources["hmrc_income"] = args.hmrc_ods

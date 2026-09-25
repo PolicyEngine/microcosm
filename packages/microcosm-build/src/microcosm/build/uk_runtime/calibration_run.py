@@ -145,6 +145,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_hmrc_spi_income_spine_identity",
     "uk_stage_cgt_incidence_clone_mass",
     "uk_stage_cgt_band_donors_support",
+    "uk_stage_spi_income_band_donors_support",
     "uk_stage_hmrc_cgt_gains_spine_summary",
     "uk_stage_hmrc_cgt_asset_type_spine_summary",
     "uk_stage_cgt_incidence_anchor_composition",

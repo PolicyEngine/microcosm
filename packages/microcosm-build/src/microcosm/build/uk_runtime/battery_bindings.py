@@ -1621,6 +1621,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_relative_composition_error",
                 "maximum_pair_relative_error",
                 "minimum_pair_count",
+                # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
+                # reserved bands and the donors each must carry.
+                "band_lower_bounds",
+                "donors_per_band",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
                 # design weights, with the published gas-connected share.
                 "margins",

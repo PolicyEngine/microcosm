@@ -2133,6 +2133,9 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "uc_deduction_type_random_draw": 0,
     }
     assert declared["cgt_band_donors"] == {"stack_band_donor_households": 1}
+    assert declared["spi_income_band_donors"] == {
+        "stack_income_band_donor_households": 3
+    }
     assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
     assert declared["hmrc_cgt_asset_type_spine"] == {
         "assign_residential_property_flag": 553,
