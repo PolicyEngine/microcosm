@@ -161,8 +161,9 @@ A repeated pair is still refused. Source-level decisions fan out to the tail
 copy from the lowest surviving clone index. Row-level imputations treat the
 tail copy as a PUF-role row, as the base's own post-transfer stages do.
 Only a base without a raw spine ID may lack clone indices. An assembled table
-(one with a raw spine ID) must carry both its support channel and its clone
-index. `require_assembled_support_provenance` refuses one that lacks either.
+(one with a raw spine ID) must carry its support channel, its clone index and
+a complete, non-null `<entity>_source_id`. `require_assembled_support_provenance`
+refuses one that lacks any of them.
 The metadata-presence check includes the raw spine ID, so losing both columns
 cannot make an assembled table look historical. `support_role_series` calls
 the validator before resolving roles; this covers the prior-year and SSI
@@ -239,8 +240,9 @@ known violations at run time:
 - In a multi-batch pass, an engine refuses once it has computed a formula that
   aggregates over its whole simulation. In policyengine-us 2.2.1 these are the
   Medicaid SLCSP state sums behind `medicaid_cost` and the weighted household
-  and SPM-unit income deciles (`POST_EXPORT_POPULATION_AGGREGATE_VARIABLES`).
-  Each batch would compute them over itself alone.
+  and SPM-unit income deciles (`US_POPULATION_AGGREGATE_VARIABLES`, the same
+  list batched target materialization guards). Each batch would compute them
+  over itself alone.
 - A reform engine refuses once it has computed a formula that reads the
   baseline branch (`POST_EXPORT_BASELINE_BRANCH_READERS`). These are the
   Medicaid denominator a reform holds at baseline, and the behavioral-response

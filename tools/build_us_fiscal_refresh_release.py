@@ -4317,8 +4317,8 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 # Totals then differ from one whole-pool simulation only in floating-point
 # summation order, PROVIDED every scored measure is additive across
 # households: a formula that aggregates over its simulation's whole population
-# (``POST_EXPORT_POPULATION_AGGREGATE_VARIABLES``: the Medicaid SLCSP state
-# sums and the weighted income deciles) sees one batch, not the file. Every
+# (``US_POPULATION_AGGREGATE_VARIABLES``: the Medicaid SLCSP state sums and
+# the weighted income deciles) sees one batch, not the file. Every
 # batch engine of a multi-batch pass refuses once it has computed one of them,
 # so a measure that reaches such a formula fails the stage instead of scoring
 # a batch-local aggregate.
@@ -4331,16 +4331,22 @@ POST_EXPORT_SCORING_METHOD = "household_batched_written_h5"
 PostExportKey = tuple[str, int, str | None]
 
 #: policyengine-us formulas that aggregate over their simulation's whole
-#: population instead of within one household, so a batch engine computes them
-#: over its own batch only: ``medicaid_slcsp_state_average_cost_index`` and
+#: population instead of within one household, so a household-batch engine
+#: computes them over its own batch only. In policyengine-us 2.2.1,
+#: ``medicaid_slcsp_state_average_cost_index`` and
 #: ``medicaid_slcsp_state_denominator`` sum person weights by state
-#: (``sum_by_state``) and feed ``medicaid_cost`` (and through it ``medicaid``
-#: and ``household_health_benefits``), and the two income deciles are weighted
-#: ranks over every household or SPM unit. A multi-batch pass refuses an engine
-#: that computed any of them. ``test_us_post_export_scoring.py`` pins this list
-#: against the installed engine's variable sources and exercises the Medicaid
-#: refusal on a written fixture H5.
-POST_EXPORT_POPULATION_AGGREGATE_VARIABLES = (
+#: (``sum_by_state``) and feed ``medicaid_cost_if_enrolled``, and through it
+#: ``medicaid_cost``, ``medicaid`` and ``household_health_benefits``; the two
+#: income deciles are weighted ranks over every household or SPM unit. Batched
+#: target materialization (``_refuse_batch_population_aggregates``) and
+#: multi-batch post-export scoring
+#: (``_assert_post_export_scoring_is_batch_invariant``) refuse an engine that
+#: computed any of them. ``test_us_batched_target_materialization.py`` pins
+#: this list against the installed engine's variable sources; that pattern
+#: scan is a drift detector, not a proof of household locality
+#: (microcosm#956). ``test_us_post_export_scoring.py`` exercises the
+#: post-export Medicaid refusal on a written fixture H5.
+US_POPULATION_AGGREGATE_VARIABLES = (
     "household_income_decile",
     "medicaid_slcsp_state_average_cost_index",
     "medicaid_slcsp_state_denominator",
@@ -4353,7 +4359,7 @@ POST_EXPORT_POPULATION_AGGREGATE_VARIABLES = (
 #: ``get_behavioral_response_measurements``, which measures a reform against
 #: ``get_branch("baseline")`` and would measure it against itself here. A reform
 #: pass refuses an engine that computed any of them, whatever its batch count.
-#: Pinned with the aggregates above.
+#: Pinned in ``test_us_post_export_scoring.py``.
 POST_EXPORT_BASELINE_BRANCH_READERS = (
     "income_elasticity_lsr",
     "medicaid_slcsp_state_denominator",
@@ -4548,39 +4554,10 @@ class _AscendingPeriodEngine:
 
 def _post_export_watched_variables(*, batched: bool, reform: bool) -> tuple[str, ...]:
     """The formulas a batch engine may not compute (see the block comment)."""
-    watched = POST_EXPORT_POPULATION_AGGREGATE_VARIABLES if batched else ()
+    watched = US_POPULATION_AGGREGATE_VARIABLES if batched else ()
     if reform:
         watched = (*watched, *POST_EXPORT_BASELINE_BRANCH_READERS)
     return tuple(dict.fromkeys(watched))
-
-
-def _post_export_known_periods(
-    simulation, variables: Sequence[str]
-) -> set[tuple[str, str]]:
-    """The (variable, period) values an engine or any live branch of it holds.
-
-    The holder's ``get_known_periods`` includes memory and disk storage.
-    Branches keep their own holders; the ones still attached are read too.
-    The real-engine guard test checks that the watched Medicaid computation
-    leaves a known period visible through this API.
-    """
-    known: set[tuple[str, str]] = set()
-    stack = [simulation]
-    seen: set[int] = set()
-    while stack:
-        current = stack.pop()
-        if id(current) in seen:
-            continue
-        seen.add(id(current))
-        for variable in variables:
-            known.update(
-                (variable, str(period))
-                for period in current.get_holder(variable).get_known_periods()
-            )
-        branches = getattr(current, "branches", None)
-        if isinstance(branches, dict):
-            stack.extend(branches.values())
-    return known
 
 
 def _assert_post_export_scoring_is_batch_invariant(
@@ -4597,13 +4574,13 @@ def _assert_post_export_scoring_is_batch_invariant(
     ``known_at_load`` holds what the engine held before scoring (values the
     written H5 stores as inputs, which batching does not change).
     """
-    computed = sorted(_post_export_known_periods(simulation, watched) - known_at_load)
+    computed = sorted(_engine_known_periods(simulation, watched) - known_at_load)
     if not computed:
         return
     reasons = []
     for variable, period in computed:
         why = []
-        if batched and variable in POST_EXPORT_POPULATION_AGGREGATE_VARIABLES:
+        if batched and variable in US_POPULATION_AGGREGATE_VARIABLES:
             why.append(
                 "aggregates over its simulation's whole population, here one "
                 "household batch"
@@ -5051,7 +5028,7 @@ class _HouseholdBatchedPostExportScorer:
             with _automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
                 try:
-                    known_at_load = _post_export_known_periods(simulation, watched)
+                    known_at_load = _engine_known_periods(simulation, watched)
                     engine = _AscendingPeriodEngine(simulation, label=label)
                     for key in keys:
                         parts[key].append(
@@ -6361,23 +6338,6 @@ def _base_simulation_household_columns(
     return columns
 
 
-#: policyengine-us formulas that aggregate over their simulation's whole
-#: population instead of within one household, so a household-batch engine
-#: computes them over its own batch only. In policyengine-us 2.2.1,
-#: ``medicaid_slcsp_state_average_cost_index`` and
-#: ``medicaid_slcsp_state_denominator`` sum person weights by state
-#: (``sum_by_state``) and feed ``medicaid_cost_if_enrolled``, and through it
-#: ``medicaid_cost`` and ``medicaid``; the two income deciles are weighted
-#: ranks over every household or SPM unit. The pattern scan pinning this list
-#: is a drift detector, not a proof of household locality (microcosm#956).
-US_POPULATION_AGGREGATE_VARIABLES = (
-    "household_income_decile",
-    "medicaid_slcsp_state_average_cost_index",
-    "medicaid_slcsp_state_denominator",
-    "spm_unit_income_decile",
-)
-
-
 @contextmanager
 def _record_engine_branches(simulation):
     """Retain branches created through get_branch until the batch is checked.
@@ -6438,7 +6398,17 @@ def _record_engine_branches(simulation):
 
 
 def _engine_known_periods(simulation, variables: Sequence[str]) -> set[tuple[str, str]]:
-    """Read holders in the engine, live branches and recorded detached branches."""
+    """The (variable, period) values an engine or any engine it reaches holds.
+
+    Batched target materialization and post-export scoring both read this. The
+    holder's ``get_known_periods`` includes memory and disk storage. The walk
+    covers live branches, branches target materialization recorded before they
+    were detached, and the ``baseline`` simulation a ``reform=`` engine keeps
+    (policyengine-core sets it only when a reform is passed, so the post-export
+    scorer's engines have none). The real-engine guard tests check that the
+    watched Medicaid computation leaves a known period visible through this
+    API.
+    """
 
     known: set[tuple[str, str]] = set()
     stack = [simulation]
