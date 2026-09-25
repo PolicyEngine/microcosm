@@ -188,6 +188,13 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         # pinned Census ASEC person files; the certified default carries it
         # through the Build P source enrichment.
         *US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+        # PolicyEngine/microcosm#719: the county-file person schema carries a
+        # working indicator and industry with occupation on every record.
+        # Written by the org_wages release stage from ASEC WEIND/WEMIND/WKSWORK
+        # (ACS spine: native INDP/WKWN through the release predictor join).
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
     }
 )
 

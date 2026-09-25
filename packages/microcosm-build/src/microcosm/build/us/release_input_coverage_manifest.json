@@ -56,6 +56,10 @@
   "cps_race": {
    "status": "required"
   },
+  "detailed_industry_recode": {
+   "note": "Industry of the longest job last year, 23 CPS detailed groups, carried by the org_wages release stage (org_wages.derive_us_org_occupation_inputs) from ASEC WEIND (restored before pooling by asec_census_person_columns) and, on ACS-spine people, from native INDP/WKWN through the release predictor join; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
+   "status": "required"
+  },
   "detailed_occupation_recode": {
    "status": "required"
   },
@@ -270,6 +274,10 @@
    "status": "required"
   },
   "long_term_capital_gains_on_collectibles": {
+   "status": "required"
+  },
+  "major_industry_recode": {
+   "note": "Industry of the longest job last year, 15 CPS major groups, carried by the org_wages release stage (org_wages.derive_us_org_occupation_inputs) from ASEC WEMIND (restored before pooling by asec_census_person_columns) and, on ACS-spine people, from native INDP/WKWN through the release predictor join; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
    "status": "required"
   },
   "meets_ssi_disability_criteria": {
@@ -542,6 +550,10 @@
   "weeks_unemployed": {
    "status": "required"
   },
+  "worked_last_year": {
+   "note": "Worked at any time last year, carried by the org_wages release stage (org_wages.derive_us_org_occupation_inputs) from ASEC WKSWORK > 0 (restored before pooling by asec_census_person_columns) and, on ACS-spine people, from native INDP/WKWN through the release predictor join; a formula-less person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#719: the county-file person schema carries a working indicator, industry and occupation on every record. Currently absent from every published US default (all predate #719) — this is the intended red gate until the next release is built with the carry.",
+   "status": "required"
+  },
   "workers_compensation": {
    "status": "required"
   },
@@ -550,9 +562,9 @@
   }
  },
  "counts": {
-  "required": 167,
+  "required": 170,
   "reviewed_exclusion": 7,
-  "total": 174
+  "total": 177
  },
  "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",

@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: 9f4f983091fb18dea8f4524cc100be20f9fca2b006435461592f8edf53c9a5d8
+  sha256: 2074a1b918aec8a74d181ef9a946fa930936993d57acb23fc8a6babdf2e4afb5
 stage_manifest:
   version: 1
   country: us
@@ -1720,6 +1720,9 @@ stages:
     - PRDTRACE
     - PRDTHSP
     - POCCU2
+    - WEIND
+    - WEMIND
+    - WKSWORK
   - kind: derive
     method: derive_flsa_overtime_premium
     inputs:
@@ -1737,6 +1740,9 @@ stages:
   - cps_race
   - is_hispanic
   - detailed_occupation_recode
+  - detailed_industry_recode
+  - major_industry_recode
+  - worked_last_year
   - has_never_worked
   - is_military
   - is_computer_scientist
@@ -1749,6 +1755,8 @@ stages:
   nonnegative_outputs:
   - cps_race
   - detailed_occupation_recode
+  - detailed_industry_recode
+  - major_industry_recode
   - hourly_wage
   - fsla_overtime_premium
   notes: 'Port of the final retired ORG/FLSA method at 9a823603e6b5fb916d65ec45d74c9c7eb0043db1: donor
@@ -1781,7 +1789,12 @@ stages:
     reshuffles within unchanged state-level quotas — the assignment method itself remains the exact archived
     port. Exemption screens unchanged; both hours measures count all jobs while FLSA section 7 applies
     per employer (inherited upward concept edge). Adjudication and measurements: microcosm#451 item 4
-    overtime-incidence lane.'
+    overtime-incidence lane. Work-experience carries (microcosm#719): WEIND and WEMIND (industry of the
+    longest job last year, restored before pooling from each vintage''s pinned Census person member by
+    the asec_census_person_columns restoration) become detailed_industry_recode and major_industry_recode,
+    and worked_last_year is WKSWORK > 0; ACS-spine people get all three from native INDP/WKWN through
+    the release predictor join. Checked on every spine: WEMIND is the major group of WEIND and positive
+    weeks carry a worker industry code (1-22); the converse holds on ASEC rows and is checked before pooling.'
 - stage: meps_esi_premiums
   survey: MEPS-IC
   source: https://meps.ahrq.gov/mepsweb/survey_comp/Insurance.jsp

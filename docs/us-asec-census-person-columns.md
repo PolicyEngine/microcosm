@@ -109,6 +109,12 @@ the column.
 `CENSUS_TAX_ID` was never appended: the extractor derives it, and the Census
 files do not carry it.
 
+Beyond that receipt, `WEIND` and `WEMIND` (industry of the longest job last
+year) are restored for #719, read by `org_wages.derive_us_org_occupation_inputs`.
+No H5 vintage carries them, so every vintage gets them from its member, and
+each vintage is checked against the industry identities. See
+[`us-work-experience-columns.md`](us-work-experience-columns.md).
+
 ## Real-data evidence (2026-09-23, commit `39b8e7b63`)
 
 The real-data run used route A's exact base inputs and flags

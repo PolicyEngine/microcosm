@@ -94,6 +94,12 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "receives_wic",
     "receives_snap",
     "receives_tanf",
+    # PolicyEngine/microcosm#719: the work-experience carries the county-file
+    # person schema commits to (industry and a working indicator, with
+    # occupation), written by the org_wages release stage.
+    "detailed_industry_recode",
+    "major_industry_recode",
+    "worked_last_year",
 )
 
 # Shared tail of the three #978 reported-receipt notes: why each is a hard
@@ -192,6 +198,34 @@ POST_REFERENCE_COLUMN_NOTES = {
         "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
         "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
+    **{
+        column: (
+            f"{description}, carried by the org_wages release stage "
+            "(org_wages.derive_us_org_occupation_inputs) from ASEC "
+            f"{source} (restored before pooling by asec_census_person_columns) "
+            "and, on ACS-spine people, from native INDP/WKWN through the "
+            "release predictor join; a formula-less person input in "
+            "PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per "
+            "PolicyEngine/microcosm#719: the county-file person schema "
+            "carries a working indicator, industry and occupation on every "
+            "record. Currently absent from every published US default (all "
+            "predate #719) — this is the intended red gate until the next "
+            "release is built with the carry."
+        )
+        for column, description, source in (
+            (
+                "detailed_industry_recode",
+                "Industry of the longest job last year, 23 CPS detailed groups",
+                "WEIND",
+            ),
+            (
+                "major_industry_recode",
+                "Industry of the longest job last year, 15 CPS major groups",
+                "WEMIND",
+            ),
+            ("worked_last_year", "Worked at any time last year", "WKSWORK > 0"),
+        )
+    },
 }
 
 QBI_INPUTS = (
