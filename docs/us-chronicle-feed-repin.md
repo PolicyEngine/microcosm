@@ -175,6 +175,74 @@ and target id, and the register entry carries a reviewed `state_name`
 (`_geography_fallback_label` is UK-only, so the label cannot be derived from
 the FIPS code).
 
+## Restamped packages
+
+Five Chronicle packages in this feed restamp their data: 26,893 observation
+facts carry a later period than their publisher file describes. A Chronicle
+package can pin one file with `artifact.artifact_year` and still render
+`{year}` into its period, record ids and vintage from the build year. The
+scope builds these five at 2023, so each emits its pinned file as `ty2023`
+(PolicyEngine/chronicle#117).
+
+| Package | File | Data year | Facts stamped ty2023 |
+|---|---|---|---|
+| `soi-congressional-district-2022` | `22incd.csv` | TY2022 | 26,880 |
+| `soi-w2-statistics-2020` | `20in04w2all.xlsx` | TY2020 | 5 |
+| `soi-state-2022` | `22in54us.xlsx` | TY2022 | 4 |
+| `soi-ira-roth-contributions-2022` | `22in06ira.xlsx` | TY2022 | 2 |
+| `soi-ira-traditional-contributions-2022` | `22in05ira.xlsx` | TY2022 | 2 |
+
+The evidence is in the files themselves: the title cells ("Tax Year 2020",
+"Tax Year 2022"), cell-for-cell equality with the ty2020 W-2 twins, and the
+TY2022 county file for the congressional-district data. The "W-2 Social
+Security tips for 2023 (2)" cells listed under
+[What moved and what did not](#what-moved-and-what-did-not) are two of
+them. The previous pin carried the tips amount only at ty2020, so adding the
+ty2023 row switched the tips target from aging on the chained SOI wages
+bridge from 2020 to the direct CBO ratio from 2023. That aged it 17.5% too
+low ($28.28B instead of $34.29B at 2024).
+
+The compile reads these facts at their data year
+(`us_runtime/source_vintage.py`). An observation fact whose
+`source.raw_r2_key` names an artifact year earlier than its period is a
+restamp. Each one must match a reviewed `US_RESTAMPED_SOURCE_PACKAGES` entry,
+or the compile refuses. For the matching specs, `source_period` becomes the
+data year, and so does `uprating_to_period` when a spec is rebased onto a
+restamped control. The stamp is kept in `source_vintage_stamped_period`.
+Values, names and latest-vintage selection do not change; aging then starts
+from the data year. On this feed:
+
+- `national_state` still has 5,695 targets, and the registry moves from
+  `386fac439e77` to `a3547c5322da`. One value moves: the W-2 Box 7 tips
+  amount, from $28,280,884,269 to $34,287,530,779. The 51 Historic Table 2
+  net-capital-gains return counts rebased onto the congressional-district US
+  row, and the two `state_2022` counts, change metadata only; counts do not
+  age.
+- On the full surface, the 13,176 congressional-district-file dollar targets
+  age from 2022. The AGI-default measures move by +3.05%, net capital gains
+  by -23.9%, qualified dividends by +8.4% and business income by -0.5%.
+  Before the correction those targets were off by the inverse of these moves:
+  -3.0%, +31.4%, -7.8% and +0.5%.
+- The 401(k), Roth 401(k) and IRA rows compile no target.
+
+`test_pinned_feed_restamp_register_matches_the_feed` checks the register
+against this feed in both directions. A re-pin on a Chronicle commit that
+stops the restamp leaves entries that match nothing, and that test fails
+until they are deleted. At that re-pin the scope moves these pairs to their
+data years (`ty2022`, and `ty2020` for W-2). Two things need a decision first:
+
+- The Historic Table 2 capital-gains returns control. Today the CD US row
+  wins a same-period tie. Stamped truthfully, it would lose to Table 1.4
+  ty2023, which counts a different return population, and 51
+  `national_state` targets would fall 58.5%.
+- `SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID`, which names the `ty2023` record
+  set.
+
+One more mis-stamp runs the other way and is out of reach of the
+artifact-year rule. `bea-regional-state-personal-income-components-2024`
+reads the 2024 column of its CSV under a `cy2023` stamp (416 facts). No
+target compiles from it; its families are parity-manifest exclusions.
+
 ## The consumer artifact is refused at this commit
 
 `chronicle build-consumer-artifact` validates every row against

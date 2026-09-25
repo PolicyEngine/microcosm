@@ -28,6 +28,10 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
 )
+from microcosm.build.us_runtime.source_vintage import (
+    apply_source_vintage_corrections,
+    source_vintage_corrections,
+)
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
@@ -1045,6 +1049,14 @@ def compile_us_fiscal_target_registry(
             "country": "us",
             "target_period": target_period,
         },
+    )
+    # Restamped Chronicle facts (a pinned artifact labelled with the build
+    # year, PolicyEngine/chronicle#117) are read at their data year from here
+    # on: aging starts from it and the period contract checks it. Refuses a
+    # restamp that is not in the reviewed register.
+    registry = apply_source_vintage_corrections(
+        registry,
+        source_vintage_corrections(materialized_facts),
     )
     if age_targets:
         # Final nominal transform: age dollar amounts from their source period
@@ -3405,9 +3417,11 @@ def _references_for_target_period(
 def _soi_target_role(fact: object, measure_id: str) -> str:
     # W-2 item facts (generic "amount" measure id, layout-routed via the
     # form_w2_item override) get a named role so target aging can pin them
-    # to the wages series: tips are a W-2 wage component, and the feed's
-    # TY2020 vintage needs the SOI wages actuals as its chain bridge into
-    # the CBO projection years (microcosm#451 item 3).
+    # to the wages series: tips are a W-2 wage component, and the data are
+    # TY2020 (the newest IRS W-2 table), so the SOI wages actuals are the
+    # chain bridge into the CBO projection years (microcosm#451 item 3).
+    # The feed's ty2023 rows restamp the same TY2020 cells; source_vintage
+    # reads them at 2020 before aging.
     if (
         measure_id == "amount"
         and _str_at(fact, "layout", "groupby_dimension")
