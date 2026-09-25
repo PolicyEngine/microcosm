@@ -5977,9 +5977,41 @@ def _run_green_register_release(
         return reference_frame
 
     monkeypatch.setattr(builder, "load_us_frame", fake_load_us_frame)
-    monkeypatch.setattr(builder, "default_simulate_factory", lambda path: path)
+
+    class WrittenH5Scorer:
+        """The household-batched post-export scorer (#956) without an engine:
+        it binds the sha256 of the file it opens, as the real one does, and
+        hands each consumer a seam naming that file."""
+
+        def __init__(self, dataset_path, **kwargs):
+            self.dataset_path = Path(dataset_path)
+            self.dataset_sha256 = builder._sha256(self.dataset_path)
+            captured["scorer_opened_on"] = self.dataset_path
+
+        def open_consumer(self, name, baseline_plan):
+            record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
+            return SimpleNamespace(
+                name=name, simulate=self.dataset_path, record=lambda: record
+            )
+
+        def finish_consumer(self, scoring):
+            captured.setdefault("finished_consumers", []).append(scoring.name)
+            return scoring.record()
+
+        def manifest_record(self):
+            return {
+                "dataset_sha256": self.dataset_sha256,
+                "consumers": list(captured.get("finished_consumers", [])),
+            }
+
+        def close(self):
+            captured["scorer_closed"] = True
+
+    monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
 
     def fake_smoke(*, simulate, period):
+        # The pre-export plan dry-runs the smoke on a recording seam first;
+        # the last call is the gate scoring the written release.
         captured["smoke_scored"] = simulate
         return builder.GateResult(
             name="reform_coverage_smoke",
@@ -6018,12 +6050,39 @@ def _run_green_register_release(
         "estate_income": "donor tail concentrated before calibration"
     }
     if skipped_smoke:
+        # No post-export stage runs, so no scorer opens.
         assert "smoke_scored" not in captured
+        assert "scorer_opened_on" not in captured
         assert not (release_dir / "reform_coverage_smoke.json").exists()
     else:
+        assert captured["scorer_opened_on"] == captured["written_dataset"]
         assert captured["smoke_scored"] == captured["written_dataset"]
+        assert captured["scorer_closed"] is True
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    if not skipped_smoke:
+        # The smoke verdict names the bytes it scored, and they are the bytes
+        # the manifest pins.
+        smoke_scoring = json.loads(
+            (release_dir / "reform_coverage_smoke.json").read_text()
+        )["post_export_scoring"]
+        assert smoke_scoring == {
+            "dataset_sha256": hashlib.sha256(b"release h5").hexdigest(),
+            "consumer": "reform_coverage_smoke",
+        }
+        assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
+    # Both manifests carry how the post-export gates were scored (route A
+    # remediation PR-3's rule): the scorer's block, taken after every consumer
+    # finished and naming the bytes the manifest pins. With no post-export
+    # stage there is no scorer and no block.
+    for block in (build_manifest, release_manifest["build"]):
+        if skipped_smoke:
+            assert "post_export_scoring" not in block
+        else:
+            assert block["post_export_scoring"] == {
+                "dataset_sha256": build_manifest["dataset"]["sha256"],
+                "consumers": ["reform_coverage_smoke"],
+            }
 
     artifacts = release_manifest["artifacts"]
     bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
@@ -6247,6 +6306,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     result = SimpleNamespace(
         skipped=(),
         diagnostics=(),
+        # A calibration result always carries its compiled problem; the
+        # pre-export post-export-scoring plan reads its targets (#956).
+        problem=SimpleNamespace(targets=()),
         initial_loss=2.0,
         final_loss=1.0,
         l0_lambda=0.2,
@@ -7996,7 +8058,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
     if terminal_mode == "puf_tail":
-        ladder_outcome = SimpleNamespace(
+        # The real receipt type, so ``_main``'s exact-k branch that drops the
+        # calibration frames before the export (microcosm#956) runs here.
+        ladder_outcome = builder.ExactKLadderCalibration(
             result=result,
             support=np.asarray([0, 1], dtype=np.int64),
             selected_inclusion_probabilities=np.ones(2),
@@ -8166,6 +8230,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         builder,
         "write_calibration_diagnostics",
         fake_write_calibration_diagnostics,
+    )
+    # The pre-export post-export-scoring plan (microcosm#956) dry-runs the real
+    # smoke and reform-validation consumers without an engine; only the reform
+    # objects they build need policyengine-core, which the engine-free lane
+    # does not install.
+    import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
+    import microcosm.build.us_runtime.reform_validation as reform_validation_module
+
+    monkeypatch.setattr(smoke_module, "_build_reform", lambda probe: probe.id)
+    monkeypatch.setattr(
+        reform_validation_module.ReformValidationSpec,
+        "build_reform",
+        lambda spec: spec.id,
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: tuple(sorted(changes)),
     )
 
     if green_run:
@@ -8521,6 +8603,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
     }
+    # The diagnostics carry a complete post-export scoring plan, never an
+    # error record, so no plan line joins the terminal batch (#956).
+    post_export_scoring = captured["diagnostics"]["post_export_scoring"]
+    assert "error" not in post_export_scoring
+    assert list(post_export_scoring["consumers"]) == [
+        "reform_coverage_smoke",
+        "reform_validation",
+        "demographics",
+    ]
     assert captured["diagnostics"]["default_dataset"] == {
         "method": "l0_refit",
         "sparse": True,

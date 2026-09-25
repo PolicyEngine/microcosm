@@ -30,6 +30,7 @@ for _thread_pool_variable in (
     os.environ.setdefault(_thread_pool_variable, _THREAD_POOL_DEFAULT)
 
 import argparse
+import dataclasses
 import gc
 import hashlib
 import importlib.metadata
@@ -267,8 +268,8 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
 from microcosm.build.us_runtime.reform_validation import (
+    US_RELEASE_SPM_SELECTION,
     default_baseline_level_specs,
-    default_simulate_factory,
     load_default_reform_specs,
     reform_validation_payload,
     write_reform_validation,
@@ -294,6 +295,8 @@ from microcosm.build.us_runtime.warm_start_selection import (
     select_frozen_support,
 )
 from microcosm.calibrate import (
+    CalibrationResult,
+    L0RefitResult,
     TargetRegistry,
     TargetSpec,
     calibrate,
@@ -4280,119 +4283,944 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
     return frame.select(person_mask)
 
 
-class _BatchedScalarTotal:
-    def __init__(self, value: float):
-        self.value = float(value)
+# ---------------------------------------------------------------------------
+# Household-batched post-export scoring (route A remediation, microcosm#956)
+# ---------------------------------------------------------------------------
+#
+# The reform-coverage smoke, reform_validation and demographics each used to
+# build one Microsimulation over the whole written H5
+# (``reform_validation.default_simulate_factory``). Reform validation keeps
+# one shared baseline for all of its keys.
+#
+# This scorer keeps the consumers' ``simulate(reform) -> simulation`` seam and
+# changes only how the seam is served:
+#
+# * the WRITTEN H5 is loaded once (its sha256 bound to the bytes read) and
+#   split once into household batches; every group entity must nest in one
+#   household and the batches must partition every entity, or the scorer
+#   refuses before any engine exists;
+# * every construction declares ``spm=US_RELEASE_SPM_SELECTION``;
+# * a consumer's baseline requests are learned by an engine-free recording
+#   dry run and scored in ONE batch-outer pass, in ascending period order;
+#   the served baseline refuses any key outside that recorded plan;
+# * each reform builds ONE tax-benefit system (microcosm#456) and scores its
+#   keys batch by batch; every batch engine is released before the next;
+# * a batch reform engine gets that system alone, not ``reform=`` too (see
+#   ``_HouseholdBatchedPostExportScorer._construct``), so it carries no
+#   ``baseline`` branch; it refuses the formulas that read one
+#   (``POST_EXPORT_BASELINE_BRANCH_READERS``), and a reform may not move the
+#   behavioral-response parameters that decide whether the rest do;
+# * ``calculate`` returns full-length concatenated values with their engine
+#   weights, so ``.sum()`` (== ``MicroSeries.sum``), ``np.asarray`` and
+#   ``.weights`` feed every existing statistic unchanged.
+#
+# Totals then differ from one whole-pool simulation only in floating-point
+# summation order, PROVIDED every scored measure is additive across
+# households: a formula that aggregates over its simulation's whole population
+# (``POST_EXPORT_POPULATION_AGGREGATE_VARIABLES``: the Medicaid SLCSP state
+# sums and the weighted income deciles) sees one batch, not the file. Every
+# batch engine of a multi-batch pass refuses once it has computed one of them,
+# so a measure that reaches such a formula fails the stage instead of scoring
+# a batch-local aggregate.
+
+#: Recorded in ``post_export_scoring`` blocks; bump with any change to how the
+#: written H5 is scored.
+POST_EXPORT_SCORING_METHOD = "household_batched_written_h5"
+
+#: One scored request: (variable, period, map_to).
+PostExportKey = tuple[str, int, str | None]
+
+#: policyengine-us formulas that aggregate over their simulation's whole
+#: population instead of within one household, so a batch engine computes them
+#: over its own batch only: ``medicaid_slcsp_state_average_cost_index`` and
+#: ``medicaid_slcsp_state_denominator`` sum person weights by state
+#: (``sum_by_state``) and feed ``medicaid_cost`` (and through it ``medicaid``
+#: and ``household_health_benefits``), and the two income deciles are weighted
+#: ranks over every household or SPM unit. A multi-batch pass refuses an engine
+#: that computed any of them. ``test_us_post_export_scoring.py`` pins this list
+#: against the installed engine's variable sources and exercises the Medicaid
+#: refusal on a written fixture H5.
+POST_EXPORT_POPULATION_AGGREGATE_VARIABLES = (
+    "household_income_decile",
+    "medicaid_slcsp_state_average_cost_index",
+    "medicaid_slcsp_state_denominator",
+    "spm_unit_income_decile",
+)
+
+#: policyengine-us formulas whose value reads the engine's ``baseline`` branch,
+#: which a batch reform engine does not have. ``medicaid_slcsp_state_denominator``
+#: holds a reform at the baseline's denominator; the others reach
+#: ``get_behavioral_response_measurements``, which measures a reform against
+#: ``get_branch("baseline")`` and would measure it against itself here. A reform
+#: pass refuses an engine that computed any of them, whatever its batch count.
+#: Pinned with the aggregates above.
+POST_EXPORT_BASELINE_BRANCH_READERS = (
+    "income_elasticity_lsr",
+    "medicaid_slcsp_state_denominator",
+    "relative_capital_gains_mtr_change",
+    "relative_income_change",
+    "relative_wage_change",
+    "substitution_elasticity_lsr",
+)
+
+#: The other two formulas that read ``simulation.baseline``, and the parameter
+#: subtree each response is computed from. Without a baseline branch both
+#: return 0; with one they return 0 at zero elasticities. Every reform pass
+#: requires these parameters to remain at their baseline values before it
+#: builds a batch engine.
+POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS = {
+    "capital_gains_behavioral_response": "gov.simulation.capital_gains_responses",
+    "labor_supply_behavioral_response": "gov.simulation.labor_supply_responses",
+}
+
+
+def _post_export_key(
+    variable: str, period: object, map_to: str | None = None
+) -> PostExportKey:
+    if period is None:
+        raise ValueError(
+            f"Post-export scoring needs an explicit period for {variable!r}; the "
+            "engine default period is not part of the recorded plan."
+        )
+    return (str(variable), int(str(period)), None if map_to is None else str(map_to))
+
+
+def _post_export_key_record(key: PostExportKey) -> dict[str, object]:
+    variable, period, map_to = key
+    return {"variable": variable, "period": period, "map_to": map_to}
+
+
+def _ascending_period_plan(keys: Iterable[PostExportKey]) -> tuple[PostExportKey, ...]:
+    """Order a baseline plan by period, keeping request order within a period.
+
+    Baseline consumers can request interleaved periods. Sort those requests
+    before engine calls; the engine guard refuses a return to an earlier
+    period. The real-engine test probes the MD CCS request-order error and
+    warns if the upstream engine no longer reproduces it.
+    """
+    return tuple(sorted(dict.fromkeys(keys), key=lambda key: key[1]))
+
+
+def _post_export_baseline_plan_record(
+    plan: Sequence[PostExportKey],
+) -> dict[str, object]:
+    return {
+        "keys": [_post_export_key_record(key) for key in plan],
+        "period_order": sorted({key[1] for key in plan}),
+    }
+
+
+class _PostExportValues:
+    """Full-length values of one scored key, with the engine's weights.
+
+    The duck type the post-export consumers read from a Microsimulation
+    result: ``np.asarray(values)``, ``values.values``, ``values.weights`` and
+    ``values.sum()``. Both arrays are read-only, so no consumer can mutate a
+    baseline result another consumer statistic still reads.
+    """
+
+    __slots__ = ("_values", "_weights")
+
+    def __init__(self, values: np.ndarray, weights: np.ndarray) -> None:
+        values = np.asarray(values)
+        weights = np.asarray(weights, dtype=np.float64)
+        if values.ndim != 1 or weights.shape != values.shape:
+            raise ValueError(
+                "Post-export scoring needs one weight per value; got values "
+                f"of shape {values.shape} and weights of shape {weights.shape}."
+            )
+        values.flags.writeable = False
+        weights.flags.writeable = False
+        self._values = values
+        self._weights = weights
+
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
+        if dtype is None and not copy:
+            return self._values
+        return np.array(self._values, dtype=dtype, copy=True)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    @property
+    def values(self) -> np.ndarray:
+        return self._values
+
+    @property
+    def weights(self) -> np.ndarray:
+        return self._weights
 
     def sum(self) -> float:
-        return self.value
+        """Weighted total, computed as policyengine-core's ``MicroSeries.sum``.
+
+        ``MicroSeries.sum`` is ``self.multiply(self.weights).sum()``: a pandas
+        product summed with NaN skipped. Doing the same over the concatenated
+        arrays gives the whole-pool total up to summation order.
+        """
+        return float(pd.Series(self._values).multiply(self._weights).sum())
 
 
-class _BatchedReformValidationSimulation:
-    def __init__(
-        self,
-        frame: Frame,
-        *,
-        reform,
-        maximum_microsim_batch_size: int | None,
-        microsimulation_cls,
-        dataset_from_frame,
-    ):
-        self._frame = frame
-        self._reform = reform
-        self._maximum_microsim_batch_size = maximum_microsim_batch_size
-        self._microsimulation_cls = microsimulation_cls
-        self._dataset_from_frame = dataset_from_frame
-        self._cache: dict[tuple[str, int], float] = {}
-        self._reform_system = None
+def _concatenate_post_export_parts(
+    parts: Sequence[tuple[np.ndarray, np.ndarray]],
+) -> _PostExportValues:
+    return _PostExportValues(
+        np.concatenate([values for values, _ in parts]),
+        np.concatenate([weights for _, weights in parts]),
+    )
 
-    def calculate(self, measure: str, period: int) -> _BatchedScalarTotal:
-        key = (str(measure), int(period))
-        if key not in self._cache:
-            self._cache[key] = self._calculate_total(str(measure), int(period))
-        return _BatchedScalarTotal(self._cache[key])
 
-    def _calculate_total(self, measure: str, period: int) -> float:
-        n_households = self._frame.n("household")
-        batches = tuple(
-            _household_position_batches(
-                n_households,
-                self._maximum_microsim_batch_size,
-            )
+def _post_export_values_and_weights(result, key: PostExportKey):
+    weights = getattr(result, "weights", None)
+    if weights is None:
+        raise RuntimeError(
+            f"Post-export scoring of {key} got an unweighted engine result; "
+            "every scored key must carry the engine's entity weights."
         )
-        if len(batches) > 1:
-            print(
-                "Scoring reform validation measure "
-                f"{measure} in {len(batches)} batches of up to "
-                f"{self._maximum_microsim_batch_size:,} households.",
-                flush=True,
-            )
-        total = 0.0
-        for household_positions in batches:
-            with _automatic_gc_suspended():
-                full_batch = len(household_positions) == n_households
-                batch_frame = (
-                    self._frame
-                    if full_batch
-                    else _select_households_by_position(
-                        self._frame, household_positions
-                    )
-                )
-                dataset = self._dataset_from_frame(batch_frame)
-                if self._reform is None:
-                    simulation = self._microsimulation_cls(dataset=dataset)
-                else:
-                    # microcosm#456: one reform system per scored reform, not
-                    # one per batch (each engine build permanently leaks
-                    # ~5,600 sys.modules entries).
-                    if self._reform_system is None:
-                        self._reform_system = (
-                            self._microsimulation_cls.default_tax_benefit_system(
-                                reform=self._reform
-                            )
-                        )
-                    simulation = self._microsimulation_cls(
-                        tax_benefit_system=self._reform_system,
-                        dataset=dataset,
-                        reform=self._reform,
-                    )
-                total += float(simulation.calculate(measure, period).sum())
-                release_engine_simulation(simulation)
-                del simulation, dataset, batch_frame
-            _collect_batch_garbage()
-        _collect_family_garbage()
-        return total
+    values = np.asarray(result)
+    weights = np.asarray(weights, dtype=np.float64)
+    if values.ndim != 1 or weights.shape != values.shape:
+        raise RuntimeError(
+            f"Post-export scoring of {key} got {values.shape} values against "
+            f"{weights.shape} weights from one batch engine."
+        )
+    return values, weights
 
 
-def _batched_reform_validation_simulate_factory_from_frame(
-    frame: Frame,
-    *,
-    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
-    microsimulation_cls=None,
-    dataset_from_frame=None,
-):
-    if microsimulation_cls is None:
-        from policyengine_us import Microsimulation
+class _RecordingPostExportSimulation:
+    """Engine-free stand-in that records the baseline keys a consumer asks for."""
 
-        microsimulation_cls = Microsimulation
-    if dataset_from_frame is None:
+    def __init__(self, keys: dict[PostExportKey, None] | None) -> None:
+        self._keys = keys
 
-        def dataset_from_frame(batch_frame: Frame):
-            return _dataset_from_frame(
-                batch_frame,
-                assert_no_formula_owned_columns=False,
-            )
+    def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
+        key = _post_export_key(variable, period, map_to)
+        if self._keys is not None:
+            self._keys.setdefault(key, None)
+        return _PostExportValues(np.zeros(0), np.zeros(0))
+
+
+def _record_post_export_baseline_plan(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[PostExportKey, ...]:
+    """Learn a consumer's baseline keys by running it against recorders.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that
+    logs every request, ``simulate(reform)`` a recorder that logs nothing
+    (reforms are scored key by key when the consumer runs for real). The
+    consumers ask for the same keys whatever values they get back, and the
+    served baseline refuses any key this dry run did not see, so a
+    value-dependent request cannot slip past the plan.
+    """
+    keys: dict[PostExportKey, None] = {}
 
     def simulate(reform):
-        return _BatchedReformValidationSimulation(
-            frame,
-            reform=reform,
-            maximum_microsim_batch_size=maximum_microsim_batch_size,
-            microsimulation_cls=microsimulation_cls,
-            dataset_from_frame=dataset_from_frame,
+        return _RecordingPostExportSimulation(keys if reform is None else None)
+
+    consumer(simulate)
+    return _ascending_period_plan(keys)
+
+
+class _AscendingPeriodEngine:
+    """One batch engine that refuses a period earlier than one it computed."""
+
+    def __init__(self, simulation, *, label: str) -> None:
+        self.simulation = simulation
+        self._label = label
+        self._latest_period: int | None = None
+
+    def calculate(self, key: PostExportKey):
+        variable, period, map_to = key
+        if self._latest_period is not None and period < self._latest_period:
+            raise RuntimeError(
+                f"Post-export scoring ({self._label}) asked one engine for "
+                f"{variable}@{period} after it computed period "
+                f"{self._latest_period}. policyengine-us 2.2.1 can fail to "
+                "compute an earlier period after a later one on the same "
+                "engine (the MD CCS ParameterNotFoundError; see "
+                "_ascending_period_plan), so each engine scores its keys in "
+                "ascending period order."
+            )
+        self._latest_period = period
+        if map_to is None:
+            return self.simulation.calculate(variable, period)
+        return self.simulation.calculate(variable, period, map_to=map_to)
+
+
+def _post_export_watched_variables(*, batched: bool, reform: bool) -> tuple[str, ...]:
+    """The formulas a batch engine may not compute (see the block comment)."""
+    watched = POST_EXPORT_POPULATION_AGGREGATE_VARIABLES if batched else ()
+    if reform:
+        watched = (*watched, *POST_EXPORT_BASELINE_BRANCH_READERS)
+    return tuple(dict.fromkeys(watched))
+
+
+def _post_export_known_periods(
+    simulation, variables: Sequence[str]
+) -> set[tuple[str, str]]:
+    """The (variable, period) values an engine or any live branch of it holds.
+
+    The holder's ``get_known_periods`` includes memory and disk storage.
+    Branches keep their own holders; the ones still attached are read too.
+    The real-engine guard test checks that the watched Medicaid computation
+    leaves a known period visible through this API.
+    """
+    known: set[tuple[str, str]] = set()
+    stack = [simulation]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        for variable in variables:
+            known.update(
+                (variable, str(period))
+                for period in current.get_holder(variable).get_known_periods()
+            )
+        branches = getattr(current, "branches", None)
+        if isinstance(branches, dict):
+            stack.extend(branches.values())
+    return known
+
+
+def _assert_post_export_scoring_is_batch_invariant(
+    simulation,
+    watched: Sequence[str],
+    known_at_load: set[tuple[str, str]],
+    *,
+    label: str,
+    batched: bool,
+    reform: bool,
+) -> None:
+    """Refuse an engine that computed a formula batching would score wrongly.
+
+    ``known_at_load`` holds what the engine held before scoring (values the
+    written H5 stores as inputs, which batching does not change).
+    """
+    computed = sorted(_post_export_known_periods(simulation, watched) - known_at_load)
+    if not computed:
+        return
+    reasons = []
+    for variable, period in computed:
+        why = []
+        if batched and variable in POST_EXPORT_POPULATION_AGGREGATE_VARIABLES:
+            why.append(
+                "aggregates over its simulation's whole population, here one "
+                "household batch"
+            )
+        if reform and variable in POST_EXPORT_BASELINE_BRANCH_READERS:
+            why.append(
+                "reads the engine's baseline branch, which a batch reform engine "
+                "does not carry"
+            )
+        reasons.append(f"{variable}@{period} ({'; '.join(why)})")
+    raise RuntimeError(
+        f"Post-export scoring ({label}) is not batch-invariant: a batch engine "
+        f"computed {', '.join(reasons)}. A measure that reaches these formulas "
+        "cannot be scored in household batches (microcosm#956)."
+    )
+
+
+def _parameter_leaf_values(node, instant: str) -> dict[str, object]:
+    """Every parameter under ``node`` (itself included) at ``instant``."""
+    return {
+        leaf.name: leaf(instant)
+        for leaf in (node, *node.get_descendants())
+        if hasattr(leaf, "values_list")
+    }
+
+
+def _moved_behavioral_response_parameters(
+    reform_system, baseline_system, period: int
+) -> list[str]:
+    """Behavioral-response parameters a reform system sets off baseline."""
+    instant = f"{int(period)}-01-01"
+    moved: list[str] = []
+    for subtree in POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS.values():
+        reformed = _parameter_leaf_values(
+            reform_system.parameters.get_child(subtree), instant
+        )
+        baseline = _parameter_leaf_values(
+            baseline_system.parameters.get_child(subtree), instant
+        )
+        moved.extend(
+            name
+            for name in sorted(reformed.keys() | baseline.keys())
+            if name not in reformed
+            or name not in baseline
+            or reformed[name] != baseline[name]
+        )
+    return moved
+
+
+def _assert_post_export_batching_premises(
+    frame: Frame, batch_frames: Sequence[Frame]
+) -> None:
+    """Refuse a written frame that household batching would score wrongly.
+
+    Batching is output-invariant only if every group unit sits wholly inside
+    one household, so that each batch holds whole units and every entity row
+    lands in exactly one batch. ``Frame.select`` keeps every group row any
+    selected person references without checking that, so a unit spanning two
+    batches would be scored twice, each time with part of its members. (The
+    Frame constructor already refuses group rows no person references.)
+    """
+    for entity in US_SCHEMA.group_entities:
+        if entity != "household":
+            # Raises when a unit's persons sit in more than one household.
+            _group_to_household_positions(frame, entity)
+    for entity in frame.entities:
+        batched = sum(batch.n(entity) for batch in batch_frames)
+        if batched != frame.n(entity):
+            raise ValueError(
+                f"Post-export household batches hold {batched} {entity} rows "
+                f"against {frame.n(entity)} in the written H5; the batches do "
+                "not partition the pool."
+            )
+    household_ids = frame.table("household")["household_id"].to_numpy()
+    batched_ids = np.concatenate(
+        [batch.table("household")["household_id"].to_numpy() for batch in batch_frames]
+    )
+    if not np.array_equal(batched_ids, household_ids):
+        raise ValueError(
+            "Post-export household batches do not reproduce the written H5's "
+            "household order."
+        )
+    batched_weights = np.concatenate(
+        [batch.weights_for("household").values for batch in batch_frames]
+    )
+    if not np.array_equal(batched_weights, frame.weights_for("household").values):
+        raise ValueError(
+            "Post-export household batches do not carry the written H5's "
+            "household weights."
         )
 
-    return simulate
+
+class _PostExportScoringPlan:
+    """The pre-export record of how the written H5 will be scored.
+
+    Built before ``calibration_diagnostics.json`` is written, so that artifact
+    carries the plan; the post-export stages then score exactly these
+    baseline plans. (A plain class: this tool is loaded by file path in the
+    tests, outside ``sys.modules``, where ``dataclasses`` cannot resolve the
+    module's string annotations.)
+    """
+
+    def __init__(
+        self,
+        *,
+        n_households: int,
+        maximum_batch_size: int | None,
+        baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
+        error: str | None = None,
+    ) -> None:
+        self.n_households = int(n_households)
+        self.maximum_batch_size = maximum_batch_size
+        self.baseline_plans = {
+            consumer: tuple(plan) for consumer, plan in baseline_plans.items()
+        }
+        self.error = error
+
+    @property
+    def n_batches(self) -> int:
+        return sum(
+            1
+            for _ in _household_position_batches(
+                self.n_households, self.maximum_batch_size
+            )
+        )
+
+    def baseline_plan(self, consumer: str) -> tuple[PostExportKey, ...]:
+        if self.error is not None:
+            raise RuntimeError(
+                "The post-export scoring plan was not built before export: "
+                f"{self.error}"
+            )
+        return self.baseline_plans[consumer]
+
+    def terminal_failures(self) -> list[str]:
+        """The plan's own failure, as a line of the batched terminal raise."""
+        if self.error is None:
+            return []
+        return [
+            "Post-export scoring plan could not be built before export "
+            f"(microcosm#956): {self.error}"
+        ]
+
+    def record(self) -> dict[str, object]:
+        if self.error is not None:
+            return {"method": POST_EXPORT_SCORING_METHOD, "error": self.error}
+        return {
+            "method": POST_EXPORT_SCORING_METHOD,
+            "maximum_batch_size": self.maximum_batch_size,
+            "n_households": self.n_households,
+            "n_batches": self.n_batches,
+            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "period_order": "ascending",
+            "consumers": {
+                consumer: {"baseline_plan": _post_export_baseline_plan_record(plan)}
+                for consumer, plan in self.baseline_plans.items()
+            },
+        }
+
+
+def _post_export_scoring_plan(
+    *,
+    n_households: int,
+    maximum_microsim_batch_size: int | None,
+    consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
+) -> _PostExportScoringPlan:
+    return _PostExportScoringPlan(
+        n_households=int(n_households),
+        maximum_batch_size=maximum_microsim_batch_size,
+        baseline_plans={
+            name: _record_post_export_baseline_plan(consumer)
+            for name, consumer in consumers.items()
+        },
+    )
+
+
+def _record_post_export_scoring_plan(
+    args: argparse.Namespace, *, n_households: int, result, release_id: str
+) -> _PostExportScoringPlan:
+    """The plan ``_main`` records before the calibration diagnostics.
+
+    Never raises (microcosm#547): a crash while building the plan rides the
+    plan's record into the diagnostics and joins the batched terminal raise
+    (``terminal_failures``), so it cannot pre-empt the diagnostics, the QRF
+    tail evidence or any later terminal group, and the run still refuses
+    before the export write.
+    """
+    try:
+        return _post_export_scoring_plan(
+            n_households=n_households,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+            consumers=_post_export_consumers(
+                args, result=result, release_id=release_id
+            ),
+        )
+    except Exception as error:
+        return _PostExportScoringPlan(
+            n_households=n_households,
+            maximum_batch_size=args.maximum_microsim_batch_size,
+            baseline_plans={},
+            error=f"{type(error).__name__}: {error}",
+        )
+
+
+def _reform_coverage_smoke_consumer(simulate) -> GateResult:
+    """The smoke exactly as ``_main`` runs it, for the plan's dry run."""
+    return us_reform_coverage_smoke_gate(simulate=simulate, period=PERIOD)
+
+
+def _demographics_consumer(simulate) -> tuple[np.ndarray, np.ndarray]:
+    return population_by_age_from_sim(simulate(None), PERIOD)
+
+
+def _reform_validation_consumer(
+    *, result, release_id: str
+) -> Callable[[Callable[[Any], Any] | None], dict[str, Any]]:
+    """reform_validation.json's payload as a function of the simulate seam."""
+    specs = load_default_reform_specs(period=PERIOD)
+    in_sample_estimates = _in_sample_estimates(result)
+    in_sample_targets = _in_sample_targets(result)
+    baseline_levels = default_baseline_level_specs()
+
+    def payload_for(simulate) -> dict[str, Any]:
+        return reform_validation_payload(
+            specs,
+            period=PERIOD,
+            simulate=simulate,
+            in_sample_estimates=in_sample_estimates,
+            in_sample_targets=in_sample_targets,
+            baseline_levels=baseline_levels,
+            release_id=release_id,
+        )
+
+    return payload_for
+
+
+def _post_export_consumers(
+    args: argparse.Namespace, *, result, release_id: str
+) -> dict[str, Callable[[Callable[[Any], Any]], object]]:
+    """The post-export stages this build will run, in run order."""
+    consumers: dict[str, Callable[[Callable[[Any], Any]], object]] = {}
+    if not args.skip_reform_coverage_smoke:
+        consumers["reform_coverage_smoke"] = _reform_coverage_smoke_consumer
+    if not args.skip_reform_validation and not args.skip_out_of_sample_reforms:
+        consumers["reform_validation"] = _reform_validation_consumer(
+            result=result, release_id=release_id
+        )
+    if not args.skip_demographics:
+        consumers["demographics"] = _demographics_consumer
+    return consumers
+
+
+class _HouseholdBatchedPostExportScorer:
+    """Scores the written release H5 in household batches (see the block
+    comment above). One instance serves every post-export consumer."""
+
+    def __init__(
+        self,
+        dataset_path: Path,
+        *,
+        maximum_microsim_batch_size: int | None,
+        expected_n_households: int | None = None,
+        microsimulation_cls=None,
+        dataset_from_frame=None,
+        load_frame=None,
+    ) -> None:
+        self.dataset_path = Path(dataset_path)
+        self.maximum_batch_size = maximum_microsim_batch_size
+        # The scored bytes are bound to this digest: the loader refuses a file
+        # whose bytes differ from it, and the manifest's dataset sha must equal
+        # it (``_build_manifests(scored_dataset_sha256=...)``).
+        self.dataset_sha256 = _sha256(self.dataset_path)
+        frame = (load_frame or _load_frame)(
+            self.dataset_path, expected_sha256=self.dataset_sha256
+        )
+        self.n_households = int(frame.n("household"))
+        if (
+            expected_n_households is not None
+            and self.n_households != expected_n_households
+        ):
+            raise ValueError(
+                f"The written H5 carries {self.n_households} households; the "
+                f"post-export scoring plan was built for {expected_n_households}."
+            )
+        batch_frames = tuple(
+            frame
+            if len(positions) == self.n_households
+            else _select_households_by_position(frame, positions)
+            for positions in _household_position_batches(
+                self.n_households, maximum_microsim_batch_size
+            )
+        )
+        _assert_post_export_batching_premises(frame, batch_frames)
+        del frame
+        self._batch_frames: tuple[Frame, ...] | None = batch_frames
+        self.n_batches = len(batch_frames)
+        self.max_batch_households = max(
+            (batch.n("household") for batch in batch_frames), default=0
+        )
+        if microsimulation_cls is None:
+            from policyengine_us import Microsimulation
+
+            microsimulation_cls = Microsimulation
+        self._microsimulation_cls = microsimulation_cls
+        if dataset_from_frame is None:
+
+            def dataset_from_frame(batch_frame: Frame):
+                return _dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+
+        self._dataset_from_frame = dataset_from_frame
+        # Each finished consumer's scoring record, for the manifests' block.
+        # Records, not consumers: a finished consumer's arrays must be freed.
+        self.consumer_records: dict[str, dict[str, object]] = {}
+
+    def open_consumer(
+        self, name: str, baseline_plan: Sequence[PostExportKey]
+    ) -> _PostExportConsumer:
+        """Score ``baseline_plan`` now; return the consumer's simulate seam."""
+        return _PostExportConsumer(self, name, tuple(baseline_plan))
+
+    def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
+        """Record a consumer that has finished scoring and return its record."""
+        if scoring._scorer is not self:
+            raise ValueError(f"{scoring.name} was not opened on this scorer.")
+        if scoring.name in self.consumer_records:
+            raise ValueError(f"{scoring.name} already finished on this scorer.")
+        record = scoring.record()
+        self.consumer_records[scoring.name] = record
+        return record
+
+    def manifest_record(self) -> dict[str, object]:
+        """The ``post_export_scoring`` block both manifests carry.
+
+        Route A remediation PR-3 records the evidence the gates judged in the
+        manifests, not only in loose diagnostics. This block names the bytes
+        scored, the batching, and each finished consumer's baseline plan and
+        pass counts, in the order the consumers finished.
+        """
+        return {
+            "method": POST_EXPORT_SCORING_METHOD,
+            "dataset_sha256": self.dataset_sha256,
+            "maximum_batch_size": self.maximum_batch_size,
+            "n_households": self.n_households,
+            "n_batches": self.n_batches,
+            "max_batch_households": self.max_batch_households,
+            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "consumers": {
+                name: {
+                    key: record[key]
+                    for key in (
+                        "baseline_plan",
+                        "baseline_passes",
+                        "reform_passes",
+                        "reform_systems",
+                    )
+                }
+                for name, record in self.consumer_records.items()
+            },
+        }
+
+    def close(self) -> None:
+        self._batch_frames = None
+        _collect_family_garbage()
+
+    def _batches(self) -> tuple[Frame, ...]:
+        if self._batch_frames is None:
+            raise RuntimeError("The post-export scorer is closed.")
+        return self._batch_frames
+
+    def _construct(self, batch_frame: Frame, *, reform_system):
+        dataset = self._dataset_from_frame(batch_frame)
+        if reform_system is None:
+            return self._microsimulation_cls(
+                dataset=dataset, spm=dict(US_RELEASE_SPM_SELECTION)
+            )
+        # The reform's system alone, not ``reform=`` as well. Given both,
+        # policyengine-us 2.2.1 clones the supplied system on every
+        # construction (``SPMSimulationMixin._prepare_spm_system`` ->
+        # ``clone_spm_system``: the whole parameter tree rebuilt and every
+        # variable deep-copied, so each batch starts on cold caches), core
+        # applies the reform again to the clone, and core adds a ``baseline``
+        # branch whose holders copy every input array. Given the system alone
+        # it shares the system's policy (``share_spm_policy``).
+        # ``POST_EXPORT_BASELINE_BRANCH_READERS`` and
+        # ``POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS`` list formulas that
+        # read the baseline branch, and the scorer guards those uses.
+        return self._microsimulation_cls(
+            tax_benefit_system=reform_system,
+            dataset=dataset,
+            spm=dict(US_RELEASE_SPM_SELECTION),
+        )
+
+    def _assert_reform_keeps_baseline_responses(
+        self, reform_system, key: PostExportKey, *, label: str
+    ) -> None:
+        """Refuse a reform that moves a behavioral-response parameter.
+
+        A batch reform engine has no ``baseline`` branch, so policyengine-us
+        scores its labor-supply and capital-gains responses as 0. A whole-file
+        reform engine has one and scores them from these parameters, as 0 at
+        the engine's zero default elasticities. The guard requires these
+        parameters to stay at baseline before building a batch reform engine.
+        """
+        moved = _moved_behavioral_response_parameters(
+            reform_system,
+            self._microsimulation_cls.default_tax_benefit_system_instance,
+            key[1],
+        )
+        if moved:
+            raise RuntimeError(
+                f"Post-export scoring ({label}) refuses a reform that sets "
+                f"behavioral-response parameters off baseline at {key[1]}: "
+                f"{', '.join(moved)}. Batch reform engines carry no baseline "
+                "branch, so policyengine-us would score these responses as zero "
+                "(microcosm#956)."
+            )
+
+    def _score(
+        self,
+        keys: Sequence[PostExportKey],
+        *,
+        label: str,
+        reform_system=None,
+    ) -> dict[PostExportKey, _PostExportValues]:
+        """One batch-outer pass: one engine per batch scores every key."""
+        batches = self._batches()
+        batched = len(batches) > 1
+        watched = _post_export_watched_variables(
+            batched=batched, reform=reform_system is not None
+        )
+        if batched:
+            print(
+                f"Scoring post-export {label} ({len(keys)} key(s)) in "
+                f"{len(batches)} batches of up to {self.max_batch_households:,} "
+                "households.",
+                flush=True,
+            )
+        parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
+            key: [] for key in keys
+        }
+        for batch_frame in batches:
+            with _automatic_gc_suspended():
+                simulation = self._construct(batch_frame, reform_system=reform_system)
+                try:
+                    known_at_load = _post_export_known_periods(simulation, watched)
+                    engine = _AscendingPeriodEngine(simulation, label=label)
+                    for key in keys:
+                        parts[key].append(
+                            _post_export_values_and_weights(engine.calculate(key), key)
+                        )
+                    # Before the release below drops the engine's holders.
+                    _assert_post_export_scoring_is_batch_invariant(
+                        simulation,
+                        watched,
+                        known_at_load,
+                        label=label,
+                        batched=batched,
+                        reform=reform_system is not None,
+                    )
+                finally:
+                    # microcosm#456: free this batch engine's array mass by
+                    # refcount before the next batch builds its own, also
+                    # when a key raises.
+                    release_engine_simulation(simulation)
+                del simulation, engine
+            _collect_batch_garbage()
+        _collect_family_garbage()
+        return {
+            key: _concatenate_post_export_parts(key_parts)
+            for key, key_parts in parts.items()
+        }
+
+
+def _open_post_export_scorer(
+    plan: _PostExportScoringPlan, dataset_path: Path
+) -> _HouseholdBatchedPostExportScorer | None:
+    """Open the scorer the plan recorded before export, or None if no stage runs."""
+    if plan.error is not None:
+        raise RuntimeError(
+            f"The post-export scoring plan was not built before export: {plan.error}"
+        )
+    if not plan.baseline_plans:
+        return None
+    return _HouseholdBatchedPostExportScorer(
+        dataset_path,
+        maximum_microsim_batch_size=plan.maximum_batch_size,
+        expected_n_households=plan.n_households,
+    )
+
+
+def _post_export_scoring_manifest_block(
+    scorer: _HouseholdBatchedPostExportScorer | None,
+) -> dict[str, object] | None:
+    """The manifests' ``post_export_scoring`` block (None: no stage ran)."""
+    if scorer is None:
+        return None
+    return scorer.manifest_record()
+
+
+def _close_post_export_scorer(
+    scorer: _HouseholdBatchedPostExportScorer | None,
+) -> str | None:
+    """Close the scorer; return the sha256 of the H5 it scored (None: no stage)."""
+    if scorer is None:
+        return None
+    scorer.close()
+    return scorer.dataset_sha256
+
+
+class _PostExportConsumer:
+    """One consumer's simulate seam over a scored baseline plan."""
+
+    def __init__(
+        self,
+        scorer: _HouseholdBatchedPostExportScorer,
+        name: str,
+        baseline_plan: tuple[PostExportKey, ...],
+    ) -> None:
+        ordered = _ascending_period_plan(baseline_plan)
+        if ordered != baseline_plan:
+            raise ValueError(
+                f"{name}: a post-export baseline plan must be unique keys in "
+                "ascending period order."
+            )
+        self._scorer = scorer
+        self.name = name
+        self.baseline_plan = baseline_plan
+        self.baseline_passes = 1 if baseline_plan else 0
+        self.reform_passes = 0
+        self.reform_systems = 0
+        self._baseline = (
+            scorer._score(baseline_plan, label=f"{name} baseline plan")
+            if baseline_plan
+            else {}
+        )
+
+    def simulate(self, reform):
+        if reform is None:
+            return _PlannedPostExportBaseline(self)
+        return _BatchedPostExportReform(self, reform)
+
+    def record(self) -> dict[str, object]:
+        scorer = self._scorer
+        return {
+            "method": POST_EXPORT_SCORING_METHOD,
+            "dataset_sha256": scorer.dataset_sha256,
+            "maximum_batch_size": scorer.maximum_batch_size,
+            "n_households": scorer.n_households,
+            "n_batches": scorer.n_batches,
+            "max_batch_households": scorer.max_batch_households,
+            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "baseline_plan": _post_export_baseline_plan_record(self.baseline_plan),
+            "baseline_passes": self.baseline_passes,
+            "reform_passes": self.reform_passes,
+            "reform_systems": self.reform_systems,
+        }
+
+    def _baseline_values(self, key: PostExportKey) -> _PostExportValues:
+        try:
+            return self._baseline[key]
+        except KeyError:
+            raise RuntimeError(
+                f"{self.name} asked the baseline for {key}, which its recorded "
+                "plan does not hold; the engine-free dry run must see every "
+                "baseline request, so nothing is scored off-plan."
+            ) from None
+
+    def _reform_values(self, reform_system, key: PostExportKey):
+        label = f"{self.name} reform {key[0]}@{key[1]}"
+        self._scorer._assert_reform_keeps_baseline_responses(
+            reform_system, key, label=label
+        )
+        self.reform_passes += 1
+        scored = self._scorer._score((key,), label=label, reform_system=reform_system)
+        return scored[key]
+
+
+class _PlannedPostExportBaseline:
+    """The baseline simulation a consumer sees: served from its scored plan."""
+
+    def __init__(self, consumer: _PostExportConsumer) -> None:
+        self._consumer = consumer
+
+    def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
+        return self._consumer._baseline_values(
+            _post_export_key(variable, period, map_to)
+        )
+
+
+class _BatchedPostExportReform:
+    """A reformed simulation a consumer sees: each key is one batched pass.
+
+    The reform's tax-benefit system is built once, on the first key, and
+    handed to every batch engine (microcosm#456). The engines get that system
+    alone (see ``_HouseholdBatchedPostExportScorer._construct``).
+    """
+
+    def __init__(self, consumer: _PostExportConsumer, reform) -> None:
+        self._consumer = consumer
+        self._reform = reform
+        self._system = None
+        self._results: dict[PostExportKey, _PostExportValues] = {}
+
+    def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
+        key = _post_export_key(variable, period, map_to)
+        if key not in self._results:
+            if self._system is None:
+                scorer = self._consumer._scorer
+                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
+                    reform=self._reform
+                )
+                self._consumer.reform_systems += 1
+            self._results[key] = self._consumer._reform_values(self._system, key)
+        return self._results[key]
 
 
 def _reform_household_income_tax(
@@ -6139,6 +6967,23 @@ def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
         selected_weights=np.asarray(result.weights),
         reason="US fiscal target refresh L0/refit calibration",
     )
+
+
+def _without_calibrated_frames(result, *, export_frame: Frame | None = None):
+    """Drop calibrated target tables while keeping weights and diagnostics.
+
+    The exact-k receipt reads ``result.frame.n("household")``; give it the
+    clean export frame instead of retaining the calibrated target tables.
+    """
+    if isinstance(result, L0RefitResult):
+        return dataclasses.replace(
+            result,
+            selection=_without_calibrated_frames(result.selection),
+            refit=_without_calibrated_frames(result.refit, export_frame=export_frame),
+        )
+    if isinstance(result, CalibrationResult):
+        return dataclasses.replace(result, frame=export_frame)
+    return result
 
 
 def _selected_plan_ratio_bucket(values: np.ndarray) -> dict[str, object]:
@@ -8544,6 +9389,7 @@ def _write_release_calibration_diagnostics(
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
     calibration_runtime: Mapping[str, object] | None = None,
+    post_export_scoring: Mapping[str, object] | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -8737,6 +9583,14 @@ def _write_release_calibration_diagnostics(
             },
             "incumbent_diagnostics": incumbent_payload,
             "post_export_target_audit": bool(audit_export_targets),
+            # How the written H5 will be scored after export (route A
+            # remediation, microcosm#956): household batches, their count,
+            # and each post-export stage's baseline plan in period order.
+            **(
+                {"post_export_scoring": dict(post_export_scoring)}
+                if post_export_scoring is not None
+                else {}
+            ),
         },
     )
 
@@ -8989,6 +9843,51 @@ def _in_sample_targets(result) -> dict[str, float]:
     return targets
 
 
+def _score_post_export_consumer(
+    name: str,
+    consumer: Callable[[Callable[[Any], Any]], object],
+    *,
+    dataset_path: Path,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None,
+    baseline_plan: Sequence[PostExportKey] | None,
+    maximum_microsim_batch_size: int | None,
+):
+    """Run one post-export consumer through the household-batched scorer.
+
+    ``_main`` passes the scorer it opened on the written H5 and the plan it
+    recorded in the calibration diagnostics. A direct caller may pass neither:
+    the scorer is then opened (and closed) here, and the plan is recorded by
+    the same engine-free dry run.
+    """
+    scorer = post_export_scorer
+    if scorer is None:
+        scorer = _HouseholdBatchedPostExportScorer(
+            dataset_path,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+    try:
+        plan = (
+            _record_post_export_baseline_plan(consumer)
+            if baseline_plan is None
+            else tuple(baseline_plan)
+        )
+        scoring = scorer.open_consumer(name, plan)
+        output = consumer(scoring.simulate)
+        record = scorer.finish_consumer(scoring)
+        print(
+            f"Post-export {name}: {record['baseline_passes']} baseline pass "
+            f"({len(plan)} keys), {record['reform_passes']} reform passes, "
+            f"{record['reform_systems']} reform systems, "
+            f"{record['n_batches']} batches of up to "
+            f"{record['max_batch_households']:,} households.",
+            flush=True,
+        )
+        return output
+    finally:
+        if post_export_scorer is None:
+            scorer.close()
+
+
 def _write_reform_validation(
     *,
     release_dir: Path,
@@ -8997,15 +9896,19 @@ def _write_reform_validation(
     registry: TargetRegistry,
     release_id: str,
     simulate_out_of_sample: bool,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
+    baseline_plan: Sequence[PostExportKey] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
     In-sample JCT tax-expenditure reforms come straight from the calibration
     fit; out-of-sample OBBBA provisions are simulated on the freshly written
-    release H5 (skipped if ``simulate_out_of_sample`` is False, e.g. for a fast
-    diagnostics-only build).
+    release H5 in household batches (skipped if ``simulate_out_of_sample`` is
+    False, e.g. for a fast diagnostics-only build). The shared baseline is one
+    batch-outer pass over the plan's keys in ascending period order.
     """
-    specs = load_default_reform_specs(period=PERIOD)
+    payload_for = _reform_validation_consumer(result=result, release_id=release_id)
     if not simulate_out_of_sample:
         print(
             "\n".join(
@@ -9023,18 +9926,16 @@ def _write_reform_validation(
             ),
             file=sys.stderr,
         )
-    simulate = (
-        default_simulate_factory(dataset_path) if simulate_out_of_sample else None
-    )
-    payload = reform_validation_payload(
-        specs,
-        period=PERIOD,
-        simulate=simulate,
-        in_sample_estimates=_in_sample_estimates(result),
-        in_sample_targets=_in_sample_targets(result),
-        baseline_levels=default_baseline_level_specs(),
-        release_id=release_id,
-    )
+        payload = payload_for(None)
+    else:
+        payload = _score_post_export_consumer(
+            "reform_validation",
+            payload_for,
+            dataset_path=dataset_path,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=baseline_plan,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
 
@@ -9043,17 +9944,24 @@ def _write_demographics(
     release_dir: Path,
     dataset_path: Path,
     release_id: str,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
+    baseline_plan: Sequence[PostExportKey] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> None:
     """Emit demographics.json: the dataset's weighted population by age band.
 
     The fiscal-refresh release calibrates source-backed Census PEP age targets;
-    this file remains a compact summary diagnostic for release consumers.
+    this file remains a compact summary diagnostic for release consumers. Ages
+    and person weights are scored on the written H5 in household batches.
     """
-    from policyengine_us import Microsimulation
-    from policyengine_us.data import USSingleYearDataset
-
-    sim = Microsimulation(dataset=USSingleYearDataset(file_path=str(dataset_path)))
-    ages, weights = population_by_age_from_sim(sim, PERIOD)
+    ages, weights = _score_post_export_consumer(
+        "demographics",
+        _demographics_consumer,
+        dataset_path=dataset_path,
+        post_export_scorer=post_export_scorer,
+        baseline_plan=baseline_plan,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
     payload = demographics_payload(ages, weights, period=PERIOD, release_id=release_id)
     # Household-record counts by state and congressional district: the
     # release's sub-national resolution floor, surfaced on the dashboard.
@@ -9103,12 +10011,33 @@ def _build_manifests(
     export_input_mass_reference: Mapping[str, object] | None = None,
     calibration_runtime: Mapping[str, object] | None = None,
     skipped_gates: Iterable[str] = (),
+    scored_dataset_sha256: str | None = None,
+    post_export_scoring: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     coverage_path = release_dir / "us_source_coverage.json"
     dataset_sha = _sha256(dataset_path)
+    if scored_dataset_sha256 is not None and scored_dataset_sha256 != dataset_sha:
+        # The post-export smoke, reform validation and demographics scored the
+        # H5 whose sha256 the scorer bound at load; the manifest must pin the
+        # same bytes, or those verdicts describe a different file.
+        raise RuntimeError(
+            f"The post-export stages scored {dataset_path} at sha256 "
+            f"{scored_dataset_sha256}, but the file now hashes to {dataset_sha}; "
+            "the manifest would pin bytes the release gates never scored."
+        )
+    if (
+        post_export_scoring is not None
+        and post_export_scoring.get("dataset_sha256") != dataset_sha
+    ):
+        raise RuntimeError(
+            "The post_export_scoring block records sha256 "
+            f"{post_export_scoring.get('dataset_sha256')}, but {dataset_path} "
+            f"hashes to {dataset_sha}; the manifest would describe scoring of "
+            "bytes it does not pin."
+        )
     calibration_sha = _sha256(calibration_path)
     diagnostics_sha = _sha256(diagnostics_path)
     coverage_sha = _sha256(coverage_path)
@@ -9136,6 +10065,11 @@ def _build_manifests(
         **(
             {"calibration_runtime": dict(calibration_runtime)}
             if calibration_runtime is not None
+            else {}
+        ),
+        **(
+            {"post_export_scoring": dict(post_export_scoring)}
+            if post_export_scoring is not None
             else {}
         ),
         "fiscal_target_exclusion_receipt": _fiscal_target_exclusion_receipt_reference(
@@ -12615,6 +13549,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
         }
+    # Frame.with_weights copies the target tables into each calibrated frame.
+    # Drop the input now and replace those result frames after building the
+    # clean export from base_frame and the calibrated weights below.
+    del target_frame
     if telemetry is not None:
         telemetry.stage(
             "take_up_final_diagnostics",
@@ -12635,6 +13573,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
+    result = _without_calibrated_frames(
+        result,
+        export_frame=export_frame if ladder_outcome is not None else None,
+    )
+    if isinstance(ladder_outcome, ExactKLadderCalibration):
+        ladder_outcome = dataclasses.replace(ladder_outcome, result=result)
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
@@ -12962,6 +13906,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
         *exact_k_fit_failures,
         *gate_failures,
     ]
+    # microcosm#956: how the written H5 will be scored. The baseline plans come
+    # from engine-free dry runs of the post-export consumers, so they are
+    # fixed here and recorded in the calibration diagnostics; the post-export
+    # stages then score exactly these plans. A plan that cannot be built is
+    # recorded, not raised, and joins the terminal batch below.
+    post_export_scoring_plan = _record_post_export_scoring_plan(
+        args,
+        n_households=int(export_frame.n("household")),
+        result=result,
+        release_id=release_id,
+    )
     _write_release_calibration_diagnostics(
         result=result,
         release_dir=release_dir,
@@ -12999,6 +13954,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
         calibration_runtime=calibration_runtime,
+        post_export_scoring=post_export_scoring_plan.record(),
     )
     # Terminal-gate batching: evaluate EVERY terminal gate
     # group and raise once with the full failure list, instead of aborting at
@@ -13009,6 +13965,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # an evaluation crash in degraded mode records a line rather than masking
     # the earlier failures) and certification manifests are never written.
     terminal_gate_failures: list[str] = list(gate_failures)
+    # An unbuildable post-export plan refuses here, before the export write,
+    # with every other terminal group still evaluated (microcosm#956).
+    terminal_gate_failures.extend(post_export_scoring_plan.terminal_failures())
     terminal_batch_telemetry = _TerminalBatchTelemetry(
         telemetry,
         terminal_gate_failures,
@@ -13373,6 +14332,14 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    # Route A remediation (microcosm#956): every post-export stage below (the
+    # smoke, reform validation, demographics) scores THIS file through one
+    # household-batched scorer instead of one whole-pool Microsimulation each.
+    # It loads the written H5 once, binds its sha256 (the manifest must pin
+    # the same bytes), and serves the baseline plans recorded above.
+    post_export_scorer = _open_post_export_scorer(
+        post_export_scoring_plan, dataset_path
+    )
     # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
     # end-to-end backstop: each pinned probe (first: SSI asset limits at
@@ -13388,10 +14355,15 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 "reform_coverage_smoke",
                 message="Scoring pinned bound-reform probes on the written H5.",
             )
+        smoke_scoring = post_export_scorer.open_consumer(
+            "reform_coverage_smoke",
+            post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+        )
         reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
-            simulate=default_simulate_factory(dataset_path),
+            simulate=smoke_scoring.simulate,
             period=PERIOD,
         )
+        smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)
         reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
         reform_coverage_smoke_path.write_text(
             json.dumps(
@@ -13403,12 +14375,16 @@ def _main(argv: Sequence[str] | None = None) -> None:
                         "failures": list(reform_coverage_smoke_gate.failures),
                         "details": dict(reform_coverage_smoke_gate.details),
                     },
+                    "post_export_scoring": smoke_scoring_record,
                 },
                 indent=2,
                 sort_keys=True,
             )
             + "\n"
         )
+        # The smoke's scored baseline plan is recorded; free its arrays before
+        # reform validation scores its own.
+        del smoke_scoring
         if telemetry is not None:
             telemetry.attach_artifact(
                 "reform_coverage_smoke", reform_coverage_smoke_path
@@ -13469,6 +14445,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
             registry=registry,
             release_id=release_id,
             simulate_out_of_sample=not args.skip_out_of_sample_reforms,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=(
+                None
+                if args.skip_out_of_sample_reforms
+                else post_export_scoring_plan.baseline_plan("reform_validation")
+            ),
         )
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -13483,9 +14465,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
             release_dir=release_dir,
             dataset_path=dataset_path,
             release_id=release_id,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=post_export_scoring_plan.baseline_plan("demographics"),
         )
         if telemetry is not None:
             telemetry.attach_artifact("demographics", release_dir / "demographics.json")
+    # Every post-export engine stage has run; free the scorer's batch frames.
+    # The manifest must pin the bytes those stages scored, and both manifests
+    # carry how they were scored (Route A remediation PR-3).
+    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
+    scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
+    post_export_scorer = None
 
     if telemetry is not None:
         telemetry.stage(
@@ -13658,6 +14648,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
         skipped_gates=(
             ("reform_coverage_smoke",) if args.skip_reform_coverage_smoke else ()
         ),
+        scored_dataset_sha256=scored_dataset_sha256,
+        post_export_scoring=post_export_scoring,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

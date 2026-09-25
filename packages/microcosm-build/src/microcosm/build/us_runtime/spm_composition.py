@@ -366,16 +366,18 @@ def check_spm_composition(
 ) -> CheckResult:
     """Does every SPM unit have a classified adult (no solve, no engine)?
 
-    The release's 104 state SPM poverty levels are measured on one whole-dataset
-    ``Microsimulation`` (``reform_validation.default_simulate_factory``), and in
-    ``spm-calculator`` 1.0.0 a *single* SPM unit with no classified adult raises
-    ``SPMInputError("SPM_COMPOSITION_REQUIRED")`` for the **whole population's**
-    measurement (``spm_calculator/policyengine_adapter.py`` ``policyengine_amount``:
+    The release's 104 state SPM poverty levels are measured on the written H5,
+    one engine per household batch (the release tool's post-export scorer,
+    microcosm#956), and in ``spm-calculator`` 1.0.0 a *single* SPM unit with no
+    classified adult raises ``SPMInputError("SPM_COMPOSITION_REQUIRED")`` for the
+    measurement of **every unit in its simulation**
+    (``spm_calculator/policyengine_adapter.py`` ``policyengine_amount``:
     ``if np.any(adults < 1): raise``), naming neither the offending unit nor a
-    remedy. The release tool runs this same classification on its calibrated
-    export frame as a batched pre-export gate, so a build refuses by name before
-    the H5 and NPZ writes — but only after paying for the calibration that frame
-    comes from. Run pre-solve, this is the same verdict in seconds.
+    remedy, and aborting the stage. The release tool runs this same
+    classification on its calibrated export frame as a batched pre-export gate,
+    so a build refuses by name before the H5 and NPZ writes — but only after
+    paying for the calibration that frame comes from. Run pre-solve, this is the
+    same verdict in seconds.
 
     This reproduces the engine's classification exactly —
     ``adult = (age >= 18) | ((age >= 15) & role)`` with ``role`` resolved by
