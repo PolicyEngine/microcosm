@@ -1,0 +1,107 @@
+{
+  "scope": "development_source_only",
+  "status": "pass",
+  "execution_source_head": "4d567e2e04bb6494ae895638fe5f675bda4bc0f7",
+  "summary_basis": "Aggregate projection of the preserved local REPORT.json; no source rows or input paths",
+  "source_report_sha256": "2409e8b410706f9b9c6ff857f06ca7a4051eee11019e1a81046419677784cf1d",
+  "pins_sha256": "659a4c3c91d6e595fa5b60ed3afc179997fa0bdd2eec32d160db95cd16340de0",
+  "primitive_manifest_sha256": "33c65532972eb7a2ec045768b9510ef4c732a3a42862b0e41ca4792db993b4ee",
+  "canonical_head": "bcf45768003bb79addfafb0e6d9c7d2d5e547d9d",
+  "canonical_file_sha256": "ce0d328d856ca81862b4e80947b6f6269a89bbd842cbdbb1569411b319da5a33",
+  "runtime": {
+    "python": "3.14.4",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "environment_note": "Recorded versions and calculator source hashes verified after environment restoration; full original external package byte identity unproven"
+  },
+  "counts": {
+    "persons": 1183,
+    "old_units": 512,
+    "new_units": 542,
+    "group_quarters_units": 62,
+    "source_uncertain_households": 8,
+    "childcare_ledger_rows": 21,
+    "unresolved_childcare_units": 0
+  },
+  "receipts": {
+    "preserve_parent_tenure_v1": {
+      "receipt_sha256": "c8186ce8dc04b6b9483a4bc8c2e3db2e14f3aeeb897ba28745bab7074568aa60",
+      "unit_authority_counts": {
+        "false": {
+          "outside_acs_household_universe": 62,
+          "observed_relationship_rule": 396,
+          "modeled_assumption": 64,
+          "unresolved": 20
+        },
+        "true": {
+          "outside_acs_household_universe": 62,
+          "observed_relationship_rule": 396,
+          "modeled_assumption": 64,
+          "unresolved": 20
+        }
+      }
+    },
+    "acs_ten4_no_mortgage_v1": {
+      "receipt_sha256": "4d28d5c6142eb4876fe844cbdcc3b3530e0b55905cfb239a0faa95c879bea257",
+      "unit_authority_counts": {
+        "false": {
+          "outside_acs_household_universe": 62,
+          "observed_relationship_rule": 396,
+          "modeled_assumption": 64,
+          "unresolved": 20
+        },
+        "true": {
+          "outside_acs_household_universe": 62,
+          "observed_relationship_rule": 396,
+          "modeled_assumption": 64,
+          "unresolved": 20
+        }
+      }
+    }
+  },
+  "golden_comparisons": {
+    "partner_false": {
+      "original_file_sha256": "7f2e652a6a4821c0d40f52a848ed700a160a16a3884bb04ebb340446df6d1f9d",
+      "membership_projection_sha256": "619a9693778338674757005942a69770bdcec6ca2558aae1ce9ed4259c2094b4",
+      "old_role_label_sha256": "2bf801bafbf155cc2f41c4ec89226be418d4ed322a3b04d1eca268beff8ba0b7",
+      "migrated_role_label_sha256": "71c2da5a85f673732849fc62ef52b24bc016551269d39f1b577854402db80e58"
+    },
+    "partner_true": {
+      "original_file_sha256": "6c09a801c3a6b87a4983c09199258b6532a41a8069a011103aca8cb227acd187",
+      "membership_projection_sha256": "619a9693778338674757005942a69770bdcec6ca2558aae1ce9ed4259c2094b4",
+      "old_role_label_sha256": "2bf801bafbf155cc2f41c4ec89226be418d4ed322a3b04d1eca268beff8ba0b7",
+      "migrated_role_label_sha256": "71c2da5a85f673732849fc62ef52b24bc016551269d39f1b577854402db80e58"
+    }
+  },
+  "role_label_mapping": {
+    "source_observed": "observed_relationship_rule"
+  },
+  "normalization": [
+    "SPORDER exact numeric to int64",
+    "TYPEHUGQ mapped from household by household_id",
+    "Original twelve SPM fields only; categoricals already decoded",
+    "Comparison only: pandas NA/NaN and JSON null denote missing cells"
+  ],
+  "primitive_tables_and_source_bytes_unchanged": true,
+  "guard_attempts": {
+    "country_import": 0,
+    "network": 0,
+    "unapproved_population_read": 0
+  },
+  "elapsed_seconds": 9.739,
+  "peak_rss_bytes": 366772224,
+  "limits": {
+    "cpu_seconds": 120,
+    "wall_seconds": 180,
+    "rss_bytes": 3221225472,
+    "rss_enforcement": "50ms process peak-RSS watchdog; exit 137",
+    "numerical_threads": 1
+  },
+  "holds": [
+    "Locked calculator1.0.0 does not meet the required assembler capabilities",
+    "Fable implementation review pending credential availability",
+    "Country consumer, annual SPM universe, dependency adoption and release acceptance remain separate"
+  ],
+  "country_calculation_performed": false,
+  "release_accepted": false
+}
