@@ -13,7 +13,6 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.staging_v2 import validate_v2_bundle
-from microcosm.build.uk_runtime.graph import UK_SPINE_EXCLUSIONS
 
 ROOT = Path(__file__).resolve().parents[3]
 FIXTURE = ROOT / "packages/microcosm-graph/tests/fixtures/parity/uk_spine/sources"
@@ -111,11 +110,7 @@ def test_uk_staging_smoke_command_runs_every_spine_stage(tmp_path: Path) -> None
     assert manifest["delivery"]["upload_attempts"] == 0
 
     spec = load_country_spec("uk")
-    expected = [
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    ]
+    expected = [stage.stage for stage in spec.sources.stages]
     events = bundle["events"]
     for stage in expected:
         transitions = [

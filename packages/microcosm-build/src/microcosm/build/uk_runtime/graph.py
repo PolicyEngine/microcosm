@@ -37,7 +37,6 @@ from ..stage_evidence import STAGE_EVIDENCE_TYPE
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
-    "UK_SPINE_EXCLUSIONS",
     "UK_SPINE_STRUCTURAL_STAGES",
     "uk_registry",
     "uk_spine_endpoint",
@@ -45,15 +44,6 @@ __all__ = [
     "uk_spine_operation_inventory",
 ]
 
-
-UK_SPINE_EXCLUSIONS = frozenset(
-    {
-        # These are the certified-candidate/H5 alternatives to the raw-FRS
-        # spine stages named below, not additional steps in this pipeline.
-        "frs_hmrc_retained_leaves",
-        "hmrc_spi_income",
-    }
-)
 
 UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {
@@ -834,9 +824,7 @@ def _deduplicate(cells: Iterable[_Cell]) -> tuple[_Cell, ...]:
 def _manifest_stages(spec: CountrySpec) -> tuple[object, ...]:
     if spec.sources is None:
         raise ValueError("The UK graph requires a source-stage manifest.")
-    selected = tuple(
-        stage for stage in spec.sources.stages if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    selected = tuple(spec.sources.stages)
     if not selected or selected[0].stage != "frs_spine":
         raise ValueError("The UK FRS spine manifest must begin with 'frs_spine'.")
     unknown = [stage.stage for stage in selected[1:] if stage.stage not in _STAGE_CELLS]

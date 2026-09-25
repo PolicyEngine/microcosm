@@ -935,7 +935,6 @@ class TestUKCountryPackage:
             "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
-            "hmrc_income_source_stages.json",
             "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
@@ -996,16 +995,20 @@ class TestUKCountryPackage:
             "nts_car_availability.json",
         )
 
-    def test_uk_source_manifest_loads_thirty_stages(self) -> None:
+    def test_uk_source_manifest_contains_only_canonical_spine_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
         # 33 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
-        # spi_income_band_donors (PolicyEngine/chronicle#280 lane) as the newest) plus the two
-        # certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 35
+        # spi_income_band_donors (PolicyEngine/chronicle#280 lane) as the
+        # newest); the frs_hmrc_retained_leaves / hmrc_spi_income pair is
+        # retired (#901).
+        assert len(spec.sources.stages) == 33
+        assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
+            stage.stage for stage in spec.sources.stages
+        )
 
 
 class TestExistingPackagesGeneralize:
@@ -1050,7 +1053,6 @@ class TestExistingPackagesGeneralize:
             "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
-            "hmrc_income_source_stages.json",
             "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",

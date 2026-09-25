@@ -10,7 +10,6 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.graph import (
-    UK_SPINE_EXCLUSIONS,
     UK_SPINE_STRUCTURAL_STAGES,
     uk_registry,
     uk_spine_graph,
@@ -152,29 +151,23 @@ def test_uk_expand_contract_rejects_unknown_source_ids() -> None:
         patch(_expand_population(), _expand_node(), _expand_result(bad_source=True))
 
 
-def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
+def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    expected = tuple(
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    expected = tuple(stage.stage for stage in spec.sources.stages)
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
-    # 31 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
+    # 33 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
-    # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's (PolicyEngine/chronicle#280)
-    # spi_income_band_donors stages; the two named exclusions are the
-    # certified-pair alternatives, not steps of this pipeline.
+    # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's
+    # (PolicyEngine/chronicle#280) spi_income_band_donors stages; the
+    # frs_hmrc_retained_leaves / hmrc_spi_income certified-pair alternatives
+    # are retired (#901), so the manifest roster is the graph roster.
     assert len(expected) == 33
-    assert UK_SPINE_EXCLUSIONS == {
-        "frs_hmrc_retained_leaves",
-        "hmrc_spi_income",
-    }
+    assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
-    assert not (UK_SPINE_EXCLUSIONS & ids)
+    assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
     root_dtypes = {
         (owned.entity, owned.column): owned.dtype
         for owned in graph.node("create_uk_frs").outputs
@@ -188,11 +181,7 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
 def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     spec = load_country_spec("uk")
     assert spec.sources is not None
-    expected = tuple(
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    expected = tuple(stage.stage for stage in spec.sources.stages)
     compiled = compile_graph(uk_spine_graph(spec))
     stage_order = tuple(node_id for node_id in compiled.order if node_id in expected)
 
@@ -548,11 +537,7 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     from microcosm.build.uk_runtime import spine_build as driver
 
     country = load_country_spec("uk")
-    stages = [
-        stage
-        for stage in country.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    ]
+    stages = list(country.sources.stages)
     _, implementations = fixture_stage_plan_inputs(fixture / "sources")
     graph = uk_spine_graph()
     compiled = compile_graph(graph)

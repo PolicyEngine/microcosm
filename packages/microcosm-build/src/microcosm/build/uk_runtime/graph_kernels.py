@@ -45,7 +45,7 @@ from microcosm.graph import (
 from microcosm.graph.population import dtype_for_token
 
 from .. import stage_evidence
-from . import bus_use_incidence, uc_relationships
+from . import bus_use_incidence, frs_hmrc_source, uc_relationships
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -82,7 +82,7 @@ _STAGE_MODULES = {
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
-    "frs_hmrc_spine_leaves": "frs_hmrc_leaves",
+    "frs_hmrc_spine_leaves": "spi_spine",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
@@ -102,6 +102,7 @@ _STAGE_MODULES = {
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
+    "frs_hmrc_spine_leaves": (frs_hmrc_source,),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),

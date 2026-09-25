@@ -96,7 +96,6 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.graph import (
-    UK_SPINE_EXCLUSIONS,
     uk_registry,
     uk_spine_graph,
     uk_spine_operation_inventory,
@@ -172,11 +171,7 @@ def _uk_spine_stage_names(spec) -> tuple[str, ...]:
 
     if spec.sources is None:
         raise ValueError("UK country spec has no source stages.")
-    declared = {
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    }
+    declared = {stage.stage for stage in spec.sources.stages}
     compiled = compile_graph(uk_spine_graph(spec))
     ordered = tuple(node_id for node_id in compiled.order if node_id in declared)
     if set(ordered) != declared:

@@ -125,17 +125,13 @@ from microcosm.build.uk_runtime.frs_employment import (
     add_frs_employment,
     derive_frs_employment,
 )
-from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
-    FRS_HMRC_RETAINED_LEAVES_STAGE_NAME,
     FRS_HMRC_SRP_REGULAR_CODE5_COLUMN,
     FRS_HMRC_UBISJA_COLUMN,
-    UKFRSHMRCRetainedLeavesResult,
-    UKFRSHMRCRetainedLeavesStageTransform,
-    retain_uk_frs_hmrc_leaves,
 )
 from microcosm.build.uk_runtime.frs_legacy_proxies import (
     FRS_LEGACY_PROXY_OUTPUT_COLUMNS,
@@ -269,7 +265,6 @@ from microcosm.build.uk_runtime.hmrc_replay import (
 )
 from microcosm.build.uk_runtime.hmrc_source_contract import (
     HMRC_DISTRIBUTIONAL_INPUTS,
-    UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE,
     assert_uk_hmrc_income_source_contract_current,
 )
 from microcosm.build.uk_runtime.ladder_targets import (
@@ -682,7 +677,6 @@ __all__ = [
     "FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN",
     "FRS_HMRC_PAY_COLUMN",
     "FRS_HMRC_RETAINED_LEAF_COLUMNS",
-    "FRS_HMRC_RETAINED_LEAVES_STAGE_NAME",
     "FRS_HMRC_SRP_REGULAR_CODE5_COLUMN",
     "FRS_HMRC_UBISJA_COLUMN",
     "FRS_REGION_TO_COUNTRY",
@@ -750,7 +744,6 @@ __all__ = [
     "SPI_SYNTHETIC_SUPPORT_CHANNEL",
     "UK_ENGLAND_WALES_REGION_CODES",
     "UK_GEOGRAPHY_LADDER_COLUMNS",
-    "UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE",
     "UK_LONDON_REGION_CODE",
     "UK_LOADER_INPUT_ALIASES",
     "UK_OA_LADDER_DERIVED_LAYERS",
@@ -769,8 +762,6 @@ __all__ = [
     "UKFirmTargetLayout",
     "UKFirmVATRuleEvaluator",
     "UKFirmValidationReport",
-    "UKFRSHMRCRetainedLeavesResult",
-    "UKFRSHMRCRetainedLeavesStageTransform",
     "UKLadderRowwiseDatasetResult",
     "UKLocalSolveDoctrine",
     "UKRowwiseLocalMatrix",
@@ -855,7 +846,6 @@ __all__ = [
     "classify_hmrc_replay_targets",
     "compute_household_metrics",
     "constituency_household_targets",
-    "ladder_vs_chronicle_household_dispersion",
     "compile_uk_local_target_registry",
     "load_uk_local_area_crosswalk",
     "create_uk_spi_support_tables",
@@ -874,7 +864,6 @@ __all__ = [
     "frozen_vs_recomputed",
     "impute_uk_spi_income_support",
     "replace_uk_spi_support_tables",
-    "retain_uk_frs_hmrc_leaves",
     "add_frs_council_tax",
     "add_frs_disability",
     "add_frs_education",

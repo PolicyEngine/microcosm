@@ -1242,3 +1242,48 @@ def test_source_phase_evidence_survives_later_exception(tmp_path, monkeypatch, r
         index["artifacts"]["spine.gates.assembled/gate_report"]["sha256"]
         == hashlib.sha256(gate_bytes).hexdigest()
     )
+
+
+def test_main_stages_the_bundle_locally_with_staging_local_only(tmp_path, monkeypatch):
+    """``--staging-local-only`` writes and validates the v2 bundle, uploads nothing."""
+
+    pytest.importorskip("tables")
+    from microcosm.build.staging_dataset import (
+        SHA256SUMS_FILENAME,
+        STAGED_MANIFEST_FILENAME,
+    )
+    from microcosm.build.staging_v2 import validate_v2_bundle
+
+    staging_dir = tmp_path / "staging-bundle"
+    out = graph_dense_bundle(
+        tmp_path,
+        monkeypatch,
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+    )
+    manifest = json.loads((out / "rowwise_candidate_manifest.json").read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_only"
+    assert manifest["staging_delivery"]["upload_attempts"] == 0
+    assert manifest["staged_dataset"]["mode"] == "local_only"
+    assert manifest["staged_dataset"]["status"] == "skipped"
+    assert manifest["staged_dataset"]["repository"] is None
+    # The published bundle carries its own inventory beside the manifest.
+    assert (out / STAGED_MANIFEST_FILENAME).is_file()
+    assert (out / SHA256SUMS_FILENAME).is_file()
+
+    runs = sorted(path.name for path in (staging_dir / "runs").iterdir())
+    assert len(runs) == 1
+    bundle = validate_v2_bundle(staging_dir, runs[0])
+    assert bundle["progress"]["status"] == "completed"
+    assert bundle["run_manifest"]["run_kind"] == "calibration"
+    transitions = [
+        event["status"]
+        for event in bundle["events"]
+        if event["stage_id"] == "dataset_staging"
+    ]
+    assert transitions == ["started", "completed"]
+    artifacts = staging_dir / "runs" / runs[0] / "artifacts"
+    staged = json.loads((artifacts / "staged_dataset.json").read_text())
+    assert staged["mode"] == "local_only" and staged["status"] == "skipped"
+    assert (artifacts / "fit_summary.json").is_file()

@@ -151,7 +151,7 @@ def _hmrc_family_coverage() -> dict[str, dict[str, object]]:
     return {
         "hmrc_spi_income": {
             "status": "required_at_build",
-            "stage": "hmrc_spi_income",
+            "stage": "hmrc_spi_income_spine",
             "effective_mass_requirements": {
                 "gift_aid": {
                     "status": "distributional_required",
@@ -615,7 +615,10 @@ class TestUKManifest:
         assert load_efrs_parity_known_gaps() == ()
         assert manifest.required_build_stages == frozenset(
             {
-                "hmrc_spi_income",
+                "frs_hmrc_spine_leaves",
+                "spi_support_channel",
+                "spi_income_band_donors",
+                "hmrc_spi_income_spine",
                 "cgt_incidence_clone",
                 "cgt_band_donors",
                 "hmrc_cgt_gains_spine",
@@ -740,43 +743,48 @@ class TestUKManifest:
             assert_uk_release_input_coverage_build_stages((), manifest=manifest)
 
         result = assert_uk_release_input_coverage_build_stages(
-            ("hmrc_spi_income",),
+            ("hmrc_spi_income_spine",),
             manifest=manifest,
         )
         assert result is None
 
-    def test_spine_posture_satisfies_superseded_required_families(self) -> None:
+    def test_canonical_producers_and_predecessors_satisfy_required_families(
+        self,
+    ) -> None:
         manifest = load_uk_release_input_coverage_manifest()
-        spine_stages = tuple(
-            stage
-            for stage in manifest.required_build_stages
-            if stage != "hmrc_spi_income"
+        assert_uk_release_input_coverage_build_stages(
+            tuple(manifest.required_build_stages), manifest=manifest
         )
-        result = assert_uk_release_input_coverage_build_stages(
-            (*spine_stages, "hmrc_spi_income_spine"),
-            manifest=manifest,
-        )
-        assert result is None
-        assert (
-            manifest.family_coverage["hmrc_spi_income"]["superseded_by"]["stage"]
-            == "hmrc_spi_income_spine"
+        assert {
+            "frs_hmrc_spine_leaves",
+            "spi_support_channel",
+            "spi_income_band_donors",
+            "hmrc_spi_income_spine",
+        } <= manifest.required_build_stages
+        assert {"hmrc_spi_income", "hmrc_cgt_gains"}.isdisjoint(
+            manifest.required_build_stages
         )
         assert "hmrc_cgt_gains" not in manifest.family_coverage
-
-    def test_supersession_does_not_hide_a_genuinely_missing_family(self) -> None:
-        manifest = load_uk_release_input_coverage_manifest()
-        spine_stages = tuple(
-            stage
-            for stage in manifest.required_build_stages
-            if stage
-            not in {
-                "hmrc_spi_income",
-                "student_loans",
-            }
+        assert all(
+            "superseded_by" not in family
+            for family in manifest.family_coverage.values()
         )
-        with pytest.raises(ValueError, match="student_loans"):
+
+    @pytest.mark.parametrize(
+        "missing_stage",
+        [
+            "frs_hmrc_spine_leaves",
+            "spi_support_channel",
+            "spi_income_band_donors",
+            "hmrc_spi_income_spine",
+            "student_loans",
+        ],
+    )
+    def test_each_canonical_family_dependency_is_required(self, missing_stage) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        with pytest.raises(ValueError, match="hmrc_spi_income|student_loans"):
             assert_uk_release_input_coverage_build_stages(
-                (*spine_stages, "hmrc_spi_income_spine"),
+                tuple(manifest.required_build_stages - {missing_stage}),
                 manifest=manifest,
             )
 
