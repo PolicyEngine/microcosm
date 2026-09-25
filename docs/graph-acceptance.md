@@ -4,7 +4,7 @@ The `microcosm-graph` shard replaces stages, families, batches, banks, and
 whole-run authority receipts with one object: a content-addressed DAG of
 cell-ownership nodes. This document is the definition of done. Every
 property below is an executable test in
-`packages/microcosm-graph/tests/test_acceptance_*.py`, committed **red**
+`packages/microcosm-graph/tests/**/test_acceptance_*.py`, committed **red**
 (`pytest.mark.xfail(strict=True)`) before the implementation exists, and
 flipped to green by the pull request that implements it. The shard is done
 when the acceptance suite carries zero `xfail` markers. Nothing else counts.

@@ -192,7 +192,7 @@ and forces `shippable: false` rather than crashing the build.
 
 ## The worked example
 
-`packages/microcosm-build/tests/test_gate_battery_contract_example.py` is
+`packages/microcosm-build/tests/engine_free/shared/test_gate_battery_contract_example.py` is
 this document's runnable companion: a minimal country (`xx`) declares
 three terminal gates and runs them on the shared registry alone. CI keeps
 it honest; change it and this section together.

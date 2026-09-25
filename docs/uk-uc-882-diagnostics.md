@@ -84,13 +84,13 @@ pinned FRS2024/25 inputs and seed 578. The first attempt exposed two missing
 read declarations on the capital stage: `person.is_benunit_head` and
 `person.is_parent` existed in the full checkpoint but were removed by graph
 scoping. Adding those dependencies fixes execution. The engine-free
-[test](../packages/microcosm-build/tests/test_uk_uc_capital_coherence.py) runs the
+[test](../packages/microcosm-build/tests/engine/uk/test_uk_uc_capital_coherence.py) runs the
 production split node through executor projection and the actual capital
 transform, with positive SPI reporters and claimant roles that disagree with
 legal marriage. It checks the resulting donor values and redraw count.
 
-Existing [graph-stage integration](../packages/microcosm-build/tests/test_uk_graph.py)
-and [H2 parity](../packages/microcosm-graph/tests/test_acceptance_h_parity.py)
+Existing [graph-stage integration](../packages/microcosm-build/tests/engine/uk/test_uk_graph.py)
+and [H2 parity](../packages/microcosm-graph/tests/engine/uk/test_acceptance_h_parity.py)
 exercise all 28 real transforms using committed synthetic source tables and
 the UK engine; the legacy-versus-graph parity check passes. Running every
 stage does not guarantee every conditional read is reached: capital donor

@@ -234,11 +234,12 @@ Every step up to the preflight is local and never contacts the Hub.
 
 ```bash
 python -m pytest \
-  packages/microcosm-build/tests/test_us_receipt_enrichment_release.py \
-  packages/microcosm-build/tests/test_us_acs_donor_receipt_qualification.py \
-  packages/microcosm-data/tests/test_source_enrichment.py \
-  packages/microcosm-build/tests/test_us_spm_role_enrichment_builder.py \
-  packages/microcosm-data/tests/test_release.py
+  packages/microcosm-build/tests/engine_free/us/test_us_receipt_enrichment_release.py \
+  packages/microcosm-build/tests/engine/us/test_us_receipt_enrichment_release.py \
+  packages/microcosm-build/tests/engine_free/us/test_us_acs_donor_receipt_qualification.py \
+  packages/microcosm-data/tests/engine_free/shared/test_source_enrichment.py \
+  packages/microcosm-build/tests/engine_free/us/test_us_spm_role_enrichment_builder.py \
+  packages/microcosm-data/tests/engine_free/shared/test_release.py
 python tools/ci_test_groups.py --verify
 ```
 

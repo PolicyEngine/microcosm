@@ -149,7 +149,7 @@ selection source.
 **Run it** at base-build exit, before any release launch, and after any change
 to the selection-source manifest or the target/coverage registry. The
 synthetic-fixture unit tests
-(`packages/microcosm-build/tests/test_us_release_gate_preflight.py`) run in the
+(`packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py`) run in the
 normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
 
 ## Releasing & alerts
