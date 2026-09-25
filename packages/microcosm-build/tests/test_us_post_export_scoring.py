@@ -1881,6 +1881,28 @@ def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
     assert keywords["scored_dataset_sha256"] == "scored_dataset_sha256"
 
 
+def test_writers_register_their_consumer_with_the_shared_scorer(
+    builder, tmp_path
+) -> None:
+    """(j) Reform validation and demographics score through
+    ``_score_post_export_consumer``; on ``_main``'s shared scorer each
+    registers its finished record, so the manifests' block names it."""
+    scorer = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path)
+    output = builder._score_post_export_consumer(
+        "reform_validation",
+        lambda simulate: "payload",
+        dataset_path=scorer.dataset_path,
+        post_export_scorer=scorer,
+        baseline_plan=(),
+        maximum_microsim_batch_size=3,
+    )
+    assert output == "payload"
+    assert list(scorer.consumer_records) == ["reform_validation"]
+    block = builder._post_export_scoring_manifest_block(scorer)
+    assert list(block["consumers"]) == ["reform_validation"]
+    assert block["consumers"]["reform_validation"]["reform_passes"] == 0
+
+
 # ---------------------------------------------------------------------------
 # (k) the nesting premise
 # ---------------------------------------------------------------------------
