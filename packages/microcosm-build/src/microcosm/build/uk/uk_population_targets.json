@@ -3810,7 +3810,7 @@
           "value_variable": "benunit_count",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "Paid ESA caseload, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025 (February, May, August, November 2025) of the three paid payment types, contributions based plus both plus income based; the published total also counts 'No payments - Credits only' claimants (78k to 84k through 2025), whose National Insurance record is credited without payment and whom no household frame can pay, so they are left out rather than described as unpublished (microcosm#280 section 5, chronicle#282). Calendar-2025 window per María's ruling of 2026-09-22; the year is the ESA income-related managed migration to Universal Credit (income based 499k in February to 30k in November), so a single point would misstate the year the calibration represents. Bound at benefit-unit grain on esa > 0 for incumbent parity; the cube counts claimants. The frame still carries fewer ESA reporters than the FRS (the SPI support channel, microcosm#869)."
+          "notes": "Paid ESA caseload, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025 (February, May, August, November 2025) of the three paid payment types, contributions based plus both plus income based; the published total also counts 'No payments - Credits only' claimants (78k to 84k through 2025), whose National Insurance record is credited without payment and whom no household frame can pay, so they are left out rather than described as unpublished (PolicyEngine/chronicle#280 section 5, chronicle#282). Calendar-2025 window per María's ruling of 2026-09-22; the year is the ESA income-related managed migration to Universal Credit (income based 499k in February to 30k in November), so a single point would misstate the year the calibration represents. Bound at benefit-unit grain on esa > 0 for incumbent parity; the cube counts claimants. The frame still carries fewer ESA reporters than the FRS (the SPI support channel, microcosm#869)."
         },
         "axiom": {
           "metric_name": "dwp/esa_claimants",
@@ -3899,7 +3899,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Contributory ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Contributions based' plus 'Both income and contributions based', so the row matches the model's esa_contrib > 0, which includes dual claimants (microcosm#280 section 5, chronicle#282; supersedes the August 2025 single-type count from the benefit statistics summary). The contributory caseload rises through 2025 as dual claimants lose the income-related part on migration to Universal Credit."
+          "notes": "Contributory ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Contributions based' plus 'Both income and contributions based', so the row matches the model's esa_contrib > 0, which includes dual claimants (PolicyEngine/chronicle#280 section 5, chronicle#282; supersedes the August 2025 single-type count from the benefit statistics summary). The contributory caseload rises through 2025 as dual claimants lose the income-related part on migration to Universal Credit."
         },
         "axiom": {
           "metric_name": "dwp/esa_contrib_claimants",
@@ -3981,7 +3981,7 @@
           "value_variable": "benunit_count",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "Income-related ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Income based' plus 'Both income and contributions based', so the row matches the model's esa_income > 0, which includes dual claimants (microcosm#280 section 5, chronicle#282; supersedes the August 2025 single-type count). The calendar-2025 mean spans the managed migration to Universal Credit (759k in February to 50k in November); the FRS 2024-25 base carries the pre-migration caseload, so this row measures the year's average, not the year-end."
+          "notes": "Income-related ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Income based' plus 'Both income and contributions based', so the row matches the model's esa_income > 0, which includes dual claimants (PolicyEngine/chronicle#280 section 5, chronicle#282; supersedes the August 2025 single-type count). The calendar-2025 mean spans the managed migration to Universal Credit (759k in February to 50k in November); the FRS 2024-25 base carries the pre-migration caseload, so this row measures the year's average, not the year-end."
         },
         "axiom": {
           "metric_name": "dwp/esa_income_claimants",

@@ -816,7 +816,7 @@ def _add_uk_membership_accounting(
                 "household-region predicate, each row moved to the calendar-"
                 "2025 calibration period by HMRC's own projected growth for "
                 "the measure in the Table 2.5 band(s) the regional band spans "
-                "(Income Tax liabilities statistics, July 2026; microcosm#280 "
+                "(Income Tax liabilities statistics, July 2026; PolicyEngine/chronicle#280 "
                 "lane). The publisher's regional bands stop at 200,000 and "
                 "over, so that row takes the window over the 200k-500k, "
                 "500k-1m, 1m-2m and 2m+ bands together."

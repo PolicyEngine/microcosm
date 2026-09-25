@@ -1621,7 +1621,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_relative_composition_error",
                 "maximum_pair_relative_error",
                 "minimum_pair_count",
-                # microcosm#280 spi_income_band_donor_support check: the
+                # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
                 # reserved bands and the donors each must carry.
                 "band_lower_bounds",
                 "donors_per_band",

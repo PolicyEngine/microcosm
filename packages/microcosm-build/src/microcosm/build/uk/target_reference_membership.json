@@ -27322,7 +27322,7 @@
       "family": "hmrc_spi_region",
       "status": "active_region_tier_fanout_uprated",
       "active_reference_count": 360,
-      "signed_rationale": "The thirty SPI 2023-24 Table 3.11 targets (Income Tax payers, total income and Income Tax liabilities by ten regional total-income bands) fan out over the twelve-area region tier (microcosm#905), one reference per area scoped by the household-region predicate, each row moved to the calendar-2025 calibration period by HMRC's own projected growth for the measure in the Table 2.5 band(s) the regional band spans (Income Tax liabilities statistics, July 2026; microcosm#280 lane). The publisher's regional bands stop at 200,000 and over, so that row takes the window over the 200k-500k, 500k-1m, 1m-2m and 2m+ bands together."
+      "signed_rationale": "The thirty SPI 2023-24 Table 3.11 targets (Income Tax payers, total income and Income Tax liabilities by ten regional total-income bands) fan out over the twelve-area region tier (microcosm#905), one reference per area scoped by the household-region predicate, each row moved to the calendar-2025 calibration period by HMRC's own projected growth for the measure in the Table 2.5 band(s) the regional band spans (Income Tax liabilities statistics, July 2026; PolicyEngine/chronicle#280 lane). The publisher's regional bands stop at 200,000 and over, so that row takes the window over the 200k-500k, 500k-1m, 1m-2m and 2m+ bands together."
     },
     {
       "family": "dwp_universal_credit",

@@ -59,7 +59,7 @@ RECEIPTS = (
 )
 
 _SPI_UPRATED_DRIFT_RATIONALE = (
-    "Declared uprating (microcosm#280 lane, María's ruling of 2026-09-22): ours "
+    "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours "
     "moves the SPI 2023-24 band value to the 2025 calibration year by the index "
     "the reference declares (amounts by the pinned engine's per-variable OBR and "
     "ONS indices between 1 January 2023 and 1 January 2025, the state pension by "
@@ -70,7 +70,7 @@ _SPI_UPRATED_DRIFT_RATIONALE = (
 )
 
 _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
-    "Coverage the incumbent lacks (microcosm#280 lane): HMRC's Income Tax "
+    "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax "
     "liabilities Table 2.5 taxpayers, total income and tax by band as the "
     "calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI "
     "2023-24 savings-interest rows by band uprated by the household interest "
@@ -78,7 +78,7 @@ _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
 )
 
 _SPI_REGION_LEDGER_ONLY_RATIONALE = (
-    "Coverage the incumbent lacks (microcosm#280 lane, María's ruling of "
+    "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane, María's ruling of "
     "2026-09-22 that the regions bind uprated): the SPI 2023-24 Table 3.11 "
     "Income Tax payers, total income and Income Tax liabilities by ten regional "
     "total-income bands, one row per region-tier area (microcosm#905), each "
@@ -88,7 +88,7 @@ _SPI_REGION_LEDGER_ONLY_RATIONALE = (
 )
 
 _OBR_WINDOW_DRIFT_RATIONALE = (
-    "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that "
+    "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that "
     "fiscal-year facts take only the months to the end of the calibration "
     "calendar year): ours binds the OBR March 2026 line at the calendar-2025 "
     "window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on "
@@ -97,7 +97,7 @@ _OBR_WINDOW_DRIFT_RATIONALE = (
 )
 
 _ESA_CUBE_DRIFT_RATIONALE = (
-    "Source class (microcosm#280 lane): ours binds DWP's Stat-Xplore ESA "
+    "Source class (PolicyEngine/chronicle#280 lane): ours binds DWP's Stat-Xplore ESA "
     "caseload by payment type as the mean of the four quarterly points inside "
     "calendar 2025 summed over the paid types (credits-only claimants left out; "
     "dual claimants counted under both types they hold); the incumbent binds the "
