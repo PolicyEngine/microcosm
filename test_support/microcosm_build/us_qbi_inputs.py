@@ -110,6 +110,8 @@ def _stacked_qbi_universe_frame(*, child_age: float = 12.0) -> Frame:
     )
     person["person_support_clone_index"] = 0
     person["person_spine_source_id"] = np.arange(len(person), dtype=np.int64)
+    # Spine assembly writes the assembly-unique source ID beside the raw one.
+    person["person_source_id"] = person["person_spine_source_id"]
     person["age"] = 40.0
     person["SEMP"] = person["self_employment_income_before_lsr"]
     child = 10

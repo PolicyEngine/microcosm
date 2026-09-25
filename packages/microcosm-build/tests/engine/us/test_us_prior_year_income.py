@@ -17,7 +17,6 @@ def test_policyengine_17646_input_and_dependency_contract() -> None:
     ]
     assert system.variables["tax_unit_earned_income_last_year"].entity.key == "tax_unit"
 
-
 def test_export_ready_support_persists_inputs_and_excludes_formula_owned_wage(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

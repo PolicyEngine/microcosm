@@ -1,708 +1,7 @@
-"""Publishing behavior: contract-gated uploads and a last-written pointer.
-
-The fake Hub client records every upload in order, so the suite asserts the
-real guarantees — an invalid release uploads nothing, and ``latest.json``
-lands strictly after the files it points at — rather than implementation
-details.
-"""
+"""Tests split from packages/microcosm-data/tests/test_release.py."""
 
 # ruff: noqa: F403, F405
-
-from __future__ import annotations
-
-import hashlib
-import json
-from pathlib import Path
-
-import pytest
-
-from microcosm.data import ReleaseContractError, publish_cli
-from microcosm.data import release as release_module
-from microcosm.data.contract import (
-    US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
-    required_release_files,
-)
-from microcosm.data.release import (
-    LATEST_EVIDENCE_POINTER_PATH,
-    LATEST_POINTER_PATH,
-    LATEST_POINTER_SCHEMA_VERSION,
-    latest_evidence_pointer_payload,
-    latest_evidence_release,
-    latest_line_release,
-    latest_pointer_payload,
-    latest_release,
-    line_pointer_path,
-    line_pointer_payload,
-    publish_release,
-)
 from test_support.microcosm_data.release import *
-
-
-@pytest.fixture(autouse=True)
-def _no_slack_webhook(monkeypatch):
-    """Keep publish_release's release alert hermetic: never post to a real
-    webhook if the dev/CI environment happens to have one set."""
-    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_US", raising=False)
-    monkeypatch.delenv("SLACK_WEBHOOK_POPULACE_UK", raising=False)
-
-
-RELEASE_ID = "populace-us-2024-9f1260b-20260611"
-JUNE_UK_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
-UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
-UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef"
-UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k55000"
-GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
-DATASET_SHA = "cfe0edd307e479920c6a177b316f944bc27839f89e081ede5218a32d6b6b16d8"
-CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b376e"
-TARGET_SURFACE_SHA = "e" * 64
-REGISTRY_VERSION = "registryabc123"
-TARGET_COUNT = 20
-
-DEDUCTION_CRITICAL_TARGETS = (
-    (
-        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
-        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
-        1_000_000_000_000.0,
-        1_020_000_000_000.0,
-        "itemized_deduction_total",
-    ),
-    (
-        "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount@2024",
-        "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
-        120_000_000_000.0,
-        121_000_000_000.0,
-        "salt_deduction_total",
-    ),
-    (
-        "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount@2024",
-        "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
-        80_000_000_000.0,
-        69_000_000_000.0,
-        "medical_expense_deduction_total",
-    ),
-    # microcosm#511: the Table 2.1 mortgage amount row is name-registered (its
-    # production target_role is the generic soi_fiscal_distribution).
-    (
-        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-        "home_mortgage_interest_amount@2024",
-        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-        "home_mortgage_interest_amount",
-        186_310_104_604.0,
-        199_110_000_000.0,
-        "soi_fiscal_distribution",
-    ),
-)
-
-
-def _calibration_diagnostics() -> dict:
-    return {
-        "schema_version": 6,
-        "weight_entity": "household",
-        "options": {"epochs": 120},
-        "target_surface": {
-            "schema_version": 1,
-            "weight_entity": "household",
-            "n_targets": TARGET_COUNT,
-            "n_records": 2,
-            "constraint_matrix": {"rows": 1, "columns": 2, "nnz": 2},
-            "sha256": TARGET_SURFACE_SHA,
-            "names_sha256": "b" * 64,
-            "values_sha256": "f" * 64,
-        },
-        "target_registry": {
-            "country": "us",
-            "version": REGISTRY_VERSION,
-            "n_specs": TARGET_COUNT,
-        },
-        "loss_trajectory": [1.0, 0.5],
-        "skipped": [],
-        "targets": [
-            _target_row(
-                "population@2024",
-                target_name="population",
-                target=1.0,
-                initial_estimate=0.8,
-                final_estimate=1.0,
-                relative_error=0.0,
-                family="cbo",
-            ),
-            _target_row(
-                "irs_soi.ty2022.historic_table_2.us.all."
-                "income_tax_liability_amount@2024",
-                target_name=(
-                    "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount"
-                ),
-                target=2_105_345_646_000.0,
-                initial_estimate=2_000_000_000_000.0,
-                final_estimate=2_067_762_165_736.424,
-                relative_error=-0.0178514536722185,
-                family="irs_soi",
-                target_role="federal_income_tax_total",
-            ),
-            _target_row(
-                "irs_soi.ty2022.historic_table_2.us.all."
-                "income_tax_liability_returns@2024",
-                target_name=(
-                    "irs_soi.ty2022.historic_table_2.us.all."
-                    "income_tax_liability_returns"
-                ),
-                target=113_562_590.0,
-                initial_estimate=105_421_734.40619682,
-                final_estimate=105_437_267.69738781,
-                relative_error=-0.07154928663226319,
-                family="irs_soi",
-            ),
-            _target_row(
-                "ssa_supplement.cy2024.oasdi_ssi_payments."
-                "social_security_benefits.payment_amount@2024",
-                target_name=(
-                    "ssa_supplement.cy2024.oasdi_ssi_payments."
-                    "social_security_benefits.payment_amount"
-                ),
-                target=1_471_195_000_000.0,
-                initial_estimate=1_541_646_703_291.2527,
-                final_estimate=1_541_540_768_722.367,
-                relative_error=0.047815394099604024,
-                family="ssa",
-                target_role="social_security_total",
-            ),
-            _target_row(
-                "irs_soi.ty2022.historic_table_2.us.all.ctc_amount@2024",
-                target_name="irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
-                target=82_863_353_000.0,
-                initial_estimate=132_000_000_000.0,
-                final_estimate=90_000_000_000.0,
-                relative_error=(90_000_000_000.0 - 82_863_353_000.0) / 82_863_353_000.0,
-                family="irs_soi",
-                target_role="ctc_total",
-            ),
-            *additional_critical_credit_rows(),
-            *deduction_critical_target_rows(),
-            # The SOI Table 1.4 national dollar blanket (microcosm#462) needs
-            # at least one Table 1.4 dollar row on the surface, within its
-            # 25% blocking tolerance (the live Build M wages row).
-            _target_row(
-                "irs_soi.ty2023.table_1_4.all.wages_salaries_amount@2024",
-                target_name="irs_soi.ty2023.table_1_4.all.wages_salaries_amount",
-                target=10_773_360_188_645.0,
-                initial_estimate=10_500_000_000_000.0,
-                final_estimate=10_774_383_029_502.0,
-                relative_error=(10_774_383_029_502.0 - 10_773_360_188_645.0)
-                / 10_773_360_188_645.0,
-                family="irs_soi",
-            ),
-        ],
-    }
-
-
-def additional_critical_credit_rows() -> list[dict]:
-    rows = [
-        (
-            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims@2024",
-            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
-            38_068_980.0,
-            36_607_400.0,
-        ),
-        (
-            "irs_soi.ty2022.historic_table_2.us.all.actc_amount@2024",
-            "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
-            33_858_000_000.0,
-            33_501_200_000.0,
-        ),
-        (
-            "irs_soi.ty2022.historic_table_2.us.all.actc_claims@2024",
-            "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
-            17_691_400.0,
-            17_434_500.0,
-        ),
-        (
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            "earned_income_credit.total_earned_income_credit_amount@2024",
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            "earned_income_credit.total_earned_income_credit_amount",
-            69_041_649_000.0,
-            58_954_970_066.74941,
-        ),
-        (
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            "earned_income_credit.total_earned_income_credit_returns@2024",
-            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
-            "earned_income_credit.total_earned_income_credit_returns",
-            23_837_149.0,
-            23_349_300.0,
-        ),
-        (
-            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount@2024",
-            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
-            53_910_190_000.0,
-            56_821_000_000.0,
-        ),
-        (
-            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns@2024",
-            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
-            7_841_370.0,
-            8_385_450.0,
-        ),
-        (
-            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount@2024",
-            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
-            455_904_900_000.0,
-            454_551_000_000.0,
-        ),
-        (
-            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns@2024",
-            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
-            24_475_100.0,
-            24_472_900.0,
-        ),
-        # microcosm#511: paired count row for the registered Table 2.1
-        # mortgage amount target (O-1 landed +2.45%).
-        (
-            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-            "home_mortgage_interest_returns@2024",
-            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
-            "home_mortgage_interest_returns",
-            11_644_348.0,
-            11_929_445.0,
-        ),
-    ]
-    return [
-        _target_row(
-            name,
-            target_name=target_name,
-            target=target,
-            initial_estimate=target,
-            final_estimate=final,
-            relative_error=(final - target) / target,
-            family="irs_soi",
-        )
-        for name, target_name, target, final in rows
-    ]
-
-
-def deduction_critical_target_rows() -> list[dict]:
-    return [
-        _target_row(
-            name,
-            target_name=target_name,
-            target=target,
-            initial_estimate=target * 1.5,
-            final_estimate=final,
-            relative_error=(final - target) / target,
-            family="irs_soi",
-            target_role=target_role,
-        )
-        for name, target_name, target, final, target_role in DEDUCTION_CRITICAL_TARGETS
-    ]
-
-
-def _target_row(
-    name: str,
-    *,
-    target_name: str,
-    target: float,
-    initial_estimate: float,
-    final_estimate: float,
-    relative_error: float,
-    family: str,
-    target_role: str | None = None,
-) -> dict:
-    metadata = {"target_role": target_role} if target_role else {}
-    return {
-        "name": name,
-        "target_name": target_name,
-        "period": 2024,
-        "entity": "household",
-        "measure": {"kind": "column", "name": "household_count"},
-        "filter": None,
-        "source": "Fixture admin target",
-        "metadata": metadata,
-        "target": target,
-        "compiled_target": target,
-        "initial_estimate": initial_estimate,
-        "final_estimate": final_estimate,
-        "relative_error": relative_error,
-        "within_tolerance": None,
-        "registry": {"family": family},
-    }
-
-
-def _source_coverage_diagnostics() -> dict:
-    return {
-        "schema_version": 1,
-        "classification": "release_gate",
-        "source_contract": {
-            "name": "us_source_coverage",
-            "ledger_commit": "5fa48f07436a806ad75ff76fd22cfb8613bddbe0",
-        },
-        "gate": {
-            "name": "us_source_coverage",
-            "passed": True,
-            "failures": [],
-        },
-        "coverage_summary": {
-            "hard_target": {
-                "families": 9,
-                "package_aliases": 38,
-                "covered_package_aliases": 38,
-                "missing_package_aliases": 0,
-                "reviewed_excluded_package_aliases": 0,
-            },
-            "validation_only": {"families": 6, "activated_families": 0},
-            "source_gap": {"families": 6, "missing_source_packages": 11},
-        },
-        "hard_target_families": {"population_age_sex": {}},
-        "validation_only_families": {"census_cps_spm": {}},
-        "source_gap_families": {"usda_wic": {}},
-        "active_target_aliases": ["census-pep-2024-national-age-sex"],
-        "active_target_families": [],
-        "missing_hard_targets": [],
-        "reviewed_exclusions": {},
-        "validation_only_activated": [],
-        "fiscal_target_sources": {
-            "cbo": {
-                "label": "Congressional Budget Office revenue projections",
-                "target_count": 1,
-                "sources": ["Census PEP 2024"],
-                "reference_urls": ["https://example.test/source"],
-            },
-            "irs_soi": {
-                "label": "IRS Statistics of Income",
-                "target_count": 18,
-                "sources": ["IRS SOI Historic Table 2"],
-                "reference_urls": ["https://example.test/soi"],
-            },
-            "ssa": {
-                "label": "Social Security Administration",
-                "target_count": 1,
-                "sources": ["SSA Annual Statistical Supplement"],
-                "reference_urls": ["https://example.test/ssa"],
-            },
-        },
-    }
-
-
-class FakeHub:
-    """Model atomic Hub commits, refs, and downloads with an ordered event log."""
-
-    def __init__(self, repo_id: str = "policyengine/populace-us") -> None:
-        self.repo_id = repo_id
-        self.uploads: list[tuple[str, bytes]] = []
-        self.tags: list[dict[str, str | None]] = []
-        self.events: list[tuple[str, dict]] = []
-        self._commit_number = 0
-        self._commits: dict[str, dict[str, bytes]] = {"commit-0": {}}
-        self._refs: dict[str, str] = {"main": "commit-0"}
-        self.fail_main_commit = False
-
-    @staticmethod
-    def _content(path_or_fileobj) -> bytes:
-        if isinstance(path_or_fileobj, bytes):
-            return path_or_fileobj
-        return Path(path_or_fileobj).read_bytes()
-
-    def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type) -> None:
-        assert repo_type == "dataset"
-        assert repo_id == self.repo_id
-        content = self._content(path_or_fileobj)
-        self.uploads.append((path_in_repo, content))
-        self._commit_number += 1
-        commit = f"commit-{self._commit_number}"
-        files = dict(self._commits[self._refs["main"]])
-        files[path_in_repo] = content
-        self._commits[commit] = files
-        self._refs["main"] = commit
-        self.events.append(("upload_file", {"path": path_in_repo, "commit": commit}))
-        return {"commit_hash": commit}
-
-    def create_branch(
-        self,
-        *,
-        repo_id,
-        branch,
-        repo_type,
-        revision=None,
-        exist_ok=False,
-    ) -> None:
-        assert repo_type == "dataset"
-        assert repo_id == self.repo_id
-        if branch in self._refs and not exist_ok:
-            raise ValueError(f"branch exists: {branch}")
-        base = revision or "main"
-        self._refs[branch] = self._refs.get(base, base)
-        self.events.append(("create_branch", {"branch": branch, "revision": revision}))
-
-    def repo_info(self, *, repo_id, repo_type, revision=None) -> dict[str, str]:
-        assert repo_type == "dataset"
-        assert repo_id == self.repo_id
-        ref = revision or "main"
-        return {"sha": self._refs[ref]}
-
-    def create_commit(
-        self,
-        *,
-        repo_id,
-        operations,
-        commit_message,
-        repo_type,
-        revision=None,
-        parent_commit=None,
-    ):
-        assert repo_type == "dataset"
-        assert repo_id == self.repo_id
-        ref = revision or "main"
-        current_commit = self._refs[ref]
-        if parent_commit is not None:
-            assert parent_commit == current_commit
-        if ref == "main" and self.fail_main_commit:
-            self.events.append(("create_commit_failed", {"revision": ref}))
-            raise RuntimeError("injected main commit failure")
-        files = dict(self._commits[current_commit])
-        paths: list[str] = []
-        for operation in operations:
-            path = operation.path_in_repo
-            content = self._content(operation.path_or_fileobj)
-            files[path] = content
-            paths.append(path)
-            self.uploads.append((path, content))
-        self._commit_number += 1
-        commit = f"commit-{self._commit_number}"
-        self._commits[commit] = files
-        self._refs[ref] = commit
-        self.events.append(
-            (
-                "create_commit",
-                {
-                    "revision": ref,
-                    "paths": paths,
-                    "commit": commit,
-                    "message": commit_message,
-                    "parent_commit": parent_commit,
-                },
-            )
-        )
-        return {"commit_hash": commit}
-
-    def create_tag(
-        self, *, repo_id, tag, repo_type, revision=None, exist_ok=False
-    ) -> None:
-        assert repo_type == "dataset"
-        assert repo_id == self.repo_id
-        if tag in self._refs and not exist_ok:
-            raise ValueError(f"tag exists: {tag}")
-        self._refs[tag] = revision or self._refs["main"]
-        self.tags.append({"tag": tag, "revision": revision})
-        self.events.append(("create_tag", {"tag": tag, "revision": revision}))
-
-    def delete_branch(self, *, repo_id, branch, repo_type) -> None:
-        assert repo_type == "dataset"
-        assert repo_id == self.repo_id
-        del self._refs[branch]
-        self.events.append(("delete_branch", {"branch": branch}))
-
-    def seed_main_file(self, path: str, content: bytes) -> None:
-        """Install a test fixture without recording a publication event."""
-        self._commits[self._refs["main"]][path] = content
-
-    def hf_hub_download(self, *, repo_id, filename, repo_type, revision=None) -> str:
-        assert repo_type == "dataset"
-        assert repo_id == self.repo_id
-        ref = revision or "main"
-        commit = self._refs.get(ref, ref)
-        try:
-            content = self._commits[commit][filename]
-        except KeyError as exc:
-            raise FileNotFoundError(f"{filename}@{ref}") from exc
-        local = self._download_dir / ref / filename
-        local.parent.mkdir(parents=True, exist_ok=True)
-        local.write_bytes(content)
-        return str(local)
-
-
-class NonAtomicHub:
-    """Expose only the legacy upload/tag surface of a backing fake Hub."""
-
-    def __init__(self, backing: FakeHub) -> None:
-        self.backing = backing
-
-    def upload_file(self, **kwargs):
-        return self.backing.upload_file(**kwargs)
-
-    def create_tag(self, **kwargs):
-        return self.backing.create_tag(**kwargs)
-
-
-@pytest.fixture
-def hub(tmp_path: Path) -> FakeHub:
-    fake = FakeHub()
-    fake._download_dir = tmp_path / "hub-cache"
-    return fake
-
-
-@pytest.fixture
-def release_dir(tmp_path: Path) -> Path:
-    directory = tmp_path / "releases" / RELEASE_ID
-    directory.mkdir(parents=True)
-    (directory / "build_manifest.json").write_text(
-        json.dumps(
-            {
-                "build_id": RELEASE_ID,
-                "build_sha": GIT_COMMIT[:7],
-                "code": {
-                    "repository": "PolicyEngine/microcosm",
-                    "git_commit": GIT_COMMIT,
-                    "git_dirty": False,
-                },
-                "runtime": {
-                    "python": "3.14.0",
-                    "policyengine-us": "1.729.0",
-                    "policyengine-core": "3.19.0",
-                },
-                "dataset": {
-                    "filename": "populace_us_2024.h5",
-                    "sha256": DATASET_SHA,
-                },
-                "calibration": {
-                    "filename": "populace_us_2024_calibration.npz",
-                    "sha256": CALIBRATION_SHA,
-                    "target_surface": {
-                        "sha256": TARGET_SURFACE_SHA,
-                        "n_targets": TARGET_COUNT,
-                    },
-                    "target_registry": {
-                        "version": REGISTRY_VERSION,
-                        "n_specs": TARGET_COUNT,
-                    },
-                },
-                "gates": {"parity_gaps": 0},
-            }
-        )
-    )
-    (directory / "calibration_diagnostics.json").write_text(
-        json.dumps(_calibration_diagnostics())
-    )
-    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
-        json.dumps(_source_coverage_diagnostics())
-    )
-    diagnostics_sha = _sha256(directory / "calibration_diagnostics.json")
-    source_coverage_sha = _sha256(directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
-    (directory / "release_manifest.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "data_package": {"name": "microcosm-data", "version": "0.1.0"},
-                "default_datasets": {"national": "populace_us_2024"},
-                "build": {
-                    "build_id": RELEASE_ID,
-                    "built_with_core_package": {
-                        "name": "policyengine-core",
-                        "version": "3.19.0",
-                    },
-                    "built_with_model_package": {
-                        "name": "policyengine-us",
-                        "version": "1.729.0",
-                    },
-                },
-                "compatible_core_packages": [
-                    {"name": "policyengine-core", "specifier": "==3.19.0"}
-                ],
-                "compatible_model_packages": [
-                    {"name": "policyengine-us", "specifier": "==1.729.0"}
-                ],
-                "artifacts": {
-                    "populace_us_2024": {
-                        "kind": "microdata",
-                        "path": "populace_us_2024.h5",
-                        "repo_id": "policyengine/populace-us",
-                        "revision": RELEASE_ID,
-                        "sha256": DATASET_SHA,
-                    },
-                    "populace_us_2024_calibration": {
-                        "kind": "calibration",
-                        "path": "populace_us_2024_calibration.npz",
-                        "repo_id": "policyengine/populace-us",
-                        "revision": RELEASE_ID,
-                        "sha256": CALIBRATION_SHA,
-                    },
-                    "calibration_diagnostics": {
-                        "kind": "diagnostics",
-                        "path": "calibration_diagnostics.json",
-                        "repo_id": "policyengine/populace-us",
-                        "revision": RELEASE_ID,
-                        "sha256": diagnostics_sha,
-                    },
-                    "us_source_coverage": {
-                        "kind": "diagnostics",
-                        "path": US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
-                        "repo_id": "policyengine/populace-us",
-                        "revision": RELEASE_ID,
-                        "sha256": source_coverage_sha,
-                    },
-                },
-            }
-        )
-    )
-    return directory
-
-
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-@pytest.fixture
-def artifact_root(tmp_path: Path) -> Path:
-    directory = tmp_path / "artifacts"
-    directory.mkdir()
-    (directory / "populace_us_2024.h5").write_bytes(b"h5 payload")
-    (directory / "populace_us_2024_calibration.npz").write_bytes(b"npz payload")
-    return directory
-
-
-def _as_uk_national_line_release(release_dir: Path) -> Path:
-    """Retarget the publisher fixture to the constant UK national line id."""
-    national = release_dir.with_name(UK_NATIONAL_RELEASE_ID)
-    release_dir.rename(national)
-
-    build_path = national / "build_manifest.json"
-    build = json.loads(build_path.read_text())
-    build["build_id"] = UK_NATIONAL_RELEASE_ID
-    build_path.write_text(json.dumps(build))
-
-    certification_path = national / "release_certification.json"
-    certification_path.write_text("{}")
-    manifest_path = national / "release_manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["build"]["build_id"] = UK_NATIONAL_RELEASE_ID
-    for artifact in manifest["artifacts"].values():
-        artifact["repo_id"] = "policyengine/populace-uk-private"
-        artifact["revision"] = UK_NATIONAL_CUT_TAG
-    manifest["artifacts"]["release_certification"] = {
-        "kind": "diagnostics",
-        "path": certification_path.name,
-        "repo_id": "policyengine/populace-uk-private",
-        "revision": UK_NATIONAL_CUT_TAG,
-        "sha256": _sha256(certification_path),
-    }
-    manifest_path.write_text(json.dumps(manifest))
-    return national
-
-
-@pytest.fixture
-def annual_release(release_dir, artifact_root):
-    from .test_annual_projections import _h5, add_annual_extension
-
-    dataset = artifact_root / "populace_us_2024.h5"
-    _h5(dataset, 2024)
-    sha = _sha256(dataset)
-    path = release_dir / "build_manifest.json"
-    build = json.loads(path.read_text())
-    build["dataset"]["sha256"] = sha
-    path.write_text(json.dumps(build))
-    path = release_dir / "release_manifest.json"
-    manifest = json.loads(path.read_text())
-    manifest["artifacts"]["populace_us_2024"]["sha256"] = sha
-    path.write_text(json.dumps(manifest))
-    return add_annual_extension(release_dir, artifact_root)
 
 
 def test_annual_cut_passes_real_release_contract(
@@ -719,7 +18,6 @@ def test_annual_cut_passes_real_release_contract(
         prepared.filenames
     )
     assert {"annual_2025.h5", "populace_us_2024.h5"}.issubset(prepared.root_artifacts)
-
 
 def test_annual_cut_uploads_exact_artifacts_without_latest(
     hub, release_dir, artifact_root, annual_release
@@ -752,7 +50,6 @@ def test_annual_cut_uploads_exact_artifacts_without_latest(
     assert LATEST_POINTER_PATH not in uploads
     assert LATEST_EVIDENCE_POINTER_PATH not in uploads
 
-
 @pytest.mark.parametrize(
     "option", ["latest", "wrong_tag", "absent_annual", "invalid_base"]
 )
@@ -774,7 +71,6 @@ def test_annual_cut_preserves_publisher_and_base_guards(
             update_latest=option == "latest",
         )
 
-
 def test_pointer_payload_names_every_contract_file() -> None:
     payload = latest_pointer_payload(RELEASE_ID, updated_at="2026-06-11T13:53:15+00:00")
     assert payload["schema_version"] == LATEST_POINTER_SCHEMA_VERSION
@@ -790,7 +86,6 @@ def test_pointer_payload_names_every_contract_file() -> None:
         payload["paths"]["us_source_coverage"]
         == f"releases/{RELEASE_ID}/{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE}"
     )
-
 
 @pytest.mark.parametrize(
     ("release_id", "line", "revision"),
@@ -820,7 +115,6 @@ def test_line_pointer_payload_round_trips_for_each_line_path(
     assert payload["schema_version"] == LATEST_POINTER_SCHEMA_VERSION
     assert pointer_path == f"latest-{line}.json"
 
-
 @pytest.mark.parametrize(
     "line",
     ["", "National", "local-k0", "local-k01", "national/other"],
@@ -828,7 +122,6 @@ def test_line_pointer_payload_round_trips_for_each_line_path(
 def test_line_pointer_path_refuses_invalid_lines(line: str) -> None:
     with pytest.raises(ValueError, match="invalid release line"):
         line_pointer_path(line)
-
 
 @pytest.mark.parametrize(
     "revision",
@@ -849,7 +142,6 @@ def test_line_pointer_payload_refuses_revisions_outside_the_cut_family(
             revision=revision,
         )
 
-
 def test_line_pointer_payload_refuses_a_line_id_mismatch() -> None:
     with pytest.raises(ValueError, match="belongs to line 'national'"):
         line_pointer_payload(
@@ -857,7 +149,6 @@ def test_line_pointer_payload_refuses_a_line_id_mismatch() -> None:
             line="local-k55000",
             revision=UK_NATIONAL_CUT_TAG,
         )
-
 
 @pytest.mark.parametrize(
     ("options", "message"),
@@ -882,7 +173,6 @@ def test_prepare_release_refuses_incompatible_line_modes(
     with pytest.raises(ValueError, match=message):
         release_module.prepare_release(release_dir, line="national", **options)
 
-
 def test_prepare_release_refuses_a_line_id_mismatch(
     release_dir: Path, monkeypatch
 ) -> None:
@@ -892,7 +182,6 @@ def test_prepare_release_refuses_a_line_id_mismatch(
 
     with pytest.raises(ValueError, match="belongs to line None"):
         release_module.prepare_release(release_dir, line="national")
-
 
 def test_national_cut_promotes_only_its_line_pointer(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
@@ -959,7 +248,6 @@ def test_national_cut_promotes_only_its_line_pointer(
         )
     ]
 
-
 def test_local_k_role_moves_only_its_own_line_pointer(tmp_path: Path) -> None:
     from .test_local_area_contract import _write_local_bundle
 
@@ -983,7 +271,6 @@ def test_local_k_role_moves_only_its_own_line_pointer(tmp_path: Path) -> None:
     assert all(path != LATEST_POINTER_PATH for path, _ in uk_hub.uploads)
     assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in uk_hub.uploads)
 
-
 def test_line_promotion_alert_names_the_line_and_revision() -> None:
     from microcosm.data.slack import notify_release
 
@@ -1000,7 +287,6 @@ def test_line_promotion_alert_names_the_line_and_revision() -> None:
     assert "line promoted" in headline
     assert "national" in headline
     assert UK_NATIONAL_CUT_TAG in headline
-
 
 def test_publish_release_announces_after_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
@@ -1030,7 +316,6 @@ def test_publish_release_announces_after_pointer(
         )
     ]
 
-
 def test_publish_release_notify_false_skips_alert(
     hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
@@ -1046,7 +331,6 @@ def test_publish_release_notify_false_skips_alert(
         notify=False,
     )
     assert calls == []
-
 
 def test_publish_uploads_pointer_last(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1064,7 +348,6 @@ def test_publish_uploads_pointer_last(
     assert final_commit["paths"][-1] == LATEST_POINTER_PATH
     for filename in required_release_files(RELEASE_ID):
         assert f"releases/{RELEASE_ID}/{filename}" in final_commit["paths"][:-1]
-
 
 def test_publish_no_latest_never_touches_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1095,7 +378,6 @@ def test_publish_no_latest_never_touches_pointer(
         "populace_us_2024.h5",
         "populace_us_2024_calibration.npz",
     }.issubset(final_commit["paths"])
-
 
 def test_exact_k_tag_only_publish_never_mutates_main(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1172,7 +454,6 @@ def test_exact_k_tag_only_publish_never_mutates_main(
             repo_type="dataset",
         )
 
-
 @pytest.mark.parametrize("tag_only", [True, False], ids=["tag-only", "no-latest"])
 def test_us_default_flip_after_a_non_default_publish_reuses_the_release_tag(
     hub: FakeHub, release_dir: Path, artifact_root: Path, tag_only: bool, monkeypatch
@@ -1222,7 +503,6 @@ def test_us_default_flip_after_a_non_default_publish_reuses_the_release_tag(
     pointer = latest_release("policyengine/populace-us", api=hub)
     assert pointer.release_id == RELEASE_ID
 
-
 def test_us_default_flip_refuses_a_release_tag_that_describes_another_cut(
     hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
 ) -> None:
@@ -1259,7 +539,6 @@ def test_us_default_flip_refuses_a_release_tag_that_describes_another_cut(
     assert hub.events[events_after_cut:] == []
     assert hub._refs["main"] == main_before_flip
 
-
 @pytest.mark.parametrize(
     ("publish_options", "message"),
     [
@@ -1290,7 +569,6 @@ def test_tag_only_rejects_unsafe_modes_before_remote_mutation(
     assert hub.events == []
     assert hub.uploads == []
 
-
 def test_publish_commits_immutable_release_before_root_and_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1319,6 +597,12 @@ def test_publish_commits_immutable_release_before_root_and_pointer(
             f"releases/{RELEASE_ID}/{filename}"
             for filename in required_release_files(RELEASE_ID)
         },
+        # The gate verdicts are manifest artifacts, so the immutable release
+        # commit carries them without --extra-file.
+        *{
+            f"releases/{RELEASE_ID}/{filename}"
+            for filename in GATE_EVIDENCE_FILES.values()
+        },
     }
     assert LATEST_POINTER_PATH not in immutable["paths"]
 
@@ -1335,7 +619,6 @@ def test_publish_commits_immutable_release_before_root_and_pointer(
         LATEST_POINTER_PATH,
     ]
     assert hub.tags == [{"tag": RELEASE_ID, "revision": immutable["commit"]}]
-
 
 def test_failed_main_commit_leaves_root_and_pointer_unchanged(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1360,7 +643,6 @@ def test_failed_main_commit_leaves_root_and_pointer_unchanged(
     assert hub.tags == [{"tag": RELEASE_ID, "revision": "commit-1"}]
     assert hub.events[-1][0] == "create_commit_failed"
 
-
 def test_non_atomic_backend_is_refused_before_remote_mutation(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1374,7 +656,6 @@ def test_non_atomic_backend_is_refused_before_remote_mutation(
 
     assert hub.events == []
     assert hub.uploads == []
-
 
 def test_publish_uploads_manifest_release_diagnostics_from_release_dir(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1406,7 +687,6 @@ def test_publish_uploads_manifest_release_diagnostics_from_release_dir(
     assert uploaded_paths.index(release_path) < uploaded_paths.index(
         LATEST_POINTER_PATH
     )
-
 
 def test_publish_uploads_ssi_take_up_diagnostics_without_extra_files(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1440,7 +720,6 @@ def test_publish_uploads_ssi_take_up_diagnostics_without_extra_files(
         LATEST_POINTER_PATH
     )
 
-
 def test_publish_requires_artifact_root_for_root_artifacts(
     hub: FakeHub, release_dir: Path
 ) -> None:
@@ -1451,7 +730,6 @@ def test_publish_requires_artifact_root_for_root_artifacts(
             api=hub,
         )
     assert hub.uploads == []
-
 
 def test_missing_root_artifact_uploads_nothing(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1466,7 +744,6 @@ def test_missing_root_artifact_uploads_nothing(
         )
     assert hub.uploads == []
 
-
 def test_root_artifact_hash_mismatch_uploads_nothing(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1479,7 +756,6 @@ def test_root_artifact_hash_mismatch_uploads_nothing(
             artifact_root=artifact_root,
         )
     assert hub.uploads == []
-
 
 def test_release_tag_is_created_before_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1500,7 +776,6 @@ def test_release_tag_is_created_before_pointer(
     ]
     assert hub.uploads[-1][0] == LATEST_POINTER_PATH
 
-
 def test_release_id_artifact_revision_requires_release_tag(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1515,7 +790,6 @@ def test_release_id_artifact_revision_requires_release_tag(
     assert hub.uploads == []
     assert hub.tags == []
 
-
 def test_release_id_artifact_revision_rejects_tag_name_override(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1529,7 +803,6 @@ def test_release_id_artifact_revision_rejects_tag_name_override(
         )
     assert hub.uploads == []
     assert hub.tags == []
-
 
 def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
     hub: FakeHub,
@@ -1559,7 +832,6 @@ def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
     assert hub.tags == [{"tag": cut_tag, "revision": "commit-1"}]
     assert all(path != LATEST_POINTER_PATH for path, _payload in hub.uploads)
 
-
 def test_per_cut_artifact_revision_refuses_dangling_default_tag(
     hub: FakeHub,
     release_dir: Path,
@@ -1585,7 +857,6 @@ def test_per_cut_artifact_revision_refuses_dangling_default_tag(
         )
     assert hub.uploads == []
     assert hub.tags == []
-
 
 def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
     hub: FakeHub,
@@ -1615,7 +886,6 @@ def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
     assert hub.uploads == []
     assert hub.tags == []
 
-
 def test_empty_artifact_revisions_refuse_publication(
     hub: FakeHub,
     release_dir: Path,
@@ -1639,7 +909,6 @@ def test_empty_artifact_revisions_refuse_publication(
         )
     assert hub.uploads == []
     assert hub.tags == []
-
 
 def test_per_cut_tag_refuses_latest_promotion(
     hub: FakeHub,
@@ -1672,13 +941,11 @@ def test_per_cut_tag_refuses_latest_promotion(
     assert hub.tags == []
     assert hub.events == []
 
-
 def test_invalid_release_uploads_nothing(hub: FakeHub, release_dir: Path) -> None:
     (release_dir / "build_manifest.json").unlink()
     with pytest.raises(ReleaseContractError):
         publish_release(release_dir, "policyengine/populace-us", api=hub)
     assert hub.uploads == []
-
 
 def test_invalid_calibration_diagnostics_uploads_nothing(
     hub: FakeHub, release_dir: Path
@@ -1687,7 +954,6 @@ def test_invalid_calibration_diagnostics_uploads_nothing(
     with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
         publish_release(release_dir, "policyengine/populace-us", api=hub)
     assert hub.uploads == []
-
 
 def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
     hub: FakeHub, release_dir: Path
@@ -1699,7 +965,6 @@ def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
     with pytest.raises(ReleaseContractError, match="calibration_diagnostics"):
         publish_release(release_dir, "policyengine/populace-us", api=hub)
     assert hub.uploads == []
-
 
 def test_extra_files_ride_along_before_the_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1716,7 +981,6 @@ def test_extra_files_ride_along_before_the_pointer(
     assert extra in uploaded_paths
     assert uploaded_paths.index(extra) < uploaded_paths.index(LATEST_POINTER_PATH)
 
-
 def test_missing_extra_file_fails_loudly(hub: FakeHub, release_dir: Path) -> None:
     with pytest.raises(FileNotFoundError, match="support_audit"):
         publish_release(
@@ -1726,7 +990,6 @@ def test_missing_extra_file_fails_loudly(hub: FakeHub, release_dir: Path) -> Non
             extra_files=("support_audit.json",),
         )
     assert hub.uploads == []
-
 
 def test_publish_then_resolve_round_trips(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -1745,7 +1008,6 @@ def test_publish_then_resolve_round_trips(
     assert pointer.updated_at == "2026-06-11T13:53:15+00:00"
     assert pointer.paths == published["paths"]
 
-
 @pytest.mark.parametrize("field", ["line", "revision"])
 def test_latest_release_refuses_line_pointer_fields(hub: FakeHub, field: str) -> None:
     payload = latest_pointer_payload(RELEASE_ID)
@@ -1754,7 +1016,6 @@ def test_latest_release_refuses_line_pointer_fields(hub: FakeHub, field: str) ->
 
     with pytest.raises(ValueError, match=field):
         latest_release("policyengine/populace-us", api=hub)
-
 
 @pytest.mark.parametrize(
     ("field", "value", "message"),
@@ -1780,7 +1041,6 @@ def test_latest_line_release_refuses_foreign_pointer_fields(
     with pytest.raises(ValueError, match=message):
         latest_line_release("policyengine/populace-us", line="national", api=hub)
 
-
 def test_latest_line_release_refuses_a_release_from_another_line(
     hub: FakeHub,
 ) -> None:
@@ -1791,7 +1051,6 @@ def test_latest_line_release_refuses_a_release_from_another_line(
     with pytest.raises(ValueError, match="belongs to line 'local-k55000'"):
         latest_line_release("policyengine/populace-us", line="national", api=hub)
 
-
 def test_future_pointer_schema_is_refused(hub: FakeHub) -> None:
     hub.seed_main_file(
         LATEST_POINTER_PATH,
@@ -1800,7 +1059,6 @@ def test_future_pointer_schema_is_refused(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="Upgrade microcosm-data"):
         latest_release("policyengine/populace-us", api=hub)
 
-
 def test_pointer_without_release_id_is_refused(hub: FakeHub) -> None:
     hub.seed_main_file(
         LATEST_POINTER_PATH,
@@ -1808,7 +1066,6 @@ def test_pointer_without_release_id_is_refused(hub: FakeHub) -> None:
     )
     with pytest.raises(ValueError, match="release_id"):
         latest_release("policyengine/populace-us", api=hub)
-
 
 def test_pointer_without_contract_paths_is_refused(hub: FakeHub) -> None:
     hub.seed_main_file(
@@ -1824,7 +1081,6 @@ def test_pointer_without_contract_paths_is_refused(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="paths"):
         latest_release("policyengine/populace-us", api=hub)
 
-
 def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
     payload = latest_pointer_payload(RELEASE_ID)
     payload["paths"]["build_manifest"] = (
@@ -1835,7 +1091,6 @@ def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="malformed=\\['build_manifest'\\]"):
         latest_release("policyengine/populace-us", api=hub)
 
-
 def test_evidence_pointer_payload_mirrors_the_certified_payload() -> None:
     updated_at = "2026-07-22T13:53:15+00:00"
     certified_shape = latest_pointer_payload(EVIDENCE_RELEASE_ID, updated_at=updated_at)
@@ -1843,7 +1098,6 @@ def test_evidence_pointer_payload_mirrors_the_certified_payload() -> None:
         EVIDENCE_RELEASE_ID, updated_at=updated_at
     )
     assert payload == {**certified_shape, "tier": "evidence"}
-
 
 def test_publish_evidence_release_never_touches_the_certified_pointer(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
@@ -1870,7 +1124,6 @@ def test_publish_evidence_release_never_touches_the_certified_pointer(
     assert published["tier"] == "evidence"
     assert published["release_id"] == EVIDENCE_RELEASE_ID
 
-
 def test_publish_evidence_release_refuses_a_certified_release_dir(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1886,7 +1139,6 @@ def test_publish_evidence_release_refuses_a_certified_release_dir(
         )
     assert hub.uploads == []
 
-
 def test_certified_publish_refuses_an_evidence_release_dir(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1898,7 +1150,6 @@ def test_certified_publish_refuses_an_evidence_release_dir(
             artifact_root=artifact_root,
         )
     assert hub.uploads == []
-
 
 def test_publish_evidence_no_latest_skips_the_evidence_pointer(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
@@ -1919,7 +1170,6 @@ def test_publish_evidence_no_latest_skips_the_evidence_pointer(
         final_commit["message"]
         == f"Publish non-default evidence release {EVIDENCE_RELEASE_ID}"
     )
-
 
 def test_publish_evidence_release_announces_the_tier(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path, monkeypatch
@@ -1948,7 +1198,6 @@ def test_publish_evidence_release_announces_the_tier(
         )
     ]
 
-
 def test_publish_then_latest_evidence_release_round_trips(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
 ) -> None:
@@ -1971,7 +1220,6 @@ def test_publish_then_latest_evidence_release_round_trips(
         == f"releases/{EVIDENCE_RELEASE_ID}/build_manifest.json"
     )
 
-
 def test_latest_release_refuses_an_evidence_tier_pointer(hub: FakeHub) -> None:
     """Tier defense on the certified consumer: if an evidence payload ever
     lands in latest.json, readers refuse it rather than certify it."""
@@ -1981,7 +1229,6 @@ def test_latest_release_refuses_an_evidence_tier_pointer(hub: FakeHub) -> None:
     with pytest.raises(ValueError, match="tier"):
         latest_release("policyengine/populace-us", api=hub)
 
-
 def test_latest_evidence_release_requires_the_evidence_tier(hub: FakeHub) -> None:
     payload = latest_pointer_payload(EVIDENCE_RELEASE_ID)
     hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
@@ -1989,14 +1236,12 @@ def test_latest_evidence_release_requires_the_evidence_tier(hub: FakeHub) -> Non
     with pytest.raises(ValueError, match="tier"):
         latest_evidence_release("policyengine/populace-us", api=hub)
 
-
 def test_latest_evidence_release_requires_the_id_segment(hub: FakeHub) -> None:
     payload = latest_evidence_pointer_payload(RELEASE_ID)
     hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
 
     with pytest.raises(ValueError, match="-evidence-"):
         latest_evidence_release("policyengine/populace-us", api=hub)
-
 
 def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> None:
     """The certified pointer payload gains no tier field — its bytes are the
@@ -2006,7 +1251,6 @@ def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> Non
     hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
     pointer = latest_release("policyengine/populace-us", api=hub)
     assert pointer.tier == "certified"
-
 
 def test_certified_publish_never_touches_the_evidence_pointer(
     hub: FakeHub, release_dir: Path, artifact_root: Path
@@ -2023,7 +1267,6 @@ def test_certified_publish_never_touches_the_evidence_pointer(
     assert any(path == LATEST_POINTER_PATH for path, _ in hub.uploads)
     assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in hub.uploads)
 
-
 def test_latest_release_refuses_any_tier_field(hub: FakeHub) -> None:
     """No certified producer writes a tier field; even 'certified' or null is
     foreign and refused rather than consumed as the default."""
@@ -2033,7 +1276,6 @@ def test_latest_release_refuses_any_tier_field(hub: FakeHub) -> None:
         hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
         with pytest.raises(ValueError, match="tier"):
             latest_release("policyengine/populace-us", api=hub)
-
 
 def test_publish_refuses_root_artifacts_at_pointer_paths(
     hub: FakeHub, release_dir: Path, evidence_release_dir: Path, artifact_root: Path
@@ -2066,7 +1308,6 @@ def test_publish_refuses_root_artifacts_at_pointer_paths(
         )
     assert hub.uploads == []
 
-
 @pytest.mark.parametrize(
     "pointer_path",
     [
@@ -2093,7 +1334,6 @@ def test_publish_refuses_root_artifacts_at_every_reserved_line_pointer_path(
 
     assert hub.uploads == []
 
-
 def test_publish_refuses_unclean_root_artifact_paths(
     hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
 ) -> None:
@@ -2113,7 +1353,6 @@ def test_publish_refuses_unclean_root_artifact_paths(
         )
     assert hub.uploads == []
 
-
 def test_publish_refuses_path_components_in_extra_files(
     hub: FakeHub, release_dir: Path, artifact_root: Path
 ) -> None:
@@ -2131,7 +1370,6 @@ def test_publish_refuses_path_components_in_extra_files(
         )
     assert hub.uploads == []
 
-
 @pytest.mark.parametrize(
     ("condition", "error_type", "message"),
     [
@@ -2144,6 +1382,8 @@ def test_publish_refuses_path_components_in_extra_files(
         ("root-artifact-hash-mismatch", ValueError, "has sha256"),
         ("reserved-pointer-path", ValueError, "reserved pointer path"),
         ("unclean-root-path", ValueError, "clean relative POSIX path"),
+        ("gate-evidence-hash-mismatch", ReleaseContractError, "declares sha256"),
+        ("missing-gate-evidence", FileNotFoundError, "qrf_tail_concentration"),
     ],
 )
 def test_cli_preflight_matches_publisher_guards_before_hub_activity(
@@ -2186,6 +1426,13 @@ def test_cli_preflight_matches_publisher_guards_before_hub_activity(
         _declare_root_artifact(
             release_dir, key="smuggled_pointer", path=f"./{LATEST_POINTER_PATH}"
         )
+    elif condition == "gate-evidence-hash-mismatch":
+        # A verdict edited after the manifest bound it (route A PR-3).
+        (release_dir / "qrf_tail_concentration.json").write_text("{}")
+    elif condition == "missing-gate-evidence":
+        # A bound verdict that is not on disk cannot ship: the publisher
+        # looks for it as a root artifact and refuses.
+        (release_dir / "qrf_tail_concentration.json").unlink()
     else:
         raise AssertionError(f"unhandled condition: {condition}")
 
@@ -2214,7 +1461,6 @@ def test_cli_preflight_matches_publisher_guards_before_hub_activity(
     assert hub.uploads == []
     assert hub.tags == []
 
-
 def test_cli_valid_preflight_performs_no_publication_or_notification(
     release_dir: Path, artifact_root: Path, monkeypatch, capsys
 ) -> None:
@@ -2238,6 +1484,17 @@ def test_cli_valid_preflight_performs_no_publication_or_notification(
     )
     assert json.loads(capsys.readouterr().out) == {"valid": True, "published": False}
 
+def test_preflight_prepares_the_bound_gate_evidence_for_upload(
+    release_dir: Path, artifact_root: Path
+) -> None:
+    """Route A remediation PR-3: prepare_release uploads only contract files,
+    manifest artifacts and extra files, so the gate verdicts ship only because
+    the manifest binds them. Preflight must list each one as a release-dir
+    upload, never as a root artifact."""
+    prepared = release_module.prepare_release(release_dir, artifact_root=artifact_root)
+
+    assert set(GATE_EVIDENCE_FILES.values()) <= set(prepared.filenames)
+    assert not set(GATE_EVIDENCE_FILES.values()) & set(prepared.root_artifacts)
 
 @pytest.mark.parametrize("evidence", [False, True])
 @pytest.mark.parametrize("release_type", [None, "calibration"])
@@ -2280,17 +1537,6 @@ def test_non_enrichment_publisher_refuses_enrichment_only_arguments(
         publish_cli.main([*cli_args, "--preflight-only"])
     assert hub.events == []
     assert hub.uploads == []
-
-
-def _uk_hub(tmp_path: Path) -> FakeHub:
-    hub = FakeHub("policyengine/populace-uk-private")
-    hub._download_dir = tmp_path / "uk-hub-cache"
-    june_pointer = latest_pointer_payload(
-        JUNE_UK_RELEASE_ID, updated_at="2026-06-19T02:38:00+00:00"
-    )
-    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
-    return hub
-
 
 def test_inspect_then_promote_reuses_the_immutable_tag(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
@@ -2344,7 +1590,6 @@ def test_inspect_then_promote_reuses_the_immutable_tag(
         == UK_NATIONAL_CUT_TAG
     )
 
-
 def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
@@ -2382,7 +1627,6 @@ def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
     assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
     assert line_pointer_path("national") in hub._commits[hub._refs["main"]]
 
-
 def test_promotion_refuses_a_tag_that_describes_another_release(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
 ) -> None:
@@ -2419,11 +1663,9 @@ def test_promotion_refuses_a_tag_that_describes_another_release(
         )
     assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
 
-
 def test_line_pointer_path_refuses_the_evidence_line() -> None:
     with pytest.raises(ValueError, match="collides with the evidence-tier pointer"):
         line_pointer_path("evidence")
-
 
 def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
     release_dir: Path, artifact_root: Path, monkeypatch
@@ -2445,7 +1687,6 @@ def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
             tag_name=UK_NATIONAL_CUT_TAG,
             line="national",
         )
-
 
 def test_transient_errors_while_checking_an_existing_tag_propagate(
     release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch

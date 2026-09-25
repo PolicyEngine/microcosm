@@ -67,6 +67,9 @@ def _stacked_alimony_person() -> pd.DataFrame:
     return pd.DataFrame(
         {
             "person_spine_source_id": source_numbers,
+            # Spine assembly writes the assembly-unique source ID beside the
+            # raw spine ID; a support clone keeps its source's ID.
+            "person_source_id": source_numbers,
             "person_support_channel": source_channels,
             "person_support_clone_index": clone_indices,
             "OI_OFF": codes,

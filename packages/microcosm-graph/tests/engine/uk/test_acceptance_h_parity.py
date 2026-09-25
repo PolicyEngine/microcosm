@@ -20,7 +20,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     from declared ``consumes``: the assertion below is that the compiled
     topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
     in ``tools/build_uk_frs_spine.py`` — the 30 names intersected with a
-    32-stage packaged manifest, kept in step by hand — can be deleted.
+    33-stage packaged manifest, kept in step by hand — can be deleted.
     """
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
 

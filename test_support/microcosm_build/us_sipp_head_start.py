@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.sipp_head_start as module
+from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.sipp_head_start import (
     HEAD_START_SIPP_DICTIONARY_URL,
     SIPP_2023_HEAD_START_DONOR_REVISION,
@@ -36,6 +37,18 @@ from microcosm.build.us_runtime.sipp_head_start import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_SIPP_HEAD_START_OUTPUT_COLUMNS[0]
+
+
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
 
 
 def _source_row(
@@ -195,5 +208,42 @@ class _FakeQRF:
 def _clear_fake() -> None:
     _FakeQRF.instances.clear()
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def _historical_tail_frame() -> Frame:
+    """A non-assembled PUF-support frame whose source 10 has a tail copy."""
+
+    native = _frame(
+        [10, 20, 30],
+        ages=[4, 5, 40],
+        female=[True, False, True],
+    )
+    native = _replace_person(
+        native, native.table("person").drop(columns=["person_source_id"])
+    )
+    cloned = clone_us_frame_for_puf_support(native)
+    tailed = _TAIL.with_capital_gains_tail_copies(cloned, [1])
+    person = tailed.table("person").copy()
+    # Source IDs are the pre-clone person IDs; restate them as the test's
+    # source labels so assertions read in source-person terms.
+    person["person_source_id"] = person["person_source_id"].map({1: 10, 2: 20, 3: 30})
+    return _replace_person(tailed, person)
 
 __all__ = [name for name in globals() if not name.startswith("__")]

@@ -228,7 +228,9 @@ def _gate_frame() -> Frame:
         "marital_unit": "person_marital_unit_id",
     }
     tables = {
-        entity: pd.DataFrame({f"{entity}_id": person[column].to_numpy(dtype=np.int64)})
+        entity: pd.DataFrame(
+            {f"{entity}_id": person[column].to_numpy(dtype=np.int64)}
+        )
         for entity, column in entity_links.items()
     }
     tables["person"] = person
@@ -266,6 +268,10 @@ def _stacked_gate_frame() -> Frame:
             np.arange(10_000, 10_000 + acs_native_rows, dtype=np.int64),
         ]
     )
+    # Spine assembly writes the assembly-unique source ID beside the raw one
+    # (the ACS offset above keeps it unique); a support clone keeps its
+    # source's ID.
+    person["person_source_id"] = person["person_spine_source_id"]
     weeks = np.zeros(len(person), dtype=np.float64)
     weeks[:18] = 17.0
     weeks[asec_native_rows : asec_native_rows + 12] = 17.0
@@ -276,9 +282,29 @@ def _stacked_gate_frame() -> Frame:
     source[:18] = 17.0
     person["LKWEEKS"] = source
     unemployment_compensation = np.zeros(len(person), dtype=np.float64)
-    unemployment_compensation[asec_native_rows : asec_native_rows + 12] = 100.0
+    unemployment_compensation[
+        asec_native_rows : asec_native_rows + 12
+    ] = 100.0
     person["unemployment_compensation"] = unemployment_compensation
     return module._replace_person_table(frame, person)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 class _CapturingQRF:
@@ -330,6 +356,5 @@ def _imputation_table(*, include_uc: bool = True) -> pd.DataFrame:
     if include_uc:
         frame[_PREFIX + "unemployment_compensation"] = [0.0, 100.0, 50.0, 0.0]
     return frame
-
 
 __all__ = [name for name in globals() if not name.startswith("__")]

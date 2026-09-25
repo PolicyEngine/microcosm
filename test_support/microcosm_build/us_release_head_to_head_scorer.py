@@ -1,15 +1,29 @@
-"""Shared fixtures for the US release head-to-head scorer tests."""
+"""Contract tests for the replacement head-to-head scorer.
+
+The scorer is one common path for incumbent and candidate; these tests pin
+the pieces that make the head-to-head honest without running the heavy
+microsim materialization: the signature has no target-membership switches,
+the scored-column contract cannot go silently missing on either side, the
+terminal-battery receipt is observed rather than asserted, and the fixture
+end-to-end run is deterministic byte-for-byte.
+"""
+
+# ruff: noqa: F401
 
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
+from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -237,5 +251,44 @@ def _score_loaded_as_incumbent(module, monkeypatch, loaded) -> dict[str, object]
         maximum_microsim_batch_size=1,
     )
 
+
+def _complete_battery_comparisons(module) -> dict[str, dict[str, object]]:
+    comparisons: dict[str, dict[str, object]] = {}
+    for label, row in module._canonical_battery_contract().items():
+        metric = row["metric"]
+        if metric == "boolean_incidence":
+            receipt = {
+                "status": "tested",
+                "metric": metric,
+                "asec_incidence": 0.5,
+                "acs_incidence": 0.5,
+                "incidence_ratio_acs_over_asec": 1.0,
+            }
+        elif metric == "categorical_tvd":
+            receipt = {
+                "status": "tested",
+                "metric": metric,
+                "total_variation_distance": 0.0,
+                "category_shares": {
+                    "asec": {"fixture": 1.0},
+                    "acs": {"fixture": 1.0},
+                },
+            }
+        else:
+            receipt = {
+                "status": "tested",
+                "metric": metric,
+                "legs": {
+                    sign: {
+                        "asec_incidence": 0.5,
+                        "acs_incidence": 0.5,
+                        "incidence_ratio_acs_over_asec": 1.0,
+                        "quantile_envelope_distance": 0.0,
+                    }
+                    for sign in ("positive", "negative")
+                },
+            }
+        comparisons[label] = receipt
+    return comparisons
 
 __all__ = [name for name in globals() if not name.startswith("__")]

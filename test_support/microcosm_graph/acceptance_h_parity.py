@@ -48,7 +48,7 @@ PARITY = _TEST_PATHS.tests / "fixtures" / "parity"
 #: was taken under).
 KERNEL_PARITY = PARITY / "kernels"
 
-#: H2: ``uk_spine.json`` — the 32-stage FRS spine expressed as a graph — plus
+#: H2: ``uk_spine.json`` — the 33-stage FRS spine expressed as a graph — plus
 #: ``sources/``, the data-only bundle both the graph and the legacy oracle
 #: rebuild their transforms from. The root transform's weights differ at the
 #: last bit between machines, so both sides recompute the root from the raw

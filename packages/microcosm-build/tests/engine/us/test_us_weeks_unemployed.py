@@ -5,9 +5,7 @@ from test_support.microcosm_build.us_weeks_unemployed import *
 
 
 def test_live_engine_graph_has_only_structurally_blocked_ui_consumers() -> None:
-    import importlib
-
-    policyengine_us = importlib.import_module("policyengine_us")
+    import policyengine_us
     system = policyengine_us.CountryTaxBenefitSystem()
 
     consumers = {

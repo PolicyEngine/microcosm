@@ -46,9 +46,10 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
 
     # 32 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
-    # cgt_incidence_anchor and #930 nts_bus_travel stages; the two named
-    # exclusions are the certified-pair alternatives, not steps of this pipeline.
-    assert len(expected) == 32
+    # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's
+    # spi_income_band_donors stages; the two named exclusions are the
+    # certified-pair alternatives, not steps of this pipeline.
+    assert len(expected) == 33
     assert UK_SPINE_EXCLUSIONS == {
         "frs_hmrc_retained_leaves",
         "hmrc_spi_income",
@@ -95,7 +96,8 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
     assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
-    assert "spi_support_channel" in compiled.predecessors["hmrc_spi_income_spine"]
+    assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
+    assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
 
 
 def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> None:

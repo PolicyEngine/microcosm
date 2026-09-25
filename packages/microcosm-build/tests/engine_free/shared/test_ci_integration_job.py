@@ -45,8 +45,8 @@ def test_integration_job_is_required_and_read_only() -> None:
     assert 'require_success integration-uk "$INTEGRATION_UK_RESULT"' in workflow
 
 
-def test_us_engine_uses_two_workers_with_memory_diagnostics() -> None:
-    """US engine tests should match engine-free pytest reporting and concurrency."""
+def test_country_engine_jobs_run_serially_with_us_memory_diagnostics() -> None:
+    """Country-engine tests should bound memory while retaining diagnostics."""
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
 
     engine_free = workflow.split("\n  engine-free:\n", 1)[1].split(
@@ -58,7 +58,8 @@ def test_us_engine_uses_two_workers_with_memory_diagnostics() -> None:
     )[0]
 
     assert "-n 2 --dist loadfile" in engine_free
-    assert "-n 2 --dist loadfile" in engine_us
+    assert "-n 2" not in engine_us
+    assert "--dist loadfile" not in engine_us
     assert "tools/ci_memory_monitor.py" in engine_us
     assert "engine-us-memory-${{ matrix.python-version }}.jsonl" in engine_us
     assert "uses: actions/upload-artifact@v4" in engine_us

@@ -1,13 +1,6 @@
-"""US-engine cases for the replacement head-to-head scorer."""
+"""Tests split from packages/microcosm-build/tests/test_us_release_head_to_head_scorer.py."""
 
 # ruff: noqa: F403, F405
-
-from pathlib import Path
-
-import pytest
-
-from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
-from microcosm.frame import US_SCHEMA, Frame
 from test_support.microcosm_build.us_release_head_to_head_scorer import *
 
 
@@ -69,7 +62,6 @@ def test_incumbent_and_candidate_h5_loaders_preserve_scored_contract(
             artifact_name="candidate",
         )
 
-
 def test_historical_formula_owned_h5_scores_with_drop_receipt(
     monkeypatch,
     tmp_path: Path,
@@ -106,7 +98,6 @@ def test_historical_formula_owned_h5_scores_with_drop_receipt(
     assert "Dropped column count: **1**" in markdown
     assert "`person`: `has_marketplace_health_coverage`" in markdown
 
-
 def test_historical_formula_owned_h5_refuses_missing_leaf(tmp_path: Path) -> None:
     pytest.importorskip("tables")
     module = _load_head_to_head_module()
@@ -128,7 +119,6 @@ def test_historical_formula_owned_h5_refuses_missing_leaf(tmp_path: Path) -> Non
     assert "has_marketplace_health_coverage" in message
     assert "has_marketplace_health_coverage_at_interview" in message
     assert "required input leaves are absent" in message
-
 
 def test_clean_historical_h5_scores_with_empty_drop_receipt(
     monkeypatch,

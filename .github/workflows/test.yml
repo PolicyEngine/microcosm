@@ -104,8 +104,7 @@ jobs:
           uv run --no-sync python tools/ci_memory_monitor.py \
             --output "$MEMORY_TRACE" --interval-seconds 5 -- \
             /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-              -n 2 --dist loadfile -v --tb=short --maxfail=1 \
-              --durations=25 -p no:cacheprovider
+              -v --tb=short --maxfail=1 --durations=25 -p no:cacheprovider
       - name: Upload US engine memory trace
         if: always()
         uses: actions/upload-artifact@v4

@@ -46,6 +46,18 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 _OUTPUT = US_VOLUNTARY_FILING_OUTPUT_COLUMNS[0]
 
 
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
+
+
 def _source_row(
     ssuid: int,
     pnum: int,
@@ -249,6 +261,20 @@ def _replace_tax_unit(frame: Frame, **columns: np.ndarray) -> Frame:
     )
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class _ChunkedResponse(io.BytesIO):
     def __init__(self, payload: bytes) -> None:
         super().__init__(payload)
@@ -264,5 +290,87 @@ class _ChunkedResponse(io.BytesIO):
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.close()
 
+
+
+
+
+
+
+
+
+
+
+
+class _IncomeThresholdQRF:
+    """Predict filing iff tax-unit wages reach 10,000; records the receiver."""
+
+    receivers: list[pd.DataFrame] = []
+
+    def __init__(self, **_kwargs: object) -> None:
+        pass
+
+    def fit(self, *_args: object, **_kwargs: object) -> _IncomeThresholdQRF:
+        return self
+
+    def predict(self, receiver: pd.DataFrame) -> pd.DataFrame:
+        self.receivers.append(receiver.copy())
+        return pd.DataFrame(
+            {_OUTPUT: receiver["employment_income"].ge(10_000.0).to_numpy()},
+            index=receiver.index,
+        )
+
+
+def _historical_tail_frame() -> Frame:
+    """A non-assembled PUF-support frame with tail copies of units 3 and 6."""
+
+    return _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(6)), [3, 6]
+    )
+
+
+def _divergent_tail_wages(frame: Frame) -> Frame:
+    """Zero the tail copies' wages so a tail-row prediction would flip."""
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    person = tables["person"]
+    tail = person["person_support_clone_index"].eq(2)
+    person.loc[tail, "employment_income_before_lsr"] = 0.0
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+
+
+
+
+
+
+
+
+
+
+
+
+def _assembled_gate_frame(
+    output: list[bool],
+    *,
+    channels: list[str] | None,
+    clone_indices: list[int] | None = None,
+) -> Frame:
+    """Four tax units over source IDs [10, 10, 20, 20] with raw spine IDs."""
+
+    columns: dict[str, np.ndarray] = {
+        _OUTPUT: np.asarray(output),
+        "tax_unit_source_id": np.asarray([10, 10, 20, 20]),
+        "tax_unit_spine_source_id": np.asarray([10, 10, 20, 20]),
+    }
+    if channels is not None:
+        columns["tax_unit_support_channel"] = np.asarray(channels, dtype=object)
+    if clone_indices is not None:
+        columns["tax_unit_support_clone_index"] = np.asarray(clone_indices)
+    return _replace_tax_unit(_frame(4), **columns)
 
 __all__ = [name for name in globals() if not name.startswith("__")]
