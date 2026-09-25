@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -156,26 +154,21 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
             "cgt_period_contract"
         ]
     else:
+        from microcosm.build.uk_runtime import full_measure
         from microcosm.build.uk_runtime.local_rowwise import (
             build_uk_rowwise_local_matrix,
             solve_uk_rowwise_weights_under_doctrine,
         )
 
-        spec = importlib.util.spec_from_file_location(
-            "cgt_rowwise_builder",
-            Path(__file__).resolve().parents[3] / "tools/build_uk_rowwise_candidate.py",
-        )
-        builder = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(builder)
         monkeypatch.setattr(
-            builder,
+            full_measure,
             "compute_household_metrics",
             lambda _sim, _area, *, period, household_ids: pd.DataFrame(
                 {"households": np.ones(len(household_ids))}, index=household_ids
             ),
         )
         prepared, restore, national, metrics, engine_receipt = (
-            builder._resolve_candidate_engine_surface(
+            full_measure.resolve_uk_full_measures(
                 original,
                 registry,
                 period=2025,

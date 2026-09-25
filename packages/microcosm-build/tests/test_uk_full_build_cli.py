@@ -210,8 +210,8 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
     cli.validate_cli_args(cli.parse_args(request))
 
 
-def test_national_role_is_validated_then_refused_until_phase_four(tmp_path, capsys):
-    argv = [
+def _national_argv(tmp_path, *extra):
+    return [
         "--release-role",
         "national",
         "--input-h5",
@@ -227,19 +227,98 @@ def test_national_role_is_validated_then_refused_until_phase_four(tmp_path, caps
         "--ledger-manifest-sha256",
         PIN,
         "--no-staging",
+        *extra,
     ]
+
+
+def test_national_role_is_validated_then_dispatched_to_the_seam(tmp_path, monkeypatch):
+    """The national line never prepares a graph (microcosm#901 phase 4).
+
+    The validated request goes to ``national_role.run_national_role`` after
+    the role tables have run; the seam's own pre-flight, Logbook, staging
+    and manifest live behind that call.
+    """
+    argv = _national_argv(tmp_path)
     national = cli.parse_args(argv)
     assert national._posture is cli.uk_rowwise_posture("national")
     assert national.n_clones is None
     assert (national.seed, national.epochs, national.learning_rate) == (0, 1500, 0.02)
     cli.validate_cli_args(national)
-    with pytest.raises(SystemExit) as exit_info:
-        cli.main(argv)
-    assert exit_info.value.code == 2
-    assert "next commit" in capsys.readouterr().err
-    # The dense refusal table still applies before the national refusal.
+    served = []
+    monkeypatch.setattr(
+        cli.national_role, "run_national_role", lambda args: served.append(args) or 7
+    )
+    monkeypatch.setattr(
+        cli,
+        "prepare_full_build",
+        lambda *a, **k: pytest.fail("the national role prepared a graph"),
+    )
+    monkeypatch.setattr(
+        cli,
+        "preflight_staged_dataset",
+        lambda args: pytest.fail("the driver pre-flighted before dispatching"),
+    )
+    assert cli.main(argv) == 7
+    (args,) = served
+    assert args.release_role == "national"
+    assert args._posture is national._posture
+    assert not (tmp_path / "out").exists()
+    # The dense refusal table still applies before the dispatch.
     with pytest.raises(ValueError, match="--release-role national refuses"):
         cli.main([*argv, "--ladder", str(tmp_path / "ladder.npz")])
+    assert served == [args]
+
+
+def test_national_dry_run_dispatches_to_the_seam_plan(tmp_path, monkeypatch, capsys):
+    """``--dry-run`` on the national role plans through ``national_dry_run``:
+    no graph, no staged-dataset pre-flight, nothing written."""
+    monkeypatch.setattr(
+        cli.national_role,
+        "national_dry_run",
+        lambda args: (
+            print(json.dumps({"dry_run": args.dry_run, "role": args.release_role})) or 0
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "prepare_full_build",
+        lambda *a, **k: pytest.fail("the national dry run prepared a graph"),
+    )
+    monkeypatch.setattr(
+        cli.national_role,
+        "preflight_staged_dataset",
+        lambda args: pytest.fail("a dry run reached the Hub pre-flight"),
+    )
+    assert cli.main(_national_argv(tmp_path, "--dry-run")) == 0
+    assert json.loads(capsys.readouterr().out) == {"dry_run": True, "role": "national"}
+    assert not (tmp_path / "out").exists()
+
+
+def test_national_role_refuses_a_spine_request(tmp_path, monkeypatch):
+    """The seam engine reads a bound spine; ``--spine-request`` is dense-only."""
+    monkeypatch.setattr(
+        cli.national_role,
+        "preflight_staged_dataset",
+        lambda args: pytest.fail("the refusal must precede the Hub pre-flight"),
+    )
+    argv = [
+        "--release-role",
+        "national",
+        "--spine-request",
+        str(tmp_path / "request.json"),
+        "--out",
+        str(tmp_path / "out"),
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        PIN,
+        "--ledger-manifest-sha256",
+        PIN,
+        "--no-staging",
+    ]
+    with pytest.raises(ValueError, match="bound spine checkpoint.*--input-h5"):
+        cli.main(argv)
+    assert not (tmp_path / "out").exists()
 
 
 def test_candidate_clone_counts_are_dry_run_only(tmp_path):
