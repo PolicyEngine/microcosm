@@ -26,9 +26,58 @@ from microcosm.frame.schema import EntitySchema, VariableMetadata
 __all__ = [
     "RulesEngine",
     "ExportContract",
+    "EngineInput",
+    "InputInventory",
+    "InputInventoryProvider",
     "assert_rules_engine_country",
     "materialize_rules_engine_predictors",
 ]
+
+
+@dataclass(frozen=True)
+class EngineInput:
+    """Observed executable input, not a complete population concept.
+
+    ``entity`` is the adapter's operational frame entity. A request address
+    identifies an executable input; it does not establish semantic equivalence
+    to a publisher concept. Missing authored metadata remains ``None``.
+    """
+
+    name: str
+    entity: str
+    engine_entity: str
+    canonical_request_name: str | None
+    request_names: tuple[str, ...]
+    dtype: str | None = None
+    unit: str | None = None
+    period: str | None = None
+    definition: str | None = None
+    concept_id: str | None = None
+    required: bool | None = None
+
+
+@dataclass(frozen=True)
+class InputInventory:
+    """A module-scoped input observation with content fingerprints.
+
+    This is not an export contract or a closed population schema. Inputs
+    outside the mapped entity surface and future-reform fields are not
+    adjudicated by this diagnostic.
+    """
+
+    inputs: tuple[EngineInput, ...]
+    fingerprints: tuple[Mapping[str, str], ...]
+    mapped_entities: tuple[str, ...]
+    entity_discovery: tuple[Mapping[str, Any], ...]
+    runtime: Mapping[str, str | None]
+
+
+class InputInventoryProvider(Protocol):
+    """Optional metadata discovery; existing RulesEngine adapters need not opt in."""
+
+    def input_inventory(self) -> InputInventory:
+        """Discover executable inputs without guessing missing semantics."""
+        ...
 
 
 @runtime_checkable

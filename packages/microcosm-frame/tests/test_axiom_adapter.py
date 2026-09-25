@@ -15,6 +15,7 @@ liabilities.
 
 import importlib.util
 import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -83,6 +84,84 @@ def _toy_bundle(
         "household": Weights(values=np.array([1500.0, 900.0]), kind=WeightKind.DESIGN)
     }
     return Frame({"person": person, "household": household}, BE_SCHEMA, weights)
+
+
+@needs_engine
+class TestInputInventory:
+    def test_real_runtime_names_addresses_entities_and_unknown_metadata(self):
+        inventory = AxiomEngine(
+            FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS
+        ).input_inventory()
+        by_name = {item.name: item for item in inventory.inputs}
+        assert "toy_taxable_income" in by_name
+        assert "toy_income_tax" not in by_name
+        assert by_name["toy_household_rent"].entity == "household"
+        assert by_name["toy_is_exempt"].dtype is None
+        for item in inventory.inputs:
+            assert item.canonical_request_name in item.request_names
+            assert "#input." in item.canonical_request_name
+            assert item.concept_id is None
+            assert item.definition is None
+            assert item.unit is None
+            assert item.period is None
+            assert item.required is None
+        assert sum(
+            item["root_input_count"] for item in inventory.entity_discovery
+        ) == len(inventory.inputs)
+        assert all(item["status"] == "complete" for item in inventory.entity_discovery)
+        assert inventory.runtime["engine"] == "axiom"
+
+    def test_inventory_is_deterministic_and_recompiles_after_source_change(
+        self, tmp_path
+    ):
+        root = tmp_path / "rulespec-zz"
+        shutil.copytree(FIXTURE_RULESPEC_ROOT, root)
+        module = root / FIXTURE_MODULE.relative_to(FIXTURE_RULESPEC_ROOT)
+        engine = AxiomEngine(module, rulespec_roots=(root,))
+        first = engine.input_inventory()
+        assert engine.input_inventory() == first
+        assert (
+            "toy_taxable_income" in engine.variables()
+        )  # Prime materialization cache.
+        module.write_text(module.read_text().replace("toy_taxable_income", "new_input"))
+        second = engine.input_inventory()
+        assert "new_input" in {item.name for item in second.inputs}
+        assert "toy_taxable_income" not in {item.name for item in second.inputs}
+        first_pins = {item["role"]: item["sha256"] for item in first.fingerprints}
+        second_pins = {item["role"]: item["sha256"] for item in second.fingerprints}
+        assert first_pins["entry_module"] != second_pins["entry_module"]
+        assert (
+            first_pins["rulespec_root_yaml_and_toolchain"]
+            != second_pins["rulespec_root_yaml_and_toolchain"]
+        )
+
+    def test_inventory_refuses_sources_that_change_while_discovering(self, monkeypatch):
+        counter = 0
+
+        def changing_fingerprints(self):
+            nonlocal counter
+            counter += 1
+            return (
+                {"role": "fixture", "name": "changed", "sha256": str(counter) * 64},
+            )
+
+        monkeypatch.setattr(
+            AxiomEngine, "_inventory_fingerprints", changing_fingerprints
+        )
+        with pytest.raises(ValueError, match="changed during input discovery"):
+            AxiomEngine(
+                FIXTURE_MODULE, rulespec_roots=FIXTURE_RULESPEC_ROOTS
+            ).input_inventory()
+
+    def test_invalid_authority_is_rejected_before_fingerprint_reads(
+        self, tmp_path, monkeypatch
+    ):
+        def forbidden_read(self):
+            raise AssertionError("must validate authority before fingerprinting")
+
+        monkeypatch.setattr(AxiomEngine, "_inventory_fingerprints", forbidden_read)
+        with pytest.raises(ValueError):
+            AxiomEngine(FIXTURE_MODULE, rulespec_roots=(tmp_path,)).input_inventory()
 
 
 class TestLazyImport:

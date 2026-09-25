@@ -1,0 +1,288 @@
+{
+  "artifact_kind": "concept_coverage_diagnostic",
+  "blocking_gaps": [
+    "dataset_column_coverage_unassessed",
+    "dataset_not_supplied",
+    "input_metadata_unavailable",
+    "no_derived_program:household",
+    "population_schema_and_certification_not_assessed",
+    "semantic_evidence_unresolved"
+  ],
+  "canonicalization": "microcosm-json-v1",
+  "column_bindings": [],
+  "content_sha256": "8b6c379afbf21e590c259722207ea07e41043be6ef335b6f77fed9a49b553086",
+  "dataset": {
+    "assessment": "column_presence_only",
+    "columns": null,
+    "extra_columns": "permitted",
+    "presence_only": true,
+    "schema_sha256": null,
+    "status": "not_supplied"
+  },
+  "entity_discovery": [
+    {
+      "engine_entity": "Household",
+      "entity": "household",
+      "root_input_count": null,
+      "status": "no_derived_program"
+    },
+    {
+      "engine_entity": "Person",
+      "entity": "person",
+      "root_input_count": 7,
+      "status": "complete"
+    }
+  ],
+  "fact_bindings": [],
+  "fingerprints": [
+    {
+      "name": "microcosm.frame.adapters.axiom",
+      "role": "adapter",
+      "sha256": "f8413fb3765588ecb46c592c52f9728c3b2a0161e1d9b967c60ab60a33f1a849"
+    },
+    {
+      "name": "microcosm.build.concept_coverage",
+      "role": "diagnostic_builder",
+      "sha256": "b819345144b69ab198b38f26ed79f8c5c745a21139d2780e9e6aeeca9da537b2"
+    },
+    {
+      "name": "axiom_rules_engine_dense",
+      "role": "engine_native",
+      "sha256": "3b22567418f7faf9e82d04e0d1144c5f45a7fa0423663754df2a7646d04b3541"
+    },
+    {
+      "name": "axiom_rules_engine",
+      "role": "engine_wrapper",
+      "sha256": "b5a7e21e0b62d372a917985600decb7faf3203ffd01f3ca22f5da9996faa7d1c"
+    },
+    {
+      "name": "rulespec-be/be/statutes/income_tax/individual/pilot_worker_oracle_pipeline.yaml",
+      "role": "entry_module",
+      "sha256": "1388e420002ce0d4a3a51e45993407c4e8a9052b9c9fb8cadd7ebf75aa71e880"
+    },
+    {
+      "name": "rulespec-be",
+      "role": "rulespec_root_yaml_and_toolchain",
+      "sha256": "7cef80a8007d7d6126f1335c26dc79e9d0430b82c2b8ee1a8db39bb5d8ff0754"
+    }
+  ],
+  "inputs": [
+    {
+      "canonical_request_name": "be:regulations/social_security/workers/work_bonus#input.belgium_worker_work_bonus_supplied_reference_annual_remuneration",
+      "column_status": "unassessed",
+      "data_origin": "unassessed",
+      "engine_entity": "Person",
+      "entity": "person",
+      "metadata": {
+        "concept_id": null,
+        "definition": null,
+        "dtype": null,
+        "period": null,
+        "required": null,
+        "unit": null
+      },
+      "metadata_gaps": [
+        "concept_id",
+        "definition",
+        "dtype",
+        "period",
+        "required",
+        "unit"
+      ],
+      "name": "belgium_worker_work_bonus_supplied_reference_annual_remuneration",
+      "request_names": [
+        "be:regulations/social_security/workers/work_bonus#input.belgium_worker_work_bonus_supplied_reference_annual_remuneration"
+      ],
+      "semantic_status": "unassessed"
+    },
+    {
+      "canonical_request_name": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_agglomeration_additional_tax_rate",
+      "column_status": "unassessed",
+      "data_origin": "unassessed",
+      "engine_entity": "Person",
+      "entity": "person",
+      "metadata": {
+        "concept_id": null,
+        "definition": null,
+        "dtype": null,
+        "period": null,
+        "required": null,
+        "unit": null
+      },
+      "metadata_gaps": [
+        "concept_id",
+        "definition",
+        "dtype",
+        "period",
+        "required",
+        "unit"
+      ],
+      "name": "belgium_pit_agglomeration_additional_tax_rate",
+      "request_names": [
+        "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_agglomeration_additional_tax_rate"
+      ],
+      "semantic_status": "unassessed"
+    },
+    {
+      "canonical_request_name": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration",
+      "column_status": "unassessed",
+      "data_origin": "unassessed",
+      "engine_entity": "Person",
+      "entity": "person",
+      "metadata": {
+        "concept_id": null,
+        "definition": null,
+        "dtype": null,
+        "period": null,
+        "required": null,
+        "unit": null
+      },
+      "metadata_gaps": [
+        "concept_id",
+        "definition",
+        "dtype",
+        "period",
+        "required",
+        "unit"
+      ],
+      "name": "belgium_pit_article_23_worker_remuneration",
+      "request_names": [
+        "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration"
+      ],
+      "semantic_status": "unassessed"
+    },
+    {
+      "canonical_request_name": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_466_tax_share_on_nonprofessional_movable_income",
+      "column_status": "unassessed",
+      "data_origin": "unassessed",
+      "engine_entity": "Person",
+      "entity": "person",
+      "metadata": {
+        "concept_id": null,
+        "definition": null,
+        "dtype": null,
+        "period": null,
+        "required": null,
+        "unit": null
+      },
+      "metadata_gaps": [
+        "concept_id",
+        "definition",
+        "dtype",
+        "period",
+        "required",
+        "unit"
+      ],
+      "name": "belgium_pit_article_466_tax_share_on_nonprofessional_movable_income",
+      "request_names": [
+        "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_466_tax_share_on_nonprofessional_movable_income"
+      ],
+      "semantic_status": "unassessed"
+    },
+    {
+      "canonical_request_name": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_466bis_hypothetical_total_tax_if_treaty_exempt_foreign_professional_income_were_belgian",
+      "column_status": "unassessed",
+      "data_origin": "unassessed",
+      "engine_entity": "Person",
+      "entity": "person",
+      "metadata": {
+        "concept_id": null,
+        "definition": null,
+        "dtype": null,
+        "period": null,
+        "required": null,
+        "unit": null
+      },
+      "metadata_gaps": [
+        "concept_id",
+        "definition",
+        "dtype",
+        "period",
+        "required",
+        "unit"
+      ],
+      "name": "belgium_pit_article_466bis_hypothetical_total_tax_if_treaty_exempt_foreign_professional_income_were_belgian",
+      "request_names": [
+        "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_466bis_hypothetical_total_tax_if_treaty_exempt_foreign_professional_income_were_belgian"
+      ],
+      "semantic_status": "unassessed"
+    },
+    {
+      "canonical_request_name": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_466bis_treaty_exempt_foreign_professional_income_base_applies",
+      "column_status": "unassessed",
+      "data_origin": "unassessed",
+      "engine_entity": "Person",
+      "entity": "person",
+      "metadata": {
+        "concept_id": null,
+        "definition": null,
+        "dtype": null,
+        "period": null,
+        "required": null,
+        "unit": null
+      },
+      "metadata_gaps": [
+        "concept_id",
+        "definition",
+        "dtype",
+        "period",
+        "required",
+        "unit"
+      ],
+      "name": "belgium_pit_article_466bis_treaty_exempt_foreign_professional_income_base_applies",
+      "request_names": [
+        "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_466bis_treaty_exempt_foreign_professional_income_base_applies"
+      ],
+      "semantic_status": "unassessed"
+    },
+    {
+      "canonical_request_name": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_communal_additional_tax_rate",
+      "column_status": "unassessed",
+      "data_origin": "unassessed",
+      "engine_entity": "Person",
+      "entity": "person",
+      "metadata": {
+        "concept_id": null,
+        "definition": null,
+        "dtype": null,
+        "period": null,
+        "required": null,
+        "unit": null
+      },
+      "metadata_gaps": [
+        "concept_id",
+        "definition",
+        "dtype",
+        "period",
+        "required",
+        "unit"
+      ],
+      "name": "belgium_pit_communal_additional_tax_rate",
+      "request_names": [
+        "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_communal_additional_tax_rate"
+      ],
+      "semantic_status": "unassessed"
+    }
+  ],
+  "mapped_entities": [
+    "household",
+    "person"
+  ],
+  "readiness": {
+    "certified": false,
+    "population_schema_ready": false,
+    "reason": "diagnostic_only"
+  },
+  "root_input_count": 7,
+  "runtime": {
+    "core_version": null,
+    "engine": "axiom",
+    "native_distribution_version": "0.1.0",
+    "numpy": "2.4.6",
+    "platform": "macOS-26.5.1-arm64-arm-64bit-Mach-O",
+    "python": "3.14.4",
+    "wrapper_distribution_version": "0.1.0"
+  },
+  "schema_version": 1,
+  "scope": "mapped_entity_root_inputs_all_module_versions"
+}
