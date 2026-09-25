@@ -15,6 +15,29 @@ from microcosm.graph import ArtifactType
 STAGE_EVIDENCE_TYPE = ArtifactType("microcosm.stage-evidence", 1)
 
 
+def _fit_weight_hook_holder(transform: object | None) -> object | None:
+    """The object declaring ``fit_weight_records``, seen through the proxies.
+
+    Detects the hook without evaluating it (a raising property must count as
+    a fitting stage with unreadable records, not vanish), and looks through
+    the wrappers a staged run puts around every stage: an observation wrapper
+    (telemetry) and a graph source transform both proxy attribute reads
+    through ``__getattr__``, which a class-level probe never consults — so a
+    probe on the outermost object alone silently loses the block and the
+    release-cut weights audit finds no evidence.
+    """
+
+    seen: set[int] = set()
+    candidate: object | None = transform
+    while candidate is not None and id(candidate) not in seen:
+        seen.add(id(candidate))
+        declared = getattr(type(candidate), "fit_weight_records", None) is not None
+        if declared or "fit_weight_records" in getattr(candidate, "__dict__", {}):
+            return candidate
+        candidate = getattr(candidate, "__dict__", {}).get("transform")
+    return None
+
+
 def snapshot_stage_evidence(stage: str, transform: object | None) -> dict[str, object]:
     """Snapshot checkpoint, fit-weight and sampling evidence without rerunning."""
 
@@ -42,11 +65,10 @@ def snapshot_stage_evidence(stage: str, transform: object | None) -> dict[str, o
     }
     # Do not evaluate a raising property merely to detect whether it exists:
     # missing/unreadable fitting evidence must stay visible to weight audits.
-    exposes_records = getattr(type(transform), "fit_weight_records", None) is not None
-    exposes_records |= "fit_weight_records" in getattr(transform, "__dict__", {})
-    if exposes_records:
+    holder = _fit_weight_hook_holder(transform)
+    if holder is not None:
         try:
-            records = tuple(transform.fit_weight_records or ())
+            records = tuple(holder.fit_weight_records or ())
             payload["fit_weight_records"] = [
                 {
                     "fit_name": str(record.fit_name),

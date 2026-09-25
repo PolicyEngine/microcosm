@@ -18,8 +18,10 @@ import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from importlib import metadata
 
 from microcosm.graph import (
+    ArtifactOutput,
     Graph,
     KernelRegistry,
     Node,
@@ -27,16 +29,20 @@ from microcosm.graph import (
     Slice,
     SourceRef,
     StructuralDelta,
+    compile_graph,
 )
 
 from ..country_spec import CountrySpec, load_country_spec
+from ..stage_evidence import STAGE_EVIDENCE_TYPE
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
     "UK_SPINE_EXCLUSIONS",
     "UK_SPINE_STRUCTURAL_STAGES",
     "uk_registry",
+    "uk_spine_endpoint",
     "uk_spine_graph",
+    "uk_spine_operation_inventory",
 ]
 
 
@@ -910,6 +916,29 @@ def _source_refs(source_mode: str) -> tuple[SourceRef, ...]:
     )
 
 
+def _numerical_dependency_versions() -> tuple[tuple[str, str], ...]:
+    """Bind installed behavior-bearing libraries, including optional engines.
+
+    The missing marker permits source-only declarations without engine extras;
+    installing the engine then produces a different identity, never a false hit.
+    """
+    versions = []
+    for name in (
+        "policyengine-uk",
+        "policyengine-core",
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "quantile-forest",
+    ):
+        try:
+            version = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            version = "not-installed"
+        versions.append((name, version))
+    return tuple(versions)
+
+
 def uk_spine_graph(
     spec: CountrySpec | None = None,
     *,
@@ -929,6 +958,7 @@ def uk_spine_graph(
         raise ValueError("UK graph sample_seed must be non-negative.")
     resolved = load_country_spec("uk") if spec is None else spec
     stages = _manifest_stages(resolved)
+    dependency_versions = _numerical_dependency_versions()
     # The root transform loads the complete national-frame seed schema even
     # when a reduced hermetic manifest names only the output under test.
     # CREATE must declare every loaded cell, never merely the StagePlan's
@@ -942,12 +972,14 @@ def uk_spine_graph(
             kernel="uk.create@1",
             outputs=tuple(cell.owned() for cell in root_cells),
             structural=StructuralDelta.CREATE,
+            artifact_outputs=(ArtifactOutput("stage_evidence", STAGE_EVIDENCE_TYPE),),
             sources=_source_names("frs_spine", source_mode),
             params={
                 "time_period": "2024",
                 "stage_contract_sha256": _stage_contract_sha256(stages[0], resolved),
                 "sample_fraction": float(sample_fraction),
                 "sample_seed": int(sample_seed),
+                "numerical_dependencies": dependency_versions,
             },
             description="Load the source-bound UK FRS root population.",
         )
@@ -999,6 +1031,7 @@ def uk_spine_graph(
                     ),
                     params={
                         "stage": stage_name,
+                        "numerical_dependencies": dependency_versions,
                         "time_period": "2024",
                         "expand_cells": tuple(
                             (cell.entity, cell.column, cell.dtype) for cell in cells
@@ -1010,6 +1043,9 @@ def uk_spine_graph(
                         ),
                     },
                     structural=StructuralDelta.EXPAND,
+                    artifact_outputs=(
+                        ArtifactOutput("stage_evidence", STAGE_EVIDENCE_TYPE),
+                    ),
                     base=current_population,
                     sources=_source_names(stage_name, source_mode),
                     mass=_STRUCTURAL_MASS[stage_name],
@@ -1083,8 +1119,12 @@ def uk_spine_graph(
                         for cell in cells
                     ),
                     population=current_population,
+                    artifact_outputs=(
+                        ArtifactOutput("stage_evidence", STAGE_EVIDENCE_TYPE),
+                    ),
                     params={
                         "stage": stage_name,
+                        "numerical_dependencies": dependency_versions,
                         "time_period": "2024",
                         "stage_contract_sha256": _stage_contract_sha256(
                             manifest_stage, resolved
@@ -1136,3 +1176,74 @@ def uk_registry(
         uk_spine_graph() if graph is None else graph,
         {} if implementations is None else implementations,
     )
+
+
+@dataclass(frozen=True)
+class UKSpineEndpoint:
+    """The final population and complete declared cell surface for composition."""
+
+    population: str
+    inputs: tuple[Slice, ...]
+    stage_names: tuple[str, ...]
+
+
+def uk_spine_endpoint(graph: Graph) -> UKSpineEndpoint:
+    stages = (
+        "frs_spine",
+        *(str(node.params["stage"]) for node in graph.nodes if "stage" in node.params),
+    )
+    live = {}
+    for node in graph.nodes:
+        for owned in node.outputs:
+            live[(owned.entity, owned.column)] = _Cell(
+                owned.entity, owned.column, owned.dtype
+            )
+    return UKSpineEndpoint(
+        population=compile_graph(graph).versions[stages[-1]],
+        inputs=_slices(live),
+        stage_names=stages,
+    )
+
+
+def uk_spine_operation_inventory(
+    graph: Graph, spec: CountrySpec | None = None
+) -> tuple[dict[str, object], ...]:
+    """Generate truthful operation ownership from the executable stage roster.
+
+    Conditional fits/draw chains remain one coupled execution unit. In
+    particular WAS encoding observes donors and recipients jointly; its fit
+    is not advertised as an independently reusable donor-only artifact.
+    """
+    resolved = load_country_spec("uk") if spec is None else spec
+    nodes = {node.id: node for node in graph.nodes}
+    rows = []
+    for stage in _manifest_stages(resolved):
+        node_id = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
+        node = nodes[node_id]
+        rows.append(
+            {
+                "stage": stage.stage,
+                "node": node_id,
+                "kernel": node.kernel,
+                "operations": [
+                    {"kind": operation.kind, "parameters": dict(operation.parameters)}
+                    for operation in stage.operations
+                ],
+                "execution_unit": "composite"
+                if len(stage.operations) > 1
+                else "single",
+                "source_inputs": list(node.sources),
+                "artifact_outputs": [output.name for output in node.artifact_outputs],
+                "randomness": "Existing literal/child seeds and draw order are preserved inside the registered transform.",
+                "coupling": (
+                    "Donor and recipient region encoding, four segmented fit/draw chains and their child seeds remain coupled."
+                    if stage.stage == "was_wealth"
+                    else "Source assembly, declared household sample selection and same-kind mass normalization execute once in CREATE."
+                    if stage.stage == "frs_spine"
+                    else "Declared preparation, fit and application operations execute once in this stage; intermediate models are not independently cached."
+                    if any("qrf" in operation.kind for operation in stage.operations)
+                    else None
+                ),
+            }
+        )
+    return tuple(rows)

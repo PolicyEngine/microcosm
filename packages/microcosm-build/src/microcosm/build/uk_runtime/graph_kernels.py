@@ -44,6 +44,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
+from .. import stage_evidence
 from . import bus_use_incidence, uc_relationships
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
@@ -150,13 +151,24 @@ def _stage_module(stage: str):
 
 
 def _implementation_hash(kernel: object, stage: str, transform: object | None) -> str:
+    from . import graph_evidence
+
     # The stage module is the behavior-bearing source in every mode. Hashing
     # an injected transform's dynamic test wrapper would make
     # hermetic registries unhashable and, more importantly, would fail to bind
-    # production edits made elsewhere in that stage's module.
-    del transform
+    # production edits made elsewhere in that stage's module. A transform may
+    # still declare extra behavior-bearing sources through
+    # ``graph_implementation_dependencies``.
+    dependencies = getattr(transform, "graph_implementation_dependencies", None)
     return source_hash(
-        type(kernel), _stage_module(stage), *_STAGE_HELPER_MODULES.get(stage, ())
+        type(kernel),
+        stage_evidence,
+        graph_evidence,
+        _stage_artifacts,
+        _mass_log_payload,
+        _stage_module(stage),
+        *_STAGE_HELPER_MODULES.get(stage, ()),
+        *(dependencies() if callable(dependencies) else ()),
     )
 
 
@@ -174,6 +186,29 @@ def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
         }
         for record in after.mass_log[prefix_length:]
     ]
+
+
+def _stage_artifacts(
+    stage: str, transform: object | None, before: Frame | None, after: Frame
+) -> dict[str, bytes]:
+    document = stage_evidence.snapshot_stage_evidence(stage, transform)
+    document["frame_mass_log_append"] = (
+        [
+            {
+                "entity": record.entity,
+                "old_total": record.old_total,
+                "new_total": record.new_total,
+                "declared_factor": record.declared_factor,
+                "reason": record.reason,
+            }
+            for record in after.mass_log
+        ]
+        if before is None
+        else _mass_log_payload(before, after)
+    )
+    if before is None:
+        document["frame_context"] = {"metadata": dict(after.metadata)}
+    return {"stage_evidence": stage_evidence.encode_stage_evidence(document)}
 
 
 def _invoke_transform(transform: object, frame: Frame, context: KernelContext):
@@ -737,7 +772,10 @@ class UKCreateKernel(KernelBase):
             raise TypeError(
                 f"The UK root transform returned {type(frame).__name__}, not Frame."
             )
-        return KernelResult(frame=_normalize_create_frame(frame, context))
+        return KernelResult(
+            frame=_normalize_create_frame(frame, context),
+            artifacts=_stage_artifacts("frs_spine", self.transform, None, frame),
+        )
 
 
 class UKIdentityKernel(KernelBase):
@@ -800,6 +838,9 @@ class UKStageKernel(KernelBase):
         return _implementation_hash(self, self.stage, self.transform)
 
     def run(self, context: KernelContext) -> KernelResult:
+        from .graph_evidence import require_uk_spine_gate_admission
+
+        require_uk_spine_gate_admission(context)
         transform = self.transform
         if transform is None and self.fixture_resolver is not None:
             transform = self.fixture_resolver.resolve(self.stage, context)
@@ -822,6 +863,7 @@ class UKStageKernel(KernelBase):
         }
         return KernelResult(
             columns=MappingProxyType(columns),
+            artifacts=_stage_artifacts(self.stage, transform, before, after),
             receipt={
                 "stage": self.stage,
                 "frame_mass_log_append": _mass_log_payload(before, after),
@@ -918,6 +960,9 @@ class UKExpandStageKernel(KernelBase):
         return _implementation_hash(self, self.stage, self.transform)
 
     def run(self, context: KernelContext) -> KernelResult:
+        from .graph_evidence import require_uk_spine_gate_admission
+
+        require_uk_spine_gate_admission(context)
         transform = self.transform
         if transform is None and self.fixture_resolver is not None:
             transform = self.fixture_resolver.resolve(self.stage, context)
@@ -979,6 +1024,7 @@ class UKExpandStageKernel(KernelBase):
             columns=MappingProxyType(columns),
             expand=MappingProxyType(expand),
             weights=after_weights,
+            artifacts=_stage_artifacts(self.stage, transform, before, after),
             receipt=receipt,
         )
 
@@ -1065,7 +1111,11 @@ def build_uk_registry(
         else:
             registry.register(UKStageKernel(stage, transform, fixture_resolver))
 
-    required = {node.kernel for node in graph.nodes}
+    # Gate bindings carry the live rules engine and are registered separately
+    # after population-stage construction by the composing build.
+    required = {
+        node.kernel for node in graph.nodes if node.kernel != "uk.spine-gates@1"
+    }
     if set(registry.refs()) != required:
         missing = sorted(required - set(registry.refs()))
         extra = sorted(set(registry.refs()) - required)
