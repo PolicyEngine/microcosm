@@ -32,17 +32,19 @@ policyengine-us. Two certification seams run the rule, each at the point where
 the installed engine is provably the one the release is certified against:
 
 - the US fiscal-refresh release tool's batched pre-export gates
-  (``tools/build_us_fiscal_refresh_release.py``, which the exact-k ladder lane
-  also runs), on the export frame's stored tables, before the H5 is written.
-  The tool writes the H5 with the installed engine and records that engine's
-  version as ``build.built_with_model_package``;
-- the source-enrichment contract
-  (:func:`microcosm.data.source_enrichment.validate_source_enrichment_candidate`),
-  on the candidate H5, right after the native-loader compatibility probe has
-  loaded the tested runtime in this process. That contract runs when a
-  candidate is certified and again when the publisher replays it, and it
-  refuses a bundle whose ``build.built_with_model_package`` differs from the
-  runtime it tested. Both releases above went through this lane.
+  (``tools/build_us_fiscal_refresh_release.py``), on the export frame's stored
+  tables, before the H5 is written. The tool writes the H5 with the installed
+  engine and records that engine's version as
+  ``build.built_with_model_package``. After the write it checks that the
+  verdict on the written bytes is the verdict the gate reached;
+- the source-enrichment native-loader probe
+  (:func:`microcosm.data.source_enrichment.run_native_loader_compatibility`),
+  on the candidate H5, through :func:`require_h5_stored_inputs`. The probe
+  runs in the tested runtime when a candidate is certified and again whenever
+  the contract replays it (validation, the publisher's preflight and
+  publication), and the contract refuses a bundle whose
+  ``build.built_with_model_package`` differs from the runtime the probe
+  tested. Both releases above went through this lane.
 
 **Naming convention, measured rather than assumed.** policyengine-us 2.2.1
 defines 6,167 variables. 6,114 match ``[a-z][a-z0-9_]*``. The other 53 are the
@@ -52,16 +54,20 @@ household Boolean formula per state, named by its code. No variable starts
 with an underscore or a digit. So any column outside the convention passes by
 rule: a column with an uppercase letter (the raw Census fields ``A_AGE``,
 ``H_TENURE``, ``SPM_WICVAL`` and so on), or one that starts with an underscore
-or a digit. Neither H5 examined for microcosm#1026 stores a column with one of
-those 53 names, and none of their 163 uppercase columns is an engine variable.
-The release tool's writer refuses formula-owned columns, so it cannot store one
-of the 53 either. A test pins the convention against the locked engine, so an
-engine that adds a variable outside it fails CI rather than passing silently.
+or a digit. The files examined for microcosm#1026 store 163 uppercase columns;
+none is an engine variable and none is one of the 53 codes. The 53 are all
+formulas, and the release writer
+(:class:`microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine`)
+refuses to store a formula-owned column, so a release cannot store one of them
+either. Tests pin the convention and the formula ownership against the locked
+engine, so an engine that adds a variable outside the convention fails CI
+rather than passing silently.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -74,12 +80,15 @@ __all__ = [
     "MODEL_NAMED_COLUMN_PATTERN",
     "US_STORED_NON_VARIABLE_COLUMNS",
     "CertifiedEngine",
+    "StoredInputRefusal",
     "StoredTableLayoutError",
     "h5_stored_tables",
     "h5_verdict",
     "installed_us_engine",
     "is_model_named",
     "register_consistency_failures",
+    "register_sha256",
+    "require_h5_stored_inputs",
     "stored_input_failures",
     "undefined_stored_inputs",
 ]
@@ -111,12 +120,13 @@ _REGISTER_PATH = "microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS"
 _SUPPORT_SOURCE_ID = (
     "Support provenance: the {entity} record's assembly-unique pre-clone source "
     "id (microcosm.build.us_runtime.support_provenance."
-    "support_source_id_column). It identifies a record and keys seeded draws; "
+    "support_source_id_column). It identifies the record across clones and "
+    "enters the seeded-draw key grammar (microcosm.build.spec_engine.seeds); "
     "it is not a model input."
 )
 _SUPPORT_CHANNEL = (
     "Support provenance: the support channel the {entity} record came from, "
-    "such as asec, acs or puf_tax_detail (microcosm.build.us_runtime."
+    "such as asec or puf_tax_detail (microcosm.build.us_runtime."
     "support_provenance.support_channel_column). Build lineage, not a model "
     "input."
 )
@@ -126,17 +136,30 @@ _SUPPORT_CLONE_INDEX = (
     "support_clone_index_column). Build lineage, not a model input."
 )
 _POOLED_SOURCE = (
-    "Pooled ASEC source identifier ({detail}), assigned by "
-    "microcosm.build.us_runtime.asec_pool and declared in "
-    "microcosm.build.outer_stage_runtime._POOLED_SOURCE_PROVENANCE_COLUMNS. "
-    "It identifies the source row and keys the build's seeded draws "
-    "(microcosm.build.spec_engine.seeds); it is not a model input."
+    "Pooled source provenance: {detail}. Assigned when a survey is pooled "
+    "(microcosm.build.us_runtime.asec_pool for the ASEC, "
+    "microcosm.build.us_runtime.acs_pums for the ACS) and carried through the "
+    "outer stages as one of microcosm.build.outer_stage_runtime."
+    "_POOLED_SOURCE_PROVENANCE_COLUMNS. {use} It is not a model input."
+)
+_POOLED_SOURCE_SEED_KEY = (
+    "It identifies the source record and enters the seeded-draw key grammar "
+    "(microcosm.build.spec_engine.seeds)."
 )
 _PUF_TAIL = (
     "PUF capital-gains own-tail transfer provenance ({detail}), declared in "
     "microcosm.build.us_runtime.puf_capital_gains_tail and read by "
     "assert_puf_capital_gains_tail_survives_selection. Build lineage, not a "
     "model input."
+)
+_TAX_UNIT_CONSTRUCTION = (
+    "Tax-unit construction output: {detail} ({constant}). Later build stages "
+    "read it (microcosm.build.us_runtime.us_late_producer_registry and the US "
+    "imputation spec, microcosm/build/us/spec/imputation.yaml). "
+    "policyengine-us 1.764.6 and 2.2.1 neither define nor read a variable of "
+    "this name, and there is no live input to rename it to: the engine "
+    "derives {engine} with formulas, which the release writer refuses to "
+    "store."
 )
 #: The six US entity tables, in ``microcosm.frame.units.US_SCHEMA`` order.
 #: microcosm-data depends on no other Microcosm shard, so the names are spelled
@@ -148,21 +171,24 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: policyengine-us variables: column -> why the engine may ignore it.
 #:
 #: Built from evidence, not guesses. It holds exactly the model-named
-#: non-variable columns stored by the two H5 files examined for microcosm#1026
-#: that are provenance or build construction outputs: the published default
+#: non-variable columns stored by the H5 files examined for microcosm#1026 that
+#: are provenance or build construction outputs: the published default
 #: ``populace-us-2024-spm-20260915`` (26 such columns, 24 registered) and the
 #: Route A rehearsal export built from main's tools (30 such columns, all
-#: registered). Two model-named non-variable columns of the published default
-#: are deliberately absent, because each is a stale model input rather than
+#: registered). ``tests/fixtures/stored_input_inventories.json`` records both
+#: files' stored columns, and a test requires every entry to appear in one of
+#: them. Two model-named non-variable columns of the published default are
+#: deliberately absent, because each is a stale model input rather than
 #: metadata:
 #:
 #: - ``would_claim_wic``: the WIC take-up draw under its retired name. The live
 #:   input is ``takes_up_wic_if_eligible`` (#746 moved the builder).
-#: - ``medicare_part_b_premiums``: a transfer-target name #590 removed from the
-#:   build. Neither policyengine-us 1.764.6 nor 2.2.1 defines or reads it. The
-#:   reported leaf both define is ``medicare_part_b_premiums_reported``, which
-#:   no variable reads in either version, and the engine computes
-#:   ``medicare_part_b_premium`` itself.
+#: - ``medicare_part_b_premiums``: an ASEC ``PEMCPREM`` transfer target under a
+#:   name no engine version defines. #590 dropped it from the build, and the
+#:   rehearsal export no longer stores it. Neither policyengine-us 1.764.6 nor
+#:   2.2.1 defines or reads it. The reported leaf both define,
+#:   ``medicare_part_b_premiums_reported``, has no consumer in either, and the
+#:   engine computes ``medicare_part_b_premium`` itself.
 #:
 #: An entry must never be a variable of the certified engine. The engine reads
 #: such a column as an input, so the entry would be dead, and its reason (that
@@ -185,33 +211,36 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
             for entity in _US_ENTITIES
         },
         "source_year": _POOLED_SOURCE.format(
-            detail="the ASEC income year of the source file"
+            detail="the source file's year (the ASEC year or the ACS vintage)",
+            use=_POOLED_SOURCE_SEED_KEY,
         ),
         "source_household_id": _POOLED_SOURCE.format(
-            detail="the ASEC household sequence number, PH_SEQ"
+            detail=(
+                "the source household id (the ASEC PH_SEQ, or the ACS "
+                "household id)"
+            ),
+            use=_POOLED_SOURCE_SEED_KEY,
         ),
         "source_person_id": _POOLED_SOURCE.format(
-            detail="the ASEC person id, PERIDNUM"
+            detail="the source person id (the ASEC PERIDNUM, or the ACS SPORDER)",
+            use=_POOLED_SOURCE_SEED_KEY,
         ),
         "source_row_id": _POOLED_SOURCE.format(
-            detail="the row position within the source year's person file"
+            detail="the row position within the source file",
+            use=(
+                "It links a record back to its source row (for example "
+                "microcosm.build.us_runtime.acs_release_predictors)."
+            ),
         ),
-        "tax_unit_role_input": (
-            "Tax-unit construction output: the HEAD / SPOUSE / DEPENDENT role "
-            "microunit assigns each person "
-            "(microcosm.frame.units._TAX_UNIT_ROLE_COLUMN). Later build stages "
-            "read it (the ACS transfer, adult care, and the PUF child-support, "
-            "childcare and disability imputations). Neither policyengine-us "
-            "1.764.6 nor 2.2.1 defines or reads a variable of this name; 2.2.1 "
-            "derives is_tax_unit_head, is_tax_unit_spouse and "
-            "is_tax_unit_dependent with formulas."
+        "tax_unit_role_input": _TAX_UNIT_CONSTRUCTION.format(
+            detail="the HEAD / SPOUSE / DEPENDENT role microunit assigns each person",
+            constant="microcosm.frame.units._TAX_UNIT_ROLE_COLUMN",
+            engine="is_tax_unit_head, is_tax_unit_spouse and is_tax_unit_dependent",
         ),
-        "filing_status_input": (
-            "Tax-unit construction output: the filing status microunit assigns "
-            "each tax unit (microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN). "
-            "Later build stages read it as a predictor. Neither "
-            "policyengine-us 1.764.6 nor 2.2.1 defines or reads a variable of "
-            "this name; 2.2.1 computes filing_status with a formula."
+        "filing_status_input": _TAX_UNIT_CONSTRUCTION.format(
+            detail="the filing status microunit assigns each tax unit",
+            constant="microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN",
+            engine="filing_status",
         ),
         "puf_capital_gains_tail_transfer_applied": _PUF_TAIL.format(
             detail="whether this tax unit received a tail donor"
@@ -237,6 +266,20 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
 
 class StoredTableLayoutError(ValueError):
     """An H5 whose stored tables the check cannot list from metadata."""
+
+
+class StoredInputRefusal(ValueError):
+    """A release stores model-named columns its certified engine lacks.
+
+    ``failures`` holds one :func:`stored_input_failures` line per refused
+    column; the message joins them.
+    """
+
+    def __init__(self, failures: Iterable[str]) -> None:
+        self.failures = tuple(failures)
+        super().__init__(
+            "stored-input contract refused the release: " + " ".join(self.failures)
+        )
 
 
 @dataclass(frozen=True)
@@ -292,8 +335,8 @@ def stored_input_failures(
     """One failure line per refused column; an empty list is a pass.
 
     ``stored_tables`` maps each stored table (entity) to its column names. Each
-    line quotes exactly one refused column first, names every table that stores
-    it and says how to resolve it. Lines are in column order.
+    line quotes exactly one refused column and nothing else, names every table
+    that stores it and says how to resolve it. Lines are in column order.
     """
 
     tables_by_column: dict[object, set[str]] = {}
@@ -346,6 +389,21 @@ def register_consistency_failures(
         if not isinstance(reason, str) or not reason.strip():
             failures.append(f"register entry {column!r} has no reason.")
     return failures
+
+
+def register_sha256(
+    register: Mapping[str, str] = US_STORED_NON_VARIABLE_COLUMNS,
+) -> str:
+    """SHA-256 of ``register`` as canonical JSON (sorted keys, no whitespace).
+
+    A receipt that records it binds the exact register the check consulted, so
+    a later register change is visible when the receipt is replayed.
+    """
+
+    payload = json.dumps(
+        dict(register), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    )
+    return hashlib.sha256(payload.encode("ascii")).hexdigest()
 
 
 def _attribute_text(value: object) -> str | None:
@@ -448,6 +506,40 @@ def installed_us_engine() -> CertifiedEngine:
     )
 
 
+def require_h5_stored_inputs(
+    path: Path | str,
+    *,
+    engine: CertifiedEngine,
+    register: Mapping[str, str] = US_STORED_NON_VARIABLE_COLUMNS,
+) -> dict[str, object]:
+    """Refuse an H5 that stores a model input ``engine`` lacks; else summarize.
+
+    The summary is what a certification receipt records: the register's digest
+    and the registered non-variable columns the H5 stores. It names no engine
+    version, because the receipt already records the tested packages.
+
+    Raises:
+        StoredInputRefusal: The H5 stores at least one refused column.
+        StoredTableLayoutError: The H5's stored tables cannot be listed.
+    """
+
+    tables = h5_stored_tables(path)
+    failures = stored_input_failures(tables, engine=engine, register=register)
+    if failures:
+        raise StoredInputRefusal(failures)
+    columns = {column for names in tables.values() for column in names}
+    return {
+        "register_sha256": register_sha256(register),
+        "registered_non_variables": sorted(
+            column
+            for column in columns
+            if is_model_named(column)
+            and column not in engine.variables
+            and column in register
+        ),
+    }
+
+
 def h5_verdict(
     path: Path | str,
     *,
@@ -483,6 +575,7 @@ def h5_verdict(
         "outside_naming_convention_that_are_engine_variables": sorted(
             outside_convention & engine.variables
         ),
+        "register_sha256": register_sha256(register),
         "register_consistency_failures": register_consistency_failures(
             register, engine_variables=engine.variables
         ),
