@@ -3,9 +3,6 @@
 This release type does not certify a new calibration or upgrade its schema.
 Its authority is the reviewed parent byte identity, an exhaustive H5 comparison,
 Census source reconciliation, and separately measured native-loader compatibility.
-That compatibility includes the stored-input contract: the candidate must store
-no model input its tested engine lacks (:mod:`microcosm.data.stored_inputs`,
-microcosm#1026).
 Publication replays the latter checks before the Hub client is constructed.
 """
 

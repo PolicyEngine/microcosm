@@ -125,12 +125,23 @@ Certification runs `run_native_loader_compatibility` (`:1450`) with
 the three receipts. For each input the tested country must register a Boolean
 of the right entity. Both the country and wrapper loaders must return the
 column byte-identical to the H5. The complete-household probe
-(`_check_native_input_precedence`, `:1621`) supplies all four inputs at once,
+(`_check_native_input_precedence`, `:1657`) supplies all four inputs at once,
 each on its own entity's rows, as `False` and then `True`, and Core must return
 every one unchanged. The role's source must come from the `spm-calculator`
 wheel. Each receipt variable's source must come from the `policyengine-us`
 wheel (`_loaded_source_packages`, `:1437`). The same four wheels are required.
 Without `native_inputs` the runner and its receipt are exactly the role lane's.
+
+Before either loader runs, the probe also applies the stored-input
+contract (`microcosm.data.stored_inputs`, microcosm#1026): the candidate may
+store no lowercase snake_case column that the tested country does not define,
+unless the reviewed register lists it. The receipt's `stored_inputs` block
+records the register's digest. The pinned parent,
+`populace-us-2024-spm-20260915`, stores `would_claim_wic` and
+`medicare_part_b_premiums`, which policyengine-us 2.2.1 does not define, and a
+child preserves its parent's bytes. So this lane cannot certify a new child
+until the parent is re-cut with the live WIC name
+(`takes_up_wic_if_eligible`) and without the stale Part B column.
 
 Measured in this change: the three receipt variables are registered in
 policyengine-us 2.2.1 as Boolean inputs with no formula, on `person`,

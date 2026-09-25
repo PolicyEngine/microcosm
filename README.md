@@ -198,6 +198,18 @@ register (`qrf_tail_register`) and the export-mass reference, so a waiver
 ships with the release it waives, and a `gate_evidence` block that says of
 each verdict whether it is bound, skipped by flag or never evaluated.
 
+A US release may not store a column that looks like a policyengine-us variable
+(lowercase snake_case) unless the engine it is certified against defines that
+variable or `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
+registers the column with a reviewed reason (microcosm#1026: the engine
+ignores such a column, which is how a renamed WIC take-up input shipped
+unread). The fiscal-refresh tool refuses one in its batched pre-export gates,
+and checks the written H5 earns the same verdict; the source-enrichment probe
+refuses one at certification, validation and publication. A refusal names
+each column: rename it to its live input, or add a reviewed register entry.
+Check local files from HDF metadata alone with
+`uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
+
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
 recorded in `package_result.json`. That command includes `--create-tag`,
