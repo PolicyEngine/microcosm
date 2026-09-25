@@ -9,6 +9,7 @@ continuation; large H5 payloads are never duplicated in a byte artifact.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import sys
 from collections.abc import Mapping
@@ -1115,3 +1116,471 @@ def materialize_uk_terminal_artifacts(
             "graph_artifact_key": key,
         }
     return inventory
+
+
+# ---------------------------------------------------------------------------
+# The rowwise candidate manifest projected from a finished graph
+# ---------------------------------------------------------------------------
+#
+# ``rowwise_candidate_manifest.json`` is the dense line's evidence contract:
+# the release pre-flight (``tools/preflight_uk_local_release_candidate.py``),
+# the dense release assembler (``tools/assemble_uk_dense_release_dir.py``) and
+# the staged-dataset lane read its schema-4 shape. The rowwise tool renders
+# it from live objects (the solve, the clone, the problem); the graph keeps
+# those as stored artifacts, so this projection reads the same facts back
+# from the run manifest and the content store. It is new UK code by
+# necessity: main's ``_manifest`` cannot run without the live objects. The
+# projection adds one ``graph`` block naming the artifacts it stood on.
+#
+# Per-epoch ``calibration_progress`` rows: the dense solve node forwards its
+# epochs through the observer registered on ``UKDenseSolveKernel``; the size
+# search and refit nodes solve through ``dataset_size`` without an observer,
+# so a size run stages no epoch rows for those two phases (recorded in the
+# manifest's ``graph.epoch_rows`` field).
+
+_LADDER_TARGET_PREFIX = "ons.census.households@"
+_NATIONAL_MATERIALIZATION = "uk_national_measure"
+
+
+def _graph_payload(manifest, store, node: str, artifact: str) -> bytes:
+    return store.load_bytes(manifest.nodes[node].opaque_artifacts[artifact])
+
+
+def _optional_graph_json(manifest, store, node: str, artifact: str):
+    if node not in manifest.nodes:
+        return None
+    return json.loads(_graph_payload(manifest, store, node, artifact))
+
+
+def _gate_rows(document: Mapping) -> dict[str, dict]:
+    """The battery-shaped ``gates`` mapping of one graph gate report."""
+    rows = {}
+    for outcome in document["report"]["outcomes"]:
+        entry = dict(outcome)
+        rows[str(entry.pop("id"))] = entry
+    return rows
+
+
+def _fit_rows(target_rows: pd.DataFrame, materialization: Mapping[str, str]):
+    """Split the terminal target diagnostics into local and national rows."""
+    kinds = target_rows["name"].map(materialization)
+    if kinds.isna().any():
+        raise ValueError(
+            "Terminal target diagnostics name targets the ordered problem lacks."
+        )
+    national = target_rows[kinds == _NATIONAL_MATERIALIZATION].reset_index(drop=True)
+    local = target_rows[kinds != _NATIONAL_MATERIALIZATION].reset_index(drop=True)
+    return local, national
+
+
+def rowwise_candidate_manifest_from_graph(
+    final_manifest,
+    store,
+    *,
+    args,
+    posture,
+    pins: Mapping[str, Mapping[str, object]],
+    terminal_files: Mapping[str, Mapping[str, object]],
+    frame: Frame,
+    outputs: Mapping[str, Mapping[str, object]],
+    source_year: int,
+    inputs: Mapping[str, Mapping[str, object]],
+    ladder_provenance: Mapping[str, object],
+    code: Mapping[str, object],
+    runtime: Mapping[str, str],
+    created_at: str,
+) -> dict:
+    """Project the schema-4 rowwise candidate manifest from stored artifacts.
+
+    ``frame`` is the exported population, ``outputs`` the published file
+    records (``path``/``sha256``/``bytes``) keyed as the rowwise tool keys
+    them, ``inputs`` the ``dataset``/``ladder`` artifact records with their
+    ``pin_verified`` flags and ``code``/``runtime`` the git and package pins.
+    Every numerical fact comes from a graph artifact named in ``graph``.
+    """
+    from microcosm.calibrate.artifacts import decode_problem
+
+    from .calibration_run import UK_LOCAL_GATE_SCOPE
+    from .diagnostics import uk_fit_by_family, uk_support_limited_misses
+    from .graph_targets import registry_from_payload
+    from .national_sampling import UK_SAMPLE_RUNG_TOKENS
+    from .rowwise_cli import (
+        gate_failures_by_criticality,
+        local_vintage_census,
+        release_verdict,
+        rowwise_parameters,
+    )
+
+    nodes = final_manifest.nodes
+    problem = decode_problem(
+        _graph_payload(final_manifest, store, "uk.full.problem", "problem")
+    )
+    bindings = dict(problem.bindings)
+    surface = json.loads(
+        _graph_payload(final_manifest, store, "uk.full.target_compilation", "surface")
+    )
+    gate_document = json.loads(
+        _graph_payload(final_manifest, store, "uk.full.gates.calibrated", "gate_report")
+    )
+    diagnostics = json.loads(
+        _graph_payload(
+            final_manifest, store, "uk.full.gates.calibrated", "calibration_diagnostics"
+        )
+    )
+    target_rows = pd.read_csv(
+        io.BytesIO(
+            _graph_payload(
+                final_manifest,
+                store,
+                "uk.full.gates.calibrated",
+                "target_diagnostics_csv",
+            )
+        )
+    )
+    support = pd.read_csv(
+        io.BytesIO(
+            _graph_payload(
+                final_manifest, store, "uk.full.gates.calibrated", "area_support_csv"
+            )
+        )
+    )
+    holdout = json.loads(
+        _graph_payload(final_manifest, store, "uk.full.holdout", "holdout")
+    )
+    geography_gate = json.loads(
+        _graph_payload(final_manifest, store, "uk.full.geography_gate", "gate")
+    )
+    sampling = json.loads(
+        _graph_payload(final_manifest, store, "uk.full.sample", "sampling")
+    )["receipt"]
+    size_receipt = _optional_graph_json(
+        final_manifest, store, "uk.full.size_refit", "size"
+    )
+    spine_provenance = (
+        _optional_graph_json(
+            final_manifest, store, "uk.full.spine_checkpoint", "spine_provenance"
+        )
+        or {}
+    )
+    enforcement = dict(gate_document["enforcement"])
+    gate_rows = _gate_rows(gate_document)
+    local_scope = {
+        gate_id: gate_rows[gate_id]
+        for gate_id in UK_LOCAL_GATE_SCOPE
+        if gate_id in gate_rows
+    }
+    blocking_lines, diagnostic_lines = gate_failures_by_criticality(
+        {"gates": gate_rows}
+    )
+    enforced = set(enforcement["enforced_blocking"])
+    unenforced = set(enforcement["unenforced_release_failures"])
+    blocking_failures = [
+        line for line in blocking_lines if line[1:].split("]")[0] in enforced
+    ]
+    unenforced_failures = [
+        line for line in blocking_lines if line[1:].split("]")[0] in unenforced
+    ]
+    releasable, release_posture = release_verdict(
+        sample_fraction=args.sample_fraction,
+        engine_blocks=args.engine_blocks,
+        release_blocking_gates_passed=bool(
+            enforcement["release_blocking_gates_passed"]
+        ),
+    )
+    materialization = {
+        str(problem.problem.targets[index].row_name): str(row.get("materialization"))
+        for index, row in enumerate(problem.target_metadata)
+    }
+    ladder_rows = sum(
+        1
+        for name, kind in materialization.items()
+        if kind != _NATIONAL_MATERIALIZATION and name.startswith(_LADDER_TARGET_PREFIX)
+    )
+    national_rows = sum(
+        1 for kind in materialization.values() if kind == _NATIONAL_MATERIALIZATION
+    )
+    local_rows = len(materialization) - ladder_rows - national_rows
+    local_fit, national_fit = _fit_rows(target_rows, materialization)
+    abs_errors = target_rows["abs_relative_error"].to_numpy(dtype=np.float64)
+    support_by_grain = {
+        ("la" if grain == "local_authority" else str(grain)): rows.reset_index(
+            drop=True
+        )
+        for grain, rows in support.groupby("geography_level", sort=True)
+    }
+    household_weights = np.asarray(
+        frame.weights_for("household").values, dtype=np.float64
+    )
+    design = pd.Series(
+        np.asarray(problem.problem.initial_weights.values, dtype=np.float64),
+        index=pd.Index(list(problem.entity_ids)),
+    )
+    exported_ids = frame.table("household")["household_id"].tolist()
+    design_weights = design.reindex(exported_ids).to_numpy(dtype=np.float64)
+    if np.isnan(design_weights).any():
+        raise ValueError("Exported households are not a subset of the ordered pool.")
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio_vs_design = float(np.nanmax(np.divide(household_weights, design_weights)))
+    calibration_record = frame.mass_log[-1]
+    if "calibration" not in str(calibration_record.reason):
+        raise ValueError(
+            "exported frame's latest mass record is not the calibration record: "
+            f"{calibration_record.reason!r}."
+        )
+    old_total = float(calibration_record.old_total)
+    new_total = float(calibration_record.new_total)
+    area_gate = gate_rows.get("uk_local_area_support", {})
+    area_details = (
+        area_gate.get("details", {}) if isinstance(area_gate, Mapping) else {}
+    )
+    past_cap = diagnostics.get("past_cap_census") or {}
+    weight_kind = uk_household_weight_kind(frame).value
+    graph_keys = {
+        node_id: dict(receipt.opaque_artifacts)
+        for node_id, receipt in nodes.items()
+        if node_id
+        in {
+            "uk.full.problem",
+            "uk.full.target_compilation",
+            "uk.full.target_selection",
+            "uk.full.gates.calibrated",
+            "uk.full.holdout",
+            "uk.full.package",
+            "uk.full.sample",
+            "uk.full.geography_gate",
+            "uk.full.size_refit",
+            "uk.full.spine_checkpoint",
+        }
+    }
+    return {
+        "schema_version": 4,
+        "build_kind": "uk_rowwise_calibrated_candidate",
+        "release_role": posture.role,
+        "release_id": posture.release_id,
+        "candidate_scope": "adjudicated_partial",
+        "created_at": created_at,
+        "git_commit": code.get("git_commit"),
+        "git_dirty": code.get("git_dirty"),
+        "bound_target_families": list(bindings.get("bound_families", ())),
+        "binding_adjudications": dict(bindings.get("binding_adjudications", {})),
+        "cross_grain": dict(bindings.get("cross_geography", {})),
+        "ladder_assignment_provenance": dict(ladder_provenance),
+        "household_dispersion": dict(surface.get("household_dispersion", {})),
+        "parameters": rowwise_parameters(args, source_year=source_year),
+        "inputs": {
+            "dataset": dict(inputs["dataset"]),
+            "ladder": dict(inputs["ladder"]),
+        },
+        "identity": {
+            "spine": {
+                **dict(inputs["dataset"]),
+                "spine_provenance": dict(spine_provenance),
+            },
+            "ladder": {
+                **dict(inputs["ladder"]),
+                "layer_vintages": dict(ladder_provenance),
+                "matches_local_area_crosswalk_pin": True,
+            },
+            "targets": dict(surface["source_validation"]["targets"]),
+            "code": dict(code),
+            "runtime": dict(runtime),
+            "sampling": dict(sampling),
+            "survey_year": int(source_year),
+            "calibration_year": int(surface["calibration_year"]),
+        },
+        "sampling": dict(sampling),
+        "rung_surface": {
+            **dict(bindings.get("rung_surface", {})),
+            "rung": UK_SAMPLE_RUNG_TOKENS[float(args.sample_fraction)],
+            "fraction": float(args.sample_fraction),
+            "unreachable_check": "completed",
+        },
+        "outputs": {key: dict(value) for key, value in outputs.items()},
+        "geography": {
+            "constituencies_assigned": int(
+                support.loc[
+                    support["geography_level"] == "constituency", "area_code"
+                ].nunique()
+            ),
+            "local_authorities_assigned": int(
+                support.loc[
+                    support["geography_level"] == "local_authority", "area_code"
+                ].nunique()
+            ),
+            "missing_geography_rows": 0,
+            "ladder_gate": {**geography_gate, "phase": "post_calibration"},
+        },
+        "gate": {**geography_gate, "phase": "post_calibration"},
+        "weights": {
+            "household_weight_kind": weight_kind,
+            "household_weight_kind_chain": [
+                {"stage": "staging", "kind": "importance"},
+                *(
+                    []
+                    if float(args.sample_fraction) == 1.0
+                    else [{"stage": "sample", "kind": "importance"}]
+                ),
+                {"stage": "ladder_clone", "kind": "importance"},
+                {"stage": "rowwise_calibration", "kind": weight_kind},
+            ],
+            "mass_log_records_before_calibration": len(frame.mass_log) - 1,
+            "mass_log_records": len(frame.mass_log),
+            "calibration_mass_change": {
+                "entity": str(calibration_record.entity),
+                "old_total": old_total,
+                "new_total": new_total,
+                "relative_shift": (new_total - old_total) / old_total,
+                "declared_factor": calibration_record.declared_factor,
+                "reason": str(calibration_record.reason),
+            },
+            "abs_delta": abs(new_total - old_total),
+            "declared_stretch_bound": float(posture.doctrine.max_weight_ratio),
+            "stretch_reference": "pool_design"
+            if size_receipt is None
+            else "normalized_horvitz_thompson_w_over_q",
+            "realized_max_weight_ratio_vs_stretch_reference": (
+                ratio_vs_design
+                if size_receipt is None
+                else float(diagnostics["realized_max_weight_ratio"])
+            ),
+            "realized_max_weight_ratio_vs_design": ratio_vs_design,
+        },
+        "solve": {
+            "n_targets": int(len(materialization)),
+            "n_targets_by_kind": {
+                "local": int(local_rows),
+                "ladder": int(ladder_rows),
+                "national": int(national_rows),
+            },
+            "n_households": int(frame.n("household")),
+            "pool_households": int(len(problem.entity_ids)),
+            "dataset_size": None if size_receipt is None else dict(size_receipt),
+            "initial_loss": diagnostics["initial_loss"],
+            "final_loss": diagnostics["final_loss"],
+            "max_abs_relative_error": float(abs_errors.max())
+            if len(abs_errors)
+            else None,
+            "median_abs_relative_error": float(np.median(abs_errors))
+            if len(abs_errors)
+            else None,
+            "n_nonzero": int(diagnostics["n_nonzero"]),
+            "past_cap": {
+                "n_targets": past_cap.get("n_targets"),
+                "past_at_init": past_cap.get("initial_past_cap"),
+                "past_at_final": past_cap.get("final_past_cap"),
+                "escaped": past_cap.get("escaped"),
+                "frozen": past_cap.get("frozen"),
+                "pushed_out": past_cap.get("pushed_out"),
+            },
+            "loss_shape": "capped_relative_error",
+            "target_weight_rule": args.target_weight_rule,
+            "target_weight_rule_override": (
+                {}
+                if args.target_weight_rule == posture.target_weight_rule
+                else {
+                    "target_weight_rule": {
+                        "default": posture.target_weight_rule,
+                        "effective": args.target_weight_rule,
+                    }
+                }
+            ),
+            "measure_resolution": dict(bindings.get("measure_resolution", {})),
+            "cross_grain": dict(bindings.get("cross_geography", {})),
+            "binding_adjudications": dict(bindings.get("binding_adjudications", {})),
+            "area_support_exclusions": {
+                "resource": "local_area_support_exclusions.json",
+                "entries_stood_on": sorted(area_details.get("reviewed_exclusions", {})),
+                "stale": list(area_details.get("stale_exclusions", [])),
+                "unknown": list(area_details.get("unknown_exclusions", [])),
+            },
+        },
+        "diagnostics": {
+            "schema_version": diagnostics["schema_version"],
+            "target_registry": diagnostics.get("target_registry"),
+            "weakest_families": diagnostics["uk_diagnostics"].get("weakest_families"),
+            "weakest_areas_by_fit": diagnostics["uk_diagnostics"].get(
+                "weakest_areas_by_fit"
+            ),
+            "rotated_holdout": diagnostics["uk_diagnostics"].get("rotated_holdout"),
+        },
+        "support": {
+            "min_assigned_households": int(support["assigned_households"].min()),
+            "min_nonzero_households": int(support["nonzero_households"].min()),
+            "min_effective_sample_size": float(support["effective_sample_size"].min()),
+            "by_geography_level": {
+                str(level): {
+                    "min_assigned_households": int(rows["assigned_households"].min()),
+                    "min_nonzero_households": int(rows["nonzero_households"].min()),
+                    "min_effective_sample_size": float(
+                        rows["effective_sample_size"].min()
+                    ),
+                    "min_nonzero_source_households": int(
+                        rows["nonzero_source_households"].min()
+                    ),
+                }
+                for level, rows in support.groupby("geography_level", sort=True)
+            },
+        },
+        "fit": {
+            "local_by_family": uk_fit_by_family(local_fit),
+            "national_by_family": uk_fit_by_family(national_fit),
+            "weakest_families": sorted(
+                [*uk_fit_by_family(local_fit), *uk_fit_by_family(national_fit)],
+                key=lambda row: (
+                    -float(row["worst_abs_relative_error"]),
+                    row["family"],
+                ),
+            )[:10],
+            "weakest_areas_by_fit": dict(
+                diagnostics["uk_diagnostics"].get("weakest_areas_by_fit") or {}
+            ),
+            "support_limited_misses": dict(
+                uk_support_limited_misses(
+                    local_fit, support_by_grain, max_abs_relative_error=0.25
+                )
+                if len(local_fit)
+                else {}
+            ),
+            "rotated_holdout": dict(holdout),
+        },
+        "vintages": local_vintage_census(
+            registry_from_payload(surface["local_registry"])
+        ),
+        "failing_gate_ids": sorted(
+            gate_id
+            for gate_id, payload in gate_rows.items()
+            if not isinstance(payload, Mapping) or payload.get("status") != "passed"
+        ),
+        "releasable": bool(releasable and args.dataset_households is None),
+        "release_posture": {
+            **release_posture,
+            **(
+                {}
+                if args.dataset_households is None
+                else {"size_certification_present": False}
+            ),
+        },
+        "census_household_uprating": dict(
+            surface.get("census_household_uprating")
+            or {"applied": False, "reason": "no cross-grain receipt"}
+        ),
+        "measure_exclusions": {
+            str(name): dict(record)
+            for name, record in sorted(
+                (surface.get("measure_exclusions") or {}).items()
+            )
+        },
+        "blocked_at_f100": bool(blocking_failures),
+        "blocking_failures": blocking_failures,
+        "diagnostic_failures": diagnostic_lines,
+        "release_gate_failures_not_enforced": unenforced_failures,
+        "local_gate_scope": sorted(local_scope),
+        "graph": {
+            "artifacts": graph_keys,
+            "terminal_files": {
+                key: dict(value) for key, value in terminal_files.items()
+            },
+            "enforcement": enforcement,
+            "epoch_rows": "dense_solve_only",
+        },
+    }

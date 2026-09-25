@@ -797,3 +797,122 @@ def test_assembler_refuses_a_national_role_manifest(
                 str(tmp_path / "releases"),
             ]
         )
+
+
+def _resigned_report(release_id: str) -> dict:
+    report = _signed_report()
+    report["release_id"] = release_id
+    report["attestation"]["release_id"] = release_id
+    report["attestation"]["signature"] = None
+    report["attestation"]["signature"] = hmac.new(
+        KEY_BYTES, _canonical_json_bytes(report), hashlib.sha256
+    ).hexdigest()
+    return report
+
+
+def test_assembler_stages_a_graph_built_dense_candidate(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    """The graph driver's bundle assembles like a rowwise-tool bundle.
+
+    ``main`` runs the synthetic graph with local-only staging, so the manifest
+    carries the staging receipt, the staged-dataset sidecars and the Logbook
+    row the assembler hash-joins. The signed local battery report and the
+    incumbent-surface companions are supplied as the certification and
+    scoring steps supply them.
+    """
+
+    pytest.importorskip("tables")
+    from test_uk_full_build_cli import STEM, graph_dense_bundle
+
+    from microcosm.build.logbook import load_spool_rows
+    from microcosm.build.uk_runtime import full_build_cli as cli
+
+    monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+    monkeypatch.setattr(cli, "git_commit", lambda: "b" * 40)
+    monkeypatch.setattr(cli, "git_dirty", lambda: False)
+    candidate = graph_dense_bundle(
+        tmp_path,
+        monkeypatch,
+        "--release-candidate",
+        staging="--staging-local-only",
+    )
+    # The graph driver prints the finished manifest to stdout, as the tool does.
+    printed = json.loads(capsys.readouterr().out)
+    assert printed["release_role"] == "dense"
+    spine = tmp_path / "spine.h5"
+    row = load_spool_rows(candidate / "logbook-spool")[0]
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_only"
+    assert manifest["staged_dataset"]["status"] == "skipped"
+    report_path = candidate / f"{STEM}.local_gates.json"
+    report_path.write_text(json.dumps(_resigned_report(row.build_id)))
+    manifest["outputs"]["local_gate_report"]["sha256"] = _sha(report_path)
+    manifest["outputs"]["local_gate_report"]["bytes"] = report_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest))
+    diagnostics_path = Path(manifest["outputs"]["calibration_diagnostics"]["path"])
+    (candidate / "score_vs_incumbent.json").write_text(
+        json.dumps(
+            {
+                "candidate_fitted_surface_loss": 0.0146,
+                "incumbent_fitted_surface_loss": 0.181,
+                "rows_compared": 2,
+                "incumbent_missing_areas": {},
+                "artifacts": {
+                    "candidate_diagnostics": {"sha256": _sha(diagnostics_path)},
+                    "incumbent_household_metrics": {"sha256": "6" * 64},
+                    "incumbent_wide_weights": {"sha256": "7" * 64},
+                },
+            }
+        )
+    )
+    incumbent_manifest = tmp_path / "incumbent_local_surface_manifest.json"
+    incumbent_manifest.write_text(
+        json.dumps(
+            {
+                "period": 2025,
+                "households": 52846,
+                "inputs": {"incumbent_h5": {"sha256": "5" * 64}},
+                "outputs": {
+                    "metrics": {"sha256": "6" * 64},
+                    "weights": {"sha256": "7" * 64},
+                },
+            }
+        )
+    )
+    chronicle = manifest["identity"]["targets"]["chronicle"]
+    evaluation = {
+        "schema_version": 2,
+        "kind": "uk_incumbent_surface_evaluation",
+        "measure_resolution": {"blocks": 1},
+        **_surface_rows(),
+        "identity": {
+            "candidate_dataset_sha256": _sha(candidate / f"{STEM}.h5"),
+            "candidate_manifest_sha256": _sha(manifest_path),
+            "candidate_diagnostics_sha256": _sha(diagnostics_path),
+            "ledger_facts_sha256": chronicle["facts_sha256"],
+            "ledger_manifest_sha256": chronicle["manifest_sha256"],
+            "incumbent_manifest_sha256": _sha(incumbent_manifest),
+            "incumbent_metrics_sha256": "6" * 64,
+            "incumbent_weights_sha256": "7" * 64,
+        },
+    }
+    evaluation["summary"] = dc.uk_incumbent_surface_assessment(evaluation)
+    (candidate / "incumbent_surface_evaluation.json").write_text(json.dumps(evaluation))
+    assembler = _load("assemble_uk_dense_release_dir")
+    out = tmp_path / "releases"
+    assert (
+        assembler.main(_assemble_args(candidate, spine, incumbent_manifest, out)) == 0
+    )
+    summary = json.loads(capsys.readouterr().out)
+    release_dir = out / UK_DENSE_RELEASE_ID
+    assert summary["release_id"] == UK_DENSE_RELEASE_ID
+    for name in dc._UK_DENSE_REQUIRED_RELEASE_FILES:
+        assert (release_dir / name).is_file(), name
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["staging"]["mode"] == "local_only"
+    coverage = json.loads((release_dir / "uk_source_coverage.json").read_text())
+    assert coverage["doctrine"]["clone_count"] == 15
+    assert coverage["holdout"]["n_folds"] == 5
+    dc.validate_release_dir(release_dir)

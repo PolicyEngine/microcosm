@@ -35,6 +35,8 @@ def checkpoint_request(tmp_path, toy_ladder, monkeypatch):
     )
     args = cli.parse_args(
         [
+            "--release-role",
+            "dense",
             "--input-h5",
             str(path),
             "--input-sidecar",

@@ -25,14 +25,11 @@ import hashlib
 import importlib
 import json
 import shutil
-import subprocess
 import sys
 import tempfile
 import time
-import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from datetime import UTC, date, datetime
-from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -47,21 +44,16 @@ from microcosm.build.gate_battery import (
 )
 from microcosm.build.gates import GateResult
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
-from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
     append_phase,
-    apply_error_verdict,
     atomic_write_json,
-    error_receipt_path,
     git_code_pin,
     local_artifact_reference,
     preflight_digest,
-    record_terminal_attempt,
     resolve_predecessor,
     role_pins_digest,
     sha256_argument,
-    write_error_receipt,
 )
 from microcosm.build.staging_cli import (
     add_staged_dataset_arguments,
@@ -71,19 +63,11 @@ from microcosm.build.staging_cli import (
 )
 from microcosm.build.staging_dataset import (
     SHA256SUMS_FILENAME,
-    StagedDatasetBundle,
-    disabled_staged_dataset,
-    local_only_staged_dataset,
     parse_sha256sums,
     refresh_sha256sums_entry,
-    stage_bundle,
-    write_sidecars,
 )
-from microcosm.build.staging_storage import HuggingFaceDatasetStorage
 from microcosm.build.staging_v2 import (
-    StagingContractError,
     StagingTelemetryV2,
-    disabled_staging_delivery,
 )
 from microcosm.build.target_materialization import resolve_target_measures
 from microcosm.build.uk_runtime import (
@@ -155,14 +139,70 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
     sample_uk_spine_frame,
 )
+from microcosm.build.uk_runtime.rowwise_cli import (
+    _BUDGET_ITERS,
+    _CONSERVE_MASS,
+    _L0_LAMBDA,
+    _REPOSITORY,
+    _SIZE_RUN_ONLY_OUTPUTS,  # noqa: F401  (read by the driver tests)
+    _TARGET_RECORDS,
+    _UK_CANDIDATE_PIPELINE,  # noqa: F401  (read by the driver tests)
+    AREA_SUPPORT_FILENAME,  # noqa: F401  (read by the driver tests)
+    CALIBRATION_DIAGNOSTICS_FILENAME,  # noqa: F401  (read by the driver tests)
+    DATASET_SIZE_SELECTION_FILENAME,  # noqa: F401  (read by the driver tests)
+    DENSE_REFERENCE_DIAGNOSTICS_FILENAME,
+    LOCAL_REGISTRY_FILENAME,  # noqa: F401  (read by the driver tests)
+    MANIFEST_FILENAME,  # noqa: F401  (read by the driver tests)
+    PAST_CAP_FILENAME,  # noqa: F401  (read by the driver tests)
+    SOLVE_DIAGNOSTICS_FILENAME,  # noqa: F401  (read by the driver tests)
+    _candidate_clone_counts_argument,
+    _candidate_identity_digest,
+    _doctrine_bounds,  # noqa: F401  (read by the driver tests)
+    _gate_failures_by_criticality,
+    _git_commit,
+    _git_dirty,
+    _is_release_blocking,
+    _json_text,
+    _local_vintage_census,
+    _new_candidate_build_id,
+    _output_paths,
+    _parameters,
+    _posture_of,
+    _record_candidate_attempt,
+    _record_candidate_error,
+    _refuse_national_role_arguments,  # noqa: F401  (read by the driver tests)
+    _release_verdict,
+    _resolve_role_arguments,
+    _validate_cli_args,
+)
 from microcosm.build.uk_runtime.rowwise_posture import (
     UK_ROWWISE_DENSE_POSTURE,
     UK_ROWWISE_RELEASE_ROLES,
     UKRowwisePosture,
-    uk_rowwise_posture,
+    uk_rowwise_posture,  # noqa: F401  (read by the driver tests)
+)
+from microcosm.build.uk_runtime.rowwise_staging import (
+    _STAGED_DATASET_PHASES,
+    _STAGING_MAX_EPOCH_ROWS,  # noqa: F401  (read by the driver tests)
+    _STAGING_UPLOAD_INTERVAL_SECONDS,
+    _add_staging_artifact,
+    _create_staging_telemetry,
+    _fail_staging_telemetry,
+    _finalize_staging_telemetry,
+    _gate_statuses,
+    _preflight_staged_dataset,
+    _publish_staged_files,
+    _replace_manifest,
+    _stage,
+    _stage_dataset,
+    _staging_delivery,
+    _staging_epoch_every,
+    _thinned_epochs,
+)
+from microcosm.build.uk_runtime.size_checkpoint import (
+    uk_size_checkpoint_identity as _size_checkpoint_identity,
 )
 from microcosm.build.uk_runtime.staging import (
-    UK_STAGED_DATASET_PREFIX,
     UK_STAGED_DATASET_REPOSITORY,
     UK_STAGING_REPOSITORY,
 )
@@ -171,55 +211,11 @@ from microcosm.frame import Frame, MassChangeRecord
 
 BOUND_TARGET_FAMILIES = ("census_households/constituency",)
 BOUND_NATIONAL_TARGETS: tuple[str, ...] = ()
-MANIFEST_FILENAME = "rowwise_candidate_manifest.json"
-SOLVE_DIAGNOSTICS_FILENAME = "solve_diagnostics.csv"
-CALIBRATION_DIAGNOSTICS_FILENAME = "calibration_diagnostics.json"
-AREA_SUPPORT_FILENAME = "area_support_summary.csv"
-PAST_CAP_FILENAME = "past_cap_census.json"
-LOCAL_REGISTRY_FILENAME = "local_target_registry.json"
-#: National-role outputs (the calibration seam's evidence shape).
-BUILD_RECORD_FILENAME = "build_record.json"
-NATIONAL_REGISTRY_FILENAME = "national_target_registry.json"
-NATIONAL_CONTRACT_REGISTRY_FILENAME = "national_contract_registry.json"
-SCORE_RECEIPT_FILENAME = "score_vs_incumbent.json"
-DENSE_REFERENCE_DIAGNOSTICS_FILENAME = "dense_reference_diagnostics.csv"
-DATASET_SIZE_SELECTION_FILENAME = "dataset_size_selection.csv"
-
-#: Outputs a run writes only when ``--dataset-households`` is set.
-_SIZE_RUN_ONLY_OUTPUTS = frozenset({"dense_reference", "selection"})
-
-_CONSERVE_MASS = False
-_TARGET_RECORDS: int | None = None
-_L0_LAMBDA = 0.0
-_BUDGET_ITERS = 10
-# The dense role's Logbook pipeline and gate-policy suffix, kept as module
-# names for the Logbook helpers and the contract-pin tests; the posture
-# record (``rowwise_posture.py``) is the source of truth for both roles.
-_UK_CANDIDATE_PIPELINE = UK_ROWWISE_DENSE_POSTURE.pipeline
+# The dense role's gate-policy suffix, kept as a module name for the
+# contract-pin tests; the posture record (``rowwise_posture.py``) is the
+# source of truth for both roles, and the shared CLI helpers now live in
+# ``uk_runtime/rowwise_cli.py`` / ``rowwise_staging.py``.
 _LOCAL_GATE_POLICY_SUFFIX = UK_ROWWISE_DENSE_POSTURE.gate_policy_suffix
-# Best-effort telemetry upload cadence. The Hub allows about 128 commits per
-# hour per repository and one cycle is up to eight single-file commits, so
-# the shared 30-second default exhausts the budget on a multi-hour solve
-# and loses uploads (the v20 national run did); five minutes keeps a
-# 1,500-epoch run well inside it.
-_STAGING_UPLOAD_INTERVAL_SECONDS = 300.0
-# Staging telemetry keeps one row per forwarded epoch in
-# calibration_progress.json and one event in events.ndjson, both under the
-# contract's 5 MiB remote cap. A size run at 2,000 epochs solves the dense
-# pool, up to ten full-length L0 probes and the refit: about 24,000 epochs,
-# which would breach the cap mid-run. Forwarding every tenth epoch and the
-# last epoch of each phase keeps the loss curve and stays near 0.8 MB.
-_STAGING_EPOCH_EVERY = 10
-# ...and never more than this many forwarded epochs per run, whatever --epochs
-# says: the stride grows with the run so the cap holds by construction.
-_STAGING_MAX_EPOCH_ROWS = 2400
-_STAGED_DATASET_PHASES = {
-    "uploaded": "dataset_staged",
-    "already_staged": "dataset_staged",
-    "failed": "dataset_stage_failed",
-    "skipped": "dataset_stage_skipped",
-}
-_REPOSITORY = Path(__file__).resolve().parents[1]
 _PAST_CAP_COUNT_KEYS = (
     "n_targets",
     "past_at_init",
@@ -240,46 +236,6 @@ class _LadderAssignment:
     ) -> None:
         self.result = result
         self.ladder = ladder
-
-
-def _new_candidate_build_id(
-    *, seed: int, timestamp: datetime, rung: str = "f100"
-) -> str:
-    """The dense role's attempt id; the national role mints the seam's."""
-
-    instant = timestamp.astimezone(UTC)
-    return (
-        f"{UK_ROWWISE_DENSE_POSTURE.build_id_prefix}{rung}-s{seed}-"
-        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
-    )
-
-
-def _posture_of(args: argparse.Namespace) -> UKRowwisePosture:
-    """The release-role posture bound to parsed arguments."""
-
-    posture = getattr(args, "_posture", None)
-    if not isinstance(posture, UKRowwisePosture):
-        raise RuntimeError("arguments carry no release-role posture; parse them first.")
-    return posture
-
-
-def _candidate_clone_counts_argument(value: str) -> tuple[int, ...]:
-    parts = value.split(",")
-    if not value.strip() or any(not part.strip() for part in parts):
-        raise argparse.ArgumentTypeError(
-            "candidate clone counts must be a non-empty comma list of positive integers"
-        )
-    try:
-        counts = [int(part.strip()) for part in parts]
-    except ValueError as error:
-        raise argparse.ArgumentTypeError(
-            "candidate clone counts must be a comma list of positive integers"
-        ) from error
-    if any(count <= 0 for count in counts):
-        raise argparse.ArgumentTypeError(
-            "candidate clone counts must all be positive integers"
-        )
-    return tuple(sorted(set(counts)))
 
 
 def _sample_candidate_frame(
@@ -602,128 +558,6 @@ def _refuse_stale_size_checkpoint(args: argparse.Namespace, out_dir: Path) -> No
         )
 
 
-def _size_checkpoint_identity(
-    args: argparse.Namespace,
-    *,
-    pins: Mapping[str, Mapping[str, object]],
-    source_year: int,
-) -> dict[str, object]:
-    """Everything a size checkpoint must share with the run that resumes it.
-
-    The pool (spine, ladder, clones, seed, sampling), the target surface
-    (ledger digests, year, rule, engine blocks) and the solve settings the
-    checkpointed dense solve and search were made with. The draw threshold is
-    deliberately absent: re-drawing at another threshold is the point.
-    """
-    posture = _posture_of(args)
-    return {
-        "release_role": posture.role,
-        "dataset_pin": dict(pins["dataset"]),
-        "ladder_pin": dict(pins["ladder"]),
-        "ledger_facts_sha256": args.ledger_facts_sha256,
-        "ledger_manifest_sha256": args.ledger_manifest_sha256,
-        "seed": int(args.seed),
-        "selection_seed": int(
-            args.seed if args.selection_seed is None else args.selection_seed
-        ),
-        "n_clones": None if args.n_clones is None else int(args.n_clones),
-        "dataset_households": args.dataset_households,
-        "epochs": int(args.epochs),
-        "learning_rate": float(args.learning_rate),
-        "sample_fraction": float(args.sample_fraction),
-        "sample_seed": int(args.sample_seed),
-        "source_year": int(source_year),
-        "source_lineage_modulus": args.source_lineage_modulus,
-        "calibration_year": getattr(args, "_calibration_year", None),
-        "target_weight_rule": args.target_weight_rule,
-        "engine_blocks": int(args.engine_blocks),
-        "measure_exclusions": (
-            None if args.measure_exclusions is None else str(args.measure_exclusions)
-        ),
-        # The solve doctrine the dense solve and the search run under: a
-        # resume after a doctrine change must refuse, not run under the old
-        # bound while the manifest declares the new one.
-        "doctrine": _doctrine_bounds(posture),
-    }
-
-
-def _candidate_identity_digest(
-    *,
-    pins: dict[str, dict[str, object]],
-    args: argparse.Namespace,
-    source_year: int,
-) -> str:
-    payload = {
-        "build_kind": "uk_rowwise_calibrated_candidate",
-        "inputs": pins,
-        "parameters": _parameters(args, source_year=source_year),
-        "source_year": source_year,
-    }
-    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
-
-
-def _record_candidate_attempt(
-    *,
-    state: AttemptState,
-    started_at: float,
-    started_ts: datetime,
-    seed: int,
-    code_pin: str,
-    disposition: str,
-    predecessor: str | None,
-    spool_dir: Path,
-    rung: str = "f100",
-) -> Path:
-    return record_terminal_attempt(
-        state=state,
-        started_at=started_at,
-        started_ts=started_ts,
-        pipeline=_UK_CANDIDATE_PIPELINE,
-        rung=rung,
-        seed=seed,
-        code_pin=code_pin,
-        disposition=disposition,
-        predecessor=predecessor,
-        spool_dir=spool_dir,
-    )
-
-
-def _record_candidate_error(
-    *,
-    error: BaseException,
-    state: AttemptState,
-    started_at: float,
-    started_ts: datetime,
-    seed: int,
-    code_pin: str,
-    predecessor: str | None,
-    base_dir: Path,
-    spool_dir: Path,
-    rung: str = "f100",
-) -> None:
-    error_path = write_error_receipt(
-        error_receipt_path(base_dir, build_id=state.build_id),
-        state=state,
-        pipeline=_UK_CANDIDATE_PIPELINE,
-        error=error,
-    )
-    apply_error_verdict(
-        state,
-        f"{local_artifact_reference(error_path, repository_hint=_REPOSITORY)}#/error_type",
-    )
-    _record_candidate_attempt(
-        state=state,
-        started_at=started_at,
-        started_ts=started_ts,
-        seed=seed,
-        code_pin=code_pin,
-        disposition="failed",
-        predecessor=predecessor,
-        spool_dir=spool_dir,
-        rung=rung,
-    )
-
-
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -958,45 +792,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     validate_staged_dataset_arguments(parser, args)
     _resolve_role_arguments(args)
     return args
-
-
-#: Solve arguments whose argparse default is ``None`` so an explicit value can
-#: be told from the role's default: the other role's refusal table keys on
-#: what was actually given.
-_ROLE_DEFAULTED_ARGUMENTS = (
-    "n_clones",
-    "seed",
-    "sample_seed",
-    "epochs",
-    "learning_rate",
-    "target_weight_rule",
-    "expected_constituency_vintage",
-)
-
-
-def _resolve_role_arguments(args: argparse.Namespace) -> UKRowwisePosture:
-    """Bind the declared role's posture and fill its defaults into unset arguments."""
-
-    posture = uk_rowwise_posture(args.release_role)
-    args._explicit_arguments = frozenset(
-        name for name in _ROLE_DEFAULTED_ARGUMENTS if getattr(args, name) is not None
-    )
-    if args.n_clones is None:
-        args.n_clones = posture.clone_count
-    if args.seed is None:
-        args.seed = posture.seed
-    if args.sample_seed is None:
-        args.sample_seed = UK_SAMPLE_SEED_DEFAULT
-    if args.epochs is None:
-        args.epochs = posture.epochs
-    if args.learning_rate is None:
-        args.learning_rate = posture.learning_rate
-    if args.target_weight_rule is None:
-        args.target_weight_rule = posture.target_weight_rule
-    if args.expected_constituency_vintage is None:
-        args.expected_constituency_vintage = posture.expected_constituency_vintage
-    args._posture = posture
-    return posture
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2254,197 +2049,6 @@ def _national_manifest(
     }
 
 
-def _hub_api() -> Any:
-    """The Hub client used for telemetry and the staged dataset (test seam)."""
-
-    from huggingface_hub import HfApi
-
-    return HfApi()
-
-
-def _hub_token() -> str | None:
-    """The ambient Hub credential, if any (test seam)."""
-
-    from huggingface_hub import get_token
-
-    return get_token()
-
-
-def _staged_dataset_mode(args: argparse.Namespace) -> str:
-    if args.no_staging or args.no_staged_dataset:
-        return "disabled"
-    if args.staging_local_only:
-        return "local_only"
-    return "local_and_remote"
-
-
-def _preflight_staged_dataset(args: argparse.Namespace) -> None:
-    """Refuse a remote dataset stage the run could not complete.
-
-    The bundle upload is the last step of a multi-hour run, so the credential
-    and the repository are checked before the spine is read. Telemetry stays
-    best-effort with no pre-flight, as on the national command.
-    """
-
-    if args.dry_run or _staged_dataset_mode(args) != "local_and_remote":
-        return
-    repo_id = str(args.staged_dataset_repo_id).strip()
-    hint = "pass --staging-local-only or --no-staged-dataset to keep the bundle local"
-    if not _hub_token():
-        raise ValueError(
-            f"remote dataset staging to {repo_id} needs a Hugging Face write "
-            f"credential (HF_TOKEN or `hf auth login`); {hint}."
-        )
-    storage = HuggingFaceDatasetStorage(repo_id, api=_hub_api())
-    try:
-        storage.head_revision()
-    except Exception as error:
-        # The transport's own message is not chained: it can carry request
-        # URLs and identifiers, and the type name is enough to act on.
-        raise ValueError(
-            f"remote dataset staging cannot reach {repo_id} "
-            f"({type(error).__name__}); {hint}."
-        ) from None
-    _require_write_credential(storage, hint=hint)
-
-
-def _require_write_credential(storage: HuggingFaceDatasetStorage, *, hint: str) -> None:
-    """Refuse a credential that can see the repository but cannot write it.
-
-    A read token, or a fine-grained token scoped to another owner, passes the
-    reachability check and is refused by the Hub with 403 only when the upload
-    starts, hours later. The scope is read from the Hub's own description of
-    the token; when it cannot be read the upload itself is the proof.
-    """
-
-    try:
-        can_write = storage.credential_can_write()
-    except Exception:
-        can_write = None
-    if can_write is False:
-        raise ValueError(
-            f"remote dataset staging to {storage.repo_id} needs a write credential: "
-            "the ambient Hugging Face token is read-only or is not scoped to this "
-            "repository or its owner (a fine-grained token needs repo.write on "
-            f"{storage.repo_id} or on {storage.repo_id.split('/', 1)[0]}); {hint}."
-        )
-    if can_write is None:
-        print(
-            "warning: the Hugging Face credential's write scope could not be read; "
-            "the upload at the end of the run will prove it.",
-            file=sys.stderr,
-            flush=True,
-        )
-
-
-def _create_staging_telemetry(
-    args: argparse.Namespace, *, build_id: str
-) -> StagingTelemetryV2 | None:
-    if args.no_staging:
-        return None
-    local_only = bool(args.staging_local_only)
-    out_dir = args.out.expanduser().resolve()
-    posture = _posture_of(args)
-    return StagingTelemetryV2(
-        run_id=args.staging_run_id or build_id,
-        country_code="GB",
-        operation_id=posture.staging_operation_id,
-        pipeline_id=posture.pipeline,
-        pipeline_version=metadata.version("microcosm-build"),
-        candidate_id=args.staging_candidate_id or build_id,
-        local_dir=args.staging_dir or out_dir / "staging",
-        run_kind="calibration",
-        delivery_mode="local_only" if local_only else "local_and_remote",
-        repo_id=None if local_only else args.staging_repo_id,
-        upload_interval_seconds=args.staging_upload_interval_seconds,
-        api=None if local_only else _hub_api(),
-    )
-
-
-def _stage(
-    telemetry: StagingTelemetryV2 | None,
-    stage_id: str,
-    event_status: str = "started",
-    **details: Any,
-) -> None:
-    """Forward one stage event to the best-effort telemetry.
-
-    A contract or content refusal of the event is reported and the event
-    dropped; the build must never abort on its own progress report. Each
-    event is judged on its own details, so a refused event does not silence
-    the ones that follow.
-    """
-
-    if telemetry is None:
-        return
-    try:
-        telemetry.stage(stage_id, event_status=event_status, **details)
-    except StagingContractError as error:
-        print(
-            f"warning: staging telemetry refused the {stage_id!r} stage event "
-            f"({type(error).__name__}: {error}); the event is not staged, the "
-            "build continues.",
-            file=sys.stderr,
-            flush=True,
-        )
-
-
-def _staging_epoch_every(args: argparse.Namespace) -> int:
-    """The epoch stride that keeps the forwarded rows under the row budget.
-
-    A dense run solves once; a size run solves the pool, up to ``budget_iters``
-    full-length probes and the refit. The stride is at least
-    ``_STAGING_EPOCH_EVERY`` and grows so at most ``_STAGING_MAX_EPOCH_ROWS``
-    epochs are forwarded, keeping ``calibration_progress.json`` and
-    ``events.ndjson`` under the contract's 5 MiB cap for any ``--epochs``.
-    """
-
-    solves = 1 if args.dataset_households is None else 2 + _BUDGET_ITERS
-    total = int(args.epochs) * solves
-    return max(_STAGING_EPOCH_EVERY, -(-total // _STAGING_MAX_EPOCH_ROWS))
-
-
-def _thinned_epochs(
-    sink: Callable[[Mapping[str, Any]], None], *, every: int = _STAGING_EPOCH_EVERY
-) -> Callable[[dict[str, object]], None]:
-    """Forward every ``every``-th epoch and each phase's last epoch to ``sink``.
-
-    The kernel flags probe epochs with ``budget_search: True``; the staging
-    contract records that field as an integer or null, so the flag becomes 1
-    (the national command never runs a budget search and never met this). A
-    contract or content refusal from the telemetry is reported once and stops
-    the forwarding: the solve must never abort on its own progress report.
-    """
-
-    disabled = False
-
-    def callback(event: dict[str, object]) -> None:
-        nonlocal disabled
-        if disabled or event.get("kind") != "calibration_epoch":
-            return
-        epoch = int(event["epoch"])
-        epochs = int(event["epochs"])
-        if epoch % every != 0 and epoch != epochs:
-            return
-        forwarded = dict(event)
-        budget_search = forwarded.get("budget_search")
-        if isinstance(budget_search, bool):
-            forwarded["budget_search"] = 1 if budget_search else None
-        try:
-            sink(forwarded)
-        except StagingContractError as error:
-            disabled = True
-            print(
-                "warning: staging telemetry refused a calibration progress row "
-                f"({type(error).__name__}); epoch progress is no longer forwarded, "
-                "the solve continues.",
-                file=sys.stderr,
-                flush=True,
-            )
-
-    return callback
-
-
 def _size_checkpoint_state(solve: UKRowwiseDoctrineSolve) -> str | None:
     if solve.size_receipt is None or not solve.size_receipt.get("checkpoint"):
         return None
@@ -2454,349 +2058,6 @@ def _size_checkpoint_state(solve: UKRowwiseDoctrineSolve) -> str | None:
     if "resumed_from" in checkpoint:
         return "resumed"
     return None
-
-
-def _gate_statuses(gate_report: Mapping[str, Any]) -> dict[str, str]:
-    return {
-        str(gate_id): str(entry.get("status"))
-        for gate_id, entry in gate_report.get("gates", {}).items()
-        if isinstance(entry, Mapping)
-    }
-
-
-def _fail_staging_telemetry(
-    telemetry: StagingTelemetryV2 | None, error: BaseException
-) -> None:
-    if telemetry is None or telemetry.status != "running":
-        return
-    try:
-        telemetry.fail(error)
-        telemetry.validate_local_bundle()
-    except Exception:
-        pass
-
-
-def _finalize_staging_telemetry(
-    args: argparse.Namespace, telemetry: StagingTelemetryV2 | None
-) -> None:
-    if telemetry is None:
-        return
-    try:
-        telemetry.complete(message="UK rowwise candidate staging run completed.")
-    except StagingContractError as error:
-        _warn_telemetry("could not close the staging run", error)
-        return
-    try:
-        if args.staging_read_back:
-            # Requested explicitly, so a failed read-back is the run's failure,
-            # as on the national command.
-            telemetry.verify_remote()
-    finally:
-        try:
-            telemetry.validate_local_bundle()
-        except StagingContractError as error:
-            _warn_telemetry("the local staging bundle does not validate", error)
-
-
-def _warn_telemetry(what: str, error: BaseException) -> None:
-    print(
-        f"warning: {what} ({type(error).__name__}: {error}); the build's own "
-        "evidence is unaffected.",
-        file=sys.stderr,
-        flush=True,
-    )
-
-
-def _staging_delivery(telemetry: StagingTelemetryV2 | None) -> dict[str, Any]:
-    if telemetry is None:
-        return disabled_staging_delivery("--no-staging")
-    return telemetry.delivery_summary
-
-
-def _stage_dataset(
-    args: argparse.Namespace,
-    *,
-    manifest: Mapping[str, Any],
-    output_paths: Mapping[str, Path],
-    run_id: str,
-    telemetry: StagingTelemetryV2 | None,
-) -> dict[str, Any]:
-    """Stage the published bundle under ``staged/<run_id>/``; record, never raise.
-
-    The bundle is every file the manifest registers as an output plus the
-    manifest and two sidecars, verified from disk against the manifest's own
-    digests. Nothing else in the run directory is eligible.
-    """
-
-    mode = _staged_dataset_mode(args)
-    if mode == "disabled":
-        return disabled_staged_dataset(
-            "--no-staging" if args.no_staging else "--no-staged-dataset"
-        )
-    repository = (
-        None if mode == "local_only" else str(args.staged_dataset_repo_id).strip()
-    )
-    _stage(telemetry, "dataset_staging", "started", mode=mode, repository=repository)
-    gate_statuses = _gate_statuses(getattr(args, "_gate_report", {}) or {})
-    bundle = StagedDatasetBundle.from_manifest(
-        output_paths["manifest"].parent,
-        run_id=run_id,
-        manifest_name=MANIFEST_FILENAME,
-        extra_summary={
-            "dataset_households": manifest["parameters"]["dataset_households"],
-            "pool_rows": manifest["solve"]["pool_households"],
-            "realized_households": manifest["solve"]["n_households"],
-            "final_loss": manifest["solve"]["final_loss"],
-            "release_posture": manifest["release_posture"],
-            "gate_statuses": gate_statuses,
-        },
-    )
-    telemetry_reference = (
-        None
-        if telemetry is None
-        else {
-            "repository": telemetry.repo_id,
-            "prefix": telemetry.repo_run_prefix,
-            "mode": telemetry.delivery_mode,
-        }
-    )
-    write_sidecars(
-        bundle,
-        repository=repository,
-        prefix=UK_STAGED_DATASET_PREFIX,
-        telemetry=telemetry_reference,
-    )
-    if mode == "local_only":
-        delivery = local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
-    else:
-        print(
-            f"staging the dataset bundle to {repository} under "
-            f"{bundle.remote_prefix(UK_STAGED_DATASET_PREFIX)}...",
-            file=sys.stderr,
-            flush=True,
-        )
-        storage = HuggingFaceDatasetStorage(repository, api=_hub_api())
-        delivery = stage_bundle(
-            bundle, storage=storage, prefix=UK_STAGED_DATASET_PREFIX
-        )
-    print(_staged_dataset_line(delivery), file=sys.stderr, flush=True)
-    _stage(
-        telemetry,
-        "dataset_staging",
-        "completed",
-        status=delivery["status"],
-        repository=delivery["repository"],
-        revision=delivery["revision"],
-        error_code=delivery["error_code"],
-        file_count=len(delivery["files"]),
-    )
-    _add_staging_artifact(
-        telemetry,
-        "staged_dataset",
-        delivery,
-        artifact_kind="build_metadata",
-        classification="non_row_level",
-    )
-    _add_staging_artifact(
-        telemetry,
-        "fit_summary",
-        _fit_summary(
-            manifest,
-            run_id=run_id,
-            gate_statuses=gate_statuses,
-            staged_dataset=delivery,
-        ),
-        artifact_kind="aggregate_diagnostics",
-        classification="aggregate",
-    )
-    return delivery
-
-
-def _staged_dataset_line(delivery: Mapping[str, Any]) -> str:
-    status = delivery["status"]
-    if status in ("uploaded", "already_staged"):
-        return (
-            f"staged dataset: {status} at {delivery['repository']}/"
-            f"{delivery['prefix']} (revision {delivery['revision']})"
-        )
-    if status == "failed":
-        return (
-            f"staged dataset: failed ({delivery['error_code']}); the bundle and "
-            "its sidecars stay local and can be re-staged with "
-            "tools/stage_uk_rowwise_candidate.py"
-        )
-    return (
-        f"staged dataset: skipped ({delivery['mode']}); sidecars written beside "
-        "the bundle"
-    )
-
-
-def _add_staging_artifact(
-    telemetry: StagingTelemetryV2 | None,
-    logical_name: str,
-    payload: Mapping[str, Any],
-    *,
-    artifact_kind: str,
-    classification: str,
-) -> None:
-    """Attach a reviewed aggregate JSON artifact to the telemetry run.
-
-    A content-policy refusal is reported and skipped: the telemetry is
-    best-effort and must never fail a finished build.
-    """
-
-    if telemetry is None:
-        return
-    with tempfile.TemporaryDirectory(prefix=".staging-artifact.") as scratch:
-        source = Path(scratch) / f"{logical_name}.json"
-        source.write_text(_json_text(payload), encoding="utf-8")
-        try:
-            telemetry.add_artifact(
-                logical_name,
-                source,
-                artifact_kind=artifact_kind,
-                classification=classification,
-            )
-        except StagingContractError as error:
-            print(
-                f"warning: staging artifact {logical_name} was refused by the "
-                f"content policy and is not staged: {error}",
-                file=sys.stderr,
-                flush=True,
-            )
-
-
-def _fit_summary(
-    manifest: Mapping[str, Any],
-    *,
-    run_id: str,
-    gate_statuses: Mapping[str, str],
-    staged_dataset: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Aggregate fit, gate and size evidence shaped for a reviewed artifact.
-
-    The content policy admits JSON objects without arrays of objects, so the
-    per-family rows become mappings keyed by family and anything row-shaped
-    is dropped by :func:`_aggregate_only`.
-    """
-
-    solve = manifest["solve"]
-    fit = manifest.get("fit") or {}
-    size = solve.get("dataset_size")
-    parameters = manifest["parameters"]
-    return {
-        "schema_name": "microcosm.uk.rowwise-fit-summary",
-        "schema_version": 1,
-        "run_id": run_id,
-        "build_kind": manifest["build_kind"],
-        "releasable": manifest["releasable"],
-        "release_posture": _aggregate_only(manifest["release_posture"]),
-        "git_commit": manifest["git_commit"],
-        "git_dirty": manifest["git_dirty"],
-        "parameters": {
-            key: parameters.get(key)
-            for key in (
-                "n_clones",
-                "dataset_households",
-                "seed",
-                "epochs",
-                "sample_fraction",
-                "release_candidate",
-                "skip_holdout",
-                "target_weight_rule",
-            )
-        },
-        "targets": {
-            "count": solve["n_targets"],
-            "by_kind": _aggregate_only(solve["n_targets_by_kind"]),
-        },
-        "pool_rows": solve["pool_households"],
-        "realized_households": solve["n_households"],
-        "loss": {
-            "initial": solve["initial_loss"],
-            "final": solve["final_loss"],
-            "max_abs_relative_error": solve["max_abs_relative_error"],
-            "median_abs_relative_error": solve["median_abs_relative_error"],
-        },
-        "fit_by_family": {
-            "local": _rows_by_key(fit.get("local_by_family"), key="family"),
-            "national": _rows_by_key(fit.get("national_by_family"), key="family"),
-        },
-        "weakest_areas_by_fit": _aggregate_only(fit.get("weakest_areas_by_fit")),
-        "rotated_holdout": _aggregate_only(fit.get("rotated_holdout")),
-        "gates": dict(gate_statuses),
-        "failing_gate_ids": list(manifest.get("failing_gate_ids", [])),
-        "blocking_failure_count": len(manifest.get("blocking_failures", [])),
-        # The receipt's per-row arrays (pool_row_indices, inclusion
-        # probabilities) live in dataset_size_selection.csv and would push the
-        # artifact past the 5 MiB cap on a real run.
-        "dataset_size": None
-        if size is None
-        else _aggregate_only(
-            {
-                key: value
-                for key, value in size.items()
-                if key not in ("pool_row_indices", "inclusion_probabilities")
-            }
-        ),
-        "staged_dataset": {
-            key: staged_dataset[key]
-            for key in ("repository", "prefix", "revision", "status", "error_code")
-        },
-    }
-
-
-def _rows_by_key(rows: Any, *, key: str) -> dict[str, Any]:
-    """Turn a list of row mappings into a mapping keyed by ``row[key]``."""
-
-    if not isinstance(rows, list):
-        return {}
-    keyed: dict[str, Any] = {}
-    for row in rows:
-        if not isinstance(row, Mapping) or key not in row:
-            continue
-        keyed[str(row[key])] = _aggregate_only(
-            {name: value for name, value in row.items() if name != key}
-        )
-    return keyed
-
-
-def _aggregate_only(value: Any) -> Any:
-    """Drop row-shaped data (lists holding mappings) recursively."""
-
-    if isinstance(value, Mapping):
-        kept = {}
-        for name, item in value.items():
-            cleaned = _aggregate_only(item)
-            if cleaned is not _DROPPED:
-                kept[str(name)] = cleaned
-        return kept
-    if isinstance(value, (list, tuple)):
-        if any(isinstance(item, Mapping) for item in value):
-            return _DROPPED
-        return [
-            item
-            for item in (_aggregate_only(entry) for entry in value)
-            if item is not _DROPPED
-        ]
-    return value
-
-
-_DROPPED = object()
-
-
-def _replace_manifest(path: Path, manifest: Mapping[str, Any]) -> None:
-    """Rewrite the published manifest atomically with appended evidence."""
-
-    handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temporary_path = Path(temporary)
-    try:
-        with open(handle, "w", encoding="utf-8") as stream:
-            stream.write(_json_text(manifest))
-        temporary_path.replace(path)
-    except BaseException:
-        temporary_path.unlink(missing_ok=True)
-        raise
 
 
 def _clone_with_ladder_binding(
@@ -3206,28 +2467,6 @@ def _joint_dry_run_plan(
     }
 
 
-def _local_vintage_census(registry: TargetRegistry) -> list[dict[str, object]]:
-    counts: dict[tuple[str, str, str, str], int] = {}
-    for spec in registry.specs:
-        resolved = str(spec.metadata.get("ledger_fact_period", ""))
-        target = str(spec.period)
-        if not resolved or resolved == target:
-            continue
-        level, _ = _spec_geography(spec)
-        key = (spec.family, level, resolved, target)
-        counts[key] = counts.get(key, 0) + 1
-    return [
-        {
-            "family": family,
-            "geography_level": level,
-            "resolved_period": resolved,
-            "target_period": target,
-            "cells": cells,
-        }
-        for (family, level, resolved, target), cells in sorted(counts.items())
-    ]
-
-
 def _build_bound_problem(
     assignment: _LadderAssignment,
     *,
@@ -3515,73 +2754,6 @@ def _run_local_gate_battery(
             "a non-passing local geography-ladder result escaped battery enforcement."
         )
     return payload, ladder.result
-
-
-def _gate_failures_by_criticality(
-    gate_report: Mapping[str, Any],
-) -> tuple[list[str], list[str]]:
-    """Split a persisted battery report's failure lines by criticality.
-
-    Returns ``(release_blocking, diagnostic)``, each entry-prefixed like
-    :class:`GateBatteryBlockedError`'s lines. Only ``failed`` and
-    ``evidence_absent`` entries are failures; ``not_applicable`` and
-    ``unreached`` entries are not.
-    """
-
-    blocking: list[str] = []
-    diagnostic: list[str] = []
-    gates = gate_report.get("gates", {})
-    if not isinstance(gates, Mapping):
-        return blocking, diagnostic
-    for gate_id, payload in gates.items():
-        if not isinstance(payload, Mapping):
-            continue
-        status = payload.get("status")
-        if status not in {"failed", "evidence_absent"}:
-            continue
-        lines = [f"[{gate_id}] {line}" for line in payload.get("failures") or ()]
-        if not lines:
-            lines = [f"[{gate_id}] {payload.get('reason') or status}"]
-        bucket = blocking if _is_release_blocking(payload) else diagnostic
-        bucket.extend(lines)
-    return blocking, diagnostic
-
-
-def _is_release_blocking(payload: Mapping[str, Any]) -> bool:
-    """Fail-closed criticality read.
-
-    Only an entry that explicitly declares ``criticality: diagnostic`` is
-    exempt from vetoing the release; a missing or unknown criticality is
-    treated as release-blocking, so partial schema drift on one persisted
-    entry cannot drop a failed gate out of both the blocking list and
-    ``all_gates_passed``.
-    """
-
-    return payload.get("criticality") != "diagnostic"
-
-
-def _release_verdict(
-    *,
-    sample_fraction: float,
-    engine_blocks: int,
-    release_blocking_gates_passed: bool,
-) -> tuple[bool, dict[str, bool]]:
-    """``releasable`` needs the full rung, a single-block engine resolution and
-    every release-blocking gate passed.
-
-    Per-block engine resolution mis-measures population-normalised formulas
-    (each block reproduces a national aggregate: the ×K land-value artefact
-    behind the #736 erratum), so a run resolved in more than one block is
-    diagnostic-only whatever its gates say. The posture is written beside the
-    verdict so a reader sees which leg failed.
-    """
-
-    posture = {
-        "full_rung": float(sample_fraction) == 1.0,
-        "single_block_engine": int(engine_blocks) == 1,
-        "release_blocking_gates_passed": bool(release_blocking_gates_passed),
-    }
-    return all(posture.values()), posture
 
 
 def _apply_gate_verdicts(
@@ -4127,55 +3299,6 @@ def _manifest(
     }
 
 
-def _parameters(args: argparse.Namespace, *, source_year: int) -> dict[str, Any]:
-    posture = _posture_of(args)
-    return {
-        "release_role": posture.role,
-        "n_clones": None if args.n_clones is None else int(args.n_clones),
-        "dataset_households": args.dataset_households,
-        "seed": int(args.seed),
-        "selection_seed": None
-        if args.dataset_households is None
-        else int(args.seed if args.selection_seed is None else args.selection_seed),
-        "selection_pi_hi": None
-        if args.dataset_households is None
-        else float(args.selection_pi_hi),
-        "baseline_pi_floor": None
-        if args.dataset_households is None
-        else float(args.baseline_pi_floor),
-        "size_checkpoint": bool(
-            args.dataset_households is not None
-            and not args.no_size_checkpoint
-            and args.resume_size_checkpoint is None
-        ),
-        "resume_size_checkpoint": None
-        if args.resume_size_checkpoint is None
-        else str(args.resume_size_checkpoint.expanduser().resolve()),
-        "source_year": source_year,
-        "source_lineage_modulus": args.source_lineage_modulus,
-        "sample_fraction": float(args.sample_fraction),
-        "sample_seed": int(args.sample_seed),
-        "engine_blocks": int(args.engine_blocks),
-        "target_weight_rule": args.target_weight_rule,
-        "release_candidate": bool(args.release_candidate),
-        "skip_holdout": bool(args.skip_holdout),
-        "epochs": int(args.epochs),
-        "learning_rate": float(args.learning_rate),
-        "expected_constituency_vintage": (
-            None
-            if args.expected_constituency_vintage is None
-            else str(args.expected_constituency_vintage)
-        ),
-        "doctrine": _doctrine_bounds(posture),
-        "solve_options": {
-            "conserve_mass": _CONSERVE_MASS,
-            "target_records": _TARGET_RECORDS,
-            "l0_lambda": _L0_LAMBDA,
-            "budget_iters": _BUDGET_ITERS,
-        },
-    }
-
-
 def _design_weights_for(solve: UKRowwiseDoctrineSolve) -> np.ndarray:
     """The pool design weights aligned to the solve's exported rows."""
     if solve.selected_support is None or solve.dense_reference is None:
@@ -4306,10 +3429,6 @@ def _local_output_registry(
     return TargetRegistry(specs, country="uk")
 
 
-def _doctrine_bounds(posture: UKRowwisePosture) -> dict[str, Any]:
-    return posture.doctrine_bounds()
-
-
 def _gate_payload(gate: GateResult, *, phase: str) -> dict[str, Any]:
     return {
         "name": str(gate.name),
@@ -4375,219 +3494,6 @@ def _validate_support_summary(support: pd.DataFrame) -> None:
     values = support[numeric].to_numpy(dtype=np.float64)
     if not np.isfinite(values).all() or (values < 0).any():
         raise RuntimeError("area support summary contains invalid values.")
-
-
-def _validate_cli_args(args: argparse.Namespace) -> None:
-    posture = _posture_of(args)
-    # The declared role is checked against the parameters first: the other
-    # role's flags are refused by name before any value is range-checked.
-    if posture.role == "national":
-        _refuse_dense_role_arguments(args, posture)
-    else:
-        _refuse_national_role_arguments(args, posture)
-    if args.selection_seed is not None and args.dataset_households is None:
-        raise ValueError("--selection-seed requires --dataset-households.")
-    if not (0.0 < args.selection_pi_hi <= 1.0):
-        raise ValueError("--selection-pi-hi must be in (0, 1].")
-    if args.selection_pi_hi != 1.0 and args.dataset_households is None:
-        raise ValueError("--selection-pi-hi requires --dataset-households.")
-    if not (0.0 <= args.baseline_pi_floor <= 1.0):
-        raise ValueError("--baseline-pi-floor must be in [0, 1].")
-    if args.baseline_pi_floor != 0.0 and args.dataset_households is None:
-        raise ValueError("--baseline-pi-floor requires --dataset-households.")
-    if args.no_size_checkpoint and args.dataset_households is None:
-        raise ValueError("--no-size-checkpoint requires --dataset-households.")
-    if args.resume_size_checkpoint is not None:
-        if args.dataset_households is None:
-            raise ValueError("--resume-size-checkpoint requires --dataset-households.")
-        if args.no_size_checkpoint:
-            raise ValueError(
-                "--resume-size-checkpoint already implies no new checkpoint; "
-                "drop --no-size-checkpoint."
-            )
-    if args.dataset_households is not None:
-        if args.dataset_households <= 0:
-            raise ValueError("--dataset-households must be positive.")
-        if args.release_candidate:
-            raise ValueError(
-                "--dataset-households is candidate-only: size-specific matched comparison and promotion scorecard are required before release."
-            )
-    # Size-selection arguments are validated first so their refusals name
-    # the size flag at fault; the pinned Ledger inputs are then mandatory.
-    ledger_values = (
-        args.ledger_facts,
-        args.ledger_facts_sha256,
-        args.ledger_manifest_sha256,
-    )
-    if not all(value is not None for value in ledger_values):
-        raise ValueError(
-            "--ledger-facts, --ledger-facts-sha256, and "
-            "--ledger-manifest-sha256 are mandatory and must be supplied together."
-        )
-    if posture.ladder_required:
-        if args.ladder is None:
-            raise ValueError("--release-role dense requires --ladder.")
-        if args.input_sha256 is None or args.ladder_sha256 is None:
-            raise ValueError(
-                "the joint registry path requires --input-sha256 and --ladder-sha256."
-            )
-    elif args.input_sha256 is None:
-        raise ValueError("--release-role national requires --input-sha256.")
-    if args.release_candidate:
-        required_release = {
-            "--input-sha256": args.input_sha256,
-            "--ladder-sha256": args.ladder_sha256,
-            "--ledger-facts": args.ledger_facts,
-            "--ledger-facts-sha256": args.ledger_facts_sha256,
-            "--ledger-manifest-sha256": args.ledger_manifest_sha256,
-        }
-        missing_release = [
-            name for name, value in required_release.items() if value is None
-        ]
-        if missing_release:
-            raise ValueError(
-                "--release-candidate requires pinned joint inputs: "
-                + ", ".join(missing_release)
-            )
-        refused = []
-        if args.target_weight_rule != posture.target_weight_rule:
-            refused.append("--target-weight-rule")
-        if args.epochs != posture.epochs:
-            refused.append(f"--epochs != doctrine {posture.epochs}")
-        if args.n_clones != posture.clone_count:
-            refused.append(f"--n-clones != doctrine {posture.clone_count}")
-        if args.measure_exclusions is not None:
-            refused.append("--measure-exclusions")
-        if args.skip_holdout:
-            refused.append("--skip-holdout")
-        if args.engine_blocks > 1:
-            refused.append("--engine-blocks > 1")
-        if args.sample_fraction != 1.0:
-            refused.append("--sample-fraction != 1.0")
-        if refused:
-            raise ValueError(
-                "--release-candidate refuses non-release settings: "
-                + ", ".join(refused)
-            )
-    if args.n_clones is not None and args.n_clones <= 0:
-        raise ValueError("--n-clones must be positive.")
-    if args.seed < 0:
-        raise ValueError("--seed must be non-negative.")
-    if args.sample_fraction not in UK_SAMPLE_RUNG_TOKENS:
-        raise ValueError(
-            "--sample-fraction must be one of "
-            f"{sorted(UK_SAMPLE_RUNG_TOKENS)}, got {args.sample_fraction!r}."
-        )
-    if args.sample_seed < 0:
-        raise ValueError("--sample-seed must be non-negative.")
-    if args.engine_blocks <= 0:
-        raise ValueError("--engine-blocks must be positive.")
-    if args.engine_blocks > 1 and args.engine_blocks != args.n_clones:
-        raise ValueError("--engine-blocks greater than one must equal --n-clones.")
-    if args.source_year is not None and args.source_year <= 0:
-        raise ValueError("--source-year must be positive.")
-    if args.epochs <= 0:
-        raise ValueError("--epochs must be positive.")
-    if not np.isfinite(args.learning_rate) or args.learning_rate <= 0:
-        raise ValueError("--learning-rate must be positive and finite.")
-    if args.target_loss_cap is not None and (
-        not np.isfinite(args.target_loss_cap) or args.target_loss_cap <= 0
-    ):
-        raise ValueError("--target-loss-cap must be positive and finite.")
-    if (
-        args.expected_constituency_vintage is not None
-        and not str(args.expected_constituency_vintage).strip()
-    ):
-        raise ValueError("--expected-constituency-vintage must be non-empty.")
-
-
-def _refuse_dense_role_arguments(
-    args: argparse.Namespace, posture: UKRowwisePosture
-) -> None:
-    """The national role's refusal table: nothing of the clone surface may be given.
-
-    ``--release-candidate`` is refused outright with the seam's own reason: the
-    calibration-seam battery covers six of the declared entries and must never
-    sign a shippability claim; a national cut's verdict comes only from the
-    release-cut certification producer (``tools/certify_uk_release_cut.py``).
-    """
-
-    if args.release_candidate:
-        raise ValueError(
-            "--release-candidate is refused on the national role: the "
-            "calibration seam's scoped battery cannot sign shippability; run "
-            "the release-cut certification producer "
-            "(tools/certify_uk_release_cut.py) on the finished build instead."
-        )
-    explicit = args._explicit_arguments
-    refused: list[str] = []
-    if args.ladder is not None:
-        refused.append("--ladder")
-    if args.ladder_sha256 is not None:
-        refused.append("--ladder-sha256")
-    if "expected_constituency_vintage" in explicit:
-        refused.append("--expected-constituency-vintage")
-    if args.source_year is not None:
-        refused.append("--source-year")
-    if args.source_lineage_modulus is not None:
-        refused.append("--source-lineage-modulus")
-    if "n_clones" in explicit:
-        refused.append("--n-clones")
-    if args.candidate_clone_counts is not None:
-        refused.append("--candidate-clone-counts")
-    if args.engine_blocks != 1:
-        refused.append("--engine-blocks")
-    if args.households_only:
-        refused.append("--households-only")
-    if args.skip_holdout:
-        refused.append("--skip-holdout")
-    if args.dataset_households is not None:
-        refused.append("--dataset-households")
-    if args.selection_seed is not None:
-        refused.append("--selection-seed")
-    if args.selection_pi_hi != 1.0:
-        refused.append("--selection-pi-hi")
-    if args.baseline_pi_floor != 0.0:
-        refused.append("--baseline-pi-floor")
-    if args.no_size_checkpoint:
-        refused.append("--no-size-checkpoint")
-    if args.resume_size_checkpoint is not None:
-        refused.append("--resume-size-checkpoint")
-    if args.sample_fraction != 1.0:
-        refused.append("--sample-fraction")
-    if "sample_seed" in explicit:
-        refused.append("--sample-seed")
-    if "seed" in explicit and args.seed != posture.seed:
-        # The seam doctrine's seed is a reviewed constant, not a knob.
-        refused.append(f"--seed != doctrine {posture.seed}")
-    if args.target_weight_rule not in posture.allowed_target_weight_rules:
-        refused.append(f"--target-weight-rule {args.target_weight_rule}")
-    if refused:
-        raise ValueError(
-            "--release-role national refuses the dense role's arguments: "
-            + ", ".join(refused)
-        )
-
-
-def _refuse_national_role_arguments(
-    args: argparse.Namespace, posture: UKRowwisePosture
-) -> None:
-    """The dense role's refusal table: the seam's knobs are not its own."""
-
-    refused: list[str] = []
-    if args.target_loss_cap is not None:
-        refused.append("--target-loss-cap")
-    if args.allow_unpinned_feed:
-        refused.append("--allow-unpinned-feed")
-    if args.incumbent_h5 is not None or args.incumbent_sha256 is not None:
-        refused.append("--incumbent-h5/--incumbent-sha256")
-    if args.target_weight_rule not in posture.allowed_target_weight_rules:
-        refused.append(f"--target-weight-rule {args.target_weight_rule}")
-    if refused:
-        raise ValueError(
-            "--release-role dense refuses the national role's arguments: "
-            + ", ".join(refused)
-        )
 
 
 def _load_candidate_evaluator(importer=importlib.import_module):
@@ -4763,40 +3669,6 @@ def _evaluate_against_incumbent(
     }
 
 
-def _output_paths(
-    out_dir: Path,
-    *,
-    posture: UKRowwisePosture,
-    vintage: str,
-) -> dict[str, Path]:
-    """The role's output paths for one FRS release vintage (``2024_25``)."""
-
-    dataset = out_dir / posture.dataset_filename(vintage)
-    if posture.role == "national":
-        return {
-            "dataset": dataset,
-            "manifest": out_dir / MANIFEST_FILENAME,
-            "calibration_diagnostics": out_dir / CALIBRATION_DIAGNOSTICS_FILENAME,
-            "build_record": out_dir / BUILD_RECORD_FILENAME,
-            "terminal_gates": out_dir / posture.gate_report_filename(vintage),
-            "national_registry": out_dir / NATIONAL_REGISTRY_FILENAME,
-            "contract_registry": out_dir / NATIONAL_CONTRACT_REGISTRY_FILENAME,
-            "score_receipt": out_dir / SCORE_RECEIPT_FILENAME,
-        }
-    return {
-        "dataset": dataset,
-        "manifest": out_dir / MANIFEST_FILENAME,
-        "diagnostics": out_dir / SOLVE_DIAGNOSTICS_FILENAME,
-        "support": out_dir / AREA_SUPPORT_FILENAME,
-        "past_cap": out_dir / PAST_CAP_FILENAME,
-        "calibration_diagnostics": out_dir / CALIBRATION_DIAGNOSTICS_FILENAME,
-        "local_gates": out_dir / posture.gate_report_filename(vintage),
-        "local_registry": out_dir / LOCAL_REGISTRY_FILENAME,
-        "dense_reference": out_dir / DENSE_REFERENCE_DIAGNOSTICS_FILENAME,
-        "selection": out_dir / DATASET_SIZE_SELECTION_FILENAME,
-    }
-
-
 def _validate_output_paths(
     output_paths: Mapping[str, Path],
     *,
@@ -4820,50 +3692,6 @@ def _validate_output_paths(
         raise FileExistsError(
             f"refusing to overwrite existing candidate artifact(s): {existing}."
         )
-
-
-def _publish_staged_files(
-    staged: Mapping[str, Path],
-    output_paths: Mapping[str, Path],
-) -> None:
-    out_dir = output_paths["manifest"].parent
-    created_out_dir = not out_dir.exists()
-    out_dir.mkdir(parents=True, exist_ok=True)
-    publish_order = (
-        "dataset",
-        "diagnostics",
-        "support",
-        "past_cap",
-        "calibration_diagnostics",
-        "local_registry",
-        "dense_reference",
-        "selection",
-        "manifest",
-    )
-    published: list[Path] = []
-    succeeded = False
-    try:
-        for key in publish_order:
-            if key in _SIZE_RUN_ONLY_OUTPUTS and not staged[key].exists():
-                continue
-            destination = output_paths[key]
-            if destination.exists():
-                raise FileExistsError(
-                    "candidate output appeared during publication; refusing "
-                    f"to overwrite {destination}."
-                )
-            staged[key].replace(destination)
-            published.append(destination)
-        succeeded = True
-    finally:
-        if not succeeded:
-            for path in reversed(published):
-                path.unlink(missing_ok=True)
-            if created_out_dir:
-                try:
-                    out_dir.rmdir()
-                except OSError:
-                    pass
 
 
 def _assert_artifacts_unchanged(
@@ -4919,48 +3747,6 @@ def _artifact_info(
         "sha256": digest.hexdigest(),
         "bytes": int(path.stat().st_size),
     }
-
-
-def _git_commit() -> str | None:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
-
-
-def _git_dirty() -> bool | None:
-    """Measured, not asserted: tracked modifications in the working tree.
-
-    ``None`` when git cannot answer (no repository), so a downstream
-    assembler records the pin as unmeasured rather than clean.
-    """
-
-    result = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=no"],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    return bool(result.stdout.strip())
-
-
-def _json_text(payload: Any) -> str:
-    return (
-        json.dumps(
-            payload,
-            allow_nan=False,
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n"
-    )
 
 
 if __name__ == "__main__":

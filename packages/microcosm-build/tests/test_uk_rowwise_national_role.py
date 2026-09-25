@@ -20,7 +20,7 @@ import pytest
 
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.staging_v2 import validate_v2_bundle
-from microcosm.build.uk_runtime import calibration_run
+from microcosm.build.uk_runtime import calibration_run, rowwise_staging
 from microcosm.build.uk_runtime.calibration_run import UK_CALIBRATION_GATE_SCOPE
 from microcosm.build.uk_runtime.chronicle_feed import (
     UKChronicleFeedPinError,
@@ -410,8 +410,8 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
         builder, monkeypatch, tmp_path
     )
     hub = _CANDIDATE._FakeHub()
-    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
-    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
     out = tmp_path / "national"
 
     assert (
