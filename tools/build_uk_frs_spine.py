@@ -679,6 +679,8 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["band_donor_resample"] = seed
                 elif operation.kind == "impute_spi_housing_shell":
                     stage_seeds[stage.stage] = seed
+                elif operation.kind == "price_domestic_energy":
+                    stage_seeds["gas_disconnection"] = seed
                 elif operation.kind == "within_band_draws":
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind in (

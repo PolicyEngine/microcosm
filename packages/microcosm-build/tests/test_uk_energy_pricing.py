@@ -370,6 +370,78 @@ def test_impose_gas_connection_skips_a_household_whose_weight_would_overshoot() 
     assert london["rows_skipped_for_weight"] == 1
 
 
+def test_identity_uniform_order_spreads_disconnection_across_draw_sizes() -> None:
+    """Every group loses the same expected share of its connected mass.
+
+    One region, half the households drawing little gas (a flat-like group)
+    and half drawing a lot, all connected, published share 0.6. Walking the
+    smallest draws first takes the whole 0.4 from the low-draw group; the
+    identity-keyed uniform order takes about 0.4 of each group.
+    """
+
+    n = 4000
+    gas = np.where(np.arange(n) < n // 2, 2000.0, 15000.0) + np.arange(n)
+    region = np.array(["SCOTLAND"] * n)
+    weights = np.ones(n)
+    ids = np.arange(1, n + 1) * 100
+    low = np.arange(n) < n // 2
+    lowest_first, _ = impose_gas_connection(
+        gas, frs_region=region, weights=weights, shares={"SCOTLAND": 0.6}
+    )
+    assert not lowest_first[low][: int(0.4 * n)].any()
+    assert lowest_first[~low].all()
+    connected, receipt = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        shares={"SCOTLAND": 0.6},
+        disconnect_rule="identity_uniform_order",
+        identity=ids,
+        seed=0,
+    )
+    assert connected.mean() == pytest.approx(0.6)
+    for group in (low, ~low):
+        assert connected[group].mean() == pytest.approx(0.6, abs=0.03)
+    assert receipt["disconnect_rule"] == "identity_uniform_order"
+    assert receipt["seed"] == 0
+    assert receipt["salt"] == "lcfs_consumption:gas_disconnection"
+
+
+def test_identity_uniform_order_is_keyed_by_identity_not_row_order() -> None:
+    rng = np.random.default_rng(3)
+    n = 600
+    gas = rng.uniform(100.0, 20000.0, n)
+    region = rng.choice(["LONDON", "WALES", "SCOTLAND"], n)
+    weights = rng.uniform(0.5, 3.0, n)
+    ids = rng.permutation(np.arange(10_000, 10_000 + n))
+    shares = {"LONDON": 0.7, "WALES": 0.8, "SCOTLAND": 0.75}
+    kwargs = {"shares": shares, "disconnect_rule": "identity_uniform_order", "seed": 0}
+    first, _ = impose_gas_connection(
+        gas, frs_region=region, weights=weights, identity=ids, **kwargs
+    )
+    order = rng.permutation(n)
+    second, _ = impose_gas_connection(
+        gas[order],
+        frs_region=region[order],
+        weights=weights[order],
+        identity=ids[order],
+        **kwargs,
+    )
+    assert dict(zip(ids, first, strict=True)) == dict(
+        zip(ids[order], second, strict=True)
+    )
+    reseeded, _ = impose_gas_connection(
+        gas,
+        frs_region=region,
+        weights=weights,
+        identity=ids,
+        **{**kwargs, "seed": 1},
+    )
+    assert not np.array_equal(first, reseeded)
+    with pytest.raises(ValueError, match="needs one identity per row"):
+        impose_gas_connection(gas, frs_region=region, weights=weights, **kwargs)
+
+
 def test_published_level_is_the_fiscal_year_sum_of_energy_trends_quarters() -> None:
     level, receipt = published_energy_level(_declared())
     quarters = fiscal_year_quarters("2024-04-01")

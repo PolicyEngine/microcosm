@@ -271,8 +271,9 @@ The support copies and band donors are whole FRS households, so after the
 reorder their wealth and spending followed their SPI incomes while their
 housing was still the parent's. On the reordered spine the SPI half's detached
 share sat at 27-29 % in every income band (the FRS half rises from 19 % to 47 %
-by £200k-1m), social renting stayed at 13-16 % even above £1m, and 363k of the
-SPI channel's 451k Housing Benefit units were owner-occupier households.
+by £200k-1m), social renting stayed at 11-16 % above £50k and 16 % above £1m,
+and 402k of the SPI channel's 506k prior-weighted Housing Benefit households
+were owner-occupiers.
 
 `spi_housing_shell` runs right after the SPI income chain and imputes the
 housing of every SPI-channel household, the household counterpart of the SPI
@@ -301,6 +302,27 @@ against 0.855 observed; matching 0.787), detached share (0.396 against 0.446;
 matching 0.328) and four or more bedrooms (0.456 against 0.557; matching
 0.355), with the most distinct bundles. All three under-draw council tax band
 F and above at the top (about 0.19 against 0.35).
+
+## The gas connection
+
+`lcfs_consumption` imposes each region's published gas-connected share (DESNZ
+gas meters over electricity meters) on the drawn gas before the NEED rake.
+It used to disconnect the households with the smallest drawn gas first. Once
+the SPI support households drew gas from their own, higher incomes, that walk
+piled the disconnections onto low-draw FRS flats: Scottish flats' connected
+share fell from 76 % to 71 % while terraced and semi-detached houses rose. NEED
+publishes Scotland's gas means by property type and for all dwellings; on the
+tilted mix the property-type means implied a Scottish level 2.6 % above the
+all-dwellings mean, and the rake could not close it. At 300 sweeps the income
+margins converge to zero and Scotland's property-type cells all settle 2.54 %
+(reorder alone) or 2.56 % (with the housing stage) below target, against the
+gate's 2.5 %. The housing stage is not the cause.
+
+The walk now takes gas-positive households in an identity-keyed uniform order
+(seed 0, salt `lcfs_consumption:gas_disconnection`) with the same
+weight-fitting skip, so every group of households loses the same expected
+share of its drawn connected mass and only the level of the drawn connection
+moves to the published share.
 
 ## Not done here
 

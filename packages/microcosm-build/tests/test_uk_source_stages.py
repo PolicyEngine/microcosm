@@ -984,6 +984,7 @@ class TestE3ManifestLockstep:
         assert lcfs_seeded == {
             "assign_binary_from_rate": 0,
             "fit_weighted_qrf_chain": 0,
+            "price_domestic_energy": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
         assert stages["etb_services"].operations[3].parameters["seed"] == 0

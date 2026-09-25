@@ -2126,6 +2126,7 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     assert declared["lcfs_consumption"] == {
         "has_fuel_consumption": 0,
         "lcfs_consumption": 0,
+        "gas_disconnection": 0,
     }
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}
     assert declared["uc_deduction_attributes"] == {
