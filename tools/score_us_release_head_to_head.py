@@ -797,11 +797,10 @@ def _score_chunk_household_sliced(
 ) -> ScoredChunk:
     """Materialize, score, and reduce one chunk without a dense full-pool table.
 
-    Each household slice runs the unmodified canonical materializer and
-    scorer. A target estimate is a matrix-row/weight dot product, so the full
-    artifact estimate is the fixed-order sum of slice estimates. Every slice
-    must reproduce the exact target, scale, diagnostic-name, and scored-column
-    contracts before its estimates may enter that sum.
+    Each household slice runs the canonical materializer and scorer with the
+    population-aggregate guard armed when the pool spans multiple slices.
+    Every slice must reproduce the exact target, scale, diagnostic-name, and
+    scored-column contracts before its estimates enter the fixed-order sum.
     """
 
     n_households = base_frame.n("household")
@@ -814,6 +813,9 @@ def _score_chunk_household_sliced(
     )
     if not slice_batches:
         raise ValueError(f"{artifact_name} has no households to score.")
+    if len(slice_batches) > 1:
+        release._assert_group_entities_nest_in_households(base_frame)
+        release._assert_medicaid_claiming_tax_units_local(base_frame)
     accumulated_estimates: np.ndarray | None = None
     reference_targets: np.ndarray | None = None
     reference_scales: np.ndarray | None = None
@@ -835,6 +837,7 @@ def _score_chunk_household_sliced(
                 slice_frame,
                 chunk_specs,
                 maximum_microsim_batch_size=maximum_microsim_batch_size,
+                refuse_population_aggregates=True if len(slice_batches) > 1 else None,
                 target_materialization_cache_dir=None,
                 target_materialization_cache_context=None,
             )
@@ -843,9 +846,14 @@ def _score_chunk_household_sliced(
             artifact_name=f"{artifact_name} {slice_label}",
             compilation=slice_compilation,
         )
+        # Slice sizes can differ; record them in household_slice_row_counts
+        # instead of the shared compilation contract or its digest. The
+        # size-independent population-aggregate guard receipt stays in both.
+        slice_compilation = dict(slice_compilation)
+        slice_compilation.pop("target_materialization_batching", None)
         if first_compilation is None:
             first_compilation = dict(slice_compilation)
-        compilation_digests.append(_canonical_sha256(dict(slice_compilation)))
+        compilation_digests.append(_canonical_sha256(slice_compilation))
         slice_sizes.append(len(positions))
         if _spec_keys(slice_registry.specs) != expected_keys:
             raise ValueError(

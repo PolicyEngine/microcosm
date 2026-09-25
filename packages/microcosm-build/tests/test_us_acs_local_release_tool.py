@@ -48,6 +48,43 @@ def _load_staging_builder_module():
     return module
 
 
+def test_household_chunks_refuse_population_aggregates(monkeypatch, tmp_path) -> None:
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixture_spec = importlib.util.spec_from_file_location(
+        "batched_materialization_fixtures",
+        Path(__file__).with_name("test_us_batched_target_materialization.py"),
+    )
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    assert fixture_spec.loader is not None
+    fixture_spec.loader.exec_module(fixtures)
+    aggregate = "medicaid_slcsp_state_denominator"
+    ledger = fixtures._install_fake_engine(
+        release,
+        monkeypatch,
+        reform_specs=(),
+        aggregate_reads={"aggregate_probe": (aggregate,)},
+    )
+    monkeypatch.setattr(module, "project_input_only", lambda frame, **kw: (frame, {}))
+    monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *args, **kw: None)
+    specs = (fixtures._variable("aggregate_total", base_variable="aggregate_probe"),)
+
+    with pytest.raises(
+        ValueError,
+        match=rf"household batch 1/1 computed .*{aggregate}@2024",
+    ):
+        module.materialize_chunked(
+            fixtures._nested_frame(),
+            specs,
+            hh_chunk=2,
+            batch=2,
+            summary_path=tmp_path / "summary.json",
+        )
+    assert len(ledger.simulations) == 1
+    assert ledger.simulations[0].dataset is None
+
+
 def test_spine_composition_reports_per_spine_weight_and_size() -> None:
     module = _load_tool_module()
     households = pd.DataFrame(
