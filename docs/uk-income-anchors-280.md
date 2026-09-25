@@ -196,6 +196,51 @@ the HMRC growth on both tiers. Mixing an engine index into the regional rows,
 or a publisher growth rate into a single component, would bind a quantity
 neither source defines.
 
+## Limitations from the licensed runs
+
+Three findings from local licensed builds of this branch, none of which the
+PR's CI can see because it never builds the licensed spine (recorded on
+microcosm#1006, comments 5812328880 and 5814299594):
+
+- **The spine build is blocked by the student-loan realisation gate.** A
+  licensed spine build from this branch stops at the `transferred` phase with
+  `uk_stage_student_loans_realization: PLAN_5 realization_deviation 1.1027
+  exceeds 1.0`. The PLAN_5 top-up is a few rows (817 weighted persons expected
+  from 136,538 eligible on spine-u, realised as two rows, deviation 0.30), so
+  the check swings with which rows the draw lands on; main's spine passed at
+  0.96. The stage is unchanged here, but its eligible pool and weights depend
+  on everything upstream, the band donors included. The limit stays at 1.0 in
+  this tree; the fix belongs in the gate (a tolerance for a top-up of a couple
+  of rows) and needs a ruling. Assessment builds raised it to 2.0 locally only.
+- **The SPI copies, band donors included, inherit their FRS parent's wealth,
+  spending and VAT.** The support channel and the band donors copy whole
+  households after `was_wealth`, `regional_property_uprating`,
+  `nts_bus_travel`, `lcfs_consumption`, `etb_vat` and `etb_services` have run,
+  and only incomes, pension contributions and reported benefits are replaced
+  afterwards. On spine-u all 45 WAS, LCFS and ETB columns on the SPI rows equal
+  the parent's; the rank correlation of investment income with gross financial
+  wealth is 0.14 on the SPI half against 0.54 on the FRS half; and the band
+  donors' median gross financial wealth is flat across the bands (£48k, £67k,
+  £50k and £44k from the 200k band to the 2m-and-over band, where median income
+  is £3.57m). The order is inherited from the enhanced FRS. The reorder that
+  runs the SPI block right after `frs_brma` is microcosm#1012, stacked on this
+  branch; it is deferred there, not folded in here.
+- **The national calibration at this head blocks on the CGT projection
+  fence.** With the spine rebuilt from the rebased head, the terminal gate
+  `uk_cgt_projection_entrants` (introduced by #979) refuses: 146,920 weighted
+  sub-exempt gainers cross the frozen annual exempt amount by 2030 under the
+  engine's uprating, against the bound of 73,000. The measure and the spine are
+  the same as #979's own build, which passed at 68,534; at prior weights both
+  spines fail (108k), and about 101k of it sits on roughly fifty of #970's CGT
+  band-donor rows whose gains sit just under £3,000. Nothing binds the
+  sub-exempt gainer count, so their weight floats with the objective: #979's
+  target set pulled it down (0.62×), this lane's 1,062-target set pulls it up.
+  The v21c measurements in this doc and on the evaluation page are the
+  pre-rebase build (f6d33a26), before the gate existed; this head cannot produce
+  a certified cut until the fence is settled on the #970/#979 side (bind the
+  count, spread the band-donor mass over lighter rows, or cap their weight
+  ratio).
+
 ## Not done here
 
 - The property-income amount rows stay signed out: the spine's

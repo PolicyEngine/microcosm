@@ -26,6 +26,16 @@ downstream legs is the private evaluation site's `national-v21c-2026-09-23` repo
 Redaction: per-record values are withheld (each band's realised minimum and maximum total
 income, the reserved households themselves); counts, masses, means and target errors are kept.
 
-The measurements are on the pre-rebase head; the rebase over #979 and #954 changes the CGT
-and bus stages, not the income surface, and the realised-income pool cut that Vahid's review
-added afterwards (microcosm#1006) is the next licensed rebuild.
+The measurements are on the pre-rebase head (f6d33a26), and they do not hold at the current
+head. A licensed spine build from the rebased branch is blocked by the student-loan PLAN_5
+realisation gate (deviation 1.1027 against the limit of 1.0; raised to 2.0 for assessment builds
+only, locally), and the national calibration at 8d36ecc4 blocks at the terminal gate
+`uk_cgt_projection_entrants`, which #979 introduced after v21c's tree: 146,920 weighted
+sub-exempt gainers cross the frozen exempt amount by 2030 against the bound of 73,000, most of
+the mass on about fifty of #970's CGT band-donor rows whose weight floats with the target set.
+So this head cannot produce a certified cut, the six green gate verdicts in `v21c-receipts.json`
+are v21c's, and the fence is settled on the #970/#979 side (microcosm#1006, comments 5812328880
+and 5814299594; the doc's limitations section). The realised-income pool cut from the review
+round is likewise unmeasured until that rebuild. The receipt's text fields are the run's own
+compiled metadata and still spell the lane as the run did (`microcosm#280`); the tree now cites
+PolicyEngine/chronicle#280.

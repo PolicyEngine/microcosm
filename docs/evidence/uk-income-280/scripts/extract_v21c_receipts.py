@@ -51,7 +51,9 @@ def _target_rows(diagnostics: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 "name": name,
                 "family": row.get("family"),
-                "target": row.get("target") if isinstance(row.get("target"), (int, float)) else row.get("compiled_target"),
+                "target": row.get("target")
+                if isinstance(row.get("target"), (int, float))
+                else row.get("compiled_target"),
                 "estimate": row.get("final_estimate") or row.get("estimate"),
                 "relative_error": row.get("final_relative_error")
                 if row.get("final_relative_error") is not None
@@ -80,10 +82,14 @@ def _band_donor_receipts(record: dict[str, Any]) -> dict[str, Any]:
                 {
                     key: value
                     for key, value in band.items()
-                    if key not in {"realized_min_total_income", "realized_max_total_income"}
+                    if key
+                    not in {"realized_min_total_income", "realized_max_total_income"}
                 }
             )
-        out["band_donor_resample"] = {**{k: v for k, v in resample.items() if k != "bands"}, "bands": bands}
+        out["band_donor_resample"] = {
+            **{k: v for k, v in resample.items() if k != "bands"},
+            "bands": bands,
+        }
     return out
 
 
@@ -109,10 +115,14 @@ def main() -> int:
     payload = {
         "run": {
             "build_id": record.get("build_id"),
-            "code": ((manifest.get("identity") or {}).get("code") or {}).get("git_commit"),
+            "code": ((manifest.get("identity") or {}).get("code") or {}).get(
+                "git_commit"
+            ),
             "release_id": (record.get("run_config") or {}).get("release_id"),
             "release_candidate": manifest.get("release_candidate"),
-            "calibration_year": (record.get("run_config") or {}).get("calibration_year"),
+            "calibration_year": (record.get("run_config") or {}).get(
+                "calibration_year"
+            ),
         },
         "calibration": {
             key: diagnostics.get(key)
@@ -136,7 +146,9 @@ def main() -> int:
                 gate_id: _verdict(entry)
                 for gate_id, entry in (gates.get("gates") or {}).items()
             },
-            "target_fit_deferrals": (target_fit.get("details") or {}).get("reviewed_exclusions"),
+            "target_fit_deferrals": (target_fit.get("details") or {}).get(
+                "reviewed_exclusions"
+            ),
         },
         "income_anchor_rows": _target_rows(diagnostics),
         "pass_2_vs_incumbent": {
@@ -150,12 +162,18 @@ def main() -> int:
             )
         }
         | {
-            "n_scored": (score.get("incumbent_unresolvable_pruned") or {}).get("n_scored"),
-            "n_pruned": (score.get("incumbent_unresolvable_pruned") or {}).get("n_pruned"),
+            "n_scored": (score.get("incumbent_unresolvable_pruned") or {}).get(
+                "n_scored"
+            ),
+            "n_pruned": (score.get("incumbent_unresolvable_pruned") or {}).get(
+                "n_pruned"
+            ),
         },
         "band_donors": _band_donor_receipts(record),
     }
-    args.out.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    args.out.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     print(f"wrote {args.out}: {len(payload['income_anchor_rows'])} income-anchor rows")
     return 0
 
