@@ -15,11 +15,23 @@ def test_country_raw_source_projection_is_current():
     spec = load_country_spec("uk")
     validate_uk_country_source_projection(spec)
     sources = spec.resolved_spec.resource("sources").domain.to_wire()["sources"]
-    assert all(row["role"] == "frs_raw_table" for row in sources)
-    assert all(row["loader"] == "kernel:build_uk_frs_spine" for row in sources)
+    frs = [row for row in sources if row["role"] == "frs_raw_table"]
+    assert all(row["loader"] == "kernel:build_uk_frs_spine" for row in frs)
     assert {"frs_adult", "frs_benefits", "frs_child", "frs_househol"} <= {
-        row["id"] for row in sources
+        row["id"] for row in frs
     }
+    # The three atomic-area supports (microcosm#932) sit beside the FRS tables.
+    supports = [row for row in sources if row["role"] != "frs_raw_table"]
+    assert {row["id"] for row in supports} == {
+        "uk_ew_output_area_2021_support",
+        "uk_scotland_output_area_2022_support",
+        "uk_ni_data_zone_2021_support",
+    }
+    assert all(
+        row["role"] == "uk_atomic_area_support"
+        and row["loader"] == "kernel:load_uk_atomic_area_support"
+        for row in supports
+    )
     assert "uk_national_candidate_2023" not in str(sources)
 
 

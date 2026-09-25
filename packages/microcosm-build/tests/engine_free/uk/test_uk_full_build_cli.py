@@ -4,6 +4,51 @@
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
+def test_geography_assignment_arguments_are_closed(tmp_path):
+    """Atomic is the default; the cross-flag rules live in the validator."""
+    assert arguments(tmp_path).geography_assignment == "atomic"
+    cli.validate_cli_args(arguments(tmp_path))
+    legacy = arguments(tmp_path, "--geography-assignment", "legacy", supports=())
+    assert legacy.geography_assignment == "legacy"
+    cli.validate_cli_args(legacy)
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--geography-assignment", "keyed", supports=())
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--atomic-support-sha256-ew", "zz")
+    with pytest.raises(ValueError, match="requires the three atomic-area supports"):
+        cli.validate_cli_args(arguments(tmp_path, supports=()))
+    with pytest.raises(ValueError, match="--atomic-support-ni"):
+        cli.validate_cli_args(arguments(tmp_path, supports=SUPPORT_ARGUMENTS[:4]))
+    with pytest.raises(ValueError, match="legacy takes no atomic-area supports"):
+        cli.validate_cli_args(arguments(tmp_path, "--geography-assignment", "legacy"))
+    with pytest.raises(ValueError, match="--geography-assignment legacy"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--release-candidate",
+                "--geography-assignment",
+                "legacy",
+                supports=(),
+                release_pins=(),
+            )
+        )
+    with pytest.raises(ValueError, match="--atomic-support-sha256-ew"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--release-candidate", release_pins=())
+        )
+    release = arguments(tmp_path, "--release-candidate")
+    assert release.release_candidate and release.geography_assignment == "atomic"
+    cli.validate_cli_args(release)
+    # The national role is dispatched to the seam: the supports are refused
+    # by name with the other dense-only flags, and its default needs none.
+    cli.validate_cli_args(cli.parse_args(_national_argv(tmp_path)))
+    national = cli.parse_args(
+        _national_argv(tmp_path, "--atomic-support-sha256-ni", "e" * 64)
+    )
+    with pytest.raises(ValueError, match="--atomic-support-sha256-ni"):
+        cli.validate_cli_args(national)
+
+
 def test_every_scope_and_size_control_keeps_default_all(tmp_path):
     for extra in (
         (),
@@ -87,6 +132,7 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
         PIN,
         "--ledger-manifest-sha256",
         PIN,
+        *SUPPORT_ARGUMENTS,
     ]
     with pytest.raises(ValueError, match="requires --ladder"):
         cli.validate_cli_args(cli.parse_args(argv))
@@ -112,6 +158,7 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
         PIN,
         "--ledger-manifest-sha256",
         PIN,
+        *SUPPORT_ARGUMENTS,
     ]
     cli.validate_cli_args(cli.parse_args(request))
 
@@ -231,6 +278,7 @@ def test_candidate_clone_counts_are_dry_run_only(tmp_path):
                 "--candidate-clone-counts",
                 "1,2,4",
                 "--no-staging",
+                *SUPPORT_ARGUMENTS,
             ]
         )
 

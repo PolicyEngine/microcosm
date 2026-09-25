@@ -355,6 +355,31 @@ _record_candidate_error = record_candidate_error
 #: Solve arguments whose argparse default is ``None`` so an explicit value can
 #: be told from the role's default: the other role's refusal table keys on
 #: what was actually given.
+#: CLI labels of the three UK atomic-area supports (microcosm#932), in
+#: ``atomic_area_support.SYSTEMS`` order; ``full_build_cli`` declares the
+#: ``--atomic-support-<label>`` and ``--atomic-support-sha256-<label>`` flags.
+ATOMIC_SUPPORT_LABELS = ("ew", "scotland", "ni")
+
+
+def _geography_assignment(args: argparse.Namespace) -> str | None:
+    """The requested assignment, or None for a namespace without the flag."""
+    return getattr(args, "geography_assignment", None)
+
+
+def _atomic_support_arguments(
+    args: argparse.Namespace,
+) -> tuple[dict[str, object], dict[str, object]]:
+    supports = {
+        label: getattr(args, f"atomic_support_{label}", None)
+        for label in ATOMIC_SUPPORT_LABELS
+    }
+    digests = {
+        label: getattr(args, f"atomic_support_sha256_{label}", None)
+        for label in ATOMIC_SUPPORT_LABELS
+    }
+    return supports, digests
+
+
 ROLE_DEFAULTED_ARGUMENTS = (
     "n_clones",
     "seed",
@@ -453,6 +478,36 @@ def validate_cli_args(args: argparse.Namespace) -> None:
             raise ValueError(
                 "the joint registry path requires --input-sha256 and --ladder-sha256."
             )
+        # Geography is assigned inside the graph (microcosm#932): atomic (the
+        # default) reads the three UK support artifacts; legacy takes none.
+        assignment = _geography_assignment(args)
+        supports, digests = _atomic_support_arguments(args)
+        if assignment == "atomic":
+            missing = [
+                f"--atomic-support-{label}"
+                for label, path in supports.items()
+                if path is None
+            ]
+            if missing:
+                raise ValueError(
+                    "--geography-assignment atomic requires the three atomic-area "
+                    "supports: " + ", ".join(missing)
+                )
+        elif assignment == "legacy":
+            given = [
+                f"--atomic-support-{label}"
+                for label, path in supports.items()
+                if path is not None
+            ] + [
+                f"--atomic-support-sha256-{label}"
+                for label, digest in digests.items()
+                if digest is not None
+            ]
+            if given:
+                raise ValueError(
+                    "--geography-assignment legacy takes no atomic-area supports: "
+                    + ", ".join(given)
+                )
     elif input_pin_required:
         raise ValueError("--release-role national requires --input-sha256.")
     if args.release_candidate:
@@ -464,6 +519,14 @@ def validate_cli_args(args: argparse.Namespace) -> None:
         }
         if args.input_h5 is not None:
             required_release = {"--input-sha256": args.input_sha256, **required_release}
+        if _geography_assignment(args) == "atomic":
+            _, digests = _atomic_support_arguments(args)
+            required_release.update(
+                {
+                    f"--atomic-support-sha256-{label}": digest
+                    for label, digest in digests.items()
+                }
+            )
         missing_release = [
             name for name, value in required_release.items() if value is None
         ]
@@ -487,6 +550,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
             refused.append("--engine-blocks > 1")
         if args.sample_fraction != 1.0:
             refused.append("--sample-fraction != 1.0")
+        if _geography_assignment(args) == "legacy":
+            # The release line is the identity-keyed atomic assignment.
+            refused.append("--geography-assignment legacy")
         if refused:
             raise ValueError(
                 "--release-candidate refuses non-release settings: "
@@ -551,6 +617,14 @@ def refuse_dense_role_arguments(
         refused.append("--ladder")
     if args.ladder_sha256 is not None:
         refused.append("--ladder-sha256")
+    # The atomic-area supports (microcosm#932) are graph inputs of the dense
+    # role; the seam assigns no geography.
+    supports, digests = _atomic_support_arguments(args)
+    for label in ATOMIC_SUPPORT_LABELS:
+        if supports[label] is not None:
+            refused.append(f"--atomic-support-{label}")
+        if digests[label] is not None:
+            refused.append(f"--atomic-support-sha256-{label}")
     if "expected_constituency_vintage" in explicit:
         refused.append("--expected-constituency-vintage")
     if args.source_year is not None:
