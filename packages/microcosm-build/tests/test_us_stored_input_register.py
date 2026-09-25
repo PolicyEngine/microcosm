@@ -200,6 +200,35 @@ def test_the_modeled_stored_tables_add_only_the_household_weight(builder):
     )
 
 
+def test_the_frame_hdf_boundary_fallback_is_read_from_metadata(tmp_path):
+    """``put_frame_table`` falls back to pandas' fixed format for a nullable
+    Boolean with missing values; the check reads that layout's columns too."""
+
+    pytest.importorskip("tables")
+    from microcosm.frame.materialize import put_frame_table
+
+    path = tmp_path / "populace_us_2024.h5"
+    spm_unit = pd.DataFrame(
+        {
+            "spm_unit_id": [1, 2],
+            "stale_flag": pd.array([True, None], dtype="boolean"),
+        }
+    )
+    person = pd.DataFrame({"person_id": [1, 2]}, index=pd.Index([5, 6], name="x"))
+    with pd.HDFStore(path, mode="w") as store:
+        put_frame_table(
+            store, "spm_unit", spm_unit, preferred_format="table", data_columns=True
+        )
+        put_frame_table(
+            store, "person", person, preferred_format="table", data_columns=True
+        )
+
+    assert h5_stored_tables(path) == {
+        "person": ("person_id",),
+        "spm_unit": ("spm_unit_id", "stale_flag"),
+    }
+
+
 def test_the_modeled_stored_tables_skip_an_empty_table_like_the_writer(builder):
     tables = {
         "person": pd.DataFrame({"person_id": [1]}),
