@@ -124,3 +124,21 @@ def test_income_pairs_report_the_placebo() -> None:
     assert employment["placebo_spearman_mean"] is not None
     # Columns that are zero everywhere carry no rank information.
     assert result["items"]["property_income"]["spearman"] is None
+
+
+def test_housing_by_income_band_reports_each_half() -> None:
+    tool = _load_tool()
+    person, household = _spine(spi_copies_parent_wealth=False)
+    rich = household["household_support_channel"] == "spi"
+    household["tenure_type"] = np.where(rich, "OWNED_OUTRIGHT", "RENT_FROM_COUNCIL")
+    household["accommodation_type"] = np.where(rich, "HOUSE_DETACHED", "FLAT")
+    household["rent"] = np.where(rich, 0.0, 6000.0)
+    household["council_tax"] = np.where(rich, 3000.0, 1200.0)
+    halves = tool.split_halves(person, household)
+
+    result = tool.housing_by_income_band(halves)
+    spi_rows = [row for row in result["spi_half"].values() if row is not None]
+    frs_rows = [row for row in result["frs_half"].values() if row is not None]
+    assert spi_rows and frs_rows
+    assert all(row["owned"] == 1.0 and row["detached"] == 1.0 for row in spi_rows)
+    assert all(row["social_rent"] == 1.0 for row in frs_rows)

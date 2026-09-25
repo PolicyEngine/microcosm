@@ -1005,7 +1005,7 @@ class TestUKCountryPackage:
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
         # spi_income_band_donors (PolicyEngine/chronicle#280 lane) as the newest) plus the two
         # certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 35
+        assert len(spec.sources.stages) == 36
 
 
 class TestExistingPackagesGeneralize:

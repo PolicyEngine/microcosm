@@ -55,6 +55,9 @@ E7_STAGE_NAMES = [
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
 ]
+HOUSING_SHELL_STAGE_NAMES = [
+    "spi_housing_shell",
+]
 UC_REPORTER_REDRAW_STAGE_NAMES = [
     "uc_reporter_redraw",
 ]
@@ -81,6 +84,7 @@ UK_SOURCE_STAGE_NAMES = [
     # The SPI block runs before the income-conditioned donor imputations, so
     # E5 and E6 impute onto the SPI rows from their SPI incomes.
     *E7_STAGE_NAMES,
+    *HOUSING_SHELL_STAGE_NAMES,
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
@@ -156,10 +160,10 @@ class TestUKSourceStagesManifest:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert (
-            names[names.index("frs_brma") + 1 : names.index("was_wealth")]
-            == E7_STAGE_NAMES
-        )
+        assert names[names.index("frs_brma") + 1 : names.index("was_wealth")] == [
+            *E7_STAGE_NAMES,
+            *HOUSING_SHELL_STAGE_NAMES,
+        ]
 
     def test_e5_and_e6_follow_e7_and_precede_the_uc_rewrites(self) -> None:
         # uc_reporter_redraw stays after the donor stages: its engine screen
@@ -172,6 +176,7 @@ class TestUKSourceStagesManifest:
                 "cgt_incidence_clone"
             )
         ] == [
+            *HOUSING_SHELL_STAGE_NAMES,
             *E5_STAGE_NAMES,
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
@@ -327,6 +332,7 @@ class TestUKSourceStagesManifest:
                     "spi_support_channel": _identity,
                     "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,
+                    "spi_housing_shell": _identity,
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
                     "uc_deduction_attributes": _identity,

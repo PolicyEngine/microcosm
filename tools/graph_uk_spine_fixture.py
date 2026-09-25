@@ -103,6 +103,9 @@ from microcosm.build.uk_runtime.salary_sacrifice import (
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
 )
+from microcosm.build.uk_runtime.spi_housing_shell import (
+    UKSPIHousingShellStageTransform,
+)
 from microcosm.build.uk_runtime.spi_income import SPI_DONOR_REQUIRED_COLUMNS
 from microcosm.build.uk_runtime.spi_spine import (
     UKFRSHMRCSpineLeavesStageTransform,
@@ -141,11 +144,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 33
+UK_FIXTURE_STAGE_COUNT = 34
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 33-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 34-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -1408,6 +1411,9 @@ def _build_implementations(
             sampled_rung=True,
             donor_table=spi_donor,
             source_targets=income_targets,
+        ),
+        "spi_housing_shell": UKSPIHousingShellStageTransform(
+            stage=stages["spi_housing_shell"], n_estimators=_QRF_ESTIMATORS
         ),
         "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
             stage=stages["uc_reporter_redraw"], engine=engine
