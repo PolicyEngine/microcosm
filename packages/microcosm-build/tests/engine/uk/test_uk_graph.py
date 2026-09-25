@@ -48,8 +48,6 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     in CI's engine lane instead.
     """
 
-    import importlib.util
-
     from microcosm.build.uk_runtime.graph_kernels import fixture_stage_plan_inputs
     from microcosm.graph import ContentStore, run_graph
 
@@ -57,11 +55,8 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
     fixture = root / "packages/microcosm-graph/tests/fixtures/parity/uk_spine"
     if not fixture.exists():
         pytest.skip("UK spine parity fixture is not present")
-    spec = importlib.util.spec_from_file_location(
-        "build_uk_frs_spine", root / "tools" / "build_uk_frs_spine.py"
-    )
-    driver = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(driver)
+    # The driver lives in the package; tools/build_uk_frs_spine.py is a shim.
+    from microcosm.build.uk_runtime import spine_build as driver
 
     country = load_country_spec("uk")
     stages = [
