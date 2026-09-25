@@ -1,0 +1,322 @@
+{
+  "settings": {
+    "method": "adam",
+    "mass": "conserve",
+    "max_weight_ratio": null,
+    "target_records": 100,
+    "budget_basis": "nonzero_count",
+    "epochs": 1024,
+    "learning_rate": 0.02,
+    "init_mean": 0.5,
+    "temperature": 0.25,
+    "budget_iters": 10,
+    "seed": 0
+  },
+  "result": {
+    "selection": {
+      "settled_l0_lambda": 0.0004869675251658631,
+      "budget_basis": "nonzero_count",
+      "budget_measure_at_settle": 99,
+      "open_probability_mass": 529.7431049218867,
+      "gated_weights_nonzero_count": 99,
+      "deterministic_gate_open_threshold": 0.14204332884812804,
+      "gates_above_deterministic_threshold": 99,
+      "open_probability_mass_at_or_below_deterministic_threshold": 488.5042218884919,
+      "gates_open_prob_ge_0_5": 31,
+      "gates_open_prob_ge_pi_hi": 6,
+      "open_probability_rank_100": 0.14193828403949738,
+      "open_probability_rank_101": 0.1413019746541977,
+      "budget_search": {
+        "budget_basis": "nonzero_count",
+        "target_records": 100,
+        "tolerance": 5,
+        "budget_iters": 10,
+        "feasible_draw_pi_hi": null,
+        "evaluations": 7,
+        "probes": [
+          {
+            "l0_lambda": 0.001,
+            "measure": 34,
+            "verdict": "not_required"
+          },
+          {
+            "l0_lambda": 1e-05,
+            "measure": 1722,
+            "verdict": "not_required"
+          },
+          {
+            "l0_lambda": 0.0001,
+            "measure": 409,
+            "verdict": "not_required"
+          },
+          {
+            "l0_lambda": 0.00031622776601683794,
+            "measure": 155,
+            "verdict": "not_required"
+          },
+          {
+            "l0_lambda": 0.0005623413251903491,
+            "measure": 89,
+            "verdict": "not_required"
+          },
+          {
+            "l0_lambda": 0.00042169650342858224,
+            "measure": 121,
+            "verdict": "not_required"
+          },
+          {
+            "l0_lambda": 0.0004869675251658631,
+            "measure": 99,
+            "verdict": "not_required"
+          }
+        ],
+        "selected_l0_lambda": 0.0004869675251658631,
+        "selected_measure": 99,
+        "selected_feasible": null,
+        "stopped_on": "acceptable_within_tolerance"
+      },
+      "gated_fit_full_pool": {
+        "n_targets": 504,
+        "n_zero_valued_targets": 26,
+        "capped_mape": 3.092518841053196,
+        "uncapped_mape": 6.816186226484279,
+        "median_abs_rel_error": 1.0,
+        "share_within_10pct": 0.08134920634920635,
+        "share_within_25pct": 0.1130952380952381,
+        "worst_five": [
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.12k_to_13k.eitc_total",
+            "relative_error": 58.571797143283426
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.under_1.eitc_total",
+            "relative_error": 57.52978176643155
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.19k_to_20k.eitc_total",
+            "relative_error": 56.227592156174595
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.40k_to_45k.eitc_total",
+            "relative_error": 55.82221478732036
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.40k_to_45k.eitc_returns",
+            "relative_error": 54.75970980992123
+          }
+        ],
+        "worst_five_nonzero_targets": [
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.12k_to_13k.eitc_total",
+            "relative_error": 58.571797143283426
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.under_1.eitc_total",
+            "relative_error": 57.52978176643155
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children.19k_to_20k.eitc_total",
+            "relative_error": 56.227592156174595
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.40k_to_45k.eitc_total",
+            "relative_error": 55.82221478732036
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children.40k_to_45k.eitc_returns",
+            "relative_error": 54.75970980992123
+          }
+        ]
+      }
+    },
+    "feasibility": {
+      "k": 100,
+      "pi_hi": 0.95,
+      "pool_size": 75112,
+      "certainty_count": 6,
+      "boundary_draw": 94,
+      "boundary_pool_size": 75106,
+      "boundary_positive": 75106,
+      "boundary_mass": 523.9627351632807,
+      "boundary_max": 0.9479897618293762,
+      "max_normalized_probability": 0.17007132689348983,
+      "feasible": true,
+      "reason": "feasible"
+    },
+    "draw": {
+      "receipt": {
+        "k": 100,
+        "pi_hi": 0.95,
+        "seed": 0,
+        "certainty_count": 6,
+        "boundary_pool_size": 75106,
+        "design": "sampford"
+      },
+      "pi_hi": 0.95,
+      "seed": 0,
+      "boundary_draw_needed": true,
+      "certainties": 6,
+      "boundary_draws": 94,
+      "boundary_draws_at_or_below_deterministic_threshold": 90,
+      "support_open_probability": {
+        "p05": 0.0052080283174291255,
+        "p50": 0.005533061921596527,
+        "p95": 0.9509554475545883,
+        "min": 0.00479876808822155,
+        "max": 0.9798791408538818
+      },
+      "inclusion_probability_min": 0.0008609089349689265,
+      "inclusion_probability_max": 1.0,
+      "support_in_top_100_open_probability": 10
+    },
+    "refit": {
+      "fit": {
+        "n_targets": 504,
+        "n_zero_valued_targets": 26,
+        "capped_mape": 0.5872030003777146,
+        "uncapped_mape": 0.5872030003777146,
+        "median_abs_rel_error": 0.7246694051729226,
+        "share_within_10pct": 0.23412698412698413,
+        "share_within_25pct": 0.33134920634920634,
+        "worst_five": [
+          {
+            "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+            "relative_error": 2.0049738540236715
+          },
+          {
+            "target": "irs_soi.ty2022.historic_table_2.us.500k_to_1m.taxable_interest_returns",
+            "relative_error": 1.6511049293192464
+          },
+          {
+            "target": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
+            "relative_error": 1.55089637479148
+          },
+          {
+            "target": "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+            "relative_error": 1.146397331370595
+          },
+          {
+            "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.tax_exempt_interest_returns",
+            "relative_error": 1.0210124404478036
+          }
+        ],
+        "worst_five_nonzero_targets": [
+          {
+            "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+            "relative_error": 2.0049738540236715
+          },
+          {
+            "target": "irs_soi.ty2022.historic_table_2.us.500k_to_1m.taxable_interest_returns",
+            "relative_error": 1.6511049293192464
+          },
+          {
+            "target": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
+            "relative_error": 1.55089637479148
+          },
+          {
+            "target": "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+            "relative_error": 1.146397331370595
+          },
+          {
+            "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.tax_exempt_interest_returns",
+            "relative_error": 1.0210124404478036
+          }
+        ]
+      },
+      "ht_baseline_fit": {
+        "n_targets": 504,
+        "n_zero_valued_targets": 26,
+        "capped_mape": 1.0098341154705983,
+        "uncapped_mape": 1.049736394845854,
+        "median_abs_rel_error": 0.9439357051831001,
+        "share_within_10pct": 0.10515873015873016,
+        "share_within_25pct": 0.17063492063492064,
+        "worst_five": [
+          {
+            "target": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
+            "relative_error": 16.268896650480645
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.8k_to_9k.eitc_total",
+            "relative_error": 15.438411690183528
+          },
+          {
+            "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.medical_dental_expense_amount",
+            "relative_error": 13.401225305734734
+          },
+          {
+            "target": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+            "relative_error": 12.610542431291783
+          },
+          {
+            "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+            "relative_error": 12.391672727438168
+          }
+        ],
+        "worst_five_nonzero_targets": [
+          {
+            "target": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
+            "relative_error": 16.268896650480645
+          },
+          {
+            "target": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children.8k_to_9k.eitc_total",
+            "relative_error": 15.438411690183528
+          },
+          {
+            "target": "irs_soi.ty2023.congressional_district_2022.all_returns.us.medical_dental_expense_amount",
+            "relative_error": 13.401225305734734
+          },
+          {
+            "target": "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+            "relative_error": 12.610542431291783
+          },
+          {
+            "target": "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+            "relative_error": 12.391672727438168
+          }
+        ]
+      },
+      "weights": {
+        "n": 100,
+        "total": 120808697.6508767,
+        "max_over_mean": 20.966806606259432,
+        "min_over_mean": 0.00027608892008324453,
+        "top10_share": 0.7309143130172565,
+        "kish_ess": 12.372989047632847,
+        "n_above_5x_own_median": 16,
+        "n_above_10x_own_median": 12,
+        "equal_share": 1601598.7092574474,
+        "n_above_5x_equal_share": 4,
+        "n_above_10x_equal_share": 1
+      },
+      "ht_baseline_weights": {
+        "n": 100,
+        "total": 160159870.92574474,
+        "max_over_mean": 16.46597259585643,
+        "min_over_mean": 2.858938079198158e-05,
+        "top10_share": 0.7849415369864743,
+        "kish_ess": 11.94601480026006,
+        "n_above_5x_own_median": 27,
+        "n_above_10x_own_median": 23,
+        "equal_share": 1601598.7092574474,
+        "n_above_5x_equal_share": 7,
+        "n_above_10x_equal_share": 3
+      },
+      "skipped_on_subset": []
+    }
+  },
+  "runtime": {
+    "national_all_design2_post_stratified": {
+      "seconds": 2.03,
+      "peak_rss_gb": 3.51
+    },
+    "national_all_design3_l0_selection": {
+      "seconds": 1657.17,
+      "peak_rss_gb": 3.931
+    },
+    "national_all_design3_refit": {
+      "seconds": 0.14,
+      "peak_rss_gb": 3.869
+    }
+  }
+}

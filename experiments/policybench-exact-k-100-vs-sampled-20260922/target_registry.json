@@ -1,0 +1,47 @@
+{
+  "feed_dir": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact",
+  "feed_facts_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+  "feed_manifest_sha256": "38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac",
+  "feed_rows": 39158,
+  "crosswalk": "congressional_district_vintage_crosswalk.csv",
+  "crosswalk_sha256": "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec",
+  "age_targets": true,
+  "allow_unaged_dollar_targets": false,
+  "medicaid_enrollment_substitutions": 1,
+  "compiled_specs_all_geographies": 32867,
+  "specs_by_geography_level_and_scope": {
+    "congressional_district|None": 24340,
+    "country|None": 487,
+    "country|national": 18,
+    "state|None": 7104,
+    "state|state": 918
+  },
+  "national_rule": "metadata.ledger_geography_level == 'country' or metadata.geography_scope == 'national'",
+  "national_specs_declared": 505,
+  "national_families_declared": {
+    "bea": 2,
+    "cbo": 5,
+    "census_population": 18,
+    "cms_medicaid": 3,
+    "cms_medicare": 1,
+    "federal_reserve": 1,
+    "hhs_acf_liheap": 1,
+    "hhs_acf_tanf": 1,
+    "irs_soi": 451,
+    "jct": 11,
+    "ssa": 9,
+    "usda_snap": 2
+  },
+  "labelled_filter_restatements": {
+    "refused_by_origin_main_guard": 302,
+    "accepted_as_verified_restatements": 302,
+    "accepted_keys": {
+      "ledger_filter_age_lower_bound": 21,
+      "ledger_filter_age_upper_bound": 19,
+      "ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound": 61,
+      "ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound": 264,
+      "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound": 264
+    },
+    "excluded_specs": {}
+  }
+}

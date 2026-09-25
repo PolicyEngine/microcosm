@@ -1,0 +1,23 @@
+{
+  "h5_sha256": "f32c2e5e9098bc6540724fdd5debf963af495da4c29b3a7a63fb53c2a4bb5a34",
+  "feed_facts_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+  "smoke_households": null,
+  "pipeline_test_synthetic_measures": false,
+  "n_batches": 6,
+  "invariance_window": 200,
+  "policyengine_us": "2.2.1",
+  "policyengine_core": "3.32.5",
+  "release_tool_sha256": "9924278ea4c10d1199c5d682e73142f85f1ec128dfdb3d81f72f4c9fa60d277c",
+  "fiscal_targets_module_sha256": "f03f41fee2ec66bc35fd3e0641b90978631ab4c4e5f1eae1f6ef1db76921ce5b",
+  "h5_io_module_sha256": "342f76be56d67d2b465f0c5d121caa22ee7d271a165fc36edb6f0947bf108989",
+  "source": {
+    "git_head": "2b85b7b220c33811336913ab29d97acbf1274455",
+    "script_sha256": "12ee1e6fca64eee09ad2521851be5015cf54826471c8a210db55a1011a9fe0ad",
+    "modules_sha256": {
+      "microcosm.calibrate.solve": "de380f489c84d6773e8c63fc41333ce038bc6f81447fb9388b939620b4c5b4c4",
+      "microcosm.calibrate.gates": "14608a5ee02132f06eaad4a59de3b051c8b8e1d07bd1768f4eb57f237173cef7",
+      "microcosm.calibrate.exact_k": "8a400c46e4c94773dc0d83122f173c8c3bd405694d411989b10f792597b94196",
+      "microcosm.calibrate.matrix": "ca609f47ba7f5bf55ab8a0c85c07d2dac9b7a52fffcf0816f8289f143764c55a"
+    }
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "notes": {
+    "peak_rss_gb": "sampled every 0.25 s: this process plus any live child (psutil RSS sum)",
+    "child_peak_rss_gb": "the child's own getrusage high-water mark"
+  },
+  "engine_facts_child": {
+    "seconds": 40.88,
+    "peak_rss_gb": 9.516,
+    "child_peak_rss_gb": 6.48634368
+  },
+  "target_compile": {
+    "seconds": 12.46,
+    "peak_rss_gb": 4.026
+  },
+  "materialize_all_batches": {
+    "seconds": 2114.12,
+    "peak_rss_gb": 16.263
+  },
+  "batch_invariance_child": {
+    "seconds": 178.87,
+    "peak_rss_gb": 6.123,
+    "child_peak_rss_gb": 4.650975232
+  },
+  "sampling_distribution": {
+    "seconds": 63.02,
+    "peak_rss_gb": 4.501,
+    "calibrations": 400
+  },
+  "per_calibration": {
+    "national_all_design2_post_stratified": {
+      "seconds": 2.03,
+      "peak_rss_gb": 3.51
+    },
+    "national_all_design3_l0_selection": {
+      "seconds": 1657.17,
+      "peak_rss_gb": 3.931
+    },
+    "national_all_design3_refit": {
+      "seconds": 0.14,
+      "peak_rss_gb": 3.869
+    },
+    "headline_design2_post_stratified": {
+      "seconds": 0.13,
+      "peak_rss_gb": 3.869
+    },
+    "headline_design3_l0_selection": {
+      "seconds": 229.56,
+      "peak_rss_gb": 4.499
+    },
+    "headline_design3_refit": {
+      "seconds": 0.25,
+      "peak_rss_gb": 4.5
+    }
+  },
+  "whole_run_seconds": 4331.6,
+  "parent_getrusage_high_water_gb": 4.501,
+  "materialization_batches": [
+    {
+      "batch": 1,
+      "households": 12519,
+      "persons": 27199,
+      "seconds": 356.75,
+      "peak_rss_gb": 11.596,
+      "child_peak_rss_gb": 8.606
+    },
+    {
+      "batch": 2,
+      "households": 12519,
+      "persons": 27296,
+      "seconds": 427.13,
+      "peak_rss_gb": 11.457,
+      "child_peak_rss_gb": 10.758
+    },
+    {
+      "batch": 3,
+      "households": 12519,
+      "persons": 26935,
+      "seconds": 299.65,
+      "peak_rss_gb": 9.734,
+      "child_peak_rss_gb": 9.416
+    },
+    {
+      "batch": 4,
+      "households": 12519,
+      "persons": 27894,
+      "seconds": 269.92,
+      "peak_rss_gb": 10.165,
+      "child_peak_rss_gb": 9.74
+    },
+    {
+      "batch": 5,
+      "households": 12518,
+      "persons": 27973,
+      "seconds": 280.25,
+      "peak_rss_gb": 8.787,
+      "child_peak_rss_gb": 8.249
+    },
+    {
+      "batch": 6,
+      "households": 12518,
+      "persons": 23561,
+      "seconds": 480.42,
+      "peak_rss_gb": 16.263,
+      "child_peak_rss_gb": 15.706
+    }
+  ]
+}
