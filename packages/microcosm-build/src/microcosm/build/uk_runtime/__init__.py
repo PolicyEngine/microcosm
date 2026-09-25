@@ -403,6 +403,7 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.national_role import run_national_role
 from microcosm.build.uk_runtime.national_sampling import (
     sample_uk_spine_frame,
     uk_spine_source_family_units,
@@ -791,6 +792,7 @@ __all__ = [
     "UK_NATIONAL_TARGET_WEIGHT_RULE",
     "uk_doctrine_with_overrides",
     "uk_national_target_loss_weights",
+    "run_national_role",
     "UKNationalStage",
     "UKRowwiseDatasetResult",
     "UKReleaseInputColumn",

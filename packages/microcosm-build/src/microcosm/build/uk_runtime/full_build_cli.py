@@ -7,12 +7,14 @@ stored artifacts. Publication and signing remain explicit external services.
 ``--release-role`` declares which UK dataset line the run builds and is
 required (microcosm#823): ``dense`` is the K-clone joint national + local
 surface under the local doctrine, built here through the graph; ``national``
-is parsed and validated by the same posture-aware validator but is served by
-the retained calibration seam (``tools/build_uk_rowwise_candidate.py``) until
-the graph dispatch lands in the next commit. The role supplies every unset
-solve default and refuses the other role's flags through
-:mod:`microcosm.build.uk_runtime.rowwise_cli`, so the graph driver and the
-rowwise tool parse, default and refuse identically.
+is parsed and validated by the same posture-aware validator and then
+dispatched, before any graph preparation, to the retained calibration seam
+through :mod:`microcosm.build.uk_runtime.national_role` (its Logbook row,
+staging telemetry, manifest and staged bundle live there). The role supplies
+every unset solve default and refuses the other role's flags through
+:mod:`microcosm.build.uk_runtime.rowwise_cli`. ``tools/build_uk_rowwise_candidate.py``
+and ``tools/build_uk_full.py`` are stubs over :func:`main`, so every UK line
+is built by this one command.
 
 A non-dry dense run is wrapped in the rowwise tool's operational envelope:
 the Logbook attempt (a spooled row under ``<out>/logbook-spool`` on every
@@ -71,6 +73,7 @@ from ..staging_cli import (
     validate_staging_arguments,
 )
 from ..staging_dataset import SHA256SUMS_FILENAME, refresh_sha256sums_entry
+from . import national_role
 from .calibration_run import runtime_provenance
 from .chronicle_feed import load_uk_chronicle_feed
 from .frs_release import load_uk_frs_release
@@ -191,10 +194,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Which UK dataset line this run builds: 'dense' (the K-clone joint "
             "national + local surface under the local doctrine, built through "
-            "the graph) or 'national' (validated here; served by the retained "
-            "calibration seam until the graph dispatch lands). The role "
-            "supplies every unset solve default and refuses the other role's "
-            "flags."
+            "the graph) or 'national' (the certified national line, dispatched "
+            "to the retained calibration seam). The role supplies every unset "
+            "solve default and refuses the other role's flags."
         ),
     )
     population = parser.add_mutually_exclusive_group(required=True)
@@ -326,9 +328,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         help="Import an identity-verified historical size search, skipping its dense solve and search.",
     )
-    # The national role's own knobs are declared so the dense refusal table
-    # can name them; the national role itself is served by the calibration
-    # seam until its graph dispatch lands.
+    # The national role's own knobs: the dense refusal table names them and
+    # the national dispatch (``national_role``) reads them.
     parser.add_argument(
         "--target-loss-cap",
         type=float,
@@ -1415,14 +1416,9 @@ def main(argv: list[str] | None = None) -> int:
     validate_cli_args(args)
     posture = posture_of(args)
     if posture.role == "national":
-        print(
-            "error: --release-role national is validated here but served by the "
-            "retained calibration seam (tools/build_uk_rowwise_candidate.py) "
-            "until the graph national dispatch lands in the next commit "
-            "(microcosm#901 phase 4).",
-            file=sys.stderr,
-        )
-        raise SystemExit(2)
+        # The national line is the retained calibration seam under the
+        # driver's posture (microcosm#823); no graph is prepared for it.
+        return national_role.run_national_role(args)
     if args.candidate_clone_counts is not None and not args.dry_run:
         raise ValueError("--candidate-clone-counts is valid only with --dry-run.")
     if args.dry_run:

@@ -117,6 +117,27 @@ def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
     )
 
 
+def _national_argv(tmp_path, *extra):
+    return [
+        "--release-role",
+        "national",
+        "--input-h5",
+        str(tmp_path / "spine.h5"),
+        "--input-sha256",
+        PIN,
+        "--out",
+        str(tmp_path / "out"),
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        PIN,
+        "--ledger-manifest-sha256",
+        PIN,
+        "--no-staging",
+        *extra,
+    ]
+
+
 SELECTION = {
     "schema": "microcosm.calibrate.target-selection.v1",
     "selector": {"geography_levels": None, "explicit": False},
