@@ -6692,6 +6692,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_spm_composition_gate_failures",
             lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
         )
+    # The stored-input gate (microcosm#1026) reads the installed
+    # policyengine-us, absent in the fast lane, and the household-only fake
+    # export frame stores nothing a release would. Every mode passes it here;
+    # test_us_stored_input_register.py pins the gate and its wiring into the
+    # batched pre-export raise.
+    monkeypatch.setattr(
+        builder,
+        "_stored_input_gate_failures",
+        lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
+    )
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
     monkeypatch.setattr(

@@ -3,6 +3,8 @@
 This release type does not certify a new calibration or upgrade its schema.
 Its authority is the reviewed parent byte identity, an exhaustive H5 comparison,
 Census source reconciliation, and separately measured native-loader compatibility.
+Once that compatibility has passed, the candidate must also store no model input
+its tested engine lacks (:mod:`microcosm.data.stored_inputs`, microcosm#1026).
 Publication replays the latter checks before the Hub client is constructed.
 """
 
@@ -1265,6 +1267,7 @@ def _check_compatibility(
             failures.append(
                 "compatibility receipt differs from actual native loader tests/runtime"
             )
+        _check_stored_inputs(candidate, failures)
         from microcosm.data.contract import _check_release_manifest
 
         _check_release_manifest(
@@ -1333,6 +1336,39 @@ def _check_compatibility(
                 )
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         failures.append(f"native loader compatibility failed: {exc}")
+
+
+def _check_stored_inputs(candidate: Path, failures: list[str]) -> None:
+    """Refuse a candidate that stores a model input its tested engine lacks.
+
+    microcosm#1026: the national default and its reported-receipt child were
+    certified here against policyengine-us 2.2.1 while storing the WIC take-up
+    draw as ``would_claim_wic``, a name 2.2.1 does not define, so the engine
+    ignored the draw. :mod:`microcosm.data.stored_inputs` owns the rule and its
+    reviewed register.
+
+    The caller runs this only after the native-loader probe has loaded the
+    tested runtime in this process, and :func:`_check_compatibility` then
+    requires ``build.built_with_model_package`` to name that same runtime. So
+    the installed engine is the one the bundle is certified against. The
+    check reads HDF metadata only.
+    """
+
+    from microcosm.data import stored_inputs
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+        tables = stored_inputs.h5_stored_tables(candidate)
+    except (ImportError, OSError, ValueError) as exc:
+        failures.append(
+            "stored-input contract could not read the candidate's stored "
+            f"tables or its tested engine: {exc}"
+        )
+        return
+    failures.extend(
+        f"stored-input contract: {line}"
+        for line in stored_inputs.stored_input_failures(tables, engine=engine)
+    )
 
 
 def _wheel_files(path: Path) -> tuple[str, str, dict[str, bytes]]:

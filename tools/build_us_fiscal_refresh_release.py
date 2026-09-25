@@ -311,6 +311,13 @@ from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
 )
+from microcosm.data.stored_inputs import (
+    US_STORED_NON_VARIABLE_COLUMNS,
+    installed_us_engine,
+    is_model_named,
+    stored_input_failures,
+    undefined_stored_inputs,
+)
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
     US_EXACT_CRITICAL_TARGET_FIT_REQUIREMENTS,
@@ -6922,6 +6929,109 @@ def _spm_composition_gate_failures(
             + report.summary
             + ". "
             + " ".join(report.failures)
+        ],
+        details,
+    )
+
+
+#: The entities whose typed weights the release writer materializes as
+#: ``{entity}_weight`` columns: ``PolicyEngineUSEngine._engine_tables`` passes
+#: ``weighted_entities=("household",)`` to ``engine_tables``.
+_EXPORT_MATERIALIZED_WEIGHT_ENTITIES = ("household",)
+
+
+def _export_stored_tables(frame: Frame) -> dict[str, tuple[str, ...]]:
+    """The tables and column names ``release_engine.write_dataset`` stores.
+
+    The release writes the export frame through ``PolicyEngineUSEngine()``,
+    whose export contract is empty, so the writer adds no default column. It
+    stores each non-empty entity table's columns, plus the typed household
+    weights materialized as ``household_weight``. Only names are read, never a
+    row, so the export frame is not copied. A ``requires_us`` test writes a
+    small frame through the real writer and checks this view against the
+    written H5's stored tables.
+    """
+
+    tables: dict[str, tuple[str, ...]] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        if len(table) == 0:
+            continue
+        columns = list(table.columns)
+        if entity in _EXPORT_MATERIALIZED_WEIGHT_ENTITIES:
+            weight_column = f"{entity}_weight"
+            if weight_column not in columns:
+                columns.append(weight_column)
+        tables[entity] = tuple(columns)
+    return tables
+
+
+def _stored_input_gate_failures(
+    frame: Frame, *, stage: str
+) -> tuple[list[str], dict[str, object]]:
+    """Stored model inputs as one more batched pre-export gate (microcosm#1026).
+
+    policyengine-us ignores a stored column it defines no variable for: it
+    logs one warning and drops the column. ``populace-us-2024-spm-20260915``
+    and its reported-receipt child, both certified against policyengine-us
+    2.2.1, stored the WIC take-up draw as ``would_claim_wic``, which 2.2.1
+    renamed to ``takes_up_wic_if_eligible``, so every WIC-eligible person took
+    WIC up. This refuses, by name, every column the export would store that
+    looks like a model input, is not a variable of the installed engine and is
+    not in the reviewed register
+    (:data:`microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`).
+
+    The installed engine is the one the release is certified against: the
+    tool writes the H5 with it and records its version as
+    ``build.built_with_model_package``. The check reads column names only. A
+    frame whose tables cannot be listed, or an engine that cannot be imported,
+    is itself a failure line, so the run dies in the batched report naming the
+    reason rather than with a traceback.
+    """
+
+    try:
+        stored = _export_stored_tables(frame)
+    except (KeyError, ValueError) as error:
+        return (
+            [
+                f"Stored model inputs failed ({stage}): the export frame's "
+                "stored tables cannot be listed, so its columns cannot be "
+                f"checked against the engine: {error}"
+            ],
+            {"evaluated": False, "error": str(error)},
+        )
+    try:
+        engine = installed_us_engine()
+    except ImportError as error:
+        return (
+            [
+                f"Stored model inputs failed ({stage}): the installed "
+                "policyengine-us cannot be imported, so the export cannot be "
+                "checked against the engine it is certified against: "
+                f"{error}"
+            ],
+            {"evaluated": False, "error": str(error)},
+        )
+    columns = {column for names in stored.values() for column in names}
+    details: dict[str, object] = {
+        "evaluated": True,
+        "engine": engine.label,
+        "stored_columns": len(columns),
+        "registered_non_variables": sorted(
+            column
+            for column in columns
+            if is_model_named(column)
+            and column not in engine.variables
+            and column in US_STORED_NON_VARIABLE_COLUMNS
+        ),
+        "refused": list(
+            undefined_stored_inputs(columns, engine_variables=engine.variables)
+        ),
+    }
+    return (
+        [
+            f"Stored model inputs failed ({stage}): {line}"
+            for line in stored_input_failures(stored, engine=engine)
         ],
         details,
     )
@@ -14005,6 +14115,35 @@ def _main(argv: Sequence[str] | None = None) -> None:
             force_upload=True,
         )
 
+    # Stored model inputs (microcosm#1026, decision d271), as a batched
+    # pre-export gate. The engine ignores a stored column it defines no
+    # variable for, so a renamed input (would_claim_wic after policyengine-us
+    # 2.x) ships as data the model never reads. The installed engine here is
+    # the one this run writes the H5 with and records as
+    # build.built_with_model_package. Column names only: no rows are read, and
+    # the verdict joins the one batched pre-export raise below, so a refusal
+    # names every other failing gate too and mints no H5.
+    stored_input_failures_, export_frame_stored_inputs = (
+        _stored_input_gate_failures(export_frame, stage="export frame")
+    )
+    terminal_gate_failures.extend(stored_input_failures_)
+    terminal_batch_telemetry.stage(
+        "export_frame_stored_inputs",
+        message=(
+            "Checked the export's stored columns against the installed "
+            "policyengine-us and the reviewed non-variable register."
+        ),
+        **export_frame_stored_inputs,
+    )
+    if stored_input_failures_:
+        terminal_batch_telemetry.stage(
+            "export_frame_stored_inputs",
+            status="failed",
+            message="Stored model inputs gate failed.",
+            failures=stored_input_failures_,
+            force_upload=True,
+        )
+
     terminal_batch_telemetry.stage(
         "export_dataset",
         message="Writing PolicyEngine-US H5.",
@@ -14210,7 +14349,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         telemetry=terminal_batch_telemetry,
     )
     # Batched pre-export raise: the calibration battery, SPM measurement
-    # composition, input coverage,
+    # composition, stored model inputs, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
     # at this point, so one failed
     # run reports every failing pre-export group at once (Build M attempts 9
