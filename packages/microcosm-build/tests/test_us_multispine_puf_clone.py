@@ -474,13 +474,6 @@ def test_clone_index_conversions_reject_malformed_provenance_before_casting(
         pytest.param(pd.array([0, 1, 2], dtype="Int64"), [0, 1, 2], id="nullable"),
         pytest.param(np.asarray([0, 1, 2], dtype=np.uint64), [0, 1, 2], id="uint64"),
         pytest.param(["0", "1", "2"], [0, 1, 2], id="numeric_strings"),
-        # Integer dtypes are validated exactly, never through a float64 view
-        # that would round an index past 2**53.
-        pytest.param(
-            np.asarray([0, 1, 2**53 + 1], dtype=np.int64),
-            [0, 1, 2**53 + 1],
-            id="exact_past_float_precision",
-        ),
     ],
 )
 def test_clone_index_conversions_leave_valid_encodings_unchanged(
@@ -504,3 +497,56 @@ def test_clone_index_conversions_leave_valid_encodings_unchanged(
     assert ranks.dtype == np.int64
     assert ranks.index.tolist() == table.index.tolist()
     assert mask.tolist() == [False, True, False]
+
+
+@pytest.mark.parametrize("clone_index", [3, 7, 2**53 + 1, 2**62])
+@pytest.mark.parametrize("dtype", [np.int64, np.float64])
+def test_copy_rank_restricts_historical_domain_but_preserves_assembled_indices(
+    clone_index: int,
+    dtype: type,
+) -> None:
+    indices = np.asarray([0, 1, clone_index], dtype=dtype)
+    historical = _support_copies(indices, assembled=False)
+    with pytest.raises(ValueError, match="historical support clone indices.*0, 1, 2"):
+        support_copy_rank_series(historical, entity="person")
+
+    assembled = _support_copies(indices, assembled=True)
+    ranks = support_copy_rank_series(assembled, entity="person")
+    assert ranks.tolist() == indices.astype(np.int64).tolist()
+    assert ranks.dtype == np.int64
+
+
+@pytest.mark.parametrize("entity", US_SCHEMA.entities)
+@pytest.mark.parametrize("source_state", ["missing", "nan", "none", "nullable"])
+def test_assembled_provenance_requires_complete_source_ids(
+    entity: str,
+    source_state: str,
+) -> None:
+    table = _support_copies([0, 1, 2], assembled=True).rename(
+        columns=lambda column: column.replace("person_", f"{entity}_", 1)
+    )
+    source = support_source_id_column(entity)
+    if source_state == "missing":
+        table = table.drop(columns=source)
+    else:
+        table[source] = {
+            "nan": [np.nan, np.nan, 7],
+            "none": [None, None, 7],
+            "nullable": pd.array([pd.NA, pd.NA, 7], dtype="Int64"),
+        }[source_state]
+    for reader in (
+        require_assembled_support_provenance,
+        support_role_series,
+        support_copy_rank_series,
+        without_support_role_metadata,
+    ):
+        with pytest.raises(
+            ValueError, match=f"assembled support metadata requires.*{source}"
+        ):
+            reader(table, entity=entity)
+
+
+def test_assembled_copy_rank_preserves_int64_maximum() -> None:
+    indices = np.asarray([0, 1, np.iinfo(np.int64).max], dtype=np.int64)
+    table = _support_copies(indices, assembled=True)
+    assert support_copy_rank_series(table, entity="person").tolist() == indices.tolist()

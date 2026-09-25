@@ -736,6 +736,32 @@ def test_assembled_frame_with_complete_provenance_groups_every_copy() -> None:
     assert summary["clone_availability_mismatches"] == 1
 
 
+@pytest.mark.parametrize("source_state", ["missing", "nan", "nullable"])
+def test_prior_year_gate_refuses_assembled_missing_source_ids(
+    source_state: str,
+) -> None:
+    person = _assembled_pair_person(
+        person_support_channel=["asec"] * 4,
+        person_support_clone_index=[0, 1, 0, 1],
+    )
+    if source_state == "missing":
+        person = person.drop(columns="person_source_id")
+    elif source_state == "nan":
+        person["person_source_id"] = [np.nan, np.nan, 20, 20]
+    else:
+        person["person_source_id"] = pd.array([pd.NA, pd.NA, 20, 20], dtype="Int64")
+    frame = _frame(person)
+    for reader in (
+        module.us_prior_year_income_summary,
+        us_prior_year_income_signal_gate,
+    ):
+        with pytest.raises(
+            ValueError,
+            match="assembled support metadata requires.*person_source_id",
+        ):
+            reader(frame)
+
+
 def test_clone_availability_compares_repeated_historical_clone_index() -> None:
     # A malformed historical table whose tail copy repeats clone index 1:
     # grouping by source ID still compares that copy (the old role-occurrence

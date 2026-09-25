@@ -13,6 +13,7 @@ from microcosm.build.gates import GateResult
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PERSON_SUPPORT_CHANNEL_COLUMN",
+    "PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "SPINE_ASSEMBLY_MANIFEST_KEY",
@@ -39,6 +40,7 @@ BASE_ASEC_SUPPORT_CHANNEL = "asec"
 PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 PUF_TAX_DETAIL_CLONE_INDEX = 1
+PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX = 2
 SPINE_ASSEMBLY_MANIFEST_KEY = "us_spine_assembly_manifest"
 _SPINE_ASSEMBLY_MANIFEST_VERSION = 1
 _INT64_MAX = int(np.iinfo(np.int64).max)
@@ -357,11 +359,13 @@ def require_assembled_support_provenance(
 ) -> None:
     """Refuse an assembled table whose support provenance is incomplete.
 
-    Multispine assembly writes the raw spine-record ID together with both the
-    support channel and the clone index. On an assembled table the channel
-    names a physical source (for example ``asec`` or ``acs``), not an operator
+    Multispine assembly writes the raw spine-record ID together with the
+    assembly-unique source ID, support channel and clone index. Source IDs
+    must be complete so grouping cannot silently drop an unkeyed copy.
+    On an assembled table the channel names a physical source (for example
+    ``asec`` or ``acs``), not an operator
     role, so only the clone index can tell a native row from its donor
-    copies. An assembled table that has lost either column must not fall back
+    copies. An assembled table that has lost a required column must not fall back
     to the logic for historical tables without clone indices: channel-only
     role ranks, ``(source, role)`` occurrence pairing, or one row per source
     ID. That fallback hides copies that disagree.
@@ -379,6 +383,7 @@ def require_assembled_support_provenance(
         for column in (
             support_channel_column(entity),
             support_clone_index_column(entity),
+            support_source_id_column(entity),
         )
         if column not in table
     ]
@@ -388,7 +393,16 @@ def require_assembled_support_provenance(
             + " and ".join(repr(column) for column in missing)
             + f" alongside {spine_source_id_column(entity)!r}: an assembled "
             "table's channel names a physical source rather than a support "
-            "copy, so without complete channel and clone-index provenance its "
+            "copy, so without complete source, channel and clone-index provenance its "
+            "copies cannot be ranked, paired or compared."
+        )
+    source_column = support_source_id_column(entity)
+    missing_sources = table[source_column].isna()
+    if missing_sources.any():
+        raise ValueError(
+            "assembled support metadata requires complete non-null "
+            f"{source_column!r} alongside {spine_source_id_column(entity)!r}; "
+            f"found {int(missing_sources.sum())} missing source ID(s), so its "
             "copies cannot be ranked, paired or compared."
         )
 
@@ -556,6 +570,8 @@ def support_copy_rank_series(
 
     Clone provenance is authoritative whenever it is present, on assembled and
     historical PUF-support frames alike: the rank is the validated clone index.
+    Historical ranks are restricted to the produced indices 0, 1 and 2;
+    assembled ranks retain the full nonnegative int64 domain.
     Index 0 is the native record, 1 its primary PUF-detail copy, and 2 the
     capital-gains own-tail copy, which splits weight off a PUF-detail household
     while keeping that household's source IDs. A historical PUF-support base
@@ -583,6 +599,19 @@ def support_copy_rank_series(
             clone_index_column,
             owner="PUF support metadata",
         )
+        if not has_assembled_support_metadata(table, entity=entity):
+            allowed = (
+                0,
+                PUF_TAX_DETAIL_CLONE_INDEX,
+                PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX,
+            )
+            invalid = ~np.isin(ranks, allowed)
+            if invalid.any():
+                raise ValueError(
+                    "historical support clone indices must be one of 0, 1, 2; "
+                    f"{clone_index_column!r} contains unsupported value(s) "
+                    f"{np.unique(ranks[invalid]).tolist()}."
+                )
     else:
         ranks = np.where(
             roles.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy(),

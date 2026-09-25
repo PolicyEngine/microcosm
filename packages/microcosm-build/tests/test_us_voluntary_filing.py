@@ -804,6 +804,38 @@ def test_historical_duplicate_clone_index_still_fails_closed() -> None:
         impute_us_voluntary_filing(duplicated, _donor(), seed=17)
 
 
+@pytest.mark.parametrize("clone_index", [3, 7, 2**62])
+@pytest.mark.parametrize("dtype", [np.int64, np.float64], ids=["int", "float"])
+def test_historical_out_of_domain_clone_refused_before_prediction(
+    clone_index: int,
+    dtype,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame = _historical_tail_frame()
+    tax_unit = frame.table("tax_unit")
+    clone_indices = tax_unit["tax_unit_support_clone_index"].to_numpy(
+        dtype=dtype, copy=True
+    )
+    clone_indices[clone_indices == 2] = clone_index
+    frame = _replace_tax_unit(frame, tax_unit_support_clone_index=clone_indices)
+    receiver = pd.DataFrame(
+        {
+            predictor: np.zeros(len(tax_unit))
+            for predictor in SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS
+        },
+        index=tax_unit["tax_unit_id"],
+    )
+
+    def unexpected_qrf(**kwargs):
+        pytest.fail("Invalid historical clone indices must fail before QRF")
+
+    monkeypatch.setattr(module, "QRF", unexpected_qrf)
+    with pytest.raises(ValueError, match="historical"):
+        module._source_receiver_rows(frame, receiver)
+    with pytest.raises(ValueError, match="historical"):
+        impute_us_voluntary_filing(frame, _donor(), seed=17)
+
+
 def test_assembled_frame_without_clone_indices_fails_closed() -> None:
     # Microcosm #992 gate finding: with the clone-index column dropped, an
     # assembled ASEC-channel frame once fell back to role ranks. Assembled
@@ -1029,6 +1061,80 @@ def test_gate_compares_every_historical_copy_with_repeated_clone_indices() -> No
     assert us_voluntary_filing_summary(disagreeing)["clone_mismatch_source_units"] == 1
     gate = us_voluntary_filing_signal_gate(disagreeing)
     assert any("disagree for 1 source unit" in failure for failure in gate.failures)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [[False, False, True, True], [False, True, True, True]],
+    ids=["copies_agree", "copies_disagree"],
+)
+def test_gate_flags_duplicate_sources_without_support_metadata(
+    output: list[bool],
+) -> None:
+    frame = _replace_tax_unit(
+        _frame(4),
+        tax_unit_source_id=np.asarray([10, 10, 20, 20]),
+        **{_OUTPUT: np.asarray(output)},
+    )
+    summary = us_voluntary_filing_summary(frame)
+    assert summary["clone_metadata_missing"] is True
+    gate = us_voluntary_filing_signal_gate(frame)
+    assert not gate.passed
+    assert any("provenance" in failure for failure in gate.failures)
+
+
+@pytest.mark.parametrize(
+    "consumer", [us_voluntary_filing_summary, us_voluntary_filing_signal_gate]
+)
+@pytest.mark.parametrize(
+    "output",
+    [
+        [False, False, False, True, True],
+        [False, False, True, True, True],
+    ],
+    ids=["copies_agree", "unpaired_copy_disagrees"],
+)
+def test_channel_only_gate_refuses_duplicated_source_role(
+    consumer,
+    output: list[bool],
+) -> None:
+    frame = _replace_tax_unit(
+        _frame(5),
+        tax_unit_source_id=np.asarray([10, 10, 10, 20, 20]),
+        tax_unit_support_channel=np.asarray(
+            ["asec", "puf_tax_detail", "puf_tax_detail", "asec", "puf_tax_detail"]
+        ),
+        **{_OUTPUT: np.asarray(output)},
+    )
+    with pytest.raises(ValueError, match="duplicated same-role rows"):
+        consumer(frame)
+
+
+def test_unique_sources_without_metadata_keep_the_unexpanded_summary() -> None:
+    frame = _replace_tax_unit(
+        _frame(4), **{_OUTPUT: np.asarray([False, True, True, True])}
+    )
+    source_frame = _replace_tax_unit(
+        frame, tax_unit_source_id=np.asarray([10, 20, 30, 40])
+    )
+    assert us_voluntary_filing_summary(source_frame) == us_voluntary_filing_summary(
+        frame
+    )
+    assert us_voluntary_filing_signal_gate(source_frame).passed
+
+
+def test_channel_only_unique_source_role_pairs_keep_valid_clone_diagnostics() -> None:
+    frame = _replace_tax_unit(
+        _frame(4),
+        tax_unit_source_id=np.asarray([10, 10, 20, 20]),
+        tax_unit_support_channel=np.asarray(["asec", "puf_tax_detail"] * 2),
+        **{_OUTPUT: np.asarray([False, False, True, True])},
+    )
+    summary = us_voluntary_filing_summary(frame)
+    assert summary["clone_source_units"] == 2
+    assert summary["clone_mismatch_source_units"] == 0
+    assert summary["clone_metadata_missing"] is False
+    assert us_voluntary_filing_signal_gate(frame).passed
 
 
 @pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])

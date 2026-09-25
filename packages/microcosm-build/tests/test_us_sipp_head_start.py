@@ -600,6 +600,25 @@ def test_historical_duplicate_clone_index_still_fails_closed(
         impute_us_sipp_head_start(duplicated, _donor(), seed=3)
 
 
+@pytest.mark.parametrize("clone_index", [3, 7, 2**62])
+@pytest.mark.parametrize("dtype", [np.int64, np.float64])
+def test_historical_out_of_domain_copy_refused_before_prediction(
+    monkeypatch: pytest.MonkeyPatch,
+    clone_index: int,
+    dtype: type,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    column = "person_support_clone_index"
+    tail = person[column].eq(2)
+    person[column] = person[column].astype(dtype)
+    person.loc[tail, column] = clone_index
+    with pytest.raises(ValueError, match="historical support clone indices.*0, 1, 2"):
+        impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
 @pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])
 @pytest.mark.parametrize(
     "bad_index",

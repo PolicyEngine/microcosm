@@ -1002,23 +1002,30 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
                         "value": values,
                     }
                 )
-                # With clone provenance every copy of a source unit, the
-                # capital-gains own-tail copy included, must agree. Assembled
-                # tables always reach this branch (validated above); only
-                # channel-only historical tables pair copies by occurrence.
-                if support_clone_index_column("tax_unit") in tax_unit:
-                    clone_groups = ["source_id"]
-                else:
-                    clone_table["source_occurrence"] = clone_table.groupby(
+                if support_clone_index_column("tax_unit") not in tax_unit:
+                    role_counts = clone_table.groupby(
                         ["source_id", "role"], sort=False
-                    ).cumcount()
-                    clone_groups = ["source_id", "source_occurrence"]
-                sizes = clone_table.groupby(clone_groups, sort=False).size()
+                    ).size()
+                    duplicated_roles = role_counts[role_counts > 1]
+                    if not duplicated_roles.empty:
+                        raise ValueError(
+                            "US voluntary-filing support source units carry "
+                            "duplicated same-role rows; invalid source role(s) "
+                            f"{duplicated_roles.index.tolist()[:5]}."
+                        )
+                # Every source copy must agree. Channel-only tables have one
+                # row per source and role, as required by the receiver path.
+                sizes = clone_table.groupby("source_id", sort=False).size()
                 clone_source_units = int((sizes > 1).sum())
-                unique = clone_table.groupby(clone_groups, sort=False)["value"].nunique(
+                unique = clone_table.groupby("source_id", sort=False)["value"].nunique(
                     dropna=False
                 )
                 clone_mismatch_source_units = int((unique > 1).sum())
+    elif _TAX_UNIT_SOURCE_ID_COLUMN in tax_unit:
+        source_ids = tax_unit[_TAX_UNIT_SOURCE_ID_COLUMN]
+        clone_metadata_missing = bool(
+            source_ids.isna().any() or _decoded_strings(source_ids).duplicated().any()
+        )
 
     return {
         "weighted_true_share": float(weights[true].sum()) / total_weight,
@@ -1074,7 +1081,7 @@ def us_voluntary_filing_signal_gate(frame: Frame) -> GateResult:
     if summary["clone_metadata_missing"]:
         failures.append(
             "Voluntary-filing support clones lack complete tax_unit_source_id "
-            "provenance."
+            "or support-role provenance."
         )
     if summary["clone_mismatch_source_units"]:
         failures.append(
