@@ -1,5 +1,10 @@
 # Shared graph contracts extracted for the UK full-build graph (#901)
 
+> Renumbering note (2026-09-25, rebase onto main): the amendments this lane recorded as 25 and 26
+> are 26 and 27 on main, because main recorded the observer opt-in (#950/#951) as amendment 25
+> first. Commit hashes cited below are the pre-cherry-pick #918 hashes (Max's commits were
+> cherry-picked with `-x`, so each new commit names its origin).
+
 > Historical source-only receipt. Later fixes and runtime verification are
 > recorded in the [13 September acceptance record](uk-shared-graph-contract-acceptance-20260913.md).
 
@@ -55,7 +60,7 @@ to consume this. Nothing was copied from #901's executor, and
 
 ## Amendments
 
-**25 — a same-kind weight update is declarable.** `decl.py` gains
+**26 — a same-kind weight update is declarable.** `decl.py` gains
 `WeightUpdate(entity, kind, reason, mass)` and
 `WEIGHT_UPDATE_MASS_POLICIES`; a new non-frozen
 `microcosm/graph/weight_update.py` gains `weight_update_receipt`. The
@@ -68,7 +73,7 @@ current base through the same function. `to_kind` is a property, so the
 two declarations' field sets are disjoint and declaration JSON round-trips
 each as itself; the transition payload is byte-for-byte unchanged.
 
-**26 — the context carries the version's frame view.** `kernel.py` gains
+**27 — the context carries the version's frame view.** `kernel.py` gains
 `frame_metadata`, `frame_mass_log` and `frame_column_order`, riding after
 `artifacts` and before `tolerances` so amendment 17's "numerics rides at
 the end" stays literally true. A column order must be exactly an ordering
@@ -112,15 +117,15 @@ charter assigns to the suite lane. In full:
 
 | File | Suite? | Change |
 | --- | --- | --- |
-| `test_graph_weight_update.py` | no | new (amendment 25) |
-| `test_graph_frame_context.py` | no | new (amendment 26) |
+| `test_graph_weight_update.py` | no | new (amendment 26) |
+| `test_graph_frame_context.py` | no | new (amendment 27) |
 | `test_graph_population.py` | no | three design-anchor properties added beside the existing ones (fix round, F2) |
 | `test_graph_kernel_contract.py` | no | one assertion of *adjacency* relaxed to the ordering amendment 19 actually claims |
 | `test_acceptance_b_ownership.py` | **yes** | B2's `KernelContext` field set, in its own commit (`895aabf19`), as amendment 19's was |
 
 The lock was re-recorded as part of each numbered amendment, never
-refreshed to make a test green: amendment 25 moved only the `decl.py`
-line, amendment 26 only the `kernel.py` line.
+refreshed to make a test green: amendment 26 moved only the `decl.py`
+line, amendment 27 only the `kernel.py` line.
 
 ## What stays with María
 
@@ -146,7 +151,7 @@ An independent read-only review of `6f4ba4ec9` over `15ebde806` returned
 REQUEST_CHANGES; its verbatim text is `FABLE-REVIEW.md` in this packet.
 Root adjudicated. What changed in the contracts above:
 
-**Amendment 26, mass log (F1).** The projection handed every node
+**Amendment 27, mass log (F1).** The projection handed every node
 `population.frame.mass_log`, which for an ordinary node is its version's
 *cumulative* log. An ordinary node's key binds only its version's
 structural boundary and the owners of the columns it declared, so a
@@ -157,7 +162,7 @@ cold execution and a restored hit both reach — and projects ordinary nodes
 from that boundary. A structural node still receives the cumulative log,
 which its key binds through `base` and `members`.
 
-**Amendment 26, isolation (F3/F4).** `Frame` deeply freezes its metadata
+**Amendment 27, isolation (F3/F4).** `Frame` deeply freezes its metadata
 and its mass records, but a frozen dataclass still yields to
 `object.__setattr__`, so passing those objects by reference made every
 kernel a live handle on the population. The projection now hands out a
@@ -167,7 +172,7 @@ and `_context_digest` binds all three fields — the metadata through the
 frame format's own store codec, each mass record field by field, and the
 projected column order.
 
-**Amendment 25, design ancestry (F2 — not accepted as stated).** The
+**Amendment 26, design ancestry (F2 — not accepted as stated).** The
 review asked a design-kind update to re-anchor `Population.design_weights`.
 Root refused: an anchor is the design weight a row entered carrying, it is
 captured once at CREATE and afterwards only carried by stable entity id,
@@ -178,7 +183,7 @@ declared upstream of an unrelated normalization. The amendment and the
 `WeightUpdate` docstring now state the anchor rule instead of "ancestry is
 untouched", and `test_graph_population.py` asserts it.
 
-**Amendment 25, motivating claim (F5).** The amendment claimed a re-solve
+**Amendment 26, motivating claim (F5).** The amendment claimed a re-solve
 of an existing calibration as a covered case. `calibrate.adam@1` emits no
 `receipt['weight_update']`, so that declaration would be refused by the
 axis check; the claim is now marked a future consumer adaptation.

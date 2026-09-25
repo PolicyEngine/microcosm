@@ -1362,7 +1362,7 @@ def test_calibration_cap_stays_anchored_to_original_design_after_filter() -> Non
 
 
 # ----------------------------------------------------------------------
-# Amendment 25: what a same-kind design update does to design ancestry
+# Amendment 26: what a same-kind design update does to design ancestry
 # ----------------------------------------------------------------------
 
 

@@ -354,7 +354,7 @@ class KernelContext:
             from the live version as well as deeply frozen by ``Frame``;
             this class adds a read-only view over that mapping and does not
             itself deep-freeze or copy a mapping built some other way
-            (amendment 26).
+            (amendment 27).
         frame_mass_log: The ``Frame`` mass records this node's key binds,
             in order. For an ordinary node that is its population version's
             *boundary* log -- the log as that version was admitted -- so a
@@ -370,7 +370,7 @@ class KernelContext:
             order is not authority. The executor hands out rebuilt records,
             not the version's own: a frozen dataclass still yields to
             ``object.__setattr__``, so a record passed by reference would be
-            a live handle on the population (amendment 26).
+            a live handle on the population (amendment 27).
         frame_column_order: Entity to the population version's own column
             order, restricted to the columns projected into ``tables``.
             The executor projects ``tables`` in declaration order, so this
@@ -380,7 +380,7 @@ class KernelContext:
             undeclared column cannot be smuggled in as a name. All three
             frame fields are ordinary inputs: the executor's before/after
             comparison covers them, so rewriting one is refused exactly as
-            rewriting a table is (amendment 26).
+            rewriting a table is (amendment 27).
         tolerances: ``(entity, column)`` of each declared input column to
             the :class:`Tolerance` its owning kernel declared, or ``None``
             for a bitwise owner. A gate compares against these.

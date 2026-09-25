@@ -1,4 +1,4 @@
-"""Amendment 26: the context carries the version's metadata, mass log, order.
+"""Amendment 27: the context carries the version's metadata, mass log, order.
 
 The executor projects each table in *declaration* order, so a kernel that
 reconstructs its population version's layout cannot do it from
@@ -973,7 +973,7 @@ def test_a_retained_mutating_observer_changes_nothing(tmp_path: Path) -> None:
 
     The observer keeps every snapshot and rewrites its tables, its nested
     metadata *and* its mass records after the callback returns. Table
-    mutation alone would not touch the amendment-26 fields at all, so it is
+    mutation alone would not touch the amendment-27 fields at all, so it is
     the metadata and mass-record rewrites that make this property about
     them; the run is over ``boundary_graph`` because that is the graph
     whose snapshots carry a mass record to rewrite.

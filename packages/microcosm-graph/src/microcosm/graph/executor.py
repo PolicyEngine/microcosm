@@ -581,7 +581,7 @@ def _context_digest(context: KernelContext) -> bytes:
         )
         digest.update(len(value.payload).to_bytes(8, "little"))
         digest.update(value.payload)
-    # The amendment-26 frame fields are kernel inputs like any other, so B4's
+    # The amendment-27 frame fields are kernel inputs like any other, so B4's
     # before/after comparison covers them too. They are handed out detached
     # (`_project_context`), so a kernel that rewrites one cannot reach the
     # live version -- but it can still make its own node's output a function
@@ -712,9 +712,9 @@ def _project_context(
 
     ``mass_log`` is the ``Frame`` mass log this node's *key* binds, which is
     not in general the cumulative log carried by ``population``: see the
-    boundary selection in :func:`run_graph`.  It defaults to the empty log,
+    boundary selection in :func:`_execute_graph`.  It defaults to the empty log,
     so a caller that projects a context outside the executor states no mass
-    history rather than inheriting one it never bound (amendment 26).
+    history rather than inheriting one it never bound (amendment 27).
     """
 
     if population is None:
@@ -813,7 +813,7 @@ def _project_context(
     # The projection above orders each table by declaration, not by the
     # version's own layout, so a consumer rebuilding the version's tables
     # needs that layout separately -- restricted to what it was given, so it
-    # never learns the name of a column it cannot read (amendment 26).
+    # never learns the name of a column it cannot read (amendment 27).
     column_order: dict[str, tuple[str, ...]] = {}
     for entity, table in tables.items():
         projected = set(table.columns)
@@ -833,7 +833,7 @@ def _project_context(
         # yields to ``object.__setattr__``, so passing the version's own
         # ``_FrozenMapping`` leaves and mass records by reference would make
         # every kernel -- and anything that retains a context past its own
-        # mutation check -- a live handle on the population (amendment 26).
+        # mutation check -- a live handle on the population (amendment 27).
         frame_metadata=deepcopy(frame.metadata),
         frame_mass_log=tuple(_detached_record(record) for record in mass_log),
         frame_column_order=MappingProxyType(column_order),

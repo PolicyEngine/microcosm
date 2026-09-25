@@ -341,7 +341,7 @@ def test_context_artifacts_default_empty_and_are_immutable() -> None:
     fields = [f.name for f in dataclasses.fields(KernelContext)]
     assert fields[-2:] == ["tolerances", "numerics"]
     # Amendment 19 claims artifacts rides *before* the pair, not adjacent to
-    # it; amendment 26's three frame fields ride between them.
+    # it; amendment 27's three frame fields ride between them.
     assert fields.index("artifacts") < fields.index("tolerances")
     node = Node("draw", "fit.draw@1")
     bare = KernelContext(

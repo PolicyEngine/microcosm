@@ -1217,7 +1217,7 @@ def _render_calibration(compiled: CompiledGraph, manifest: RunManifest) -> str:
         transition = node.weights
         assert transition is not None
         # A same-kind update does not move the kind, so it does not get the
-        # arrow that says it did (amendment 25).
+        # arrow that says it did (amendment 26).
         kind_label = (
             f"{_escape(transition.entity)} → {_escape(transition.to_kind)}"
             if not isinstance(transition, WeightUpdate)

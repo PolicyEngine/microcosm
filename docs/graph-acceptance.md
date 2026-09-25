@@ -526,7 +526,7 @@ lock unchanged:
     lock is unchanged. Adopted 2026-09-18 for the retention seal's verifier,
     which reads the live population and seals its content (#950, #951).
 
-25. **A weight update that keeps its kind is declarable.**
+26. **A weight update that keeps its kind is declarable.**
     `WeightTransition` only ever moves a kind forward, so a stage that
     recomputes weights it already holds — a sampling normalization is the
     case this was extracted for — could not be declared at all, and the
@@ -594,7 +594,7 @@ lock unchanged:
     `uk.full.normalize` node is the first consumer; its UK graph stages
     and calibration science stay in that branch.
 
-26. **The context carries the version's metadata, mass log and column
+27. **The context carries the version's metadata, mass log and column
     order.** The executor projects each entity table in *declaration*
     order, so `KernelContext.tables` is not the population version's
     layout, and the version's `Frame` metadata and mass log were not
@@ -665,8 +665,16 @@ lock unchanged:
     cache hit exactly as they are from a computed one, which is what
     amendment 22's metadata-preserving Frame format makes possible.
     `kernel.py` is re-locked. Raised by the same source review as amendment
-    25; the UK full-build graph's `context_frame` helper (#901, head
-    `051fb972`) is the first consumer.
+    26; the UK full-build graph's `context_frame` helper (#901, head
+    `051fb972`) is the first consumer. The executor keeps live references in its
+    boundary mass logs, so under amendment 25's opt-in
+    (`_population_observer_detach=False`) a mutating observer can change
+    what a later node sees as `frame_mass_log`; that lies inside the
+    guarantees amendment 25 already withdraws and adds no new one.
+    Renumbered from 26 on the rebase onto main (2026-09-25), because main had
+    recorded the observer opt-in as amendment 25 in the meantime; amendment 26
+    above was 25 in the same lane.
+
 
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and

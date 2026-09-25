@@ -1,4 +1,4 @@
-"""Amendment 25: a same-kind weight update is declarable and axis-bound.
+"""Amendment 26: a same-kind weight update is declarable and axis-bound.
 
 ``WeightTransition`` only moves a kind forward, so a stage that recomputes
 weights it already holds — a sampling normalization is the case this was
@@ -222,7 +222,7 @@ def test_weight_update_round_trips_as_itself() -> None:
 
 
 def test_transition_payload_is_unchanged_by_the_amendment() -> None:
-    """Every declaration serialized before amendment 25 restores unchanged."""
+    """Every declaration serialized before amendment 26 restores unchanged."""
     graph = Graph("toy", (toy.SOURCE,), (toy.CREATE, toy.POOL))
     text = graph_to_json(graph)
     assert '"weights":{"entity":"household","mass":"free","to_kind":"importance"}' in (
