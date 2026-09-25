@@ -55,6 +55,14 @@ CALIBRATION_SHA = "ac31f2be76a0f8dc4da89b6935aa4b8b1b2e1bd4eb3d03b809333084f25b3
 TARGET_SURFACE_SHA = "e" * 64
 REGISTRY_VERSION = "registryabc123"
 TARGET_COUNT = 20
+#: Terminal gate verdicts the US release tool binds as release-dir
+#: diagnostics artifacts (route A remediation PR-3): key -> file name.
+GATE_EVIDENCE_FILES = {
+    "input_coverage": "input_coverage.json",
+    "input_mass_parity": "input_mass_parity.json",
+    "qrf_tail_concentration": "qrf_tail_concentration.json",
+    "reform_coverage_smoke": "reform_coverage_smoke.json",
+}
 
 DEDUCTION_CRITICAL_TARGETS = (
     (
@@ -584,6 +592,22 @@ def release_dir(tmp_path: Path) -> Path:
     )
     diagnostics_sha = _sha256(directory / "calibration_diagnostics.json")
     source_coverage_sha = _sha256(directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE)
+    # The release tool's terminal gate verdicts ride as manifest artifacts so
+    # the publisher uploads them; the register block records the waiver.
+    for key, filename in GATE_EVIDENCE_FILES.items():
+        (directory / filename).write_text(
+            json.dumps({"schema_version": 1, "enforced": True, key: {"passed": True}})
+        )
+    gate_evidence_artifacts = {
+        key: {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": "policyengine/populace-us",
+            "revision": RELEASE_ID,
+            "sha256": _sha256(directory / filename),
+        }
+        for key, filename in GATE_EVIDENCE_FILES.items()
+    }
     (directory / "release_manifest.json").write_text(
         json.dumps(
             {
@@ -599,6 +623,13 @@ def release_dir(tmp_path: Path) -> Path:
                     "built_with_model_package": {
                         "name": "policyengine-us",
                         "version": "1.729.0",
+                    },
+                    "qrf_tail_register": {
+                        "path": "/runtime/qrf_tail_exclusions.json",
+                        "sha256": "d" * 64,
+                        "entries": {"farm_income": "donor tail, tracked #481"},
+                        "mismatch": {"stale": [], "unused": []},
+                        "enforced": True,
                     },
                 },
                 "compatible_core_packages": [
@@ -636,6 +667,7 @@ def release_dir(tmp_path: Path) -> Path:
                         "revision": RELEASE_ID,
                         "sha256": source_coverage_sha,
                     },
+                    **gate_evidence_artifacts,
                 },
             }
         )
@@ -1317,6 +1349,12 @@ def test_publish_commits_immutable_release_before_root_and_pointer(
             f"releases/{RELEASE_ID}/{filename}"
             for filename in required_release_files(RELEASE_ID)
         },
+        # The gate verdicts are manifest artifacts, so the immutable release
+        # commit carries them without --extra-file.
+        *{
+            f"releases/{RELEASE_ID}/{filename}"
+            for filename in GATE_EVIDENCE_FILES.values()
+        },
     }
     assert LATEST_POINTER_PATH not in immutable["paths"]
 
@@ -1860,9 +1898,11 @@ def evidence_release_dir(release_dir: Path) -> Path:
     diagnostics build.release_gates)."""
     directory = release_dir.parent / EVIDENCE_RELEASE_ID
     directory.mkdir()
-    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
-        (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).read_text()
-    )
+    for filename in (
+        US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        *GATE_EVIDENCE_FILES.values(),
+    ):
+        (directory / filename).write_text((release_dir / filename).read_text())
     diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
     diagnostics["build"] = {
         "release_gates": {"passed": False, "failures": [EVIDENCE_KNOWN_FAILURE]}
@@ -2215,6 +2255,8 @@ def test_publish_refuses_path_components_in_extra_files(
         ("root-artifact-hash-mismatch", ValueError, "has sha256"),
         ("reserved-pointer-path", ValueError, "reserved pointer path"),
         ("unclean-root-path", ValueError, "clean relative POSIX path"),
+        ("gate-evidence-hash-mismatch", ReleaseContractError, "declares sha256"),
+        ("missing-gate-evidence", FileNotFoundError, "qrf_tail_concentration"),
     ],
 )
 def test_cli_preflight_matches_publisher_guards_before_hub_activity(
@@ -2257,6 +2299,13 @@ def test_cli_preflight_matches_publisher_guards_before_hub_activity(
         _declare_root_artifact(
             release_dir, key="smuggled_pointer", path=f"./{LATEST_POINTER_PATH}"
         )
+    elif condition == "gate-evidence-hash-mismatch":
+        # A verdict edited after the manifest bound it (route A PR-3).
+        (release_dir / "qrf_tail_concentration.json").write_text("{}")
+    elif condition == "missing-gate-evidence":
+        # A bound verdict that is not on disk cannot ship: the publisher
+        # looks for it as a root artifact and refuses.
+        (release_dir / "qrf_tail_concentration.json").unlink()
     else:
         raise AssertionError(f"unhandled condition: {condition}")
 
@@ -2308,6 +2357,19 @@ def test_cli_valid_preflight_performs_no_publication_or_notification(
         == 0
     )
     assert json.loads(capsys.readouterr().out) == {"valid": True, "published": False}
+
+
+def test_preflight_prepares_the_bound_gate_evidence_for_upload(
+    release_dir: Path, artifact_root: Path
+) -> None:
+    """Route A remediation PR-3: prepare_release uploads only contract files,
+    manifest artifacts and extra files, so the gate verdicts ship only because
+    the manifest binds them. Preflight must list each one as a release-dir
+    upload, never as a root artifact."""
+    prepared = release_module.prepare_release(release_dir, artifact_root=artifact_root)
+
+    assert set(GATE_EVIDENCE_FILES.values()) <= set(prepared.filenames)
+    assert not set(GATE_EVIDENCE_FILES.values()) & set(prepared.root_artifacts)
 
 
 @pytest.mark.parametrize("evidence", [False, True])
