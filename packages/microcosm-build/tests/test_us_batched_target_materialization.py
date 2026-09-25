@@ -1640,3 +1640,27 @@ def test_population_aggregate_list_matches_installed_engine_sources() -> None:
     assert triaged_digest == (
         "f26eb560e474207fc1fa1d8828b62ba4791fb763089ea2ce7a85b57a259f2755"
     ), triaged_digest
+
+
+def test_refusal_reads_a_value_held_only_on_baseline() -> None:
+    """Target materialization and post-export scoring share one walker. It
+    also reads a ``reform=`` engine's ``baseline`` simulation, which holds its
+    own values and is not among the engine's branches."""
+    builder = _load_builder_module()
+
+    def engine(known, **extra):
+        return SimpleNamespace(
+            get_holder=lambda name: SimpleNamespace(
+                get_known_periods=lambda: known.get(name, [])
+            ),
+            branches={},
+            **extra,
+        )
+
+    root = engine({}, baseline=engine({"medicaid_slcsp_state_denominator": ["2024"]}))
+    with pytest.raises(
+        ValueError, match=r"computed medicaid_slcsp_state_denominator@2024"
+    ):
+        builder._refuse_batch_population_aggregates(
+            root, batch=1, batches=3, n_households=6
+        )

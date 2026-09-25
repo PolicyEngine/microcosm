@@ -745,12 +745,127 @@ def test_known_periods_include_live_branches(builder) -> None:
     branch = engine({"household_income_decile": ["2025"]})
     root.branches["mtr"] = branch
     branch.branches["loop"] = root  # a cycle is walked once
-    assert builder._post_export_known_periods(
-        root, builder.POST_EXPORT_POPULATION_AGGREGATE_VARIABLES
+    assert builder._engine_known_periods(
+        root, builder.US_POPULATION_AGGREGATE_VARIABLES
     ) == {
         ("medicaid_slcsp_state_denominator", "2024"),
         ("household_income_decile", "2025"),
     }
+
+
+_WALKER_VARIABLES = (
+    "household_income_decile",
+    "medicaid_slcsp_state_denominator",
+    "other",
+)
+
+
+def test_known_period_walker_matches_a_reference_traversal(builder) -> None:
+    """The shared walker returns exactly the known (variable, period) pairs of
+    every engine reachable from the root through live branches, recorded
+    detached branches and ``baseline``, for the watched variables only, and
+    terminates on cycles. Checked against an independent breadth-first walk
+    over random engine graphs. Hypothesis is a workspace dependency; the
+    wheels job installs no test extras, so it skips there."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    @st.composite
+    def engine_graphs(draw):
+        n = draw(st.integers(1, 7))
+        known = [
+            {
+                variable: draw(st.lists(st.integers(2020, 2035), max_size=3))
+                for variable in _WALKER_VARIABLES
+            }
+            for _ in range(n)
+        ]
+        nodes = [
+            SimpleNamespace(
+                get_holder=(
+                    lambda name, k=k: SimpleNamespace(
+                        get_known_periods=lambda: k.get(name, [])
+                    )
+                ),
+                branches={},
+                _target_materialization_branches=[],
+                baseline=None,
+            )
+            for k in known
+        ]
+        edges: list[tuple[int, int]] = []
+        for i, node in enumerate(nodes):
+            for j in draw(st.lists(st.integers(0, n - 1), max_size=3)):
+                node.branches[f"b{j}"] = nodes[j]
+                edges.append((i, j))
+            for j in draw(st.lists(st.integers(0, n - 1), max_size=2)):
+                node._target_materialization_branches.append(nodes[j])
+                edges.append((i, j))
+            baseline = draw(st.one_of(st.none(), st.integers(0, n - 1)))
+            if baseline is not None:
+                node.baseline = nodes[baseline]
+                edges.append((i, baseline))
+        return nodes, known, edges
+
+    @settings(max_examples=200, deadline=None)
+    @given(graph=engine_graphs(), watched=st.sets(st.sampled_from(_WALKER_VARIABLES)))
+    def check(graph, watched):
+        nodes, known, edges = graph
+        reachable, frontier = {0}, [0]
+        while frontier:
+            current = frontier.pop()
+            for source, target in edges:
+                if source == current and target not in reachable:
+                    reachable.add(target)
+                    frontier.append(target)
+        expected = {
+            (variable, str(period))
+            for index in reachable
+            for variable in watched
+            for period in known[index][variable]
+        }
+        assert (
+            builder._engine_known_periods(nodes[0], tuple(sorted(watched))) == expected
+        )
+
+    check()
+
+
+def test_batch_invariance_check_reads_a_value_held_only_on_baseline(
+    builder,
+) -> None:
+    """Post-export scoring and target materialization share one walker. It
+    also reads a ``reform=`` engine's ``baseline`` simulation, which holds its
+    own values and is not among the engine's branches."""
+
+    def engine(known, **extra):
+        return SimpleNamespace(
+            get_holder=lambda name: SimpleNamespace(
+                get_known_periods=lambda: known.get(name, [])
+            ),
+            branches={},
+            **extra,
+        )
+
+    baseline = engine({"medicaid_slcsp_state_denominator": ["2024"]})
+    root = engine({}, baseline=baseline)
+    assert builder._engine_known_periods(
+        root, builder.US_POPULATION_AGGREGATE_VARIABLES
+    ) == {("medicaid_slcsp_state_denominator", "2024")}
+    with pytest.raises(
+        RuntimeError,
+        match=r"not batch-invariant.*medicaid_slcsp_state_denominator@2024 "
+        r"\(aggregates over",
+    ):
+        builder._assert_post_export_scoring_is_batch_invariant(
+            root,
+            builder.US_POPULATION_AGGREGATE_VARIABLES,
+            set(),
+            label="fixture",
+            batched=True,
+            reform=False,
+        )
 
 
 def test_a_reform_engine_refuses_a_baseline_branch_reader(builder, tmp_path) -> None:
@@ -778,7 +893,7 @@ def test_a_reform_engine_refuses_a_baseline_branch_reader(builder, tmp_path) -> 
     assert all(engine.dataset is None for engine in log.constructions)
     assert builder._post_export_watched_variables(batched=False, reform=False) == ()
     assert set(builder._post_export_watched_variables(batched=True, reform=True)) == {
-        *builder.POST_EXPORT_POPULATION_AGGREGATE_VARIABLES,
+        *builder.US_POPULATION_AGGREGATE_VARIABLES,
         *builder.POST_EXPORT_BASELINE_BRANCH_READERS,
     }
 
@@ -899,9 +1014,9 @@ def test_watched_formula_lists_match_the_installed_engine(builder) -> None:
     aggregates = _variables_reaching(
         modules, _POPULATION_AGGREGATE_MARKER, weight_reads=True
     )
-    assert sorted(aggregates) == sorted(
-        builder.POST_EXPORT_POPULATION_AGGREGATE_VARIABLES
-    ), aggregates
+    assert sorted(aggregates) == sorted(builder.US_POPULATION_AGGREGATE_VARIABLES), (
+        aggregates
+    )
     readers = _variables_reaching(modules, _BASELINE_BRANCH_MARKER)
     assert sorted(readers) == sorted(
         {
