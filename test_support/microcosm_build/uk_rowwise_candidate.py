@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime import (
     ladder_target_provenance,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
+    rowwise_staging,
     write_uk_national_frame,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -119,7 +120,18 @@ def _fixture_hierarchy(
     )
 
 
-def _load_builder_module():
+#: The two UK dense drivers whose command surface must agree: the rowwise
+#: tool (``tools/build_uk_rowwise_candidate.py``) and the graph full build
+#: (``microcosm.build.uk_runtime.full_build_cli``). Role and pure-CLI tests
+#: run against both; the in-process build tests stay on the tool.
+_BOTH_DRIVERS = pytest.mark.parametrize("driver", ["tool", "graph"])
+
+
+def _load_builder_module(driver: str = "tool"):
+    if driver == "graph":
+        from microcosm.build.uk_runtime import full_build_cli
+
+        return full_build_cli
     root = _TEST_PATHS.repository
     path = root / "tools" / "build_uk_rowwise_candidate.py"
     spec = importlib.util.spec_from_file_location(
@@ -408,8 +420,13 @@ def _configure_households_only_inputs(
         "measure_exclusions": {},
         "reviewed_unbound_higher_targets": {},
     }
+    # The graph driver compiles its targets in a graph node and has no
+    # in-process loader to patch; the tool's seam is patched when present.
     monkeypatch.setattr(
-        builder, "_load_joint_target_inputs", lambda _args: joint_inputs
+        builder,
+        "_load_joint_target_inputs",
+        lambda _args: joint_inputs,
+        raising=False,
     )
     return [
         *_mandatory_input_flags(input_h5, ladder_path),

@@ -361,6 +361,102 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert not (output_dir / "logbook-spool").exists()
 
 
+def test_graph_driver_dry_run_prints_the_operation_inventory(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    """The graph driver's dry run plans the same request without solving.
+
+    The tool's dry run (above) prints the fenced clone/matrix plan it computes
+    in process; the graph driver prints the compiled operation inventory of
+    the same request. Both refuse to write. A bound spine checkpoint stands
+    in for the tool's sidecar-free households-only path, and the Ledger pins
+    are the committed feed's because the graph refuses any other.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    from microcosm.build.uk_runtime import full_build_cli as cli
+    from microcosm.build.uk_runtime import spine_build
+    from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
+    from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+    from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
+
+    input_h5 = tmp_path / "spine.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "dry-run-output"
+    _write_staging_h5(input_h5)
+    _write_ladder(ladder_path)
+    frame, _ = load_uk_national_frame(input_h5)
+    sidecar_path, gates_path, sidecar = _bound_checkpoint(tmp_path, frame)
+    sidecar["stages"] = ["frs_spine"]
+    sidecar["sampling"] = {"fraction": 1.0, "seed": 578}
+    sidecar_path.write_text(json.dumps(sidecar))
+    monkeypatch.setattr(spine_build, "_rules_engine", lambda: object())
+    monkeypatch.setattr(
+        spine_build, "_rules_engine_provenance", lambda: {"version": "fixture"}
+    )
+    monkeypatch.setattr(
+        cli, "run_graph", lambda *a, **k: pytest.fail("dry run executed graph")
+    )
+    feed = load_uk_chronicle_feed()
+    argv = [
+        "--release-role",
+        "dense",
+        "--input-h5",
+        str(input_h5),
+        "--input-sidecar",
+        str(sidecar_path),
+        "--input-spine-gates",
+        str(gates_path),
+        "--input-sha256",
+        hashlib.sha256(input_h5.read_bytes()).hexdigest(),
+        "--ladder",
+        str(ladder_path),
+        "--ladder-sha256",
+        hashlib.sha256(ladder_path.read_bytes()).hexdigest(),
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        feed.facts_sha256,
+        "--ledger-manifest-sha256",
+        feed.manifest_sha256,
+        "--out",
+        str(output_dir),
+        "--n-clones",
+        "2",
+        "--seed",
+        "7",
+        "--dry-run",
+        "--no-staging",
+    ]
+    assert cli.main(argv) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["default_scope"] == "all_geographies"
+    assert plan["configuration"]["n_clones"] == 2
+    assert plan["configuration"]["seed"] == 7
+    assert plan["configuration"]["calibration"]["epochs"] == 1500
+    assert plan["configuration"]["target_families"] is None
+    assert {node["id"] for node in plan["nodes"]} >= {
+        "uk.full.dense",
+        "uk.full.target_selection",
+        "uk.full.gates.calibrated",
+    }
+    assert not output_dir.exists()
+    assert not (output_dir / "logbook-spool").exists()
+    # --candidate-clone-counts plans one inventory per requested K.
+    assert cli.main([*argv, "--candidate-clone-counts", "1,2"]) == 0
+    inventories = json.loads(capsys.readouterr().out)
+    assert [item["n_clones"] for item in inventories] == [1, 2]
+    assert [item["configuration"]["n_clones"] for item in inventories] == [1, 2]
+    # --households-only narrows the selection node to the census family.
+    assert cli.main([*argv, "--households-only"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["configuration"]["target_families"] == [
+        "census_households/constituency"
+    ]
+    assert not output_dir.exists()
+
+
 def test_candidate_sampling_rung_receipt_and_engine_block_validation(
     monkeypatch,
     capsys,
@@ -503,8 +599,9 @@ def test_candidate_f100_does_not_call_any_sampler(monkeypatch, tmp_path) -> None
     }
 
 
-def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_candidate_clone_count_planning_is_dry_run_only(driver, tmp_path) -> None:
+    builder = _load_builder_module(driver)
     with pytest.raises(ValueError, match="only with --dry-run"):
         builder.main(
             [
@@ -1677,8 +1774,11 @@ def test_gate_criticality_reads_fail_closed() -> None:
     assert diagnostic == ["[uk_local_weight_ratio] ratio 578 > 100"]
 
 
-def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None:
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_release_candidate_refuses_non_doctrine_solve_settings(
+    driver, tmp_path
+) -> None:
+    builder = _load_builder_module(driver)
     pin = "0" * 64
     base = [
         "--input-h5",
@@ -1718,8 +1818,9 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
         )
 
 
-def test_candidate_requires_pinned_ledger_inputs(tmp_path) -> None:
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_candidate_requires_pinned_ledger_inputs(driver, tmp_path) -> None:
+    builder = _load_builder_module(driver)
     args = builder._parse_args(
         [
             "--input-h5",
@@ -1924,8 +2025,9 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
     assert int(selection["certainty"].sum()) == size["protected_carriers"]
 
 
-def test_selection_seed_requires_a_dataset_size(tmp_path):
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_selection_seed_requires_a_dataset_size(driver, tmp_path):
+    builder = _load_builder_module(driver)
     args = builder._parse_args(
         [
             "--input-h5",
@@ -1944,6 +2046,7 @@ def test_selection_seed_requires_a_dataset_size(tmp_path):
         builder._validate_cli_args(args)
 
 
+@_BOTH_DRIVERS
 @pytest.mark.parametrize(
     ("argv_tail", "message"),
     [
@@ -1955,8 +2058,10 @@ def test_selection_seed_requires_a_dataset_size(tmp_path):
         (["--dataset-households", "10", "--baseline-pi-floor", "1.5"], r"in \[0, 1\]"),
     ],
 )
-def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, message):
-    builder = _load_builder_module()
+def test_selection_pi_hi_is_candidate_only_and_bounded(
+    driver, tmp_path, argv_tail, message
+):
+    builder = _load_builder_module(driver)
     args = builder._parse_args(
         [
             "--input-h5",
@@ -1985,8 +2090,9 @@ def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
     assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
 
 
-def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_size_cli_refuses_promotion_without_separate_certification(driver, tmp_path):
+    builder = _load_builder_module(driver)
     args = builder._parse_args(
         [
             "--input-h5",
@@ -2413,7 +2519,7 @@ def test_telemetry_content_refusal_never_aborts_the_solve(
         def calibration_progress(self, event):
             raise StagingContentError("Staging file exceeds the 5242880-byte limit.")
 
-    monkeypatch.setattr(builder, "StagingTelemetryV2", Refusing)
+    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Refusing)
     out = tmp_path / "refused-rows"
     status = builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert status == 0
@@ -2442,7 +2548,7 @@ def test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure(
         def validate_local_bundle(self):
             raise StagingContractError("synthetic bundle defect")
 
-    monkeypatch.setattr(builder, "StagingTelemetryV2", Invalid)
+    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Invalid)
     out = tmp_path / "invalid-bundle"
     status = builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert status == 0
@@ -2494,8 +2600,8 @@ def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
         builder, monkeypatch, tmp_path, remote=True
     )
     hub = _FakeHub()
-    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
-    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
     out = tmp_path / "remote"
     status = builder.main(
         _build_args(
@@ -2643,8 +2749,8 @@ def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
         builder, monkeypatch, tmp_path, remote=True
     )
     hub = _FakeHub(fail_commit=True)
-    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
-    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
     out = tmp_path / "failed-upload"
     status = builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert status == 0
@@ -2695,8 +2801,8 @@ def test_no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local(
         builder, monkeypatch, tmp_path, remote=True
     )
     hub = _FakeHub()
-    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
-    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
     out = tmp_path / "telemetry-only"
     status = builder.main(
         _build_args(input_h5, ladder_path, flags, out, "--no-staged-dataset")
@@ -2712,15 +2818,16 @@ def test_no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local(
     assert not (out / "sha256sums.txt").exists()
 
 
+@_BOTH_DRIVERS
 def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
-    monkeypatch, tmp_path, capsys
+    driver, monkeypatch, tmp_path, capsys
 ):
-    builder = _load_builder_module()
+    builder = _load_builder_module(driver)
     input_h5, ladder_path, flags = _staging_run_setup(
         builder, monkeypatch, tmp_path, remote=True
     )
     out = tmp_path / "refused"
-    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
     with pytest.raises(ValueError, match="write credential"):
         builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert not out.exists()
@@ -2729,8 +2836,8 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
         def repo_info(self, **kwargs):
             raise RuntimeError("503 token=do-not-record")
 
-    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
-    monkeypatch.setattr(builder, "_hub_api", lambda: Unreachable())
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: Unreachable())
     with pytest.raises(ValueError, match="cannot reach") as info:
         builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert "do-not-record" not in str(info.value)
@@ -2738,7 +2845,7 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
 
     # A read token sees the private repository but cannot upload: refused
     # before the spine is read, not after the solve (the Hub answers 403).
-    monkeypatch.setattr(builder, "_hub_api", lambda: _FakeHub(role="read"))
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: _FakeHub(role="read"))
     with pytest.raises(ValueError, match="read-only"):
         builder.main(_build_args(input_h5, ladder_path, flags, out))
     assert not out.exists()
@@ -2749,7 +2856,9 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
         {"entity": {"type": "user", "name": "someone"}, "permissions": ["repo.write"]}
     ]
     monkeypatch.setattr(
-        builder, "_hub_api", lambda: _FakeHub(role="fineGrained", scopes=user_scoped)
+        rowwise_staging,
+        "_hub_api",
+        lambda: _FakeHub(role="fineGrained", scopes=user_scoped),
     )
     with pytest.raises(ValueError, match="repo.write"):
         builder.main(_build_args(input_h5, ladder_path, flags, out))
@@ -2761,17 +2870,25 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
         }
     ]
     org_hub = _FakeHub(role="fineGrained", scopes=org_scoped)
-    monkeypatch.setattr(builder, "_hub_api", lambda: org_hub)
-    assert builder.main(
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: org_hub)
+    status = builder.main(
         _build_args(input_h5, ladder_path, flags, tmp_path / "org-scoped")
-    ) in (0, 1)
-    assert org_hub.commits and org_hub.commits[0]["repo_id"] == (
-        "policyengine/populace-uk-private"
     )
+    if driver == "graph":
+        # The pre-flight admits the org-scoped token; the synthetic spine
+        # carries no bound checkpoint sidecar, so the graph driver refuses
+        # later, on its inputs, never on the credential.
+        assert status == 1
+        assert "sidecar absent" in capsys.readouterr().err
+    else:
+        assert status in (0, 1)
+        assert org_hub.commits and org_hub.commits[0]["repo_id"] == (
+            "policyengine/populace-uk-private"
+        )
 
     # Argument refusals cost nothing and come first: a missing credential is
     # never the reported reason when the arguments are wrong.
-    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
     with pytest.raises(ValueError, match="only with --dry-run"):
         builder.main(
             _build_args(
@@ -2779,12 +2896,18 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
             )
         )
     assert not out.exists()
+    if driver == "graph":
+        # The local build, the re-stage tool and the in-process dry-run plan
+        # below need the tool's synthetic households-only path; the graph
+        # driver's dry run is pinned by
+        # ``test_graph_driver_dry_run_prints_the_operation_inventory``.
+        return
 
     # The re-stage tool refuses the same credential the same way.
     stager = _load_tool("stage_uk_rowwise_candidate")
     monkeypatch.setattr(stager, "_hub_api", lambda: _FakeHub(role="read"))
     local_out = tmp_path / "local"
-    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
     assert builder.main(
         _build_args(input_h5, ladder_path, flags, local_out, "--staging-local-only")
     ) in (0, 1)
@@ -2793,7 +2916,7 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
 
     # A dry run plans without staging, so it needs neither credential nor repo.
     capsys.readouterr()
-    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: None)
     assert (
         builder.main(_build_args(input_h5, ladder_path, flags, out, "--dry-run")) == 0
     )
@@ -2802,8 +2925,9 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
     assert not out.exists()
 
 
-def test_release_role_is_required(tmp_path) -> None:
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_release_role_is_required(driver, tmp_path) -> None:
+    builder = _load_builder_module(driver)
     argv = _dense_argv(tmp_path)
     argv.remove("--release-role")
     argv.remove("dense")
@@ -2813,8 +2937,9 @@ def test_release_role_is_required(tmp_path) -> None:
         builder._parse_args([*argv, "--release-role", "local"])
 
 
-def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_release_role_supplies_the_solve_defaults(driver, tmp_path) -> None:
+    builder = _load_builder_module(driver)
     dense = builder._parse_args(_dense_argv(tmp_path))
     posture = builder.UK_ROWWISE_DENSE_POSTURE
     assert (dense.n_clones, dense.seed, dense.epochs, dense.learning_rate) == (
@@ -2846,6 +2971,7 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
     )
 
 
+@_BOTH_DRIVERS
 @pytest.mark.parametrize(
     ("extra", "needle"),
     [
@@ -2854,21 +2980,23 @@ def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
         (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
     ],
 )
-def test_dense_role_refusal_table(tmp_path, extra, needle) -> None:
-    builder = _load_builder_module()
+def test_dense_role_refusal_table(driver, tmp_path, extra, needle) -> None:
+    builder = _load_builder_module(driver)
     args = builder._parse_args(_dense_argv(tmp_path, *extra))
     with pytest.raises(ValueError, match="--release-role dense refuses") as excinfo:
         builder._validate_cli_args(args)
     assert needle in str(excinfo.value)
 
 
-def test_dense_role_requires_the_ladder(tmp_path) -> None:
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_dense_role_requires_the_ladder(driver, tmp_path) -> None:
+    builder = _load_builder_module(driver)
     argv = _role_argv(tmp_path, "dense", "--ladder-sha256", "3" * 64)
     with pytest.raises(ValueError, match="requires --ladder"):
         builder._validate_cli_args(builder._parse_args(argv))
 
 
+@_BOTH_DRIVERS
 @pytest.mark.parametrize(
     ("extra", "needle"),
     [
@@ -2894,16 +3022,17 @@ def test_dense_role_requires_the_ladder(tmp_path) -> None:
         (["--target-weight-rule", "grain_equal"], "--target-weight-rule grain_equal"),
     ],
 )
-def test_national_role_refusal_table(tmp_path, extra, needle) -> None:
-    builder = _load_builder_module()
+def test_national_role_refusal_table(driver, tmp_path, extra, needle) -> None:
+    builder = _load_builder_module(driver)
     args = builder._parse_args(_role_argv(tmp_path, "national", *extra))
     with pytest.raises(ValueError, match="--release-role national refuses") as excinfo:
         builder._validate_cli_args(args)
     assert needle in str(excinfo.value)
 
 
-def test_national_role_refuses_release_candidate_with_the_seam_reason(tmp_path):
-    builder = _load_builder_module()
+@_BOTH_DRIVERS
+def test_national_role_refuses_release_candidate_with_the_seam_reason(driver, tmp_path):
+    builder = _load_builder_module(driver)
     args = builder._parse_args(_role_argv(tmp_path, "national", "--release-candidate"))
     with pytest.raises(ValueError, match="cannot sign shippability"):
         builder._validate_cli_args(args)

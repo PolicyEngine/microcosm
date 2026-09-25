@@ -65,6 +65,7 @@ class UKFullBuildConfig:
     time_period: str = field(default_factory=lambda: load_uk_frs_release().time_period)
     source_year: int = field(default_factory=lambda: load_uk_frs_release().survey_year)
     geography_levels: tuple[str, ...] | None = None
+    target_families: tuple[str, ...] | None = None
     n_clones: int = UK_LOCAL_CLONE_COUNT
     sample_fraction: float = 1.0
     source_sample_fraction: float = 1.0
@@ -102,6 +103,14 @@ class UKFullBuildConfig:
                 )
             if len(set(self.geography_levels)) != len(self.geography_levels):
                 raise ValueError("Geographic target levels must not repeat.")
+        if self.target_families is not None and (
+            not self.target_families
+            or any(not isinstance(f, str) or not f for f in self.target_families)
+            or len(set(self.target_families)) != len(self.target_families)
+        ):
+            raise ValueError(
+                "Use explicit non-repeating target families or omit the selector for all."
+            )
         if self.seed != self.calibration.seed:
             raise ValueError(
                 "Pool and dense solve share the existing build seed; selection_seed is separate."
@@ -180,6 +189,7 @@ def uk_full_graph(
         calibration_year=config.calibration_year,
         time_period=config.time_period,
         geography_levels=config.geography_levels,
+        target_families=config.target_families,
         engine_blocks=config.engine_blocks,
         sample_fraction=config.effective_sample_fraction,
         target_weight_rule=config.calibration.target_weight_rule,
@@ -330,8 +340,14 @@ def bound_spine_graph(frame: Frame) -> Graph:
     )
 
 
-def register_uk_full_kernels(registry: KernelRegistry) -> KernelRegistry:
-    """Extend the existing UK source/stage registry with the full build."""
+def register_uk_full_kernels(
+    registry: KernelRegistry, *, progress_callback=None
+) -> KernelRegistry:
+    """Extend the existing UK source/stage registry with the full build.
+
+    ``progress_callback`` is an operational observer of the dense solve's
+    epochs (staging telemetry, stderr progress); it never enters a node key.
+    """
 
     # Source graph registries already contain these primitive kernels.
     for kernel in (UKBoundSpineKernel(), UKIdentityKernel(), UKClaimKernel()):
@@ -341,5 +357,5 @@ def register_uk_full_kernels(registry: KernelRegistry) -> KernelRegistry:
             registry.register(kernel)
     register_uk_population_kernels(registry)
     register_uk_target_kernels(registry)
-    register_uk_calibration_kernels(registry)
+    register_uk_calibration_kernels(registry, progress_callback=progress_callback)
     return registry

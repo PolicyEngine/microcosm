@@ -15,6 +15,7 @@ draw. The checkpoint is candidate-run evidence, never a release input.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
@@ -27,6 +28,7 @@ from typing import Any
 import numpy as np
 
 from microcosm.build.uk_runtime.dataset_size import UKSizeSelection
+from microcosm.build.uk_runtime.rowwise_cli import doctrine_bounds, posture_of
 from microcosm.calibrate import (
     CalibrationProblem,
     CalibrationResult,
@@ -53,6 +55,54 @@ _SELECTION_ARRAYS = (
     "selection_loss_trajectory",
     "protected",
 )
+
+
+def uk_size_checkpoint_identity(
+    args: argparse.Namespace,
+    *,
+    pins: Mapping[str, Mapping[str, object]],
+    source_year: int,
+) -> dict[str, object]:
+    """Everything a size checkpoint must share with the run that resumes it.
+
+    The pool (spine, ladder, clones, seed, sampling), the target surface
+    (ledger digests, year, rule, engine blocks) and the solve settings the
+    checkpointed dense solve and search were made with. The draw threshold is
+    deliberately absent: re-drawing at another threshold is the point. Both
+    UK drivers write and resume with this one mapping (moved here from
+    ``tools/build_uk_rowwise_candidate.py``), so a checkpoint cut by either
+    resumes on the other.
+    """
+    posture = posture_of(args)
+    return {
+        "release_role": posture.role,
+        "dataset_pin": dict(pins["dataset"]),
+        "ladder_pin": dict(pins["ladder"]),
+        "ledger_facts_sha256": args.ledger_facts_sha256,
+        "ledger_manifest_sha256": args.ledger_manifest_sha256,
+        "seed": int(args.seed),
+        "selection_seed": int(
+            args.seed if args.selection_seed is None else args.selection_seed
+        ),
+        "n_clones": None if args.n_clones is None else int(args.n_clones),
+        "dataset_households": args.dataset_households,
+        "epochs": int(args.epochs),
+        "learning_rate": float(args.learning_rate),
+        "sample_fraction": float(args.sample_fraction),
+        "sample_seed": int(args.sample_seed),
+        "source_year": int(source_year),
+        "source_lineage_modulus": args.source_lineage_modulus,
+        "calibration_year": getattr(args, "_calibration_year", None),
+        "target_weight_rule": args.target_weight_rule,
+        "engine_blocks": int(args.engine_blocks),
+        "measure_exclusions": (
+            None if args.measure_exclusions is None else str(args.measure_exclusions)
+        ),
+        # The solve doctrine the dense solve and the search run under: a
+        # resume after a doctrine change must refuse, not run under the old
+        # bound while the manifest declares the new one.
+        "doctrine": doctrine_bounds(posture),
+    }
 
 
 @dataclass(frozen=True)

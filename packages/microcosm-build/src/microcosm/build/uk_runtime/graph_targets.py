@@ -55,7 +55,10 @@ from .graph_population import (
     population_columns,
     population_slices,
 )
-from .ladder_targets import ladder_vs_chronicle_household_dispersion
+from .ladder_targets import (
+    ladder_target_provenance,
+    ladder_vs_chronicle_household_dispersion,
+)
 from .ledger_targets import uk_census_household_uprating, uk_ledger_households_total
 from .local_rowwise import UKRowwiseNationalRows, prepare_uk_full_solve
 
@@ -210,6 +213,7 @@ class UKFullTargetCompilationKernel(_TargetKernel):
             period=period,
         )
         dispersion = ladder_vs_chronicle_household_dispersion(ladder, local.specs)
+        ladder_provenance = ladder_target_provenance(ladder)
         surface, reconciliation = uk_local_target_surface(
             full_problem._joint_surface_registry(local, national),
             bound_national_target_ids=full_problem._national_contract_target_ids(
@@ -249,6 +253,7 @@ class UKFullTargetCompilationKernel(_TargetKernel):
             "cross_geography": reconciliation,
             "census_household_uprating": reconciliation["census_household_uprating"],
             "household_dispersion": dispersion,
+            "ladder_provenance": ladder_provenance,
             "measure_exclusions": inputs["measure_exclusions"],
             "reviewed_unbound_higher_targets": inputs[
                 "reviewed_unbound_higher_targets"
@@ -285,6 +290,18 @@ class UKFullTargetSelectionKernel(_TargetKernel):
         full = json.loads(context.artifacts["surface"].payload)
         registry = registry_from_payload(full["registry"])
         levels = context.params.get("geography_levels")
+        families = context.params.get("target_families")
+        if families is not None:
+            # An explicit family filter (``--households-only`` binds only
+            # ``census_households/constituency``) narrows the compiled
+            # registry before the geography selector; a token names either
+            # a family or a family at one grain.
+            registry = registry.select(
+                predicate=lambda spec: (
+                    spec.family in families
+                    or f"{spec.family}/{target_geography(spec)}" in families
+                )
+            )
         selected = select_targets(
             registry, geography_levels=levels, geography_resolver=target_geography
         )
@@ -293,6 +310,7 @@ class UKFullTargetSelectionKernel(_TargetKernel):
         payload = {
             "registry": registry_payload(selected.registry),
             "receipt": selected.receipt,
+            "target_families": None if families is None else list(families),
         }
         return KernelResult(artifacts={"selection": canonical_json(payload)})
 
@@ -541,6 +559,7 @@ def append_uk_target_nodes(
     calibration_year: int,
     time_period: str,
     geography_levels: tuple[str, ...] | None = None,
+    target_families: tuple[str, ...] | None = None,
     engine_blocks: int = 1,
     sample_fraction: float = 1.0,
     target_weight_rule: str = "uniform",
@@ -551,6 +570,8 @@ def append_uk_target_nodes(
 
     if geography_levels is not None and not geography_levels:
         raise ValueError("An explicit geography selector must contain levels.")
+    if target_families is not None and not target_families:
+        raise ValueError("An explicit family selector must contain families.")
     cells = population_columns(graph, population)
     slices = population_slices(cells)
     compile_sources = ("uk_ladder", "uk_ledger_facts", *optional_sources)
@@ -582,7 +603,10 @@ def append_uk_target_nodes(
             "uk.full.target_selection",
             UKFullTargetSelectionKernel.ref,
             population=population,
-            params={"geography_levels": geography_levels},
+            params={
+                "geography_levels": geography_levels,
+                "target_families": target_families,
+            },
             artifact_inputs=(surface,),
             artifact_outputs=(ArtifactOutput("selection", TARGET_SELECTION_TYPE),),
             description="Select all geographies unless a target filter is explicitly requested.",

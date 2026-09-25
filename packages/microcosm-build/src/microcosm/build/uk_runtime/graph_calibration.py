@@ -332,6 +332,14 @@ class UKDenseSolveKernel(_CalibrationKernel):
         dependencies=_DEPENDENCIES,
     )
 
+    def __init__(self, *, progress_callback=None):
+        # An operational observer of the solve's epochs (progress lines,
+        # staging telemetry rows). It is registered like the gate kernels'
+        # coverage engine: instance state, never part of the node key or
+        # the implementation hash, so an observed and an unobserved solve
+        # share one cache entry.
+        self.progress_callback = progress_callback
+
     def run(self, context):
         from .graph_terminal import decode_full_gate_report
 
@@ -384,6 +392,7 @@ class UKDenseSolveKernel(_CalibrationKernel):
                 binding["target_loss_weights"], dtype=np.float64
             ),
             target_loss_cap=binding["target_loss_cap"],
+            progress_callback=self.progress_callback,
         )
         return KernelResult(
             artifacts={
@@ -848,10 +857,12 @@ def uk_calibration_nodes(
     )
 
 
-def register_uk_calibration_kernels(registry: KernelRegistry) -> KernelRegistry:
+def register_uk_calibration_kernels(
+    registry: KernelRegistry, *, progress_callback=None
+) -> KernelRegistry:
+    registry.register(UKDenseSolveKernel(progress_callback=progress_callback))
     for kernel in (
         UKSizeCheckpointImportKernel,
-        UKDenseSolveKernel,
         UKSizeSearchKernel,
         UKSizeDrawKernel,
         UKSizeRefitKernel,
