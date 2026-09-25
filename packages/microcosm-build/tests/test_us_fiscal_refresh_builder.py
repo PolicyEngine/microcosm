@@ -6049,6 +6049,12 @@ def _run_green_register_release(
     assert captured["qrf_tail_register_seen"] == {
         "estate_income": "donor tail concentrated before calibration"
     }
+    # microcosm#1026: the written H5, once it exists, is checked against the
+    # stored-input gate's verdict.
+    assert captured["stored_input_post_write_check"] == (
+        captured["written_dataset"],
+        captured["written_dataset"],
+    )
     if skipped_smoke:
         # No post-export stage runs, so no scorer opens.
         assert "smoke_scored" not in captured
@@ -6692,15 +6698,28 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_spm_composition_gate_failures",
             lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
         )
-    # The stored-input gate (microcosm#1026) reads the installed
-    # policyengine-us, absent in the fast lane, and the household-only fake
-    # export frame stores nothing a release would. Every mode passes it here;
-    # test_us_stored_input_register.py pins the gate and its wiring into the
-    # batched pre-export raise.
+    # The stored-input gate (microcosm#1026) and its post-write check read the
+    # installed policyengine-us, absent in the fast lane, and the fake writer
+    # writes placeholder bytes, not an H5. Every mode passes both here;
+    # test_us_stored_input_register.py pins the gate, the check and their
+    # wiring around the batched pre-export raise and the H5 write.
     monkeypatch.setattr(
         builder,
         "_stored_input_gate_failures",
         lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
+    )
+
+    def fake_written_stored_input_check(path, pre_export):
+        captured["stored_input_post_write_check"] = (
+            Path(path),
+            captured.get("written_dataset"),
+        )
+        return None
+
+    monkeypatch.setattr(
+        builder,
+        "_written_stored_input_verdict_mismatch",
+        fake_written_stored_input_check,
     )
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
