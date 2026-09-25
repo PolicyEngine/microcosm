@@ -837,6 +837,119 @@ def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     return sidecar
 
 
+def load_bound_spine_checkpoint(
+    path: Path,
+    frame: Frame,
+    *,
+    gate_report_path: Path | None = None,
+) -> dict[str, object]:
+    """Authenticate a canonical graph checkpoint, without historical bypasses."""
+    from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+
+    path = Path(path)
+    if not path.is_file():
+        raise ValueError(f"input H5 build sidecar absent: {path}")
+    try:
+        sidecar = json.loads(path.read_bytes())
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError(f"input H5 build sidecar is invalid JSON: {path}") from exc
+    if not isinstance(sidecar, dict):
+        raise ValueError(f"input H5 build sidecar must be a JSON object: {path}")
+    _assert_spine_sidecar_binds_frame(sidecar, frame)
+    identity = sidecar.get("uk_frame_content_identity")
+    if not isinstance(identity, str) or not identity:
+        raise ValueError("Unbound spine checkpoint: no uk_frame_content_identity.")
+    if identity != uk_frame_content_identity(frame):
+        raise ValueError("Spine checkpoint uk_frame_content_identity mismatch.")
+    _strict_spine_gate_report(path, sidecar, gate_report_path=gate_report_path)
+    return sidecar
+
+
+def _strict_spine_gate_report(
+    path: Path,
+    sidecar: Mapping[str, object],
+    *,
+    gate_report_path: Path | None = None,
+) -> tuple[Path, dict[str, object]]:
+    if sidecar.get("spine_gate_bypass") is not None:
+        raise ValueError("Canonical spine checkpoints do not accept spine_gate_bypass.")
+    report_path = (
+        _spine_gate_report_path(Path(path))
+        if gate_report_path is None
+        else Path(gate_report_path)
+    )
+    binding = sidecar.get("spine_gate_report")
+    if not isinstance(binding, Mapping) or not binding.get("sha256"):
+        raise ValueError("Unbound spine checkpoint: no spine gate report SHA-256.")
+    if not report_path.is_file():
+        raise ValueError(f"input H5 spine gate report absent: {report_path}")
+    report_bytes = report_path.read_bytes()
+    if hashlib.sha256(report_bytes).hexdigest() != binding["sha256"]:
+        raise ValueError("Spine checkpoint gate report SHA-256 mismatch.")
+    _assert_spine_gate_report_passed(report_path, sidecar)
+    report = json.loads(report_bytes)
+    for field, expected in uk_spine_checkpoint_gate_digests().items():
+        if report.get(field) != expected:
+            raise ValueError(
+                f"Spine checkpoint gate report {field} differs from current declarations."
+            )
+    gates = report["gates"]
+    expected = set(UK_SPINE_GATE_SCOPE)
+    if set(gates) != expected or any(
+        not isinstance(gates[gate_id], Mapping) for gate_id in gates
+    ):
+        raise ValueError(
+            "Spine checkpoint gate report differs from the declared spine scope."
+        )
+    declared = {
+        entry.id: entry
+        for entry in load_country_spec("uk").gates.gates
+        if entry.id in expected
+    }
+    for gate_id, entry in declared.items():
+        outcome = gates[gate_id]
+        if outcome.get("criticality") != entry.criticality:
+            raise ValueError(f"Spine checkpoint gate {gate_id} criticality mismatch.")
+        if (
+            entry.criticality == "release_blocking"
+            and outcome.get("status") != "passed"
+        ):
+            raise ValueError(f"Spine checkpoint gate {gate_id} did not pass.")
+    return report_path, report
+
+
+def uk_spine_checkpoint_gate_digests() -> dict[str, str]:
+    """Declare the current spine gate policy as part of checkpoint identity."""
+    from microcosm.build.uk_runtime.release_certification import _scoped_digests
+
+    return _scoped_digests(
+        frozenset(UK_SPINE_GATE_SCOPE),
+        phases=("assembled", "transferred"),
+        policy_suffix="spine_build_scope",
+    )
+
+
+def strict_spine_provenance_from_sidecar(
+    path: Path,
+    sidecar: Mapping[str, object],
+    *,
+    gate_report_path: Path | None = None,
+) -> dict[str, object]:
+    """Retain exact gate bytes and fit records after strict checkpoint loading."""
+    report_path, report = _strict_spine_gate_report(
+        path, sidecar, gate_report_path=gate_report_path
+    )
+    provenance = spine_provenance_from_sidecar(path, sidecar)
+    provenance["uk_frame_content_identity"] = sidecar["uk_frame_content_identity"]
+    provenance["fit_weight_records"] = dict(sidecar.get("fit_weight_records", {}))
+    provenance["spine_gate_report"] = {
+        "path": str(report_path),
+        "sha256": sidecar["spine_gate_report"]["sha256"],
+        "payload": report,
+    }
+    return provenance
+
+
 def _assert_spine_sidecar_binds_frame(
     sidecar: Mapping[str, object],
     frame: Frame,

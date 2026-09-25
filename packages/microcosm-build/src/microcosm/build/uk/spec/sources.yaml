@@ -1,15 +1,106 @@
 sources:
-- id: uk_national_candidate_2023
-  role: uk_national_candidate
-  sha256: f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833
-  byte_size: 1315880118
-  loader: kernel:load_uk_national_frame
+- id: frs_accounts
+  role: frs_raw_table
+  sha256: fa7871eb45cad0db5fd05ede454ced60405d2f9c598651ea5acea5c91a6ff52f
+  byte_size: 1812923
+  loader: kernel:build_uk_frs_spine
   vintages:
-  - vintage:uk_candidate_2023
+  - vintage:uk_frs_2024_25
+- id: frs_adult
+  role: frs_raw_table
+  sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
+  byte_size: 34885825
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
   vintage_authorities:
-  - id: uk_candidate_2023
+  - id: uk_frs_2024_25
     kind: survey_period
-    value: 2023
+    value: 2024
+- id: frs_benefits
+  role: frs_raw_table
+  sha256: f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3
+  byte_size: 2362329
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_benunit
+  role: frs_raw_table
+  sha256: 66b894624498316d19b6259e287a607e98ed3daacc9be3d3e9067d32b8e09a5a
+  byte_size: 13986782
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_child
+  role: frs_raw_table
+  sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
+  byte_size: 2753961
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_chldcare
+  role: frs_raw_table
+  sha256: 7ccd3f92f299a1f49b24063188177cdb8a958d8bcd753fc3d74dadda6ad04023
+  byte_size: 275878
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_extchild
+  role: frs_raw_table
+  sha256: c661379a4aa5079ce482b1f98f0bfb9157ad9b3ba4eb10739b61846f9c9548e4
+  byte_size: 15150
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_househol
+  role: frs_raw_table
+  sha256: 2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5
+  byte_size: 12108606
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_job
+  role: frs_raw_table
+  sha256: eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2
+  byte_size: 10518760
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_maint
+  role: frs_raw_table
+  sha256: e7a8d6f47cab7bf9db9bfd7b3ad5ebe5830ec75245d065dcf8654c7c20b97a7d
+  byte_size: 13993
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_mortgage
+  role: frs_raw_table
+  sha256: 6a08f6846970dfdc544a7efc8a93fed4f3210d872cd2d160dfb14ca8d92d5ed0
+  byte_size: 600552
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_oddjob
+  role: frs_raw_table
+  sha256: dfff1baf71a3de05f3a2fcf0c01a3995df5657f242cd7846aa61f6cc27a1cead
+  byte_size: 5339
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_penprov
+  role: frs_raw_table
+  sha256: 9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1
+  byte_size: 513614
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_pension
+  role: frs_raw_table
+  sha256: 2b9be1eb6583cc8916fc06294be27e6217f2aea73da24b97b3226293f6a6ec24
+  byte_size: 1232411
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
 stage_manifest:
   version: 1
   country: uk
