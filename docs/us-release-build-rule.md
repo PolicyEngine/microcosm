@@ -145,6 +145,37 @@ on every arm after loading the base. It runs the other checks unchanged on the
 whole base. With `--release-manifest`, it also requires that release to record
 `build.selection_source` as `{"enabled": false}`.
 
+**23 September 2026:** without a selection source the release runs its stages
+on every support copy the base carries, including the capital-gains own-tail
+copy (clone index 2) of each tail household. That copy keeps its source IDs and
+the `puf_tax_detail` channel, so the base from `build_us_puf_support_base.py`
+holds two PUF-role rows for each tail source person (42,336 on base
+`cb1bd1e6…`). SIPP Head Start and voluntary filing identified a copy by source
+ID and role on bases without a raw spine ID, so they refused that base. Release
+stages now identify a copy by source ID and clone index
+(`support_copy_rank_series`), whether or not the base carries a raw spine ID.
+A repeated pair is still refused. Source-level decisions fan out to the tail
+copy from the lowest surviving clone index. Row-level imputations treat the
+tail copy as a PUF-role row, as the base's own post-transfer stages do.
+Only a base without a raw spine ID may lack clone indices. An assembled table
+(one with a raw spine ID) must carry both its support channel and its clone
+index. `require_assembled_support_provenance` refuses one that lacks either.
+The metadata-presence check includes the raw spine ID, so losing both columns
+cannot make an assembled table look historical. `support_role_series` calls
+the validator before resolving roles; this covers the prior-year and SSI
+summaries before occurrence pairing while preserving their attested source
+bytes and the bundle digest. Head Start, voluntary filing and copy ranking
+also validate explicitly before their fallbacks. Missing provenance refuses
+imputation and fails or raises from the signal gates. With clone indices the
+gates compare every copy of a source unit, including repeated
+`(source ID, clone index)` copies; imputations refuse repeated pairs.
+
+Temporary source-kernel projections validate assembled provenance before
+removing the channel, clone index and raw spine ID together. They retain the
+stable source IDs, and their outputs are compared with or merged into the
+original assembled table. This lets historical source kernels consume the
+projection without treating intentionally removed provenance as corruption.
+
 `--dense-default-dataset` is diagnostic only. A release build leaves it unset,
 so the default is the sparse dataset that runs on standard machines.
 

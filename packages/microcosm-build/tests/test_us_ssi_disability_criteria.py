@@ -40,6 +40,18 @@ from microcosm.build.us_runtime.ssi_disability_criteria import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS[0]
+
+
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
 _policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
 requires_us = pytest.mark.skipif(
     not _policyengine_us_installed,
@@ -630,6 +642,167 @@ def test_stacked_clone_divergence_diagnostic_checks_clone_two() -> None:
     assert summary["clone_divergence_source_people"] == 1
 
 
+def test_historical_tail_copy_predicts_in_the_puf_role_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame()), [1, 3]
+    )
+    person = tailed.table("person")
+    assert "person_spine_source_id" not in person
+    tail = person["person_support_clone_index"].eq(2)
+    assert int(tail.sum()) == 2
+    assert set(person.loc[tail, "person_support_channel"]) == {"puf_tax_detail"}
+    # Give source person 3's PUF-role copies, the tail copy included, a
+    # positive model draw and disability signal.
+    puf = person["person_support_channel"].astype(str).eq("puf_tax_detail")
+    source_three = person["person_source_id"].eq(3)
+    person.loc[puf & source_three, "bank_account_assets"] = 100.0
+    person.loc[puf & source_three, "PEDISDRS"] = 1
+
+    result = impute_us_ssi_disability_criteria(tailed, _donor(), seed=7)
+    assert [len(receiver) for receiver in _FakeQRF.predict_receivers] == [20, 22]
+    assert _FakeQRF.predict_start_offsets == [0, 0]
+    rows = pd.DataFrame(
+        {
+            "source": person["person_source_id"].to_numpy(),
+            "clone": person["person_support_clone_index"].to_numpy(),
+            "value": result.to_numpy(),
+        }
+    )
+    reporter = rows[rows["source"] == 1].set_index("clone")["value"]
+    source_three_values = rows[rows["source"] == 3].set_index("clone")["value"]
+    # The ASEC reporter anchor stays on the native copy; the tail copy is
+    # treated exactly like its primary PUF-detail twin.
+    assert reporter.to_dict() == {0: True, 1: False, 2: False}
+    assert source_three_values.to_dict() == {0: False, 1: True, 2: True}
+
+    materialized = _replace_person(tailed, **{_OUTPUT: result.to_numpy()})
+    summary = us_ssi_disability_criteria_summary(materialized)
+    # Sources 1 and 3 diverge between their native and PUF-role copies; the
+    # diagnostic groups every copy, the tail copy included, by source person.
+    assert summary["clone_divergence_source_people"] == 2
+
+
+def test_historical_tail_copy_divergence_joins_its_source_group() -> None:
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(3)), [2]
+    )
+    person = tailed.table("person")
+    values = np.zeros(len(person), dtype=bool)
+    values[
+        np.flatnonzero(
+            person["person_support_clone_index"].eq(2)
+            & person["person_source_id"].eq(2)
+        )
+    ] = True
+
+    summary = us_ssi_disability_criteria_summary(
+        _replace_person(tailed, **{_OUTPUT: values})
+    )
+
+    assert summary["clone_divergence_source_people"] == 1
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        pytest.param({"person_support_channel": ["asec"] * 4}, id="all_asec"),
+        pytest.param(
+            {"person_support_channel": ["asec", "puf_tax_detail"] * 2},
+            id="role_labels",
+        ),
+        pytest.param({}, id="no_channel_no_clone"),
+        pytest.param(
+            {"person_support_clone_index": [0, 1, 0, 1]},
+            id="clone_index_without_channel",
+        ),
+    ],
+)
+def test_assembled_frame_missing_support_provenance_is_flagged(
+    columns: dict[str, list[object]],
+) -> None:
+    # Microcosm #992 gate finding: with raw spine IDs present but the
+    # clone-index column gone, the divergence diagnostic paired copies by
+    # (source, role) occurrence and reported 0 diverging source people where
+    # the base, grouping by source ID, reported 1; the gate did not notice,
+    # because that count is not gated. The role reader now refuses an
+    # assembled table missing either provenance column, so the summary flags
+    # missing provenance, exactly like invalid role metadata: its channels are
+    # never read as roles, its copies are never paired by occurrence, and the
+    # gate fails. A table with neither column was already flagged.
+    frame = _replace_person(
+        _frame(4),
+        **{
+            "person_source_id": np.asarray([10, 10, 20, 20]),
+            "person_spine_source_id": np.asarray([10, 10, 20, 20]),
+            _OUTPUT: np.asarray([False, True, True, True]),
+            **{column: np.asarray(values) for column, values in columns.items()},
+        },
+    )
+
+    summary = us_ssi_disability_criteria_summary(frame)
+    assert summary["support_provenance_missing"] is True
+    assert summary["channels"] == {}
+    gate = us_ssi_disability_criteria_signal_gate(frame)
+    assert not gate.passed
+    assert (
+        "SSI disability support rows lack complete clone-role or "
+        "person_source_id provenance." in gate.failures
+    )
+
+
+def test_divergence_compares_repeated_historical_clone_index() -> None:
+    # A malformed historical table whose tail copy repeats clone index 1:
+    # grouping by source ID still compares that copy (the old role-occurrence
+    # pairing left it unpaired and hid the divergence).
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(3)), [2]
+    )
+    person = tailed.table("person")
+    tail = person["person_support_clone_index"].eq(2).to_numpy()
+    clone_index = person["person_support_clone_index"].to_numpy().copy()
+    clone_index[tail] = 1
+    values = np.zeros(len(person), dtype=bool)
+    values[tail] = True
+
+    summary = us_ssi_disability_criteria_summary(
+        _replace_person(
+            tailed,
+            **{"person_support_clone_index": clone_index, _OUTPUT: values},
+        )
+    )
+
+    assert summary["support_provenance_missing"] is False
+    assert summary["clone_divergence_source_people"] == 1
+
+
+def test_clone_index_past_int64_is_flagged() -> None:
+    # float(2**63) is the first float past int64; the base let it wrap to
+    # INT64_MAX and read the row as a PUF-role copy.
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(3)), [2]
+    )
+    person = tailed.table("person")
+    clone_index = person["person_support_clone_index"].to_numpy(dtype=np.float64)
+    clone_index = clone_index.copy()
+    clone_index[clone_index == 2.0] = float(2**63)
+
+    summary = us_ssi_disability_criteria_summary(
+        _replace_person(
+            tailed,
+            **{
+                "person_support_clone_index": clone_index,
+                _OUTPUT: np.zeros(len(person), dtype=bool),
+            },
+        )
+    )
+
+    assert summary["support_provenance_missing"] is True
+    assert summary["channels"] == {}
+
+
 def test_summary_checks_harmonized_ssi_on_native_role() -> None:
     expanded = clone_us_frame_for_puf_support(_frame())
     person = expanded.table("person")
@@ -638,9 +811,7 @@ def test_summary_checks_harmonized_ssi_on_native_role() -> None:
     source_two = person["person_source_id"].eq(2)
     person.loc[native & source_two, "SSI_VAL"] = np.nan
     person.loc[native & source_two, "ssi_reported"] = 900.0
-    preserved_existing_anchor = (
-        native & person["person_source_id"].eq(1)
-    ).to_numpy()
+    preserved_existing_anchor = (native & person["person_source_id"].eq(1)).to_numpy()
     invalid = _replace_person(
         expanded,
         **{_OUTPUT: preserved_existing_anchor},
