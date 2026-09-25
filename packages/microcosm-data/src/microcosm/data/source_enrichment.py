@@ -3,8 +3,9 @@
 This release type does not certify a new calibration or upgrade its schema.
 Its authority is the reviewed parent byte identity, an exhaustive H5 comparison,
 Census source reconciliation, and separately measured native-loader compatibility.
-Once that compatibility has passed, the candidate must also store no model input
-its tested engine lacks (:mod:`microcosm.data.stored_inputs`, microcosm#1026).
+That compatibility includes the stored-input contract: the candidate must store
+no model input its tested engine lacks (:mod:`microcosm.data.stored_inputs`,
+microcosm#1026).
 Publication replays the latter checks before the Hub client is constructed.
 """
 
@@ -1267,7 +1268,6 @@ def _check_compatibility(
             failures.append(
                 "compatibility receipt differs from actual native loader tests/runtime"
             )
-        _check_stored_inputs(candidate, failures)
         from microcosm.data.contract import _check_release_manifest
 
         _check_release_manifest(
@@ -1336,39 +1336,6 @@ def _check_compatibility(
                 )
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         failures.append(f"native loader compatibility failed: {exc}")
-
-
-def _check_stored_inputs(candidate: Path, failures: list[str]) -> None:
-    """Refuse a candidate that stores a model input its tested engine lacks.
-
-    microcosm#1026: the national default and its reported-receipt child were
-    certified here against policyengine-us 2.2.1 while storing the WIC take-up
-    draw as ``would_claim_wic``, a name 2.2.1 does not define, so the engine
-    ignored the draw. :mod:`microcosm.data.stored_inputs` owns the rule and its
-    reviewed register.
-
-    The caller runs this only after the native-loader probe has loaded the
-    tested runtime in this process, and :func:`_check_compatibility` then
-    requires ``build.built_with_model_package`` to name that same runtime. So
-    the installed engine is the one the bundle is certified against. The
-    check reads HDF metadata only.
-    """
-
-    from microcosm.data import stored_inputs
-
-    try:
-        engine = stored_inputs.installed_us_engine()
-        tables = stored_inputs.h5_stored_tables(candidate)
-    except (ImportError, OSError, ValueError) as exc:
-        failures.append(
-            "stored-input contract could not read the candidate's stored "
-            f"tables or its tested engine: {exc}"
-        )
-        return
-    failures.extend(
-        f"stored-input contract: {line}"
-        for line in stored_inputs.stored_input_failures(tables, engine=engine)
-    )
 
 
 def _wheel_files(path: Path) -> tuple[str, str, dict[str, bytes]]:
@@ -1502,6 +1469,11 @@ def run_native_loader_compatibility(
     role it inherits plus its three receipts (:data:`RECEIPT_NATIVE_INPUTS`);
     each must be registered by the tested country as a Boolean of that entity,
     reach both loaders byte-identical, and override its default in Core.
+
+    Before either loader runs, the candidate must store no model input the
+    tested country does not define (:func:`_require_stored_inputs`,
+    microcosm#1026). The receipt's ``stored_inputs`` block records the register
+    that check consulted.
     """
     import inspect
 
@@ -1531,6 +1503,7 @@ def run_native_loader_compatibility(
                 f"tested country model must register {name} as a native {entity} bool"
             )
         source_paths[_native_input_label(name)] = inspect.getsourcefile(type(variable))
+    stored_inputs = _require_stored_inputs(candidate_h5)
     loaded_source_packages = _loaded_source_packages(inputs)
     if require_wheels:
         _check_loaded_source_ownership(source_paths, loaded_source_packages)
@@ -1607,16 +1580,46 @@ def run_native_loader_compatibility(
         "loaded_source_sha256": {
             key: sha256_file(path) for key, path in source_paths.items()
         },
+        "stored_inputs": stored_inputs,
         "checks": [
             *(
                 f"country:registered_{entity}_bool_input"
                 + ("" if name == ROLE_VARIABLE else f":{name}")
                 for name, entity in inputs.items()
             ),
+            "country:defines_every_stored_model_input",
             "country:complete_household_native_input_overrides_default",
             *checked,
         ],
     }
+
+
+def _require_stored_inputs(candidate_h5: Path) -> dict[str, object]:
+    """Refuse a candidate that stores a model input the tested country lacks.
+
+    microcosm#1026: the national default and its reported-receipt child were
+    certified through this probe against policyengine-us 2.2.1 while storing
+    the WIC take-up draw as ``would_claim_wic``, a name 2.2.1 does not define,
+    so the engine ignored the draw. :mod:`microcosm.data.stored_inputs` owns
+    the rule and its reviewed register.
+
+    The engine is the installed policyengine-us, which is the tested runtime:
+    this runs inside the probe, whose receipt names the installed packages, and
+    :func:`_check_compatibility` refuses a bundle whose
+    ``build.built_with_model_package`` is not that runtime. HDF metadata only;
+    no row is read.
+
+    Raises:
+        StoredInputRefusalError: One line per refused column (a
+            ``ValueError``, so validation reports it as a compatibility
+            failure and certification stops).
+        StoredTableLayoutError: The candidate's stored tables cannot be listed.
+    """
+    from microcosm.data import stored_inputs
+
+    return stored_inputs.require_h5_stored_inputs(
+        candidate_h5, engine=stored_inputs.installed_us_engine()
+    )
 
 
 def _check_loaded_source_ownership(

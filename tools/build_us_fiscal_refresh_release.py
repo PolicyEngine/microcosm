@@ -313,8 +313,10 @@ from microcosm.data.contract import (
 )
 from microcosm.data.stored_inputs import (
     US_STORED_NON_VARIABLE_COLUMNS,
+    h5_stored_tables,
     installed_us_engine,
     is_model_named,
+    register_sha256,
     stored_input_failures,
     undefined_stored_inputs,
 )
@@ -7027,6 +7029,7 @@ def _stored_input_gate_failures(
         "refused": list(
             undefined_stored_inputs(columns, engine_variables=engine.variables)
         ),
+        "register_sha256": register_sha256(),
     }
     return (
         [
@@ -7034,6 +7037,41 @@ def _stored_input_gate_failures(
             for line in stored_input_failures(stored, engine=engine)
         ],
         details,
+    )
+
+
+def _written_stored_input_verdict_mismatch(
+    dataset_path: Path, pre_export: Mapping[str, object]
+) -> str | None:
+    """Why the written H5's stored-input verdict is not the gate's, or None.
+
+    The pre-export gate (:func:`_stored_input_gate_failures`) grades
+    :func:`_export_stored_tables`, a model of what the writer stores, so that a
+    refusal joins the batched raise before any H5 exists. This grades the
+    written file's HDF metadata against the same engine and register and
+    requires the same refused columns, so the verdict the gate reached is the
+    verdict on the bytes the release ships. A gate that could not evaluate has
+    nothing to compare: its failure line is already on record. Column names
+    only; no row is read.
+    """
+
+    if not pre_export.get("evaluated"):
+        return None
+    engine = installed_us_engine()
+    written = h5_stored_tables(dataset_path)
+    columns = {column for names in written.values() for column in names}
+    refused = list(undefined_stored_inputs(columns, engine_variables=engine.variables))
+    expected = list(pre_export.get("refused", ()))
+    if refused == expected:
+        return None
+    return (
+        "Stored-input gate premise failed: the written H5 "
+        f"({dataset_path.name}) stores model-named columns that "
+        f"{engine.label} does not define {refused}, but the pre-export gate "
+        f"graded the export frame's modeled stored tables as refusing "
+        f"{expected}. _export_stored_tables no longer matches what "
+        "release_engine.write_dataset stores; fix the model before this H5 "
+        "is certified."
     )
 
 
@@ -14123,8 +14161,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # build.built_with_model_package. Column names only: no rows are read, and
     # the verdict joins the one batched pre-export raise below, so a refusal
     # names every other failing gate too and mints no H5.
-    stored_input_failures_, export_frame_stored_inputs = (
-        _stored_input_gate_failures(export_frame, stage="export frame")
+    stored_input_failures_, export_frame_stored_inputs = _stored_input_gate_failures(
+        export_frame, stage="export frame"
     )
     terminal_gate_failures.extend(stored_input_failures_)
     terminal_batch_telemetry.stage(
@@ -14441,6 +14479,13 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    # microcosm#1026: the stored-input gate above graded a model of the
+    # writer's output; the written bytes must earn the same verdict.
+    stored_input_premise_failure = _written_stored_input_verdict_mismatch(
+        dataset_path, export_frame_stored_inputs
+    )
+    if stored_input_premise_failure is not None:
+        raise RuntimeError(stored_input_premise_failure)
     # Route A remediation (microcosm#956): every post-export stage below (the
     # smoke, reform validation, demographics) scores THIS file through one
     # household-batched scorer instead of one whole-pool Microsimulation each.

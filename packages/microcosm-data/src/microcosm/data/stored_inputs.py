@@ -80,7 +80,7 @@ __all__ = [
     "MODEL_NAMED_COLUMN_PATTERN",
     "US_STORED_NON_VARIABLE_COLUMNS",
     "CertifiedEngine",
-    "StoredInputRefusal",
+    "StoredInputRefusalError",
     "StoredTableLayoutError",
     "h5_stored_tables",
     "h5_verdict",
@@ -205,9 +205,7 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
             for entity in _US_ENTITIES
         },
         **{
-            f"{entity}_support_clone_index": _SUPPORT_CLONE_INDEX.format(
-                entity=entity
-            )
+            f"{entity}_support_clone_index": _SUPPORT_CLONE_INDEX.format(entity=entity)
             for entity in _US_ENTITIES
         },
         "source_year": _POOLED_SOURCE.format(
@@ -216,8 +214,7 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
         ),
         "source_household_id": _POOLED_SOURCE.format(
             detail=(
-                "the source household id (the ASEC PH_SEQ, or the ACS "
-                "household id)"
+                "the source household id (the ASEC PH_SEQ, or the ACS household id)"
             ),
             use=_POOLED_SOURCE_SEED_KEY,
         ),
@@ -268,7 +265,7 @@ class StoredTableLayoutError(ValueError):
     """An H5 whose stored tables the check cannot list from metadata."""
 
 
-class StoredInputRefusal(ValueError):
+class StoredInputRefusalError(ValueError):
     """A release stores model-named columns its certified engine lacks.
 
     ``failures`` holds one :func:`stored_input_failures` line per refused
@@ -447,17 +444,13 @@ def h5_stored_tables(path: Path | str) -> dict[str, tuple[str, ...]]:
             )
             if pandas_type == _PANDAS_TABLE_FRAME:
                 table = group.get("table")
-                names = (
-                    table.dtype.names if isinstance(table, h5py.Dataset) else None
-                )
+                names = table.dtype.names if isinstance(table, h5py.Dataset) else None
                 if not names or names[0] != _PANDAS_INDEX_FIELD:
                     raise StoredTableLayoutError(
                         f"{path}: table {key!r} has no pandas index field, so "
                         "the stored-input check cannot read its columns."
                     )
-                hidden = [
-                    name for name in names if _VALUES_BLOCK_FIELD.fullmatch(name)
-                ]
+                hidden = [name for name in names if _VALUES_BLOCK_FIELD.fullmatch(name)]
                 if hidden:
                     raise StoredTableLayoutError(
                         f"{path}: table {key!r} stores {hidden} blocks, which "
@@ -519,14 +512,14 @@ def require_h5_stored_inputs(
     version, because the receipt already records the tested packages.
 
     Raises:
-        StoredInputRefusal: The H5 stores at least one refused column.
+        StoredInputRefusalError: The H5 stores at least one refused column.
         StoredTableLayoutError: The H5's stored tables cannot be listed.
     """
 
     tables = h5_stored_tables(path)
     failures = stored_input_failures(tables, engine=engine, register=register)
     if failures:
-        raise StoredInputRefusal(failures)
+        raise StoredInputRefusalError(failures)
     columns = {column for names in tables.values() for column in names}
     return {
         "register_sha256": register_sha256(register),
