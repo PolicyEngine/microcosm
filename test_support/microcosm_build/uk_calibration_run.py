@@ -31,6 +31,7 @@ from microcosm.build.uk_runtime.calibration_run import (
     UKCalibrationRunPaths,
     run_uk_calibration,
 )
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import (
     UK_NHS_SPENDING_COMPONENT_COLUMNS,
 )
@@ -388,6 +389,35 @@ def _mixed_epoch_artifact_dir(tmp_path: Path) -> Path:
         + "\n"
     )
     return artifact_dir
+
+
+def _bound_checkpoint(tmp_path, frame):
+    report_path = tmp_path / "spine.spine_gates.json"
+    report = {
+        **calibration_run.uk_spine_checkpoint_gate_digests(),
+        "blocked_at_phase": None,
+        "gates": {
+            entry.id: {"status": "passed", "criticality": entry.criticality}
+            for entry in load_country_spec("uk").gates.gates
+            if entry.id in calibration_run.UK_SPINE_GATE_SCOPE
+        },
+    }
+    report_path.write_text(json.dumps(report))
+    sidecar = {
+        "entity_row_counts": {
+            entity: len(frame.table(entity)) for entity in frame.entities
+        },
+        "household_weight_kind": frame.weights_for("household").kind.value,
+        "household_weight_total": float(frame.weights_for("household").values.sum()),
+        "uk_frame_content_identity": uk_frame_content_identity(frame),
+        "spine_gate_report": {
+            "sha256": hashlib.sha256(report_path.read_bytes()).hexdigest()
+        },
+        "fit_weight_records": {"model": {"fit_weights_used": True}},
+    }
+    sidecar_path = tmp_path / "spine.build.json"
+    sidecar_path.write_text(json.dumps(sidecar))
+    return sidecar_path, report_path, sidecar
 
 
 __all__ = [name for name in globals() if not name.startswith("__")]

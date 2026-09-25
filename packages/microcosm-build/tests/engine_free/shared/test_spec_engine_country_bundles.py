@@ -34,7 +34,7 @@ _TEST_PATHS = paths_for("microcosm-build")
         ),
         (
             "uk",
-            2023,
+            2025,
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -115,6 +115,7 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
         "clone_assign_communes",
         "be_commune_geography_gate",
         "load_uk_national_frame",
+        "build_uk_frs_spine",
         "assign_uk_geography_ladder",
         "uk_geography_ladder_gate",
     }

@@ -4,6 +4,74 @@
 from test_support.microcosm_build.uk_calibration_run import *
 
 
+def test_strict_checkpoint_binds_contents_and_retains_gate_payload(tmp_path):
+    frame = _frame()
+    path, gate_path, _ = _bound_checkpoint(tmp_path, frame)
+    sidecar = calibration_run.load_bound_spine_checkpoint(path, frame)
+    provenance = calibration_run.strict_spine_provenance_from_sidecar(path, sidecar)
+    assert provenance["fit_weight_records"] == sidecar["fit_weight_records"]
+    assert provenance["spine_gate_report"]["payload"] == json.loads(
+        gate_path.read_bytes()
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_identity",
+        "wrong_identity",
+        "bypass",
+        "gate_bytes",
+        "missing_gate_binding",
+        "gate_roster",
+        "gate_policy",
+    ],
+)
+def test_strict_checkpoint_rejects_unbound_or_changed_evidence(tmp_path, mutation):
+    frame = _frame()
+    path, gate_path, sidecar = _bound_checkpoint(tmp_path, frame)
+    if mutation == "missing_identity":
+        sidecar.pop("uk_frame_content_identity")
+    elif mutation == "wrong_identity":
+        sidecar["uk_frame_content_identity"] = "f" * 64
+    elif mutation == "bypass":
+        sidecar["spine_gate_bypass"] = {"reviewed": True, "reason": "historical"}
+    elif mutation == "gate_bytes":
+        gate_path.write_text(gate_path.read_text() + "\n")
+    elif mutation == "missing_gate_binding":
+        sidecar.pop("spine_gate_report")
+    elif mutation == "gate_policy":
+        report = json.loads(gate_path.read_bytes())
+        report["policy_sha256"] = "f" * 64
+        gate_path.write_text(json.dumps(report))
+        sidecar["spine_gate_report"]["sha256"] = hashlib.sha256(
+            gate_path.read_bytes()
+        ).hexdigest()
+    else:
+        report = json.loads(gate_path.read_bytes())
+        report["gates"].pop(next(iter(report["gates"])))
+        gate_path.write_text(json.dumps(report))
+        sidecar["spine_gate_report"]["sha256"] = hashlib.sha256(
+            gate_path.read_bytes()
+        ).hexdigest()
+    path.write_text(json.dumps(sidecar))
+    with pytest.raises(ValueError):
+        calibration_run.load_bound_spine_checkpoint(path, frame)
+
+
+def test_strict_checkpoint_accepts_explicit_declared_gate_path(tmp_path):
+    frame = _frame()
+    path, gate_path, _ = _bound_checkpoint(tmp_path, frame)
+    moved = gate_path.rename(tmp_path / "declared-gates.json")
+    sidecar = calibration_run.load_bound_spine_checkpoint(
+        path, frame, gate_report_path=moved
+    )
+    provenance = calibration_run.strict_spine_provenance_from_sidecar(
+        path, sidecar, gate_report_path=moved
+    )
+    assert provenance["spine_gate_report"]["path"] == str(moved)
+
+
 def test_gate_scope_classifies_every_uk_gate():
     all_ids = {entry.id for entry in load_country_spec("uk").gates.gates}
     assert (
