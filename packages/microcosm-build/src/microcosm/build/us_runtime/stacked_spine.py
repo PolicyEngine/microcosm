@@ -221,6 +221,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_SOURCE_FINALIZER_STAGE,
     US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
     US_LATE_TRANSFER_TARGET_BANK_INPUT,
+    legacy_us_late_producer_contracts,
     legacy_us_late_producer_schedule_receipt,
     us_late_producer_schedule_receipt,
 )
@@ -8693,7 +8694,16 @@ def validate_stacked_late_producer_receipt(
             receipt.get(digest_field), boundary=f"{boundary} {digest_field}"
         )
     execution = receipt.get("execution")
-    expected_order = CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+    # An attested schema-9 pool sealed its rows against the schema-16
+    # contracts, rebuilt (and hash-verified) from the frozen schedule; today's
+    # registry would reject its historical input surfaces.
+    if legacy_worker_authentication is not None:
+        legacy_contracts = legacy_us_late_producer_contracts()
+        expected_registry = legacy_contracts.registry
+        expected_order = legacy_contracts.schedule.order
+    else:
+        expected_registry = CANONICAL_US_LATE_PRODUCER_REGISTRY
+        expected_order = CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
     if not isinstance(execution, list) or len(execution) != len(expected_order):
         raise ValueError(
             f"{boundary}: stacked late-producer DAG must carry exactly "
@@ -8709,7 +8719,7 @@ def validate_stacked_late_producer_receipt(
         raw_row = execution[index]
         previous_sha256 = _validate_late_execution_row(
             raw_row,
-            contract=CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name],
+            contract=expected_registry[producer_name],
             execution_index=index,
             expected_previous_sha256=previous_sha256,
             boundary=boundary,

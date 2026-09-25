@@ -123,3 +123,78 @@ def test_each_caller_gets_its_own_frozen_schedule() -> None:
 
     second = registry.legacy_us_late_producer_schedule_receipt()
     assert second["execution_receipt_contract"]["version"] == 3
+
+
+# ---------------------------------------------------------------------------
+# The execution contracts schema-9 pools sealed (#767, second review round)
+# ---------------------------------------------------------------------------
+
+IMMIGRATION_SOURCE = "source:with_us_immigration_inputs"
+IMMIGRATION_TRANSFER = "transfer:person/source_operator_immigration"
+
+
+def test_inventory_payload_round_trips_exactly() -> None:
+    for inventories in (
+        registry.US_LATE_SOURCE_INPUT_INVENTORIES,
+        registry.US_LATE_TRANSFER_INPUT_INVENTORIES,
+    ):
+        for name, inventory in inventories.items():
+            assert inventory.operator == name
+            parsed = registry._inventory_from_payload(
+                registry._inventory_payload(inventory)
+            )
+            assert parsed == inventory
+
+
+def test_legacy_contracts_reproduce_the_frozen_schedule() -> None:
+    legacy = registry.legacy_us_late_producer_contracts()
+    frozen = registry.legacy_us_late_producer_schedule_receipt()
+    assert legacy.schedule.sha256 == frozen["schedule_sha256"]
+    assert list(legacy.schedule.order) == frozen["order"]
+    assert set(legacy.registry) == set(registry.CANONICAL_US_LATE_PRODUCER_REGISTRY)
+
+
+def test_legacy_contracts_differ_from_live_only_where_767_changed_them() -> None:
+    legacy = registry.legacy_us_late_producer_contracts().registry
+    live = registry.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    changed = {name for name in live if legacy[name] != live[name]}
+    assert changed == {IMMIGRATION_SOURCE, IMMIGRATION_TRANSFER}
+    # The historical input surfaces schema-9 pools sealed, which today's
+    # contracts would refuse as "not the exact N-input readiness surface".
+    assert len(legacy[IMMIGRATION_SOURCE].inputs) == 57
+    assert len(live[IMMIGRATION_SOURCE].inputs) == 56
+    assert len(legacy[IMMIGRATION_TRANSFER].inputs) == 93
+    assert len(live[IMMIGRATION_TRANSFER].inputs) == 100
+    for name in (IMMIGRATION_SOURCE, IMMIGRATION_TRANSFER):
+        assert legacy[name].outputs == live[name].outputs
+        assert legacy[name].kind == live[name].kind
+
+
+@pytest.mark.parametrize("drift", ["overlap_ownership", "contract_inputs"])
+def test_legacy_contracts_refuse_a_drifted_derivation(
+    monkeypatch: pytest.MonkeyPatch, drift: str
+) -> None:
+    if drift == "overlap_ownership":
+        live = registry.us_late_overlap_ownership_receipt
+
+        def drifted_ownership():
+            receipt = dict(live())
+            receipt["schema_version"] = -1
+            return receipt
+
+        monkeypatch.setattr(
+            registry, "us_late_overlap_ownership_receipt", drifted_ownership
+        )
+    else:
+        live_inputs = registry._inventory_contract_inputs
+
+        def drifted_inputs(node_name, inventory, *, required_scope):
+            return live_inputs(node_name, inventory, required_scope=required_scope)[1:]
+
+        monkeypatch.setattr(registry, "_inventory_contract_inputs", drifted_inputs)
+    registry.legacy_us_late_producer_contracts.cache_clear()
+    try:
+        with pytest.raises(ValueError, match="no longer reproduces the frozen"):
+            registry.legacy_us_late_producer_contracts()
+    finally:
+        registry.legacy_us_late_producer_contracts.cache_clear()
