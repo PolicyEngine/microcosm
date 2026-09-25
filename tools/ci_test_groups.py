@@ -32,6 +32,7 @@ ENGINE_ONLY = (
 # shared-lane placement reviewed rather than a silent classifier default.
 EXPLICIT_SHARED_SPEC = (
     "packages/microcosm-build/tests/test_artifact_files.py",
+    "packages/microcosm-build/tests/test_atomic_geography.py",
     "packages/microcosm-build/tests/test_cross_grain.py",
     "packages/microcosm-build/tests/test_gate_battery_replay.py",
     "packages/microcosm-build/tests/test_stage_evidence.py",
