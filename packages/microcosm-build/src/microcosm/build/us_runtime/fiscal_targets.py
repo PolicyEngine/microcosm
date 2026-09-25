@@ -668,7 +668,8 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "6.04M-return W-2 Box 7 class, so binding the return-count target "
         "would demand ~600x weight concentration on those carriers. The "
         "dollar-amount target binds first; the count target waits for tip "
-        "support widening (PolicyEngine/microcosm#451 item 3)."
+        "support widening (PolicyEngine/microcosm#451 item 3). Every vintage "
+        "of the cell is excluded (decision d179)."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -817,17 +818,26 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
 # excluding one vintage of a cell hands its key to the next vintage the feed
 # carries. The 2026-09-18 feed re-pin (docs/us-chronicle-feed-repin.md) added
 # SOI Table 1.4 cells for ty2020-2022, and the ty2022 other-income rows then
-# calibrated in place of the excluded ty2023 rows (microcosm#956). The #564
-# Form 4797 concept mismatch does not depend on the tax year, so these four
-# entries drop every vintage of their cell: a fact matches when its
-# source_record_id equals the entry's once period tokens are stripped
-# (_period_free_source_record_id).
+# calibrated in place of the excluded ty2023 rows (microcosm#956). A fact
+# matches an entry here when its source_record_id equals the entry's once
+# period tokens are stripped (_period_free_source_record_id), so each entry
+# drops every vintage of its cell:
+#
+# - the four #564 other-income rows: the Form 4797 concept mismatch does not
+#   depend on the tax year;
+# - the #451 W-2 Box 7 tips return count: tip support is thin at every
+#   vintage, and the ty2020 fact carries the same 6,038,613 returns as the
+#   excluded ty2023 row. It calibrated at -51% in the certified parent
+#   populace-us-2024-spm-receipts-20260923 (registry 8f7933975519) as a
+#   reviewed vintage bypass until decision d179 ruled to enforce #451 at
+#   every vintage.
 US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
     {
         "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount",
         "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns",
         "irs_soi.ty2023.table_1_4.all.other_income_net_income_amount",
         "irs_soi.ty2023.table_1_4.all.other_income_net_income_returns",
+        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
     }
 )
 
@@ -835,18 +845,9 @@ US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
 # vintage, and the compile refuses a selected fact that is another vintage of
 # an excluded cell (_check_exclusion_vintage_scope) unless its id is listed
 # here with a reason. Removing an entry is mechanical; adding one needs review.
-US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {
-    "irs_soi.ty2020.form_w2_social_security_tips.box_7_social_security_tips.return_count": (
-        "Vintage bypass of the #451 ty2023 W-2 Box 7 return-count exclusion, "
-        "kept calibrated pending Max's ruling (decision d179, microcosm#956): "
-        "the ty2020 fact carries the same 6,038,613 returns as the excluded "
-        "ty2023 row, and the certified parent populace-us-2024-spm-receipts-"
-        "20260923 (registry 8f7933975519) calibrated this row at -51% (route A "
-        "remediation plan). A ruling to enforce #451 at every vintage moves "
-        "the ty2023 entry into US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS "
-        "and deletes this bypass."
-    ),
-}
+# Empty since decision d179 scoped the ty2020 tips return count's exclusion to
+# every vintage.
+US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {}
 
 
 @dataclass(frozen=True)
