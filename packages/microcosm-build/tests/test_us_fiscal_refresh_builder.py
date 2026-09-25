@@ -5977,9 +5977,29 @@ def _run_green_register_release(
         return reference_frame
 
     monkeypatch.setattr(builder, "load_us_frame", fake_load_us_frame)
-    monkeypatch.setattr(builder, "default_simulate_factory", lambda path: path)
+
+    class WrittenH5Scorer:
+        """The household-batched post-export scorer (#956) without an engine:
+        it binds the sha256 of the file it opens, as the real one does, and
+        hands each consumer a seam naming that file."""
+
+        def __init__(self, dataset_path, **kwargs):
+            self.dataset_path = Path(dataset_path)
+            self.dataset_sha256 = builder._sha256(self.dataset_path)
+            captured["scorer_opened_on"] = self.dataset_path
+
+        def open_consumer(self, name, baseline_plan):
+            record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
+            return SimpleNamespace(simulate=self.dataset_path, record=lambda: record)
+
+        def close(self):
+            captured["scorer_closed"] = True
+
+    monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
 
     def fake_smoke(*, simulate, period):
+        # The pre-export plan dry-runs the smoke on a recording seam first;
+        # the last call is the gate scoring the written release.
         captured["smoke_scored"] = simulate
         return builder.GateResult(
             name="reform_coverage_smoke",
@@ -6018,12 +6038,27 @@ def _run_green_register_release(
         "estate_income": "donor tail concentrated before calibration"
     }
     if skipped_smoke:
+        # No post-export stage runs, so no scorer opens.
         assert "smoke_scored" not in captured
+        assert "scorer_opened_on" not in captured
         assert not (release_dir / "reform_coverage_smoke.json").exists()
     else:
+        assert captured["scorer_opened_on"] == captured["written_dataset"]
         assert captured["smoke_scored"] == captured["written_dataset"]
+        assert captured["scorer_closed"] is True
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    if not skipped_smoke:
+        # The smoke verdict names the bytes it scored, and they are the bytes
+        # the manifest pins.
+        smoke_scoring = json.loads(
+            (release_dir / "reform_coverage_smoke.json").read_text()
+        )["post_export_scoring"]
+        assert smoke_scoring == {
+            "dataset_sha256": hashlib.sha256(b"release h5").hexdigest(),
+            "consumer": "reform_coverage_smoke",
+        }
+        assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
 
     artifacts = release_manifest["artifacts"]
     bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
