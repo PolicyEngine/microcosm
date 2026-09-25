@@ -827,10 +827,12 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
 #   depend on the tax year;
 # - the #451 W-2 Box 7 tips return count: tip support is thin at every
 #   vintage, and the ty2020 fact carries the same 6,038,613 returns as the
-#   excluded ty2023 row. It calibrated at -51% in the certified parent
-#   populace-us-2024-spm-receipts-20260923 (registry 8f7933975519) as a
-#   reviewed vintage bypass until decision d179 ruled to enforce #451 at
-#   every vintage.
+#   excluded ty2023 row (the feed's ty2023 W-2 record sets come from the
+#   soi-w2-statistics-2020 package, chronicle_feed_scope.json). Latest-vintage
+#   fallback calibrated the ty2020 row in the ty2023 row's place before any
+#   guard existed (-52% in experiments/replacement_scorecard/
+#   incumbent_48b9d479.md); #1016 then kept it as the one reviewed vintage
+#   bypass until decision d179 ruled to enforce #451 at every vintage.
 US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
     {
         "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount",

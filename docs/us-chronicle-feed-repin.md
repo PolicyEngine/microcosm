@@ -153,7 +153,9 @@ id is a reviewed bypass (`US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`).
 allows (`fiscal_target_exclusion_receipt`). The one reviewed bypass was the
 ty2020 W-2 Box 7 tips return count, which falls back past the #451 ty2023
 exclusion. The route A remediation plan found it calibrated in the certified
-parent `populace-us-2024-spm-receipts-20260923` too (at -51%), so it is not a
+parent `populace-us-2024-spm-receipts-20260923` too, and the committed
+incumbent scorecard shows it at -52%
+(`experiments/replacement_scorecard/incumbent_48b9d479.md`), so it is not a
 re-pin effect. Decision d179 (25 September) ruled to enforce #451 at every
 vintage: the ty2023 entry joined `US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS`,
 and the bypass register is now empty.

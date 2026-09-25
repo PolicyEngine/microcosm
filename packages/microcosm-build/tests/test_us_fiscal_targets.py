@@ -803,6 +803,54 @@ def test_reviewed_vintage_bypass_compiles_and_is_receipted(monkeypatch) -> None:
     assert rules["reviewed_exclusion"]["source_record_ids"] == [excluded]
 
 
+def test_all_vintage_scope_is_vintage_invariant_and_cell_exact() -> None:
+    """Invariant (decision d179): an all-vintage entry drops its cell at every
+    tax-year token, and a sibling cell of the same record set only when that
+    sibling is itself an entry. Checked over generated vintages (ty/cy/fy
+    prefixes and bare years) and sibling measures. Hypothesis is a workspace
+    dependency; the wheels job installs no test extras, so it skips there."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    entries = sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
+    assert all(entry.split(".")[1] == "ty2023" for entry in entries)
+
+    def at_vintage(entry: str, token: str) -> str:
+        source, _, rest = entry.split(".", 2)
+        return f"{source}.{token}.{rest}"
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        entry=st.sampled_from(entries),
+        token=st.builds(
+            lambda prefix, year: f"{prefix}{year}",
+            st.sampled_from(["ty", "cy", "fy", ""]),
+            st.integers(1990, 2099),
+        ),
+        measure=st.sampled_from(
+            [
+                "amount",
+                "taxpayer_count",
+                "return_count",
+                "taxable_interest_amount",
+                "other_income_net_loss_amount",
+            ]
+        ),
+    )
+    def check(entry: str, token: str, measure: str) -> None:
+        assert fiscal_targets._is_all_vintage_support_exclusion(
+            at_vintage(entry, token)
+        )
+        sibling = at_vintage(entry, token).rsplit(".", 1)[0] + "." + measure
+        entries_at_vintage = {at_vintage(other, token) for other in entries}
+        assert fiscal_targets._is_all_vintage_support_exclusion(sibling) == (
+            sibling in entries_at_vintage
+        )
+
+    check()
+
+
 def test_exclusion_vintage_scope_registers_are_consistent() -> None:
     """Each all-vintage entry is a register key, and each bypass is another
     vintage of exactly one register key that is not all-vintage scoped (else
@@ -1052,6 +1100,12 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         for spec in surface.specs
         if spec.name.endswith("box_7_social_security_tips.return_count")
     ]
+    # The fence drops the return count only: the tips amount row of the same
+    # record set still calibrates.
+    assert (
+        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
+        in {spec.name for spec in surface.specs}
+    )
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
