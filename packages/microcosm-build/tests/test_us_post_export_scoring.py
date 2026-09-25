@@ -1258,7 +1258,36 @@ def test_main_and_writers_never_build_a_whole_pool_simulation(builder) -> None:
     assert {kw.arg: ast.unparse(kw.value) for kw in diagnostics_call.keywords}[
         "post_export_scoring"
     ] == "post_export_scoring_plan.record()"
-    assert '"post_export_scoring": smoke_scoring.record()' in source
+    # The smoke's record is registered with the scorer before its evidence is
+    # written, and the evidence carries that same record.
+    assert (
+        "smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)"
+        in source
+    )
+    assert '"post_export_scoring": smoke_scoring_record' in source
+    # Both manifests get the scorer's block, taken after every consumer ran
+    # and before the scorer closes.
+    block_assignments = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "post_export_scoring"
+            for target in node.targets
+        )
+    ]
+    assert [ast.unparse(node.value) for node in block_assignments] == [
+        "_post_export_scoring_manifest_block(post_export_scorer)"
+    ]
+    assert (
+        demographics_call.lineno
+        < block_assignments[0].lineno
+        < sha_assignments[0].lineno
+        < manifest_call.lineno
+    )
+    assert {kw.arg: ast.unparse(kw.value) for kw in manifest_call.keywords}[
+        "post_export_scoring"
+    ] == "post_export_scoring"
     # The plan is recorded (never raised) before the diagnostics, and its own
     # failure joins the terminal batch ahead of the export write.
     recorded = source.index(
@@ -1331,8 +1360,30 @@ def test_main_opens_the_scorer_its_plan_recorded(
     assert scorer.dataset_path == path
     assert scorer.n_batches == 3 and scorer.max_batch_households == 3
     # Served through the engine's own Microsimulation, one batch at a time.
-    scorer.open_consumer("demographics", plan.baseline_plan("demographics"))
+    demographics = scorer.open_consumer(
+        "demographics", plan.baseline_plan("demographics")
+    )
     assert [len(engine.household_ids) for engine in log.constructions] == [3, 3, 1]
+    # Only finished consumers reach the manifests' block, once each.
+    assert builder._post_export_scoring_manifest_block(scorer)["consumers"] == {}
+    finished = scorer.finish_consumer(demographics)
+    with pytest.raises(ValueError, match="already finished"):
+        scorer.finish_consumer(demographics)
+    block = builder._post_export_scoring_manifest_block(scorer)
+    assert block["dataset_sha256"] == builder._sha256(path)
+    assert (block["n_batches"], block["max_batch_households"]) == (3, 3)
+    assert block["consumers"] == {
+        "demographics": {
+            key: finished[key]
+            for key in (
+                "baseline_plan",
+                "baseline_passes",
+                "reform_passes",
+                "reform_systems",
+            )
+        }
+    }
+    assert builder._post_export_scoring_manifest_block(None) is None
     assert builder._close_post_export_scorer(scorer) == builder._sha256(path)
     with pytest.raises(RuntimeError, match="scorer is closed"):
         scorer.open_consumer("demographics", plan.baseline_plan("demographics"))
@@ -1807,6 +1858,17 @@ def test_scored_sha_is_bound_at_load_and_checked_by_the_manifest(
             dataset_filename=path.name,
             scored_dataset_sha256="0" * 64,
         )
+    # The manifests' scoring block must describe the same bytes.
+    with pytest.raises(RuntimeError, match="does not pin"):
+        builder._build_manifests(
+            **required,
+            dataset_filename=path.name,
+            post_export_scoring={"dataset_sha256": "0" * 64},
+        )
+    # A consumer opened on another scorer cannot be finished on this one.
+    other = _scorer(builder, _nested_frame(), _EngineLog(), 3, tmp_path / "other")
+    with pytest.raises(ValueError, match="not opened on this scorer"):
+        scorer.finish_consumer(other.open_consumer("fixture", ()))
 
     _, tree = _function_source(builder, "_main")
     manifest_call = next(

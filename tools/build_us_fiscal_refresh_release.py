@@ -4917,12 +4917,55 @@ class _HouseholdBatchedPostExportScorer:
                 )
 
         self._dataset_from_frame = dataset_from_frame
+        # Each finished consumer's scoring record, for the manifests' block.
+        # Records, not consumers: a finished consumer's arrays must be freed.
+        self.consumer_records: dict[str, dict[str, object]] = {}
 
     def open_consumer(
         self, name: str, baseline_plan: Sequence[PostExportKey]
     ) -> _PostExportConsumer:
         """Score ``baseline_plan`` now; return the consumer's simulate seam."""
         return _PostExportConsumer(self, name, tuple(baseline_plan))
+
+    def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
+        """Record a consumer that has finished scoring and return its record."""
+        if scoring._scorer is not self:
+            raise ValueError(f"{scoring.name} was not opened on this scorer.")
+        if scoring.name in self.consumer_records:
+            raise ValueError(f"{scoring.name} already finished on this scorer.")
+        record = scoring.record()
+        self.consumer_records[scoring.name] = record
+        return record
+
+    def manifest_record(self) -> dict[str, object]:
+        """The ``post_export_scoring`` block both manifests carry.
+
+        Route A remediation PR-3 records the evidence the gates judged in the
+        manifests, not only in loose diagnostics. This block names the bytes
+        scored, the batching, and each finished consumer's baseline plan and
+        pass counts, in the order the consumers finished.
+        """
+        return {
+            "method": POST_EXPORT_SCORING_METHOD,
+            "dataset_sha256": self.dataset_sha256,
+            "maximum_batch_size": self.maximum_batch_size,
+            "n_households": self.n_households,
+            "n_batches": self.n_batches,
+            "max_batch_households": self.max_batch_households,
+            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "consumers": {
+                name: {
+                    key: record[key]
+                    for key in (
+                        "baseline_plan",
+                        "baseline_passes",
+                        "reform_passes",
+                        "reform_systems",
+                    )
+                }
+                for name, record in self.consumer_records.items()
+            },
+        }
 
     def close(self) -> None:
         self._batch_frames = None
@@ -5052,6 +5095,15 @@ def _open_post_export_scorer(
         maximum_microsim_batch_size=plan.maximum_batch_size,
         expected_n_households=plan.n_households,
     )
+
+
+def _post_export_scoring_manifest_block(
+    scorer: _HouseholdBatchedPostExportScorer | None,
+) -> dict[str, object] | None:
+    """The manifests' ``post_export_scoring`` block (None: no stage ran)."""
+    if scorer is None:
+        return None
+    return scorer.manifest_record()
 
 
 def _close_post_export_scorer(
@@ -9821,7 +9873,7 @@ def _score_post_export_consumer(
         )
         scoring = scorer.open_consumer(name, plan)
         output = consumer(scoring.simulate)
-        record = scoring.record()
+        record = scorer.finish_consumer(scoring)
         print(
             f"Post-export {name}: {record['baseline_passes']} baseline pass "
             f"({len(plan)} keys), {record['reform_passes']} reform passes, "
@@ -9960,6 +10012,7 @@ def _build_manifests(
     calibration_runtime: Mapping[str, object] | None = None,
     skipped_gates: Iterable[str] = (),
     scored_dataset_sha256: str | None = None,
+    post_export_scoring: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -9974,6 +10027,16 @@ def _build_manifests(
             f"The post-export stages scored {dataset_path} at sha256 "
             f"{scored_dataset_sha256}, but the file now hashes to {dataset_sha}; "
             "the manifest would pin bytes the release gates never scored."
+        )
+    if (
+        post_export_scoring is not None
+        and post_export_scoring.get("dataset_sha256") != dataset_sha
+    ):
+        raise RuntimeError(
+            "The post_export_scoring block records sha256 "
+            f"{post_export_scoring.get('dataset_sha256')}, but {dataset_path} "
+            f"hashes to {dataset_sha}; the manifest would describe scoring of "
+            "bytes it does not pin."
         )
     calibration_sha = _sha256(calibration_path)
     diagnostics_sha = _sha256(diagnostics_path)
@@ -10002,6 +10065,11 @@ def _build_manifests(
         **(
             {"calibration_runtime": dict(calibration_runtime)}
             if calibration_runtime is not None
+            else {}
+        ),
+        **(
+            {"post_export_scoring": dict(post_export_scoring)}
+            if post_export_scoring is not None
             else {}
         ),
         "fiscal_target_exclusion_receipt": _fiscal_target_exclusion_receipt_reference(
@@ -14295,6 +14363,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             simulate=smoke_scoring.simulate,
             period=PERIOD,
         )
+        smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)
         reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
         reform_coverage_smoke_path.write_text(
             json.dumps(
@@ -14306,7 +14375,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
                         "failures": list(reform_coverage_smoke_gate.failures),
                         "details": dict(reform_coverage_smoke_gate.details),
                     },
-                    "post_export_scoring": smoke_scoring.record(),
+                    "post_export_scoring": smoke_scoring_record,
                 },
                 indent=2,
                 sort_keys=True,
@@ -14402,7 +14471,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
         if telemetry is not None:
             telemetry.attach_artifact("demographics", release_dir / "demographics.json")
     # Every post-export engine stage has run; free the scorer's batch frames.
-    # The manifest must pin the bytes those stages scored.
+    # The manifest must pin the bytes those stages scored, and both manifests
+    # carry how they were scored (Route A remediation PR-3).
+    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
     scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
     post_export_scorer = None
 
@@ -14578,6 +14649,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             ("reform_coverage_smoke",) if args.skip_reform_coverage_smoke else ()
         ),
         scored_dataset_sha256=scored_dataset_sha256,
+        post_export_scoring=post_export_scoring,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

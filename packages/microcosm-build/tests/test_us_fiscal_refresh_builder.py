@@ -5990,7 +5990,19 @@ def _run_green_register_release(
 
         def open_consumer(self, name, baseline_plan):
             record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
-            return SimpleNamespace(simulate=self.dataset_path, record=lambda: record)
+            return SimpleNamespace(
+                name=name, simulate=self.dataset_path, record=lambda: record
+            )
+
+        def finish_consumer(self, scoring):
+            captured.setdefault("finished_consumers", []).append(scoring.name)
+            return scoring.record()
+
+        def manifest_record(self):
+            return {
+                "dataset_sha256": self.dataset_sha256,
+                "consumers": list(captured.get("finished_consumers", [])),
+            }
 
         def close(self):
             captured["scorer_closed"] = True
@@ -6059,6 +6071,18 @@ def _run_green_register_release(
             "consumer": "reform_coverage_smoke",
         }
         assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
+    # Both manifests carry how the post-export gates were scored (route A
+    # remediation PR-3's rule): the scorer's block, taken after every consumer
+    # finished and naming the bytes the manifest pins. With no post-export
+    # stage there is no scorer and no block.
+    for block in (build_manifest, release_manifest["build"]):
+        if skipped_smoke:
+            assert "post_export_scoring" not in block
+        else:
+            assert block["post_export_scoring"] == {
+                "dataset_sha256": build_manifest["dataset"]["sha256"],
+                "consumers": ["reform_coverage_smoke"],
+            }
 
     artifacts = release_manifest["artifacts"]
     bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
