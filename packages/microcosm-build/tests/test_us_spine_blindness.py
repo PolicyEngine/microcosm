@@ -305,6 +305,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "snap_take_up.py",
         "source_coverage.py",
         "source_runtime.py",
+        # Restamped-fact period correction over compiled target specs
+        # (chronicle#117); reads Ledger facts only, no population treatment.
+        "source_vintage.py",
         "sources.py",
         "spine_agreement.py",
         "spine_assembly.py",
