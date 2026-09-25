@@ -39,8 +39,6 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
 import microcosm.build.us_runtime.reform_validation as reform_validation_module
@@ -762,69 +760,76 @@ _WALKER_VARIABLES = (
 )
 
 
-@st.composite
-def _engine_graphs(draw):
-    """A random graph of fake engines: known periods per variable, plus the
-    three links the walker follows (live branches, recorded detached branches
-    and ``baseline``), cycles allowed."""
-    n = draw(st.integers(1, 7))
-    known = [
-        {
-            variable: draw(st.lists(st.integers(2020, 2035), max_size=3))
-            for variable in _WALKER_VARIABLES
-        }
-        for _ in range(n)
-    ]
-    nodes = [
-        SimpleNamespace(
-            get_holder=(
-                lambda name, k=k: SimpleNamespace(
-                    get_known_periods=lambda: k.get(name, [])
-                )
-            ),
-            branches={},
-            _target_materialization_branches=[],
-            baseline=None,
-        )
-        for k in known
-    ]
-    edges: list[tuple[int, int]] = []
-    for i, node in enumerate(nodes):
-        for j in draw(st.lists(st.integers(0, n - 1), max_size=3)):
-            node.branches[f"b{j}"] = nodes[j]
-            edges.append((i, j))
-        for j in draw(st.lists(st.integers(0, n - 1), max_size=2)):
-            node._target_materialization_branches.append(nodes[j])
-            edges.append((i, j))
-        baseline = draw(st.one_of(st.none(), st.integers(0, n - 1)))
-        if baseline is not None:
-            node.baseline = nodes[baseline]
-            edges.append((i, baseline))
-    return nodes, known, edges
-
-
-@settings(max_examples=200, deadline=None)
-@given(graph=_engine_graphs(), watched=st.sets(st.sampled_from(_WALKER_VARIABLES)))
-def test_known_period_walker_matches_a_reference_traversal(builder, graph, watched):
+def test_known_period_walker_matches_a_reference_traversal(builder) -> None:
     """The shared walker returns exactly the known (variable, period) pairs of
     every engine reachable from the root through live branches, recorded
     detached branches and ``baseline``, for the watched variables only, and
-    terminates on cycles. Checked against an independent breadth-first walk."""
-    nodes, known, edges = graph
-    reachable, frontier = {0}, [0]
-    while frontier:
-        current = frontier.pop()
-        for source, target in edges:
-            if source == current and target not in reachable:
-                reachable.add(target)
-                frontier.append(target)
-    expected = {
-        (variable, str(period))
-        for index in reachable
-        for variable in watched
-        for period in known[index][variable]
-    }
-    assert builder._engine_known_periods(nodes[0], tuple(sorted(watched))) == expected
+    terminates on cycles. Checked against an independent breadth-first walk
+    over random engine graphs. Hypothesis is a workspace dependency; the
+    wheels job installs no test extras, so it skips there."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    @st.composite
+    def engine_graphs(draw):
+        n = draw(st.integers(1, 7))
+        known = [
+            {
+                variable: draw(st.lists(st.integers(2020, 2035), max_size=3))
+                for variable in _WALKER_VARIABLES
+            }
+            for _ in range(n)
+        ]
+        nodes = [
+            SimpleNamespace(
+                get_holder=(
+                    lambda name, k=k: SimpleNamespace(
+                        get_known_periods=lambda: k.get(name, [])
+                    )
+                ),
+                branches={},
+                _target_materialization_branches=[],
+                baseline=None,
+            )
+            for k in known
+        ]
+        edges: list[tuple[int, int]] = []
+        for i, node in enumerate(nodes):
+            for j in draw(st.lists(st.integers(0, n - 1), max_size=3)):
+                node.branches[f"b{j}"] = nodes[j]
+                edges.append((i, j))
+            for j in draw(st.lists(st.integers(0, n - 1), max_size=2)):
+                node._target_materialization_branches.append(nodes[j])
+                edges.append((i, j))
+            baseline = draw(st.one_of(st.none(), st.integers(0, n - 1)))
+            if baseline is not None:
+                node.baseline = nodes[baseline]
+                edges.append((i, baseline))
+        return nodes, known, edges
+
+    @settings(max_examples=200, deadline=None)
+    @given(graph=engine_graphs(), watched=st.sets(st.sampled_from(_WALKER_VARIABLES)))
+    def check(graph, watched):
+        nodes, known, edges = graph
+        reachable, frontier = {0}, [0]
+        while frontier:
+            current = frontier.pop()
+            for source, target in edges:
+                if source == current and target not in reachable:
+                    reachable.add(target)
+                    frontier.append(target)
+        expected = {
+            (variable, str(period))
+            for index in reachable
+            for variable in watched
+            for period in known[index][variable]
+        }
+        assert (
+            builder._engine_known_periods(nodes[0], tuple(sorted(watched))) == expected
+        )
+
+    check()
 
 
 def test_batch_invariance_check_reads_a_value_held_only_on_baseline(
