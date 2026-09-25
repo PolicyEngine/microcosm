@@ -2211,6 +2211,97 @@
    "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
+   "artifacts": [],
+   "grain": "household",
+   "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged.",
+   "operations": [
+    {
+     "amount_fit": "regime_gated_qrf",
+     "amount_targets": [
+      "council_tax",
+      "council_tax_reported",
+      "rent",
+      "mortgage_interest_repayment",
+      "mortgage_capital_repayment",
+      "structural_insurance_payments",
+      "housing_service_charges",
+      "water_and_sewerage_charges",
+      "domestic_rates",
+      "subrent"
+     ],
+     "benefit_targets": [
+      "housing_benefit_reported",
+      "council_tax_benefit_reported"
+     ],
+     "categorical_fit": "weighted_hist_gradient_boosting_classifier",
+     "categorical_predictors": [
+      "region",
+      "ons_household_type"
+     ],
+     "categorical_targets": [
+      "tenure_type",
+      "accommodation_type",
+      "num_bedrooms",
+      "council_tax_band"
+     ],
+     "identity": "household_id",
+     "kind": "impute_spi_housing_shell",
+     "landing": "household_reference_person",
+     "n_estimators": 100,
+     "predictors": [
+      "region",
+      "ons_household_type",
+      "num_adults",
+      "num_children",
+      "single_adult",
+      "hrp_age",
+      "employment_income",
+      "self_employment_income",
+      "private_pension_income",
+      "investment_income",
+      "state_pension_reported"
+     ],
+     "rows": "spi_channel",
+     "rules": [
+      "mortgage_requires_mortgaged_tenure",
+      "housing_benefit_requires_rented_tenure",
+      "council_tax_benefit_capped_at_council_tax",
+      "council_tax_rebate_equals_hrp_council_tax_benefit"
+     ],
+     "seed": 0,
+     "structural_zero_keys": [
+      "tenure_type",
+      "region"
+     ],
+     "support_clip": "donor_range",
+     "training_rows": "base_frs_channel_positive_weight"
+    }
+   ],
+   "outputs": [],
+   "rewrites": [
+    "tenure_type",
+    "accommodation_type",
+    "num_bedrooms",
+    "council_tax_band",
+    "council_tax",
+    "council_tax_reported",
+    "rent",
+    "mortgage_interest_repayment",
+    "mortgage_capital_repayment",
+    "structural_insurance_payments",
+    "housing_service_charges",
+    "water_and_sewerage_charges",
+    "domestic_rates",
+    "subrent",
+    "council_tax_rebate",
+    "housing_benefit_reported",
+    "council_tax_benefit_reported"
+   ],
+   "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.",
+   "stage": "spi_housing_shell",
+   "survey": "Family Resources Survey 2024-25"
+  },
+  {
    "stage": "was_wealth",
    "survey": "Wealth and Assets Survey round 8",
    "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",

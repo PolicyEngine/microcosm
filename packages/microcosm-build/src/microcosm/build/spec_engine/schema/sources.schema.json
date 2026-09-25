@@ -7598,6 +7598,111 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "training_rows",
+      "rows",
+      "identity",
+      "predictors",
+      "categorical_predictors",
+      "categorical_targets",
+      "categorical_fit",
+      "amount_targets",
+      "benefit_targets",
+      "amount_fit",
+      "support_clip",
+      "structural_zero_keys",
+      "rules",
+      "landing",
+      "n_estimators",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_spi_housing_shell"
+      },
+      "training_rows": {
+       "type": "string"
+      },
+      "rows": {
+       "type": "string"
+      },
+      "identity": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_targets": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_fit": {
+       "type": "string"
+      },
+      "amount_targets": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "benefit_targets": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "amount_fit": {
+       "type": "string"
+      },
+      "support_clip": {
+       "type": "string"
+      },
+      "structural_zero_keys": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "rules": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "landing": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "seed": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "output",
       "rows",
       "donor_rows",

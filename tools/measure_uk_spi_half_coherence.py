@@ -17,6 +17,8 @@ Four surfaces:
 * ``inherited_from_parent``: per donor-imputed column, the share of SPI rows
   whose value equals the parent's, overall and where either side is non-zero.
 * ``coherence``: income against wealth and spending on each half.
+* ``housing_by_income_band``: tenure, dwelling, rent and council tax by
+  household income band on each half.
 * ``band_donors``: wealth and spending by #1006 income band.
 """
 
@@ -88,6 +90,25 @@ HOUSEHOLD_DONOR_COLUMNS = (
     "bus_subsidy_spending",
     "rail_usage",
 )
+#: Household housing written by spi_housing_shell (the categorical ones are
+#: compared as labels).
+HOUSEHOLD_HOUSING_COLUMNS = (
+    "tenure_type",
+    "accommodation_type",
+    "num_bedrooms",
+    "council_tax_band",
+    "council_tax",
+    "rent",
+    "mortgage_interest_repayment",
+    "mortgage_capital_repayment",
+    "structural_insurance_payments",
+    "water_and_sewerage_charges",
+)
+_CATEGORICAL_HOUSING = {"tenure_type", "accommodation_type", "council_tax_band"}
+_SOCIAL_TENURES = ("RENT_FROM_COUNCIL", "RENT_FROM_HA")
+_RENTED_TENURES = ("RENT_PRIVATELY", *_SOCIAL_TENURES)
+HOUSING_INCOME_BANDS = (-np.inf, 20e3, 50e3, 100e3, 200e3, 1e6, np.inf)
+HOUSING_INCOME_LABELS = ("<20k", "20-50k", "50-100k", "100-200k", "200k-1m", "1m+")
 #: Person columns written by was_wealth, nts_bus_travel and etb_services.
 PERSON_DONOR_COLUMNS = (
     "student_loan_balance",
@@ -229,6 +250,11 @@ def _identical_shares(
     for column in columns:
         if column not in child.columns or column not in parent.columns:
             continue
+        if column in _CATEGORICAL_HOUSING:
+            a = child[column].astype(str).to_numpy()
+            b = parent[column].astype(str).to_numpy()
+            result[column] = {"identical_share": float((a == b).mean())}
+            continue
         a = child[column].to_numpy(dtype=float)
         b = parent[column].to_numpy(dtype=float)
         either = (a != 0) | (b != 0)
@@ -261,6 +287,9 @@ def inherited_from_parent(halves: dict[str, pd.DataFrame]) -> dict[str, object]:
         "spi_persons": len(person_child),
         "household": _identical_shares(
             household_child, household_parent, HOUSEHOLD_DONOR_COLUMNS
+        ),
+        "housing": _identical_shares(
+            household_child, household_parent, HOUSEHOLD_HOUSING_COLUMNS
         ),
         "person": _identical_shares(person_child, person_parent, PERSON_DONOR_COLUMNS),
     }
@@ -351,6 +380,52 @@ def coherence(halves: dict[str, pd.DataFrame]) -> dict[str, object]:
     }
 
 
+def housing_by_income_band(halves: dict[str, pd.DataFrame]) -> dict[str, object]:
+    """Prior-weighted tenure, dwelling and rent by household income band, per half."""
+
+    result: dict[str, object] = {}
+    for half, (households, persons) in {
+        "frs_half": (halves["frs_households"], halves["frs_persons"]),
+        "spi_half": (halves["spi_households"], halves["spi_persons"]),
+    }.items():
+        joined = households.join(_household_income(persons), on="household_id").fillna(
+            {"total_income": 0.0}
+        )
+        band = pd.cut(
+            joined["total_income"], HOUSING_INCOME_BANDS, labels=HOUSING_INCOME_LABELS
+        )
+        rows = {}
+        for label in HOUSING_INCOME_LABELS:
+            cell = joined.loc[(band == label).to_numpy()]
+            if len(cell) < MIN_CELL:
+                rows[label] = None
+                continue
+            weights = cell["household_weight"].to_numpy(dtype=float)
+            tenure = cell["tenure_type"].astype(str)
+            renters = cell.loc[tenure.isin(_RENTED_TENURES).to_numpy()]
+            rows[label] = {
+                "households": len(cell),
+                "owned": float(
+                    weights[tenure.str.startswith("OWNED").to_numpy()].sum()
+                    / weights.sum()
+                ),
+                "social_rent": float(
+                    weights[tenure.isin(_SOCIAL_TENURES).to_numpy()].sum()
+                    / weights.sum()
+                ),
+                "detached": float(
+                    weights[
+                        (cell["accommodation_type"] == "HOUSE_DETACHED").to_numpy()
+                    ].sum()
+                    / weights.sum()
+                ),
+                "median_rent_renters": _median_or_none(renters["rent"]),
+                "median_council_tax": _median_or_none(cell["council_tax"]),
+            }
+        result[half] = rows
+    return result
+
+
 def band_donors(halves: dict[str, pd.DataFrame]) -> dict[str, object] | None:
     household = halves["spi_households"]
     if "household_is_spi_income_band_donor" not in household.columns:
@@ -398,6 +473,7 @@ def main() -> int:
         ),
         "inherited_from_parent": inherited_from_parent(halves),
         "coherence": coherence(halves),
+        "housing_by_income_band": housing_by_income_band(halves),
         "band_donors": band_donors(halves),
     }
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")

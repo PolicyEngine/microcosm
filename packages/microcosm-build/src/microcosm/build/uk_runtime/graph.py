@@ -98,6 +98,9 @@ _STRUCTURAL_WEIGHT_KIND = {
 # units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
+        # The housing shell rewrites root household cells right after the
+        # open-surface SPI income stage, which would otherwise bind them.
+        "spi_housing_shell",
         "uc_reporter_redraw",
         "uc_capital_coherence",
         # ``frs_education_grant_split`` rewrites the root cell
@@ -231,6 +234,26 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
+    # Engine-free: the housing predictors and the channel split. The rewritten
+    # housing and benefit cells arrive as the rewrite's incumbents.
+    "spi_housing_shell": frozenset(
+        {
+            ("person", "age"),
+            ("person", "is_household_head"),
+            ("person", "employment_income"),
+            ("person", "self_employment_income"),
+            ("person", "private_pension_income"),
+            ("person", "savings_interest_income"),
+            ("person", "dividend_income"),
+            ("person", "property_income"),
+            ("person", "other_investment_income"),
+            ("person", "state_pension_reported"),
+            ("household", "region"),
+            ("household", "ons_household_type"),
+            ("household", "council_tax_single_adult_raw"),
+            ("household", "household_support_channel"),
+        }
+    ),
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
@@ -659,6 +682,31 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "person_is_spi_income_band_carrier", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
+    "spi_housing_shell": (
+        *_cells(
+            "household",
+            ("tenure_type", "accommodation_type", "council_tax_band"),
+            "string",
+        ),
+        _Cell("household", "num_bedrooms", "int64"),
+        *_cells(
+            "household",
+            (
+                "council_tax",
+                "council_tax_reported",
+                "rent",
+                "mortgage_interest_repayment",
+                "mortgage_capital_repayment",
+                "structural_insurance_payments",
+                "housing_service_charges",
+                "water_and_sewerage_charges",
+                "domestic_rates",
+                "subrent",
+                "council_tax_rebate",
+            ),
+        ),
+        *_cells("person", ("housing_benefit_reported", "council_tax_benefit_reported")),
+    ),
     "uc_reporter_redraw": (_Cell("person", "universal_credit_reported", "float64"),),
     "uc_capital_coherence": (
         _Cell("benunit", "uc_reported_capital", "float64"),

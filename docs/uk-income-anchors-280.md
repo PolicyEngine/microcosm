@@ -265,6 +265,43 @@ Three details follow from the order:
   gas-connection walk, the NEED rake and DESNZ level, the ETB NHS
   normalisation and the NTS receipts.
 
+## The SPI households' housing
+
+The support copies and band donors are whole FRS households, so after the
+reorder their wealth and spending followed their SPI incomes while their
+housing was still the parent's. On the reordered spine the SPI half's detached
+share sat at 27-29 % in every income band (the FRS half rises from 19 % to 47 %
+by £200k-1m), social renting stayed at 13-16 % even above £1m, and 363k of the
+SPI channel's 451k Housing Benefit units were owner-occupier households.
+
+`spi_housing_shell` runs right after the SPI income chain and imputes the
+housing of every SPI-channel household, the household counterpart of the SPI
+stage-2 FRS-only fill. It trains on the FRS base households and conditions on
+region, household type, adults, children, single-adult status, the reference
+person's age and the household's income components; no engine run, so housing
+benefits do not become circular. Tenure, dwelling type, bedrooms and council
+tax band are drawn in that order by weighted multiclass classifiers with an
+inverse-CDF draw; council tax, rent, both mortgage repayments, insurance,
+service charges, water, Northern Ireland rates, subletting and the head benefit
+unit's Housing Benefit and the reference person's council tax benefit by one
+chained regime-gated QRF conditioned on those categories. Every draw reads
+uniforms keyed on household id. Structural zeros are learned from the training
+households (an amount is zero wherever the FRS has no positive value for that
+tenure or region); mortgage payments need a mortgaged tenure, Housing Benefit
+a rented one, and council tax benefit is capped at council tax and carried by
+the reference person, as the FRS holds it. Region, single-adult status, BRMA
+and composition stay the recipient's; FRS rows are unchanged.
+
+Imputation was chosen over whole-record donor matching on a holdout of FRS
+households (`tools/validate_uk_housing_imputation.py`). Within FRS support the
+two, and a forest-weighted whole-record draw, sit near the sampling noise; on
+the top 5 % of incomes held out and filled from the rest, which is the
+extrapolation the SPI copies need, imputation came closest on ownership (0.818
+against 0.855 observed; matching 0.787), detached share (0.396 against 0.446;
+matching 0.328) and four or more bedrooms (0.456 against 0.557; matching
+0.355), with the most distinct bundles. All three under-draw council tax band
+F and above at the top (about 0.19 against 0.35).
+
 ## Not done here
 
 - The property-income amount rows stay signed out: the spine's

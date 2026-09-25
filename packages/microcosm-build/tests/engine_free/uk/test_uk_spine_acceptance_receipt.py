@@ -101,6 +101,10 @@ def _apply_pending_roster_transformations(
     del roster[start : start + len(spi_block)]
     brma = roster.index("frs_brma")
     roster[brma + 1 : brma + 1] = spi_block
+    # SPI housing shell re-mint pending: the SPI households' housing is imputed
+    # from their own incomes right after the SPI income chain.
+    assert "spi_housing_shell" not in roster
+    roster.insert(roster.index("hmrc_spi_income_spine") + 1, "spi_housing_shell")
     return tuple(roster)
 
 
