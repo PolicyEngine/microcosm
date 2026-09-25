@@ -114,7 +114,8 @@ effect of another task. A UK rowwise run's **staged** bundle
 is inspection evidence, not a release: it never moves `releases/` or
 `latest.json` and is not loadable through the certified loader. The build's
 default is to upload that bundle (hundreds of megabytes of licensed microdata)
-to the private repository; when you run `tools/build_uk_rowwise_candidate.py`
+to the private repository; when you run `microcosm-build-uk`
+(`tools/build_uk_full.py`, or its stub `tools/build_uk_rowwise_candidate.py`)
 yourself, pass `--staging-local-only` unless the operator asked for a staged
 upload.
 
@@ -211,7 +212,8 @@ Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
 
-UK size experiments use `tools/build_uk_rowwise_candidate.py --release-role dense --dataset-households`
+UK size experiments use `microcosm-build-uk --release-role dense --dataset-households`
+(`tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py` is a stub over it)
 with the same pool inputs as the dense candidate. The flag changes exported
 support, not clone K. Sizes remain candidate-only until their matched comparison
 and promotion scorecard are adjudicated; see

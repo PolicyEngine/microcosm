@@ -73,10 +73,12 @@ on [#870](https://github.com/PolicyEngine/microcosm/pull/870)'s branch. The PR i
 
 Use the inputs and environment from the existing
 [UK dense assembly runbook](uk-dense-release-assembly-runbook-762.md).
-Pass the same pinned source arguments to the existing driver and add:
+Pass the same pinned source arguments to the graph driver
+(`microcosm-build-uk`, `tools/build_uk_full.py`;
+`tools/build_uk_rowwise_candidate.py` is a stub over it) and add:
 
 ```bash
-uv run python tools/build_uk_rowwise_candidate.py --release-role dense \
+uv run python tools/build_uk_full.py --release-role dense \
   --input-h5 "$UK_SPINE_H5" --input-sha256 "$UK_SPINE_SHA256" \
   --ladder "$UK_LADDER_NPZ" --ladder-sha256 "$UK_LADDER_SHA256" \
   --ledger-facts "$UK_LEDGER_FACTS" \
