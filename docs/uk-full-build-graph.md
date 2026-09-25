@@ -12,6 +12,9 @@ From a canonical spine checkpoint with its `.build.json` and `.spine_gates.json`
 uv run --no-sync python tools/build_uk_full.py --release-role dense \
   --input-h5 /data/uk/spine.h5 --input-sha256 <spine-sha256> \
   --ladder /data/uk/ladder.npz --ladder-sha256 <ladder-sha256> \
+  --atomic-support-ew /data/uk/supports/uk_ew_output_area_2021_support.npz \
+  --atomic-support-scotland /data/uk/supports/uk_scotland_output_area_2022_support.npz \
+  --atomic-support-ni /data/uk/supports/uk_ni_data_zone_2021_support.npz \
   --ledger-facts /data/chronicle/uk-artifact \
   --ledger-facts-sha256 <facts-sha256> --ledger-manifest-sha256 <manifest-sha256> \
   --out /data/uk/full-build
@@ -19,9 +22,11 @@ uv run --no-sync python tools/build_uk_full.py --release-role dense \
 
 `--release-role` is required. The dense role supplies every unset solve default from the local doctrine (epochs, learning rate, seed, K, weight rule, constituency vintage, selection) and refuses the national role's flags (`--target-loss-cap`, `--allow-unpinned-feed`, `--incumbent-h5` and `--incumbent-sha256`). `--ladder` with `--ladder-sha256` is required by the dense role, `--input-sha256` by every `--input-h5` build, and the three Ledger arguments (`--ledger-facts`, `--ledger-facts-sha256`, `--ledger-manifest-sha256`) by every build. The supplied hashes must agree with the committed Chronicle pins: a target-scope filter does not authorise a different source, and the dense role has no unpinned-feed override.
 
+The three atomic-area supports are the artifacts pinned in `uk/uk_atomic_area_supports.provenance.json` and `uk/spec/sources.yaml` (built by `tools/build_uk_atomic_area_supports.py` from the published ONS, NRS and NISRA lookups; publisher registration PolicyEngine/chronicle#269). `--geography-assignment atomic` is the default and requires all three; `--atomic-support-sha256-{ew,scotland,ni}` pin them like `--ladder-sha256`, and a release candidate requires all four pins. `--geography-assignment legacy` keeps the previous sequential ladder draw for measurement builds, takes no supports, and is refused by `--release-candidate`.
+
 The checkpoint must bind the exact frame content, the current spine stage roster and the gate-report bytes. The bound-spine node compares the checkpoint's gate report digests with the branch's own gate declarations and refuses a spine whose gate manifest differs from them, so `--input-h5` needs a spine built by a branch with the same declarations; every acceptance spine on disk when this registration landed predates them and is not admitted. Historical candidate H5 files and reviewed-bypass sidecars are not alternate build sources. Chronicle facts and manifest must match the independently reviewed national and local feed declarations; filtering targets does not relax source validation.
 
-The target registry binds Census household and demographic rows from the reviewed Chronicle feed, including the approved Northern Ireland constituency geography. The OA ladder supplies geographic assignment and lookup support. Its household counts are not a second source of calibration targets. Source receipts retain the Chronicle identity and the paired ladder digest, so target values and the geography used to assign households can be audited separately.
+The target registry binds Census household and demographic rows from the reviewed Chronicle feed, including the approved Northern Ireland constituency geography. Geography is assigned after expansion by the shared atomic-geography operators (microcosm#931): `uk.full.identity` keys every household with `household_draw_key` from the spine's explicit lineage (source household id, SPI support channel and clone index, CGT clone and donor flags) and the pool clone index; `uk.full.geography.assign` draws one atomic area per household (E&W 2021 Output Area, Scotland 2022 Output Area, NI 2021 Data Zone) by census household count within the household's FRS region, with a keyed `sha256-u53-v1` stream so a household's draw never depends on row order, K or any other household; `uk.full.geography.derive` reads every larger geography off the support's versioned mappings; `uk.full.geography.local_authority` resolves the engine's `local_authority` key from the derived authority code (the same resolver the ladder path uses); the shared `uk.full.geography.gate` and the UK distribution gate `uk.full.geography_gate` follow, and `uk.full.pool` refuses unless the shared gate passed. The OA ladder still supplies the constituency and local-authority rosters, household dispersion and lookup support for target compilation; its household counts are not a second source of calibration targets. Source receipts retain the Chronicle identity, the paired ladder digest and the geography binding (assignment mode, definition sha256, support pins, identity column, stream), so target values and the geography used to assign households can be audited separately.
 
 To include raw spine construction in the same execution, pass `--spine-request /data/uk/spine-request.json` instead of `--input-h5`. This file is a JSON array of the raw-source arguments accepted by `uk_runtime.spine_build` (the arguments of `tools/build_uk_frs_spine.py`):
 
@@ -63,7 +68,11 @@ The spine graph is the 33-stage source roster declared by the UK spec, built by 
 | Bound checkpoint admission | `uk.full.spine_checkpoint`, when resuming a saved spine |
 | Pool sample and mass normalization | `uk.full.sample`, `uk.full.normalize` |
 | Linked entity expansion and ancestry | `uk.full.expand`, `uk.full.expand.owned` |
-| Location draw, mapping and integrity | `uk.full.locations`, `uk.full.geography_mapping`, `uk.full.geography_gate` |
+| Post-clone household identity | `uk.full.identity` |
+| Atomic-area support import, identity-keyed assignment, derivation and shared integrity gate | `uk.full.geography.support.{0,1,2}`, `uk.full.geography.assign`, `uk.full.geography.derive`, `uk.full.geography.gate` (shared `geography.*@1` kernels) |
+| Engine local-authority key from the derived authority code | `uk.full.geography.local_authority` |
+| UK geography distribution gate | `uk.full.geography_gate` |
+| Legacy sequential ladder draw (`--geography-assignment legacy`, measurement builds only) | `uk.full.locations`, `uk.full.geography_mapping`, `uk.full.geography_gate` |
 | Full pinned source/register compilation | `uk.full.target_compilation` |
 | Explicit target selection and inclusion/exclusion receipt | `uk.full.target_selection` |
 | Engine measures and ordered contribution problem | `uk.full.measures`, `uk.full.problem` |
@@ -77,7 +86,7 @@ The spine graph is the 33-stage source roster declared by the UK spec, built by 
 
 The modules under `uk_runtime` divide the roster: `graph_build` composes the graph over the bound spine, `graph_population` owns sample through the geography gate, `graph_targets` owns target compilation through the problem, `graph_calibration` owns the dense solve, the size nodes and the calibrated population, `graph_terminal` owns the gate nodes, the holdout, the export and the package, `full_certification` owns the terminal certification node, and `full_build_cli` resolves the request, executes graph endpoints and atomically materialises their stored artifacts.
 
-`operations.json` is generated from the compiled graph, including actual dependencies and artifact owners. It is the execution inventory, rather than a second manually maintained pipeline roster. Composite source/model stages preserve their existing numerical boundary; for example, WAS retains its joint donor/recipient encoding dependency. This registration does not change imputation order, RNG consumption, clone IDs or geography methodology.
+`operations.json` is generated from the compiled graph, including actual dependencies and artifact owners. It is the execution inventory, rather than a second manually maintained pipeline roster. Composite source/model stages preserve their existing numerical boundary; for example, WAS retains its joint donor/recipient encoding dependency. This registration does not change imputation order, RNG consumption or clone IDs; the geography draw is the identity-keyed atomic-area assignment of microcosm#931 (measured in `experiments/931-uk-atomic-assignment-receipts.md`), with the sequential ladder draw retained behind `--geography-assignment legacy` for measurement builds.
 
 Shared machinery includes graph execution/storage/replay, typed artifacts, explicit same-kind weight updates, target selection receipts, ordered sparse calibration problem/solution/result codecs, exact-count selection, atomic artifact materialization and bundle publication. UK adapters retain source interpretation, entity relationships, geography mappings, measure bindings and gate prescriptions.
 
