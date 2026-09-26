@@ -21,7 +21,7 @@ import tomllib
 from functools import cached_property
 from pathlib import Path
 
-LOCK_SHA256 = "95e8297d5656292fa5c0d01983b3a06959dfb99a92e94bf1cefa864ddb149f61"
+LOCK_SHA256 = "345e014a0fd013daa2e79b74a9392b8ddd532656e3d1dd129a26c83c1a570526"
 UPLOAD_ACTION_SHA = "ea165f8d65b6e75b540449e92b4886f43607fa02"
 CAPS = {
     "candidate-digests.json": 64 * 1024,
