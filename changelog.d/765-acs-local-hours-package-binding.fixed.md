@@ -1,0 +1,1 @@
+Bind the ACS local-area hours_worked_signal gate to the calibrated H5's digest: finalize hashes the artifact before loading it, records that digest on the gate entry and refuses if the bytes change during validation; packaging refuses unless the finalize report carries a passing gate bound to the packaged H5's digest, and re-hashes the packaged copy after it is written.

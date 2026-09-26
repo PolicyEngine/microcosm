@@ -68,10 +68,14 @@ per-cut tag from that suffix.
 
 ## 2. Score and certify the cut
 
-First create the rule-1 score receipt against the pinned incumbent, following
-the scoring section of
-`docs/uk-national-calibration-runbook-623.md`. Then run the release-cut battery
-and compose the signed certification:
+The rule-1 score receipt is the build's own when the national role was given
+`--incumbent-h5` (`score_vs_incumbent.json` beside the candidate); otherwise
+create it against the pinned incumbent following the scoring section of
+`docs/uk-national-calibration-runbook-623.md`. Its `evaluation.verdict` must
+be `passed`: the certifier refuses a receipt whose verdict is anything else,
+whose scored surface does not close over its pruned rows, or which carries no
+evaluation block. Then run the release-cut battery and compose the signed
+certification:
 
 ```bash
 uv run --no-sync python tools/certify_uk_release_cut.py \
@@ -79,6 +83,7 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --candidate-sha256 <candidate-sha256-from-build-record> \
   --candidate-name microcosm_uk_2024_25 \
   --spine-h5 <spine-h5> \
+  --spine-sha256 <spine-h5-sha256> \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
   --build-record-json <candidate-dir>/build_record.json \
   --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \
@@ -86,9 +91,11 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --ledger-facts-sha256 <ledger-facts-sha256> \
   --ledger-manifest-sha256 <ledger-manifest-sha256> \
   --input-mass-reference <licensed-input-mass-reference> \
-  --score-receipt <candidate-dir>/score_vs_enhanced_frs.json \
+  --score-receipt <candidate-dir>/score_vs_incumbent.json \
   --release-id microcosm-uk-2024-25-national
 ```
+
+The spine is stage evidence for the family build-state gates, so `--spine-sha256` must be the parent the calibration recorded (`build_record.input_posture.sha256`, `source_pins.input_h5.sha256`, the signed diagnostics' `build.input_posture`); a spine that pins correctly but is not that parent is refused before any gate runs, and the certification records it as `parent_spine`.
 
 With the default paths, this writes
 `microcosm_uk_2024_25.release_cut_gates.json` and
@@ -110,7 +117,7 @@ uv run --no-sync python tools/assemble_uk_release_dir.py \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
   --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \
   --release-cut-gate-json <candidate-dir>/microcosm_uk_2024_25.release_cut_gates.json \
-  --score-receipt <candidate-dir>/score_vs_enhanced_frs.json \
+  --score-receipt <candidate-dir>/score_vs_incumbent.json \
   --out-dir releases
 ```
 
@@ -131,7 +138,7 @@ as an operator cross-check but refuses to replace one.
 
 ## 4. Publish for inspection
 
-Run the command printed by the assembler. Its shape is:
+Run the assembler's `publish_command` first. Its shape is:
 
 ```bash
 uv run python -m microcosm.data.publish_cli \
@@ -142,17 +149,37 @@ uv run python -m microcosm.data.publish_cli \
   --tag-name microcosm-uk-2024-25-national-<timestamp>-<uuid8>
 ```
 
+The assembler also prints this `promote_command`; keep it for §6 and run it
+only after the cut passes the review in §5:
+
+```bash
+uv run python -m microcosm.data.publish_cli \
+  releases/microcosm-uk-2024-25-national \
+  --repo-id policyengine/populace-uk-private \
+  --artifact-root <candidate-dir> \
+  --promote-line national \
+  --tag-name microcosm-uk-2024-25-national-<timestamp>-<uuid8>
+```
+
 Do not omit `--tag-name`, and do not pass `--no-create-tag`: every artifact in
 the manifest is pinned to that immutable per-cut tag. `--no-latest` is
-mandatory for this inspect lane — and enforced: publication refuses to move
-`latest.json` for any tag that is not the release id itself, so omitting the
-flag fails closed instead of promoting an inspect cut.
+mandatory for the inspect publication. The promotion command replaces it with
+`--promote-line national`; the CLI requires that flag to accompany
+`--tag-name` and refuses to combine it with `--no-latest`. A per-cut tag without
+either flag cannot move the repository-global `latest.json`.
 
-If tag creation returns HTTP 409 after the staging commit, publication can
-leave the constant branch
-`release-staging/microcosm-uk-2024-25-national` behind. Delete that branch
-manually in the private Hugging Face repository before retrying the same cut.
-Do not delete the immutable cut tag.
+The two commands share the cut tag by design: the promotion recognises the
+immutable tag the inspect publication created, checks that the tagged
+`release_manifest.json` is byte-identical to the local one, creates no second
+immutable revision, and writes only the main commit carrying
+`latest-national.json`. The same recognition makes a retry safe after a
+failure between tag creation and the pointer commit: rerun the same command.
+A tag that describes another release refuses; publish under a fresh cut tag.
+
+Only a failure before the tag exists (the staging commit itself) can leave
+the constant branch `release-staging/microcosm-uk-2024-25-national` behind.
+Delete that branch manually in the private Hugging Face repository before
+retrying. Never delete an immutable cut tag.
 
 ## 5. Inspect on the dashboard
 
@@ -166,12 +193,21 @@ Adjudicate the release using the copied certification, scoped gate reports,
 calibration diagnostics, and score receipt. The release remains inspect-only
 until that review is complete.
 
-## Promotion is a separate change
+## 6. Promote the reviewed cut
 
-Do not write `latest.json` for this line yet. The current pointer cannot name a
-per-cut tag, while the certified loader expects the artifact revision to equal
-the release id and fetches the manifest from a tag named by that id. Promotion
-needs the loader/pointer design tracked in microcosm#823 before a reviewed cut
-can become the default; publication enforces this by refusing a pointer move
-for any per-cut tag. Until then, publish every national cut with `--no-latest`
-and its explicit per-cut tag.
+After completing the review in §5, run the assembler's `promote_command` shown
+in §4. The promotion moves only `latest-national.json`, recording `national` as
+the line and the reviewed cut tag as its `revision`. It never moves the
+repository-global `latest.json`, which remains on the June 2023 release.
+
+The 2025 national entry is registered off the default variant until this
+first promotion: `microcosm.data.load("uk", 2025, variant="national")` follows
+`latest-national.json` as soon as the pointer exists, while
+`microcosm.data.resolve("uk")` stays on the June 2023 line. The default moves
+in a one-line follow-up PR after promotion (the registry entry's `variant`
+becomes the default), with its test; sequencing it this way means a default
+load never chases a pointer that does not exist yet. An explicit
+`microcosm.data.load("uk", 2023)` continues to follow `latest.json`.
+
+With `SLACK_WEBHOOK_POPULACE_UK` configured, successful promotion sends an
+alert naming the `national` line and the promoted revision.

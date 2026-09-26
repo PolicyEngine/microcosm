@@ -10,7 +10,8 @@
     "monthly_window_average",
     "monthly_window_sum_average",
     "linear_combination",
-    "scaled_by_ratio"
+    "scaled_by_ratio",
+    "calendar_year_window"
   ],
   "resolution_defaults": {
     "base_period_policy": "latest_not_after_build_base_period",
@@ -742,7 +743,42 @@
       "hmrc.cgt.taxpayers_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
       "hmrc.cgt.gains_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
       "hmrc.cgt.residential_property_taxpayers": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725).",
-      "hmrc.cgt.residential_property_gains": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725)."
+      "hmrc.cgt.residential_property_gains": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725).",
+      "hmrc.itl.taxpayers_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle (income_tax_liabilities_july_2026): taxpayers by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds SPI 2023-24 component counts only (PolicyEngine/chronicle#280 lane).",
+      "hmrc.itl.total_income_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: total income by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry has no total-income anchor (PolicyEngine/chronicle#280 lane).",
+      "hmrc.itl.income_tax_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: Income Tax liabilities by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds the OBR receipts total only (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi.savings_interest_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest from banks and building societies in Chronicle (spi_income_bands_2023_24); the incumbent registry deliberately excludes savings interest from its SPI targets (uk-data incomes_projection.py) and binds the ONS D.41 row instead (microcosm#866, #280 lane).",
+      "hmrc.spi.savings_interest_income.count_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest recipient counts in Chronicle (spi_income_bands_2023_24); the incumbent registry has no savings-interest count target (microcosm#866, #280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_12570_15000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_15000_20000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_20000_30000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_30000_40000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_40000_50000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_50000_70000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_70000_100000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_100000_150000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_150000_200000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.taxpayers_by_region_200000_plus": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_12570_15000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_15000_20000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_20000_30000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_30000_40000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_40000_50000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_50000_70000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_70000_100000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_100000_150000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_150000_200000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.total_income_by_region_200000_plus": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_12570_15000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_15000_20000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_20000_30000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_30000_40000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_40000_50000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_50000_70000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_70000_100000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_100000_150000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_150000_200000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "hmrc.spi_region.income_tax_by_region_200000_plus": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1031,7 +1067,42 @@
       "hmrc.cgt.taxpayers_by_gain_band",
       "hmrc.cgt.gains_by_gain_band",
       "hmrc.cgt.residential_property_taxpayers",
-      "hmrc.cgt.residential_property_gains"
+      "hmrc.cgt.residential_property_gains",
+      "hmrc.itl.taxpayers_by_total_income_band",
+      "hmrc.itl.total_income_by_total_income_band",
+      "hmrc.itl.income_tax_by_total_income_band",
+      "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+      "hmrc.spi.savings_interest_income.count_by_total_income_band",
+      "hmrc.spi_region.taxpayers_by_region_12570_15000",
+      "hmrc.spi_region.taxpayers_by_region_15000_20000",
+      "hmrc.spi_region.taxpayers_by_region_20000_30000",
+      "hmrc.spi_region.taxpayers_by_region_30000_40000",
+      "hmrc.spi_region.taxpayers_by_region_40000_50000",
+      "hmrc.spi_region.taxpayers_by_region_50000_70000",
+      "hmrc.spi_region.taxpayers_by_region_70000_100000",
+      "hmrc.spi_region.taxpayers_by_region_100000_150000",
+      "hmrc.spi_region.taxpayers_by_region_150000_200000",
+      "hmrc.spi_region.taxpayers_by_region_200000_plus",
+      "hmrc.spi_region.total_income_by_region_12570_15000",
+      "hmrc.spi_region.total_income_by_region_15000_20000",
+      "hmrc.spi_region.total_income_by_region_20000_30000",
+      "hmrc.spi_region.total_income_by_region_30000_40000",
+      "hmrc.spi_region.total_income_by_region_40000_50000",
+      "hmrc.spi_region.total_income_by_region_50000_70000",
+      "hmrc.spi_region.total_income_by_region_70000_100000",
+      "hmrc.spi_region.total_income_by_region_100000_150000",
+      "hmrc.spi_region.total_income_by_region_150000_200000",
+      "hmrc.spi_region.total_income_by_region_200000_plus",
+      "hmrc.spi_region.income_tax_by_region_12570_15000",
+      "hmrc.spi_region.income_tax_by_region_15000_20000",
+      "hmrc.spi_region.income_tax_by_region_20000_30000",
+      "hmrc.spi_region.income_tax_by_region_30000_40000",
+      "hmrc.spi_region.income_tax_by_region_40000_50000",
+      "hmrc.spi_region.income_tax_by_region_50000_70000",
+      "hmrc.spi_region.income_tax_by_region_70000_100000",
+      "hmrc.spi_region.income_tax_by_region_100000_150000",
+      "hmrc.spi_region.income_tax_by_region_150000_200000",
+      "hmrc.spi_region.income_tax_by_region_200000_plus"
     ]
   },
   "profile_parity": {
@@ -1568,7 +1639,8 @@
           "metric_name": "obr/income_tax",
           "value_variable": "income_tax",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/income_tax",
@@ -1583,7 +1655,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Income tax"
+      "label": "Income tax",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni",
@@ -1602,7 +1675,7 @@
           "value_variable": "total_national_insurance",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry."
+          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni",
@@ -1617,7 +1690,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "National Insurance contributions"
+      "label": "National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni_employee",
@@ -1635,7 +1709,8 @@
           "metric_name": "obr/ni_employee",
           "value_variable": "ni_employee",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni_employee",
@@ -1650,7 +1725,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Employee National Insurance contributions"
+      "label": "Employee National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni_employer",
@@ -1668,7 +1744,8 @@
           "metric_name": "obr/ni_employer",
           "value_variable": "ni_employer",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni_employer",
@@ -1683,7 +1760,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Employer National Insurance contributions"
+      "label": "Employer National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni_self_employed",
@@ -1701,7 +1779,8 @@
           "metric_name": "obr/ni_self_employed",
           "value_variable": "ni_self_employed",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni_self_employed",
@@ -1716,7 +1795,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Self-employed National Insurance contributions"
+      "label": "Self-employed National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.vat",
@@ -1731,7 +1811,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/vat",
-          "value_variable": "vat"
+          "value_variable": "vat",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/vat",
@@ -1746,7 +1827,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "VAT"
+      "label": "VAT",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.fuel_duties",
@@ -1761,7 +1843,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/fuel_duties",
-          "value_variable": "fuel_duty"
+          "value_variable": "fuel_duty",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/fuel_duties",
@@ -1776,7 +1859,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Fuel duties"
+      "label": "Fuel duties",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "hmrc.cgt.liability_total",
@@ -1831,7 +1915,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/sdlt",
-          "value_variable": "stamp_duty_land_tax"
+          "value_variable": "stamp_duty_land_tax",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/sdlt",
@@ -1846,7 +1931,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Stamp Duty Land Tax"
+      "label": "Stamp Duty Land Tax",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.attendance_allowance",
@@ -1864,7 +1950,8 @@
           "metric_name": "obr/attendance_allowance",
           "value_variable": "attendance_allowance",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/attendance_allowance",
@@ -1879,7 +1966,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Attendance allowance"
+      "label": "Attendance allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.carers_allowance",
@@ -1897,7 +1985,8 @@
           "metric_name": "obr/carers_allowance",
           "value_variable": "carers_allowance",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/carers_allowance",
@@ -1912,7 +2001,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Carers allowance"
+      "label": "Carers allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.child_benefit",
@@ -1930,7 +2020,8 @@
           "metric_name": "obr/child_benefit",
           "value_variable": "child_benefit",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/child_benefit",
@@ -1945,7 +2036,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Child benefit"
+      "label": "Child benefit",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax",
@@ -1961,7 +2053,7 @@
         "policyengine": {
           "metric_name": "obr/council_tax",
           "value_variable": "council_tax_less_benefit",
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax",
@@ -1975,7 +2067,8 @@
         "source_concept": "obr.council_tax_total"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax"
+      "label": "Council tax",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax_england",
@@ -2003,7 +2096,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_england",
@@ -2017,7 +2110,8 @@
         "source_concept": "obr.council_tax_england"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax england"
+      "label": "Council tax england",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax_scotland",
@@ -2045,7 +2139,7 @@
               "equals": "SCOTLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_scotland",
@@ -2059,7 +2153,8 @@
         "source_concept": "obr.council_tax_scotland"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax scotland"
+      "label": "Council tax scotland",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax_wales",
@@ -2087,7 +2182,7 @@
               "equals": "WALES"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_wales",
@@ -2101,7 +2196,8 @@
         "source_concept": "obr.council_tax_wales"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax wales"
+      "label": "Council tax wales",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.domestic_rates",
@@ -2116,7 +2212,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/domestic_rates",
-          "value_variable": "domestic_rates"
+          "value_variable": "domestic_rates",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/domestic_rates",
@@ -2131,7 +2228,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Domestic rates"
+      "label": "Domestic rates",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.esa",
@@ -2148,7 +2246,7 @@
           "metric_name": "obr/esa",
           "value_expression": "esa_income + esa_contrib",
           "map_to": "household",
-          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (compute/income.py:98-102)."
+          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (compute/income.py:98-102). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/esa",
@@ -2163,7 +2261,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Employment and Support Allowance"
+      "label": "Employment and Support Allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.housing_benefit",
@@ -2181,7 +2280,8 @@
           "metric_name": "obr/housing_benefit",
           "value_variable": "housing_benefit",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/housing_benefit",
@@ -2196,7 +2296,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Housing benefit"
+      "label": "Housing benefit",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.jobseekers_allowance",
@@ -2214,7 +2315,8 @@
           "metric_name": "obr/jobseekers_allowance",
           "value_variable": "jsa",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/jobseekers_allowance",
@@ -2229,7 +2331,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Jobseekers allowance"
+      "label": "Jobseekers allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.pension_credit",
@@ -2247,7 +2350,8 @@
           "metric_name": "obr/pension_credit",
           "value_variable": "pension_credit",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/pension_credit",
@@ -2262,7 +2366,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Pension credit"
+      "label": "Pension credit",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.pip",
@@ -2281,7 +2386,7 @@
           "value_variable": "pip",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "EFO line covers DLA and PIP combined; uk-data binds pip only - carried as-is for parity; adjudicate in microcosm#622."
+          "notes": "EFO line covers DLA and PIP combined; uk-data binds pip only - carried as-is for parity; adjudicate in microcosm#622. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/pip",
@@ -2296,7 +2401,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Personal Independence Payment"
+      "label": "Personal Independence Payment",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.state_pension",
@@ -2314,7 +2420,8 @@
           "metric_name": "obr/state_pension",
           "value_variable": "state_pension",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/state_pension",
@@ -2329,7 +2436,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "State pension"
+      "label": "State pension",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.statutory_maternity_pay",
@@ -2347,7 +2455,8 @@
           "metric_name": "obr/statutory_maternity_pay",
           "value_variable": "statutory_maternity_pay",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/statutory_maternity_pay",
@@ -2362,7 +2471,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Statutory maternity pay"
+      "label": "Statutory maternity pay",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.tv_licence_fee",
@@ -2377,7 +2487,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/tv_licence_fee",
-          "value_variable": "tv_licence"
+          "value_variable": "tv_licence",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/tv_licence_fee",
@@ -2392,7 +2503,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "TV licence fee"
+      "label": "TV licence fee",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.universal_credit_in_cap",
@@ -2425,7 +2537,7 @@
               "value": 0
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127)."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_in_cap",
@@ -2440,7 +2552,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit inside the benefit cap"
+      "label": "Universal Credit inside the benefit cap",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.universal_credit_outside_cap",
@@ -2473,7 +2586,7 @@
               "value": 0
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127)."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_outside_cap",
@@ -2488,7 +2601,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit outside the benefit cap"
+      "label": "Universal Credit outside the benefit cap",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.winter_fuel_allowance",
@@ -2503,7 +2617,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/winter_fuel_allowance",
-          "value_variable": "winter_fuel_allowance"
+          "value_variable": "winter_fuel_allowance",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/winter_fuel_allowance",
@@ -2518,7 +2633,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Winter fuel allowance"
+      "label": "Winter fuel allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "isc.private_school_students",
@@ -2928,7 +3044,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.average_earnings between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.employment_income.count_by_total_income_band",
@@ -2976,7 +3094,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
@@ -3012,7 +3132,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.mixed_income between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
@@ -3060,7 +3182,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -3096,7 +3220,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
@@ -3144,7 +3270,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -3180,7 +3308,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.property_income.count_by_total_income_band",
@@ -3228,7 +3358,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
@@ -3264,7 +3396,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.private_pension_index between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -3312,7 +3446,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -3348,7 +3484,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the new State Pension weekly rate the engine pays at each period (203.85 at 2023, 230.25 at 2025 on the pinned engine): the engine fixes every pensioner's amount at the period's rate, so the bands can only be met at that level. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane)."
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -3396,7 +3534,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.cgt.taxpayers_total",
@@ -3649,7 +3789,13 @@
       "measurement": {
         "entity": "benunit",
         "map_to": "household",
-        "concept": "uk.benefit_unit.count"
+        "concept": "uk.benefit_unit.count",
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3664,7 +3810,7 @@
           "value_variable": "benunit_count",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "uk-data binds the combined count to the benunit-level esa variable. People on ESA at August 2025 (DWP benefit statistics, February 2026). The published total includes claimants on both contributory and income-related ESA and claimants receiving National Insurance credits only; the model's esa > 0 covers paid ESA of either type, so the total sits above what the frame can carry by the credits-only caseload, which DWP does not publish. The frame also carries fewer ESA reporters than the FRS: 791k on spine-q against 1.06m in FRS 2024-25 at design weights, the SPI support channel under-carrying them (#882, microcosm#869). Bound at benefit-unit grain for incumbent parity."
+          "notes": "Paid ESA caseload, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025 (February, May, August, November 2025) of the three paid payment types, contributions based plus both plus income based; the published total also counts 'No payments - Credits only' claimants (78k to 84k through 2025), whose National Insurance record is credited without payment and whom no household frame can pay, so they are left out rather than described as unpublished (PolicyEngine/chronicle#280 section 5, chronicle#282). Calendar-2025 window per María's ruling of 2026-09-22; the year is the ESA income-related managed migration to Universal Credit (income based 499k in February to 30k in November), so a single point would misstate the year the calibration represents. Bound at benefit-unit grain on esa > 0 for incumbent parity; the cube counts claimants. The frame still carries fewer ESA reporters than the FRS (the SPI support channel, microcosm#869)."
         },
         "axiom": {
           "metric_name": "dwp/esa_claimants",
@@ -3674,13 +3820,54 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "all"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Contributions based",
+            "Both income and contributions based",
+            "Income based"
+          ]
         }
       },
       "category_id": "dwp.legacy_benefits",
-      "label": "Employment and Support Allowance claimants"
+      "label": "Employment and Support Allowance claimants",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Income based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ],
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.esa_contrib_claimants",
@@ -3691,7 +3878,13 @@
       "measurement": {
         "entity": "person",
         "map_to": "household",
-        "concept": "uk.person.count"
+        "concept": "uk.person.count",
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3706,7 +3899,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Contributory ESA at August 2025 (DWP benefit statistics, February 2026): a single-type count per the publication, excluding claimants on both contributory and income-related ESA. The model's esa_contrib > 0 includes dual claimants; on Q50f the overlap is about 4k of 707k (0.5 percent), recorded rather than filtered because esa_income is a benefit-unit variable (#882, microcosm#869)."
+          "notes": "Contributory ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Contributions based' plus 'Both income and contributions based', so the row matches the model's esa_contrib > 0, which includes dual claimants (PolicyEngine/chronicle#280 section 5, chronicle#282; supersedes the August 2025 single-type count from the benefit statistics summary). The contributory caseload rises through 2025 as dual claimants lose the income-related part on migration to Universal Credit."
         },
         "axiom": {
           "metric_name": "dwp/esa_contrib_claimants",
@@ -3716,13 +3909,47 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "contributions_based"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Contributions based",
+            "Both income and contributions based"
+          ]
         }
       },
       "category_id": "dwp.legacy_benefits",
-      "label": "Employment and Support Allowance contrib claimants"
+      "label": "Employment and Support Allowance contrib claimants",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ],
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.esa_income_claimants",
@@ -3733,7 +3960,13 @@
       "measurement": {
         "entity": "benunit",
         "map_to": "household",
-        "concept": "uk.benefit_unit.count"
+        "concept": "uk.benefit_unit.count",
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3748,7 +3981,7 @@
           "value_variable": "benunit_count",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "Income-related ESA at August 2025 (DWP benefit statistics, February 2026): a single-type count per the publication, excluding claimants on both types. The model's esa_income > 0 includes dual claimants; the overlap is about 4k of 180k on Q50f, recorded rather than filtered (#882, microcosm#869)."
+          "notes": "Income-related ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Income based' plus 'Both income and contributions based', so the row matches the model's esa_income > 0, which includes dual claimants (PolicyEngine/chronicle#280 section 5, chronicle#282; supersedes the August 2025 single-type count). The calendar-2025 mean spans the managed migration to Universal Credit (759k in February to 50k in November); the FRS 2024-25 base carries the pre-migration caseload, so this row measures the year's average, not the year-end."
         },
         "axiom": {
           "metric_name": "dwp/esa_income_claimants",
@@ -3758,13 +3991,47 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "income_related"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Income based",
+            "Both income and contributions based"
+          ]
         }
       },
       "category_id": "dwp.legacy_benefits",
-      "label": "Employment and Support Allowance income claimants"
+      "label": "Employment and Support Allowance income claimants",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Income based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ],
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.jsa_claimants",
@@ -14150,7 +14417,8 @@
       ],
       "measurement": {
         "entity": "household",
-        "concept": "uk.tax.fuel_duty.amount"
+        "concept": "uk.tax.fuel_duty.amount",
+        "period_basis": "fiscal_year_2024_held: the OBR vehicle-type split of fuel duty receipts is published for FY2024-25 only, the base data's fiscal year; the row is held there, not windowed to calendar 2025 (#890 E1, ruling 2026-09-10; kept by design on the income-anchor lane, microcosm#1006)"
       },
       "bindings": {
         "policyengine": {
@@ -15426,7 +15694,7 @@
           "value_variable": "universal_credit",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap, FY2025/26 incl. the provisional March 2026 month) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882)."
+          "notes": "Total UC expenditure: the sum of the OBR EFO welfare-cap cells (universal_credit_in_cap + universal_credit_outside_cap), bound at the calendar-2025 window of the two cells' fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window over the two-concept selector, one series per concept) so the total and its two components share one basis (Vahid's review of microcosm#1006, item 3) against the model's annual award after the benefit cap and deductions at policy year 2025, UK incl. Northern Ireland. The split rows stay excluded: the model cannot attribute spend to the welfare-cap concept (microcosm#757). Cash advances and third-party payments are not modelled (#882)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit",
@@ -15443,7 +15711,7 @@
         ],
         "entity_name": "person"
       },
-      "value_operation": "sum",
+      "value_operation": "calendar_year_window",
       "expected_member_count": 2,
       "category_id": "obr.efo_expenditure",
       "label": "Universal Credit expenditure"
@@ -17445,6 +17713,2278 @@
       },
       "category_id": "hmrc.capital_gains_tax",
       "label": "Capital Gains Tax residential property gains"
+    },
+    {
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "family": "hmrc_itl",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_taxpayers_income_band",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out.",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_taxpayers_income_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Income Tax payers by total income band"
+    },
+    {
+      "target_id": "hmrc.itl.total_income_by_total_income_band",
+      "family": "hmrc_itl",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_total_income_income_band",
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_total_income_income_band",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Total income by total income band"
+    },
+    {
+      "target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "family": "hmrc_itl",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_income_tax_income_band",
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_income_tax_income_band",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Income Tax liabilities by total income band"
+    },
+    {
+      "target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.savings_interest.amount",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/savings_interest_income_income_band",
+          "value_variable": "savings_interest_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension."
+        },
+        "axiom": {
+          "metric_name": "hmrc/savings_interest_income_income_band",
+          "status": "pending",
+          "value_rule": "uk.income.savings_interest.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
+    },
+    {
+      "target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.income.savings_interest.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/savings_interest_income_count_income_band",
+          "groupby_variable": "total_income",
+          "filters": [
+            {
+              "variable": "savings_interest_income",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "hmrc/savings_interest_income_count_income_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_12570_15000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 12570
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 15000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_12570_15000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 12570
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 15000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_12570_15000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 12570
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 12,570 to 15,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_15000_20000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 15000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 20000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_15000_20000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 15000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 20000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_15000_20000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 15000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 15,000 to 20,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_20000_30000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 20000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 30000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_20000_30000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 20000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 30000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_20000_30000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 20000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 20,000 to 30,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_30000_40000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 30000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 40000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_30000_40000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 30000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 40000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_30000_40000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 30000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 30,000 to 40,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_40000_50000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 40000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 50000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_40000_50000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 40000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 50000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_40000_50000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 40000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 40,000 to 50,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_50000_70000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 50000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 70000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_50000_70000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 50000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 70000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_50000_70000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 50000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 50,000 to 70,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_70000_100000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 70000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 100000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_70000_100000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 70000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 100000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_70000_100000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 70000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 70,000 to 100,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_100000_150000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 100000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 150000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_100000_150000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 100000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 150000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_100000_150000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 100000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 100,000 to 150,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_150000_200000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 150000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 200000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_150000_200000",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 150000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 200000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_150000_200000",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 150000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 150,000 to 200,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.taxpayers_by_region_200000_plus",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 200000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/taxpayers_200000_plus",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 200000
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax payers of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/taxpayers_200000_plus",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_count",
+        "source_measure_id": "total_income_count",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 200000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax payers by region, total income 200,000 and over"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_12570_15000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 12570
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 15000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_12570_15000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 12570
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 15000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_12570_15000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 12570
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 12,570 to 15,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_15000_20000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 15000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 20000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_15000_20000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 15000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 20000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_15000_20000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 15000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 15,000 to 20,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_20000_30000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 20000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 30000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_20000_30000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 20000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 30000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_20000_30000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 20000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 20,000 to 30,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_30000_40000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 30000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 40000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_30000_40000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 30000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 40000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_30000_40000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 30000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 30,000 to 40,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_40000_50000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 40000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 50000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_40000_50000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 40000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 50000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_40000_50000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 40000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 40,000 to 50,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_50000_70000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 50000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 70000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_50000_70000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 50000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 70000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_50000_70000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 50000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 50,000 to 70,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_70000_100000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 70000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 100000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_70000_100000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 70000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 100000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_70000_100000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 70000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 70,000 to 100,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_100000_150000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 100000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 150000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_100000_150000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 100000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 150000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_100000_150000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 100000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 100,000 to 150,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_150000_200000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 150000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 200000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_150000_200000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 150000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 200000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_150000_200000",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 150000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 150,000 to 200,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.total_income_by_region_200000_plus",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 200000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/total_income_200000_plus",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 200000
+            }
+          ],
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 total income of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in total income in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/total_income_200000_plus",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_table_3_11_total_income_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 200000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_income_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Total income by region, total income 200,000 and over"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_12570_15000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 12570
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 15000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_12570_15000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 12570
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 15000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 12,570 to 15,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_12570_15000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 12570
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 12,570 to 15,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_15000_20000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 15000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 20000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_15000_20000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 15000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 20000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 15,000 to 20,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_15000_20000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 15000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 15,000 to 20,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_20000_30000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 20000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 30000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_20000_30000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 20000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 30000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 20,000 to 30,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_20000_30000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 20000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 20,000 to 30,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_30000_40000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 30000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 40000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_30000_40000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 30000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 40000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 30,000 to 40,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_30000_40000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 30000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 30,000 to 40,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_40000_50000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 40000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 50000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_40000_50000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 40000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 50000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 40,000 to 50,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_40000_50000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 40000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 40,000 to 50,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_50000_70000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 50000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 70000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_50000_70000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 50000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 70000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 50,000 to 70,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_50000_70000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 50000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 50,000 to 70,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_70000_100000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 70000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 100000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_70000_100000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 70000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 100000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 70,000 to 100,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_70000_100000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 70000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 70,000 to 100,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_100000_150000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 100000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 150000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_100000_150000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 100000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 150000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 100,000 to 150,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_100000_150000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 100000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 100,000 to 150,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_150000_200000",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 150000
+          },
+          {
+            "concept": "uk.income.total.amount",
+            "operator": "<",
+            "value": 200000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_150000_200000",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 150000
+            },
+            {
+              "variable": "total_income",
+              "operator": "<",
+              "value": 200000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 150,000 to 200,000, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_150000_200000",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 150000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 150,000 to 200,000"
+    },
+    {
+      "target_id": "hmrc.spi_region.income_tax_by_region_200000_plus",
+      "family": "hmrc_spi_region",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "filters": [
+          {
+            "concept": "uk.income.total.amount",
+            "operator": ">=",
+            "value": 200000
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/spi_region/income_tax_200000_plus",
+          "filters": [
+            {
+              "variable": "total_income",
+              "operator": ">=",
+              "value": 200000
+            }
+          ],
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "SPI 2023-24 Table 3.11 income tax liabilities of taxpayers with total income 200,000 and over, one row per region-tier area (the nine English regions at Chronicle's region level, Wales, Scotland and Northern Ireland at country level; microcosm#905), scoped on the spine by the household-region predicate the generator stamps and projected to the person entity, sliced on the engine's total_income by the row's own band edges (the publisher's regional bands stop at 200,000 and over). Uprated from the 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax liabilities in the Table 2.5 band(s) the regional band spans, as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections over the 2023-24 outturn (Income Tax liabilities statistics, July 2026), from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): the regions bind uprated, not as diagnostics."
+        },
+        "axiom": {
+          "metric_name": "hmrc/spi_region/income_tax_200000_plus",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "SPI collated Tables 3.1 to 3.11, tax year 2023-24: Table 3.11 income and tax by sex, region and country",
+        "groupby_dimension": "hmrc.total_income_band_by_sex",
+        "dimension_values": {
+          "sex": "all",
+          "total_income_lower_bound": 200000
+        },
+        "entity_name": "person"
+      },
+      "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Income Tax liabilities by region, total income 200,000 and over"
     },
     {
       "target_id": "hmrc.self_employment_income.amount",
@@ -20536,6 +23076,10 @@
       "dwp.housing_benefit": {
         "provider_id": "dwp",
         "label": "Housing Benefit"
+      },
+      "hmrc.income_tax_liabilities_statistics": {
+        "provider_id": "hmrc",
+        "label": "Income Tax liabilities statistics"
       }
     }
   }

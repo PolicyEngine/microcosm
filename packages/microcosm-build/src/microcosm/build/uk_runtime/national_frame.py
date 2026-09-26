@@ -57,6 +57,7 @@ __all__ = [
     "load_uk_national_frame",
     "uk_household_weight_kind",
     "uk_national_frame",
+    "uk_household_mass_conservation_receipt",
     "uk_time_period",
     "validate_uk_national_frame",
     "write_uk_national_frame",
@@ -361,6 +362,25 @@ def uk_national_frame(
         weights={"household": weights},
         mass_log=mass_log,
         metadata={UK_TIME_PERIOD_METADATA_KEY: period},
+    )
+
+
+def uk_household_mass_conservation_receipt(
+    frame: Frame, reason: str
+) -> MassChangeRecord:
+    """The receipt a column-writing stage records: the household weights pass
+    through untouched, so old and new totals agree and the declared factor is
+    1.0. The terminal family gate requires exactly this record under the
+    stage's own reason, so a build whose stage moved household mass, or never
+    ran, fails by name (the E8 pattern, now on every source stage)."""
+
+    total = float(frame.weights_for("household").total)
+    return MassChangeRecord(
+        entity="household",
+        old_total=total,
+        new_total=total,
+        declared_factor=1.0,
+        reason=reason,
     )
 
 

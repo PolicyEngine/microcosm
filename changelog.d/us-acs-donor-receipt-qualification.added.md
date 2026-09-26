@@ -1,0 +1,1 @@
+Add a local ACS donor receipt qualification tool that derives receives_wic, receives_snap and receives_tanf for the pinned Build P lineage parents through the maintained reported-receipt producers, with a receipt.

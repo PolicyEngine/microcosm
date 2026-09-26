@@ -362,15 +362,15 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
         for row in payload["programs"].values()
     )
     remaining = payload["remaining_stage_input_manifest"]
-    assert len(remaining["rows"]) == 1058
-    assert remaining["receipt"]["entry_count"] == 1058
+    assert len(remaining["rows"]) == 1059
+    assert remaining["receipt"]["entry_count"] == 1059
     assert remaining["receipt"]["stage_counts"] == {
         "derive": 34,
         "seed": 33,
-        "simulate": 991,
+        "simulate": 992,
     }
     assert remaining["receipt"]["manifest_sha256"] == (
-        "df42a6d95e4b98ce158334014dc9524de8f7791757eeaf3c6392d8d9b8469edf"
+        "0a84565a659a6404cb17715dda36f094a87431c713c7a37bf65a936b16937325"
     )
     assert (
         remaining["receipt"]["ssi_dependency_contract"]["engine_version_ref"]
@@ -413,7 +413,13 @@ def test_engine_absent_environment_validates_lock_structurally(
         raise im.PackageNotFoundError(package)
 
     monkeypatch.setattr(engine_abi, "_installed_engine_version", absent)
-    spec = cs.load_country_spec("us")
+    # Bypass the per-process spec cache: a spec an earlier test loaded with the
+    # engine present would otherwise come back without this path running.
+    cs._load_packaged_country_spec.cache_clear()
+    try:
+        spec = cs.load_country_spec("us")
+    finally:
+        cs._load_packaged_country_spec.cache_clear()
     assert spec.country == "us"
 
 
@@ -431,9 +437,7 @@ def test_engine_absent_environment_still_refuses_a_tampered_lock(
 
     monkeypatch.setattr(engine_abi, "_installed_engine_version", absent)
     registry = load_schema_registry()
-    us_root = (
-        Path(__file__).resolve().parents[1] / "src" / "microcosm" / "build" / "us"
-    )
+    us_root = Path(__file__).resolve().parents[1] / "src" / "microcosm" / "build" / "us"
     spec_dir = us_root / "spec"
     lock_path = tmp_path / engine_abi.ENGINE_ABI_LOCK_FILENAME
     parsed = json_module.loads(

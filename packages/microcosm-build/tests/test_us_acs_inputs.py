@@ -67,6 +67,106 @@ def test_acs_demographic_and_relationship_mapping_is_native() -> None:
     assert result.native_inputs["is_household_head"]["source_columns"] == ["RELSHIPP"]
 
 
+def _hours_frame(**columns) -> Frame:
+    before = _acs_frame()
+    tables = {entity: before.table(entity).copy() for entity in before.entities}
+    for column, values in columns.items():
+        tables["person"][column] = values
+    return Frame(
+        tables,
+        before.schema,
+        {"household": before.weights_for("household")},
+        before.strata,
+    )
+
+
+def test_acs_usual_hours_preserve_forty_and_allocation_despite_current_unemployment():
+    before = _hours_frame(WKHP=[40, np.nan], WKL=[1, np.nan], FWKHP=[1, 0], ESR=[3, 0])
+    result = map_acs_native_inputs(before)
+    assert result.frame.person["weekly_hours_worked_before_lsr"].iloc[0] == 40
+    assert pd.isna(result.frame.person["weekly_hours_worked_before_lsr"].iloc[1])
+    assert "hours_worked_last_week" not in result.frame.person
+    pd.testing.assert_series_equal(result.frame.person["WKHP"], before.person["WKHP"])
+    pd.testing.assert_series_equal(result.frame.person["FWKHP"], before.person["FWKHP"])
+    receipt = result.native_inputs["weekly_hours_worked_before_lsr"]
+    assert receipt["source_value_rows"] == 1
+    assert receipt["structural_zero_rows"] == 0
+    assert receipt["source_universe_unavailable_rows"] == 1
+    assert receipt["allocated_value_rows"] == 1
+    assert receipt["allocation_unknown_value_rows"] == 0
+    assert receipt["missing_rows"] == 1
+    assert receipt["observed_rows"] == 1
+
+
+@pytest.mark.parametrize("wkl", [2, 3])
+def test_acs_blank_usual_hours_are_zero_for_confirmed_past_year_nonworkers(wkl):
+    result = map_acs_native_inputs(_hours_frame(WKHP=[" ", np.nan], WKL=[wkl, np.nan]))
+    assert result.frame.person["weekly_hours_worked_before_lsr"].iloc[0] == 0
+    assert pd.isna(result.frame.person["weekly_hours_worked_before_lsr"].iloc[1])
+    receipt = result.native_inputs["weekly_hours_worked_before_lsr"]
+    assert receipt["structural_zero_rows"] == 1
+    assert receipt["source_universe_unavailable_rows"] == 1
+
+
+@pytest.mark.parametrize("wkl", [1, np.nan])
+def test_acs_eligible_or_unknown_hours_blank_stays_unresolved(wkl):
+    result = map_acs_native_inputs(
+        _hours_frame(WKHP=[np.nan, np.nan], WKL=[wkl, np.nan])
+    )
+    assert pd.isna(result.frame.person["weekly_hours_worked_before_lsr"].iloc[0])
+    assert result.native_inputs["weekly_hours_worked_before_lsr"]["missing_rows"] == 2
+
+
+@pytest.mark.parametrize("age", [0, 12, 15])
+def test_acs_under_sixteen_niu_is_unavailable_not_observed_nonwork(age):
+    result = map_acs_native_inputs(
+        _hours_frame(AGEP=[40, age], WKHP=[40, np.nan], WKL=[1, np.nan])
+    )
+    assert pd.isna(result.frame.person["weekly_hours_worked_before_lsr"].iloc[1])
+    receipt = result.native_inputs["weekly_hours_worked_before_lsr"]
+    assert receipt["source_universe_unavailable_rows"] == 1
+    assert receipt["observed_rows"] == 1
+    assert receipt["structural_zero_rows"] == 0
+
+
+def test_acs_absent_hours_source_does_not_become_a_structural_zero():
+    result = map_acs_native_inputs(_hours_frame(WKL=[2, np.nan]))
+    assert "weekly_hours_worked_before_lsr" not in result.frame.person
+    assert "weekly_hours_worked_before_lsr" not in result.native_inputs
+
+
+def test_acs_usual_hours_topcode_and_unknown_allocation_are_explicit():
+    result = map_acs_native_inputs(_hours_frame(WKHP=[99, np.nan], WKL=[1, np.nan]))
+    assert result.frame.person["weekly_hours_worked_before_lsr"].iloc[0] == 99
+    assert pd.isna(result.frame.person["weekly_hours_worked_before_lsr"].iloc[1])
+    assert (
+        result.native_inputs["weekly_hours_worked_before_lsr"][
+            "allocation_unknown_value_rows"
+        ]
+        == 1
+    )
+
+
+@pytest.mark.parametrize("invalid", [0, -1, 100, 40.5, "unknown", np.inf])
+def test_acs_ftp_hours_reject_invalid_codes_including_api_zero(invalid):
+    with pytest.raises(ValueError, match="WKHP requires blank or integer"):
+        map_acs_native_inputs(_hours_frame(WKHP=[invalid, np.nan]))
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"WKHP": [40, 10]},
+        {"WKHP": [40, np.nan], "WKL": [2, np.nan]},
+        {"WKHP": [40, np.nan], "WKL": [1, 2]},
+        {"WKHP": [40, np.nan], "FWKHP": [2, 0]},
+    ],
+)
+def test_acs_usual_hours_refuse_conflicting_universe_or_invalid_allocation(columns):
+    with pytest.raises(ValueError):
+        map_acs_native_inputs(_hours_frame(**columns))
+
+
 def test_acs_income_mapping_adjusts_native_dollars_without_splitting_aggregates() -> (
     None
 ):

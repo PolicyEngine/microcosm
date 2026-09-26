@@ -1,0 +1,243 @@
+{
+ "full-staging-a3": {
+  "status": "COMPLETED",
+  "wall_seconds": 7218.1,
+  "cpu_seconds": 103104.6,
+  "peak_rss_bytes": 42370498560,
+  "limits": {
+   "wall_seconds": 21600,
+   "cpu_seconds": 200000,
+   "rss_bytes": 68719476736,
+   "output_bytes": 42949672960,
+   "log_bytes": 209715200,
+   "disk_floor_bytes": 12884901888,
+   "disk_admission_bytes": 42949672960,
+   "available_ram_admission_bytes": 60129542144,
+   "disk_floor_persist_seconds": 180
+  }
+ },
+ "full-materialize": {
+  "status": "COMPLETED",
+  "wall_seconds": 5067.1,
+  "cpu_seconds": 4990.4,
+  "peak_rss_bytes": 74760110080,
+  "limits": {
+   "wall_seconds": 21600,
+   "cpu_seconds": 60000,
+   "rss_bytes": 77309411328,
+   "output_bytes": 42949672960,
+   "log_bytes": 209715200,
+   "disk_floor_bytes": 10737418240,
+   "disk_floor_persist_seconds": 180,
+   "disk_admission_bytes": 32212254720,
+   "available_ram_admission_bytes": 51539607552
+  }
+ },
+ "full-calibrate": {
+  "status": "COMPLETED",
+  "wall_seconds": 415.1,
+  "cpu_seconds": 471.9,
+  "peak_rss_bytes": 67617161216,
+  "limits": {
+   "wall_seconds": 14400,
+   "cpu_seconds": 40000,
+   "rss_bytes": 77309411328,
+   "output_bytes": 42949672960,
+   "log_bytes": 209715200,
+   "disk_floor_bytes": 10737418240,
+   "disk_floor_persist_seconds": 180,
+   "disk_admission_bytes": 32212254720,
+   "available_ram_admission_bytes": 51539607552
+  }
+ },
+ "full-qa": {
+  "status": "COMPLETED",
+  "wall_seconds": 172.2,
+  "cpu_seconds": 168.1,
+  "peak_rss_bytes": 21867954176,
+  "limits": {
+   "wall_seconds": 14400,
+   "cpu_seconds": 40000,
+   "rss_bytes": 68719476736,
+   "output_bytes": 8589934592,
+   "log_bytes": 209715200,
+   "disk_floor_bytes": 10737418240,
+   "disk_floor_persist_seconds": 180,
+   "disk_admission_bytes": 32212254720,
+   "available_ram_admission_bytes": 51539607552
+  }
+ },
+ "full-finalize": {
+  "status": "COMPLETED",
+  "wall_seconds": 78.9,
+  "cpu_seconds": 74.6,
+  "peak_rss_bytes": 23333388288,
+  "limits": {
+   "wall_seconds": 7200,
+   "cpu_seconds": 20000,
+   "rss_bytes": 68719476736,
+   "output_bytes": 8589934592,
+   "log_bytes": 209715200,
+   "disk_floor_bytes": 10737418240,
+   "disk_floor_persist_seconds": 180,
+   "disk_admission_bytes": 32212254720,
+   "available_ram_admission_bytes": 51539607552
+  }
+ },
+ "full-package": {
+  "status": "COMPLETED",
+  "wall_seconds": 78.9,
+  "cpu_seconds": 73.7,
+  "peak_rss_bytes": 21777367040,
+  "limits": {
+   "wall_seconds": 3600,
+   "cpu_seconds": 7200,
+   "rss_bytes": 51539607552,
+   "output_bytes": 25769803776,
+   "log_bytes": 209715200,
+   "disk_floor_bytes": 10737418240,
+   "disk_floor_persist_seconds": 180,
+   "disk_admission_bytes": 32212254720,
+   "available_ram_admission_bytes": 51539607552
+  }
+ },
+ "staging_summary_excerpt": {
+  "rows": {
+   "base": {
+    "family": 65206,
+    "household": 57240,
+    "marital_unit": 130729,
+    "person": 166321,
+    "spm_unit": 59900,
+    "tax_unit": 79729
+   },
+   "combined": {
+    "family": 1596820,
+    "household": 1588854,
+    "marital_unit": 2869051,
+    "person": 3589209,
+    "spm_unit": 1591514,
+    "tax_unit": 2177474
+   }
+  },
+  "local_hours_gate": {
+   "details": {
+    "per_spine": {
+     "acs_2024_1yr": {
+      "columns": {
+       "hours_worked_last_week": {
+        "forty_rows": 1003420,
+        "missing_or_invalid_rows": 0,
+        "unique_values": 81781,
+        "zero_rows": 1846576
+       },
+       "weekly_hours_worked_before_lsr": {
+        "forty_rows": 825899,
+        "missing_or_invalid_rows": 0,
+        "unique_values": 106,
+        "zero_rows": 1655676
+       }
+      },
+      "rows": 3422888
+     },
+     "asec_puf": {
+      "columns": {
+       "hours_worked_last_week": {
+        "forty_rows": 33302,
+        "missing_or_invalid_rows": 0,
+        "unique_values": 99,
+        "zero_rows": 90967
+       },
+       "weekly_hours_worked_before_lsr": {
+        "forty_rows": 43870,
+        "missing_or_invalid_rows": 0,
+        "unique_values": 94,
+        "zero_rows": 80800
+       }
+      },
+      "rows": 166321
+     }
+    }
+   },
+   "failures": [],
+   "name": "acs_local_hours_signal",
+   "passed": true
+  },
+  "local_hours_source": {
+   "donor_channel": "asec",
+   "excluded_source_universe_rows": 15511,
+   "filled_rows": 0,
+   "preserved_observed_rows": 50490,
+   "producer": "with_us_hours_worked_inputs",
+   "raw_source_complete": true,
+   "source_agreement": true,
+   "source_column": "HRSWK",
+   "universe_columns": [
+    "A_AGE",
+    "WKSWORK"
+   ]
+  },
+  "orchestration": {
+   "max_households": null,
+   "n_estimators": 32,
+   "max_targets_per_fit": 8,
+   "acs_share": 0.5,
+   "seed": 0,
+   "geography_seed": 0,
+   "donor_channel": "auto"
+  },
+  "hours_modeled_completion": {
+   "column": "weekly_hours_worked_before_lsr",
+   "earnings_columns": [
+    "WAGP",
+    "SEMP"
+   ],
+   "earnings_evidence": [
+    {
+     "column": "WAGP",
+     "scope": "raw_source"
+    },
+    {
+     "column": "SEMP",
+     "scope": "raw_source"
+    }
+   ],
+   "earnings_unknown_rows": 510098,
+   "entity": "person",
+   "modeled_rows": 510098,
+   "modeled_rows_by_age": {
+    "0": 29043,
+    "1": 29655,
+    "10": 36626,
+    "11": 37047,
+    "12": 37161,
+    "13": 37740,
+    "14": 38475,
+    "2": 30586,
+    "3": 30676,
+    "4": 31432,
+    "5": 32468,
+    "6": 33256,
+    "7": 34500,
+    "8": 35435,
+    "9": 35998
+   },
+   "policy": "us_hours_under15_zero_completion_v1",
+   "pre_completion_missing_rows": 549898,
+   "preserved_known_rows": 2872990,
+   "provenance": "modeled_assumption",
+   "remaining_missing_rows": 39800,
+   "version": 1
+  },
+  "base": {
+   "path": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/local-hours-rebuild-20260921/donor-qualified-spm-role/populace_us_2024_receipt_qualified.h5",
+   "sha256": "009469727409e58c0c9c1252581292497b688b76f1d59b51947483fb0f89221c",
+   "household_weight_total": 122537091.8856833
+  },
+  "reviewed_limitations": [
+   "acs_group_quarters_housing_universe",
+   "native_acs_source_universe_blanks",
+   "sub_puma_geographic_precision"
+  ]
+ }
+}

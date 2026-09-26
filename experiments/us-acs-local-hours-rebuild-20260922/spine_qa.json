@@ -1,0 +1,22 @@
+{
+ "period": 2024,
+ "variable": "ssi",
+ "artifact": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/local-hours-rebuild-20260921/full-release/populace_us_2024_acs_local.h5",
+ "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae",
+ "plain_consumption": true,
+ "per_spine": {
+  "asec_puf": {
+   "person_weight": 202228414.911753,
+   "ssi_recipient_weight": 3773696.434769074,
+   "ssi_dollars": 32295479771.008865,
+   "ssi_incidence": 0.018660564769870807
+  },
+  "acs_2024_1yr": {
+   "person_weight": 129205456.17777306,
+   "ssi_recipient_weight": 3047583.1255069994,
+   "ssi_dollars": 21327713072.249527,
+   "ssi_incidence": 0.023587108591713396
+  }
+ },
+ "note": "microcosm#403 re-measure: per-spine SSI incidence and intensity, computed by loading the packaged artifact bytes PLAIN (no private projection or fill) \u2014 the probe doubles as the consumer-loadability proof. Recorded as evidence, not gated."
+}

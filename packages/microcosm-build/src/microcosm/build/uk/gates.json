@@ -142,6 +142,52 @@
       "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
     },
     {
+      "id": "uk_stage_nts_bus_travel_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "nts_bus_travel",
+        "check": "support_clip",
+        "columns": [
+          "bus_in_london_trips",
+          "local_bus_trips",
+          "local_bus_use_band",
+          "other_local_bus_trips"
+        ],
+        "max_clipped_low_rows_by_column": {
+          "bus_in_london_trips": 0,
+          "local_bus_trips": 0,
+          "local_bus_use_band": 0,
+          "other_local_bus_trips": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "bus_in_london_trips": 0,
+          "local_bus_trips": 0,
+          "local_bus_use_band": 0,
+          "other_local_bus_trips": 0
+        }
+      },
+      "notes": "Stage-time support-clip health gate over the NTS bus-travel receipt (microcosm#930): the band is an ordinal the QRF draws inside the donor's 0..6 and the trips are the donor's band means, so no row can clip; the zero allowances make any clip a signal."
+    },
+    {
+      "id": "uk_stage_nts_bus_travel_facts",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "nts_bus_travel",
+        "check": "bus_travel_facts",
+        "trip_rates_period_value": 2024,
+        "maximum_user_share_deviation": 0.05,
+        "maximum_trip_rate_deviation": 0.15
+      },
+      "notes": "Stage-time fact check on the NTS bus-travel receipt (microcosm#930), every published value recomputed from the vendored rows: the frame's design-weighted share of persons who use a local bus at least yearly against the vendored NTS0313 all-ages share (maximum_user_share_deviation, in points), and the frame's mean local-bus trips per person per series against the vendored NTS0303 rate of the declared year (maximum_trip_rate_deviation, relative). The tolerances are rules set above what a conditional draw on the FRS composition can be expected to reproduce, not observed maxima; the stage runs on a synthetic donor in the smoke build, so the entry is a population fact check that a synthetic smoke records without blocking on. Car availability against NTS0205 is a receipt line, not a check: a mismatch there is a was_wealth finding."
+    },
+    {
       "id": "uk_stage_uc_deduction_attributes",
       "gate": "stage_health",
       "phase": "transferred",
@@ -222,7 +268,7 @@
           "transport_consumption": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are clipped before the fare rake (microcosm#890, María's ruling 2026-09-15): the clip bounds the regions no fare cell levels at donor support, the rake then moves the raked regions beyond it, and the column carries no committed terminal support bound."
+      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are clipped before the pricing step (microcosm#890 and #930, María's rulings 2026-09-15 and 2026-09-17): the clip bounds the region no area prices (Wales keeps the chain's raw draw) at donor support, the priced regions then move beyond it as journeys times the published yield, and the column carries no committed terminal support bound."
     },
     {
       "id": "uk_stage_lcfs_consumption_energy_rake",
@@ -244,7 +290,21 @@
         "maximum_relative_deviation": 0.025,
         "maximum_connected_share_deviation": 0.005
       },
-      "notes": "Stage-time energy check (microcosm#890 F, chronicle#270). María's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' Fact checks on the lcfs energy_rake receipt, every published value recomputed at gate time from the vendored rows the stage declares: each cell's shape target is the vendored NEED 2024 mean (need_energy_facts.json, margins_period_value), each fuel's level is the vendored DESNZ Energy Trends domestic consumption at actual temperature over the four FY2024-25 quarters (desnz_domestic_energy_facts.json) with the level factor equal to that total over the frame's pre-level total and the levelled frame total equal to the published one, each cell's target is shape times factor, and every region with a published gas-connected share (DESNZ subnational gas meters over electricity meters, 2024) sits within 0.5 points of it after the imposition unless the draw could not fill it (a receipted shortfall). The residual check holds the maximum absolute relative deviation of any cell mean from its levelled target, per margin (income band, tenure, property type, region) and fuel, electricity over every household of a cell and gas over its gas-connected households, to one fixed 2.5 % tolerance on the IPF's cross-margin residual (region is swept last and fits to machine precision by construction, so the tolerance binds the earlier three; a declared rule set above the observed maxima, not a fact: spine-s3 on NEED 2023 showed income 1.65 %, tenure 1.29 %, accommodation 0.83 %; spine-s5 on the NEED 2024 shape with the published connection showed income 2.16 % electricity / 1.97 % gas, accommodation 1.46 %, tenure 1.31 %, which is why the 2 % rule of spine-s3 moved to 2.5 %). This gate replaced the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame; the calibrated frame is held to the bound ONS 04.5.1 electricity and 04.5.2 gas rows, and the gap between the DESNZ-volume-times-QEP-price level the stage sets and the ONS national-accounts spend is the published-source residual PR #927 receipts Part T records, not a gate. The entry is a population_fact_check: a synthetic smoke build (the staging smoke over the H2 fixture) records its outcome without blocking, because the fixture is not the population NEED, DESNZ and the meter counts describe; every licensed build blocks on it."
+      "notes": "Stage-time energy check (microcosm#890 F, chronicle#270). María's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' Fact checks on the lcfs energy_rake receipt, every published value recomputed at gate time from the vendored rows the stage declares: each cell's shape target is the vendored NEED 2024 mean (need_energy_facts.json, margins_period_value), each fuel's level is the vendored DESNZ Energy Trends domestic consumption at actual temperature over the four FY2024-25 quarters (desnz_domestic_energy_facts.json) with the level factor equal to that total over the frame's pre-level total and the levelled frame total equal to the published one, each cell's target is shape times factor, and every region with a published gas-connected share (DESNZ subnational gas meters over electricity meters, 2024) sits within 0.5 points of it after the imposition unless the draw could not fill it (a receipted shortfall). The residual check holds the maximum absolute relative deviation of any cell mean from its levelled target, per margin (income band, tenure, property type, region) and fuel, electricity over every household of a cell and gas over its gas-connected households, to one fixed 2.5 % tolerance on the IPF's cross-margin residual (region is swept last and fits to machine precision by construction, so the tolerance binds the earlier three; a declared rule set above the observed maxima, not a fact: spine-s3 on NEED 2023 showed income 1.65 %, tenure 1.29 %, accommodation 0.83 %; spine-s5 on the NEED 2024 shape with the published connection showed income 2.16 % electricity / 1.97 % gas, accommodation 1.46 %, tenure 1.31 %, which is why the 2 % rule of spine-s3 moved to 2.5 %). This gate replaced the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame; the calibrated frame is held to the bound ONS 04.5.1 electricity and 04.5.2 gas rows, and the gap between the DESNZ-volume-times-QEP-price level the stage sets and the ONS national-accounts spend is the published-source residual PR #927 receipts Part T records, not a gate. The entry is a population_fact_check: a synthetic smoke build (the staging smoke over the H2 fixture) records its outcome without blocking, because the fixture is not the population NEED, DESNZ and the meter counts describe; every licensed build blocks on it. Tolerance governance (Vahid's third pass on PR #927): maximum_relative_deviation is a rule set above the observed maxima, not a fact; the rake runs a fixed number of sweeps and the receipt now records the cross-margin residual after every sweep (sweep_residuals), so the terminal residual is shown converged, not truncated, and a vintage whose converged residual exceeds the rule is a new ruling for María, never a silent re-pin. maximum_connected_share_deviation is declared, not derived from the walk: the greedy weight-fitting walk lands within a fraction of one household weight of the published share, and the check is waived only for a region whose draw cannot fill its published share (the shortfall is receipted and reported here), never for a region above it. The regions the crosswalk maps to no subnational area are declared on the stage (connection_fallback_regions, Northern Ireland) and refused if they differ from the crosswalk."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_bus_pricing",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "bus_pricing",
+        "maximum_relative_deviation": 1e-09
+      },
+      "notes": "Stage-time fact check on the lcfs bus_pricing receipt (microcosm#930): every area's receipts, boardings, concessionary journeys, trips per resident and population, and the boardings-per-trip and yield factors derived from them, are recomputed from the vendored rows the stage declares and must equal the receipt's; the unpriced regions must be the declared ones (Wales, which keeps the chain's raw draw by María's ruling of 2026-09-17) and the chain must have conditioned on the raw draw. The frame-implied boardings over the published ones are reported per area, not fenced: that ratio is the survey-versus-admin reading the bound receipts targets then act on. A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_etb_vat_support",
@@ -281,19 +341,33 @@
           "dfe_education_spending",
           "rail_subsidy_spending"
         ],
-        "exempt_columns": [
-          "bus_subsidy_spending"
-        ],
+        "exempt_columns": [],
         "max_clipped_low_rows_by_column": {
+          "bus_subsidy_spending": 0,
           "dfe_education_spending": 0,
           "rail_subsidy_spending": 0
         },
         "max_clipped_high_rows_by_column": {
+          "bus_subsidy_spending": 0,
           "dfe_education_spending": 0,
           "rail_subsidy_spending": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus support is exempt since microcosm#890: the declared rake to the published net support sets its level."
+      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus support is exempt since microcosm#890: the declared rake to the published net support sets its level. Since microcosm#930 (María's ruling of 2026-09-23 retiring the support rake) bus_subsidy_spending is clipped like the other two columns before the pricing step overrides it outside Wales and Northern Ireland, so it carries the same zero allowances and is no longer exempt."
+    },
+    {
+      "id": "uk_stage_etb_services_support_pricing",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "etb_services",
+        "check": "bus_support_pricing",
+        "maximum_relative_deviation": 1e-09
+      },
+      "notes": "Stage-time fact check on the ETB bus-support pricing receipt (microcosm#930; the #890 rake to the published net support retired on María's ruling of 2026-09-23): every declared support area's concessionary travel reimbursement, net support, boardings and concessionary boardings (DfT BUS05bi and BUS01 for London and England outside London, Scottish Transport Statistics for Scotland) and the per-boarding rates derived from them are recomputed from the vendored rows through the stage's own declaration and must equal the receipt's; the raw-draw regions (Wales, Northern Ireland) must be the declared ones and the pricing must be applied on the chain's raw draw. The priced support against the published net support is reported, not fenced: the calibration targets act on it. A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -370,6 +444,25 @@
       "notes": "Stage-time donor-support gate for cgt_band_donors. The cgt_band_donor_support_bounds.json semantic_fit_note says these intervals describe donor-stage initial support and that terminal support-gate applicability requires reviewer confirmation, so this entry deliberately gates the donor stage rather than uk_support."
     },
     {
+      "id": "uk_stage_spi_income_band_donors_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "spi_income_band_donors",
+        "check": "spi_income_band_donor_support",
+        "donors_per_band": 120,
+        "band_lower_bounds": [
+          200000,
+          500000,
+          1000000,
+          2000000
+        ]
+      },
+      "notes": "Stage-time support gate for spi_income_band_donors (PolicyEngine/chronicle#280 lane): every HMRC Table 2.5 band from GBP 200,000 carries its reserved donor households at positive band-exact weight with one carrier each, and the bands are exactly the declared four."
+    },
+    {
       "id": "uk_stage_hmrc_cgt_gains_spine_summary",
       "gate": "stage_health",
       "phase": "transferred",
@@ -396,6 +489,21 @@
         "maximum_solve_relative_error": 1e-06
       },
       "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the same two totals."
+    },
+    {
+      "id": "uk_stage_cgt_incidence_anchor_composition",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "cgt_incidence_anchor",
+        "check": "cgt_incidence_anchor",
+        "maximum_relative_composition_error": 1e-06,
+        "maximum_pair_relative_error": 0.0,
+        "minimum_pair_count": 1
+      },
+      "notes": "Stage-time gate over the CGT incidence anchor receipt (microcosm#970). Clone-side receipt: the groups, targets and masses are clone households paired to originals; band donors and originals are outside the anchor, so this gate certifies the anchor's own arithmetic against its declared composition, not a population count. The sub-exempt and loss-making clone groups sit at the reporter-composition targets derived from the redrawn liable mass whenever they were trimmed, never overshoot or gain mass, and stay untouched when already at or below target; zero-gain clone carriers are no reporters and are left untouched; liable clone mass is byte-identical before and after; every clone/original pair conserves its mass to floating-point rounding; the clone side never exceeds the original side; and at least one pair exists. The level is a modelling assumption (HMRC publishes no count below the exempt amount), so the gate fixes the anchor to its own declared composition rather than to a published target."
     },
     {
       "id": "uk_stage_salary_sacrifice_realization",
@@ -570,10 +678,11 @@
           "lcfs_consumption_support_bounds.json",
           "etb_vat_support_bounds.json",
           "etb_services_support_bounds.json",
-          "uc_deduction_support_bounds.json"
+          "uc_deduction_support_bounds.json",
+          "nts_bus_travel_support_bounds.json"
         ]
       },
-      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed."
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930."
     },
     {
       "id": "uk_aggregate_admin",
@@ -623,8 +732,12 @@
           "household.has_fuel_consumption",
           "household.household_is_capital_gains_clone",
           "household.household_is_cgt_band_donor",
+          "household.household_is_spi_income_band_donor",
           "household.household_is_spi_synthetic",
+          "household.household_local_bus_trips",
+          "household.spi_income_band_donor_lower_bound",
           "household.la_code_oa",
+          "household.local_authority",
           "household.lsoa_code",
           "household.mortgage_debt",
           "household.msoa_code",
@@ -643,6 +756,8 @@
           "person.attends_private_school_random_draw",
           "person.capital_gains_asset_type",
           "person.capital_gains_residential_property",
+          "person.bus_in_london_trips",
+          "person.bus_pass_eligible",
           "person.care_hours",
           "person.charitable_investment_gifts",
           "person.dla_m_category",
@@ -657,8 +772,12 @@
           "person.is_parent",
           "person.is_uc_claimant",
           "person.legacy_jobseeker_proxy",
+          "person.local_bus_single_fare_share",
+          "person.local_bus_trips",
+          "person.local_bus_use_band",
           "person.ons_family_index",
           "person.ons_family_role",
+          "person.other_local_bus_trips",
           "person.outpatient_visits",
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",
@@ -673,7 +792,8 @@
           "person.tax_free_childcare_spend_routed_share",
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
-          "person.would_claim_scp"
+          "person.would_claim_scp",
+          "person.person_is_spi_income_band_carrier"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."
@@ -779,6 +899,42 @@
       "notes": "Every calibration target within twenty-five percent absolute relative error, the certified June acceptance bound."
     },
     {
+      "id": "uk_cgt_projection_entrants",
+      "gate": "cgt_projection_entrants",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "horizon_year": 2030,
+        "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
+        "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "expected_yoy_growth_by_year": {
+          "2023": 0.0532,
+          "2024": 0.0372,
+          "2025": 0.0438,
+          "2026": 0.0292,
+          "2027": 0.0323,
+          "2028": 0.031,
+          "2029": 0.0296,
+          "2030": 0.0315
+        },
+        "expected_exempt_amount_by_year": {
+          "2023": 6000.0,
+          "2024": 3000.0,
+          "2025": 3000.0,
+          "2026": 3000.0,
+          "2027": 3000.0,
+          "2028": 3000.0,
+          "2029": 3000.0,
+          "2030": 3000.0
+        },
+        "maximum_growth_drift": 0.0005,
+        "bound_resource": "hmrc_cgt_conditioning_facts.json",
+        "bound_size_band_lower_bound": 3000
+      },
+      "notes": "Projection fence over the calibrated frame's sub-exempt gainers (microcosm#970). The engine freezes the annual exempt amount at its nominal value and uprates capital_gains by OBR per-capita GDP growth, so a gainer at or just below the exempt amount in the build period becomes a CGT taxpayer in a later projected year without any change in behaviour. For every year to the horizon the gate counts the cumulative stock of build-period sub-exempt gainers (gains in (0, exempt amount]) whose gains, uprated by the cumulative growth factor to that year, exceed that year's exempt amount; the stock is non-decreasing in the year, so the horizon year carries the largest count. The bound is the vendored HMRC Table 2.1a count of 2024-25 taxpayers with gains from 3,000 to 5,999 (73,000): people already above the exempt amount, not entrants, so the bound is a plausibility ceiling (the population of the thinnest liable band), not a published entrant count. The horizon 2030 is the last year of the OBR per-capita growth path in the engine's parameter tree; later years repeat the 2030 rate, so a longer horizon would only compound a constant. The growth path and the exempt amount by year the seam reads from the installed engine are pinned here and drift-checked (the exempt amount was 6,000 in 2023-24 and 3,000 from 2024-25, so a 2023-period frame's base year reads 6,000), so an engine bump cannot move the verdict silently and re-pinning is a reviewed change; without an installed engine the seam builds the projection from these pins and the receipt says so. The margin is thin by construction: on the first rebuilt candidate the stock ran from 12.7k in 2025 to 67.6k in 2030, about 13k a year, and 61k of the 67.6k were band donors the redraw had demoted below the exempt amount, a separate decision; the anchored clones contributed 6.4k. The v20 candidate would have failed with 10.8 million in the first projected year. The bound comes from the same vendored facts the amounts stage is pinned to, never from a literal."
+    },
+    {
       "id": "uk_input_mass_parity",
       "gate": "input_mass_parity",
       "phase": "terminal",
@@ -801,7 +957,7 @@
         "minimum_reference_total": 0.0,
         "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
       },
-      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the sole breach, charitable_investment_gifts at +15,168.8% on the post-#710 surface, is the per-reference exclusion. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector — the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
+      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the reviewed per-reference exclusions (charitable_investment_gifts, signed at +15,168.8% on the post-#710 surface; owned_land, signed for seed variance) were retired on 2026-09-22 when the first release-cut certification measured both inside the fence (-99.0% and -73.5% against the enhanced FRS reference, microcosm#967); the register is empty and the gate's current failures are the two genuine breaches it names. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector — the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
     },
     {
       "id": "uk_qrf_tail_concentration",

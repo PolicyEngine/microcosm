@@ -33,11 +33,6 @@
       "schema_id": "vintages.schema.json"
     },
     {
-      "path": "cgt_source_stages.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "degenerate_reviewed_exclusions.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -89,6 +84,16 @@
     },
     {
       "path": "hmrc_cgt_asset_type_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_itl_taxpayer_counts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_uprating_engine_pins.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -198,6 +203,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "incumbent_unresolvable_measures.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "spine_swap_signed_differences.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -263,6 +273,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "nts_bus_travel_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "local_binding_adjudications.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -304,6 +319,11 @@
     },
     {
       "path": "local_area_crosswalk.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "local_authority_names.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -384,6 +404,21 @@
     },
     {
       "path": "ons_household_expenditure_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "dft_bus_journeys.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "nts_trip_rates.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "nts_car_availability.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

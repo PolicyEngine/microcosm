@@ -7,16 +7,19 @@ release as a real key with non-default signal, or carry a reviewed exclusion.
 Derivation (fully from checked-in, sha-pinned facts — no transient artifact):
 
 - Required surface = every input-variable column the pinned reference eCPS
-  populates, i.e. the ``nonzero_shares`` keys of ``ecps_parity_reference.json``,
-  plus explicit later inputs needed by shipped reform probes
+  populates, i.e. the ``nonzero_shares`` keys of ``ecps_parity_reference.json``
   (computed once from the sha-verified ``enhanced_cps_2024.h5``; an input the
   incumbent exports but leaves all-zero is not a coverage requirement, the same
-  rule the parity gate uses).
+  rule the parity gate uses), plus explicit later inputs needed by shipped
+  reform probes or by the ACS local-area donor (the #978 reported-receipt
+  inputs).
 - Status per column:
     * ``reviewed_exclusion`` — the column is a documented incumbent-parity gap
       (an entry in ``ecps_parity_known_gaps.json``, carrying that register's
       reason and tracking issue), so the current candidate does not populate it
-      yet. EXCEPT the SSI countable-resource asset inputs (below).
+      yet. EXCEPT the SSI countable-resource asset inputs (below). Reference
+      layers and register names both resolve through the runtime
+      ``REFERENCE_ECPS_LAYER_RENAMES`` register the parity gate uses.
     * ``required`` — every other populated layer, PLUS the SSI countable-resource
       asset inputs. Per #368 ("it must be an actual gate"), the asset inputs get
       NO exclusion even though they are currently absent, so the gate ships red
@@ -38,6 +41,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from microcosm.build.us_runtime.release_input_coverage import (
+    REFERENCE_ECPS_LAYER_RENAMES,
+    project_ecps_parity_known_gap_names,
+)
 
 US_PACKAGE_DIR = (
     Path(__file__).resolve().parents[1]
@@ -80,6 +88,25 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "is_self_employed",
     "pre_subsidy_care_expenses",
     "is_incapable_of_self_care",
+    "is_spm_independent_minor_role",
+    # PolicyEngine/microcosm#978 option 1: the ASEC reported-receipt inputs the
+    # ACS local-area transfer requires in its donor.
+    "receives_wic",
+    "receives_snap",
+    "receives_tanf",
+)
+
+# Shared tail of the three #978 reported-receipt notes: why each is a hard
+# requirement and why today's published default fails it.
+_RECEIPT_INPUT_NOTE_TAIL = (
+    "Required with NO reviewed exclusion per PolicyEngine/microcosm#978 "
+    "option 1: the ACS local-area transfer requires it in its donor, and a "
+    "local-area release must name a published donor, so a national default "
+    "that drops it cannot serve the local chain. The published "
+    "populace-us-2024-spm-20260915 default does not persist it (its Build P "
+    "parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of "
+    "PolicyEngine/microcosm#600) — the intended red gate until a national "
+    "build persists it."
 )
 
 # Per-column annotations for post-reference hard requirements whose absence
@@ -123,6 +150,20 @@ POST_REFERENCE_COLUMN_NOTES = {
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
     ),
+    "is_spm_independent_minor_role": (
+        "The one dataset source input policyengine_us.spm.DATASET_SOURCE_INPUTS "
+        "declares: the measured Census SPM independence role, stored before "
+        "any age gate, that lets spm-calculator classify a 15-to-17-year-old "
+        "SPM unit head or spouse as an adult. Without it one such unit "
+        "refuses the whole population's SPM measurement "
+        "(SPM_COMPOSITION_REQUIRED) and the 104 state SPM poverty rows cannot "
+        "be validated. Written by the spm_independence_role base-builder "
+        "stage from the SHA-pinned complete Census ASEC person files through "
+        "the certified derive_spm_role_source; the certified default carries "
+        "it through the Build P source enrichment. Required with NO reviewed "
+        "exclusion: the anti-rot check would fail an exclusion whose column "
+        "carries signal, and the certified default's does."
+    ),
     "is_incapable_of_self_care": (
         "Section 21 qualifying-individual flag for the CDCC adult-care leg "
         "(PolicyEngine/microcosm#451 item 1), derived from the measured ASEC "
@@ -132,6 +173,24 @@ POST_REFERENCE_COLUMN_NOTES = {
         "2.2.1. "
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
+    ),
+    "receives_wic": (
+        "ASEC reported WIC receipt (WICYN == 1), stored on the reporting "
+        "adult as her SPM unit's receipt carrier by "
+        "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
+        "boolean person input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+    ),
+    "receives_snap": (
+        "ASEC reported SNAP receipt (maximum member SPM_SNAPSUB > 0 per SPM "
+        "unit), carried by cps_carried.derive_us_cps_carried_inputs; a "
+        "formula-less monthly boolean spm_unit input in PolicyEngine-US "
+        "2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+    ),
+    "receives_tanf": (
+        "ASEC reported TANF receipt (any member with PAW_VAL > 0 and PAW_TYP "
+        "1 or 3, per SPM unit), carried by "
+        "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
+        "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
 }
 
@@ -165,14 +224,6 @@ WORKERS_COMPENSATION_INPUTS = ("workers_compensation",)
 WEEKS_UNEMPLOYED_INPUTS = ("weeks_unemployed",)
 
 WIC_CLAIM_INPUTS = ("takes_up_wic_if_eligible",)
-
-# The SHA-pinned incumbent reference predates PolicyEngine-US 1.777.0 and
-# therefore truthfully records the retired WIC column name. Project that
-# historical evidence onto the verified 2.2.1 successor without rewriting
-# the reference artifact.
-REFERENCE_LAYER_RENAMES = {
-    "would_claim_wic": "takes_up_wic_if_eligible",
-}
 
 EDUCATOR_EXPENSE_INPUTS = ("educator_expense",)
 
@@ -1421,15 +1472,32 @@ def _load(name: str) -> dict:
     return json.loads((US_PACKAGE_DIR / name).read_text(encoding="utf-8"))
 
 
+def _registered_as(live: str, register_name: str) -> str:
+    """A live column name, suffixed with its register spelling when renamed."""
+    if register_name == live:
+        return live
+    return f"{live} (registered as {register_name!r})"
+
+
 def build_manifest() -> dict:
     parity = _load("ecps_parity_reference.json")
-    known_gaps = _load("ecps_parity_known_gaps.json")["known_gaps"]
+    register_gaps = _load("ecps_parity_known_gaps.json")["known_gaps"]
 
+    # The SHA-pinned reference predates PolicyEngine-US 1.777.0 and records the
+    # retired WIC name. Its layers and the known-gap register names both
+    # resolve through the runtime rename register the parity gate uses, so a
+    # gap filed under a historical spelling is excluded, and guarded, as the
+    # live column the gate exempts.
     populated_layers = {
-        REFERENCE_LAYER_RENAMES.get(name, name)
+        REFERENCE_ECPS_LAYER_RENAMES.get(name, name)
         for name, share in parity["nonzero_shares"].items()
         if float(share) > 0.0
     } | set(POST_REFERENCE_ECPS_REQUIRED_INPUTS)
+    gap_register_names = project_ecps_parity_known_gap_names(register_gaps)
+    known_gaps = {
+        live: register_gaps[register_name]
+        for live, register_name in gap_register_names.items()
+    }
     ssi_assets = set(SSI_COUNTABLE_RESOURCE_ASSETS)
 
     missing_assets = sorted(ssi_assets - populated_layers)
@@ -1445,7 +1513,10 @@ def build_manifest() -> dict:
             "Restored reference inputs are absent from the reference populated "
             f"surface: {missing_restored}."
         )
-    stale_restored_gaps = sorted(restored_inputs & set(known_gaps))
+    stale_restored_gaps = [
+        _registered_as(name, gap_register_names[name])
+        for name in sorted(restored_inputs & set(known_gaps))
+    ]
     if stale_restored_gaps:
         raise ValueError(
             "Restored reference inputs cannot remain in the parity-gap register: "
@@ -1461,6 +1532,11 @@ def build_manifest() -> dict:
                 "reason": str(entry["reason"]),
                 "issue": str(entry["issue"]),
             }
+            if gap_register_names[name] != name:
+                columns[name]["note"] = (
+                    "Filed in ecps_parity_known_gaps.json under the pinned "
+                    f"reference's historical name {gap_register_names[name]!r}."
+                )
         else:
             column = {"status": "required"}
             if name in ssi_assets:
@@ -1525,9 +1601,15 @@ def build_manifest() -> dict:
             "qualified_passenger_vehicle_loan_interest, five desired "
             "retirement-contribution inputs, "
             "meets_ssi_disability_criteria required by shipped validation "
-            "probes, and the #282 Schedule-D capital-gain-distributions "
+            "probes, the #282 Schedule-D capital-gain-distributions "
             "route leg schedule_d_capital_gain_distributions "
-            "(PolicyEngine/microcosm#462). "
+            "(PolicyEngine/microcosm#462), the three ASEC reported-receipt "
+            "inputs receives_wic, receives_snap, receives_tanf that the ACS "
+            "local-area transfer requires in its donor "
+            "(PolicyEngine/microcosm#978 option 1), and the engine's declared "
+            "dataset source input is_spm_independent_minor_role (the "
+            "spm_independence_role base-builder stage; "
+            "PolicyEngine/microcosm#893). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "
             "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "

@@ -29,6 +29,7 @@ from microcosm.build.gates import (
 from microcosm.build.gates import (
     target_surface_gate as _target_surface_gate,
 )
+from microcosm.build.uk_runtime.cgt_projection import UKCGTProjection
 from microcosm.build.uk_runtime.diagnostics import uk_weight_summary
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
@@ -69,6 +70,7 @@ __all__ = [
     "uk_weight_ess_gate",
     "uk_weight_ratio_gate",
     "uk_zero_weight_strata_gate",
+    "uk_cgt_projection_entrants_gate",
 ]
 
 UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024"
@@ -168,9 +170,6 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.uc_deduction_type_random_draw",
     "benunit.uc_latent_deduction_rate",
     "benunit.uc_reported_capital",
-    # #882: engine inputs the incumbent never carried (policyengine-uk 2.98.0
-    # reads them); the coverage manifest measures the incumbent surface, so
-    # net-new inputs are declared here like the deduction draws above.
     "benunit.would_claim_uc_childcare",
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
@@ -183,8 +182,18 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.has_fuel_consumption",
     "household.household_is_capital_gains_clone",
     "household.household_is_cgt_band_donor",
+    "household.household_is_spi_income_band_donor",
     "household.household_is_spi_synthetic",
+    # #930: the NTS bus-travel stage's household journey cell.
+    "household.household_local_bus_trips",
+    "household.spi_income_band_donor_lower_bound",
     "household.la_code_oa",
+    # #953: the engine's household local_authority enum input, written by the
+    # rowwise geography ladder from local_authority_code. The incumbent never
+    # carried it, so the coverage manifest cannot list it; this allow-list
+    # binds at the national release-cut export gate, and the rowwise lane's
+    # own guard is the ladder gate's code/member consistency check.
+    "household.local_authority",
     "household.lsoa_code",
     "household.mortgage_debt",
     "household.msoa_code",
@@ -203,6 +212,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.attends_private_school_random_draw",
     "person.capital_gains_asset_type",
     "person.capital_gains_residential_property",
+    "person.bus_in_london_trips",
+    "person.bus_pass_eligible",
     "person.care_hours",
     "person.charitable_investment_gifts",
     "person.dla_m_category",
@@ -217,8 +228,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_parent",
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
+    "person.local_bus_single_fare_share",
+    "person.local_bus_trips",
+    "person.local_bus_use_band",
     "person.ons_family_index",
     "person.ons_family_role",
+    "person.other_local_bus_trips",
     "person.outpatient_visits",
     "person.pension_contributions_via_salary_sacrifice",
     "person.pip_dl_category",
@@ -234,6 +249,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.would_claim_carers_allowance",
     "person.would_claim_marriage_allowance",
     "person.would_claim_scp",
+    "person.person_is_spi_income_band_carrier",
 )
 
 UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS: tuple[str, ...] = (
@@ -881,4 +897,115 @@ def _missing_fit_weight_evidence_gate() -> GateResult:
             "an absent audit is not a passing audit.",
         ),
         details={"fits_checked": 0, "evidence_missing": True},
+    )
+
+
+def _weighted_quantiles(
+    values: np.ndarray, weights: np.ndarray, probabilities: Sequence[float]
+) -> dict[str, float | None]:
+    order = np.argsort(values, kind="stable")
+    ordered = values[order]
+    mass = weights[order]
+    total = float(mass.sum())
+    if total <= 0.0 or ordered.size == 0:
+        return {f"p{int(round(p * 100))}": None for p in probabilities}
+    cumulative = np.cumsum(mass) / total
+    return {
+        f"p{int(round(p * 100))}": float(
+            ordered[
+                min(int(np.searchsorted(cumulative, p, side="left")), ordered.size - 1)
+            ]
+        )
+        for p in probabilities
+    }
+
+
+def uk_cgt_projection_entrants_gate(
+    person: pd.DataFrame,
+    person_weights: np.ndarray,
+    projection: UKCGTProjection,
+    *,
+    bound: float,
+    bound_source: str,
+) -> GateResult:
+    """Fence the gainers the engine would tip into liability by uprating.
+
+    The engine freezes the annual exempt amount at its nominal value and
+    uprates ``capital_gains`` by per-capita GDP growth, so a gainer at or
+    just below the exempt amount in the build period becomes a taxpayer in
+    a later projected year without any change in behaviour. For every year
+    to the horizon the gate counts the cumulative stock of build-period
+    sub-exempt gainers whose uprated gains exceed that year's exempt amount
+    (non-decreasing in the year), and the largest count must not exceed
+    ``bound``: the published count of the thinnest liable band, people
+    already above the exempt amount, so a plausibility ceiling rather than
+    an entrant count (microcosm#970). A frame without ``capital_gains``
+    cannot be fenced and fails closed.
+    """
+
+    if "capital_gains" not in person.columns:
+        raise ValueError(
+            "cgt_projection_entrants requires person.capital_gains; a frame "
+            "without it cannot be fenced."
+        )
+    gains = pd.to_numeric(person["capital_gains"], errors="raise").to_numpy(dtype=float)
+    weights = np.asarray(person_weights, dtype=float)
+    if weights.shape != gains.shape:
+        raise ValueError("cgt_projection_entrants needs one weight per person.")
+    if not np.isfinite(gains).all() or not np.isfinite(weights).all():
+        raise ValueError("cgt_projection_entrants requires finite gains and weights.")
+    if not math.isfinite(bound) or bound <= 0.0:
+        raise ValueError("cgt_projection_entrants requires a positive finite bound.")
+    base_exempt = float(projection.exempt_amount_by_year[str(projection.base_year)])
+    sub_exempt = (gains > 0.0) & (gains <= base_exempt)
+    entrants_by_year: dict[str, float] = {}
+    for year in projection.projected_years:
+        factor = float(projection.cumulative_gains_factor_by_year[str(year)])
+        exempt = float(projection.exempt_amount_by_year[str(year)])
+        crossing = sub_exempt & (gains * factor > exempt)
+        entrants_by_year[str(year)] = float(weights[crossing].sum())
+    worst_year = max(
+        entrants_by_year, key=lambda year: (entrants_by_year[year], -int(year))
+    )
+    max_entrants = entrants_by_year[worst_year]
+    sub_exempt_weights = weights[sub_exempt]
+    details: dict[str, object] = {
+        "base_year": projection.base_year,
+        "horizon_year": projection.horizon_year,
+        "entrants_by_year": entrants_by_year,
+        "worst_year": int(worst_year),
+        "max_entrants": max_entrants,
+        "bound": float(bound),
+        "bound_source": bound_source,
+        "cumulative_gains_factor_by_year": dict(
+            projection.cumulative_gains_factor_by_year
+        ),
+        "exempt_amount_by_year": dict(projection.exempt_amount_by_year),
+        "gains_growth_parameter": projection.growth_parameter,
+        "exempt_amount_parameter": projection.exempt_amount_parameter,
+        "projection_engine": projection.engine,
+        "sub_exempt": {
+            "rows": int(sub_exempt.sum()),
+            "weighted_persons": float(sub_exempt_weights.sum()),
+            "weighted_at_exempt_amount": float(
+                weights[sub_exempt & (gains == base_exempt)].sum()
+            ),
+            **_weighted_quantiles(
+                gains[sub_exempt], sub_exempt_weights, (0.1, 0.5, 0.9)
+            ),
+        },
+    }
+    failures: tuple[str, ...] = ()
+    if max_entrants > bound:
+        failures = (
+            f"{UK_CANDIDATE_DATASET_NAME}: {max_entrants:,.0f} weighted sub-exempt "
+            f"gainers cross the frozen annual exempt amount by {worst_year} under "
+            f"the engine's uprating, above the bound of {bound:,.0f} "
+            f"({bound_source}).",
+        )
+    return GateResult(
+        name="cgt_projection_entrants",
+        passed=not failures,
+        failures=failures,
+        details=details,
     )

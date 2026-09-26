@@ -33,6 +33,7 @@ from microcosm.build.target_materialization import (
 )
 from microcosm.build.uk_runtime.cgt_calibration import uk_cgt_annual_exempt_amount
 from microcosm.build.uk_runtime.geography_ladder import UK_ENGLAND_WALES_REGION_CODES
+from microcosm.build.uk_runtime.hmrc_uprating import hmrc_uprating_appliers
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.local_target_census import family_for_metric
 from microcosm.build.uk_runtime.local_targets import (
@@ -697,6 +698,7 @@ def align_dft_bus_fare_receipts_to_period(
 #: contract error, refused before compilation.
 UK_UPRATING_APPLIERS: Mapping[str, Any] = {
     UK_DFT_BUS_FARES_INDEX_CONCEPT: align_dft_bus_fare_receipts_to_period,
+    **hmrc_uprating_appliers(),
 }
 
 

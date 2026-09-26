@@ -16,6 +16,14 @@ to schema 6 or assert that they measured a new model's results. Ordinary
 calibration releases still require schema 6. A different parent requires a
 separately reviewed contract; there is no caller-supplied legacy-schema waiver.
 
+The release type has one other reviewed operation: the reported-receipt child
+of the national default (`add_reported_receipt_inputs`, pinned to
+`populace-us-2024-spm-20260915`). It shares every gate below. It has its own
+pinned parent, evidence and native inputs, and it never moves `latest.json`.
+`source_enrichment.json`'s `operation` selects the lineage, and any other
+value is judged, and refused, as this lane. See
+[the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
+
 ## Source reconstruction and exact preservation
 
 `spm_role_source.py` reuses Microcosm's existing Census ASEC archive/member

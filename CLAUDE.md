@@ -37,7 +37,8 @@ fresh change to the other country is certified by main's push run; watch main
 after merging. The `wheels` lane remains the packaging gate: build every
 shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
-wheels.
+wheels. The `fast` and engine lanes pass `--durations=25`, so each job log ends
+with its slowest tests; check there first when a lane's runtime jumps.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
@@ -50,6 +51,13 @@ makes `-m requires_uk` a real selector. Do not add new module-local skip
 aliases. Existing `importorskip` guards (still the norm across the US files)
 keep working and were deliberately left in place — convert one only when you
 are already editing that test for another reason.
+
+`load_country_spec("<code>")` loads each packaged country spec once per
+process and hands every caller the same immutable object; a `Path` argument is
+re-read on every call. A test that patches something the loader itself runs and
+then loads a packaged spec by code must call
+`country_spec._load_packaged_country_spec.cache_clear()` before and after that
+load, or it silently receives the spec an earlier test cached.
 
 **Adding a test file.** It must sit directly in `packages/<shard>/tests/` — flat,
 no subdirectories; `fixtures/` and `golden/` hold data only — and be named
@@ -96,8 +104,9 @@ Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step (`tools/publish_release.sh` →
 `microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
-see README "Releasing & alerts". Publication also refuses a release whose
-build recorded staging telemetry that never reached its repo
+reviewed line promotion is a separate deliberate call to the same CLI with
+`--promote-line`. See README "Releasing & alerts". Publication also refuses a
+release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
 publishes without the flag. Never publish or promote artifacts as a side
 effect of another task. A UK rowwise run's **staged** bundle
@@ -108,6 +117,12 @@ default is to upload that bundle (hundreds of megabytes of licensed microdata)
 to the private repository; when you run `tools/build_uk_rowwise_candidate.py`
 yourself, pass `--staging-local-only` unless the operator asked for a staged
 upload.
+
+The US fiscal-refresh builder scores its written H5 in household batches.
+Before a release rerun, run the small-H5 guard sweep described in
+[the release build rule](docs/us-release-build-rule.md#post-export-scoring).
+That fixture check is separate from full-export timing and release
+certification.
 
 The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
@@ -123,7 +138,16 @@ for a release that is not a source enrichment is an error, including preflight
 and evidence-tier requests. See
 [the source-enrichment runbook](docs/us-native-spm-role-source-enrichment.md).
 Root's canonical-model acceptance and publication authorization remain separate
-from this producer-native-input receipt.
+from this producer-native-input receipt. The same release type has a second
+reviewed operation, `add_reported_receipt_inputs`. It packages the donor
+receipt qualification's child of the pinned national default
+(`populace-us-2024-spm-20260915`) with the qualification receipt as its source
+evidence. `tools/build_us_receipt_enrichment_release.py` builds the local
+candidate, and `source_enrichment.json`'s `operation` selects the lineage. The
+contract replays the shared verifier in `microcosm.data.h5_boolean_append`
+against both H5 files. The publisher refuses to point `latest.json` at this
+child, so publish it with `--no-latest --tag-only`. See
+[the reported-receipt runbook](docs/us-reported-receipt-source-enrichment.md).
 
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
@@ -134,6 +158,22 @@ not weaken the exact-k manifest arm or authorize publication by itself.
 A sealed deny-list in `microcosm.build.us_runtime.h5_io` overrides this opt-in
 for known-excluded publications while preserving their scoring-only diagnostic
 path.
+
+`tools/build_us_acs_donor_receipt_qualification.py` is a third local,
+non-publishing lane. It takes one of two exact pinned Build P lineage parents
+and appends the three reported-receipt inputs current main's ACS transfer
+families require (`person.receives_wic`, `spm_unit.receives_snap`,
+`spm_unit.receives_tanf`), derived only through the maintained
+`us_runtime.cps_carried` producers and the pinned `PAW_TYP` restore. It
+replaces `person/table` and `spm_unit/table` with wider record types that keep
+every existing field's bytes, adds five attributes per new column, and
+rewrites the four pandas column-registration attributes on those two groups;
+every other HDF object and attribute is proven exact. It writes a local H5 and
+an aggregate receipt and cannot publish, stage or calibrate; its receipt is
+build evidence, not certification. Its byte-preservation verifier lives in
+`microcosm.data.h5_boolean_append`, so the reported-receipt release contract
+can replay it. See
+[the qualification note](docs/us-acs-donor-receipt-qualification.md).
 
 The independent US annual static-aging candidate builder lives in
 `microcosm.build.us_annual_static_aging`; it consumes a pinned published parent

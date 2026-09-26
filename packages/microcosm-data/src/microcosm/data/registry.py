@@ -46,6 +46,8 @@ class DatasetSpec:
         engine_package: The pip package providing the engine, e.g.
             ``"policyengine-us"`` — named in the install extra and in the
             ImportError when the engine is absent.
+        pointer_path: The repository-root release pointer followed by the
+            certified loader.
     """
 
     country: str
@@ -56,6 +58,7 @@ class DatasetSpec:
     engine_class: str
     engine_package: str
     variant: str = DEFAULT_VARIANT
+    pointer_path: str = "latest.json"
 
     @property
     def key(self) -> tuple[str, int, str]:
@@ -110,6 +113,27 @@ register(
 
 register(
     DatasetSpec(
+        # microcosm#823: the UK 2024-25 national line, followed through its
+        # own pointer. Registered OFF the default variant until the first
+        # promoted cut exists on the Hub: resolve("uk") picks the latest
+        # default-variant year at import time, so a default entry here would
+        # send every default load to a pointer that does not exist yet. The
+        # flip to DEFAULT_VARIANT is a one-line follow-up after promotion
+        # (review of #966; Max's #823 ruling keys the line as a variant).
+        country="uk",
+        year=2025,
+        variant="national",
+        hf_repo="policyengine/populace-uk-private",
+        filename="microcosm_uk_2024_25.h5",
+        engine_module="policyengine_uk.data",
+        engine_class="UKSingleYearDataset",
+        engine_package="policyengine-uk",
+        pointer_path="latest-national.json",
+    )
+)
+
+register(
+    DatasetSpec(
         # microcosm#762 A18: the dense joint national + local UK build is
         # tag-only; no pointer. It carries every constituency and local
         # authority at K=15 clones per spine household.
@@ -123,6 +147,11 @@ register(
         engine_package="policyengine-uk",
     )
 )
+
+# microcosm#898 reserves the local-area line as variant "local", with pointer
+# latest-local-k<N>.json and artifact microcosm_uk_2024_25_local_k<N>.h5. Add
+# its registry entry only once a certified artifact exists.
+
 register(
     DatasetSpec(
         country="us",

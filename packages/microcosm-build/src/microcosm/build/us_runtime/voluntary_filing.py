@@ -38,9 +38,10 @@ import pandas as pd
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
-    has_assembled_support_metadata,
     has_support_role_metadata,
+    require_assembled_support_provenance,
     support_clone_index_column,
+    support_copy_rank_series,
     support_role_series,
 )
 from microcosm.frame import Frame
@@ -131,7 +132,6 @@ _DONOR_FILENAME = "pu2023.csv"
 _DONOR_WEIGHT_COLUMN = "tax_unit_weight"
 _DONOR_SOURCE_KEY_COLUMN = "source_tax_unit_key"
 _DEFAULT_N_ESTIMATORS = 100
-_BASE_ASEC_SUPPORT_CHANNEL = "asec"
 _TAX_UNIT_SOURCE_ID_COLUMN = "tax_unit_source_id"
 _TRUE_SHARE_BAND = (0.45, 0.95)
 _EXPECTED_READ_PARAMETERS: dict[str, object] = {
@@ -721,9 +721,17 @@ def _source_receiver_rows(
     frame: Frame,
     receiver: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.Series]:
-    """Select one ASEC predictor row per source unit and return fan-out keys."""
+    """Select one canonical predictor row per source unit and fan-out keys.
+
+    The canonical row is the lowest surviving support-copy rank: the native
+    ASEC copy when present, then the primary PUF-detail copy, then the
+    capital-gains own-tail copy. An assembled table missing a provenance
+    column is refused first, so it can reach neither the copy ranking nor the
+    one-row-per-source path for tables without support metadata.
+    """
 
     tax_unit = frame.table("tax_unit")
+    require_assembled_support_provenance(tax_unit, entity="tax_unit")
     if _TAX_UNIT_SOURCE_ID_COLUMN in tax_unit:
         source_ids = tax_unit[_TAX_UNIT_SOURCE_ID_COLUMN]
         if source_ids.isna().any():
@@ -741,80 +749,32 @@ def _source_receiver_rows(
     rows["_source_id"] = _decoded_strings(source_ids).to_numpy()
     rows["_tax_unit_id"] = tax_unit["tax_unit_id"].to_numpy()
     if has_support_role_metadata(tax_unit, entity="tax_unit"):
-        rows["_support_role"] = support_role_series(
+        rows["_copy_rank"] = support_copy_rank_series(
             tax_unit, entity="tax_unit"
         ).to_numpy()
         rows["_source_key"] = rows["_source_id"]
-        ordered_rows = rows.copy()
-        if has_assembled_support_metadata(tax_unit, entity="tax_unit"):
-            clone_column = support_clone_index_column("tax_unit")
-            ordered_rows["_clone_index"] = pd.to_numeric(
-                tax_unit[clone_column], errors="raise"
-            ).to_numpy(dtype=np.int64)
-            clone_counts = ordered_rows.groupby(
-                ["_source_id", "_clone_index"],
-                sort=False,
-            ).size()
-            duplicated_clones = clone_counts[clone_counts > 1]
-            if not duplicated_clones.empty:
-                bad = duplicated_clones.index.tolist()
-                raise ValueError(
-                    "US voluntary-filing assembled source units carry "
-                    "duplicated clone-index rows; invalid source clone(s) "
-                    f"{bad[:5]}."
-                )
-            source_rows = (
-                ordered_rows.sort_values(
-                    ["_source_id", "_clone_index", "_tax_unit_id"],
-                    kind="stable",
-                )
-                .drop_duplicates("_source_key", keep="first")
-                .drop(columns="_clone_index")
+        copy_counts = rows.groupby(
+            ["_source_id", "_copy_rank"],
+            sort=False,
+        ).size()
+        duplicated_copies = copy_counts[copy_counts > 1]
+        if not duplicated_copies.empty:
+            bad = duplicated_copies.index.tolist()
+            raise ValueError(
+                "US voluntary-filing support source units carry duplicated "
+                f"support copies; invalid (source, copy rank) pair(s) {bad[:5]}."
             )
-        else:
-            role_counts = rows.groupby(
-                ["_source_id", "_support_role"],
-                sort=False,
-            ).size()
-            duplicated_roles = role_counts[role_counts > 1]
-            if not duplicated_roles.empty:
-                bad = duplicated_roles.index.tolist()
-                raise ValueError(
-                    "US voluntary-filing support source units carry duplicated "
-                    f"same-role rows; invalid source role(s) {bad[:5]}."
-                )
-            asec_counts = (
-                rows["_support_role"]
-                .eq(_BASE_ASEC_SUPPORT_CHANNEL)
-                .groupby(rows["_source_key"])
-                .sum()
-            )
-            if asec_counts.gt(1).any():
-                bad = asec_counts.index[asec_counts.gt(1)].tolist()
-                raise ValueError(
-                    "US voluntary-filing support source units carry duplicated "
-                    f"ASEC rows; invalid source unit(s) {bad[:5]}."
-                )
-            # Prefer each unit's ASEC row, but a frozen-support selection may
-            # legitimately keep only a unit's PUF clone. Clones carry the
-            # unit's source predictors, so the surviving row predicts
-            # identically; pick it deterministically by role then tax-unit id.
-            ordered_rows["_asec_rank"] = (
-                ~ordered_rows["_support_role"].eq(_BASE_ASEC_SUPPORT_CHANNEL)
-            ).astype(int)
-            source_rows = (
-                ordered_rows.sort_values(
-                    [
-                        "_source_id",
-                        "_asec_rank",
-                        "_support_role",
-                        "_tax_unit_id",
-                    ],
-                    kind="stable",
-                )
-                .drop_duplicates("_source_key", keep="first")
-                .drop(columns="_asec_rank")
-            )
+        # Prefer each unit's native copy. A frozen-support selection may keep
+        # only its PUF-role copies (the primary PUF-detail copy, the
+        # capital-gains own-tail copy, or both); the lowest surviving copy rank
+        # then supplies the unit's predictors, deterministically, and its one
+        # decision fans out to every copy. Beyond IDs, weight and provenance,
+        # the tail transfer writes only the capital-gains vector onto its
+        # copy, and none of that vector is a predictor here.
+        source_rows = rows.sort_values(
+            ["_source_id", "_copy_rank", "_tax_unit_id"],
+            kind="stable",
+        ).drop_duplicates("_source_key", keep="first")
     else:
         if rows["_source_id"].duplicated().any():
             duplicates = rows.loc[
@@ -993,6 +953,7 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
     """Return weighted incidence, boolean validity, and clone diagnostics."""
 
     tax_unit = frame.table("tax_unit")
+    require_assembled_support_provenance(tax_unit, entity="tax_unit")
     values = pd.to_numeric(tax_unit[_OUTPUT], errors="coerce").to_numpy(
         dtype=np.float64
     )
@@ -1041,19 +1002,30 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
                         "value": values,
                     }
                 )
-                if has_assembled_support_metadata(tax_unit, entity="tax_unit"):
-                    clone_groups = ["source_id"]
-                else:
-                    clone_table["source_occurrence"] = clone_table.groupby(
+                if support_clone_index_column("tax_unit") not in tax_unit:
+                    role_counts = clone_table.groupby(
                         ["source_id", "role"], sort=False
-                    ).cumcount()
-                    clone_groups = ["source_id", "source_occurrence"]
-                sizes = clone_table.groupby(clone_groups, sort=False).size()
+                    ).size()
+                    duplicated_roles = role_counts[role_counts > 1]
+                    if not duplicated_roles.empty:
+                        raise ValueError(
+                            "US voluntary-filing support source units carry "
+                            "duplicated same-role rows; invalid source role(s) "
+                            f"{duplicated_roles.index.tolist()[:5]}."
+                        )
+                # Every source copy must agree. Channel-only tables have one
+                # row per source and role, as required by the receiver path.
+                sizes = clone_table.groupby("source_id", sort=False).size()
                 clone_source_units = int((sizes > 1).sum())
-                unique = clone_table.groupby(clone_groups, sort=False)["value"].nunique(
+                unique = clone_table.groupby("source_id", sort=False)["value"].nunique(
                     dropna=False
                 )
                 clone_mismatch_source_units = int((unique > 1).sum())
+    elif _TAX_UNIT_SOURCE_ID_COLUMN in tax_unit:
+        source_ids = tax_unit[_TAX_UNIT_SOURCE_ID_COLUMN]
+        clone_metadata_missing = bool(
+            source_ids.isna().any() or _decoded_strings(source_ids).duplicated().any()
+        )
 
     return {
         "weighted_true_share": float(weights[true].sum()) / total_weight,
@@ -1074,6 +1046,7 @@ def us_voluntary_filing_signal_gate(frame: Frame) -> GateResult:
     """Require nonconstant boolean signal and identical support clones."""
 
     tax_unit = frame.table("tax_unit")
+    require_assembled_support_provenance(tax_unit, entity="tax_unit")
     if _OUTPUT not in tax_unit:
         return GateResult(
             name="voluntary_filing_signal",
@@ -1108,7 +1081,7 @@ def us_voluntary_filing_signal_gate(frame: Frame) -> GateResult:
     if summary["clone_metadata_missing"]:
         failures.append(
             "Voluntary-filing support clones lack complete tax_unit_source_id "
-            "provenance."
+            "or support-role provenance."
         )
     if summary["clone_mismatch_source_units"]:
         failures.append(

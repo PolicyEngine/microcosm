@@ -1467,9 +1467,8 @@ def test_pregnancy_draws_once_per_eligible_source_person_and_fans_to_clones(
     )
 
     person = result.frame.person
-    eligible = (
-        person["is_female"].astype(bool)
-        & person["age"].between(15, 44, inclusive="both")
+    eligible = person["is_female"].astype(bool) & person["age"].between(
+        15, 44, inclusive="both"
     )
     assert person.loc[eligible, "is_pregnant"].all()
     assert not person.loc[~eligible, "is_pregnant"].any()
@@ -1490,7 +1489,9 @@ def test_pregnancy_draws_once_per_eligible_source_person_and_fans_to_clones(
         .first()
         .sum()
     )
-    record = next(item for item in result.imputed_inputs if item.column == "is_pregnant")
+    record = next(
+        item for item in result.imputed_inputs if item.column == "is_pregnant"
+    )
     receipt = record.structural_receipt
     assert receipt is not None
     assert sum(pattern.recipient_rows for pattern in record.patterns) == (
@@ -1576,12 +1577,8 @@ def test_pregnancy_partial_clone_fanout_receipt_categories_are_disjoint(
     record = result.imputed_inputs[0]
     receipt = record.structural_receipt
     assert receipt is not None
-    assert receipt["preexisting_value_fanout_rows"] == int(
-        (missing & eligible).sum()
-    )
-    assert receipt["ineligible_rows_assigned_false"] == int(
-        (missing & ~eligible).sum()
-    )
+    assert receipt["preexisting_value_fanout_rows"] == int((missing & eligible).sum())
+    assert receipt["ineligible_rows_assigned_false"] == int((missing & ~eligible).sum())
     assert (
         receipt["preexisting_value_fanout_rows"]
         + receipt["ineligible_rows_assigned_false"]
@@ -2298,6 +2295,38 @@ def test_explicit_family_is_seed_deterministic_and_preserves_recipient_index() -
     )
     assert first.imputed_inputs == second.imputed_inputs
     assert first.imputed_inputs[0].donor_channel == "puf_tax_detail"
+
+
+def test_local_usual_hours_transfer_preserves_reported_zero_and_forty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    column = "weekly_hours_worked_before_lsr"
+    donor = _with_columns(
+        _donor_frame(), "person", {column: [40.0, 0, 20, 0, 0, 0, 40, 10]}
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {column: pd.array([40.0, pd.NA, 0, pd.NA, 20, 10], dtype="Float64")},
+    )
+    original = recipient.person[column].copy()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"source_operator_hours_worked": (column,)}},
+        n_estimators=1,
+    )
+
+    after = result.frame.person[column]
+    observed = original.notna()
+    pd.testing.assert_series_equal(after.loc[observed], original.loc[observed])
+    assert after.notna().all()
+    assert _MeanQRF.calls
+    assert all(call["targets"].columns.tolist() == [column] for call in _MeanQRF.calls)
+    pd.testing.assert_series_equal(recipient.person[column], original)
 
 
 def test_nullable_recipient_target_fills_only_nulls_and_preserves_metadata(

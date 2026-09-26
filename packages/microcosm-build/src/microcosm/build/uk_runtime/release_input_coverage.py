@@ -312,9 +312,7 @@ def _parse_family_coverage(
                     f"{resource}: family {name!r} superseded_by must be an object."
                 )
             superseding_stage = str(superseded_by.get("stage", "")).strip()
-            superseding_manifest = str(
-                superseded_by.get("source_manifest", "")
-            ).strip()
+            superseding_manifest = str(superseded_by.get("source_manifest", "")).strip()
             superseding_sha = str(
                 superseded_by.get("source_manifest_sha256", "")
             ).strip()
@@ -566,6 +564,23 @@ class PolicyEngineUKCoverageEngine:
 
             self._system = CountryTaxBenefitSystem()
         return self._system
+
+    def _variable(self, name: str) -> Any:
+        variables = self._tax_benefit_system().variables
+        if name not in variables:
+            raise ValueError(f"Unknown PolicyEngine-UK variable {name!r}.")
+        return variables[name]
+
+    def enum_domain(self, name: str) -> Any:
+        """The Enum an engine variable's stored values must belong to.
+
+        The enum-domain gates resolve their domain through this accessor, so
+        every engine adapter the batteries are handed (the frame adapter on
+        the spine build, this coverage engine on the release cut) answers the
+        same question by the same name.
+        """
+
+        return getattr(self._variable(name), "possible_values", None)
 
     def variables(self) -> list[str]:
         variables = self._tax_benefit_system().variables
@@ -1072,8 +1087,19 @@ def uk_release_input_coverage_gate(
     engine: Any,
     *,
     manifest: UKReleaseInputCoverageManifest | None = None,
+    build_state_frame: Any | None = None,
 ) -> GateResult:
-    """Enforce required signal on rows carrying reviewed effective mass."""
+    """Enforce required signal on rows carrying reviewed effective mass.
+
+    The column-coverage and effective-mass halves read ``frame``, the
+    release frame. The family build-state half (each stage family's typed
+    ``importance`` weights and its mass receipt) is a spine-stage contract:
+    it reads ``build_state_frame`` when the caller supplies the spine frame
+    the stages produced, and falls back to ``frame`` for a build whose
+    terminal frame is that spine. A calibrated release frame carries
+    ``calibrated`` weights by construction, so evaluating the build-state
+    half on it fails every family on the kind alone.
+    """
     manifest = manifest or load_uk_release_input_coverage_manifest()
     required = manifest.required_columns
     reviewed = manifest.reviewed_exclusions
@@ -1162,7 +1188,7 @@ def uk_release_input_coverage_gate(
     )
     failures.extend(family_failures)
     family_build_state, family_build_failures = _family_build_state_diagnostics(
-        frame,
+        frame if build_state_frame is None else build_state_frame,
         manifest,
     )
     failures.extend(family_build_failures)
@@ -1179,6 +1205,7 @@ def uk_release_input_coverage_gate(
         "wrong_entity_columns": wrong_entities,
         "family_effective_mass": family_diagnostics,
         "family_build_state": family_build_state,
+        "family_build_state_frame": "release" if build_state_frame is None else "spine",
     }
     return GateResult(
         name=base.name,

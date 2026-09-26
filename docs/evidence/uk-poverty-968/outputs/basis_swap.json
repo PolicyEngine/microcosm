@@ -1,0 +1,372 @@
+{
+ "engine": "2.99.1",
+ "year": 2024,
+ "swap_set": [
+  "universal_credit",
+  "housing_benefit",
+  "pension_credit",
+  "child_tax_credit",
+  "working_tax_credit",
+  "income_support",
+  "jsa_income",
+  "esa_income",
+  "council_tax_benefit",
+  "child_benefit"
+ ],
+ "files": {
+  "v20_national": {
+   "totals_bn": {
+    "universal_credit": {
+     "simulated": 76.83272818724737,
+     "reported": 61.65982094107585,
+     "simulated_recipient_hh_m": 5.899447441967964,
+     "reported_recipient_hh_m": 4.69722375107956
+    },
+    "housing_benefit": {
+     "simulated": 4.464219235857155,
+     "reported": 8.161163754658835,
+     "simulated_recipient_hh_m": 0.7608244295825958,
+     "reported_recipient_hh_m": 1.3749762283983231
+    },
+    "pension_credit": {
+     "simulated": 6.537695825669497,
+     "reported": 5.100636866745836,
+     "simulated_recipient_hh_m": 2.066473884399414,
+     "reported_recipient_hh_m": 1.3827790538253784
+    },
+    "child_tax_credit": {
+     "simulated": 0.1017876937232826,
+     "reported": 2.2963176066417685,
+     "simulated_recipient_hh_m": 0.015767602984428405,
+     "reported_recipient_hh_m": 0.298927515627861
+    },
+    "working_tax_credit": {
+     "simulated": 0.15224768097739344,
+     "reported": 0.33702950661060943,
+     "simulated_recipient_hh_m": 0.028848597001075744,
+     "reported_recipient_hh_m": 0.08318189950847625
+    },
+    "income_support": {
+     "simulated": 0.18812226463660675,
+     "reported": 1.025131292093722,
+     "simulated_recipient_hh_m": 0.022543715876579284,
+     "reported_recipient_hh_m": 0.25844708364868163
+    },
+    "jsa_income": {
+     "simulated": 0.06740073784475399,
+     "reported": 0.23748659140568668,
+     "simulated_recipient_hh_m": 0.017261854499816893,
+     "reported_recipient_hh_m": 0.053914079498291016
+    },
+    "esa_income": {
+     "simulated": 1.8593223369913088,
+     "reported": 4.119879551637238,
+     "simulated_recipient_hh_m": 0.1741251804587841,
+     "reported_recipient_hh_m": 0.4171803486907482
+    },
+    "council_tax_benefit": {
+     "simulated": 1.146668125699208,
+     "reported": 1.490041262990671,
+     "simulated_recipient_hh_m": 2.046592849905014,
+     "reported_recipient_hh_m": 3.083109921485901
+    },
+    "child_benefit": {
+     "simulated": 15.692417869013031,
+     "reported": 12.413568159230236,
+     "simulated_recipient_hh_m": 7.810235416875362,
+     "reported_recipient_hh_m": 5.987863538380146
+    }
+   },
+   "weightings": {
+    "calibrated": {
+     "engine_simulated": {
+      "abs_bhc_pct": 9.31103618296997,
+      "rel_bhc_pct": 15.301746413861888,
+      "median_week": 751.48046875,
+      "fixed_line_60pct_of_base_median_pct": null
+     },
+     "all_reported": {
+      "abs_bhc_pct": 10.313734271166835,
+      "rel_bhc_pct": 15.941276893905556,
+      "median_week": 743.6017127403846,
+      "fixed_line_60pct_of_base_median_pct": 16.546027931767355
+     },
+     "only_universal_credit_reported": {
+      "abs_bhc_pct": 10.580153833924347,
+      "rel_bhc_pct": 15.587112687788679,
+      "median_week": 738.2648434448281,
+      "fixed_line_60pct_of_base_median_pct": 16.297318138004513
+     },
+     "only_housing_benefit_reported": {
+      "abs_bhc_pct": 9.14016077321755,
+      "rel_bhc_pct": 15.16678200312834,
+      "median_week": 754.4547852249873,
+      "fixed_line_60pct_of_base_median_pct": 15.058853549391705
+     },
+     "only_pension_credit_reported": {
+      "abs_bhc_pct": 9.318995885101302,
+      "rel_bhc_pct": 15.286388734873727,
+      "median_week": 751.1156843254604,
+      "fixed_line_60pct_of_base_median_pct": 15.29943831376547
+     },
+     "only_child_tax_credit_reported": {
+      "abs_bhc_pct": 9.1699525335271,
+      "rel_bhc_pct": 15.200603540728826,
+      "median_week": 752.8256460336538,
+      "fixed_line_60pct_of_base_median_pct": 15.178694664392356
+     },
+     "only_working_tax_credit_reported": {
+      "abs_bhc_pct": 9.313146841385175,
+      "rel_bhc_pct": 15.295077286349073,
+      "median_week": 751.3091606901123,
+      "fixed_line_60pct_of_base_median_pct": 15.296503576905119
+     },
+     "only_income_support_reported": {
+      "abs_bhc_pct": 9.302540797769172,
+      "rel_bhc_pct": 15.32238359179189,
+      "median_week": 753.5564903846154,
+      "fixed_line_60pct_of_base_median_pct": 15.279235753395055
+     },
+     "only_jsa_income_reported": {
+      "abs_bhc_pct": 9.293716044860428,
+      "rel_bhc_pct": 15.296462153660825,
+      "median_week": 751.48046875,
+      "fixed_line_60pct_of_base_median_pct": 15.296462153660825
+     },
+     "only_esa_income_reported": {
+      "abs_bhc_pct": 9.091234425217008,
+      "rel_bhc_pct": 15.202225069758379,
+      "median_week": 753.5740685096154,
+      "fixed_line_60pct_of_base_median_pct": 15.159441571540565
+     },
+     "only_council_tax_benefit_reported": {
+      "abs_bhc_pct": 9.306952741969605,
+      "rel_bhc_pct": 15.273189405312587,
+      "median_week": 751.5027749667146,
+      "fixed_line_60pct_of_base_median_pct": 15.273189405312587
+     },
+     "only_child_benefit_reported": {
+      "abs_bhc_pct": 9.620577762938007,
+      "rel_bhc_pct": 15.608389549912069,
+      "median_week": 749.7188096145738,
+      "fixed_line_60pct_of_base_median_pct": 15.775085185634453
+     }
+    },
+    "spine_s_design": {
+     "engine_simulated": {
+      "abs_bhc_pct": 10.36196031429083,
+      "rel_bhc_pct": 16.163689191086075,
+      "median_week": 745.38671875,
+      "fixed_line_60pct_of_base_median_pct": null
+     },
+     "all_reported": {
+      "abs_bhc_pct": 10.919095975960676,
+      "rel_bhc_pct": 16.21300915534116,
+      "median_week": 741.3272317748576,
+      "fixed_line_60pct_of_base_median_pct": 16.4939436433749
+     },
+     "only_universal_credit_reported": {
+      "abs_bhc_pct": 10.864636764086667,
+      "rel_bhc_pct": 16.10896510569944,
+      "median_week": 739.8475186091435,
+      "fixed_line_60pct_of_base_median_pct": 16.396321770638878
+     },
+     "only_housing_benefit_reported": {
+      "abs_bhc_pct": 10.23609788093914,
+      "rel_bhc_pct": 16.075942196134008,
+      "median_week": 747.9852216918238,
+      "fixed_line_60pct_of_base_median_pct": 15.995373114349686
+     },
+     "only_pension_credit_reported": {
+      "abs_bhc_pct": 10.402997815065309,
+      "rel_bhc_pct": 16.21252096711801,
+      "median_week": 744.800732591508,
+      "fixed_line_60pct_of_base_median_pct": 16.255839298426686
+     },
+     "only_child_tax_credit_reported": {
+      "abs_bhc_pct": 10.259407566686674,
+      "rel_bhc_pct": 16.028604350894277,
+      "median_week": 746.2291623635363,
+      "fixed_line_60pct_of_base_median_pct": 16.007228768116725
+     },
+     "only_working_tax_credit_reported": {
+      "abs_bhc_pct": 10.397790904848254,
+      "rel_bhc_pct": 16.150295858379952,
+      "median_week": 745.3914368722677,
+      "fixed_line_60pct_of_base_median_pct": 16.150295858379952
+     },
+     "only_income_support_reported": {
+      "abs_bhc_pct": 10.347779684562006,
+      "rel_bhc_pct": 16.154662098810736,
+      "median_week": 745.7957172866228,
+      "fixed_line_60pct_of_base_median_pct": 16.145274797711195
+     },
+     "only_jsa_income_reported": {
+      "abs_bhc_pct": 10.334706377652573,
+      "rel_bhc_pct": 16.1498074991165,
+      "median_week": 745.6569691736897,
+      "fixed_line_60pct_of_base_median_pct": 16.1498074991165
+     },
+     "only_esa_income_reported": {
+      "abs_bhc_pct": 10.30149271253396,
+      "rel_bhc_pct": 16.103754306349042,
+      "median_week": 746.1148587740385,
+      "fixed_line_60pct_of_base_median_pct": 16.082378723571495
+     },
+     "only_council_tax_benefit_reported": {
+      "abs_bhc_pct": 10.348221388275173,
+      "rel_bhc_pct": 16.145950788540702,
+      "median_week": 745.7141002161189,
+      "fixed_line_60pct_of_base_median_pct": 16.144713154254536
+     },
+     "only_child_benefit_reported": {
+      "abs_bhc_pct": 10.610616558778073,
+      "rel_bhc_pct": 16.34191503228337,
+      "median_week": 741.5446213942307,
+      "fixed_line_60pct_of_base_median_pct": 16.583148536156827
+     }
+    }
+   }
+  },
+  "efrs_1_57_3": {
+   "totals_bn": {
+    "universal_credit": {
+     "simulated": 73.09709172161321,
+     "reported": 74.61322382625191,
+     "simulated_recipient_hh_m": 6.239545211998403,
+     "reported_recipient_hh_m": 5.840541549760684
+    },
+    "housing_benefit": {
+     "simulated": 12.244102252339145,
+     "reported": 14.713157282822568,
+     "simulated_recipient_hh_m": 1.5778565503483117,
+     "reported_recipient_hh_m": 2.062660035393119
+    },
+    "pension_credit": {
+     "simulated": 6.447777116554897,
+     "reported": 6.03124227029022,
+     "simulated_recipient_hh_m": 1.7548619712848663,
+     "reported_recipient_hh_m": 1.4655489025582522
+    },
+    "child_tax_credit": {
+     "simulated": 0.07133737308845621,
+     "reported": 1.3395116965943374,
+     "simulated_recipient_hh_m": 0.009244576636970044,
+     "reported_recipient_hh_m": 0.19743776312781872
+    },
+    "working_tax_credit": {
+     "simulated": 0.06874109296621335,
+     "reported": 0.13433514966076926,
+     "simulated_recipient_hh_m": 0.016961884278178217,
+     "reported_recipient_hh_m": 0.02922350984734297
+    },
+    "income_support": {
+     "simulated": 0.3825988032267648,
+     "reported": 0.2954680901833564,
+     "simulated_recipient_hh_m": 0.058967820897340775,
+     "reported_recipient_hh_m": 0.06506074785017968
+    },
+    "jsa_income": {
+     "simulated": 0.0018578498791179123,
+     "reported": 0.011457864562215168,
+     "simulated_recipient_hh_m": 0.00040267406916618347,
+     "reported_recipient_hh_m": 0.002600004368543625
+    },
+    "esa_income": {
+     "simulated": 2.1363262599735786,
+     "reported": 4.142687820719381,
+     "simulated_recipient_hh_m": 0.18741943308846654,
+     "reported_recipient_hh_m": 0.3894029940016568
+    },
+    "council_tax_benefit": {
+     "simulated": 2.26717084087797,
+     "reported": 2.3202796003310877,
+     "simulated_recipient_hh_m": 3.4095928315644266,
+     "reported_recipient_hh_m": 4.523823705864847
+    },
+    "child_benefit": {
+     "simulated": 16.475751731474123,
+     "reported": 13.38427200537357,
+     "simulated_recipient_hh_m": 8.321704258219615,
+     "reported_recipient_hh_m": 6.313253319340095
+    }
+   },
+   "weightings": {
+    "calibrated": {
+     "engine_simulated": {
+      "abs_bhc_pct": 11.248234644883528,
+      "rel_bhc_pct": 19.67636083543157,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": null
+     },
+     "all_reported": {
+      "abs_bhc_pct": 10.748342162967067,
+      "rel_bhc_pct": 20.19765005842865,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 20.19765005842865
+     },
+     "only_universal_credit_reported": {
+      "abs_bhc_pct": 11.080994993072013,
+      "rel_bhc_pct": 20.035017025030427,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 20.035017025030427
+     },
+     "only_housing_benefit_reported": {
+      "abs_bhc_pct": 11.13165726795986,
+      "rel_bhc_pct": 19.660840381028184,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 19.660840381028184
+     },
+     "only_pension_credit_reported": {
+      "abs_bhc_pct": 11.184496972415786,
+      "rel_bhc_pct": 19.62190850785528,
+      "median_week": 779.8224909855769,
+      "fixed_line_60pct_of_base_median_pct": 19.630151615180026
+     },
+     "only_child_tax_credit_reported": {
+      "abs_bhc_pct": 11.232347127528135,
+      "rel_bhc_pct": 19.608493341890863,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 19.608493341890863
+     },
+     "only_working_tax_credit_reported": {
+      "abs_bhc_pct": 11.248234644883528,
+      "rel_bhc_pct": 19.676314107233647,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 19.676314107233647
+     },
+     "only_income_support_reported": {
+      "abs_bhc_pct": 11.246721826301014,
+      "rel_bhc_pct": 19.6771246050495,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 19.6771246050495
+     },
+     "only_jsa_income_reported": {
+      "abs_bhc_pct": 11.248234644883528,
+      "rel_bhc_pct": 19.67636083543157,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 19.67636083543157
+     },
+     "only_esa_income_reported": {
+      "abs_bhc_pct": 11.028404036936275,
+      "rel_bhc_pct": 19.607005782280726,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 19.607005782280726
+     },
+     "only_council_tax_benefit_reported": {
+      "abs_bhc_pct": 11.216962783614044,
+      "rel_bhc_pct": 19.644332982188086,
+      "median_week": 780.1297292523311,
+      "fixed_line_60pct_of_base_median_pct": 19.644332982188086
+     },
+     "only_child_benefit_reported": {
+      "abs_bhc_pct": 11.419842632142183,
+      "rel_bhc_pct": 20.111287786942928,
+      "median_week": 779.8224909855769,
+      "fixed_line_60pct_of_base_median_pct": 20.142793500550205
+     }
+    }
+   }
+  }
+ }
+}

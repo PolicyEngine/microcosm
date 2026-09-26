@@ -87,6 +87,9 @@ from microcosm.build.us_runtime.scf_wealth import (
     US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
     US_SCF_NET_WORTH_OUTPUT_COLUMNS,
 )
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.weeks_unemployed import (
     US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
 )
@@ -260,6 +263,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     },
     "relationship_inputs": {
         "person": frozenset(US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS),
+    },
+    "spm_independence_role": {
+        "person": frozenset(US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS),
     },
     "medicare_take_up": {
         "person": frozenset(US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS),

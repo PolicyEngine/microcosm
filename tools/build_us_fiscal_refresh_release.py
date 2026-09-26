@@ -30,6 +30,7 @@ for _thread_pool_variable in (
     os.environ.setdefault(_thread_pool_variable, _THREAD_POOL_DEFAULT)
 
 import argparse
+import dataclasses
 import gc
 import hashlib
 import importlib.metadata
@@ -43,9 +44,10 @@ import sys
 import time
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
+from types import MethodType
 from typing import Any
 
 import numpy as np
@@ -129,6 +131,7 @@ from microcosm.build.us_runtime import (
     us_eligibility_inputs_signal_gate,
     us_energy_subsidy_signal_gate,
     us_farm_business_income_signal_gate,
+    us_fiscal_target_exclusion_receipt,
     us_form_4952_election_signal_gate,
     us_hours_worked_signal_gate,
     us_housing_inputs_signal_gate,
@@ -162,6 +165,7 @@ from microcosm.build.us_runtime import (
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_spm_independence_role_signal_gate,
     us_ssi_disability_criteria_signal_gate,
     us_ssi_take_up_delivery_gate,
     us_ssi_take_up_diagnostics,
@@ -197,6 +201,7 @@ from microcosm.build.us_runtime import (
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_state_take_up,
     with_us_snap_take_up_inputs,
+    with_us_spm_independence_role,
     with_us_ssi_disability_criteria,
     with_us_ssi_take_up,
     with_us_take_up_inputs,
@@ -231,6 +236,8 @@ from microcosm.build.us_runtime.exact_k_ladder import (
     exact_k_ladder_manifest_payload,
 )
 from microcosm.build.us_runtime.fiscal_targets import (
+    AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS,
+    AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
 from microcosm.build.us_runtime.h5_io import (
@@ -261,14 +268,18 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
 from microcosm.build.us_runtime.reform_validation import (
+    US_RELEASE_SPM_SELECTION,
     default_baseline_level_specs,
-    default_simulate_factory,
     load_default_reform_specs,
     reform_validation_payload,
     write_reform_validation,
 )
 from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
     CheckResult,
+)
+from microcosm.build.us_runtime.release_input_coverage import (
+    REFERENCE_ECPS_LAYER_RENAMES,
+    project_ecps_parity_known_gap_names,
 )
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
@@ -284,6 +295,8 @@ from microcosm.build.us_runtime.warm_start_selection import (
     select_frozen_support,
 )
 from microcosm.calibrate import (
+    CalibrationResult,
+    L0RefitResult,
     TargetRegistry,
     TargetSpec,
     calibrate,
@@ -450,7 +463,14 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # 11: target-frame checkpoint columns now preserve nullable booleans as
 # canonical bool values plus an explicit uint8 null mask. Older checkpoints
 # cannot attest this lossless physical representation.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 11
+# 12: the identity now carries staged_frame_sha256, a digest of the staged
+# frame handed to the materializer (microcosm#1018), so a staging change that
+# forgets this bump can no longer reuse stale target columns. Checkpoints
+# written without the digest cannot attest their staged frame.
+# 13: the base simulation runs over household batches and its compilation
+# carries a batching receipt (microcosm#956), so checkpoints written by the
+# whole-pool base pass miss too.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 13
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -655,6 +675,124 @@ IDENTITY_LEDGER_FILTER_METADATA_KEYS = frozenset(
     }
 )
 
+#: Restated constraints, a third class distinct from both sets above: a
+#: labelled feed re-expresses a fact's universe constraint in the Ledger's own
+#: concept vocabulary (``us:statutes/26/62#adjusted_gross_income_lower_bound``)
+#: alongside the compiled metadata the materializer actually slices on
+#: (``agi_lower_bound``). These keys are NOT inert — they restrict the
+#: microdata — so they can never join the supported set outright: a future
+#: feed whose labelled bound disagreed with the compiled one would then be
+#: silently ignored, materializing a wider population than the published cell
+#: covers, which is the failure the guard exists to stop. Each key here is
+#: accepted only per spec, and only when that spec also carries the filter the
+#: materializer applies and the two select the same population; a restatement
+#: that disagrees, or that has no compiled counterpart, stays fatal and the
+#: refusal names the values. Values are the restated-constraint rule that
+#: decides the comparison (see ``_restated_ledger_filter_refusal``).
+RESTATED_LEDGER_FILTER_CONCEPTS = {
+    "us:statutes/26/62#adjusted_gross_income": "agi_band",
+    "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
+    "age": "age_band",
+}
+
+#: Bound-side suffixes a restated constraint key may carry. A key with no
+#: suffix restates an exact value of the concept.
+RESTATED_LEDGER_FILTER_BOUND_SIDES = (
+    ("_lower_bound", "lower"),
+    ("_upper_bound", "upper"),
+)
+
+#: Compiled metadata the materializer slices the AGI band on, by bound
+#: side: the ``irs_soi`` loop in :func:`_materialize_target_frame` reads
+#: both through :func:`_as_bound` into one half-open mask. A restated AGI
+#: bound is accepted only against its own side; the sibling side is judged
+#: by its own key.
+RESTATED_AGI_BAND_COMPILED_KEYS = {
+    "lower": "agi_lower_bound",
+    "upper": "agi_upper_bound",
+}
+
+#: Qualifying-child counts probed when deciding whether a restated EITC
+#: child-count bound selects the same returns as the compiled filter.
+#: :func:`_eitc_child_count_mask` resolves every compiled value to ``== 0``,
+#: ``== 1``, ``== 2`` or ``>= 3``, and a compared restatement is ``>= n`` or
+#: ``== n`` (an upper bound is refused before any comparison; see
+#: :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`); evaluating both over
+#: 0..16 separates every such pair, so equal masks over the probe mean equal
+#: populations. Counts above the probe are refused rather than compared.
+RESTATED_EITC_CHILD_COUNT_PROBE_MAX = 16
+
+#: Bound sides on which a restated EITC qualifying-child key is refused
+#: outright, whatever its value and whatever the spec compiles. What an upper
+#: bound selects turns on the Ledger's operator — ``< 1`` is the childless
+#: returns, ``<= 1`` adds the one-child returns — and that operator is
+#: unconfirmed for count constraints. The metadata key does not settle it:
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` stamps a
+#: ``<`` row as ``_upper_bound`` (``<=`` becomes ``_upper_bound_inclusive``,
+#: which no restated concept names, so it is refused by bare key), but the
+#: dimension stamp in ``_ledger_metadata`` runs first and wins through
+#: ``setdefault``, and can carry the same key with no operator at all. So no
+#: reading is guessed until the Ledger confirms one (Max, 2026-09-22). Lower
+#: and exact restatements stay under the agreement rule.
+RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset({"upper"})
+
+#: Compiled metadata the materializer slices a person-age band on, by bound
+#: side. Both age paths in :func:`_materialize_target_frame` read these
+#: through :func:`_as_bound` into one half-open mask ``lower <= age < upper``
+#: — the ``population_age`` loop in :func:`_population_age_household_values`
+#: and the age-banded ``policyengine_variable`` branch (the SSA SSI
+#: recipients-by-age counts) — so a restated age bound is judged, like an AGI
+#: bound, against its own side only.
+#:
+#: Numeric equality of the edges is equality of populations only for a
+#: restated key whose operator is the mask's: ``age < 10`` and ``age <= 10``
+#: differ by everyone aged exactly ten, so the operator decides.
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` writes
+#: ``age_lower_bound`` only for a ``>=`` row and ``age_upper_bound`` only for
+#: a ``<`` row, the two operators of the materializer's mask. A ``>`` or
+#: ``<=`` row is stamped ``age_lower_bound_exclusive`` /
+#: ``age_upper_bound_inclusive``, which no restated concept names, so it stays
+#: refused by bare key — as it must, because the compiled bound comes from
+#: ``us_runtime.fiscal_targets._age_bounds``, which drops the operator: a
+#: ``<= 4`` row compiles to ``age_upper_bound=4`` and the materializer's
+#: ``age < 4`` would leave out the four-year-olds the published cell counts.
+#: But the same ``ledger_filter_age_{lower,upper}_bound`` key can also be a
+#: dimension's, which carries no operator (the ambiguity that keeps restated
+#: qualifying-child upper bounds refused), so the key name alone does not
+#: settle it; the compile's attestation does
+#: (:data:`microcosm.build.us_runtime.fiscal_targets.AGE_BOUND_STAMP_SOURCE_KEY`).
+RESTATED_AGE_BAND_COMPILED_KEYS = {
+    "lower": "age_lower_bound",
+    "upper": "age_upper_bound",
+}
+
+#: Materializers that apply the compiled age band, and so the only ones for
+#: which ignoring an agreeing age restatement changes nothing. Both are read
+#: in :func:`_materialize_target_frame`: ``population_age`` through
+#: :func:`_population_age_household_values`, and ``policyengine_variable``
+#: through its age-banded branch, entered whenever either compiled age key is
+#: present. Every other materializer (the ``irs_soi`` slice, the direct
+#: household-variable measures) never reads an age bound, so a restated age
+#: bound there would be silently ignored however well it agreed with metadata
+#: the materializer also ignores; it is refused instead.
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+
+#: The exact-value age key the dimension stamp writes when ``age`` is itself
+#: a dimension of the fact.
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` skips
+#: every constraint row whose variable is already a dimension key, so on
+#: such a fact an ``age_{lower,upper}_bound`` restatement cannot have come
+#: from an operator-checked ``>=``/``<`` row — only from a dimension of that
+#: name, which carries no operator at all. A restated age bound on a spec
+#: carrying this key is refused, whatever its value, including ``all``.
+#: ``_ledger_metadata`` stamps a dimension only when its value is not
+#: ``None`` and then drops empty values, so an ``age`` dimension valued
+#: ``None`` or ``""`` leaves no key here; the compile's attestation
+#: (:data:`AGE_BOUND_STAMP_SOURCE_KEY`, which checks dimension keys whatever
+#: their value) is what refuses that case. The pinned feeds have no age
+#: dimension of any kind.
+RESTATED_AGE_DIMENSION_KEY = "ledger_filter_age"
+
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
     "cms_aca": "CMS ACA marketplace enrollment public use files",
@@ -706,6 +844,15 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "s_corp_income": (
         "Combined partnership/S-corp income is carried in partnership_income "
         "in pre-PUF-support bases; the S-corp leaf is constant zero there."
+    ),
+    "strike_benefits": (
+        "No respondent in the pinned public ASEC files reports strike benefits: "
+        "OI_OFF code 12 ('strike benefits', ASEC 2024 public use data "
+        "dictionary) has zero person rows in pppub23, pppub24 and pppub25 "
+        "(income years 2022-2024), and the PUF half carries no strike-benefit "
+        "field, so the OI_OFF == 12 split in alimony.py is identically zero. "
+        "The mapping is correct; a vintage with a code-12 reporter makes this "
+        "entry stale and fails the gate."
     ),
 }
 
@@ -959,8 +1106,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional JSON object of export column -> reason for sparse "
             "QRF-imputed columns allowed past the tail-concentration "
             "top-share threshold (microcosm#464 gate). Stale entries fail the "
-            "gate; the file sha and entries are recorded in the release "
-            "diagnostics."
+            "gate; the file path, sha256, entries and any mismatch are "
+            "recorded in qrf_tail_concentration.json and bound into both "
+            "manifests as qrf_tail_register, with that file a release "
+            "artifact."
         ),
     )
     parser.add_argument(
@@ -1097,7 +1246,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Do not run the reform-coverage smoke gate (microcosm#368): the "
             "pinned bound-reform probes (SSI $10k/$20k asset limits) that must "
             "score nonzero on the written release. Skipping loses the "
-            "end-to-end $0-reform backstop; release builds should leave it on."
+            "end-to-end $0-reform backstop; release builds should leave it on. "
+            "Both manifests' gate_evidence block records the smoke as skipped."
         ),
     )
     parser.add_argument(
@@ -1494,6 +1644,21 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "(microcosm.build.us_runtime.data; see "
             "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md); pass a path to "
             "override the default."
+        ),
+    )
+    parser.add_argument(
+        "--target-surface",
+        choices=TARGET_SURFACE_MODES,
+        default=TARGET_SURFACE_FULL,
+        help=(
+            "Which compiled fiscal targets the release calibrates to. "
+            f"'{TARGET_SURFACE_FULL}' (default) calibrates every compiled "
+            f"target. '{TARGET_SURFACE_NATIONAL_STATE}' drops every "
+            "congressional-district-classified target (the CD geography rows "
+            "and the rows sourced from the SOI congressional-district file) "
+            "after the target-parity and profile-coverage gates have run on "
+            "the full compiled surface, as the July national releases "
+            "calibrated; the drop is recorded in both manifests."
         ),
     )
     parser.add_argument(
@@ -2195,6 +2360,149 @@ def _selection_mass_protection_specs(
     return tuple(specs)
 
 
+# The byte framing of _staged_frame_sha256. It is the first field hashed, so a
+# framing change must rename it and digests under two codecs never compare
+# equal.
+STAGED_FRAME_DIGEST_CODEC = "us_fiscal_refresh_staged_frame_v1"
+
+
+def _update_staged_frame_digest(digest, field: str, payload) -> None:
+    """Append one named, length-prefixed field to the staged-frame digest.
+
+    Prefixing every field with its name and byte length keeps the stream
+    unambiguous: bytes cannot shift between adjacent columns or tables and
+    reproduce another frame's digest.
+    """
+
+    field_bytes = field.encode("utf-8")
+    view = memoryview(payload).cast("B")
+    digest.update(len(field_bytes).to_bytes(8, "little"))
+    digest.update(field_bytes)
+    digest.update(view.nbytes.to_bytes(8, "little"))
+    digest.update(view)
+
+
+def _update_staged_frame_digest_with_series(
+    digest, field: str, series: pd.Series
+) -> None:
+    """Hash one column: its dtype, row count, missing mask and value bytes."""
+
+    dtype = series.dtype
+    _update_staged_frame_digest(digest, f"{field}/dtype", str(dtype).encode("utf-8"))
+    _update_staged_frame_digest(
+        digest, f"{field}/rows", len(series).to_bytes(8, "little")
+    )
+    if isinstance(dtype, np.dtype) and dtype.kind in "biufcmM":
+        # NumPy-backed fixed-width values: hash the raw bytes. A NaN is its
+        # own bit pattern, so no separate mask is needed. Datetimes hash as
+        # their int64 ticks (the buffer protocol refuses them); the dtype
+        # field above already names the unit.
+        values = series.to_numpy(copy=False)
+        if dtype.kind in "mM":
+            values = values.view(np.int64)
+        _update_staged_frame_digest(
+            digest,
+            f"{field}/values",
+            np.ascontiguousarray(
+                values.astype(values.dtype.newbyteorder("<"), copy=False)
+            ),
+        )
+        return
+    missing = series.isna().to_numpy(dtype=np.bool_)
+    _update_staged_frame_digest(digest, f"{field}/missing", missing)
+    if getattr(dtype, "kind", "O") in "biuf" and hasattr(dtype, "numpy_dtype"):
+        # Masked extension arrays (boolean, Int64, Float64): canonical zero
+        # under the mask, so hidden bits cannot move the digest.
+        numpy_dtype = np.dtype(dtype.numpy_dtype)
+        values = series.to_numpy(dtype=numpy_dtype, na_value=numpy_dtype.type(0))
+        _update_staged_frame_digest(
+            digest,
+            f"{field}/values",
+            np.ascontiguousarray(
+                values.astype(numpy_dtype.newbyteorder("<"), copy=False)
+            ),
+        )
+        return
+    # Variable-width values (strings, objects, categoricals). A missing slot
+    # encodes as empty bytes; the mask above tells it apart from "".
+    values = series.to_numpy(dtype=object, na_value=None)
+    if pd.api.types.infer_dtype(values, skipna=True) in {"string", "empty"}:
+        kind = b"utf8"
+        encoded = [
+            b"" if value is None else value.encode("utf-8", "surrogatepass")
+            for value in values
+        ]
+    else:
+        # Mixed objects: tag each value with its type so 1, 1.0 and "1" differ.
+        kind = b"typed"
+        encoded = [
+            b""
+            if value is None
+            else (
+                f"{type(value).__module__}.{type(value).__qualname__}\x00{value}"
+            ).encode("utf-8", "surrogatepass")
+            for value in values
+        ]
+    _update_staged_frame_digest(digest, f"{field}/encoding", kind)
+    _update_staged_frame_digest(
+        digest,
+        f"{field}/lengths",
+        np.fromiter((len(item) for item in encoded), dtype="<u8", count=len(encoded)),
+    )
+    _update_staged_frame_digest(digest, f"{field}/payload", b"".join(encoded))
+
+
+def _staged_frame_sha256(frame: Frame) -> str:
+    """Digest the staged frame handed to the target materializer.
+
+    microcosm#956. The rest of the checkpoint identity hashes the on-disk
+    base dataset, the run settings (seed, PolicyEngine-US version, target
+    registry, congressional-district crosswalk, selection-mass protections),
+    a few named stage-input digests (the weeks-unemployed source, the SSI
+    take-up assignment and prior-weight basis, the selection support) and a
+    hand-bumped materializer version. A change to any other stage that forgot
+    the bump would silently reuse stale target columns. This digest
+    covers what the materializer reads and the checkpoint restores: each
+    entity table's column names, dtypes and value bytes in column order,
+    every weight vector with its kind, and the person strata. It streams one
+    column at a time, so it never copies the whole frame.
+    """
+
+    digest = hashlib.sha256()
+    _update_staged_frame_digest(
+        digest, "codec", STAGED_FRAME_DIGEST_CODEC.encode("ascii")
+    )
+    _update_staged_frame_digest(
+        digest, "entities", _strict_json_bytes(list(frame.entities))
+    )
+    for entity in frame.entities:
+        table = frame.table(entity)
+        _update_staged_frame_digest(
+            digest,
+            f"tables/{entity}/columns",
+            _strict_json_bytes([str(column) for column in table.columns]),
+        )
+        for index in range(table.shape[1]):
+            _update_staged_frame_digest_with_series(
+                digest, f"tables/{entity}/{index}", table.iloc[:, index]
+            )
+    _update_staged_frame_digest(
+        digest, "weighted_entities", _strict_json_bytes(list(frame.weighted_entities))
+    )
+    for entity in frame.weighted_entities:
+        weights = frame.weights_for(entity)
+        _update_staged_frame_digest(
+            digest, f"weights/{entity}/kind", weights.kind.value.encode("utf-8")
+        )
+        _update_staged_frame_digest(
+            digest,
+            f"weights/{entity}/values",
+            np.ascontiguousarray(weights.values, dtype="<f8"),
+        )
+    _update_staged_frame_digest_with_series(digest, "strata", frame.strata)
+    return digest.hexdigest()
+
+
 def _target_frame_checkpoint_identity(
     *,
     base_dataset_sha256: str,
@@ -2206,6 +2514,7 @@ def _target_frame_checkpoint_identity(
     congressional_district_vintage_crosswalk_sha256: object,
     ssi_take_up_assignment_sha256: str,
     selection_identities_sha256: str | None,
+    staged_frame_sha256: str,
     selection_mass_protections: tuple[str, ...] = (),
     ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
@@ -2215,6 +2524,12 @@ def _target_frame_checkpoint_identity(
         "kind": "us_fiscal_refresh_target_frame",
         "country": "us",
         "base_dataset_sha256": str(base_dataset_sha256),
+        # The exact staged frame the materializer reads (microcosm#956). The
+        # base hash above cannot see the stages that run after the base
+        # load. The build commit stays out: a new commit that stages the
+        # same frame still hits, and the writing commit is recorded beside
+        # the identity as information only.
+        "staged_frame_sha256": str(staged_frame_sha256),
         "weeks_unemployed_source_sha256": str(weeks_unemployed_source_sha256),
         "policyengine_us_version": str(policyengine_us_version),
         "seed": int(seed),
@@ -2275,6 +2590,7 @@ def _write_target_frame_checkpoint(
     frame: Frame,
     identity: Mapping[str, object],
     compilation: Mapping[str, object],
+    build_commit: str,
 ) -> dict[str, object]:
     import h5py
 
@@ -2287,6 +2603,9 @@ def _write_target_frame_checkpoint(
         h5.attrs["identity_json"] = _strict_json_text(identity)
         h5.attrs["identity_sha256"] = _target_frame_checkpoint_digest(identity)
         h5.attrs["compilation_json"] = _strict_json_text(compilation)
+        # Provenance only, never identity: a hit reports which build wrote
+        # the frame it reuses (microcosm#956).
+        h5.attrs["build_commit"] = str(build_commit)
         tables_group = h5.create_group("tables")
         for entity in frame.entities:
             _write_checkpoint_dataframe(
@@ -2313,6 +2632,8 @@ def _write_target_frame_checkpoint(
         "path": str(path),
         "identity_sha256": _target_frame_checkpoint_digest(identity),
         "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "staged_frame_sha256": identity.get("staged_frame_sha256"),
+        "source_build_commit": str(build_commit),
     }
 
 
@@ -2360,6 +2681,7 @@ def _read_target_frame_checkpoint(
             weights[str(entity)] = Weights(values, kind)
         strata = _read_checkpoint_series(h5["strata"])
         stored_compilation = json.loads(str(h5.attrs.get("compilation_json", "{}")))
+        stored_build_commit = h5.attrs.get("build_commit")
     frame = Frame(tables, US_SCHEMA, weights, strata)
     registry, compilation = _compile_materialized_target_registry(
         frame,
@@ -2374,10 +2696,21 @@ def _read_target_frame_checkpoint(
             "path": str(path),
             "identity_sha256": _target_frame_checkpoint_digest(identity),
             "schema_version": TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+            "staged_frame_sha256": identity.get("staged_frame_sha256"),
+            # The build that wrote the reused frame, which may differ from
+            # this one: the identity deliberately excludes the commit.
+            "source_build_commit": (
+                None if stored_build_commit is None else str(stored_build_commit)
+            ),
             "stored_compilation": stored_compilation,
         },
         "target_materialization_cache": {
             "enabled": False,
+            "status": "skipped_target_frame_checkpoint_hit",
+        },
+        # A hit runs no engine; the writing run's receipt is in
+        # ``stored_compilation``.
+        "target_materialization_batching": {
             "status": "skipped_target_frame_checkpoint_hit",
         },
     }
@@ -3950,119 +4283,921 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
     return frame.select(person_mask)
 
 
-class _BatchedScalarTotal:
-    def __init__(self, value: float):
-        self.value = float(value)
+# ---------------------------------------------------------------------------
+# Household-batched post-export scoring (route A remediation, microcosm#956)
+# ---------------------------------------------------------------------------
+#
+# The reform-coverage smoke, reform_validation and demographics each used to
+# build one Microsimulation over the whole written H5
+# (``reform_validation.default_simulate_factory``). Reform validation keeps
+# one shared baseline for all of its keys.
+#
+# This scorer keeps the consumers' ``simulate(reform) -> simulation`` seam and
+# changes only how the seam is served:
+#
+# * the WRITTEN H5 is loaded once (its sha256 bound to the bytes read) and
+#   split once into household batches; every group entity must nest in one
+#   household and the batches must partition every entity, or the scorer
+#   refuses before any engine exists;
+# * every construction declares ``spm=US_RELEASE_SPM_SELECTION``;
+# * a consumer's baseline requests are learned by an engine-free recording
+#   dry run and scored in ONE batch-outer pass, in ascending period order;
+#   the served baseline refuses any key outside that recorded plan;
+# * each reform builds ONE tax-benefit system (microcosm#456) and scores its
+#   keys batch by batch; every batch engine is released before the next;
+# * a batch reform engine gets that system alone, not ``reform=`` too (see
+#   ``_HouseholdBatchedPostExportScorer._construct``), so it carries no
+#   ``baseline`` branch; it refuses the formulas that read one
+#   (``POST_EXPORT_BASELINE_BRANCH_READERS``), and a reform may not move the
+#   behavioral-response parameters that decide whether the rest do;
+# * ``calculate`` returns full-length concatenated values with their engine
+#   weights, so ``.sum()`` (== ``MicroSeries.sum``), ``np.asarray`` and
+#   ``.weights`` feed every existing statistic unchanged.
+#
+# Totals then differ from one whole-pool simulation only in floating-point
+# summation order, PROVIDED every scored measure is additive across
+# households: a formula that aggregates over its simulation's whole population
+# (``US_POPULATION_AGGREGATE_VARIABLES``: the Medicaid SLCSP state sums and
+# the weighted income deciles) sees one batch, not the file. Every
+# batch engine of a multi-batch pass refuses once it has computed one of them,
+# so a measure that reaches such a formula fails the stage instead of scoring
+# a batch-local aggregate.
+
+#: Recorded in ``post_export_scoring`` blocks; bump with any change to how the
+#: written H5 is scored.
+POST_EXPORT_SCORING_METHOD = "household_batched_written_h5"
+
+#: One scored request: (variable, period, map_to).
+PostExportKey = tuple[str, int, str | None]
+
+#: policyengine-us formulas that aggregate over their simulation's whole
+#: population instead of within one household, so a household-batch engine
+#: computes them over its own batch only. In policyengine-us 2.2.1,
+#: ``medicaid_slcsp_state_average_cost_index`` and
+#: ``medicaid_slcsp_state_denominator`` sum person weights by state
+#: (``sum_by_state``) and feed ``medicaid_cost_if_enrolled``, and through it
+#: ``medicaid_cost``, ``medicaid`` and ``household_health_benefits``; the two
+#: income deciles are weighted ranks over every household or SPM unit. Batched
+#: target materialization (``_refuse_batch_population_aggregates``) and
+#: multi-batch post-export scoring
+#: (``_assert_post_export_scoring_is_batch_invariant``) refuse an engine that
+#: computed any of them. ``test_us_batched_target_materialization.py`` pins
+#: this list against the installed engine's variable sources; that pattern
+#: scan is a drift detector, not a proof of household locality
+#: (microcosm#956). ``test_us_post_export_scoring.py`` exercises the
+#: post-export Medicaid refusal on a written fixture H5.
+US_POPULATION_AGGREGATE_VARIABLES = (
+    "household_income_decile",
+    "medicaid_slcsp_state_average_cost_index",
+    "medicaid_slcsp_state_denominator",
+    "spm_unit_income_decile",
+)
+
+#: policyengine-us formulas whose value reads the engine's ``baseline`` branch,
+#: which a batch reform engine does not have. ``medicaid_slcsp_state_denominator``
+#: holds a reform at the baseline's denominator; the others reach
+#: ``get_behavioral_response_measurements``, which measures a reform against
+#: ``get_branch("baseline")`` and would measure it against itself here. A reform
+#: pass refuses an engine that computed any of them, whatever its batch count.
+#: Pinned in ``test_us_post_export_scoring.py``.
+POST_EXPORT_BASELINE_BRANCH_READERS = (
+    "income_elasticity_lsr",
+    "medicaid_slcsp_state_denominator",
+    "relative_capital_gains_mtr_change",
+    "relative_income_change",
+    "relative_wage_change",
+    "substitution_elasticity_lsr",
+)
+
+#: The other two formulas that read ``simulation.baseline``, and the parameter
+#: subtree each response is computed from. Without a baseline branch both
+#: return 0; with one they return 0 at zero elasticities. Every reform pass
+#: requires these parameters to remain at their baseline values before it
+#: builds a batch engine.
+POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS = {
+    "capital_gains_behavioral_response": "gov.simulation.capital_gains_responses",
+    "labor_supply_behavioral_response": "gov.simulation.labor_supply_responses",
+}
+
+
+def _post_export_key(
+    variable: str, period: object, map_to: str | None = None
+) -> PostExportKey:
+    if period is None:
+        raise ValueError(
+            f"Post-export scoring needs an explicit period for {variable!r}; the "
+            "engine default period is not part of the recorded plan."
+        )
+    return (str(variable), int(str(period)), None if map_to is None else str(map_to))
+
+
+def _post_export_key_record(key: PostExportKey) -> dict[str, object]:
+    variable, period, map_to = key
+    return {"variable": variable, "period": period, "map_to": map_to}
+
+
+def _ascending_period_plan(keys: Iterable[PostExportKey]) -> tuple[PostExportKey, ...]:
+    """Order a baseline plan by period, keeping request order within a period.
+
+    Baseline consumers can request interleaved periods. Sort those requests
+    before engine calls; the engine guard refuses a return to an earlier
+    period. The real-engine test probes the MD CCS request-order error and
+    warns if the upstream engine no longer reproduces it.
+    """
+    return tuple(sorted(dict.fromkeys(keys), key=lambda key: key[1]))
+
+
+def _post_export_baseline_plan_record(
+    plan: Sequence[PostExportKey],
+) -> dict[str, object]:
+    return {
+        "keys": [_post_export_key_record(key) for key in plan],
+        "period_order": sorted({key[1] for key in plan}),
+    }
+
+
+class _PostExportValues:
+    """Full-length values of one scored key, with the engine's weights.
+
+    The duck type the post-export consumers read from a Microsimulation
+    result: ``np.asarray(values)``, ``values.values``, ``values.weights`` and
+    ``values.sum()``. Both arrays are read-only, so no consumer can mutate a
+    baseline result another consumer statistic still reads.
+    """
+
+    __slots__ = ("_values", "_weights")
+
+    def __init__(self, values: np.ndarray, weights: np.ndarray) -> None:
+        values = np.asarray(values)
+        weights = np.asarray(weights, dtype=np.float64)
+        if values.ndim != 1 or weights.shape != values.shape:
+            raise ValueError(
+                "Post-export scoring needs one weight per value; got values "
+                f"of shape {values.shape} and weights of shape {weights.shape}."
+            )
+        values.flags.writeable = False
+        weights.flags.writeable = False
+        self._values = values
+        self._weights = weights
+
+    def __array__(self, dtype=None, copy=None) -> np.ndarray:
+        if dtype is None and not copy:
+            return self._values
+        return np.array(self._values, dtype=dtype, copy=True)
+
+    def __len__(self) -> int:
+        return len(self._values)
+
+    @property
+    def values(self) -> np.ndarray:
+        return self._values
+
+    @property
+    def weights(self) -> np.ndarray:
+        return self._weights
 
     def sum(self) -> float:
-        return self.value
+        """Weighted total, computed as policyengine-core's ``MicroSeries.sum``.
+
+        ``MicroSeries.sum`` is ``self.multiply(self.weights).sum()``: a pandas
+        product summed with NaN skipped. Doing the same over the concatenated
+        arrays gives the whole-pool total up to summation order.
+        """
+        return float(pd.Series(self._values).multiply(self._weights).sum())
 
 
-class _BatchedReformValidationSimulation:
-    def __init__(
-        self,
-        frame: Frame,
-        *,
-        reform,
-        maximum_microsim_batch_size: int | None,
-        microsimulation_cls,
-        dataset_from_frame,
-    ):
-        self._frame = frame
-        self._reform = reform
-        self._maximum_microsim_batch_size = maximum_microsim_batch_size
-        self._microsimulation_cls = microsimulation_cls
-        self._dataset_from_frame = dataset_from_frame
-        self._cache: dict[tuple[str, int], float] = {}
-        self._reform_system = None
+def _concatenate_post_export_parts(
+    parts: Sequence[tuple[np.ndarray, np.ndarray]],
+) -> _PostExportValues:
+    return _PostExportValues(
+        np.concatenate([values for values, _ in parts]),
+        np.concatenate([weights for _, weights in parts]),
+    )
 
-    def calculate(self, measure: str, period: int) -> _BatchedScalarTotal:
-        key = (str(measure), int(period))
-        if key not in self._cache:
-            self._cache[key] = self._calculate_total(str(measure), int(period))
-        return _BatchedScalarTotal(self._cache[key])
 
-    def _calculate_total(self, measure: str, period: int) -> float:
-        n_households = self._frame.n("household")
-        batches = tuple(
-            _household_position_batches(
-                n_households,
-                self._maximum_microsim_batch_size,
-            )
+def _post_export_values_and_weights(result, key: PostExportKey):
+    weights = getattr(result, "weights", None)
+    if weights is None:
+        raise RuntimeError(
+            f"Post-export scoring of {key} got an unweighted engine result; "
+            "every scored key must carry the engine's entity weights."
         )
-        if len(batches) > 1:
-            print(
-                "Scoring reform validation measure "
-                f"{measure} in {len(batches)} batches of up to "
-                f"{self._maximum_microsim_batch_size:,} households.",
-                flush=True,
-            )
-        total = 0.0
-        for household_positions in batches:
-            with _automatic_gc_suspended():
-                full_batch = len(household_positions) == n_households
-                batch_frame = (
-                    self._frame
-                    if full_batch
-                    else _select_households_by_position(
-                        self._frame, household_positions
-                    )
-                )
-                dataset = self._dataset_from_frame(batch_frame)
-                if self._reform is None:
-                    simulation = self._microsimulation_cls(dataset=dataset)
-                else:
-                    # microcosm#456: one reform system per scored reform, not
-                    # one per batch (each engine build permanently leaks
-                    # ~5,600 sys.modules entries).
-                    if self._reform_system is None:
-                        self._reform_system = (
-                            self._microsimulation_cls.default_tax_benefit_system(
-                                reform=self._reform
-                            )
-                        )
-                    simulation = self._microsimulation_cls(
-                        tax_benefit_system=self._reform_system,
-                        dataset=dataset,
-                        reform=self._reform,
-                    )
-                total += float(simulation.calculate(measure, period).sum())
-                release_engine_simulation(simulation)
-                del simulation, dataset, batch_frame
-            _collect_batch_garbage()
-        _collect_family_garbage()
-        return total
+    values = np.asarray(result)
+    weights = np.asarray(weights, dtype=np.float64)
+    if values.ndim != 1 or weights.shape != values.shape:
+        raise RuntimeError(
+            f"Post-export scoring of {key} got {values.shape} values against "
+            f"{weights.shape} weights from one batch engine."
+        )
+    return values, weights
 
 
-def _batched_reform_validation_simulate_factory_from_frame(
-    frame: Frame,
-    *,
-    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
-    microsimulation_cls=None,
-    dataset_from_frame=None,
-):
-    if microsimulation_cls is None:
-        from policyengine_us import Microsimulation
+class _RecordingPostExportSimulation:
+    """Engine-free stand-in that records the baseline keys a consumer asks for."""
 
-        microsimulation_cls = Microsimulation
-    if dataset_from_frame is None:
+    def __init__(self, keys: dict[PostExportKey, None] | None) -> None:
+        self._keys = keys
 
-        def dataset_from_frame(batch_frame: Frame):
-            return _dataset_from_frame(
-                batch_frame,
-                assert_no_formula_owned_columns=False,
-            )
+    def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
+        key = _post_export_key(variable, period, map_to)
+        if self._keys is not None:
+            self._keys.setdefault(key, None)
+        return _PostExportValues(np.zeros(0), np.zeros(0))
+
+
+def _record_post_export_baseline_plan(
+    consumer: Callable[[Callable[[Any], Any]], object],
+) -> tuple[PostExportKey, ...]:
+    """Learn a consumer's baseline keys by running it against recorders.
+
+    No engine is constructed: ``simulate(None)`` returns a recorder that
+    logs every request, ``simulate(reform)`` a recorder that logs nothing
+    (reforms are scored key by key when the consumer runs for real). The
+    consumers ask for the same keys whatever values they get back, and the
+    served baseline refuses any key this dry run did not see, so a
+    value-dependent request cannot slip past the plan.
+    """
+    keys: dict[PostExportKey, None] = {}
 
     def simulate(reform):
-        return _BatchedReformValidationSimulation(
-            frame,
-            reform=reform,
-            maximum_microsim_batch_size=maximum_microsim_batch_size,
-            microsimulation_cls=microsimulation_cls,
-            dataset_from_frame=dataset_from_frame,
+        return _RecordingPostExportSimulation(keys if reform is None else None)
+
+    consumer(simulate)
+    return _ascending_period_plan(keys)
+
+
+class _AscendingPeriodEngine:
+    """One batch engine that refuses a period earlier than one it computed."""
+
+    def __init__(self, simulation, *, label: str) -> None:
+        self.simulation = simulation
+        self._label = label
+        self._latest_period: int | None = None
+
+    def calculate(self, key: PostExportKey):
+        variable, period, map_to = key
+        if self._latest_period is not None and period < self._latest_period:
+            raise RuntimeError(
+                f"Post-export scoring ({self._label}) asked one engine for "
+                f"{variable}@{period} after it computed period "
+                f"{self._latest_period}. policyengine-us 2.2.1 can fail to "
+                "compute an earlier period after a later one on the same "
+                "engine (the MD CCS ParameterNotFoundError; see "
+                "_ascending_period_plan), so each engine scores its keys in "
+                "ascending period order."
+            )
+        self._latest_period = period
+        if map_to is None:
+            return self.simulation.calculate(variable, period)
+        return self.simulation.calculate(variable, period, map_to=map_to)
+
+
+def _post_export_watched_variables(*, batched: bool, reform: bool) -> tuple[str, ...]:
+    """The formulas a batch engine may not compute (see the block comment)."""
+    watched = US_POPULATION_AGGREGATE_VARIABLES if batched else ()
+    if reform:
+        watched = (*watched, *POST_EXPORT_BASELINE_BRANCH_READERS)
+    return tuple(dict.fromkeys(watched))
+
+
+def _assert_post_export_scoring_is_batch_invariant(
+    simulation,
+    watched: Sequence[str],
+    known_at_load: set[tuple[str, str]],
+    *,
+    label: str,
+    batched: bool,
+    reform: bool,
+) -> None:
+    """Refuse an engine that computed a formula batching would score wrongly.
+
+    ``known_at_load`` holds what the engine held before scoring (values the
+    written H5 stores as inputs, which batching does not change).
+    """
+    computed = sorted(_engine_known_periods(simulation, watched) - known_at_load)
+    if not computed:
+        return
+    reasons = []
+    for variable, period in computed:
+        why = []
+        if batched and variable in US_POPULATION_AGGREGATE_VARIABLES:
+            why.append(
+                "aggregates over its simulation's whole population, here one "
+                "household batch"
+            )
+        if reform and variable in POST_EXPORT_BASELINE_BRANCH_READERS:
+            why.append(
+                "reads the engine's baseline branch, which a batch reform engine "
+                "does not carry"
+            )
+        reasons.append(f"{variable}@{period} ({'; '.join(why)})")
+    raise RuntimeError(
+        f"Post-export scoring ({label}) is not batch-invariant: a batch engine "
+        f"computed {', '.join(reasons)}. A measure that reaches these formulas "
+        "cannot be scored in household batches (microcosm#956)."
+    )
+
+
+def _parameter_leaf_values(node, instant: str) -> dict[str, object]:
+    """Every parameter under ``node`` (itself included) at ``instant``."""
+    return {
+        leaf.name: leaf(instant)
+        for leaf in (node, *node.get_descendants())
+        if hasattr(leaf, "values_list")
+    }
+
+
+def _moved_behavioral_response_parameters(
+    reform_system, baseline_system, period: int
+) -> list[str]:
+    """Behavioral-response parameters a reform system sets off baseline."""
+    instant = f"{int(period)}-01-01"
+    moved: list[str] = []
+    for subtree in POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS.values():
+        reformed = _parameter_leaf_values(
+            reform_system.parameters.get_child(subtree), instant
+        )
+        baseline = _parameter_leaf_values(
+            baseline_system.parameters.get_child(subtree), instant
+        )
+        moved.extend(
+            name
+            for name in sorted(reformed.keys() | baseline.keys())
+            if name not in reformed
+            or name not in baseline
+            or reformed[name] != baseline[name]
+        )
+    return moved
+
+
+def _assert_post_export_batching_premises(
+    frame: Frame, batch_frames: Sequence[Frame]
+) -> None:
+    """Refuse a written frame that household batching would score wrongly.
+
+    Batching is output-invariant only if every group unit sits wholly inside
+    one household, so that each batch holds whole units and every entity row
+    lands in exactly one batch. ``Frame.select`` keeps every group row any
+    selected person references without checking that, so a unit spanning two
+    batches would be scored twice, each time with part of its members. (The
+    Frame constructor already refuses group rows no person references.)
+    """
+    for entity in US_SCHEMA.group_entities:
+        if entity != "household":
+            # Raises when a unit's persons sit in more than one household.
+            _group_to_household_positions(frame, entity)
+    for entity in frame.entities:
+        batched = sum(batch.n(entity) for batch in batch_frames)
+        if batched != frame.n(entity):
+            raise ValueError(
+                f"Post-export household batches hold {batched} {entity} rows "
+                f"against {frame.n(entity)} in the written H5; the batches do "
+                "not partition the pool."
+            )
+    household_ids = frame.table("household")["household_id"].to_numpy()
+    batched_ids = np.concatenate(
+        [batch.table("household")["household_id"].to_numpy() for batch in batch_frames]
+    )
+    if not np.array_equal(batched_ids, household_ids):
+        raise ValueError(
+            "Post-export household batches do not reproduce the written H5's "
+            "household order."
+        )
+    batched_weights = np.concatenate(
+        [batch.weights_for("household").values for batch in batch_frames]
+    )
+    if not np.array_equal(batched_weights, frame.weights_for("household").values):
+        raise ValueError(
+            "Post-export household batches do not carry the written H5's "
+            "household weights."
         )
 
-    return simulate
+
+class _PostExportScoringPlan:
+    """The pre-export record of how the written H5 will be scored.
+
+    Built before ``calibration_diagnostics.json`` is written, so that artifact
+    carries the plan; the post-export stages then score exactly these
+    baseline plans. (A plain class: this tool is loaded by file path in the
+    tests, outside ``sys.modules``, where ``dataclasses`` cannot resolve the
+    module's string annotations.)
+    """
+
+    def __init__(
+        self,
+        *,
+        n_households: int,
+        maximum_batch_size: int | None,
+        baseline_plans: Mapping[str, tuple[PostExportKey, ...]],
+        error: str | None = None,
+    ) -> None:
+        self.n_households = int(n_households)
+        self.maximum_batch_size = maximum_batch_size
+        self.baseline_plans = {
+            consumer: tuple(plan) for consumer, plan in baseline_plans.items()
+        }
+        self.error = error
+
+    @property
+    def n_batches(self) -> int:
+        return sum(
+            1
+            for _ in _household_position_batches(
+                self.n_households, self.maximum_batch_size
+            )
+        )
+
+    def baseline_plan(self, consumer: str) -> tuple[PostExportKey, ...]:
+        if self.error is not None:
+            raise RuntimeError(
+                "The post-export scoring plan was not built before export: "
+                f"{self.error}"
+            )
+        return self.baseline_plans[consumer]
+
+    def terminal_failures(self) -> list[str]:
+        """The plan's own failure, as a line of the batched terminal raise."""
+        if self.error is None:
+            return []
+        return [
+            "Post-export scoring plan could not be built before export "
+            f"(microcosm#956): {self.error}"
+        ]
+
+    def record(self) -> dict[str, object]:
+        if self.error is not None:
+            return {"method": POST_EXPORT_SCORING_METHOD, "error": self.error}
+        return {
+            "method": POST_EXPORT_SCORING_METHOD,
+            "maximum_batch_size": self.maximum_batch_size,
+            "n_households": self.n_households,
+            "n_batches": self.n_batches,
+            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "period_order": "ascending",
+            "consumers": {
+                consumer: {"baseline_plan": _post_export_baseline_plan_record(plan)}
+                for consumer, plan in self.baseline_plans.items()
+            },
+        }
+
+
+def _post_export_scoring_plan(
+    *,
+    n_households: int,
+    maximum_microsim_batch_size: int | None,
+    consumers: Mapping[str, Callable[[Callable[[Any], Any]], object]],
+) -> _PostExportScoringPlan:
+    return _PostExportScoringPlan(
+        n_households=int(n_households),
+        maximum_batch_size=maximum_microsim_batch_size,
+        baseline_plans={
+            name: _record_post_export_baseline_plan(consumer)
+            for name, consumer in consumers.items()
+        },
+    )
+
+
+def _record_post_export_scoring_plan(
+    args: argparse.Namespace, *, n_households: int, result, release_id: str
+) -> _PostExportScoringPlan:
+    """The plan ``_main`` records before the calibration diagnostics.
+
+    Never raises (microcosm#547): a crash while building the plan rides the
+    plan's record into the diagnostics and joins the batched terminal raise
+    (``terminal_failures``), so it cannot pre-empt the diagnostics, the QRF
+    tail evidence or any later terminal group, and the run still refuses
+    before the export write.
+    """
+    try:
+        return _post_export_scoring_plan(
+            n_households=n_households,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+            consumers=_post_export_consumers(
+                args, result=result, release_id=release_id
+            ),
+        )
+    except Exception as error:
+        return _PostExportScoringPlan(
+            n_households=n_households,
+            maximum_batch_size=args.maximum_microsim_batch_size,
+            baseline_plans={},
+            error=f"{type(error).__name__}: {error}",
+        )
+
+
+def _reform_coverage_smoke_consumer(simulate) -> GateResult:
+    """The smoke exactly as ``_main`` runs it, for the plan's dry run."""
+    return us_reform_coverage_smoke_gate(simulate=simulate, period=PERIOD)
+
+
+def _demographics_consumer(simulate) -> tuple[np.ndarray, np.ndarray]:
+    return population_by_age_from_sim(simulate(None), PERIOD)
+
+
+def _reform_validation_consumer(
+    *, result, release_id: str
+) -> Callable[[Callable[[Any], Any] | None], dict[str, Any]]:
+    """reform_validation.json's payload as a function of the simulate seam."""
+    specs = load_default_reform_specs(period=PERIOD)
+    in_sample_estimates = _in_sample_estimates(result)
+    in_sample_targets = _in_sample_targets(result)
+    baseline_levels = default_baseline_level_specs()
+
+    def payload_for(simulate) -> dict[str, Any]:
+        return reform_validation_payload(
+            specs,
+            period=PERIOD,
+            simulate=simulate,
+            in_sample_estimates=in_sample_estimates,
+            in_sample_targets=in_sample_targets,
+            baseline_levels=baseline_levels,
+            release_id=release_id,
+        )
+
+    return payload_for
+
+
+def _post_export_consumers(
+    args: argparse.Namespace, *, result, release_id: str
+) -> dict[str, Callable[[Callable[[Any], Any]], object]]:
+    """The post-export stages this build will run, in run order."""
+    consumers: dict[str, Callable[[Callable[[Any], Any]], object]] = {}
+    if not args.skip_reform_coverage_smoke:
+        consumers["reform_coverage_smoke"] = _reform_coverage_smoke_consumer
+    if not args.skip_reform_validation and not args.skip_out_of_sample_reforms:
+        consumers["reform_validation"] = _reform_validation_consumer(
+            result=result, release_id=release_id
+        )
+    if not args.skip_demographics:
+        consumers["demographics"] = _demographics_consumer
+    return consumers
+
+
+class _HouseholdBatchedPostExportScorer:
+    """Scores the written release H5 in household batches (see the block
+    comment above). One instance serves every post-export consumer."""
+
+    def __init__(
+        self,
+        dataset_path: Path,
+        *,
+        maximum_microsim_batch_size: int | None,
+        expected_n_households: int | None = None,
+        microsimulation_cls=None,
+        dataset_from_frame=None,
+        load_frame=None,
+    ) -> None:
+        self.dataset_path = Path(dataset_path)
+        self.maximum_batch_size = maximum_microsim_batch_size
+        # The scored bytes are bound to this digest: the loader refuses a file
+        # whose bytes differ from it, and the manifest's dataset sha must equal
+        # it (``_build_manifests(scored_dataset_sha256=...)``).
+        self.dataset_sha256 = _sha256(self.dataset_path)
+        frame = (load_frame or _load_frame)(
+            self.dataset_path, expected_sha256=self.dataset_sha256
+        )
+        self.n_households = int(frame.n("household"))
+        if (
+            expected_n_households is not None
+            and self.n_households != expected_n_households
+        ):
+            raise ValueError(
+                f"The written H5 carries {self.n_households} households; the "
+                f"post-export scoring plan was built for {expected_n_households}."
+            )
+        batch_frames = tuple(
+            frame
+            if len(positions) == self.n_households
+            else _select_households_by_position(frame, positions)
+            for positions in _household_position_batches(
+                self.n_households, maximum_microsim_batch_size
+            )
+        )
+        _assert_post_export_batching_premises(frame, batch_frames)
+        del frame
+        self._batch_frames: tuple[Frame, ...] | None = batch_frames
+        self.n_batches = len(batch_frames)
+        self.max_batch_households = max(
+            (batch.n("household") for batch in batch_frames), default=0
+        )
+        if microsimulation_cls is None:
+            from policyengine_us import Microsimulation
+
+            microsimulation_cls = Microsimulation
+        self._microsimulation_cls = microsimulation_cls
+        if dataset_from_frame is None:
+
+            def dataset_from_frame(batch_frame: Frame):
+                return _dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+
+        self._dataset_from_frame = dataset_from_frame
+        # Each finished consumer's scoring record, for the manifests' block.
+        # Records, not consumers: a finished consumer's arrays must be freed.
+        self.consumer_records: dict[str, dict[str, object]] = {}
+
+    def open_consumer(
+        self, name: str, baseline_plan: Sequence[PostExportKey]
+    ) -> _PostExportConsumer:
+        """Score ``baseline_plan`` now; return the consumer's simulate seam."""
+        return _PostExportConsumer(self, name, tuple(baseline_plan))
+
+    def finish_consumer(self, scoring: _PostExportConsumer) -> dict[str, object]:
+        """Record a consumer that has finished scoring and return its record."""
+        if scoring._scorer is not self:
+            raise ValueError(f"{scoring.name} was not opened on this scorer.")
+        if scoring.name in self.consumer_records:
+            raise ValueError(f"{scoring.name} already finished on this scorer.")
+        record = scoring.record()
+        self.consumer_records[scoring.name] = record
+        return record
+
+    def manifest_record(self) -> dict[str, object]:
+        """The ``post_export_scoring`` block both manifests carry.
+
+        Route A remediation PR-3 records the evidence the gates judged in the
+        manifests, not only in loose diagnostics. This block names the bytes
+        scored, the batching, and each finished consumer's baseline plan and
+        pass counts, in the order the consumers finished.
+        """
+        return {
+            "method": POST_EXPORT_SCORING_METHOD,
+            "dataset_sha256": self.dataset_sha256,
+            "maximum_batch_size": self.maximum_batch_size,
+            "n_households": self.n_households,
+            "n_batches": self.n_batches,
+            "max_batch_households": self.max_batch_households,
+            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "consumers": {
+                name: {
+                    key: record[key]
+                    for key in (
+                        "baseline_plan",
+                        "baseline_passes",
+                        "reform_passes",
+                        "reform_systems",
+                    )
+                }
+                for name, record in self.consumer_records.items()
+            },
+        }
+
+    def close(self) -> None:
+        self._batch_frames = None
+        _collect_family_garbage()
+
+    def _batches(self) -> tuple[Frame, ...]:
+        if self._batch_frames is None:
+            raise RuntimeError("The post-export scorer is closed.")
+        return self._batch_frames
+
+    def _construct(self, batch_frame: Frame, *, reform_system):
+        dataset = self._dataset_from_frame(batch_frame)
+        if reform_system is None:
+            return self._microsimulation_cls(
+                dataset=dataset, spm=dict(US_RELEASE_SPM_SELECTION)
+            )
+        # The reform's system alone, not ``reform=`` as well. Given both,
+        # policyengine-us 2.2.1 clones the supplied system on every
+        # construction (``SPMSimulationMixin._prepare_spm_system`` ->
+        # ``clone_spm_system``: the whole parameter tree rebuilt and every
+        # variable deep-copied, so each batch starts on cold caches), core
+        # applies the reform again to the clone, and core adds a ``baseline``
+        # branch whose holders copy every input array. Given the system alone
+        # it shares the system's policy (``share_spm_policy``).
+        # ``POST_EXPORT_BASELINE_BRANCH_READERS`` and
+        # ``POST_EXPORT_BEHAVIORAL_RESPONSE_PARAMETERS`` list formulas that
+        # read the baseline branch, and the scorer guards those uses.
+        return self._microsimulation_cls(
+            tax_benefit_system=reform_system,
+            dataset=dataset,
+            spm=dict(US_RELEASE_SPM_SELECTION),
+        )
+
+    def _assert_reform_keeps_baseline_responses(
+        self, reform_system, key: PostExportKey, *, label: str
+    ) -> None:
+        """Refuse a reform that moves a behavioral-response parameter.
+
+        A batch reform engine has no ``baseline`` branch, so policyengine-us
+        scores its labor-supply and capital-gains responses as 0. A whole-file
+        reform engine has one and scores them from these parameters, as 0 at
+        the engine's zero default elasticities. The guard requires these
+        parameters to stay at baseline before building a batch reform engine.
+        """
+        moved = _moved_behavioral_response_parameters(
+            reform_system,
+            self._microsimulation_cls.default_tax_benefit_system_instance,
+            key[1],
+        )
+        if moved:
+            raise RuntimeError(
+                f"Post-export scoring ({label}) refuses a reform that sets "
+                f"behavioral-response parameters off baseline at {key[1]}: "
+                f"{', '.join(moved)}. Batch reform engines carry no baseline "
+                "branch, so policyengine-us would score these responses as zero "
+                "(microcosm#956)."
+            )
+
+    def _score(
+        self,
+        keys: Sequence[PostExportKey],
+        *,
+        label: str,
+        reform_system=None,
+    ) -> dict[PostExportKey, _PostExportValues]:
+        """One batch-outer pass: one engine per batch scores every key."""
+        batches = self._batches()
+        batched = len(batches) > 1
+        watched = _post_export_watched_variables(
+            batched=batched, reform=reform_system is not None
+        )
+        if batched:
+            print(
+                f"Scoring post-export {label} ({len(keys)} key(s)) in "
+                f"{len(batches)} batches of up to {self.max_batch_households:,} "
+                "households.",
+                flush=True,
+            )
+        parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
+            key: [] for key in keys
+        }
+        for batch_frame in batches:
+            with _automatic_gc_suspended():
+                simulation = self._construct(batch_frame, reform_system=reform_system)
+                try:
+                    known_at_load = _engine_known_periods(simulation, watched)
+                    engine = _AscendingPeriodEngine(simulation, label=label)
+                    for key in keys:
+                        parts[key].append(
+                            _post_export_values_and_weights(engine.calculate(key), key)
+                        )
+                    # Before the release below drops the engine's holders.
+                    _assert_post_export_scoring_is_batch_invariant(
+                        simulation,
+                        watched,
+                        known_at_load,
+                        label=label,
+                        batched=batched,
+                        reform=reform_system is not None,
+                    )
+                finally:
+                    # microcosm#456: free this batch engine's array mass by
+                    # refcount before the next batch builds its own, also
+                    # when a key raises.
+                    release_engine_simulation(simulation)
+                del simulation, engine
+            _collect_batch_garbage()
+        _collect_family_garbage()
+        return {
+            key: _concatenate_post_export_parts(key_parts)
+            for key, key_parts in parts.items()
+        }
+
+
+def _open_post_export_scorer(
+    plan: _PostExportScoringPlan, dataset_path: Path
+) -> _HouseholdBatchedPostExportScorer | None:
+    """Open the scorer the plan recorded before export, or None if no stage runs."""
+    if plan.error is not None:
+        raise RuntimeError(
+            f"The post-export scoring plan was not built before export: {plan.error}"
+        )
+    if not plan.baseline_plans:
+        return None
+    return _HouseholdBatchedPostExportScorer(
+        dataset_path,
+        maximum_microsim_batch_size=plan.maximum_batch_size,
+        expected_n_households=plan.n_households,
+    )
+
+
+def _post_export_scoring_manifest_block(
+    scorer: _HouseholdBatchedPostExportScorer | None,
+) -> dict[str, object] | None:
+    """The manifests' ``post_export_scoring`` block (None: no stage ran)."""
+    if scorer is None:
+        return None
+    return scorer.manifest_record()
+
+
+def _close_post_export_scorer(
+    scorer: _HouseholdBatchedPostExportScorer | None,
+) -> str | None:
+    """Close the scorer; return the sha256 of the H5 it scored (None: no stage)."""
+    if scorer is None:
+        return None
+    scorer.close()
+    return scorer.dataset_sha256
+
+
+class _PostExportConsumer:
+    """One consumer's simulate seam over a scored baseline plan."""
+
+    def __init__(
+        self,
+        scorer: _HouseholdBatchedPostExportScorer,
+        name: str,
+        baseline_plan: tuple[PostExportKey, ...],
+    ) -> None:
+        ordered = _ascending_period_plan(baseline_plan)
+        if ordered != baseline_plan:
+            raise ValueError(
+                f"{name}: a post-export baseline plan must be unique keys in "
+                "ascending period order."
+            )
+        self._scorer = scorer
+        self.name = name
+        self.baseline_plan = baseline_plan
+        self.baseline_passes = 1 if baseline_plan else 0
+        self.reform_passes = 0
+        self.reform_systems = 0
+        self._baseline = (
+            scorer._score(baseline_plan, label=f"{name} baseline plan")
+            if baseline_plan
+            else {}
+        )
+
+    def simulate(self, reform):
+        if reform is None:
+            return _PlannedPostExportBaseline(self)
+        return _BatchedPostExportReform(self, reform)
+
+    def record(self) -> dict[str, object]:
+        scorer = self._scorer
+        return {
+            "method": POST_EXPORT_SCORING_METHOD,
+            "dataset_sha256": scorer.dataset_sha256,
+            "maximum_batch_size": scorer.maximum_batch_size,
+            "n_households": scorer.n_households,
+            "n_batches": scorer.n_batches,
+            "max_batch_households": scorer.max_batch_households,
+            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "baseline_plan": _post_export_baseline_plan_record(self.baseline_plan),
+            "baseline_passes": self.baseline_passes,
+            "reform_passes": self.reform_passes,
+            "reform_systems": self.reform_systems,
+        }
+
+    def _baseline_values(self, key: PostExportKey) -> _PostExportValues:
+        try:
+            return self._baseline[key]
+        except KeyError:
+            raise RuntimeError(
+                f"{self.name} asked the baseline for {key}, which its recorded "
+                "plan does not hold; the engine-free dry run must see every "
+                "baseline request, so nothing is scored off-plan."
+            ) from None
+
+    def _reform_values(self, reform_system, key: PostExportKey):
+        label = f"{self.name} reform {key[0]}@{key[1]}"
+        self._scorer._assert_reform_keeps_baseline_responses(
+            reform_system, key, label=label
+        )
+        self.reform_passes += 1
+        scored = self._scorer._score((key,), label=label, reform_system=reform_system)
+        return scored[key]
+
+
+class _PlannedPostExportBaseline:
+    """The baseline simulation a consumer sees: served from its scored plan."""
+
+    def __init__(self, consumer: _PostExportConsumer) -> None:
+        self._consumer = consumer
+
+    def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
+        return self._consumer._baseline_values(
+            _post_export_key(variable, period, map_to)
+        )
+
+
+class _BatchedPostExportReform:
+    """A reformed simulation a consumer sees: each key is one batched pass.
+
+    The reform's tax-benefit system is built once, on the first key, and
+    handed to every batch engine (microcosm#456). The engines get that system
+    alone (see ``_HouseholdBatchedPostExportScorer._construct``).
+    """
+
+    def __init__(self, consumer: _PostExportConsumer, reform) -> None:
+        self._consumer = consumer
+        self._reform = reform
+        self._system = None
+        self._results: dict[PostExportKey, _PostExportValues] = {}
+
+    def calculate(self, variable, period=None, map_to=None) -> _PostExportValues:
+        key = _post_export_key(variable, period, map_to)
+        if key not in self._results:
+            if self._system is None:
+                scorer = self._consumer._scorer
+                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
+                    reform=self._reform
+                )
+                self._consumer.reform_systems += 1
+            self._results[key] = self._consumer._reform_values(self._system, key)
+        return self._results[key]
 
 
 def _reform_household_income_tax(
@@ -4073,6 +5208,7 @@ def _reform_household_income_tax(
     microsimulation_cls,
     n_households: int,
     batch_size: int | None,
+    refuse_population_aggregates: bool | None = None,
 ) -> np.ndarray:
     _assert_no_formula_owned_columns(base_frame)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
@@ -4088,6 +5224,13 @@ def _reform_household_income_tax(
     # per batch — and hand it to every batch simulation explicitly.
     reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
     batches = tuple(_household_position_batches(n_households, batch_size))
+    guard_armed = (
+        len(batches) > 1
+        if refuse_population_aggregates is None
+        else refuse_population_aggregates
+    )
+    if guard_armed:
+        _assert_medicaid_claiming_tax_units_local(base_frame)
     if len(batches) > 1:
         print(
             "Materializing reform target "
@@ -4095,7 +5238,7 @@ def _reform_household_income_tax(
             f"of up to {batch_size:,} households.",
             flush=True,
         )
-    for household_positions in batches:
+    for batch, household_positions in enumerate(batches, start=1):
         with _automatic_gc_suspended():
             full_batch = len(household_positions) == n_households
             batch_frame = (
@@ -4115,13 +5258,25 @@ def _reform_household_income_tax(
                 dataset=reformed_dataset,
                 reform=reform,
             )
-            batch_income_tax = _collapse_tax_unit(
-                _calculate_array(reformed, "income_tax"),
-                batch_tax_unit_positions,
-                batch_frame.n("household"),
-            )
+            try:
+                with (
+                    _record_engine_branches(reformed) if guard_armed else nullcontext()
+                ):
+                    batch_income_tax = _collapse_tax_unit(
+                        _calculate_array(reformed, "income_tax"),
+                        batch_tax_unit_positions,
+                        batch_frame.n("household"),
+                    )
+                    if guard_armed:
+                        _refuse_batch_population_aggregates(
+                            reformed,
+                            batch=batch,
+                            batches=len(batches),
+                            n_households=n_households,
+                        )
+            finally:
+                release_engine_simulation(reformed)
             reform_income_tax[household_positions] = batch_income_tax
-            release_engine_simulation(reformed)
             del batch_income_tax, reformed, reformed_dataset, batch_frame
         _collect_batch_garbage()
     del reform_system
@@ -4343,6 +5498,17 @@ def _is_noop_ledger_filter_value(value: str) -> bool:
 
 
 def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, ...]:
+    """Ledger filter keys the SOI slice does not act on, for one spec.
+
+    A non-empty result drops the spec from SOI materialization silently in
+    the ``irs_soi`` loop of :func:`_materialize_target_frame`, so an
+    accepted restatement must clear here too — otherwise
+    accepting it at the fatal guard would only move the spec from a refusal
+    to a silent disappearance. A restatement that disagrees stays listed, and
+    :func:`_assert_supported_ledger_filter_metadata` refuses it before the
+    materializer ever reaches this skip.
+    """
+
     return tuple(
         sorted(
             key
@@ -4350,6 +5516,8 @@ def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, .
             if key.startswith("ledger_filter_")
             and key not in SUPPORTED_SOI_LEDGER_FILTERS
             and not _is_noop_ledger_filter_value(str(value))
+            and _restated_ledger_filter_refusal(str(key), str(value), metadata)
+            is not None
         )
     )
 
@@ -4419,6 +5587,230 @@ def _population_age_household_values(
     return values
 
 
+def _restated_ledger_filter_concept(key: str) -> tuple[str, str | None]:
+    """Split a ``ledger_filter_*`` key into its concept and bound side.
+
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound``
+    splits into ``("us:statutes/26/62#adjusted_gross_income", "lower")``; a
+    key with no bound suffix keeps the whole concept and side ``None``,
+    meaning it restates an exact value.
+    """
+
+    if not key.startswith("ledger_filter_"):
+        return "", None
+    concept = key[len("ledger_filter_") :]
+    for suffix, side in RESTATED_LEDGER_FILTER_BOUND_SIDES:
+        if concept.endswith(suffix) and len(concept) > len(suffix):
+            return concept[: -len(suffix)], side
+    return concept, None
+
+
+def _restated_bound_value(value: str) -> float | None:
+    try:
+        return _as_bound(value.strip())
+    except ValueError:
+        return None
+
+
+def _restated_count_value(value: str) -> float | None:
+    try:
+        count = float(value.strip())
+    except ValueError:
+        return None
+    if not count.is_integer() or not 0 <= count <= RESTATED_EITC_CHILD_COUNT_PROBE_MAX:
+        return None
+    return count
+
+
+def _restated_band_edge_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    compiled_key: str,
+) -> str | None:
+    """Judge one restated half-open band edge against the edge it restates.
+
+    Shared by the AGI and age rules, whose materializers both slice
+    ``lower <= x < upper`` on the compiled edge read through
+    :func:`_as_bound`, so a restated edge is ignorable exactly when it parses
+    to the same number. A missing compiled edge refuses: the age paths would
+    read it as the open end and the ``irs_soi`` loop indexes it directly, and
+    neither is the restated edge being checked.
+    """
+
+    compiled = metadata.get(compiled_key)
+    if compiled is None:
+        return f"{key}={value} restates a bound the spec does not compile: no {compiled_key}"
+    restated = _restated_bound_value(value)
+    applied = _restated_bound_value(str(compiled))
+    if restated is None or applied is None or restated != applied:
+        return f"{key}={value} disagrees with {compiled_key}={compiled}"
+    return None
+
+
+def _restated_agi_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact AGI, but the materializer "
+            "slices a half-open AGI band and applies no exact-value AGI filter"
+        )
+    return _restated_band_edge_refusal(
+        key, value, metadata, compiled_key=RESTATED_AGI_BAND_COMPILED_KEYS[side]
+    )
+
+
+def _restated_age_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact age, but the materializer "
+            "slices a half-open age band and applies no exact-age filter"
+        )
+    if RESTATED_AGE_DIMENSION_KEY in metadata:
+        return (
+            f"{key}={value} restates an age bound on a fact whose dimensions "
+            f"include age ({RESTATED_AGE_DIMENSION_KEY}="
+            f"{metadata[RESTATED_AGE_DIMENSION_KEY]}), so the bound came from "
+            "the dimension stamp, which carries no operator"
+        )
+    materializer = metadata.get("materializer")
+    if materializer not in RESTATED_AGE_BAND_MATERIALIZERS:
+        return (
+            f"{key}={value} restates an age bound on a spec whose materializer "
+            f"({materializer!r}) applies no age band"
+        )
+    stamp_source = metadata.get(AGE_BOUND_STAMP_SOURCE_KEY)
+    if stamp_source != AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS:
+        return (
+            f"{key}={value} restates an age bound whose operator is ambiguous: "
+            f"{AGE_BOUND_STAMP_SOURCE_KEY}={stamp_source} does not attest it "
+            "was stamped from a constraint row (>= or <), and a dimension of "
+            "that name carries no operator"
+        )
+    return _restated_band_edge_refusal(
+        key, value, metadata, compiled_key=RESTATED_AGE_BAND_COMPILED_KEYS[side]
+    )
+
+
+def _restated_eitc_child_count_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side in RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES:
+        return (
+            f"{key}={value} restates a qualifying-child {side} bound, refused "
+            "outright: the Ledger's operator for it (< or <=) is unconfirmed, "
+            "and the two readings select different returns"
+        )
+    compiled = _soi_eitc_child_count_filter(metadata)
+    if compiled is None:
+        return (
+            f"{key}={value} restates a qualifying-child bound on a spec that "
+            "carries no child-count filter for the materializer to apply"
+        )
+    bound = _restated_count_value(value)
+    if bound is None:
+        return (
+            f"{key}={value} is not a qualifying-child count in "
+            f"0..{RESTATED_EITC_CHILD_COUNT_PROBE_MAX}"
+        )
+    counts = np.arange(RESTATED_EITC_CHILD_COUNT_PROBE_MAX + 1, dtype=np.float64)
+    if side == "lower":
+        restated_mask = counts >= bound
+    elif side is None:
+        restated_mask = counts == bound
+    else:
+        raise ValueError(
+            f"{key}: bound side {side!r} reached the qualifying-child "
+            "comparison, which reads only lower and exact restatements"
+        )
+    try:
+        applied_mask = _eitc_child_count_mask(counts, compiled)
+    except ValueError:
+        return (
+            f"{key}={value} cannot be compared: compiled child-count filter "
+            f"{compiled!r} is not one the materializer understands"
+        )
+    if not np.array_equal(restated_mask, applied_mask):
+        return (
+            f"{key}={value} selects different returns than the compiled "
+            f"child-count filter {compiled!r}"
+        )
+    return None
+
+
+def _restated_ledger_filter_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+) -> str | None:
+    """Judge one otherwise-unsupported ``ledger_filter_*`` key for one spec.
+
+    Returns ``None`` only when *key* restates, in the labelled feed's concept
+    vocabulary, a constraint the materializer already applies to this spec,
+    and the two select the same population — ignoring that restatement then
+    changes nothing. Every other key returns the entry to refuse with: the
+    bare key for a filter the materializer does not model (unchanged from
+    before this rule existed), or the key with both values when a restatement
+    disagrees with its compiled counterpart, or has none, or is applied by
+    no materializer for this spec, or — for a
+    qualifying-child upper bound, whose operator is unconfirmed (see
+    :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`) — the key with that
+    reason, whatever the spec compiles.
+
+    Two compiled counterparts — the AGI band in
+    :data:`RESTATED_AGI_BAND_COMPILED_KEYS` and
+    :func:`_soi_eitc_child_count_filter` — are the ``irs_soi`` slice's, read
+    in the loop :func:`_materialize_target_frame` runs over ``irs_soi``
+    specs, and this rule reads them off metadata without consulting the
+    spec's family. That family-blindness is the guard's existing shape:
+    ``ledger_filter_eitc_child_count`` is likewise a blanket supported key. A
+    spec of another family carries neither counterpart, so it refuses on the
+    "does not compile" arm rather than being accepted by accident.
+
+    The third, the person-age band in :data:`RESTATED_AGE_BAND_COMPILED_KEYS`,
+    is read by two materializers (``population_age`` and the age-banded
+    ``policyengine_variable`` branch), so that rule is family-blind too but
+    names the materializers that apply the band
+    (:data:`RESTATED_AGE_BAND_MATERIALIZERS`) and refuses on every other; it
+    also refuses a bound on a fact whose dimensions include ``age``
+    (:data:`RESTATED_AGE_DIMENSION_KEY`), and any bound the compile does not
+    attest was stamped from a ``>=`` / ``<`` constraint row
+    (:data:`AGE_BOUND_STAMP_SOURCE_KEY`): a dimension-stamped bound carries no
+    operator, and ``age < 10`` and ``age <= 10`` select different people.
+    """
+
+    concept, side = _restated_ledger_filter_concept(key)
+    rule = RESTATED_LEDGER_FILTER_CONCEPTS.get(concept) if concept else None
+    if rule is None:
+        return key
+    if rule == "agi_band":
+        return _restated_agi_band_refusal(key, value, metadata, side=side)
+    if rule == "eitc_child_count":
+        return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
+    if rule == "age_band":
+        return _restated_age_band_refusal(key, value, metadata, side=side)
+    raise ValueError(
+        f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
+        "which has no comparison implemented."
+    )
+
+
 def _unsupported_ledger_filter_metadata(
     target_specs: Iterable[object],
 ) -> dict[str, tuple[str, ...]]:
@@ -4427,18 +5819,24 @@ def _unsupported_ledger_filter_metadata(
         metadata = getattr(spec, "metadata", None)
         if not isinstance(metadata, Mapping):
             continue
-        keys = tuple(
-            sorted(
-                str(key)
-                for key, value in metadata.items()
-                if str(key).startswith("ledger_filter")
-                and str(key) not in SUPPORTED_LEDGER_FILTER_METADATA_KEYS
-                and str(key) not in IDENTITY_LEDGER_FILTER_METADATA_KEYS
-                and not _is_noop_ledger_filter_value(str(value))
+        refusals = []
+        for key, value in metadata.items():
+            key = str(key)
+            if not key.startswith("ledger_filter"):
+                continue
+            if key in SUPPORTED_LEDGER_FILTER_METADATA_KEYS:
+                continue
+            if key in IDENTITY_LEDGER_FILTER_METADATA_KEYS:
+                continue
+            if _is_noop_ledger_filter_value(str(value)):
+                continue
+            refusal = _restated_ledger_filter_refusal(key, str(value), metadata)
+            if refusal is not None:
+                refusals.append(refusal)
+        if refusals:
+            unsupported[str(getattr(spec, "name", "<unnamed target>"))] = tuple(
+                sorted(refusals)
             )
-        )
-        if keys:
-            unsupported[str(getattr(spec, "name", "<unnamed target>"))] = keys
     return unsupported
 
 
@@ -4557,6 +5955,7 @@ def _load_or_materialize_target_frame(
     *,
     target_frame_checkpoint_path: Path | None = None,
     target_frame_checkpoint_identity: Mapping[str, object] | None = None,
+    target_frame_checkpoint_build_commit: str | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
@@ -4568,6 +5967,14 @@ def _load_or_materialize_target_frame(
     ):
         raise ValueError(
             "target_frame_checkpoint_identity is required when "
+            "target_frame_checkpoint_path is set."
+        )
+    if (
+        target_frame_checkpoint_path is not None
+        and target_frame_checkpoint_build_commit is None
+    ):
+        raise ValueError(
+            "target_frame_checkpoint_build_commit is required when "
             "target_frame_checkpoint_path is set."
         )
     if (
@@ -4600,6 +6007,7 @@ def _load_or_materialize_target_frame(
             frame=target_frame,
             identity=target_frame_checkpoint_identity,
             compilation=compilation,
+            build_commit=str(target_frame_checkpoint_build_commit),
         )
     else:
         checkpoint_payload = {
@@ -4613,41 +6021,28 @@ def _load_or_materialize_target_frame(
     return target_frame, registry, compilation
 
 
-def _materialize_target_frame(
-    base_frame: Frame,
+def _base_simulation_household_columns(
+    frame: Frame,
     target_specs: tuple,
     *,
-    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
-    target_materialization_cache_dir: Path | None = None,
-    target_materialization_cache_context: Mapping[str, object] | None = None,
-    gate_congressional_district_targets: bool = False,
-) -> tuple[Frame, TargetRegistry, dict[str, object]]:
-    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+    simulation,
+    system,
+) -> dict[str, np.ndarray]:
+    """Household target columns that one base simulation materializes.
 
-    if (
-        target_materialization_cache_dir is not None
-        and target_materialization_cache_context is None
-    ):
-        raise ValueError(
-            "target_materialization_cache_context is required when "
-            "target_materialization_cache_dir is set."
-        )
-    _assert_supported_ledger_filter_metadata(target_specs)
-    _assert_no_formula_owned_columns(base_frame)
-    dataset = _dataset_from_frame(
-        base_frame,
-        assert_no_formula_owned_columns=False,
-    )
-    simulation = Microsimulation(dataset=dataset)
-    system = CountryTaxBenefitSystem()
-    household = base_frame.table("household")
-    tax_unit_positions = _tax_unit_to_household_positions(base_frame)
-    n_households = base_frame.n("household")
+    Returns the columns in the order :func:`_materialize_target_frame` writes
+    them onto the household table. Each value is built from one household's
+    own persons, tax units and groups, collapsed onto that household and
+    masked by that household's own geography, so this function combines no
+    two households. Its engine dependencies can still aggregate across the
+    population; :func:`_materialize_base_simulation_columns` refuses the
+    watched aggregates when running more than one household batch.
+    """
 
-    materialized = {
-        entity: base_frame.table(entity).copy() for entity in base_frame.entities
-    }
-    hh = materialized["household"]
+    household = frame.table("household")
+    tax_unit_positions = _tax_unit_to_household_positions(frame)
+    n_households = frame.n("household")
+    columns: dict[str, np.ndarray] = {}
 
     income_tax_tax_unit = _calculate_array(simulation, "income_tax")
     taxable_income_tax_unit = _calculate_array(simulation, "taxable_income")
@@ -4688,11 +6083,11 @@ def _materialize_target_frame(
         household_congressional_district_geoid = None
         tax_unit_congressional_district_geoid = None
 
-    hh["income_tax"] = _collapse_tax_unit(
+    columns["income_tax"] = _collapse_tax_unit(
         income_tax_tax_unit, tax_unit_positions, n_households
     )
-    hh["state_income_tax"] = _household_values(
-        frame=base_frame,
+    columns["state_income_tax"] = _household_values(
+        frame=frame,
         simulation=simulation,
         system=system,
         variable="state_income_tax",
@@ -4706,8 +6101,8 @@ def _materialize_target_frame(
     if population_age_target_specs and "age" in system.variables:
         person_age = np.asarray(_calculate_array(simulation, "age"), dtype=np.float64)
         for spec in population_age_target_specs:
-            hh[spec.measure] = _population_age_household_values(
-                frame=base_frame,
+            columns[spec.measure] = _population_age_household_values(
+                frame=frame,
                 household=household,
                 age=person_age,
                 metadata=spec.metadata,
@@ -4761,8 +6156,8 @@ def _materialize_target_frame(
             band_mask = (person_age_for_bands >= band_lower) & (
                 person_age_for_bands < band_upper
             )
-            hh[spec.measure] = _collapse_person(
-                base_frame, person_values * band_mask.astype(np.float64)
+            columns[spec.measure] = _collapse_person(
+                frame, person_values * band_mask.astype(np.float64)
             )
             continue
         map_to = spec.metadata.get("indicator_map_to")
@@ -4783,7 +6178,7 @@ def _materialize_target_frame(
             if any(variable not in system.variables for variable in variables_to_check):
                 continue
             direct_value_cache[cache_key] = _combined_household_values(
-                frame=base_frame,
+                frame=frame,
                 simulation=simulation,
                 system=system,
                 variables=base_variables,
@@ -4814,7 +6209,7 @@ def _materialize_target_frame(
                 values,
                 0.0,
             )
-        hh[spec.measure] = values
+        columns[spec.measure] = values
 
     direct_measures = {
         spec.measure
@@ -4822,13 +6217,14 @@ def _materialize_target_frame(
         if spec.measure
         and spec.family not in {"irs_soi", "jct", "state_income_tax"}
         and spec.metadata.get("materializer") != "policyengine_variable"
-        and spec.measure not in hh.columns
+        and spec.measure not in household.columns
+        and spec.measure not in columns
     }
     for measure in sorted(direct_measures):
         if measure not in system.variables:
             continue
-        hh[measure] = _household_values(
-            frame=base_frame,
+        columns[measure] = _household_values(
+            frame=frame,
             simulation=simulation,
             system=system,
             variable=measure,
@@ -4838,8 +6234,9 @@ def _materialize_target_frame(
     for spec in target_specs:
         if spec.family == "state_income_tax":
             state_fips = int(spec.metadata["state_fips"])
-            hh[spec.measure] = hh["state_income_tax"].where(
+            columns[spec.measure] = np.where(
                 household["state_fips"].to_numpy() == state_fips,
+                columns["state_income_tax"],
                 0.0,
             )
 
@@ -4861,7 +6258,7 @@ def _materialize_target_frame(
             rental_income = _calculate_array(simulation, "rental_income")
             farm_rent_income = _calculate_array(simulation, "farm_rent_income")
             variable_cache[source_name] = _person_variable_to_tax_unit(
-                frame=base_frame,
+                frame=frame,
                 values=rental_income + farm_rent_income,
             )
             continue
@@ -4873,7 +6270,7 @@ def _materialize_target_frame(
             variable_cache[source_name] = raw.astype(np.float64)
         elif entity == "person":
             variable_cache[source_name] = _person_variable_to_tax_unit(
-                frame=base_frame,
+                frame=frame,
                 values=raw,
             )
         else:
@@ -4935,25 +6332,379 @@ def _materialize_target_frame(
                 )
                 * mask
             )
-        hh[spec.measure] = _collapse_tax_unit(values, tax_unit_positions, n_households)
+        columns[spec.measure] = _collapse_tax_unit(
+            values, tax_unit_positions, n_households
+        )
+    return columns
+
+
+@contextmanager
+def _record_engine_branches(simulation):
+    """Retain branches created through get_branch until the batch is checked.
+
+    Core's clone copies instance attributes, including a wrapped get_branch.
+    Rebind that method to each child before it can create its own branches.
+    Retained branches are released even if a formula detached them.
+    """
+
+    retained: list[object] = []
+    originals: dict[int, tuple[object, object, bool]] = {}
+    seen: set[int] = set()
+
+    def get_branch(current, *args, **kwargs):
+        branch = originals[id(current)][1](*args, **kwargs)
+        retain(branch)
+        return branch
+
+    def retain(current):
+        if current is None or id(current) in seen:
+            return
+        seen.add(id(current))
+        retained.append(current)
+        original = getattr(current, "get_branch", None)
+        if callable(original):
+            had_instance_method = "get_branch" in vars(current)
+            if getattr(original, "__func__", None) is get_branch:
+                # clone copied the parent's bound wrapper; recover the
+                # underlying method and bind it to the child.
+                _, parent_original, had_instance_method = originals[
+                    id(original.__self__)
+                ]
+                original = MethodType(parent_original.__func__, current)
+            originals[id(current)] = (current, original, had_instance_method)
+            current.get_branch = MethodType(get_branch, current)
+        branches = getattr(current, "branches", None)
+        if isinstance(branches, dict):
+            for branch in tuple(branches.values()):
+                retain(branch)
+        retain(getattr(current, "baseline", None))
+
+    retain(simulation)
+    simulation._target_materialization_branches = retained
+    try:
+        yield
+    finally:
+        for current, original, had_instance_method in originals.values():
+            if had_instance_method:
+                current.get_branch = original
+            else:
+                del current.get_branch
+        for current in retained:
+            # Core's shallow clone also copies the retained-list reference.
+            if "_target_materialization_branches" in vars(current):
+                del current._target_materialization_branches
+            if current is not simulation:
+                release_engine_simulation(current)
+
+
+def _engine_known_periods(simulation, variables: Sequence[str]) -> set[tuple[str, str]]:
+    """The (variable, period) values an engine or any engine it reaches holds.
+
+    Batched target materialization and post-export scoring both read this. The
+    holder's ``get_known_periods`` includes memory and disk storage. The walk
+    covers live branches, branches target materialization recorded before they
+    were detached, and the ``baseline`` simulation a ``reform=`` engine keeps
+    (policyengine-core sets it only when a reform is passed, so the post-export
+    scorer's engines have none). The real-engine guard tests check that the
+    watched Medicaid computation leaves a known period visible through this
+    API.
+    """
+
+    known: set[tuple[str, str]] = set()
+    stack = [simulation]
+    seen: set[int] = set()
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        for variable in variables:
+            known.update(
+                (variable, str(period))
+                for period in current.get_holder(variable).get_known_periods()
+            )
+        branches = getattr(current, "branches", None)
+        if isinstance(branches, dict):
+            stack.extend(branches.values())
+        stack.extend(getattr(current, "_target_materialization_branches", ()))
+        baseline = getattr(current, "baseline", None)
+        if baseline is not None:
+            stack.append(baseline)
+    return known
+
+
+def _refuse_batch_population_aggregates(
+    simulation,
+    *,
+    batch: int,
+    batches: int,
+    n_households: int,
+) -> None:
+    """Refuse any known population aggregate before releasing a batch engine."""
+
+    computed = sorted(
+        _engine_known_periods(simulation, US_POPULATION_AGGREGATE_VARIABLES)
+    )
+    if not computed:
+        return
+    raise ValueError(
+        "Target materialization is not batch-invariant: the engine for "
+        f"household batch {batch}/{batches} computed "
+        f"{', '.join(f'{variable}@{period}' for variable, period in computed)}. "
+        "These policyengine-us formulas aggregate over the whole simulated "
+        "population, here one household batch instead of the pool, so a "
+        "target that reaches them cannot be materialized in household batches. "
+        "Drop the target from the surface, or run the whole pool unbatched "
+        "in one simulation with one slice or chunk. Disabling only inner "
+        "batching still leaves slice- or chunk-local aggregates."
+    )
+
+
+def _assert_group_entities_nest_in_households(frame: Frame) -> None:
+    """Refuse a frame whose group entities cross households.
+
+    Batching selects persons by household and keeps every group they
+    reference, so a group spanning two batches would be simulated twice, each
+    time with only part of its members. ``Frame`` does not check nesting, and
+    :func:`_group_to_household_positions` raises on exactly this.
+    """
+
+    for entity in frame.entities:
+        if entity in {"person", "household"}:
+            continue
+        _group_to_household_positions(frame, entity)
+
+
+def _assert_medicaid_claiming_tax_units_local(frame: Frame) -> None:
+    """Require positive Medicaid claiming IDs to resolve within the household.
+
+    The engine's claiming-tax-unit helpers join IDs across persons. Requiring
+    local references keeps those joins inside each household; an unresolved
+    positive ID is refused too, since a pre-sliced caller may have omitted it.
+    """
+
+    person = frame.table("person")
+    column = "medicaid_claiming_tax_unit_id"
+    if column not in person:
+        return
+    claims = person.loc[person[column] > 0]
+    if claims.empty:
+        return
+    local_units = pd.MultiIndex.from_frame(
+        person[["person_household_id", "person_tax_unit_id"]]
+    )
+    claimed_units = pd.MultiIndex.from_frame(claims[["person_household_id", column]])
+    if not claimed_units.isin(local_units).all():
+        raise ValueError(
+            "Target materialization is not batch-invariant: a positive "
+            "medicaid_claiming_tax_unit_id does not resolve within the "
+            "person's own household. Run the whole pool unbatched in one "
+            "simulation with one slice or chunk."
+        )
+
+
+def _materialize_base_simulation_columns(
+    base_frame: Frame,
+    target_specs: tuple,
+    *,
+    system,
+    microsimulation_cls,
+    maximum_microsim_batch_size: int | None,
+    refuse_population_aggregates: bool | None = None,
+) -> tuple[dict[str, np.ndarray], dict[str, object]]:
+    """Run the target materializer's base simulation over household batches.
+
+    Each engine uses the JCT loop's household partition and is released
+    before the next is built. Columns are invariant to batch size only when
+    their engine values are computed within households. A multi-batch pass
+    refuses known periods of ``US_POPULATION_AGGREGATE_VARIABLES`` in each
+    engine and its recorded branches, including detached branches and aggregates
+    reached by downstream targets. Pre-sliced callers arm the same guard with
+    ``refuse_population_aggregates=True``. Such targets require one whole-pool
+    batch. Group entities and stored Medicaid claiming-tax-unit references must
+    stay within households. Each batch must preserve pool order, and all
+    batches must return the same columns.
+
+    Returns the columns in write order, plus a receipt for the compilation
+    record.
+    """
+
+    n_households = base_frame.n("household")
+    household_ids = base_frame.table("household")["household_id"].to_numpy()
+    batches = tuple(
+        _household_position_batches(n_households, maximum_microsim_batch_size)
+    )
+    if not batches:
+        raise ValueError("Target materialization requires at least one household.")
+    batched = len(batches) > 1
+    guard_armed = (
+        batched
+        if refuse_population_aggregates is None
+        else refuse_population_aggregates
+    )
+    if batched or guard_armed:
+        _assert_group_entities_nest_in_households(base_frame)
+    if guard_armed:
+        _assert_medicaid_claiming_tax_units_local(base_frame)
+    if batched:
+        print(
+            "Materializing base target columns in "
+            f"{len(batches)} batches of up to "
+            f"{maximum_microsim_batch_size:,} households.",
+            flush=True,
+        )
+
+    column_order: tuple[str, ...] | None = None
+    columns: dict[str, np.ndarray] = {}
+    for batch, household_positions in enumerate(batches, start=1):
+        with _automatic_gc_suspended():
+            full_batch = len(household_positions) == n_households
+            batch_frame = (
+                base_frame
+                if full_batch
+                else _select_households_by_position(base_frame, household_positions)
+            )
+            if not np.array_equal(
+                batch_frame.table("household")["household_id"].to_numpy(),
+                household_ids[household_positions],
+            ):
+                raise RuntimeError(
+                    "A base target-materialization batch does not carry exactly "
+                    "its households in pool order; its columns cannot be placed "
+                    "at their pool positions."
+                )
+            batch_simulation = microsimulation_cls(
+                dataset=_dataset_from_frame(
+                    batch_frame,
+                    assert_no_formula_owned_columns=False,
+                )
+            )
+            try:
+                with (
+                    _record_engine_branches(batch_simulation)
+                    if guard_armed
+                    else nullcontext()
+                ):
+                    batch_columns = _base_simulation_household_columns(
+                        batch_frame,
+                        target_specs,
+                        simulation=batch_simulation,
+                        system=system,
+                    )
+                    if guard_armed:
+                        # Before the release below drops the engine's holders.
+                        _refuse_batch_population_aggregates(
+                            batch_simulation,
+                            batch=batch,
+                            batches=len(batches),
+                            n_households=n_households,
+                        )
+            finally:
+                # microcosm#456: an engine's system keeps a ``simulation``
+                # backref, so a finished engine can outlive its ``del``.
+                # Release each batch engine before the next one is built,
+                # also when this batch raised.
+                release_engine_simulation(batch_simulation)
+            del batch_simulation
+            if column_order is None:
+                column_order = tuple(batch_columns)
+            elif tuple(batch_columns) != column_order:
+                raise RuntimeError(
+                    "Base target-materialization batches produced different "
+                    "column sets or orders."
+                )
+            for column, values in batch_columns.items():
+                values = np.asarray(values)
+                if values.shape != (len(household_positions),):
+                    raise RuntimeError(
+                        f"Base target column {column!r} has shape "
+                        f"{values.shape} for a batch of "
+                        f"{len(household_positions)} households."
+                    )
+                if full_batch:
+                    columns[column] = values
+                    continue
+                # Write each batch straight into its pool-length column, so
+                # no per-batch slices are kept for a final concatenate. A
+                # dtype change promotes by ``np.result_type``, as a
+                # concatenate would.
+                pool_values = columns.get(column)
+                if pool_values is None:
+                    pool_values = np.empty(n_households, dtype=values.dtype)
+                elif pool_values.dtype != values.dtype:
+                    pool_values = pool_values.astype(
+                        np.result_type(pool_values, values)
+                    )
+                pool_values[household_positions] = values
+                columns[column] = pool_values
+            del batch_columns, batch_frame
+        _collect_batch_garbage()
+    _collect_family_garbage()
+
+    assert column_order is not None
+    receipt: dict[str, object] = {
+        "method": "household_position_batches",
+        "maximum_microsim_batch_size": (
+            None
+            if maximum_microsim_batch_size is None
+            else int(maximum_microsim_batch_size)
+        ),
+        "households": int(n_households),
+        "batches": len(batches),
+        "largest_batch_households": max(len(positions) for positions in batches),
+        "base_household_columns": len(column_order),
+        "group_nesting_verified": batched or guard_armed,
+        "population_aggregate_guard_armed": guard_armed,
+        "population_aggregate_variables_checked": (
+            list(US_POPULATION_AGGREGATE_VARIABLES) if guard_armed else []
+        ),
+    }
+    return columns, receipt
+
+
+def _materialize_target_frame(
+    base_frame: Frame,
+    target_specs: tuple,
+    *,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    target_materialization_cache_dir: Path | None = None,
+    target_materialization_cache_context: Mapping[str, object] | None = None,
+    gate_congressional_district_targets: bool = False,
+    refuse_population_aggregates: bool | None = None,
+) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+
+    if (
+        target_materialization_cache_dir is not None
+        and target_materialization_cache_context is None
+    ):
+        raise ValueError(
+            "target_materialization_cache_context is required when "
+            "target_materialization_cache_dir is set."
+        )
+    _assert_supported_ledger_filter_metadata(target_specs)
+    _assert_no_formula_owned_columns(base_frame)
+    system = CountryTaxBenefitSystem()
+    n_households = base_frame.n("household")
+    # The base simulation uses the JCT reform loop's household partition.
+    base_columns, base_simulation_batching = _materialize_base_simulation_columns(
+        base_frame,
+        target_specs,
+        system=system,
+        microsimulation_cls=Microsimulation,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+        refuse_population_aggregates=refuse_population_aggregates,
+    )
+
+    materialized = {
+        entity: base_frame.table(entity).copy() for entity in base_frame.entities
+    }
+    hh = materialized["household"]
+    for column in tuple(base_columns):
+        hh[column] = base_columns.pop(column)
+    del base_columns
 
     base_income_tax_household = hh["income_tax"].to_numpy(dtype=np.float64)
-    del (
-        direct_value_cache,
-        variable_cache,
-        income_tax_tax_unit,
-        taxable_income_tax_unit,
-        agi_tax_unit,
-        filing_status,
-        eitc_child_count,
-        tax_unit_itemizes,
-    )
-    # microcosm#456: the base simulation is pinned past its ``del`` by the
-    # shared system instance's ``simulation`` backref — for the full pool that
-    # is tens of GB held across the entire reform phase. Release it properly.
-    release_engine_simulation(simulation)
-    del simulation, dataset
-    _collect_family_garbage()
     requested_reform_measures = {spec.measure for spec in target_specs}
     cache_context = (
         dict(target_materialization_cache_context)
@@ -4973,6 +6724,7 @@ def _materialize_target_frame(
         "writes": 0,
         "entries": [],
     }
+    jct_reform_families_simulated = 0
     for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS:
         if reform_spec.measure not in requested_reform_measures:
             continue
@@ -5016,7 +6768,9 @@ def _materialize_target_frame(
                 microsimulation_cls=Microsimulation,
                 n_households=n_households,
                 batch_size=maximum_microsim_batch_size,
+                refuse_population_aggregates=refuse_population_aggregates,
             )
+            jct_reform_families_simulated += 1
             if (
                 target_materialization_cache_dir is not None
                 and cache_context is not None
@@ -5064,6 +6818,19 @@ def _materialize_target_frame(
     compilation = {
         **compilation,
         "target_materialization_cache": cache_stats,
+        "target_materialization_population_aggregate_guard": {
+            "armed": base_simulation_batching["population_aggregate_guard_armed"],
+            "population_aggregate_variables_checked": base_simulation_batching[
+                "population_aggregate_variables_checked"
+            ],
+        },
+        # Every engine this materializer ran used one household partition:
+        # the base simulation and each JCT reform family simulated here
+        # (cache hits simulate nothing).
+        "target_materialization_batching": {
+            **base_simulation_batching,
+            "jct_reform_families_simulated": jct_reform_families_simulated,
+        },
     }
     return (
         target_frame,
@@ -5098,11 +6865,12 @@ def _spm_composition_report(frame: Frame) -> CheckResult:
     ``check_spm_composition`` reproduces spm-calculator 1.0.0's rule
     (``adult = (age >= 18) | ((age >= 15) & role)``) over frame columns. The
     role resolution it mirrors is exactly what this export can produce:
-    ``is_spm_independent_minor_role`` is formula-owned in the engine adapter
-    (``microcosm.frame.adapters.policyengine_us._GENERATED_VARIABLE_GROUPS``)
-    and therefore *cannot* be written by ``write_dataset``, while
-    ``is_household_head`` and ``is_household_spouse`` can — so a frame check
-    here and the engine's own reading of the written H5 agree.
+    ``is_spm_independent_minor_role`` is the engine's declared dataset source
+    input (``policyengine_us.spm.DATASET_SOURCE_INPUTS``), which the adapter
+    classifies as an input leaf and ``write_dataset`` persists when the frame
+    carries it (the ``spm_independence_role`` stage writes it), and
+    ``is_household_head`` / ``is_household_spouse`` are persisted too — so a
+    frame check here and the engine's own reading of the written H5 agree.
     """
 
     from microcosm.build.us_runtime.release_gate_preflight import (
@@ -5169,6 +6937,23 @@ def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
         selected_weights=np.asarray(result.weights),
         reason="US fiscal target refresh L0/refit calibration",
     )
+
+
+def _without_calibrated_frames(result, *, export_frame: Frame | None = None):
+    """Drop calibrated target tables while keeping weights and diagnostics.
+
+    The exact-k receipt reads ``result.frame.n("household")``; give it the
+    clean export frame instead of retaining the calibrated target tables.
+    """
+    if isinstance(result, L0RefitResult):
+        return dataclasses.replace(
+            result,
+            selection=_without_calibrated_frames(result.selection),
+            refit=_without_calibrated_frames(result.refit, export_frame=export_frame),
+        )
+    if isinstance(result, CalibrationResult):
+        return dataclasses.replace(result, frame=export_frame)
+    return result
 
 
 def _selected_plan_ratio_bucket(values: np.ndarray) -> dict[str, object]:
@@ -5347,6 +7132,69 @@ def _input_mass_reference_gate(
     )
 
 
+def _project_ecps_reference_layers(
+    nonzero_shares: Mapping[str, float],
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Grade the pinned eCPS layers under the live engine's input names.
+
+    The frozen reference keeps the incumbent's historical variable names
+    (its evidence bytes are sha-pinned), so a layer the engine has since
+    renamed would read as an all-zero candidate layer. Project each renamed
+    layer onto its live input leaf with the same register the release
+    input-coverage manifest uses (``REFERENCE_ECPS_LAYER_RENAMES``; the WIC
+    input became ``takes_up_wic_if_eligible`` in PolicyEngine-US 1.777.0), and
+    refuse a projection that would merge two reference layers.
+    """
+
+    projected: dict[str, float] = {}
+    applied: dict[str, str] = {}
+    for name, share in nonzero_shares.items():
+        live = REFERENCE_ECPS_LAYER_RENAMES.get(str(name), str(name))
+        if live in projected:
+            raise ValueError(
+                f"eCPS parity reference layer {name!r} projects onto {live!r}, "
+                "which the reference already carries; the rename register "
+                "would merge two layers."
+            )
+        projected[live] = float(share)
+        if live != name:
+            applied[str(name)] = live
+    return projected, applied
+
+
+def _project_ecps_known_gaps(
+    known_gaps: tuple[ParityKnownGap, ...],
+) -> tuple[dict[str, ParityKnownGap], dict[str, str]]:
+    """Resolve exemption-register names onto the live layers they exempt.
+
+    The register may name a gap by the reference's historical spelling. Once
+    the reference layers are graded under live names, an unprojected
+    historical exemption would exempt nothing (an empty live layer fails) and
+    read as dormant (a populated live layer passes instead of flagging the
+    exemption stale). Project each entry with the same register as
+    :func:`_project_ecps_reference_layers`, through the helper the coverage
+    manifest and the cross-register check share, keyed by live name with the
+    entry's own spelling kept for provenance. Two entries that would exempt
+    one live layer are refused: the register must say once which reason and
+    issue own the gap.
+    """
+
+    by_register_name = {gap.variable: gap for gap in known_gaps}
+    live_to_register = project_ecps_parity_known_gap_names(
+        gap.variable for gap in known_gaps
+    )
+    projected = {
+        live: by_register_name[register_name]
+        for live, register_name in live_to_register.items()
+    }
+    applied = {
+        register_name: live
+        for live, register_name in live_to_register.items()
+        if live != register_name
+    }
+    return projected, applied
+
+
 def _ecps_parity_gate(
     base_frame: Frame,
     *,
@@ -5372,12 +7220,22 @@ def _ecps_parity_gate(
     known_gaps = known_gaps if known_gaps is not None else load_ecps_parity_known_gaps()
     input_variables = _engine_input_variables()
     candidate_shares = us_nonzero_shares(base_frame, columns=input_variables)
+    reference_shares, applied_renames = _project_ecps_reference_layers(
+        reference.nonzero_shares
+    )
+    # Exemptions resolve through the same register, so a historical-name entry
+    # exempts (and goes stale or dormant on) the live layer it names.
+    projected_gaps, applied_gap_renames = _project_ecps_known_gaps(known_gaps)
     gate = parity_gate(
         candidate_shares,
-        reference.nonzero_shares,
-        known_gaps=tuple(gap.variable for gap in known_gaps),
+        reference_shares,
+        known_gaps=tuple(projected_gaps),
     )
     details = dict(gate.details)
+    # The pinned reference predates engine input renames; its layers are graded
+    # under the live names, and the projection is recorded, not hidden.
+    details["reference_layer_renames"] = applied_renames
+    details["known_gap_renames"] = applied_gap_renames
     details["reference"] = {
         "repo_id": reference.source.repo_id,
         "repo_type": reference.source.repo_type,
@@ -5392,8 +7250,15 @@ def _ecps_parity_gate(
     )
     # The reasoned register: names alone say a layer is exempt; the manifest
     # must also carry WHY and which issue owns closing it (the debt ledger).
+    # Keyed by the live layer the gate graded; a renamed entry also names the
+    # register spelling it came from.
     details["known_gaps"] = {
-        gap.variable: {"reason": gap.reason, "issue": gap.issue} for gap in known_gaps
+        live: {
+            "reason": gap.reason,
+            "issue": gap.issue,
+            **({"register_name": gap.variable} if gap.variable != live else {}),
+        }
+        for live, gap in sorted(projected_gaps.items())
     }
     return GateResult(
         name=gate.name,
@@ -5731,6 +7596,165 @@ def _qrf_tail_concentration_gate(
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
     }
     return gate, surface
+
+
+#: Failure-line prefix for a per-run QRF tail-concentration register that does
+#: not match the checked surface. Deliberately distinct from the standing
+#: evidence owner "QRF tail concentration failed:" (US_EVIDENCE_FAILURE_OWNERS):
+#: a register mismatch is an operator input error, not the #481/#487 tail
+#: defect, and --evidence-release refuses it outright.
+US_QRF_TAIL_REGISTER_MISMATCH_PREFIX = "QRF tail-concentration register mismatch:"
+
+
+def _qrf_tail_register_mismatch(
+    register: Mapping[str, str],
+    gate: GateResult,
+) -> dict[str, list[str]]:
+    """Register entries the checked tail surface did not use.
+
+    The per-run register must exactly match the concentrated columns.
+    ``stale`` entries were checked and sit at or below the threshold (the
+    gate itself also fails them); ``unused`` entries were never checked —
+    the column is dense, thin, absent, non-numeric, or not a QRF output.
+    Both lists empty means the register matches.
+    """
+    used = set(gate.details.get("reviewed_exclusions", ()))
+    stale = sorted(set(register) & set(gate.details.get("stale_exclusions", ())))
+    unused = sorted(set(register) - used - set(stale))
+    return {"stale": stale, "unused": unused}
+
+
+def _qrf_tail_register_failures(mismatch: Mapping[str, Sequence[str]]) -> list[str]:
+    """One batched failure line for a register mismatch, or none."""
+    stale = list(mismatch.get("stale", ()))
+    unused = list(mismatch.get("unused", ()))
+    if not stale and not unused:
+        return []
+    return [
+        f"{US_QRF_TAIL_REGISTER_MISMATCH_PREFIX} the per-run exclusion "
+        "register must exactly match the concentrated columns; stale "
+        f"(checked, at or below the threshold) = {stale}; unused (dense, "
+        f"thin, absent, or not a checked QRF output) = {unused}. Remove these "
+        "entries; qrf_tail_concentration.json records the measured surface."
+    ]
+
+
+def _qrf_tail_register_evidence_refusal(
+    register_failures: Sequence[str],
+) -> RuntimeError | None:
+    """--evidence-release refusal for a register mismatch, owned or not.
+
+    A register mismatch is corrected in the register, never owned: the
+    pre-batch raise this replaced refused every mode, so no per-run
+    adjudication may carry a stale or unused entry into an evidence export.
+    """
+    if not register_failures:
+        return None
+    return RuntimeError(
+        "Evidence release refused: a QRF tail-concentration register "
+        "mismatch cannot be owned; correct the register from "
+        "qrf_tail_concentration.json and rerun. " + "; ".join(register_failures)
+    )
+
+
+def _record_qrf_tail_concentration_gate(
+    export_frame: Frame,
+    *,
+    exclusions_path: Path | None,
+    allow_concentration: bool,
+    terminal_gate_failures: list[str],
+    release_dir: Path,
+    telemetry: _TerminalBatchTelemetry,
+) -> list[str]:
+    """Evaluate the terminal QRF tail gate and record everything it measured.
+
+    Appends the gate's failures (unless ``allow_concentration``) and any
+    register-mismatch line (always — the register must match whatever the
+    flag says) to ``terminal_gate_failures``, so the batched pre-export raise
+    refuses the run with the #568 weight sidecar on disk. Whenever the gate
+    evaluated, ``qrf_tail_concentration.json`` is written with the per-column
+    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
+    escapes: it propagates on an otherwise-clean run and becomes one unowned
+    failure line under earlier failures.
+
+    Returns the register-mismatch failure lines (empty when the register
+    matches) so --evidence-release can refuse them.
+    """
+    try:
+        register = _load_qrf_tail_concentration_exclusions(exclusions_path)
+        gate, surface = _qrf_tail_concentration_gate(
+            export_frame,
+            reviewed_exclusions=register,
+        )
+        mismatch = _qrf_tail_register_mismatch(register, gate)
+        surface = {
+            **surface,
+            "reviewed_exclusions_file": (
+                str(exclusions_path) if exclusions_path is not None else None
+            ),
+            "reviewed_exclusions_sha256": (
+                _sha256(exclusions_path) if exclusions_path is not None else None
+            ),
+            "reviewed_exclusions": dict(register),
+            "register_mismatch": mismatch,
+        }
+    except Exception as exc:
+        # Same degraded-mode contract as the coverage gate and as before this
+        # refactor: with earlier failures on record, an evaluation crash
+        # becomes one more line under the standing "QRF tail concentration
+        # failed:" prefix (so --evidence-release ownership is unchanged)
+        # instead of masking them. Only a register mismatch is refused
+        # outright; see _qrf_tail_register_evidence_refusal.
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "QRF tail concentration failed: evaluation error under earlier "
+            f"gate failures: {type(exc).__name__}: {exc}"
+        )
+        return []
+    gate_failures = (
+        [f"QRF tail concentration failed: {failure}" for failure in gate.failures]
+        if not gate.passed and not allow_concentration
+        else []
+    )
+    register_failures = _qrf_tail_register_failures(mismatch)
+    terminal_gate_failures.extend(gate_failures)
+    terminal_gate_failures.extend(register_failures)
+    qrf_tail_path = release_dir / "qrf_tail_concentration.json"
+    qrf_tail_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "enforced": not allow_concentration,
+                "surface": surface,
+                "tail_concentration": {
+                    "passed": gate.passed,
+                    "failures": list(gate.failures),
+                    "details": dict(gate.details),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    telemetry.attach_artifact("qrf_tail_concentration", qrf_tail_path)
+    if gate_failures or register_failures:
+        telemetry.stage(
+            "export_dataset",
+            status="failed",
+            message=(
+                "QRF tail-concentration gate failed."
+                if not register_failures
+                else "QRF tail-concentration gate or register failed."
+            ),
+            failures=[
+                *(gate.failures if gate_failures else ()),
+                *register_failures,
+            ],
+            force_upload=True,
+        )
+    return register_failures
 
 
 def _person_population(frame: Frame) -> float:
@@ -6615,6 +8639,79 @@ def _target_family(target: object | None) -> str:
     return ""
 
 
+TARGET_SURFACE_FULL = "full"
+TARGET_SURFACE_NATIONAL_STATE = "national_state"
+TARGET_SURFACE_MODES = (TARGET_SURFACE_FULL, TARGET_SURFACE_NATIONAL_STATE)
+
+
+def _select_target_surface(
+    target_specs: Sequence[TargetSpec],
+    mode: str,
+) -> tuple[tuple[TargetSpec, ...], dict[str, object]]:
+    """Return the specs the release calibrates to and a receipt of the choice.
+
+    ``full`` keeps every compiled spec. ``national_state`` drops every spec
+    ``is_congressional_district_target`` classifies as congressional-district
+    (CD geography rows and rows sourced from the SOI CD file, whatever their
+    geography). The target-parity and profile-coverage gates run on the full
+    compiled surface before this selection, so a dropped family is still
+    proven compiled.
+    """
+
+    if mode not in TARGET_SURFACE_MODES:
+        raise ValueError(
+            f"Unknown target surface {mode!r}; expected one of {TARGET_SURFACE_MODES}."
+        )
+    specs = tuple(target_specs)
+    if mode == TARGET_SURFACE_FULL:
+        kept = specs
+    else:
+        kept = tuple(
+            spec for spec in specs if not _target_is_congressional_district(spec)
+        )
+    if not kept:
+        raise ValueError(f"Target surface {mode!r} keeps no targets.")
+    return kept, {
+        "mode": mode,
+        "compiled_targets": len(specs),
+        "calibrated_targets": len(kept),
+        "dropped_congressional_district_targets": len(specs) - len(kept),
+    }
+
+
+CONGRESSIONAL_DISTRICT_SOURCE_ALIASES = (
+    "census-acs-s0101-congressional-district-age-2024",
+    "soi-congressional-district-2022",
+)
+
+
+def _source_coverage_aliases(
+    target_surface_selection: Mapping[str, object] | None,
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """Return ``us_source_coverage.json``'s active aliases and surface exclusions.
+
+    The congressional-district sources count as active coverage only when the
+    release calibrates to them. A surface that dropped every CD-classified
+    target (``target_surface_selection`` is recorded only for such surfaces)
+    lists them as reviewed exclusions naming the drop, so the coverage artifact
+    agrees with ``build.target_surface_selection`` in the manifests.
+    """
+
+    if target_surface_selection is None:
+        return DIRECT_ACTIVE_ALIASES + CONGRESSIONAL_DISTRICT_SOURCE_ALIASES, {}
+    dropped = int(target_surface_selection["dropped_congressional_district_targets"])
+    reason = (
+        "Not calibrated by this release: --target-surface "
+        f"{target_surface_selection['mode']} dropped all {dropped:,} "
+        "congressional-district-classified targets after the target-parity and "
+        "profile-coverage gates ran on the full compiled surface; see "
+        "build.target_surface_selection in the manifests."
+    )
+    return DIRECT_ACTIVE_ALIASES, {
+        alias: reason for alias in CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
+    }
+
+
 def _target_is_congressional_district(target: object | None) -> bool:
     return is_congressional_district_target(
         _target_row_name(target) if target is not None else "",
@@ -7261,6 +9358,8 @@ def _write_release_calibration_diagnostics(
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
+    calibration_runtime: Mapping[str, object] | None = None,
+    post_export_scoring: Mapping[str, object] | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -7440,12 +9539,28 @@ def _write_release_calibration_diagnostics(
                 else {}
             ),
             "timing": dict(timing or {}),
+            # Route A PR-3: this file is written before the batched pre-export
+            # raise, so unlike the manifests it records the solve's thread
+            # geometry on a gate-failed run too.
+            **(
+                {"calibration_runtime": dict(calibration_runtime)}
+                if calibration_runtime is not None
+                else {}
+            ),
             "release_gates": {
                 "passed": not failures,
                 "failures": failures,
             },
             "incumbent_diagnostics": incumbent_payload,
             "post_export_target_audit": bool(audit_export_targets),
+            # How the written H5 will be scored after export (route A
+            # remediation, microcosm#956): household batches, their count,
+            # and each post-export stage's baseline plan in period order.
+            **(
+                {"post_export_scoring": dict(post_export_scoring)}
+                if post_export_scoring is not None
+                else {}
+            ),
         },
     )
 
@@ -7523,6 +9638,148 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
     }
 
 
+#: Terminal gate verdicts written into the release directory, keyed by their
+#: release-manifest artifact key. ``prepare_release`` uploads only contract
+#: files, manifest artifacts and ``--extra-file`` entries, so a verdict that is
+#: not a manifest artifact never ships — including the QRF tail register a
+#: certified waiver rests on (route A remediation PR-3). _main() clears these
+#: before the terminal gates run, so any present at manifest time are this
+#: run's own.
+US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
+    "input_coverage": "input_coverage.json",
+    "input_mass_parity": "input_mass_parity.json",
+    "qrf_tail_concentration": "qrf_tail_concentration.json",
+    "reform_coverage_smoke": "reform_coverage_smoke.json",
+}
+
+#: Key under which ``us_source_coverage.json`` carries the fiscal-target
+#: exclusion receipt: the concrete source record ids each exclusion rule
+#: dropped or allowed on this feed (route A remediation PR-1). The manifests
+#: reference it by file sha and key; ``present`` stays false until the
+#: compiler writes the receipt.
+US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY = "fiscal_target_exclusion_receipt"
+
+
+def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, dict]:
+    """Release-manifest artifact entries for this run's gate evidence files."""
+    return {
+        key: _artifact_entry(
+            filename,
+            _sha256(release_dir / filename),
+            kind="diagnostics",
+            revision=revision,
+        )
+        for key, filename in US_RELEASE_GATE_EVIDENCE_FILES.items()
+        if (release_dir / filename).is_file()
+    }
+
+
+def _gate_evidence_status(
+    gate_evidence_artifacts: Mapping[str, object],
+    *,
+    skipped_gates: Iterable[str],
+) -> dict[str, str]:
+    """Why each gate's verdict is, or is not, a release artifact.
+
+    A missing verdict alone cannot tell a gate the operator skipped by flag
+    (``skipped``: only --skip-reform-coverage-smoke can) from one whose
+    evaluation crashed under earlier failures on an evidence-tier run and so
+    wrote nothing (``not_evaluated``), or from a release built before gate
+    evidence was bound at all. This block names which, in both manifests.
+    """
+    skipped = set(skipped_gates)
+    unknown = sorted(skipped - set(US_RELEASE_GATE_EVIDENCE_FILES))
+    if unknown:
+        raise ValueError(f"Unknown skipped release gates: {unknown}.")
+    contradictory = sorted(skipped & set(gate_evidence_artifacts))
+    if contradictory:
+        raise ValueError(
+            "Release gates recorded as skipped have a verdict in the release "
+            f"directory: {contradictory}."
+        )
+    return {
+        key: (
+            "bound"
+            if key in gate_evidence_artifacts
+            else "skipped"
+            if key in skipped
+            else "not_evaluated"
+        )
+        for key in US_RELEASE_GATE_EVIDENCE_FILES
+    }
+
+
+def _qrf_tail_register_manifest_block(release_dir: Path) -> dict[str, object] | None:
+    """The per-run QRF tail register, as the gate recorded it.
+
+    Read back from ``qrf_tail_concentration.json`` rather than re-hashed, so
+    the manifest binds the register the gate actually evaluated (its path,
+    sha256 and entries at evaluation time) and the mismatch it measured. A
+    null path/sha256 with no entries means no per-column register was passed;
+    ``enforced`` says whether the gate held, since ``enforced: false`` means
+    --allow-qrf-tail-concentration waived the whole gate. ``None`` when the
+    gate never wrote its evidence.
+    """
+    path = release_dir / US_RELEASE_GATE_EVIDENCE_FILES["qrf_tail_concentration"]
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text())
+    surface = payload["surface"]
+    mismatch = surface["register_mismatch"]
+    return {
+        "path": surface["reviewed_exclusions_file"],
+        "sha256": surface["reviewed_exclusions_sha256"],
+        "entries": dict(surface["reviewed_exclusions"]),
+        "mismatch": {
+            "stale": list(mismatch["stale"]),
+            "unused": list(mismatch["unused"]),
+        },
+        "enforced": payload["enforced"],
+    }
+
+
+def _fiscal_target_exclusion_receipt_reference(
+    coverage_path: Path, coverage_sha256: str
+) -> dict[str, object]:
+    """Where the fiscal-target exclusion receipt lives, and which bytes."""
+    coverage = json.loads(coverage_path.read_text())
+    receipt = (
+        coverage.get(US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY)
+        if isinstance(coverage, Mapping)
+        else None
+    )
+    return {
+        "artifact": "us_source_coverage",
+        "path": coverage_path.name,
+        "sha256": coverage_sha256,
+        "key": US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+        "present": receipt is not None,
+        "receipt_sha256": (
+            hashlib.sha256(_strict_json_bytes(receipt)).hexdigest()
+            if receipt is not None
+            else None
+        ),
+    }
+
+
+def _calibration_runtime() -> dict[str, object]:
+    """Thread geometry the calibration solve runs under.
+
+    The solve's floating-point summation order, and so its exact weights,
+    depends on the torch intra-op thread count; recording it lets a later
+    pass (a checkpoint hit, an offline replay) say whether it can reproduce
+    this one bit for bit. ``OMP_NUM_THREADS`` is the value after this
+    module's bounded default, so it is never missing.
+    """
+    import torch
+
+    return {
+        "torch": str(torch.__version__),
+        "torch_num_threads": int(torch.get_num_threads()),
+        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+    }
+
+
 def _in_sample_estimates(result) -> dict[str, float]:
     """Calibrated final estimate per JCT target, keyed by target name.
 
@@ -7556,6 +9813,51 @@ def _in_sample_targets(result) -> dict[str, float]:
     return targets
 
 
+def _score_post_export_consumer(
+    name: str,
+    consumer: Callable[[Callable[[Any], Any]], object],
+    *,
+    dataset_path: Path,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None,
+    baseline_plan: Sequence[PostExportKey] | None,
+    maximum_microsim_batch_size: int | None,
+):
+    """Run one post-export consumer through the household-batched scorer.
+
+    ``_main`` passes the scorer it opened on the written H5 and the plan it
+    recorded in the calibration diagnostics. A direct caller may pass neither:
+    the scorer is then opened (and closed) here, and the plan is recorded by
+    the same engine-free dry run.
+    """
+    scorer = post_export_scorer
+    if scorer is None:
+        scorer = _HouseholdBatchedPostExportScorer(
+            dataset_path,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
+    try:
+        plan = (
+            _record_post_export_baseline_plan(consumer)
+            if baseline_plan is None
+            else tuple(baseline_plan)
+        )
+        scoring = scorer.open_consumer(name, plan)
+        output = consumer(scoring.simulate)
+        record = scorer.finish_consumer(scoring)
+        print(
+            f"Post-export {name}: {record['baseline_passes']} baseline pass "
+            f"({len(plan)} keys), {record['reform_passes']} reform passes, "
+            f"{record['reform_systems']} reform systems, "
+            f"{record['n_batches']} batches of up to "
+            f"{record['max_batch_households']:,} households.",
+            flush=True,
+        )
+        return output
+    finally:
+        if post_export_scorer is None:
+            scorer.close()
+
+
 def _write_reform_validation(
     *,
     release_dir: Path,
@@ -7564,15 +9866,19 @@ def _write_reform_validation(
     registry: TargetRegistry,
     release_id: str,
     simulate_out_of_sample: bool,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
+    baseline_plan: Sequence[PostExportKey] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
     In-sample JCT tax-expenditure reforms come straight from the calibration
     fit; out-of-sample OBBBA provisions are simulated on the freshly written
-    release H5 (skipped if ``simulate_out_of_sample`` is False, e.g. for a fast
-    diagnostics-only build).
+    release H5 in household batches (skipped if ``simulate_out_of_sample`` is
+    False, e.g. for a fast diagnostics-only build). The shared baseline is one
+    batch-outer pass over the plan's keys in ascending period order.
     """
-    specs = load_default_reform_specs(period=PERIOD)
+    payload_for = _reform_validation_consumer(result=result, release_id=release_id)
     if not simulate_out_of_sample:
         print(
             "\n".join(
@@ -7590,18 +9896,16 @@ def _write_reform_validation(
             ),
             file=sys.stderr,
         )
-    simulate = (
-        default_simulate_factory(dataset_path) if simulate_out_of_sample else None
-    )
-    payload = reform_validation_payload(
-        specs,
-        period=PERIOD,
-        simulate=simulate,
-        in_sample_estimates=_in_sample_estimates(result),
-        in_sample_targets=_in_sample_targets(result),
-        baseline_levels=default_baseline_level_specs(),
-        release_id=release_id,
-    )
+        payload = payload_for(None)
+    else:
+        payload = _score_post_export_consumer(
+            "reform_validation",
+            payload_for,
+            dataset_path=dataset_path,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=baseline_plan,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+        )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
 
@@ -7610,17 +9914,24 @@ def _write_demographics(
     release_dir: Path,
     dataset_path: Path,
     release_id: str,
+    post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
+    baseline_plan: Sequence[PostExportKey] | None = None,
+    maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
 ) -> None:
     """Emit demographics.json: the dataset's weighted population by age band.
 
     The fiscal-refresh release calibrates source-backed Census PEP age targets;
-    this file remains a compact summary diagnostic for release consumers.
+    this file remains a compact summary diagnostic for release consumers. Ages
+    and person weights are scored on the written H5 in household batches.
     """
-    from policyengine_us import Microsimulation
-    from policyengine_us.data import USSingleYearDataset
-
-    sim = Microsimulation(dataset=USSingleYearDataset(file_path=str(dataset_path)))
-    ages, weights = population_by_age_from_sim(sim, PERIOD)
+    ages, weights = _score_post_export_consumer(
+        "demographics",
+        _demographics_consumer,
+        dataset_path=dataset_path,
+        post_export_scorer=post_export_scorer,
+        baseline_plan=baseline_plan,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+    )
     payload = demographics_payload(ages, weights, period=PERIOD, release_id=release_id)
     # Household-record counts by state and congressional district: the
     # release's sub-national resolution floor, surfaced on the dashboard.
@@ -7654,6 +9965,7 @@ def _build_manifests(
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
+    target_surface_selection: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
@@ -7666,16 +9978,74 @@ def _build_manifests(
     base_pool: Mapping[str, object] | None = None,
     acs_predictor_join: Mapping[str, object] | None = None,
     evidence_known_failures: Sequence[Mapping[str, str]] | None = None,
+    export_input_mass_reference: Mapping[str, object] | None = None,
+    calibration_runtime: Mapping[str, object] | None = None,
+    skipped_gates: Iterable[str] = (),
+    scored_dataset_sha256: str | None = None,
+    post_export_scoring: Mapping[str, object] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     coverage_path = release_dir / "us_source_coverage.json"
     dataset_sha = _sha256(dataset_path)
+    if scored_dataset_sha256 is not None and scored_dataset_sha256 != dataset_sha:
+        # The post-export smoke, reform validation and demographics scored the
+        # H5 whose sha256 the scorer bound at load; the manifest must pin the
+        # same bytes, or those verdicts describe a different file.
+        raise RuntimeError(
+            f"The post-export stages scored {dataset_path} at sha256 "
+            f"{scored_dataset_sha256}, but the file now hashes to {dataset_sha}; "
+            "the manifest would pin bytes the release gates never scored."
+        )
+    if (
+        post_export_scoring is not None
+        and post_export_scoring.get("dataset_sha256") != dataset_sha
+    ):
+        raise RuntimeError(
+            "The post_export_scoring block records sha256 "
+            f"{post_export_scoring.get('dataset_sha256')}, but {dataset_path} "
+            f"hashes to {dataset_sha}; the manifest would describe scoring of "
+            "bytes it does not pin."
+        )
     calibration_sha = _sha256(calibration_path)
     diagnostics_sha = _sha256(diagnostics_path)
     coverage_sha = _sha256(coverage_path)
     diag = diagnostics_payload(result, target_registry=registry)
+    # Route A remediation PR-3: every certified-surface exception, and the
+    # inputs the gates judged against, must be recorded in the manifests
+    # rather than only in loose diagnostics that never ship. The same blocks
+    # ride build_manifest.json and release_manifest.json's build section.
+    gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
+    qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
+    evidence_bindings: dict[str, object] = {
+        "gate_evidence": _gate_evidence_status(
+            gate_evidence_artifacts, skipped_gates=skipped_gates
+        ),
+        **(
+            {"qrf_tail_register": qrf_tail_register}
+            if qrf_tail_register is not None
+            else {}
+        ),
+        **(
+            {"export_input_mass_reference": dict(export_input_mass_reference)}
+            if export_input_mass_reference is not None
+            else {}
+        ),
+        **(
+            {"calibration_runtime": dict(calibration_runtime)}
+            if calibration_runtime is not None
+            else {}
+        ),
+        **(
+            {"post_export_scoring": dict(post_export_scoring)}
+            if post_export_scoring is not None
+            else {}
+        ),
+        "fiscal_target_exclusion_receipt": _fiscal_target_exclusion_receipt_reference(
+            coverage_path, coverage_sha
+        ),
+    }
     gate_failures = _release_gate_failures(
         result,
         dropped,
@@ -7737,6 +10107,7 @@ def _build_manifests(
             if acs_predictor_join is not None
             else {}
         ),
+        **evidence_bindings,
         "dataset": {
             "filename": dataset_filename,
             "sha256": dataset_sha,
@@ -7747,6 +10118,13 @@ def _build_manifests(
             "sha256": calibration_sha,
             "warm_start": warm_start_payload,
             "selection_source": selection_source_payload,
+            # Present only when --target-surface narrows the calibrated
+            # surface, so a default manifest is unchanged.
+            **(
+                {"target_surface_selection": dict(target_surface_selection)}
+                if target_surface_selection is not None
+                else {}
+            ),
             "target_surface": {
                 "sha256": diag["target_surface"]["sha256"],
                 "n_targets": diag["target_surface"]["n_targets"],
@@ -7966,8 +10344,16 @@ def _build_manifests(
                 if acs_predictor_join is not None
                 else {}
             ),
+            **evidence_bindings,
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
+            # Present only when --target-surface narrows the calibrated
+            # surface, so a default manifest is unchanged.
+            **(
+                {"target_surface_selection": dict(target_surface_selection)}
+                if target_surface_selection is not None
+                else {}
+            ),
             "default_dataset": default_dataset_payload,
             **(
                 {
@@ -8143,6 +10529,7 @@ def _build_manifests(
                 if (release_dir / "demographics.json").exists()
                 else {}
             ),
+            **gate_evidence_artifacts,
         },
     }
     if evidence_known_failures is not None:
@@ -8976,6 +11363,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
     )
+    # The exclusion register's keys do not say which feed facts a compile
+    # dropped or let through by vintage (microcosm#956), so record the concrete
+    # ids per rule now, while the facts and crosswalk are at hand; it lands in
+    # us_source_coverage.json beside the register.
+    fiscal_target_exclusion_receipt = us_fiscal_target_exclusion_receipt(
+        ledger_artifact.facts,
+        target_period=PERIOD,
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
+        ),
+    )
     # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
     # whose point-in-time snapshot is unreported at source ships its cited
     # nearest-prior-month count instead of failing the take-up gate closed.
@@ -9029,6 +11427,15 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 for failure in target_profile_gate.failures
             )
         )
+    # The parity and profile-coverage gates above ran on the full compiled
+    # surface; --target-surface only narrows what is calibrated.
+    target_specs, target_surface_receipt = _select_target_surface(
+        target_specs, args.target_surface
+    )
+    target_surface_selection = (
+        None if args.target_surface == TARGET_SURFACE_FULL else target_surface_receipt
+    )
+    active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
@@ -9710,6 +12117,37 @@ def _main(argv: Sequence[str] | None = None) -> None:
             + "; ".join(
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "spm_independence_role",
+            message=(
+                "Restoring the measured SPM independence role from the pinned "
+                "Census ASEC person files."
+            ),
+        )
+    if pool_frame is None:
+        base_frame = with_us_spm_independence_role(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
+    spm_independence_role_gate = us_spm_independence_role_signal_gate(base_frame)
+    if not spm_independence_role_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "spm_independence_role_gate",
+                status="failed",
+                message="SPM independence role signal gate failed.",
+                failures=list(spm_independence_role_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SPM independence role signal failed: {failure}"
+                for failure in spm_independence_role_gate.failures
             )
         )
     if telemetry is not None:
@@ -10750,6 +13188,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
             base_frame, selection_mass_protections
         )
         target_specs = (*target_specs, *selection_mass_protection_specs)
+    # microcosm#956: digest the very frame handed to the materializer below,
+    # so a checkpoint hit proves the same staged inputs, not only the same base.
+    staged_frame_sha256 = _staged_frame_sha256(base_frame)
     target_frame_checkpoint_identity = _target_frame_checkpoint_identity(
         base_dataset_sha256=base_dataset_sha256,
         policyengine_us_version=policyengine_us_version,
@@ -10764,6 +13205,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         selection_identities_sha256=(
             None if selection_source is None else selection_source.identities_sha256
         ),
+        staged_frame_sha256=staged_frame_sha256,
         selection_mass_protections=selection_mass_protections,
         ssi_take_up_prior_weight_basis_sha256=(
             None
@@ -10779,6 +13221,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_specs,
         target_frame_checkpoint_path=target_frame_checkpoint_path,
         target_frame_checkpoint_identity=target_frame_checkpoint_identity,
+        target_frame_checkpoint_build_commit=full_commit,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context={
@@ -10909,6 +13352,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
             target_compilation_seconds=timing["target_compilation_seconds"],
         )
     calibration_started = time.perf_counter()
+    # Route A PR-3: the solve's thread geometry, read as it starts. It rides
+    # calibration_diagnostics.json (every run, gate-failed ones included) and
+    # both manifests.
+    calibration_runtime = _calibration_runtime()
     ladder_outcome = None
     exact_k_puf_tail_gate: GateResult | None = None
     if args.exact_k is not None:
@@ -11072,6 +13519,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
             "refit_initial_loss": _finite_or_none(result.initial_loss),
             "refit_final_loss": _finite_or_none(result.final_loss),
         }
+    # Frame.with_weights copies the target tables into each calibrated frame.
+    # Drop the input now and replace those result frames after building the
+    # clean export from base_frame and the calibrated weights below.
+    del target_frame
     if telemetry is not None:
         telemetry.stage(
             "take_up_final_diagnostics",
@@ -11092,6 +13543,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
         )
     else:
         export_frame = _with_l0_refit_weights(base_frame, result)
+    result = _without_calibrated_frames(
+        result,
+        export_frame=export_frame if ladder_outcome is not None else None,
+    )
+    if isinstance(ladder_outcome, ExactKLadderCalibration):
+        ladder_outcome = dataclasses.replace(ladder_outcome, result=result)
     compilation = dict(compilation)
     final_uncapped_ssi = _ssi_person_uncapped_amount(
         export_frame,
@@ -11419,6 +13876,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
         *exact_k_fit_failures,
         *gate_failures,
     ]
+    # microcosm#956: how the written H5 will be scored. The baseline plans come
+    # from engine-free dry runs of the post-export consumers, so they are
+    # fixed here and recorded in the calibration diagnostics; the post-export
+    # stages then score exactly these plans. A plan that cannot be built is
+    # recorded, not raised, and joins the terminal batch below.
+    post_export_scoring_plan = _record_post_export_scoring_plan(
+        args,
+        n_households=int(export_frame.n("household")),
+        result=result,
+        release_id=release_id,
+    )
     _write_release_calibration_diagnostics(
         result=result,
         release_dir=release_dir,
@@ -11455,6 +13923,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
+        calibration_runtime=calibration_runtime,
+        post_export_scoring=post_export_scoring_plan.record(),
     )
     # Terminal-gate batching: evaluate EVERY terminal gate
     # group and raise once with the full failure list, instead of aborting at
@@ -11465,6 +13935,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # an evaluation crash in degraded mode records a line rather than masking
     # the earlier failures) and certification manifests are never written.
     terminal_gate_failures: list[str] = list(gate_failures)
+    # An unbuildable post-export plan refuses here, before the export write,
+    # with every other terminal group still evaluated (microcosm#956).
+    terminal_gate_failures.extend(post_export_scoring_plan.terminal_failures())
     terminal_batch_telemetry = _TerminalBatchTelemetry(
         telemetry,
         terminal_gate_failures,
@@ -11537,6 +14010,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
         message="Writing PolicyEngine-US H5.",
     )
     release_engine = PolicyEngineUSEngine()
+    # Route A PR-3: _build_manifests binds every gate-evidence file present in
+    # the release directory as this run's verdict. With --out/--release-id
+    # reuse, a superseded attempt's file (for example a reform-coverage smoke
+    # this run skips) would otherwise be certified as this run's own.
+    for stale_gate_evidence in US_RELEASE_GATE_EVIDENCE_FILES.values():
+        (release_dir / stale_gate_evidence).unlink(missing_ok=True)
     # microcosm#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
     # export as a key with non-default signal, or carry a reviewed exclusion.
@@ -11613,7 +14092,27 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # still fails. This is a DISTINCT flag from --input-mass-reference-h5: the
     # base-vs-reference gate compares the *pre-calibration* base and would
     # over-fire against a calibrated reference on the same PUF columns.
+    # Route A PR-3: the gate details carry only the reference's basename, so
+    # the manifests record its path and the sha256 of the bytes loaded here.
+    export_reference_name = (
+        args.export_input_mass_reference_h5.name
+        if args.export_input_mass_reference_h5 is not None
+        else "base_frame"
+    )
+    export_input_mass_reference: dict[str, object] = {
+        "path": (
+            str(args.export_input_mass_reference_h5)
+            if args.export_input_mass_reference_h5 is not None
+            else None
+        ),
+        "sha256": None,
+        "reference_name": export_reference_name,
+    }
     try:
+        if args.export_input_mass_reference_h5 is not None:
+            export_input_mass_reference["sha256"] = _sha256(
+                args.export_input_mass_reference_h5
+            )
         export_reference_frame = (
             load_us_frame(args.export_input_mass_reference_h5)
             if args.export_input_mass_reference_h5 is not None
@@ -11625,11 +14124,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             relative_tolerance=args.input_mass_relative_tolerance,
             minimum_reference_total=args.input_mass_minimum_reference_total,
             reference_frame=export_reference_frame,
-            reference_name=(
-                args.export_input_mass_reference_h5.name
-                if args.export_input_mass_reference_h5 is not None
-                else "base_frame"
-            ),
+            reference_name=export_reference_name,
             # Build H (microcosm#299): the two SOI-identified columns whose true
             # target level provably cannot sit inside the live-default reference
             # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
@@ -11647,6 +14142,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
             f"failures: {type(exc).__name__}: {exc}"
         )
         export_input_mass_gate = None
+    # A reference the gate never evaluated is still named, but marked so no
+    # reader takes its bytes as what the parity verdict saw.
+    export_input_mass_reference["evaluated"] = export_input_mass_gate is not None
     if export_input_mass_gate is not None:
         input_mass_parity_failed = (
             not export_input_mass_gate.passed and not args.allow_input_mass_drift
@@ -11700,90 +14198,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # $594,484 donor-ceiling value — is invisible to support clipping (every
     # draw inside donor range), count targets (carrier count exact), and mass
     # parity (column excluded from the reference band), but is unmistakable as
-    # top-k weighted-mass share.
-    try:
-        qrf_tail_exclusions = _load_qrf_tail_concentration_exclusions(
-            args.qrf_tail_concentration_exclusions
-        )
-        qrf_tail_gate, qrf_tail_surface = _qrf_tail_concentration_gate(
-            export_frame,
-            reviewed_exclusions=qrf_tail_exclusions,
-        )
-        register_dormant = sorted(
-            set(qrf_tail_exclusions)
-            - set(qrf_tail_gate.details.get("reviewed_exclusions", ()))
-        )
-        if register_dormant:
-            raise RuntimeError(
-                "QRF tail-concentration exclusion register carries entries "
-                "the checked surface did not use (column dense, thin, "
-                f"absent, or below threshold): {register_dormant}. The "
-                "per-run register must exactly match the concentrated "
-                "columns — remove the stale entries."
-            )
-        qrf_tail_surface = {
-            **qrf_tail_surface,
-            "reviewed_exclusions_file": (
-                str(args.qrf_tail_concentration_exclusions)
-                if args.qrf_tail_concentration_exclusions is not None
-                else None
-            ),
-            "reviewed_exclusions_sha256": (
-                _sha256(args.qrf_tail_concentration_exclusions)
-                if args.qrf_tail_concentration_exclusions is not None
-                else None
-            ),
-            "reviewed_exclusions": dict(qrf_tail_exclusions),
-        }
-    except Exception as exc:
-        # Same degraded-mode contract as the coverage gate above.
-        if not terminal_gate_failures:
-            raise
-        terminal_gate_failures.append(
-            "QRF tail concentration failed: evaluation error under earlier "
-            f"gate failures: {type(exc).__name__}: {exc}"
-        )
-        qrf_tail_gate = None
-        qrf_tail_surface = None
-    if qrf_tail_gate is not None:
-        qrf_tail_failed = (
-            not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration
-        )
-        if qrf_tail_failed:
-            terminal_gate_failures.extend(
-                f"QRF tail concentration failed: {failure}"
-                for failure in qrf_tail_gate.failures
-            )
-        qrf_tail_path = release_dir / "qrf_tail_concentration.json"
-        qrf_tail_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "enforced": not args.allow_qrf_tail_concentration,
-                    "surface": qrf_tail_surface,
-                    "tail_concentration": {
-                        "passed": qrf_tail_gate.passed,
-                        "failures": list(qrf_tail_gate.failures),
-                        "details": dict(qrf_tail_gate.details),
-                    },
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        terminal_batch_telemetry.attach_artifact(
-            "qrf_tail_concentration",
-            qrf_tail_path,
-        )
-        if qrf_tail_failed:
-            terminal_batch_telemetry.stage(
-                "export_dataset",
-                status="failed",
-                message="QRF tail-concentration gate failed.",
-                failures=list(qrf_tail_gate.failures),
-                force_upload=True,
-            )
+    # top-k weighted-mass share. A per-run register that does not match the
+    # checked surface is a batched failure (never an early raise), so the
+    # measured tail evidence and the #568 weight sidecar survive it.
+    qrf_tail_register_failures = _record_qrf_tail_concentration_gate(
+        export_frame,
+        exclusions_path=args.qrf_tail_concentration_exclusions,
+        allow_concentration=args.allow_qrf_tail_concentration,
+        terminal_gate_failures=terminal_gate_failures,
+        release_dir=release_dir,
+        telemetry=terminal_batch_telemetry,
+    )
     # Batched pre-export raise: the calibration battery, SPM measurement
     # composition, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
@@ -11809,6 +14234,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 )
             except RuntimeError as error:
                 evidence_refusal = error
+            if evidence_refusal is None:
+                evidence_refusal = _qrf_tail_register_evidence_refusal(
+                    qrf_tail_register_failures
+                )
         if not args.evidence_release or evidence_refusal is not None:
             # Gate-failure path ONLY (microcosm#568 review): a batched
             # pre-export failure mints no H5, so the exact calibrated weight
@@ -11873,6 +14302,14 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    # Route A remediation (microcosm#956): every post-export stage below (the
+    # smoke, reform validation, demographics) scores THIS file through one
+    # household-batched scorer instead of one whole-pool Microsimulation each.
+    # It loads the written H5 once, binds its sha256 (the manifest must pin
+    # the same bytes), and serves the baseline plans recorded above.
+    post_export_scorer = _open_post_export_scorer(
+        post_export_scoring_plan, dataset_path
+    )
     # microcosm#368: reform-coverage smoke on the WRITTEN release H5. The column
     # gate above proves the required keys exist and carry signal; this is the
     # end-to-end backstop: each pinned probe (first: SSI asset limits at
@@ -11888,10 +14325,15 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 "reform_coverage_smoke",
                 message="Scoring pinned bound-reform probes on the written H5.",
             )
+        smoke_scoring = post_export_scorer.open_consumer(
+            "reform_coverage_smoke",
+            post_export_scoring_plan.baseline_plan("reform_coverage_smoke"),
+        )
         reform_coverage_smoke_gate = us_reform_coverage_smoke_gate(
-            simulate=default_simulate_factory(dataset_path),
+            simulate=smoke_scoring.simulate,
             period=PERIOD,
         )
+        smoke_scoring_record = post_export_scorer.finish_consumer(smoke_scoring)
         reform_coverage_smoke_path = release_dir / "reform_coverage_smoke.json"
         reform_coverage_smoke_path.write_text(
             json.dumps(
@@ -11903,12 +14345,16 @@ def _main(argv: Sequence[str] | None = None) -> None:
                         "failures": list(reform_coverage_smoke_gate.failures),
                         "details": dict(reform_coverage_smoke_gate.details),
                     },
+                    "post_export_scoring": smoke_scoring_record,
                 },
                 indent=2,
                 sort_keys=True,
             )
             + "\n"
         )
+        # The smoke's scored baseline plan is recorded; free its arrays before
+        # reform validation scores its own.
+        del smoke_scoring
         if telemetry is not None:
             telemetry.attach_artifact(
                 "reform_coverage_smoke", reform_coverage_smoke_path
@@ -11969,6 +14415,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
             registry=registry,
             release_id=release_id,
             simulate_out_of_sample=not args.skip_out_of_sample_reforms,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=(
+                None
+                if args.skip_out_of_sample_reforms
+                else post_export_scoring_plan.baseline_plan("reform_validation")
+            ),
         )
         if telemetry is not None:
             telemetry.attach_artifact(
@@ -11983,21 +14435,31 @@ def _main(argv: Sequence[str] | None = None) -> None:
             release_dir=release_dir,
             dataset_path=dataset_path,
             release_id=release_id,
+            post_export_scorer=post_export_scorer,
+            baseline_plan=post_export_scoring_plan.baseline_plan("demographics"),
         )
         if telemetry is not None:
             telemetry.attach_artifact("demographics", release_dir / "demographics.json")
+    # Every post-export engine stage has run; free the scorer's batch frames.
+    # The manifest must pin the bytes those stages scored, and both manifests
+    # carry how they were scored (Route A remediation PR-3).
+    post_export_scoring = _post_export_scoring_manifest_block(post_export_scorer)
+    scored_dataset_sha256 = _close_post_export_scorer(post_export_scorer)
+    post_export_scorer = None
 
     if telemetry is not None:
         telemetry.stage(
             "source_coverage", message="Writing source coverage diagnostics."
         )
-    active_aliases = DIRECT_ACTIVE_ALIASES + (
-        "census-acs-s0101-congressional-district-age-2024",
-        "soi-congressional-district-2022",
+    active_aliases, surface_exclusions = _source_coverage_aliases(
+        target_surface_selection
     )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,
-        reviewed_exclusions=_reviewed_exclusions(active_aliases),
+        reviewed_exclusions={
+            **_reviewed_exclusions(active_aliases),
+            **surface_exclusions,
+        },
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
     if congressional_district_vintage_crosswalk_metadata is not None:
@@ -12010,6 +14472,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
         )
     ]
+    coverage[US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY] = fiscal_target_exclusion_receipt
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
@@ -12137,6 +14600,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
+        target_surface_selection=target_surface_selection,
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
@@ -12149,6 +14613,13 @@ def _main(argv: Sequence[str] | None = None) -> None:
         base_pool=base_pool_receipt,
         acs_predictor_join=acs_predictor_join_receipt,
         evidence_known_failures=evidence_known_failures,
+        export_input_mass_reference=export_input_mass_reference,
+        calibration_runtime=calibration_runtime,
+        skipped_gates=(
+            ("reform_coverage_smoke",) if args.skip_reform_coverage_smoke else ()
+        ),
+        scored_dataset_sha256=scored_dataset_sha256,
+        post_export_scoring=post_export_scoring,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

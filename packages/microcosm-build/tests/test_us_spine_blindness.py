@@ -87,13 +87,16 @@ _RETIRED_LATE_ASSEMBLY_MODULES = frozenset(
     }
 )
 
-# These modules own source-spine provenance rather than applying population
-# treatments. Keep the allowlist exact so adding a new exception requires a
-# reviewed contract change.
+# These modules own reviewed source-spine boundaries, including the explicitly
+# selected legacy source completion described below. Keep the allowlist exact
+# so adding a new exception requires a reviewed contract change.
 _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
     {
         # Declares and receipts exact ACS source universes; never mutates rows.
         "acs_income_universe.py",
+        # Legacy ACS-only under-15 modeled completion and read-only per-origin
+        # hours release diagnostics; exact boundary functions are pinned below.
+        "acs_local_hours.py",
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -107,6 +110,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
         "spine_assembly.py",  # New pre-operator assembly seam.
+        # Declares the SPM measurement universe per source arm. The ACS and
+        # ASEC rulings differ by construction, so the provenance tag is the
+        # producer's input rather than something it must be blind to.
+        "spm_universe_source.py",
         # Stacked-spine pilot (#578 revision): stacking, gap-fill donor
         # routing, activation authority, the completeness gate, and the
         # by-origin battery are origin-aware by charter.
@@ -220,11 +227,18 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Exact source-universe validator/receipt owner; no population treatment.
         "acs_income_universe.py",
         "acs_inputs.py",
+        # Legacy source-hours completion and release gate; outside the registry.
+        "acs_local_hours.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
+        # Reviewed Census person columns restored into each raw ASEC vintage by
+        # exact pinned PERIDNUM identity before pooling (#720), through
+        # spm_role_source's pinned reader; no population treatment. Remains
+        # subject to the all-runtime source-identity scan.
+        "asec_census_person_columns.py",
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_pool.py",
         # Pinned ASEC source coordinates and verified fetch; no population
@@ -296,10 +310,19 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spine_assembly.py",
         # Data-only live battery authority extraction; never reads or mutates Frames.
         "stacked_battery_contract.py",
+        # Pure SPM measurement composition check over frame columns (age and the
+        # role); no population treatment. Re-exported by release_gate_preflight.
+        "spm_composition.py",
+        # Measured SPM independence role restored by exact pinned Census identity
+        # through spm_role_source; a manifest stage shaped like relationship_inputs.
+        "spm_independence_role.py",
         "spm_resources.py",
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.
         "spm_role_source.py",
+        # Source-owned SPM measurement-universe declaration; reads the source
+        # record type and no population attribute. Provenance owner above.
+        "spm_universe_source.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
@@ -3357,6 +3380,40 @@ def test_registered_population_operators_do_not_read_any_source_channel() -> Non
     )
 
 
+def test_acs_local_hours_provenance_is_limited_to_reviewed_boundaries() -> None:
+    """Pin the ACS-only completion boundary and per-origin diagnostic gate."""
+
+    source = (_US_RUNTIME / "acs_local_hours.py").read_text()
+    boundaries = (
+        "acs_local_hours_signal_gate",
+        "complete_acs_local_under15_hours",
+    )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+
+    # A module-level owner entry must not exempt its remaining donor/transfer
+    # helpers or executable declarations from the ordinary provenance scanner.
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
 def test_physical_source_accessor_is_confined_to_reviewed_gates() -> None:
     """Origin-aware diagnostics must not become population treatments."""
 
@@ -3412,8 +3469,13 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        # 73 = main's 70 plus spm_independence_role.py, spm_role_source.py and
+        # spm_composition.py, reached because the pool's engine-input
+        # projection names the SPM role as a required source input (#893).
+        # All three are classified in _OTHER_US_RUNTIME_MODULES and scanned
+        # below like every other reached module.
+        assert len(runtime_graph) == 73, (
+            f"{tool.name} must reach the pinned 73-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

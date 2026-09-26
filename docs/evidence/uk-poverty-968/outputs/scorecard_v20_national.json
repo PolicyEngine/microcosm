@@ -1,0 +1,72 @@
+{
+  "probe": "microcosm#731 scorecard",
+  "label": "V20",
+  "h5": "/Users/mariajuaristi/Desktop/PolicyEngine/runs/uk-623-first-calibrated/spine-assessment-v20/microcosm_uk_2024.h5",
+  "year": 2026,
+  "engine": {
+    "package": "policyengine-uk",
+    "version": "2.99.1"
+  },
+  "conventions": "taxpayers: income_tax>0 persons; uc_families: universal_credit>0 benunits; poverty_bhc_absolute (= poverty_bhc_pct): person-weighted in_poverty_bhc, the engine's CPI-uprated 2010/11 line; poverty_*_relative: individuals under 60% of the person-weighted median equivalised HBAI net income of the same file (microcosm#968); median_equiv_bhc_income_week: person-weighted, couple-no-children equivalent; gini/top-1%: household-weighted household_net_income",
+  "hbai_fye_2024_reference": {
+    "poverty_bhc_absolute_pct": 15,
+    "poverty_bhc_relative_pct": 17,
+    "poverty_ahc_absolute_pct": 18,
+    "poverty_ahc_relative_pct": 21,
+    "median_equiv_bhc_income_week": 650,
+    "child_poverty_bhc_relative_pct": 23,
+    "year": "FYE 2024 (April 2023 to March 2024); compare with the hbai_basis block, not with the 2026 rows",
+    "source": "DWP HBAI FYE 2024 summary tables 1.2b, 1.3a, 1.4a (March 2025)"
+  },
+  "rows": {
+    "population_m": 70.01177272866059,
+    "households_m": 29.33063353709817,
+    "state_pension_bn": 143.34295439981796,
+    "income_tax_bn": 308.9927890724263,
+    "income_taxpayers_m": 40.28271853523135,
+    "universal_credit_bn": 82.27460669261879,
+    "uc_families_m": 6.4363085692987445,
+    "child_benefit_bn": 16.760951441502275,
+    "pension_credit_bn": 6.9111590841356065,
+    "council_tax_bn": 48.767579616322,
+    "poverty_bhc_pct": 8.740819809337934,
+    "poverty_bhc_absolute_pct": 8.740819809337934,
+    "poverty_bhc_relative_pct": 14.63452283021983,
+    "poverty_ahc_absolute_pct": 12.77307812862886,
+    "poverty_ahc_relative_pct": 19.086946645184565,
+    "median_equiv_bhc_income_week": 799.7987530048077,
+    "child_poverty_bhc_relative_pct": 17.41214752626432,
+    "p10_over_median_bhc": 0.5295396669140309,
+    "p90_over_median_bhc": 1.7424408427563236,
+    "zero_income_share_pct": 0.1550300104130417,
+    "top_1pct_net_income_share_pct": 9.106001360340661,
+    "gini_net_hh_income": 0.376326181202968
+  },
+  "hbai_basis": {
+    "year": 2024,
+    "rows": {
+      "poverty_bhc_absolute_pct": 9.31103618296997,
+      "poverty_bhc_relative_pct": 15.301746413861888,
+      "poverty_ahc_absolute_pct": 13.066817529758456,
+      "poverty_ahc_relative_pct": 19.51732487820331,
+      "child_poverty_bhc_relative_pct": 18.759402482558862,
+      "median_equiv_bhc_income_week": 751.48046875,
+      "p10_over_median_bhc": 0.518320856626363,
+      "p90_over_median_bhc": 1.750322380461325,
+      "zero_income_share_pct": 0.1570949869082417
+    },
+    "hbai": {
+      "label": "HBAI FYE 2024 (April 2023 to March 2024), survey-reported incomes",
+      "poverty_bhc_absolute_pct": 15,
+      "poverty_bhc_relative_pct": 17,
+      "poverty_ahc_absolute_pct": 18,
+      "poverty_ahc_relative_pct": 21,
+      "child_poverty_bhc_relative_pct": 23,
+      "median_equiv_bhc_income_week": 650,
+      "p10_over_median_bhc": 0.48,
+      "p90_over_median_bhc": 1.955,
+      "zero_income_share_pct": 1.0,
+      "source": "DWP HBAI FYE 2024 (March 2025): summary tables 1.2b (quintile medians: bottom 312, top 1271 on a 650 median) and 1.3a-1.4a; chart 2.4 income bands (0.66m individuals at 0-10 GBP/week)"
+    }
+  }
+}

@@ -142,7 +142,9 @@ def _ladder_metadata() -> dict[str, object]:
             "constituency": layer("2024_pcon"),
             "lsoa": layer("synthetic"),
             "msoa": layer("synthetic"),
-            "local_authority": layer("synthetic"),
+            # Real April 2023 London codes, so the engine input resolves through
+            # the names resource (the ladder refuses any other vintage).
+            "local_authority": layer("2023_april_lad"),
             "ward": layer("synthetic"),
             "itl": layer("2021_itl"),
             "region": layer("synthetic"),

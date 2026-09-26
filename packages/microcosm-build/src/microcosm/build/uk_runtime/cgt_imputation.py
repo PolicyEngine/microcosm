@@ -45,11 +45,22 @@ Three documented approximations, in order of consequence:
    allocation reconciles to published numbers by construction.
    The bottom band's support is floored at the annual exempt amount, since
    every allocated person is a taxpayer with a liability.
-4. **Gainers beyond the published taxpayer mass keep their existing amounts,
-   capped at the annual exempt amount.** Table 3 covers only individuals
-   with a CGT liability, so the candidate's remaining gainers are treated as
-   sub-AEA gainers rather than being invented into the liability
-   distribution or deleted.
+4. **Gainers beyond the published taxpayer mass take Advani and Summers
+   within-band amounts restricted to (0, AEA].** Table 3 covers only
+   individuals with a CGT liability, so the candidate's remaining gainers
+   are sub-AEA gainers. Their amounts come from the Advani and Summers
+   (2020) quantile surface of gains by total-income band, the surface the
+   spine's gainer set was drawn from, restricted to the quantiles between
+   the band spline's zero crossing and its crossing of the build period's
+   annual exempt amount and placed rank-preservingly within each band,
+   rather than from a cap on the candidate's amounts (microcosm#970). A cap
+   left every such gainer at exactly the exempt amount, which the engine's
+   uprating then carried past the frozen threshold in the first projected
+   year. The table is used as published, 2017-18 nominal pounds without
+   uprating: between the 10th and 25th percentiles the spline is one
+   straight segment, so the shape on (0, AEA] is close to uniform whatever
+   the scale. Nothing is invented into the liability distribution or
+   deleted.
 5. **The joint is the published 2024-25 surface, not an aged one.** The
    2026 release publishes Table 3 for 2024-25, the tax year of the Table 1
    observations the calibration fits, and its rows are vendored verbatim
@@ -88,6 +99,18 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.advani_summers import (
+    ADVANI_SUMMERS_RESOURCE,
+    ADVANI_SUMMERS_VINTAGE,
+    CGT_QUANTILE_POINTS,
+    advani_summers_band_index,
+    advani_summers_knots,
+    advani_summers_resource_sha256,
+    advani_summers_rows,
+    exempt_range_quantiles,
+    load_advani_summers_distribution,
+    stratified_amounts_within_range,
+)
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_BUILD_PERIOD,
     HMRC_CGT_CONDITIONING_RECORD_SETS,
@@ -101,7 +124,6 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     load_hmrc_cgt_joint_distribution,
 )
 from microcosm.build.uk_runtime.national_frame import (
-    UKNationalStage,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -112,9 +134,8 @@ from microcosm.frame import Frame, MassChangeRecord
 
 __all__ = [
     "UK_CGT_IMPUTATION_SEED",
-    "UK_CGT_MASS_CONSERVATION_REASON",
     "UK_CGT_SPINE_MASS_CONSERVATION_REASON",
-    "UK_CGT_IMPUTATION_STAGE_NAME",
+    "UK_CGT_SPINE_STAGE_NAME",
     "UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS",
     "UKCGTImputationSummary",
     "UKCGTPolicyParameters",
@@ -125,35 +146,36 @@ __all__ = [
     "UK_CGT_RAKE_TOLERANCE",
     "UK_CGT_REGION_GROUP_LABELS",
     "UK_CGT_REGION_GROUPS",
+    "UK_CGT_REMAINDER_POLICY",
     "UKCGTAllocationReport",
     "impute_uk_capital_gains",
     "impute_uk_capital_gains_with_report",
     "summarize_uk_cgt_imputation",
-    "uk_capital_gains_imputation_stage",
     "uk_cgt_spine_stage_transform",
+    "uk_cgt_component_sum_income",
     "uk_cgt_policy_parameters",
     "uk_cgt_taxable_income_proxy",
 ]
 
-UK_CGT_IMPUTATION_STAGE_NAME = "hmrc_cgt_gains"
-
-#: The reviewed mass-conservation receipt this stage records. The terminal
-#: family gate requires a valid mass-conserving MassChangeRecord carrying
-#: exactly this reason, so a build whose CGT stage silently moved household
-#: mass — or never ran — fails by name.
-UK_CGT_MASS_CONSERVATION_REASON = (
-    "Amounts-only capital gains redraw: household weights pass through "
-    "unchanged and total household mass is conserved."
-)
+#: The FRS spine's capital-gains amounts stage: since microcosm#823 the only
+#: CGT gains stage. The June-path wrapper (``hmrc_cgt_gains``, driven from
+#: the certified June H5) is retired; its family left the release contract.
+UK_CGT_SPINE_STAGE_NAME = "hmrc_cgt_gains_spine"
 
 #: Base seed for the stage's draws. Combined with the build period so two
 #: periods draw differently while each build is reproducible.
 UK_CGT_IMPUTATION_SEED = 552
 
-#: The spine projection records the same conservation invariant under its
-#: own reason so the terminal family validator can never satisfy the
-#: certified and spine families with one shared record (adversarial-review
-#: finding on the E8 PR: reason strings are the receipt identity).
+#: How the sub-AEA remainder takes its amounts (microcosm#970): the
+#: Advani-Summers within-band quantile function restricted to the exempt
+#: range, rank-preserving within each total-income band, no seeded draw.
+UK_CGT_REMAINDER_POLICY = "advani_summers_within_band_exempt_range"
+
+#: The reviewed mass-conservation receipt the spine stage records. The
+#: terminal family gate requires a valid mass-conserving MassChangeRecord
+#: carrying exactly this reason, so a build whose CGT stage silently moved
+#: household mass, or never ran, fails by name (reason strings are the
+#: receipt identity: adversarial-review finding on the E8 PR).
 UK_CGT_SPINE_MASS_CONSERVATION_REASON = (
     "Amounts-only capital gains redraw on the source spine: household "
     "weights pass through unchanged and total household mass is conserved."
@@ -260,7 +282,7 @@ UK_CGT_CONDITIONING_DIMENSIONS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class UKCGTPolicyParameters:
-    """Policy amounts the proxy and the sub-AEA cap depend on.
+    """Policy amounts the proxy and the sub-AEA remainder range depend on.
 
     Read from the policyengine-uk parameter tree at a stated instant by
     :func:`uk_cgt_policy_parameters`, or constructed directly in tests.
@@ -314,10 +336,13 @@ def uk_cgt_policy_parameters(build_period: int | str) -> UKCGTPolicyParameters:
     )
 
 
-def uk_cgt_taxable_income_proxy(
-    person: pd.DataFrame, parameters: UKCGTPolicyParameters
-) -> np.ndarray:
-    """Approximate taxable income after reliefs and the Personal Allowance."""
+def uk_cgt_component_sum_income(person: pd.DataFrame) -> np.ndarray:
+    """Sum the persisted total_income components before any allowance.
+
+    The Advani-Summers surface conditions on total income, so the prior
+    draw and the sub-AEA remainder band persons on this sum; the Table 3
+    proxy subtracts the tapered Personal Allowance from it.
+    """
     missing = [
         column
         for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
@@ -330,6 +355,14 @@ def uk_cgt_taxable_income_proxy(
     total = np.zeros(len(person))
     for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS:
         total += pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+    return total
+
+
+def uk_cgt_taxable_income_proxy(
+    person: pd.DataFrame, parameters: UKCGTPolicyParameters
+) -> np.ndarray:
+    """Approximate taxable income after reliefs and the Personal Allowance."""
+    total = uk_cgt_component_sum_income(person)
 
     taper = parameters.personal_allowance_taper_rate * np.maximum(
         0.0, total - parameters.personal_allowance_taper_threshold
@@ -569,9 +602,11 @@ class UKCGTAllocationReport:
     fallback_share_by_band: Mapping[int, float]
     conditioning: Mapping[str, object]
     rounding_carry_out: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
+    remainder: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
+            "remainder": dict(self.remainder),
             "band_rows": [dict(row) for row in self.band_rows],
             "joint_rows": [dict(row) for row in self.joint_rows],
             "rake": dict(self.rake),
@@ -608,7 +643,7 @@ class UKCGTImputationSummary:
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
-            "stage": UK_CGT_IMPUTATION_STAGE_NAME,
+            "stage": UK_CGT_SPINE_STAGE_NAME,
             "rows": self.rows.to_dict(orient="records"),
             "taxpayer_mass": self.taxpayer_mass,
             "published_taxpayer_mass": self.published_taxpayer_mass,
@@ -1211,6 +1246,77 @@ def _ranked(
     return indices[order]
 
 
+def _map_remainder_amounts(
+    *,
+    remainder: np.ndarray,
+    existing: np.ndarray,
+    person_id: np.ndarray,
+    person_weight: np.ndarray,
+    band_index: np.ndarray,
+    rows: Sequence[Mapping[str, object]],
+    annual_exempt_amount: float,
+    new_gains: np.ndarray,
+) -> dict[str, object]:
+    """Place the sub-AEA remainder on the A&S within-band surface (microcosm#970).
+
+    ``remainder`` holds the row positions of the gainers the allocation left
+    unassigned. Within each Advani-Summers total-income band they take, in
+    ascending existing-gain order (the allocation ranking reversed, as the
+    plan draws order their strata), the midpoints of the weight-proportional
+    quantile strata of ``(q0, q_aea)``, the band spline's zero crossing and
+    its crossing of the annual exempt amount, so the band's weighted
+    remainder reproduces the published conditional shape on (0, AEA]. The
+    mapping is a monotone transform of the existing gains inside each band,
+    consumes no seeded draw, and fails closed if any amount leaves the
+    range. Returns the receipt for the allocation report.
+    """
+
+    band_rows: list[dict[str, object]] = []
+    for band in np.unique(band_index[remainder]):
+        members = remainder[band_index[remainder] == band]
+        ordered = _ranked(members, person_id=person_id, existing=existing)[::-1]
+        knots = advani_summers_knots(rows[int(band)])
+        lower_quantile, upper_quantile = exempt_range_quantiles(
+            knots, annual_exempt_amount
+        )
+        amounts = stratified_amounts_within_range(
+            knots,
+            weights=person_weight[ordered],
+            lower_quantile=lower_quantile,
+            upper_quantile=upper_quantile,
+        )
+        if not ((amounts > 0.0).all() and (amounts <= annual_exempt_amount).all()):
+            raise ValueError(
+                "Sub-AEA remainder amounts left (0, annual exempt amount]."
+            )
+        new_gains[ordered] = amounts
+        band_rows.append(
+            {
+                "minimum_total_income": float(rows[int(band)]["minimum_total_income"]),
+                "zero_quantile": lower_quantile,
+                "exempt_quantile": upper_quantile,
+                "persons": int(ordered.size),
+                "mass": float(person_weight[ordered].sum()),
+                "min_amount": float(amounts.min()),
+                "max_amount": float(amounts.max()),
+            }
+        )
+    return {
+        "policy": UK_CGT_REMAINDER_POLICY,
+        "resource": ADVANI_SUMMERS_RESOURCE,
+        "resource_sha256": advani_summers_resource_sha256(),
+        "resource_vintage": ADVANI_SUMMERS_VINTAGE,
+        "income_measure": "component_sum_without_allowance",
+        "annual_exempt_amount": float(annual_exempt_amount),
+        "persons": int(remainder.size),
+        "mass": float(person_weight[remainder].sum()),
+        "min_amount": float(new_gains[remainder].min()) if remainder.size else 0.0,
+        "max_amount": float(new_gains[remainder].max()) if remainder.size else 0.0,
+        "bands_with_remainder": len(band_rows),
+        "band_rows": band_rows,
+    }
+
+
 def impute_uk_capital_gains_with_report(
     frame: Frame,
     distribution: HMRCCapitalGainsJointDistribution,
@@ -1218,11 +1324,21 @@ def impute_uk_capital_gains_with_report(
     *,
     conditioning: HMRCCGTConditioningFacts,
     seed: int = UK_CGT_IMPUTATION_SEED,
-    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
+    mass_change_reason: str = UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    remainder_distribution: Mapping[str, object] | None = None,
 ) -> tuple[Frame, UKCGTAllocationReport]:
-    """Redraw gainers' amounts, conditioned on income, age and region."""
+    """Redraw gainers' amounts, conditioned on income, age and region.
+
+    ``remainder_distribution`` is the Advani-Summers surface the sub-AEA
+    remainder maps onto; it defaults to the committed resource.
+    """
 
     validate_uk_national_frame(frame)
+    remainder_rows = advani_summers_rows(
+        remainder_distribution
+        if remainder_distribution is not None
+        else load_advani_summers_distribution()
+    )
     time_period = uk_time_period(frame)
     person = frame.table("person").reset_index(drop=True)
     if "capital_gains" not in person.columns:
@@ -1409,11 +1525,21 @@ def impute_uk_capital_gains_with_report(
                 new_gains=new_gains,
             )
 
-    # Below the published taxpayer mass: sub-AEA gainers keep their
-    # existing amounts, capped at the annual exempt amount.
-    remainder = is_gainer & ~assigned
-    new_gains[remainder] = np.minimum(
-        existing[remainder], parameters.annual_exempt_amount
+    # Below the published taxpayer mass: sub-AEA gainers take Advani-Summers
+    # within-band amounts restricted to (0, AEA], rank-preserving within each
+    # A&S total-income band (microcosm#970). Nothing here touches rng, so the
+    # walk and plan draw order above is unchanged.
+    remainder_receipt = _map_remainder_amounts(
+        remainder=np.flatnonzero(is_gainer & ~assigned),
+        existing=existing,
+        person_id=person_id,
+        person_weight=person_weight,
+        band_index=advani_summers_band_index(
+            remainder_rows, uk_cgt_component_sum_income(person)
+        ),
+        rows=remainder_rows,
+        annual_exempt_amount=parameters.annual_exempt_amount,
+        new_gains=new_gains,
     )
 
     if not np.isfinite(new_gains).all():
@@ -1456,6 +1582,7 @@ def impute_uk_capital_gains_with_report(
         for gi, gain_lower in enumerate(gains)
     }
     report = UKCGTAllocationReport(
+        remainder=remainder_receipt,
         band_rows=band_rows,
         joint_rows=tuple(joint_rows),
         rake=rake_report,
@@ -1520,11 +1647,13 @@ def impute_uk_capital_gains(
     *,
     conditioning: HMRCCGTConditioningFacts | None = None,
     seed: int = UK_CGT_IMPUTATION_SEED,
-    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
+    mass_change_reason: str = UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    remainder_distribution: Mapping[str, object] | None = None,
 ) -> Frame:
     """Redraw gainers' amounts from the published joint distribution.
 
-    ``conditioning`` defaults to the committed vendored 2024-25 resource.
+    ``conditioning`` defaults to the committed vendored 2024-25 resource and
+    ``remainder_distribution`` to the committed Advani-Summers surface.
     """
 
     result, _ = impute_uk_capital_gains_with_report(
@@ -1534,6 +1663,7 @@ def impute_uk_capital_gains(
         conditioning=conditioning or load_hmrc_cgt_conditioning_facts(),
         seed=seed,
         mass_change_reason=mass_change_reason,
+        remainder_distribution=remainder_distribution,
     )
     return result
 
@@ -1641,43 +1771,13 @@ def summarize_uk_cgt_imputation(
     )
 
 
-def uk_capital_gains_imputation_stage(
-    *,
-    parameters: UKCGTPolicyParameters | None = None,
-    distribution: HMRCCapitalGainsJointDistribution | None = None,
-    conditioning: HMRCCGTConditioningFacts | None = None,
-    seed: int = UK_CGT_IMPUTATION_SEED,
-    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
-) -> UKNationalStage:
-    """Build the national stage that redraws capital gains amounts.
-
-    The joint and the conditioning facts default to the committed vendored
-    2024-25 resource, which is checked against the pinned Chronicle feed
-    before a row is read. Parameters default to the policyengine-uk tree at
-    the dataset's build period, resolved when the stage runs.
-    """
-
-    def transform(frame: Frame) -> Frame:
-        joint = distribution or load_hmrc_cgt_joint_distribution()
-        resolved = parameters or uk_cgt_policy_parameters(uk_time_period(frame))
-        return impute_uk_capital_gains(
-            frame,
-            joint,
-            resolved,
-            conditioning=conditioning or load_hmrc_cgt_conditioning_facts(),
-            seed=seed,
-            mass_change_reason=mass_change_reason,
-        )
-
-    return UKNationalStage(name=UK_CGT_IMPUTATION_STAGE_NAME, transform=transform)
-
-
 def uk_cgt_spine_stage_transform(
     stage: SourceStageSpec,
     *,
     distribution: HMRCCapitalGainsJointDistribution | None = None,
     parameters: UKCGTPolicyParameters | None = None,
     conditioning: HMRCCGTConditioningFacts | None = None,
+    remainder_distribution: Mapping[str, object] | None = None,
 ):
     """Bind the spine manifest, then reuse the reviewed merged CGT runtime.
 
@@ -1691,6 +1791,7 @@ def uk_cgt_spine_stage_transform(
         distribution=distribution,
         parameters=parameters,
         conditioning=conditioning,
+        remainder_distribution=remainder_distribution,
     )
 
 
@@ -1702,6 +1803,7 @@ class UKCGTSpineStageTransform:
     distribution: HMRCCapitalGainsJointDistribution | None = None
     parameters: UKCGTPolicyParameters | None = None
     conditioning: HMRCCGTConditioningFacts | None = None
+    remainder_distribution: Mapping[str, object] | None = None
     last_result: UKCGTImputationSummary | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
@@ -1722,6 +1824,7 @@ class UKCGTSpineStageTransform:
             conditioning=conditioning,
             seed=UK_CGT_IMPUTATION_SEED,
             mass_change_reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+            remainder_distribution=self.remainder_distribution,
         )
         summary = summarize_uk_cgt_imputation(
             frame,
@@ -1967,14 +2070,52 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
         },
         "sub_aea_remainder": {
             "policy": (
-                "gainers beyond the published taxpayer mass keep their "
-                "existing amounts capped at the annual exempt amount"
+                "gainers beyond the published taxpayer mass take amounts from "
+                "the Advani-Summers within-band gains distribution restricted "
+                "to (0, annual exempt amount], rank-preserving within each "
+                "Advani-Summers total-income band"
             ),
             "rationale": (
-                "Table 3 covers only individuals with a CGT liability; "
-                "remaining gainers are treated as sub-AEA gainers rather "
-                "than invented into the liability distribution or deleted."
+                "Table 3 covers only individuals with a CGT liability; the "
+                "remaining gainers are sub-AEA gainers, so their amounts come "
+                "from the only published within-band distribution that reaches "
+                "below the exempt amount, the surface the spine's gainer set "
+                "was drawn from, rather than from capping the candidate's "
+                "amounts, and none is invented into the liability distribution "
+                "or deleted (microcosm#970)."
             ),
+            "resource": ADVANI_SUMMERS_RESOURCE,
+            "resource_vintage": (
+                "2017-18 nominal pounds as published (Advani and Summers 2020, "
+                "CAGE WP 465, Table A1); no uprating is applied"
+            ),
+            "banding": (
+                "Advani-Summers total-income bands at the person's component-sum "
+                "income without allowance subtraction, the banding the prior "
+                "draw uses"
+            ),
+            "range": (
+                "quantiles strictly between the band's degree-1 quantile spline "
+                "zero crossing and its crossing of the build period's annual "
+                "exempt amount, so every amount lies in (0, AEA]"
+            ),
+            "mapping": (
+                "remainder gainers take the midpoints of the weight-proportional "
+                "quantile strata that partition the range, evaluated on the "
+                "band's spline; zero-weight persons take a nominal stratum of "
+                "the band's smallest positive weight and carry no mass; no "
+                "seeded draw is consumed, so the walk and plan draw order is "
+                "unchanged"
+            ),
+            "ordering": (
+                "existing gains ascending, person_id descending on ties (the "
+                "allocation ranking reversed, as the within-band draws order "
+                "their strata)"
+            ),
+            "quantile_points": list(CGT_QUANTILE_POINTS),
+            "spline_degree": 1,
+            "extrapolation": "ext=0",
+            "deterministic": True,
         },
         "record_mass_conservation_receipt": {
             "entity": "household",
@@ -2034,3 +2175,21 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 f"CGT spine {kind} declaration drifted from the reviewed "
                 f"mapping on parameter(s) {drifted}."
             )
+    # The sub-AEA remainder reads the Advani-Summers surface (microcosm#970),
+    # so the stage must declare it as a hash-covered artifact alongside the
+    # conditioning facts; an undeclared read would sit outside the manifest.
+    artifacts = {
+        str(artifact.get("role")): dict(artifact) for artifact in stage.artifacts
+    }
+    expected_artifact = {
+        "role": "capital_gains_within_band_distribution",
+        "kind": "public_aggregate_reference",
+        "resource": ADVANI_SUMMERS_RESOURCE,
+        "format": "json",
+        "runtime_sha256_required": True,
+    }
+    if artifacts.get("capital_gains_within_band_distribution") != expected_artifact:
+        raise ValueError(
+            "CGT spine must declare the Advani-Summers within-band distribution "
+            "artifact exactly as reviewed."
+        )
