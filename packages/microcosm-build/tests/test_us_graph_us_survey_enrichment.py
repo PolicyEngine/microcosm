@@ -523,7 +523,7 @@ def test_complete_frame_store_readback_and_input_coverage(enriched):
     # The default call leaves every unselected opt-in amount input missing.
     opt_in = {out for g in unexecuted for _, out in g.fields}
     assert opt_in <= set(before.missing_inputs) & set(after.missing_inputs)
-    assert len(after.inputs) == 161
+    assert len(after.inputs) == 165
     assert not after.ambiguous_grains and not after.block_storage_issues
     key = hashlib.sha256(b"invented-survey-enrichment-export" + run.receipt).hexdigest()
     run.store.put_frame(key, run.population.frame)

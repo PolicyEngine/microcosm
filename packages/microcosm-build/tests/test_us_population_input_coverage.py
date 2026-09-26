@@ -264,8 +264,8 @@ def test_closed_profiles_match_manifest_without_changing_historical_default():
     )
     assert profile.required_us_inputs() == expected
     assert (
-        len(expected) == 163
-        and len(profile.required_us_inputs(profile.USInputProfile.NATIONAL_CD)) == 161
+        len(expected) == 167
+        and len(profile.required_us_inputs(profile.USInputProfile.NATIONAL_CD)) == 165
     )
     assert set(expected) - set(profile.NATIONAL_CD_REQUIRED_INPUTS) == {
         "block_geoid",
@@ -273,7 +273,7 @@ def test_closed_profiles_match_manifest_without_changing_historical_default():
     }
     assert "employment_income_last_year" not in expected
     with pytest.raises(TypeError, match="PROFILE_TYPE"):
-        profile.required_us_inputs("us_national_cd_161_v1")
+        profile.required_us_inputs("us_national_cd_165_v1")
 
 
 def test_native_profile_excludes_only_the_canonical_prior_year_family():
@@ -287,7 +287,7 @@ def test_native_profile_excludes_only_the_canonical_prior_year_family():
         is US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
     )
     native = profile.required_us_inputs(profile.USInputProfile.NATIVE_NATIONAL_CD)
-    assert len(native) == len(set(native)) == 159
+    assert len(native) == len(set(native)) == 163
     assert native == tuple(
         name
         for name in profile.NATIONAL_CD_REQUIRED_INPUTS
@@ -307,14 +307,14 @@ def test_native_profile_excludes_only_the_canonical_prior_year_family():
 
 
 class _OtherProfile(StrEnum):
-    NATIVE_NATIONAL_CD = "us_native_national_cd_159_v1"
+    NATIVE_NATIONAL_CD = "us_native_national_cd_163_v1"
 
 
 @pytest.mark.parametrize(
     "invalid",
     [
-        "us_native_national_cd_159_v1",
-        "us_national_cd_161_v1",
+        "us_native_national_cd_163_v1",
+        "us_national_cd_165_v1",
         "invalid",
         _OtherProfile.NATIVE_NATIONAL_CD,
         None,
@@ -383,13 +383,13 @@ def test_native_diagnostic_reports_scope_without_waiving_other_inputs(actual, pr
     )
     excluded = set(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
     assert national.profile is profile.USInputProfile.NATIONAL_CD
-    assert len(national.inputs) == 161
-    assert len(historical.inputs) == 163
+    assert len(national.inputs) == 165
+    assert len(historical.inputs) == 167
     assert historical.scope_excluded_inputs == ()
     assert {"block_geoid", "tract_geoid"} <= set(historical.missing_inputs)
     assert national.scope_excluded_inputs == ()
     assert native.scope_excluded_inputs == US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
-    assert len(native.inputs) == 159
+    assert len(native.inputs) == 163
     assert native.inputs == tuple(
         row for row in national.inputs if row.name not in excluded
     )
@@ -406,7 +406,7 @@ def test_native_diagnostic_reports_scope_without_waiving_other_inputs(actual, pr
     assert not native.applicability_complete
     assert not native.statistical_signal_verified
     document = json.loads(native.to_bytes())
-    assert document["profile"] == "us_native_national_cd_159_v1"
+    assert document["profile"] == "us_native_national_cd_163_v1"
     assert document["scope_excluded_inputs"] == list(
         US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
     )

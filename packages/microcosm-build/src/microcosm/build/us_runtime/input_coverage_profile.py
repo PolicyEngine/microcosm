@@ -1,6 +1,6 @@
 """Explicit input-name profiles; neither a release gate nor source admission.
 
-The historical release gate retains its existing 163-input default. This
+The historical release gate retains its existing 167-input default. This
 lightweight declaration adds the national/CD projection without importing its
 engine-dependent anti-rot helpers or reading package resources. Its exact source
 manifest pin documents the extraction, not authority over a receiving Frame.
@@ -13,12 +13,12 @@ from .prior_year_income_constants import US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
 
 
 class USInputProfile(StrEnum):
-    HISTORICAL = "us_release_163_v1"
-    NATIONAL_CD = "us_national_cd_161_v1"
-    NATIVE_NATIONAL_CD = "us_native_national_cd_159_v1"
+    HISTORICAL = "us_release_167_v1"
+    NATIONAL_CD = "us_national_cd_165_v1"
+    NATIVE_NATIONAL_CD = "us_native_national_cd_163_v1"
 
 
-MANIFEST_SHA256 = "d96d0e98078906a9b47d47662e173553b1937851c7a8dd576010b50705ca1b1d"
+MANIFEST_SHA256 = "0da6097eddd1e2e33ec02ee820d2a125b37bbcb40abaa5b4af7f459b6e13bc4c"
 HISTORICAL_REQUIRED_INPUTS = (
     "age",
     "alimony_expense",
@@ -96,6 +96,7 @@ HISTORICAL_REQUIRED_INPUTS = (
     "is_pursuing_credential_for_american_opportunity_credit",
     "is_self_employed",
     "is_separated",
+    "is_spm_independent_minor_role",
     "is_surviving_spouse",
     "is_union_member_or_covered",
     "keogh_distributions",
@@ -121,6 +122,9 @@ HISTORICAL_REQUIRED_INPUTS = (
     "qualified_tuition_expenses",
     "real_estate_taxes",
     "receives_housing_assistance",
+    "receives_snap",
+    "receives_tanf",
+    "receives_wic",
     "rental_income",
     "rental_income_would_be_qualified",
     "roth_401k_contributions_desired",
