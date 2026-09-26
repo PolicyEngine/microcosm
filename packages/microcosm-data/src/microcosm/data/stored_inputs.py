@@ -66,8 +66,9 @@ columns each (191 distinct); none is an engine variable and none is one of the
 The 53 are all formulas. The fiscal-refresh writer
 (:class:`microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine`)
 refuses to store a formula-owned column, and the ACS local-area lane holds
-every formula-owned column back from its H5 with the same classifier, so a
-release from either cannot store one of them. Tests pin the convention and the
+every formula-owned column back from its H5 (``project_input_only``, which
+classifies with ``PolicyEngineUSEngine.formula_owned_outputs``), so a release
+from either cannot store one of them. Tests pin the convention and the
 formula ownership against the locked engine, so an engine that adds a variable
 outside the convention fails CI rather than passing silently.
 """
