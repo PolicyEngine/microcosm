@@ -200,9 +200,12 @@ def test_current_national_and_local_pins_share_one_reviewed_identity():
 
 
 def test_chronicle_source_codec_validates_directory_manifest(tmp_path):
-    from microcosm.build.uk_runtime import graph_targets  # noqa: F401
+    from microcosm.build.uk_runtime.graph_targets import register_uk_source_codecs
     from microcosm.graph.codecs import SOURCE_CODECS
 
+    # Registration is explicit (never an import side effect), so this test
+    # registers before reading the process-global registry.
+    register_uk_source_codecs()
     payload = b'{"value": 1.0}\n'
     (tmp_path / "consumer_facts.jsonl").write_bytes(payload)
     manifest = tmp_path / "manifest.json"
