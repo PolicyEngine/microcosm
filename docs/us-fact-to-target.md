@@ -111,6 +111,56 @@ exclusion register instead.
   wiring is safe and normal (the keogh ALD facts rode the feed unmapped for
   weeks).
 
+### State AGI bands bind as shares of the state total (microcosm#940)
+
+A state's total return count and AGI leave its top tail free, and the top
+tail is what progressive state rate schedules tax: #940 measured Build P's
+ACS-local release within 0.12% of Colorado's SOI returns and AGI while
+holding 24% of Colorado's SOI AGI above $1M. IRS SOI Historic Table 2
+publishes each state's returns and AGI in ten AGI classes, including
+$500k–$1M and $1M+ separately. `_soi_reference_from_fact` rescues those
+bands from the cross-period refusal and `_rebase_soi_state_agi_bands`
+binds them:
+
+- **Which rows.** `return_count` and `adjusted_gross_income` from the
+  per-state HT2 AGI record sets (`irs_soi.<ty>.historic_table_2.state_agi.<st>`),
+  all filing statuses, bands from
+  `US_SOI_STATE_AGI_BAND_MINIMUM_LOWER_BOUND` ($100,000) up. The floor is the
+  national size-of-AGI floor for the same reason: the SOI slice materializer
+  counts every tax unit in a band, filer or not. The HT2 `us` rows never
+  qualify; the national AGI shape belongs to Table 1.1.
+- **The value.** `control x band / partition`. The partition is the sum of
+  the state's published bands of the same vintage, measure and record set
+  over the whole AGI line, negative AGI under $1 included; HT2 publishes
+  amounts that add exactly and counts rounded to tens. The control is the
+  state's latest HT2 all-returns total not after the build period
+  (`irs_soi.<ty>.historic_table_2.state_broad.<st>.all.<measure>`), the row
+  that already binds the state's total. Congressional-district `<st>_total`
+  rows never anchor a state.
+- **Periods.** The value lands at the control's period and ages with the
+  state total: AGI on the CBO AGI series, counts never. The bands therefore
+  stay the same share of the state total they bind beside, at every stage.
+  The control may be older than the bands (TY2023 bands on the TY2022 state
+  total): the newest published shares scale onto the level the state total
+  binds at, rather than binding a second, differently aged level.
+- **One vintage.** Per state and measure only the newest vintage's bands
+  bind, so the TY2022 package's summed `500k_plus` row never binds beside
+  TY2023's split rows. A gap in a partition drops that state's bands; an
+  overlap raises.
+- **Receipts.** Every rebased row carries `state_agi_band_share`,
+  `uprating_factor` and the control's record id.
+- **Release gate.** `irs_state_agi_top_tail` in
+  `US_FISCAL_TARGET_COVERAGE_REQUIREMENTS` requires a $1M+ AGI row for all 51
+  states, so a feed without the split bands fails the release rather than
+  shipping without the constraint.
+- **Agreement with Table 1.1.** On the pinned feed the states' $500k–$1M and
+  $1M+ rows sum to 98–99% of Table 1.1's TY2023 classes aged the same way;
+  Table 1.1 also counts returns filed from other areas and Puerto Rico
+  (`test_pinned_feed_state_top_tail_agrees_with_table_1_1`).
+- **Support.** The rows can bind only where the pool has records in the
+  band. `experiments/940-state-agi-bands/` measures pre-calibration support
+  per state and band on the #982 fix's offline outputs.
+
 ## 4. Keep the exclusion register honest
 
 `US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` is keyed by `source_record_id` and its
