@@ -863,28 +863,60 @@ def test_the_probe_receipt_records_the_contract():
     )
 
 
-def test_a_refusing_probe_fails_the_contract_by_name(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("installed_us", "built_with_us"),
+    [("2.2.1", "2.2.1"), ("2.3.0", "2.2.1"), (None, "2.2.1")],
+    ids=["certified-runtime", "other-runtime", "no-runtime"],
+)
+def test_a_refusing_probe_fails_the_contract_by_name(
+    monkeypatch, tmp_path, installed_us, built_with_us
+):
     """Validation reports the refusal as a compatibility failure that names the
-    column (the probe's ``ValueError`` path)."""
+    column (the probe's ``ValueError`` path). When the installed engine is not
+    the bundle's built-with engine, the runtime mismatch a passing probe would
+    report is reported first, so the refusal is not read as a verdict against
+    the certified engine."""
 
+    from importlib import metadata
+
+    installed = {"policyengine-us": installed_us, "policyengine-core": "3.32.5"}
+
+    def version(name):
+        if installed.get(name) is None:
+            raise metadata.PackageNotFoundError(name)
+        return installed[name]
+
+    monkeypatch.setattr(metadata, "version", version)
     failures: list[str] = []
     candidate = tmp_path / "populace_us_2024.h5"
     candidate.write_bytes(b"")
     receipt = tmp_path / enrichment.COMPATIBILITY_FILE
     receipt.write_text("{}")
+    manifest = {
+        "build": {
+            "built_with_model_package": {
+                "name": "policyengine-us",
+                "version": built_with_us,
+            },
+            "built_with_core_package": {
+                "name": "policyengine-core",
+                "version": "3.32.5",
+            },
+        }
+    }
 
     def refusing_probe(*args, **kwargs):
         raise StoredInputRefusalError(
             stored_input_failures(
                 {"person": ("would_claim_wic",)},
-                engine=_engine(label="policyengine-us 2.2.1"),
+                engine=_engine(label=f"policyengine-us {installed_us}"),
             )
         )
 
     monkeypatch.setattr(enrichment, "run_native_loader_compatibility", refusing_probe)
     enrichment._check_compatibility(
         tmp_path,
-        {},
+        manifest,
         {"filename": enrichment.COMPATIBILITY_FILE},
         candidate,
         False,
@@ -892,11 +924,20 @@ def test_a_refusing_probe_fails_the_contract_by_name(monkeypatch, tmp_path):
         failures,
     )
 
-    refusal = [line for line in failures if "would_claim_wic" in line]
-    assert len(refusal) == 1
-    assert refusal[0].startswith(
-        "native loader compatibility failed: stored-input contract refused"
+    assert failures[0] == (
+        "source enrichment compatibility must hash-bind the actual test receipt"
     )
+    mismatch = (
+        []
+        if installed_us == built_with_us
+        else ["compatibility built-with policyengine-us must match tested runtime"]
+    )
+    assert failures[1:-1] == mismatch
+    assert failures[-1].startswith(
+        "native loader compatibility failed: stored-input contract refused "
+        "the release: stored column 'would_claim_wic'"
+    )
+    assert len(failures) == 2 + len(mismatch)
 
 
 def test_the_probe_helper_summarizes_a_passing_candidate(tmp_path, monkeypatch):

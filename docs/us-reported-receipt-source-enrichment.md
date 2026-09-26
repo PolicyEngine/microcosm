@@ -120,16 +120,16 @@ checks:
 
 ## Native loader qualification
 
-Certification runs `run_native_loader_compatibility` (`:1450`) with
+Certification runs `run_native_loader_compatibility` (`:1488`) with
 `native_inputs=RECEIPT_NATIVE_INPUTS`: the SPM role the child inherits, plus
 the three receipts. For each input the tested country must register a Boolean
 of the right entity. Both the country and wrapper loaders must return the
 column byte-identical to the H5. The complete-household probe
-(`_check_native_input_precedence`, `:1657`) supplies all four inputs at once,
+(`_check_native_input_precedence`, `:1695`) supplies all four inputs at once,
 each on its own entity's rows, as `False` and then `True`, and Core must return
 every one unchanged. The role's source must come from the `spm-calculator`
 wheel. Each receipt variable's source must come from the `policyengine-us`
-wheel (`_loaded_source_packages`, `:1437`). The same four wheels are required.
+wheel (`_loaded_source_packages`, `:1475`). The same four wheels are required.
 Without `native_inputs` the runner and its receipt are exactly the role lane's.
 
 Before either loader runs, the probe also applies the stored-input

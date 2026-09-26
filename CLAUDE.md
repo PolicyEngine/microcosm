@@ -149,13 +149,17 @@ against both H5 files. The publisher refuses to point `latest.json` at this
 child, so publish it with `--no-latest --tag-only`. See
 [the reported-receipt runbook](docs/us-reported-receipt-source-enrichment.md).
 
-Both US release seams refuse a stored column that is lowercase snake_case, not
-a variable of the engine the release is certified against, and not in the
+Three US release seams refuse a stored column that is lowercase snake_case,
+not a variable of the engine the release is certified against, and not in the
 reviewed register `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
-(microcosm#1026): the fiscal-refresh tool in its batched pre-export gates, the
-source-enrichment probe at certification and on every replay. A new
-provenance column needs a register entry with its reason; a renamed engine
-input needs its live name.
+(microcosm#1026): the fiscal-refresh tool in its batched pre-export gates
+(the exact-k ladder lane runs through it), the source-enrichment probe at
+certification and on every replay, and the ACS local-area chain's package
+stage (`tools/build_us_acs_local_release.py`). A new provenance column needs a
+register entry with its reason, bound to its producer in
+`test_us_stored_input_register.py`; a renamed engine input needs its live
+name. A new US lane that writes a release H5 must run the check where it
+records `build.built_with_model_package`.
 
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked

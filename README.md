@@ -203,10 +203,19 @@ A US release may not store a column that looks like a policyengine-us variable
 variable or `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
 registers the column with a reviewed reason (microcosm#1026: the engine
 ignores such a column, which is how a renamed WIC take-up input shipped
-unread). The fiscal-refresh tool refuses one in its batched pre-export gates,
-and checks the written H5 earns the same verdict; the source-enrichment probe
-refuses one at certification, validation and publication. A refusal names
-each column: rename it to its live input, or add a reviewed register entry.
+unread). Three release seams refuse one, each against the engine the release
+records as built-with:
+
+- the fiscal-refresh tool, in its batched pre-export gates, and it checks the
+  written H5 earns the same verdict (the exact-k ladder lane runs this tool);
+- the source-enrichment probe, at certification, validation and publication;
+- the ACS local-area chain's package stage, before it assembles the release
+  directory.
+
+A refusal names each column: rename it to its live input, or add a reviewed
+register entry. The published default, its reported-receipt child and the
+2026-09-23 ACS local-area release built on that child all store
+`would_claim_wic` and `medicare_part_b_premiums`, so each would now be refused.
 Check local files from HDF metadata alone with
 `uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
 

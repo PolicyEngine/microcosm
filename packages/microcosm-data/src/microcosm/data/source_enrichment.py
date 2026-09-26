@@ -1242,6 +1242,8 @@ def _check_compatibility(
     annual_revision: str | None = None,
     native_inputs: Mapping[str, str] | None = None,
 ):
+    from microcosm.data.stored_inputs import StoredInputRefusalError
+
     receipt_path = release_dir / COMPATIBILITY_FILE
     receipt = _json(receipt_path, failures)
     if (
@@ -1291,9 +1293,7 @@ def _check_compatibility(
             if _mapping(
                 _mapping(manifest.get("build")).get(f"built_with_{field}_package")
             ) != {"name": package, "version": version}:
-                failures.append(
-                    f"compatibility built-with {package} must match tested runtime"
-                )
+                failures.append(_built_with_mismatch(package))
             if malformed_claims:
                 continue
             declared = claims.get(field) if field == CLAIM_FIELD else None
@@ -1331,8 +1331,46 @@ def _check_compatibility(
                     f"compatibility {package} must match the declared publisher "
                     "compatibility claim"
                 )
+    except StoredInputRefusalError as exc:
+        # The probe refused before it reported the runtime it tested, and its
+        # refusal names the installed engine (microcosm#1026). If that is not
+        # the engine the bundle records as built-with, the refusal grades the
+        # bundle against an engine it was never certified with; say that more
+        # basic mismatch first, as a passing probe would.
+        failures.extend(_installed_built_with_mismatches(manifest))
+        failures.append(f"native loader compatibility failed: {exc}")
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         failures.append(f"native loader compatibility failed: {exc}")
+
+
+def _built_with_mismatch(package: str) -> str:
+    return f"compatibility built-with {package} must match tested runtime"
+
+
+def _installed_built_with_mismatches(manifest: Mapping) -> list[str]:
+    """Built-with packages that differ from the installed ones, as failure lines.
+
+    The installed versions are what the native-loader probe tests
+    (:func:`_runtime_package_identities` reads the same distributions), so
+    these are the lines :func:`_check_compatibility` reports after a passing
+    probe, for use when the probe did not finish.
+    """
+    from importlib import metadata
+
+    lines = []
+    for package, field in (
+        ("policyengine-us", "model"),
+        ("policyengine-core", "core"),
+    ):
+        try:
+            version = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            version = None
+        if _mapping(
+            _mapping(manifest.get("build")).get(f"built_with_{field}_package")
+        ) != {"name": package, "version": version}:
+            lines.append(_built_with_mismatch(package))
+    return lines
 
 
 def _wheel_files(path: Path) -> tuple[str, str, dict[str, bytes]]:
