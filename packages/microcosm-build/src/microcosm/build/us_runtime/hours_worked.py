@@ -364,11 +364,32 @@ def us_hours_worked_signal_gate(
         )
 
     summary = us_hours_worked_summary(frame)
-    return us_hours_worked_gate_from_summary(summary)
+    return us_hours_worked_gate_from_summary(summary, required_columns=required_columns)
 
 
-def us_hours_worked_gate_from_summary(summary: dict[str, object]) -> GateResult:
-    """Apply the original signal checks to actual typed producer observations."""
+def us_hours_worked_gate_from_summary(
+    summary: dict[str, object],
+    *,
+    required_columns: tuple[str, ...] = US_HOURS_WORKED_OUTPUT_COLUMNS,
+) -> GateResult:
+    """Apply the original signal checks to actual typed producer observations.
+
+    ``required_columns`` names the output columns the summary must have
+    counted. The default is all three, so a summary without ``weeks_worked``
+    refuses. A pool or ACS surface that drops ``weeks_worked`` passes
+    ``US_HOURS_WORKED_POOL_OUTPUT_COLUMNS`` (microcosm#765), exactly as
+    :func:`us_hours_worked_signal_gate` scopes its presence check. Every counted
+    column must be a declared output and must not be constant.
+    """
+    required = tuple(required_columns)
+    if (
+        not required
+        or len(set(required)) != len(required)
+        or not set(required) <= set(US_HOURS_WORKED_OUTPUT_COLUMNS)
+    ):
+        raise ValueError(
+            "US hours-worked gate scope must name distinct declared output columns."
+        )
     if (
         not isinstance(summary, dict)
         or set(summary)
@@ -382,7 +403,9 @@ def us_hours_worked_gate_from_summary(summary: dict[str, object]) -> GateResult:
         or summary["worked_share_band"] != list(_WORKED_SHARE_BAND)
         or summary["mean_weekly_hours_band"] != list(_MEAN_WEEKLY_HOURS_BAND)
         or not isinstance(summary["unique_counts"], dict)
-        or set(summary["unique_counts"]) != set(US_HOURS_WORKED_OUTPUT_COLUMNS)
+        or not set(required)
+        <= set(summary["unique_counts"])
+        <= set(US_HOURS_WORKED_OUTPUT_COLUMNS)
         or any(
             type(value) is not int or value < 0
             for value in summary["unique_counts"].values()
@@ -397,6 +420,8 @@ def us_hours_worked_gate_from_summary(summary: dict[str, object]) -> GateResult:
     # Canonical artifact JSON sorts mappings; failure order remains the
     # original declared output order, including after a cache roundtrip.
     for column in US_HOURS_WORKED_OUTPUT_COLUMNS:
+        if column not in summary["unique_counts"]:
+            continue
         count = summary["unique_counts"][column]
         if count < 2:
             failures.append(
