@@ -1480,3 +1480,77 @@ def test_agi_manifest_nullable_numeric_dtype_preserves_exact_value():
     record["person_vectors"]["head"]["employment_income_before_lsr"] += 0.5
     with pytest.raises(ValueError, match="not exactly representable"):
         tail_module._validate_arm_record(record)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("kept_donor_source_ids", [21]),
+        ("kept_donor_source_ids", [1_000_001]),
+        ("filing_status_code", 1.0),
+        ("filing_status_code", 3.0),
+        ("filing_status_code", 99.0),
+        ("filing_status_code", 2.5),
+    ],
+)
+def test_agi_thinning_receipt_rejects_resealed_record_mismatch(field, value):
+    """Kept IDs and filing statuses must describe the attached AGI-only donors."""
+    donor, frame = _agi_donor_and_recipients(agi_only=True)
+    _, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=567)
+    tail_module.validate_puf_capital_gains_tail_manifest(manifest)
+    cell = manifest["boundary"]["agi_arm"]["thinning"]["cells"][0]
+    assert cell["kept_donor_source_ids"] == [20]
+    assert cell["filing_status_code"] == 2.0
+    assert [r["donor_source_id"] for r in manifest["records"] if r["arm"] == 2] == [20]
+    cell[field] = value
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = tail_module._canonical_sha256(manifest)
+
+    for validate in (
+        tail_module.validate_puf_capital_gains_tail_manifest,
+        tail_module.puf_capital_gains_tail_terminal_support_receipt,
+    ):
+        with pytest.raises(ValueError, match="AGI-only thinning"):
+            validate(manifest)
+
+
+@pytest.mark.parametrize("incompatibility", ["spouse", "underage", "count"])
+def test_agi_only_thinning_receipt_preserves_insufficient_support(incompatibility):
+    """Kept AGI-only donors can be absent when their entire stratum is skipped."""
+    donor, frame = _agi_donor_and_recipients(agi_only=True)
+    if incompatibility == "count":
+        tax_unit = frame.table("tax_unit").copy()
+        tax_unit.loc[
+            tax_unit.filing_status_input.eq("JOINT"), "filing_status_input"
+        ] = "SINGLE"
+        frame = _replace_entity_table(frame, "tax_unit", tax_unit)
+    else:
+        person = frame.table("person").copy()
+        if incompatibility == "spouse":
+            person.loc[
+                person.tax_unit_role_input.eq("SPOUSE"), "tax_unit_role_input"
+            ] = "DEPENDENT"
+        else:
+            person.loc[person.tax_unit_role_input.eq("HEAD"), "age"] = 14
+        frame = _replace_entity_table(frame, "person", person)
+    _, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=567)
+    assert [record["arm"] for record in manifest["records"]] == [1]
+    cell = manifest["boundary"]["agi_arm"]["thinning"]["cells"][0]
+    assert cell["kept_donor_source_ids"] == [20]
+    joint = next(
+        row
+        for row in manifest["recipient_support"]["strata"]
+        if row["filing_status"] == "JOINT"
+    )
+    assert joint["status"] == "insufficient_support"
+    assert joint["skipped_donor_count"] == joint["agi_required_count"] == 1
+    tail_module.validate_puf_capital_gains_tail_manifest(manifest)
+    receipt = tail_module.puf_capital_gains_tail_terminal_support_receipt(manifest)
+    tail_module.validate_puf_capital_gains_tail_terminal_support_receipt(receipt)
+
+    # A skipped donor cannot also be attached through the capital-gains arm.
+    cell["kept_donor_source_ids"] = [manifest["records"][0]["donor_source_id"]]
+    manifest.pop("manifest_sha256")
+    manifest["manifest_sha256"] = tail_module._canonical_sha256(manifest)
+    with pytest.raises(ValueError, match="AGI-only thinning"):
+        tail_module.validate_puf_capital_gains_tail_manifest(manifest)

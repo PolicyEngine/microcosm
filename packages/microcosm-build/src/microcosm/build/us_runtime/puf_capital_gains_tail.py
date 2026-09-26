@@ -1441,6 +1441,41 @@ def validate_puf_capital_gains_tail_manifest(
         records=records,
         selected_donor_count=selected_donor_count,
     )
+    # Thinning describes AGI-only selection before whole filing-status strata
+    # may be skipped for recipient support. Bind retained IDs to the arm-2
+    # records wherever attachment was possible; arms 1 and 3 are not thinned.
+    strata = payload["recipient_support"]["strata"]
+    kept_by_code: dict[int, set[int]] = {
+        stratum["filing_status_code"]: set() for stratum in strata
+    }
+    for cell in boundary["agi_arm"]["thinning"]["cells"]:
+        code = cell["filing_status_code"]
+        if code not in kept_by_code:
+            raise ValueError("PUF tail AGI-only thinning filing status is unknown.")
+        kept_by_code[code].update(cell["kept_donor_source_ids"])
+    transferred_ids = {record["donor_source_id"] for record in records}
+    for stratum in strata:
+        code = stratum["filing_status_code"]
+        kept_ids = kept_by_code[code]
+        if len(kept_ids) > stratum["agi_required_count"]:
+            raise ValueError(
+                "PUF tail AGI-only thinning exceeds the stratum's AGI requirement."
+            )
+        if stratum["status"] == "insufficient_support":
+            if kept_ids & transferred_ids:
+                raise ValueError(
+                    "PUF tail AGI-only thinning skipped donors appear in attached records."
+                )
+            continue
+        attached_ids = {
+            record["donor_source_id"]
+            for record in records
+            if record["arm"] == 2 and record["donor_filing_status_code"] == code
+        }
+        if kept_ids != attached_ids:
+            raise ValueError(
+                "PUF tail AGI-only thinning donor IDs differ from attached arm-2 records."
+            )
     actual = _canonical_sha256(payload)
     if claimed != actual:
         raise ValueError(
