@@ -150,11 +150,15 @@ selection, scopes the #564 entries to every vintage, and makes the compile
 refuse any other fallback to another vintage of an excluded cell unless the
 id is a reviewed bypass (`US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`).
 `us_source_coverage.json` now records the concrete ids each rule drops or
-allows (`fiscal_target_exclusion_receipt`). The one reviewed bypass is the
+allows (`fiscal_target_exclusion_receipt`). The one reviewed bypass was the
 ty2020 W-2 Box 7 tips return count, which falls back past the #451 ty2023
 exclusion. The route A remediation plan found it calibrated in the certified
-parent `populace-us-2024-spm-receipts-20260923` too, so it is not a re-pin
-effect; it stays calibrated pending Max's ruling (decision d179).
+parent `populace-us-2024-spm-receipts-20260923` too, and the committed
+incumbent scorecard shows it at -52%
+(`experiments/replacement_scorecard/incumbent_48b9d479.md`), so it is not a
+re-pin effect. Decision d179 (25 September) ruled to enforce #451 at every
+vintage: the ty2023 entry joined `US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS`,
+and the bypass register is now empty.
 
 On this feed, compiled as above and then narrowed with
 `--target-surface national_state`, the surface diff is 24 targets removed,
@@ -163,7 +167,9 @@ ME MI MN NC ND NE NH NM OH OK SC VT WY, and the ty2022
 `table_1_4.all.other_income_net_{income,loss}_{amount,returns}` rows. The
 compiled register goes from 32,867 to 32,843 targets, and the
 `national_state` surface from 5,719 targets (registry `d5f9d854fe11`) to
-5,695 (`386fac439e77`).
+5,695 (`386fac439e77`). Decision d179 then removed the ty2020 tips return
+count, the only change: 32,842 compiled targets and 5,694 in
+`national_state` (`d315c75804ef`).
 
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's

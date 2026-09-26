@@ -14,12 +14,61 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.data import stored_inputs
+
 # Tests that write real H5 bytes go through pandas' HDFStore, which needs
 # pytables; the base wheel gate installs the shards without it.
 requires_pytables = pytest.mark.skipif(
     importlib.util.find_spec("tables") is None,
     reason="requires pytables (the build environment)",
 )
+
+
+#: The stored-input contract's real entry points, kept before the autouse
+#: fixture below replaces them, for the tests that pin the contract itself.
+_REAL_REQUIRE_H5_STORED_INPUTS = stored_inputs.require_h5_stored_inputs
+#: A policyengine-us stand-in for the package stage's stored-input contract.
+_PACKAGE_ENGINE = stored_inputs.CertifiedEngine(
+    label="policyengine-us 2.2.1",
+    variables=frozenset(
+        {
+            "person_id",
+            "person_household_id",
+            "person_tax_unit_id",
+            "person_spm_unit_id",
+            "person_family_id",
+            "person_marital_unit_id",
+            "household_id",
+            "tax_unit_id",
+            "spm_unit_id",
+            "family_id",
+            "marital_unit_id",
+            "household_weight",
+            "weekly_hours_worked_before_lsr",
+            "hours_worked_last_week",
+            "takes_up_wic_if_eligible",
+        }
+    ),
+)
+
+
+@pytest.fixture(autouse=True)
+def _stored_input_contract_passes(monkeypatch):
+    """The package stage checks the calibrated H5 against the installed
+    policyengine-us (microcosm#1026). The engine-free lane has none, and most
+    package tests here hash placeholder bytes rather than an H5, so the
+    contract passes by default. The tests that pin it restore the real reader
+    against :data:`_PACKAGE_ENGINE`."""
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", lambda: _PACKAGE_ENGINE)
+    monkeypatch.setattr(
+        stored_inputs,
+        "require_h5_stored_inputs",
+        lambda path, *, engine: {
+            "register_sha256": stored_inputs.register_sha256(),
+            "registered_non_variables": [],
+        },
+    )
 
 
 def _load_tool_module():
@@ -1231,6 +1280,150 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+
+
+@requires_pytables
+def test_package_records_the_stored_input_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    """microcosm#1026: the package stage grades the calibrated H5 it ships
+    against the engine it records as built-with, and the gate summary and
+    build manifest carry that verdict bound to the packaged bytes."""
+
+    monkeypatch.setattr(
+        stored_inputs, "require_h5_stored_inputs", _REAL_REQUIRE_H5_STORED_INPUTS
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    for name in ("gate_summary.json", "build_manifest.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"]["stored_inputs"]
+        assert gate == {
+            "passed": True,
+            "failures": [],
+            "engine": "policyengine-us 2.2.1",
+            "register_sha256": stored_inputs.register_sha256(),
+            "registered_non_variables": [],
+            "artifact_sha256": result["root_artifact"]["sha256"],
+            "checked_at_stage": "package",
+        }
+
+
+def _write_lane_h5(path: Path, **person_columns) -> None:
+    """The plausible-hours frame, written by the lane's own writer: the shared
+    nullable writer, which adds the ``_populace_staging_metadata`` series."""
+
+    from microcosm.frame import Frame
+
+    staging = _load_staging_builder_module()
+    frame = _plausible_hours_frame()
+    person = frame.table("person").assign(**person_columns)
+    frame = Frame(
+        {
+            **{entity: frame.table(entity) for entity in frame.entities},
+            "person": person,
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    staging._write_dataset(
+        frame, path, period=2024, artifact_kind="calibrated_local_area_artifact"
+    )
+
+
+@requires_pytables
+def test_the_contract_reads_the_lane_writer_output(tmp_path):
+    """The lane writes through the shared nullable writer, whose H5 carries a
+    ``_populace_staging_metadata`` series next to the entity tables. The
+    contract reads that layout rather than refusing it."""
+
+    path = tmp_path / "out.h5"
+    _write_lane_h5(path, would_claim_wic=[True, False] * 4)
+
+    tables = stored_inputs.h5_stored_tables(path)
+
+    assert set(tables) == {
+        "person",
+        "household",
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    }
+    assert "would_claim_wic" in tables["person"]
+    assert "household_weight" in tables["household"]
+    import h5py
+
+    with h5py.File(path, "r") as h5:
+        assert "_populace_staging_metadata" in h5
+
+
+@requires_pytables
+def test_package_refuses_a_stale_stored_input_before_any_release_dir(
+    tmp_path, monkeypatch
+):
+    """The #1026 regression in this lane: a calibrated H5 carrying the WIC
+    draw under its retired name is refused by name, with both remedies, and
+    no release directory is created."""
+
+    monkeypatch.setattr(
+        stored_inputs, "require_h5_stored_inputs", _REAL_REQUIRE_H5_STORED_INPUTS
+    )
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    _write_lane_h5(args.out_h5, would_claim_wic=[True, False] * 4)
+
+    with pytest.raises(SystemExit) as refusal:
+        module.do_package(args)
+
+    message = str(refusal.value)
+    assert message.startswith(
+        "Refusing to package: stored-input contract refused the release: "
+        "stored column 'would_claim_wic' (person table)"
+    )
+    assert "policyengine-us 2.2.1" in message
+    assert "Rename it to the live input" in message
+    assert not (args.out / "releases").exists()
+    assert not (args.out / "package_result.json").exists()
+
+    _write_lane_h5(args.out_h5, takes_up_wic_if_eligible=[True, False] * 4)
+    _refresh_package_evidence_bindings(module, args)
+    result = module.do_package(args)
+    assert Path(result["release_dir"]).is_dir()
+
+
+def _refresh_package_evidence_bindings(module, args) -> None:
+    """Rebind the package evidence to rewritten artifact bytes."""
+
+    artifact_sha = module._sha256(args.out_h5)
+    report = json.loads(args.gate_report.read_text())
+    for gate in report["gates"].values():
+        gate["artifact_sha256"] = artifact_sha
+    args.gate_report.write_text(json.dumps(report))
+    for name in ("spine_qa.json", "consumer_export.json"):
+        path = args.checkpoint_dir / name
+        evidence = json.loads(path.read_text())
+        key = "artifact_sha256" if name == "spine_qa.json" else "staging_sha256"
+        evidence[key] = artifact_sha
+        path.write_text(json.dumps(evidence))
+
+
+def test_package_refuses_without_an_importable_engine(tmp_path, monkeypatch):
+    """No engine, no certification: the release would record a built-with
+    engine the artifact was never checked against."""
+
+    def missing():
+        raise ImportError("No module named 'policyengine_us'")
+
+    monkeypatch.setattr(stored_inputs, "installed_us_engine", missing)
+    module = _load_tool_module()
+    args = _package_args_before_evidence(module, tmp_path, max_households=None)
+
+    with pytest.raises(SystemExit, match="policyengine-us cannot be imported"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
 
 
 @requires_pytables

@@ -1242,6 +1242,8 @@ def _check_compatibility(
     annual_revision: str | None = None,
     native_inputs: Mapping[str, str] | None = None,
 ):
+    from microcosm.data.stored_inputs import StoredInputRefusalError
+
     receipt_path = release_dir / COMPATIBILITY_FILE
     receipt = _json(receipt_path, failures)
     if (
@@ -1291,9 +1293,7 @@ def _check_compatibility(
             if _mapping(
                 _mapping(manifest.get("build")).get(f"built_with_{field}_package")
             ) != {"name": package, "version": version}:
-                failures.append(
-                    f"compatibility built-with {package} must match tested runtime"
-                )
+                failures.append(_built_with_mismatch(package))
             if malformed_claims:
                 continue
             declared = claims.get(field) if field == CLAIM_FIELD else None
@@ -1331,8 +1331,46 @@ def _check_compatibility(
                     f"compatibility {package} must match the declared publisher "
                     "compatibility claim"
                 )
+    except StoredInputRefusalError as exc:
+        # The probe refused before it reported the runtime it tested, and its
+        # refusal names the installed engine (microcosm#1026). If that is not
+        # the engine the bundle records as built-with, the refusal grades the
+        # bundle against an engine it was never certified with; say that more
+        # basic mismatch first, as a passing probe would.
+        failures.extend(_installed_built_with_mismatches(manifest))
+        failures.append(f"native loader compatibility failed: {exc}")
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         failures.append(f"native loader compatibility failed: {exc}")
+
+
+def _built_with_mismatch(package: str) -> str:
+    return f"compatibility built-with {package} must match tested runtime"
+
+
+def _installed_built_with_mismatches(manifest: Mapping) -> list[str]:
+    """Built-with packages that differ from the installed ones, as failure lines.
+
+    The installed versions are what the native-loader probe tests
+    (:func:`_runtime_package_identities` reads the same distributions), so
+    these are the lines :func:`_check_compatibility` reports after a passing
+    probe, for use when the probe did not finish.
+    """
+    from importlib import metadata
+
+    lines = []
+    for package, field in (
+        ("policyengine-us", "model"),
+        ("policyengine-core", "core"),
+    ):
+        try:
+            version = metadata.version(package)
+        except metadata.PackageNotFoundError:
+            version = None
+        if _mapping(
+            _mapping(manifest.get("build")).get(f"built_with_{field}_package")
+        ) != {"name": package, "version": version}:
+            lines.append(_built_with_mismatch(package))
+    return lines
 
 
 def _wheel_files(path: Path) -> tuple[str, str, dict[str, bytes]]:
@@ -1466,6 +1504,11 @@ def run_native_loader_compatibility(
     role it inherits plus its three receipts (:data:`RECEIPT_NATIVE_INPUTS`);
     each must be registered by the tested country as a Boolean of that entity,
     reach both loaders byte-identical, and override its default in Core.
+
+    Before either loader runs, the candidate must store no model input the
+    tested country does not define (:func:`_require_stored_inputs`,
+    microcosm#1026). The receipt's ``stored_inputs`` block records the register
+    that check consulted.
     """
     import inspect
 
@@ -1495,6 +1538,7 @@ def run_native_loader_compatibility(
                 f"tested country model must register {name} as a native {entity} bool"
             )
         source_paths[_native_input_label(name)] = inspect.getsourcefile(type(variable))
+    stored_inputs = _require_stored_inputs(candidate_h5)
     loaded_source_packages = _loaded_source_packages(inputs)
     if require_wheels:
         _check_loaded_source_ownership(source_paths, loaded_source_packages)
@@ -1571,16 +1615,46 @@ def run_native_loader_compatibility(
         "loaded_source_sha256": {
             key: sha256_file(path) for key, path in source_paths.items()
         },
+        "stored_inputs": stored_inputs,
         "checks": [
             *(
                 f"country:registered_{entity}_bool_input"
                 + ("" if name == ROLE_VARIABLE else f":{name}")
                 for name, entity in inputs.items()
             ),
+            "country:defines_every_stored_model_input",
             "country:complete_household_native_input_overrides_default",
             *checked,
         ],
     }
+
+
+def _require_stored_inputs(candidate_h5: Path) -> dict[str, object]:
+    """Refuse a candidate that stores a model input the tested country lacks.
+
+    microcosm#1026: the national default and its reported-receipt child were
+    certified through this probe against policyengine-us 2.2.1 while storing
+    the WIC take-up draw as ``would_claim_wic``, a name 2.2.1 does not define,
+    so the engine ignored the draw. :mod:`microcosm.data.stored_inputs` owns
+    the rule and its reviewed register.
+
+    The engine is the installed policyengine-us, which is the tested runtime:
+    this runs inside the probe, whose receipt names the installed packages, and
+    :func:`_check_compatibility` refuses a bundle whose
+    ``build.built_with_model_package`` is not that runtime. HDF metadata only;
+    no row is read.
+
+    Raises:
+        StoredInputRefusalError: One line per refused column (a
+            ``ValueError``, so validation reports it as a compatibility
+            failure and certification stops).
+        StoredTableLayoutError: The candidate's stored tables cannot be listed.
+    """
+    from microcosm.data import stored_inputs
+
+    return stored_inputs.require_h5_stored_inputs(
+        candidate_h5, engine=stored_inputs.installed_us_engine()
+    )
 
 
 def _check_loaded_source_ownership(
