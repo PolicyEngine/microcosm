@@ -727,6 +727,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "hmrc_cgt_asset_type_spine": (
         _Cell("person", "capital_gains_asset_type", "string"),
         _Cell("person", "capital_gains_residential_property", "float64"),
+        _Cell("person", "capital_gains_badr", "float64"),
     ),
     # Weights only: the anchor owns no cell (microcosm#970).
     "cgt_incidence_anchor": (),

@@ -46,6 +46,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "assign_binary_from_banded_rates",
         "assign_binary_from_rate",
         "assign_binary_with_anchored_residual",
+        "assign_badr_qualifying_gains",
         "assign_bus_use_incidence",
         "assign_bus_pass_eligibility",
         "assign_clipped_normal",

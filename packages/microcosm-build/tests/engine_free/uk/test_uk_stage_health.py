@@ -631,8 +631,10 @@ def _asset_type_evidence(**overrides: object) -> dict[str, object]:
                 "other_financial_assets": 0.282,
                 "agricultural_commercial_industrial_land_buildings": 0.044,
                 "other_non_financial_assets": 0.052,
-            }
+            },
+            "share_fit_converged": True,
         },
+        "badr": _badr_receipt(),
         "value_counts": {
             "none": 4_043,
             "sub_aea": 1_309,
@@ -641,6 +643,60 @@ def _asset_type_evidence(**overrides: object) -> dict[str, object]:
     }
     evidence.update(overrides)
     return evidence
+
+
+def _badr_receipt(**overrides: object) -> dict[str, object]:
+    receipt: dict[str, object] = {
+        "lifetime_limit": 1_000_000.0,
+        "bands": [
+            {"lower_bound": 0, "upper_bound": 10_000, "skipped": True},
+            {
+                "lower_bound": 100_000,
+                "upper_bound": 250_000,
+                "skipped": False,
+                "qualifying_amount": "net_gain",
+                "count_target": 11_000.0,
+                "gains_target": 1.866e9,
+                "expected_count": 11_000.0,
+                "expected_gains": 1.866e9,
+                "achieved_count": 11_050.0,
+                "achieved_gains": 1.87e9,
+                "max_pool_weight": 1_496.0,
+                "pool_min_gain": 101_000.0,
+                "pool_max_gain": 249_000.0,
+            },
+            {
+                "lower_bound": 1_000_000,
+                "upper_bound": None,
+                "skipped": False,
+                "qualifying_amount": "lifetime_limit",
+                "count_target": 6_787.0,
+                "gains_target": 6.787e9,
+                "expected_count": 6_787.0,
+                "expected_gains": 6.787e9,
+                "achieved_count": 6_800.0,
+                "achieved_gains": 6.8e9,
+                "max_pool_weight": 873.0,
+                "pool_min_gain": 1_000_000.0,
+                "pool_max_gain": 169.0e6,
+            },
+        ],
+        "totals": {
+            "achieved_count": 17_850.0,
+            "achieved_gains": 8.67e9,
+            "relief_rate_tax": 0.86e9,
+        },
+        "invariants": {
+            "claimants_outside_pool": 0,
+            "qualifying_above_gain": 0,
+            "qualifying_above_limit": 0,
+            "qualifying_outside_band": 0,
+            "residential_overlap": 0,
+            "sub_aea_claimants": 0,
+        },
+    }
+    receipt.update(overrides)
+    return receipt
 
 
 def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
@@ -726,6 +782,75 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
             evidence={"stage": "hmrc_cgt_asset_type_spine"},
             parameters=parameters,
         )
+
+
+def test_cgt_asset_type_summary_holds_every_badr_band_to_the_walk_bound() -> None:
+    parameters = {
+        "stage": "hmrc_cgt_asset_type_spine",
+        "check": "cgt_asset_type_summary",
+        "maximum_relative_deviation": 0.05,
+        "maximum_gains_sigma": 3.0,
+        "maximum_solve_relative_error": 1e-6,
+    }
+
+    def gate(evidence: dict[str, object]):
+        return uk_stage_health_gate(
+            stage="hmrc_cgt_asset_type_spine",
+            check="cgt_asset_type_summary",
+            evidence=evidence,
+            parameters=parameters,
+        )
+
+    passed = gate(_asset_type_evidence())
+    assert passed.passed
+    assert passed.details["badr_bands_checked"] == 2
+
+    def with_band(index: int, **changes: object) -> dict[str, object]:
+        receipt = _badr_receipt()
+        bands = [dict(band) for band in receipt["bands"]]  # type: ignore[union-attr]
+        bands[index].update(changes)
+        return _asset_type_evidence(badr=_badr_receipt(bands=bands))
+
+    # More than the band pool's largest weight off the expected count.
+    failed = gate(with_band(1, achieved_count=11_000.0 + 1_500.0))
+    assert not failed.passed
+    assert any("count gap" in failure for failure in failed.failures)
+    # Qualifying gains beyond max weight x (2 max gain - min gain).
+    failed = gate(with_band(1, achieved_gains=1.866e9 + 0.6e9))
+    assert not failed.passed
+    assert any("walk's bound" in failure for failure in failed.failures)
+    # The top band's gains must be exactly the limit times the realised count.
+    failed = gate(with_band(2, achieved_gains=6.8e9 + 1.0e6))
+    assert not failed.passed
+    assert any("lifetime limit" in failure for failure in failed.failures)
+    # A solve that missed its published target.
+    failed = gate(with_band(1, expected_gains=1.9e9))
+    assert not failed.passed
+    assert any("solve error" in failure for failure in failed.failures)
+    # A skipped band is not held to anything.
+    assert gate(with_band(0, achieved_count=1.0e9)).passed
+
+    broken = _badr_receipt()
+    broken["invariants"] = {**broken["invariants"], "residential_overlap": 2}  # type: ignore[dict-item]
+    failed = gate(_asset_type_evidence(badr=broken))
+    assert not failed.passed
+    assert any("residential_overlap" in failure for failure in failed.failures)
+
+    unconverged = _asset_type_evidence()
+    unconverged["asset_type"] = {
+        **unconverged["asset_type"],  # type: ignore[dict-item]
+        "share_fit_converged": False,
+    }
+    failed = gate(unconverged)
+    assert not failed.passed
+    assert any("did not converge" in failure for failure in failed.failures)
+
+    no_bands = gate(_asset_type_evidence(badr=_badr_receipt(bands=[])))
+    assert not no_bands.passed
+    missing = _asset_type_evidence()
+    del missing["badr"]
+    with pytest.raises(ValueError, match="badr"):
+        gate(missing)
 
 
 def _anchor_evidence(**overrides: object) -> dict[str, object]:

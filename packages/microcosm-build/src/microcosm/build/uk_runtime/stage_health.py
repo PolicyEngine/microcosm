@@ -989,7 +989,7 @@ def _cgt_asset_type_summary_gate(
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """The residential flag realised the Table 8a totals it was solved to.
+    """The residential flag and the BADR claims realised the totals they were solved to.
 
     The stage solves the logistic exactly in expectation and realises it by
     systematic sampling. This gate holds the solve to its targets, the
@@ -1002,6 +1002,15 @@ def _cgt_asset_type_summary_gate(
     noise floor and a production frame by the band. Every liable gainer must
     carry an asset type and the composition receipt must be finite
     (microcosm#725).
+
+    Each Table 4.1 BADR band is held to deterministic bounds only
+    (microcosm#1014): the solve to the band's targets; the realised count to
+    within the band pool's largest weight, the walk's own bound; below the
+    lifetime limit the realised qualifying gains to that weight times
+    (2 max gain - min gain) of the band pool, which bounds the gains the walk
+    can drift along its ascending-gain order; in the open top band the gains
+    to exactly the limit times the realised count. Every declared invariant
+    must be zero and the restricted type fit must have converged.
     """
 
     check = "cgt_asset_type_summary"
@@ -1071,11 +1080,89 @@ def _cgt_asset_type_summary_gate(
             failures.append(f"{stage}: {name} gains share {value} is not a share.")
     details["residential_rows"] = residential.get("achieved_rows")
     details["classified_values"] = sorted(counts)
+    if asset_type.get("share_fit_converged") is not True:
+        failures.append(f"{stage}: the main asset-type fit did not converge.")
+    failures.extend(_cgt_badr_failures(stage, evidence, max_solve_error, details))
     return (
         _fail(stage, check, failures, details)
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _cgt_badr_failures(
+    stage: str,
+    evidence: Mapping[str, object],
+    max_solve_error: float,
+    details: dict[str, object],
+) -> list[str]:
+    """The BADR half of the asset-type gate (microcosm#1014)."""
+
+    failures: list[str] = []
+    badr = _mapping(evidence.get("badr"), label=f"{stage}.badr")
+    invariants = _mapping(badr.get("invariants"), label=f"{stage}.badr.invariants")
+    for name, rows in invariants.items():
+        if rows != 0:
+            failures.append(f"{stage}: BADR invariant {name} broken on {rows} rows.")
+    limit = _finite_number(badr.get("lifetime_limit"), label=f"{stage}.badr.limit")
+    bands = badr.get("bands")
+    if not isinstance(bands, list) or not bands:
+        return [*failures, f"{stage}: BADR receipt carries no bands."]
+    checked = 0
+    for index, raw in enumerate(bands):
+        row = _mapping(raw, label=f"{stage}.badr.bands[{index}]")
+        if row.get("skipped") is True:
+            continue
+        checked += 1
+        name = f"BADR band from {row.get('lower_bound')}"
+
+        def number(key: str, *, _row=row, _index=index) -> float:
+            return _finite_number(
+                _row.get(key), label=f"{stage}.badr.bands[{_index}].{key}"
+            )
+
+        for measure in ("count", "gains"):
+            target = number(f"{measure}_target")
+            if target <= 0.0:
+                failures.append(f"{stage}: {name} {measure} target is not positive.")
+                continue
+            solve_error = abs(number(f"expected_{measure}") - target) / target
+            if solve_error > max_solve_error:
+                failures.append(
+                    f"{stage}: {name} {measure} solve error {solve_error} exceeds "
+                    f"{max_solve_error}."
+                )
+        max_weight = number("max_pool_weight")
+        count_gap = abs(number("achieved_count") - number("expected_count"))
+        if count_gap > max_weight * (1.0 + 1e-9):
+            failures.append(
+                f"{stage}: {name} count gap {count_gap} exceeds the band pool's "
+                f"largest weight {max_weight}."
+            )
+        achieved_gains = number("achieved_gains")
+        if row.get("qualifying_amount") == "lifetime_limit":
+            exact = limit * number("achieved_count")
+            if abs(achieved_gains - exact) > 1e-9 * max(abs(exact), 1.0):
+                failures.append(
+                    f"{stage}: {name} gains {achieved_gains} are not the lifetime "
+                    f"limit times the realised count ({exact})."
+                )
+        else:
+            gains_gap = abs(achieved_gains - number("expected_gains"))
+            gains_bound = max_weight * (
+                2.0 * number("pool_max_gain") - number("pool_min_gain")
+            )
+            if gains_gap > gains_bound * (1.0 + 1e-9):
+                failures.append(
+                    f"{stage}: {name} gains gap {gains_gap} exceeds the walk's "
+                    f"bound {gains_bound}."
+                )
+    totals = _mapping(badr.get("totals"), label=f"{stage}.badr.totals")
+    details["badr_bands_checked"] = checked
+    details["badr_achieved_count"] = totals.get("achieved_count")
+    details["badr_achieved_gains"] = totals.get("achieved_gains")
+    details["badr_relief_rate_tax"] = totals.get("relief_rate_tax")
+    return failures
 
 
 def _cgt_incidence_anchor_gate(

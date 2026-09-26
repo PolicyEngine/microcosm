@@ -5608,11 +5608,95 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "band_pool": {
+       "type": "string"
+      },
+      "bands": {
+       "type": "string"
+      },
+      "basis_assumption": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "assign_badr_qualifying_gains"
+      },
+      "model": {
+       "type": "string"
+      },
+      "output_column": {
+       "type": "string"
+      },
+      "output_semantics": {
+       "type": "string"
+      },
+      "policy_parameters": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "population": {
+       "type": "string"
+      },
+      "qualifying_amount": {
+       "type": "string"
+      },
+      "realization": {
+       "type": "string"
+      },
+      "reported_not_fitted": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      },
+      "seed_mixing": {
+       "type": "string"
+      },
+      "top_band_count": {
+       "type": "string"
+      },
+      "type_coupling": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "band_pool",
+      "bands",
+      "basis_assumption",
+      "kind",
+      "model",
+      "output_column",
+      "output_semantics",
+      "policy_parameters",
+      "population",
+      "qualifying_amount",
+      "realization",
+      "reported_not_fitted",
+      "seed",
+      "seed_mixing",
+      "top_band_count",
+      "type_coupling"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
       "categories": {
        "type": "array",
        "items": {
         "type": "string"
        }
+      },
+      "claimant_categories": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "claimant_restriction": {
+       "type": "string"
       },
       "diagnostic_only": {
        "const": true
@@ -5668,6 +5752,8 @@
      },
      "required": [
       "categories",
+      "claimant_categories",
+      "claimant_restriction",
       "diagnostic_only",
       "kernel",
       "kind",

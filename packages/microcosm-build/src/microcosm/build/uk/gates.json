@@ -490,7 +490,7 @@
         "maximum_gains_sigma": 3.0,
         "maximum_solve_relative_error": 1e-06
       },
-      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the same two totals."
+      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725, #1014): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Each Table 4.1 2024-25 BADR band is held to deterministic bounds only: its solve to the band's published claimant count and qualifying gains (the open top band to the published gains over the lifetime limit), its realised count within the band pool's largest weight, its realised qualifying gains within that weight times (2 max gain - min gain) of the band pool below the limit and exactly the limit times the realised count in the top band; every BADR invariant (claimants outside the non-residential liable pool, qualifying gains above the net gain or the limit or outside the band, residential overlap, sub-AEA claimants) must be zero and the restricted main-type fit must have converged. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the residential totals and the Table 4.1 bands."
     },
     {
       "id": "uk_stage_cgt_incidence_anchor_composition",
@@ -766,6 +766,7 @@
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
           "person.capital_gains_asset_type",
+          "person.capital_gains_badr",
           "person.capital_gains_residential_property",
           "person.bus_in_london_trips",
           "person.bus_pass_eligible",

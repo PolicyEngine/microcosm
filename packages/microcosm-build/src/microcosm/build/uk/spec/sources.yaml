@@ -3704,18 +3704,20 @@ stages:
   - capital_gains
   notes: Spine manifest projection of the merged HMRC Table 3 amounts stage. It deliberately omits base_candidate and verify_certified_candidate, which belong only to the certified-H5 path. The allocation targets are raked to the 2024-25 Table 6 age and Table 5 region margins from the vendored conditioning resource and walked inside income x age x region cells, so large gains land on the kind of person who holds them (microcosm#725).
 - stage: hmrc_cgt_asset_type_spine
-  survey: HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative) and Table 7 (disposals, proceeds and gains by asset type, 2023-24, sample-based), vendored from the pinned Chronicle feed
+  survey: HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative), Table 4.1 (individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain, 2024-25, administrative) and Table 7 (disposals, proceeds and gains by asset type, 2023-24, sample-based), vendored from the pinned Chronicle feed
   source: https://www.gov.uk/government/statistics/capital-gains-tax-statistics
   grain: person
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.98.0 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.100.0 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
+    - gov.hmrc.cgt.badr.lifetime_limit
+    - gov.hmrc.cgt.badr.rate
     instant_rule: raw dated parameter files evaluated at 1 June of the build period's tax year
     runtime_sha256_required: false
-    dependency_discipline: deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time
+    dependency_discipline: deferred inside uk_cgt_policy_parameters and uk_cgt_badr_parameters; the base package never imports policyengine-uk at import time
   - role: cgt_asset_type_facts
     kind: public_aggregate_reference
     resource: hmrc_cgt_asset_type_facts.json
@@ -3733,6 +3735,9 @@ stages:
     - hmrc.cgt_table7_2026.asset_category_total.ty2023
     - hmrc.cgt_table7_2026.financial_asset_type.ty2023
     - hmrc.cgt_table7_2026.non_financial_asset_type.ty2023
+    - hmrc.cgt_badr_ir_2026.table4_1.ty2024.main
+    - hmrc.cgt_badr_ir_2026.table4_1.ty2024.trusts_total
+    - hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total
     source_vintage: 2024-25
     mapped_build_period: 2024
     period_mapping: published_tax_year_equals_build_period
@@ -3751,6 +3756,24 @@ stages:
     seed_mixing: seed combined with the build period
     output_column: capital_gains_residential_property
     output_semantics: the person's capital_gains where flagged residential, 0 otherwise
+  - kind: assign_badr_qualifying_gains
+    population: liable gainers not flagged residential
+    bands: HMRC Table 4.1 2024-25 individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000)
+    band_pool: the population with net gains inside the band's range; the open top band takes net gains at or above the lifetime limit
+    model: 'per band below the lifetime limit, a logistic probability in centred log gains solved like the residential flag: the intercept matches the band''s published claimant count and the slope its published qualifying gains, with zero slope where the band pool''s own mean already matches; the open top band has a uniform probability matching its count'
+    qualifying_amount: below the lifetime limit a claimant's whole net gain qualifies; in the open top band the qualifying gain is the lifetime limit
+    top_band_count: the published top-band qualifying gains divided by the lifetime limit; the published count is rounded to the nearest thousand
+    basis_assumption: Table 4.1 counts qualifying gains before losses and the annual exempt amount while the frame carries net gains after losses; Investors' Relief is merged with BADR, as in the engine's capital_gains_badr input; the whole-gain assumption reproduces Table 4.1's tax column to within half a percent
+    realization: weighted systematic sampling within each band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order whether or not the band carries a target
+    seed: 555
+    seed_mixing: seed combined with the build period
+    policy_parameters:
+    - gov.hmrc.cgt.badr.lifetime_limit
+    - gov.hmrc.cgt.badr.rate
+    output_column: capital_gains_badr
+    output_semantics: the qualifying gain where the person claims BADR or Investors' Relief, 0 otherwise; never above the person's net gain or the lifetime limit
+    type_coupling: a claimant's main asset type is drawn only from unlisted_shares, agricultural_commercial_industrial_land_buildings, other_non_financial_assets
+    reported_not_fitted: tax at the relief rate, with the annual exempt amount set against the main-rate gains first as the engine allocates it, against Table 4.1's tax column
   - kind: assign_main_asset_type
     population: liable gainers not flagged residential
     categories:
@@ -3759,10 +3782,15 @@ stages:
     - other_financial_assets
     - agricultural_commercial_industrial_land_buildings
     - other_non_financial_assets
+    claimant_categories:
+    - unlisted_shares
+    - agricultural_commercial_industrial_land_buildings
+    - other_non_financial_assets
+    claimant_restriction: a BADR or Investors' Relief claimant draws only from the claimant categories, so the type follows the claim
     kernel: log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width
     log_sigma: 1.5
     share_targets: Table 7 2023-24 gains by asset type excluding residential land and buildings, as shares
-    weight_fitting: multiplicative updates of the type weights until the household-weighted expected gains shares by type match the share targets
+    weight_fitting: multiplicative updates of the type weights, with claimants restricted to the claimant categories, until the household-weighted expected gains shares by type match the share targets; the fit refuses if it has not converged within the iteration limit, and refuses up front when claimants hold more of the gains than the claimant categories' share
     weight_fitting_iterations: 200
     weight_fitting_tolerance: 1.0e-06
     realization: one seeded uniform per person against the cumulative type probabilities, consumed in person_id order
@@ -3789,17 +3817,19 @@ stages:
   - kind: classify_cgt_asset_type_facts_with_reviewed_fence
     calibration_permitted: false
     fact_fence_id: cgt_asset_type_facts_sample_based_prior_vintage
-    fenced_fact_count: 33
-    fenced_fact_composition: 'Table 7 2023-24 rows: 6 asset-category rows, 3 category totals, 12 financial asset-type rows, 12 non-financial asset-type rows'
-    classification_rationale: Table 7 is sample-based, published for 2023-24 only, counts disposals rather than taxpayers and includes trusts and non-UK assets; it seeds the asset-type draw and is reported against, never fitted.
+    fenced_fact_count: 65
+    fenced_fact_composition: 'Table 7 2023-24 rows: 6 asset-category rows, 3 category totals, 12 financial asset-type rows, 12 non-financial asset-type rows; Table 4.1 2024-25 rows: 27 individuals rows (the eight qualifying-gain bands and the total, each with claimants, qualifying gains and tax), 2 trusts totals, 3 all-taxpayer totals'
+    classification_rationale: 'Table 7 is sample-based, published for 2023-24 only, counts disposals rather than taxpayers and includes trusts and non-UK assets; it seeds the asset-type draw and is reported against, never fitted (microcosm#725). Table 4.1 conditions the BADR draw: the stage solves each individuals band''s claimants and qualifying gains and reports its relief-rate tax against the tax column, while the trusts and all-taxpayer totals only reconcile the individuals rows (microcosm#1014).'
     calibrated_facts: The Table 8a 2024-25 total residential property taxpayers and gains restated on the individuals basis (hmrc.cgt.residential_property_taxpayers, hmrc.cgt.residential_property_gains in uk_population_targets.json).
-    adjudication: https://github.com/PolicyEngine/microcosm/issues/725
+    adjudication: https://github.com/PolicyEngine/microcosm/issues/1014
   outputs:
   - capital_gains_asset_type
   - capital_gains_residential_property
+  - capital_gains_badr
   nonnegative_outputs:
   - capital_gains_residential_property
-  notes: 'Spine stage after the amounts redraw: every liable gainer carries one main asset type and, where flagged residential, its net gain restated in capital_gains_residential_property. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725).'
+  - capital_gains_badr
+  notes: 'Spine stage after the amounts redraw: every liable gainer carries one main asset type; where flagged residential, its net gain is restated in capital_gains_residential_property; where drawn as a BADR or Investors'' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25 (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725).'
 - stage: cgt_incidence_anchor
   survey: Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence
   source: Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465

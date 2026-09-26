@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "hmrc_cgt_asset_type_facts.json",
-  "purpose": "HMRC Capital Gains Tax statistics 2026 release rows the CGT asset-type stage assigns from and reports against: Table 8a tax year 2024-25 UK residents reporting residential property disposals (taxpayers, disposals, gains and tax by reporting channel: the CGT on UK Property service, the Self Assessment component and their total), Table 8b tax year 2024-25 UK Property service returns by taxpayer type (individuals, trusts and all; the individuals/all shares that restate Table 8a on the individuals basis of the national targets) and Table 7 tax year 2023-24 disposals, disposal proceeds and gains by asset category and asset type (sample-based; the composition prior for the non-residential asset-type draw, fenced from calibration). No value is derived here.",
+  "purpose": "HMRC Capital Gains Tax statistics 2026 release rows the CGT asset-type stage assigns from and reports against: Table 8a tax year 2024-25 UK residents reporting residential property disposals (taxpayers, disposals, gains and tax by reporting channel: the CGT on UK Property service, the Self Assessment component and their total), Table 8b tax year 2024-25 UK Property service returns by taxpayer type (individuals, trusts and all; the individuals/all shares that restate Table 8a on the individuals basis of the national targets), Table 4.1 tax year 2024-25 Business Asset Disposal Relief and Investors' Relief claimants, qualifying gains and tax (individuals by band of qualifying gain with their total, and the trusts and all-taxpayer totals; the band targets the BADR draw solves, microcosm#1014) and Table 7 tax year 2023-24 disposals, disposal proceeds and gains by asset category and asset type (sample-based; the composition prior for the non-residential asset-type draw, fenced from calibration). No value is derived here.",
   "consumers": [
     "uk_runtime.cgt_asset_type"
   ],
@@ -70,10 +70,1506 @@
         "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023"
       },
       "row_count": 12
+    },
+    {
+      "label": "table4_1_ty2024_badr_ir_individuals_by_band",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main"
+      },
+      "row_count": 27
+    },
+    {
+      "label": "table4_1_ty2024_badr_ir_trusts_total",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.trusts_total"
+      },
+      "row_count": 2
+    },
+    {
+      "label": "table4_1_ty2024_badr_ir_all_total",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total"
+      },
+      "row_count": 3
     }
   ],
-  "row_count": 60,
+  "row_count": 92,
   "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_07470e8fbbab7a42fbad5c19",
+      "semantic_fact_key": "ledger_semantic_fact_v2_83041a65c65edb0006e07cad",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "all_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "all"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 18475000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2d2dcd2ab70170cbe79e9683",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1d648e84400a9d250a3f7efa",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_0_to_9999.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_0_to_9999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_0_to_9999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 32000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7902eb60f3eb3e877a55209c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_31e271990148ab9177b37f39",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_1000000_plus.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_1000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_1000000_plus",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 6787000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fe7be6fa3787f96f36398a55",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c87788d341d82f2adbacc600",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_100000_to_249999.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_100000_to_249999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_100000_to_249999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 1866000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e3f3a1d2d2d368e10d09ace",
+      "semantic_fact_key": "ledger_semantic_fact_v2_140609f3b4792a9b82a32569",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_10000_to_24999.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_10000_to_24999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_10000_to_24999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 129000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_72da20bfe653913d4e114ce3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9ff82f4fa4c8e9cac78a2122",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_250000_to_499999.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_250000_to_499999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_250000_to_499999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 2901000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_01616813e32ffc4ddc891dcc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d103a1a4d42b368ae697411e",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_25000_to_49999.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_25000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_25000_to_49999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 224000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9a6304f7b15b3667e02ada02",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c7353ee7d00631a47ab413a5",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_500000_to_999999.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_500000_to_999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_500000_to_999999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 5929000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e213445138d034b04552af29",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ffa597971a1bc125c12bfd7a",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_50000_to_99999.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_50000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_50000_to_99999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 575000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c4148f842340b2cc904cdd49",
+      "semantic_fact_key": "ledger_semantic_fact_v2_36c70d895c15ef59cbf1d3c0",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.individuals_total.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "individuals_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 18443000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_28467829f6235158956f60c7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_350cdbbf1c297f84f0d09458",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.trusts_total.gains",
+      "concept": "hmrc.cgt_badr_ir_qualifying_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.trusts_total",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "trusts_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "trusts"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 32000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7547126651b520777585221e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0233a37663871cccfbbf7a81",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "all_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "all"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 1824000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9c4ec6c5e73949ef3cc6a2d2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9f11e1147619a8b1e88adeea",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_0_to_9999.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_0_to_9999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_0_to_9999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 2000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_10ace05228db0b481218c87f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5cc1b58b31f86346de29ba42",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_1000000_plus.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_1000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_1000000_plus",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 678000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c5524c579c66f7c5d77eefb6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d23f0f0eb2409949767cafb1",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_100000_to_249999.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_100000_to_249999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_100000_to_249999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 182000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_92902d5b0b55118d763ffe35",
+      "semantic_fact_key": "ledger_semantic_fact_v2_63f36c0399169f652185509e",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_10000_to_24999.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_10000_to_24999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_10000_to_24999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 11000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_40c359013a79fbdaf8c927bf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7feb48ccb3f4df176332d68b",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_250000_to_499999.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_250000_to_499999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_250000_to_499999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 285000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_101fee0be31298ddbac31146",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d97762a64b38debafe691348",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_25000_to_49999.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_25000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_25000_to_49999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 21000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_652f2104e0bbfae289913aa7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ffb2c8b5f4fef04d4d4582a2",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_500000_to_999999.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_500000_to_999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_500000_to_999999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 588000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1d3d32509b49f0a66e22976d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_01143dbdff5c8a7863028983",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_50000_to_99999.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_50000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_50000_to_99999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 55000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c768ed5eb1c654778c92c42c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0ff0c8aa998ae88fc2338a1d",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.individuals_total.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "individuals_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 1821000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9a39bb9543b0b0c31071cd9e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2fa232bfea9b8fa5fe8e40d2",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.trusts_total.tax",
+      "concept": "hmrc.cgt_badr_ir_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.trusts_total",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "trusts_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "trusts"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 3000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c08abb06fcb66080be7ad73c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a44e122988a89866eebb750c",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "all_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "all"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 61000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c71dc48a052cd232188e17da",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7763e2a05dd10775920ba3e5",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_0_to_9999.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_0_to_9999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_0_to_9999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 5000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5ff395a45be4717082a60b22",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c9cba8d095d6d55b6f800cb5",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_1000000_plus.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_1000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_1000000_plus",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 7000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9e67fe204032e08555997593",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5f1173cc7197266bfeffb603",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_100000_to_249999.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_100000_to_249999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_100000_to_249999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 11000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d22c64afa6be19d572c1ed91",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b372e4e50eee0848f60f51bf",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_10000_to_24999.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_10000_to_24999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_10000_to_24999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 8000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_96d45c2b9c3bee35fce3db13",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b2872e203f7ab56152e9df2b",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_250000_to_499999.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_250000_to_499999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_250000_to_499999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 8000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cbaeca9dc6ef9ead249789a1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a2b1c3d54f835e80994439e4",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_25000_to_49999.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_25000_to_49999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_25000_to_49999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 6000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ef67d726efb00a1a791d32fa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8e3ab9e8342bd40b954b26c4",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_500000_to_999999.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_500000_to_999999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_500000_to_999999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 8000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0cc65d2933bfd5e3209916b5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5c5a7e0fdcf9f5717fbdc5a0",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.gain_50000_to_99999.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "gain_50000_to_99999",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "gain_50000_to_99999",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 8000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_de814e7059c31b9d9174fda1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5f67a566b426217b80ac244d",
+      "source_record_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.individuals_total.taxpayers",
+      "concept": "hmrc.cgt_badr_ir_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_badr_ir_2026.table4_1.ty2024.main",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "groupby_value_id": "individuals_total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_badr_ir_gain_band": "total",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_file": "Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods",
+        "source_sha256": "7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-badr-ir-2026/2026/7bd0098913e44e3c79a533690cd25ee08f627cd72935c46a874a7eab5442d5ca/Table_4_2026_Business_asset_disposal_and_investors_reliefs.ods"
+      },
+      "value": 61000
+    },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_5f7c45cfe5adcdc68ec6921b",
       "semantic_fact_key": "ledger_semantic_fact_v2_2bccef0b574e44308098b4be",

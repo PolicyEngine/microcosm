@@ -332,19 +332,29 @@ def _fixture_cgt_distribution(path: Path):
 
 
 def _fixture_asset_type_facts(path: Path):
-    from .cgt_asset_type import HMRCCGTAssetTypeFacts, HMRCCGTTable7Type
+    from .cgt_asset_type import (
+        HMRCCGTAssetTypeFacts,
+        HMRCCGTBADRBand,
+        HMRCCGTTable7Type,
+    )
 
     payload = dict(_json_mapping(path, label="CGT asset-type facts"))
     raw_rows = payload.pop("table7_types")
-    if not isinstance(raw_rows, list):
+    raw_bands = payload.pop("table4_bands")
+    if not isinstance(raw_rows, list) or not isinstance(raw_bands, list):
         raise ValueError(
-            "UK parity fixture CGT asset-type table7_types must be a list."
+            "UK parity fixture CGT asset-type table7_types and table4_bands must "
+            "be lists."
         )
     return HMRCCGTAssetTypeFacts(
         **payload,
         table7_types=tuple(
             HMRCCGTTable7Type(**dict(_mapping(row, label="Table 7 row")))
             for row in raw_rows
+        ),
+        table4_bands=tuple(
+            HMRCCGTBADRBand(**dict(_mapping(row, label="Table 4.1 band")))
+            for row in raw_bands
         ),
     )
 
@@ -388,7 +398,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
-    from .cgt_asset_type import UKCGTAssetTypeStageTransform
+    from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_structure import (
         UKCGTBandDonorStageTransform,
@@ -472,6 +482,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
+    )
+    cgt_badr_parameters = UKCGTBADRParameters(
+        **dict(
+            _mapping(descriptor.get("cgt_badr_parameters"), label="CGT BADR parameters")
+        )
     )
 
     engine = PolicyEngineUKEngine()
@@ -594,6 +609,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["hmrc_cgt_asset_type_spine"],
                 facts=cgt_asset_type_facts,
                 parameters=cgt_parameters,
+                badr_parameters=cgt_badr_parameters,
             ),
             "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
                 stage=stages["cgt_incidence_anchor"],
