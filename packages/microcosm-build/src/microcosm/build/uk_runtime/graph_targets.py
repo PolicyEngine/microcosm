@@ -66,7 +66,18 @@ TARGET_SURFACE_TYPE = ArtifactType("microcosm.uk.full-target-surface", 1)
 TARGET_SELECTION_TYPE = ArtifactType("microcosm.uk.full-target-selection", 1)
 MEASURE_TYPE = ArtifactType("microcosm.uk.full-measured-contributions", 1)
 
-SOURCE_CODECS.register_bytes(CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes)
+
+def register_uk_source_codecs(registry=SOURCE_CODECS) -> None:
+    """Register the UK raw-byte source codecs the target nodes bind.
+
+    Registration is explicit and idempotent: importing this module leaves the
+    shared registry untouched (the shared codec suite asserts the shipped set),
+    and the driver's kernel registration is the one place the chronicle
+    consumer-facts codec joins ``SOURCE_CODECS`` before a graph runs. Re-registering
+    the same loader is a no-op by the registry's own rule.
+    """
+
+    registry.register_bytes(CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes)
 
 
 def registry_payload(registry: TargetRegistry) -> dict:
@@ -665,6 +676,7 @@ def append_uk_target_nodes(
 
 
 def register_uk_target_kernels(registry: KernelRegistry) -> None:
+    register_uk_source_codecs()
     for kernel in (
         UKFullTargetCompilationKernel(),
         UKFullTargetSelectionKernel(),
