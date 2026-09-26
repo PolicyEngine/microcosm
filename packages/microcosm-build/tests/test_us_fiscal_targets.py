@@ -5822,6 +5822,7 @@ def test_soi_income_tax_liability_satisfies_total_tax() -> None:
             "metadata": {"target_role": "federal_income_tax_total"},
         },
         *complete_agi_distribution_rows(),
+        *complete_state_agi_top_tail_rows(),
         *complete_income_source_rows(),
         *complete_deduction_amount_rows(),
         *complete_program_rows(),
@@ -6818,6 +6819,7 @@ def complete_coverage_targets() -> list[dict[str, object]]:
     return [
         federal_income_tax_total_row(),
         *complete_agi_distribution_rows(),
+        *complete_state_agi_top_tail_rows(),
         *complete_income_source_rows(),
         *complete_deduction_amount_rows(),
         *complete_program_rows(),
@@ -6826,6 +6828,28 @@ def complete_coverage_targets() -> list[dict[str, object]]:
         *complete_population_age_rows(),
         *complete_jct_rows(),
     ]
+
+
+def complete_state_agi_top_tail_rows() -> list[dict[str, object]]:
+    rows = []
+    for postal in US_STATE_FIPS_TO_POSTAL.values():
+        name = (
+            f"irs_soi.ty2023.historic_table_2.state_agi.{postal.lower()}."
+            "1m_plus.adjusted_gross_income"
+        )
+        rows.append(
+            {
+                "name": name,
+                "measure": name,
+                "family": "irs_soi",
+                "metadata": {
+                    "requires_state_agi_band_rebase": "true",
+                    "source_measure_id": "adjusted_gross_income",
+                    "agi_lower_bound": "1000000.0",
+                },
+            }
+        )
+    return rows
 
 
 def federal_income_tax_total_row() -> dict[str, object]:
