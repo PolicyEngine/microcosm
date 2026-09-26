@@ -1,8 +1,9 @@
 """Refuse stored model inputs the certified engine does not define.
 
 policyengine-us 1.777.0 renamed the WIC take-up input from ``would_claim_wic``
-to ``takes_up_wic_if_eligible`` (microcosm#1026; the cached versions read
-bracket it: 1.775.8 defines only the old name, 1.779.4 only the new). The published national default
+to ``takes_up_wic_if_eligible`` (microcosm#1026; the policyengine-us changelog
+entry for 1.777.0, 2026-07-21, and the cached versions read agree: 1.775.8
+defines only the old name, 1.779.4 only the new). The published national default
 ``populace-us-2024-spm-20260915`` and its reported-receipt child
 ``populace-us-2024-spm-receipts-20260923`` both record policyengine-us 2.2.1
 as ``build.built_with_model_package``. 2.2.1 defines
@@ -254,9 +255,10 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:
 #: - the published default ``populace-us-2024-spm-20260915`` and its
 #:   reported-receipt child ``populace-us-2024-spm-receipts-20260923``;
-#: - the Route A rehearsal export, written by the Route A integration tool
-#:   (commit 8f63bf000 on route-a-integration-20260923, per its rebuild
-#:   receipt);
+#: - the Route A rehearsal export, rebuilt by the R4 rehearsal script from run
+#:   8f63bf000's vaulted checkpoint and written with the fiscal-refresh
+#:   tool's writer at 8f63bf000 (route-a-integration-20260923, per its
+#:   rebuild receipt);
 #: - the Build Q stacked multispine pool, which the fiscal-refresh tool accepts
 #:   as ``--base-h5`` (the ``*_spine_source_id`` columns, the six ACS-native
 #:   ``acs_*`` amounts and ``puma_geoid`` reach an export from it); and
@@ -268,7 +270,8 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: because each is a retired engine input rather than metadata:
 #:
 #: - ``would_claim_wic``: the WIC take-up draw under its retired name. The live
-#:   input is ``takes_up_wic_if_eligible`` (#746 moved the builder).
+#:   input is ``takes_up_wic_if_eligible`` (the builder moved to it in
+#:   05d254aa2, the policyengine-us 1.819.0 bump).
 #: - ``medicare_part_b_premiums``: the ASEC ``PEMCPREM`` transfer target under
 #:   a retired engine input name, the same defect class as ``would_claim_wic``.
 #:   Every policyengine-us version read from 1.452.0 to 1.670.2 (the nine in
