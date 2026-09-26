@@ -4312,9 +4312,11 @@ def _tax_unit_demographics(
         )
     missing_role = roles.isna().to_numpy()
     if missing_role.any() and not preserve_nulls:
+        affected = pd.unique(np.asarray(person_tax_unit_ids)[missing_role])
         raise ValueError(
             f"PUF predictor demographics found {int(missing_role.sum())} person(s) "
-            "without a tax-unit role."
+            f"without a tax-unit role, in tax unit(s) {affected[:5].tolist()}"
+            f"{' and more' if len(affected) > 5 else ''}."
         )
     persons = pd.DataFrame(
         {
