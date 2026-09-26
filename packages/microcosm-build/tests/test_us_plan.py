@@ -1335,10 +1335,18 @@ class TestBaseStageSourceClosure:
         produced.update(CPS_CARRIED_FORMULA_OWNED_COLUMNS)
         produced.update(CPS_CARRIED_SPM_UNIT_INPUTS)
 
+        # The reviewed Census person restoration (microcosm#720 and later
+        # readers) appends these from each vintage's pinned person member by
+        # exact PERIDNUM before pooling.
+        from microcosm.build.us_runtime.asec_census_person_columns import (
+            ASEC_CENSUS_PERSON_COLUMN_NAMES,
+        )
+
         providers = (
             self.CENSUS_CPS_PERSON_COLUMNS
             | self.POOL_CONSTRUCTED_COLUMNS
             | self.SIDECAR_RESTORED_COLUMNS
+            | frozenset(ASEC_CENSUS_PERSON_COLUMN_NAMES)
             | produced
         )
         unsourced: dict[str, list[str]] = {}

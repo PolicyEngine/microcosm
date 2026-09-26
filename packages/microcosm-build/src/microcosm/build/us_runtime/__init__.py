@@ -2346,14 +2346,16 @@ def _initialize_plan() -> None:
             us_immigration_stage_name: DonorSpec(
                 survey="CPS ASEC + published unauthorized-population estimates",
                 source=(
-                    "https://www.pewresearch.org/short-reads/2024/07/22/"
-                    "what-we-know-about-unauthorized-immigrants-living-in-the-us/"
+                    "https://www.pewresearch.org/race-and-ethnicity/2025/08/21/"
+                    "u-s-unauthorized-immigrant-population-reached-a-record-14-"
+                    "million-in-2023/"
                 ),
                 notes=(
                     "SSN card type and immigration status from ASEC citizenship, "
-                    "entry-year, nativity, and program-participation fields via the "
-                    "ASEC-UA residual method (SSRN 4662801), targeted to published "
-                    "undocumented population/worker/student control totals."
+                    "entry-year, nativity, labor-force status, and "
+                    "program-participation fields via the ASEC-UA residual method "
+                    "(SSRN 4662801), targeted to published undocumented "
+                    "population/worker/student control totals."
                 ),
             ),
             us_hours_worked_stage_name: DonorSpec(

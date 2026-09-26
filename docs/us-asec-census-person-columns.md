@@ -102,12 +102,38 @@ the column.
 | `PTOTVAL` | yes | `frame.units._is_microunit_optional_column` → microunit `_precompute_tax_unit_inputs` |
 | `A_ENRLW` | yes | `frame.units._is_microunit_optional_column` → microunit `_is_full_time_student` |
 | `A_FTPT` | yes | same; `eligibility_inputs.derive_us_eligibility_inputs_from_manifest` (`is_full_time_college_student`) |
-| `NOW_CAID`, `NOW_COV`, `NOW_DIR`, `NOW_MCARE`, `NOW_MRKS`, `NOW_MRKUN`, `NOW_PCHIP`, `NOW_PRIV`, `NOW_PUB` | no | No build reader. Restoring them would only widen the exported person table. A test fails if code starts reading one. |
+| `NOW_COV`, `NOW_DIR`, `NOW_MCARE`, `NOW_MRKS`, `NOW_MRKUN`, `NOW_PCHIP`, `NOW_PRIV`, `NOW_PUB` | no | No build reader. Restoring them would only widen the exported person table. A test fails if code starts reading one. |
+| `NOW_CAID` | no | Read only by the native current-survey health projection (`current_survey_health_coverage`, through `current_survey_health_source`). That projection captures its own pinned ASEC person member and never reads the pooled H5 frame. A test fails if any other module names the column. |
 | `A_FAMTYP`, `A_FAMREL`, `PECOHAB` | no | Read only as optional cross-checks by the SPM role derivation (`spm_role_source._OPTIONAL_RAW_CHECKS`). That derivation reads this same member itself and derives the role from it, so restoring these columns would make the check compare the member with itself. #38's partner derivation should restore them together with its reader. |
 | `LKWEEKS` | no | Already restored for 2022, the only vintage without it, by `weeks_unemployed.fill_asec_2022_weeks_unemployed_source` from the same pinned `pppub23.csv`. The 2023 and 2024 inputs carry it. On the real run it equals the 8/23 file on all 146,133 rows. |
 
 `CENSUS_TAX_ID` was never appended: the extractor derives it, and the Census
 files do not carry it.
+
+### Restorations after #720
+
+`ASEC_CENSUS_PERSON_COLUMNS_BEYOND_720` lists restored columns that were not
+in the offline fix. The review test keeps the #720 columns exactly the
+offline fix's list, and requires every later column to be declared there.
+
+| column | restored | reader |
+|---|---|---|
+| `A_LFSR` | yes | `immigration._assign_ssn_card_codes`: the `immigration_status` stage's worker EAD spill uses labor-force codes 1-4 at ages 16+. `immigration.US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS` lists it, and the stage refuses a person table without it. |
+
+None of the three H5 inputs carries `A_LFSR`, so it is appended for every
+vintage. Its reviewed codes, observed on 2026-09-26 in all three pinned
+members after their archive and member SHA-256 checks passed, are 0, 1, 2, 3,
+4 and 7. No value is missing, and code 0 is the only code for persons under 15.
+
+| member | 0 | 1 | 2 | 3 | 4 | 7 | persons |
+|---|---|---|---|---|---|---|---|
+| `pppub23.csv` | 29,948 | 66,156 | 2,539 | 2,064 | 408 | 45,018 | 146,133 |
+| `pppub24.csv` | 28,915 | 66,185 | 2,326 | 2,225 | 410 | 44,204 | 144,265 |
+| `pppub25.csv` | 28,155 | 65,222 | 2,214 | 2,422 | 408 | 43,704 | 142,125 |
+
+A base-stage pool built without a Census person source keeps the #720 hole
+and has no `A_LFSR`, so its `immigration_status` stage refuses. It does not
+fall back to another worker definition.
 
 ## Real-data evidence (2026-09-23, commit `39b8e7b63`)
 

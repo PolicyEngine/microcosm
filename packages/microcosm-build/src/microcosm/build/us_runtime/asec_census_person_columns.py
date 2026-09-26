@@ -57,10 +57,19 @@ Column                  Build reader
 ``A_FTPT``              same; ``eligibility_inputs``
                         ``derive_us_eligibility_inputs_from_manifest``
                         (``is_full_time_college_student``)
+``A_LFSR``              ``immigration._assign_ssn_card_codes`` (the
+                        ``immigration_status`` stage's worker EAD spill; the
+                        stage refuses without it)
 ======================  ======================================================
 
 The other thirteen columns the 2026-08-23 offline fix appended are not
 restored; :data:`ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED` records why.
+
+``A_LFSR`` is not one of #720's columns. None of the three H5 inputs carries
+it, and the native line's immigration method binds its undocumented-worker
+spill to actual ASEC labor-force status (codes 1-4 at ages 16+) instead of
+prior-year earnings. :data:`ASEC_CENSUS_PERSON_COLUMNS_BEYOND_720` records it
+separately, so the #720 review stays exactly the offline fix's column list.
 """
 
 from __future__ import annotations
@@ -81,6 +90,7 @@ from .spm_role_source import (
 
 __all__ = [
     "ASEC_CENSUS_PERSON_COLUMNS",
+    "ASEC_CENSUS_PERSON_COLUMNS_BEYOND_720",
     "ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED",
     "ASEC_CENSUS_PERSON_COLUMN_NAMES",
     "ASEC_CENSUS_PERSON_IDENTITY_COLUMNS",
@@ -204,7 +214,25 @@ ASEC_CENSUS_PERSON_COLUMNS: tuple[AsecCensusPersonColumn, ...] = (
             "(is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1)",
         ),
     ),
+    # Observed complete in all three pinned members (pppub23/24/25,
+    # 2026-09-26): codes 0 (not in universe, every person under 15), 1-4 (in
+    # the labor force) and 7 (not in the labor force).
+    AsecCensusPersonColumn(
+        "A_LFSR",
+        frozenset({0, 1, 2, 3, 4, 7}),
+        (
+            "microcosm.build.us_runtime.immigration."
+            "US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS (the immigration_status "
+            "stage refuses a person table without it)",
+            "microcosm.build.us_runtime.immigration._assign_ssn_card_codes "
+            "(worker EAD spill: A_LFSR 1-4 at ages 16+)",
+        ),
+    ),
 )
+
+#: Restored columns that are not among #720's offline-fix columns. Each has a
+#: build reader that arrived after #720; see the module docstring.
+ASEC_CENSUS_PERSON_COLUMNS_BEYOND_720: frozenset[str] = frozenset({"A_LFSR"})
 ASEC_CENSUS_PERSON_COLUMN_NAMES: tuple[str, ...] = tuple(
     column.name for column in ASEC_CENSUS_PERSON_COLUMNS
 )
@@ -221,12 +249,18 @@ _SELF_CHECK = (
     "unmarried-partner derivation, if built, should restore it with its reader."
 )
 
+_NATIVE_MEMBER_READER = (
+    "Read only by the native current-survey health projection "
+    "(current_survey_health_coverage via current_survey_health_source), which "
+    "captures its own pinned ASEC person member and never reads the pooled H5 "
+    "frame; restoring it into the H5 would add a column no frame reader uses."
+)
 #: Columns the 2026-08-23 offline fix (``receipt_720.json``) appended that this
 #: restoration deliberately leaves out, and why. ``CENSUS_TAX_ID`` was never
 #: appended: it is extractor-derived and absent from the Census files.
 ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED: MappingProxyType[str, str] = MappingProxyType(
     {
-        "NOW_CAID": _UNREAD,
+        "NOW_CAID": _NATIVE_MEMBER_READER,
         "NOW_COV": _UNREAD,
         "NOW_DIR": _UNREAD,
         "NOW_MCARE": _UNREAD,
