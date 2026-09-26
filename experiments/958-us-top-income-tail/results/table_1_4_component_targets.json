@@ -1,0 +1,110 @@
+[
+ {
+  "name": "irs_soi.ty2023.table_1_4.1_5m_to_2m.wages_salaries_amount",
+  "component": "wages",
+  "lower": 1500000.0,
+  "upper": 2000000.0,
+  "soi_ty2023": 101807895000,
+  "aging_factor": 1.05578784246075,
+  "target_2024": 107487537807.52058
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.5m_to_10m.net_capital_gains_amount",
+  "component": "net_capital_gains",
+  "lower": 5000000.0,
+  "upper": 10000000.0,
+  "soi_ty2023": 81225475000,
+  "aging_factor": 1.31536580395354,
+  "target_2024": 106841212224.88316
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.10m_plus.net_capital_gains_amount",
+  "component": "net_capital_gains",
+  "lower": 10000000.0,
+  "upper": "inf",
+  "soi_ty2023": 358365027000,
+  "aging_factor": 1.31536580395354,
+  "target_2024": 471381101848.6871
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.1m_to_1_5m.net_capital_gains_amount",
+  "component": "net_capital_gains",
+  "lower": 1000000.0,
+  "upper": 1500000.0,
+  "soi_ty2023": 54327753000,
+  "aging_factor": 1.31536580395354,
+  "target_2024": 71460868501.83435
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.10m_plus.wages_salaries_amount",
+  "component": "wages",
+  "lower": 10000000.0,
+  "upper": "inf",
+  "soi_ty2023": 154211023000,
+  "aging_factor": 1.05578784246075,
+  "target_2024": 162814123256.8351
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.1m_to_1_5m.wages_salaries_amount",
+  "component": "wages",
+  "lower": 1000000.0,
+  "upper": 1500000.0,
+  "soi_ty2023": 211037334000,
+  "aging_factor": 1.05578784246075,
+  "target_2024": 222810651542.5287
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.2m_to_5m.wages_salaries_amount",
+  "component": "wages",
+  "lower": 2000000.0,
+  "upper": 5000000.0,
+  "soi_ty2023": 199719676000,
+  "aging_factor": 1.05578784246075,
+  "target_2024": 210861605821.00006
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.500k_to_1m.net_capital_gains_amount",
+  "component": "net_capital_gains",
+  "lower": 500000.0,
+  "upper": 1000000.0,
+  "soi_ty2023": 97513250000,
+  "aging_factor": 1.31536580395354,
+  "target_2024": 128265594482.37254
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.500k_to_1m.wages_salaries_amount",
+  "component": "wages",
+  "lower": 500000.0,
+  "upper": 1000000.0,
+  "soi_ty2023": 717653272000,
+  "aging_factor": 1.05578784246075,
+  "target_2024": 757689599679.7778
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.2m_to_5m.net_capital_gains_amount",
+  "component": "net_capital_gains",
+  "lower": 2000000.0,
+  "upper": 5000000.0,
+  "soi_ty2023": 109230340000,
+  "aging_factor": 1.31536580395354,
+  "target_2024": 143677853990.21854
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.5m_to_10m.wages_salaries_amount",
+  "component": "wages",
+  "lower": 5000000.0,
+  "upper": 10000000.0,
+  "soi_ty2023": 88419893000,
+  "aging_factor": 1.05578784246075,
+  "target_2024": 93352648061.08038
+ },
+ {
+  "name": "irs_soi.ty2023.table_1_4.1_5m_to_2m.net_capital_gains_amount",
+  "component": "net_capital_gains",
+  "lower": 1500000.0,
+  "upper": 2000000.0,
+  "soi_ty2023": 36453719000,
+  "aging_factor": 1.31536580395354,
+  "target_2024": 47949975399.53144
+ }
+]

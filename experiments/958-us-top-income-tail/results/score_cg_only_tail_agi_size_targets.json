@@ -1,0 +1,60 @@
+{
+ "year": 2026,
+ "baseline_income_tax_bn": 2528.768230791161,
+ "top_rate_revenue_change_bn": 18.84602687605523,
+ "agi_total_bn": 18702.02719876163,
+ "tax_units_weighted_m": 164.80163360248685,
+ "ordinary_income_above_37pct_threshold_bn": 725.1929330093081,
+ "returns_in_37pct_bracket": 1203067.3962612413,
+ "records_in_37pct_bracket": 15772,
+ "agi_bands": {
+  "100000-200000": {
+   "records": 15302,
+   "returns": 27477008.754050467,
+   "agi_bn": 4002.739337129578,
+   "above_threshold_bn": 0.0
+  },
+  "200000-500000": {
+   "records": 9202,
+   "returns": 16829228.2396531,
+   "agi_bn": 4859.215245760655,
+   "above_threshold_bn": 6.974690383458882e-07
+  },
+  "500000-1000000": {
+   "records": 2099,
+   "returns": 2358593.174169511,
+   "agi_bn": 1602.718125132579,
+   "above_threshold_bn": 32.460922963379524
+  },
+  "1000000-1500000": {
+   "records": 1035,
+   "returns": 558771.0636225038,
+   "agi_bn": 676.6474707611103,
+   "above_threshold_bn": 115.85903250784921
+  },
+  "1500000-2000000": {
+   "records": 201,
+   "returns": 213215.4431264559,
+   "agi_bn": 362.32009856429323,
+   "above_threshold_bn": 93.79740207624084
+  },
+  "2000000-5000000": {
+   "records": 3026,
+   "returns": 271335.93075343914,
+   "agi_bn": 815.2275850324596,
+   "above_threshold_bn": 280.1558407437637
+  },
+  "5000000-10000000": {
+   "records": 3569,
+   "returns": 60926.77358028502,
+   "agi_bn": 402.5754294168459,
+   "above_threshold_bn": 103.69836545077077
+  },
+  "10000000-inf": {
+   "records": 8827,
+   "returns": 49861.389632131904,
+   "agi_bn": 1527.6536885660355,
+   "above_threshold_bn": 99.22136856983506
+  }
+ }
+}
