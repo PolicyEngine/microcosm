@@ -1104,8 +1104,9 @@ def test_the_1026_premises_hold_for_the_installed_engine():
         "filing_status_input",
     ):
         assert retired_or_construction not in variables
-    # medicare_part_b_premiums was a Person, YEAR, float input with no formula
-    # through at least policyengine-us 1.670.2; its replacement has that shape.
+    # medicare_part_b_premiums is a Person, YEAR, float input with no formula
+    # in every policyengine-us version read from 1.452.0 to 1.670.2; its
+    # replacement has that shape.
     part_b = variables["medicare_part_b_premiums_reported"]
     assert (part_b.entity.key, part_b.definition_period, part_b.value_type) == (
         "person",
@@ -1139,9 +1140,10 @@ def test_the_1026_premises_hold_for_the_installed_engine():
 #: register entries it stores. The published default, its receipt child and
 #: the ACS local-area release store two retired engine inputs: the #1026 WIC
 #: draw as would_claim_wic, and the Medicare Part B target as
-#: medicare_part_b_premiums (an input through at least policyengine-us
-#: 1.670.2, replaced by medicare_part_b_premiums_reported by 1.690.7). So each
-#: is refused naming exactly those two. The files built from main's tools pass.
+#: medicare_part_b_premiums (an input in every policyengine-us version read
+#: from 1.452.0 to 1.670.2, replaced by medicare_part_b_premiums_reported by
+#: 1.690.7). So each is refused naming exactly those two. The files built from
+#: main's tools pass.
 _EXPECTED_VERDICTS = {
     _PUBLISHED_DEFAULT: (["medicare_part_b_premiums", "would_claim_wic"], 24),
     _RECEIPT_CHILD: (["medicare_part_b_premiums", "would_claim_wic"], 24),

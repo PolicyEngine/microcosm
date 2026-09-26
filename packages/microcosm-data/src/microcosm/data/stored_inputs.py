@@ -268,16 +268,17 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:   input is ``takes_up_wic_if_eligible`` (#746 moved the builder).
 #: - ``medicare_part_b_premiums``: the ASEC ``PEMCPREM`` transfer target under
 #:   a retired engine input name, the same defect class as ``would_claim_wic``.
-#:   policyengine-us 1.452.0 through at least 1.670.2 define it as a Person,
-#:   YEAR, float input with no formula, and 1.670.2 adds it into
-#:   ``health_insurance_premiums`` and
+#:   Every policyengine-us version read from 1.452.0 to 1.670.2 (the nine in
+#:   the local uv cache) defines it as a Person, YEAR, float input with no
+#:   formula, and 1.670.2 adds it into ``health_insurance_premiums`` and
 #:   ``spm_unit_medical_out_of_pocket_expenses``. By 1.690.7 it was replaced
 #:   by ``medicare_part_b_premiums_reported``, the same Person, YEAR, float
-#:   input under a new name. 1.690.7 and later (read through 2.15.1), 1.764.6
-#:   and 2.2.1 included, define only the new name, and nothing in 1.690.7,
-#:   1.764.6 or 2.2.1 reads it; the engine computes ``medicare_part_b_premium``
-#:   itself. #590 dropped the transfer from the build, and the rehearsal
-#:   export no longer stores it, so the remedy is to stop storing it.
+#:   input under a new name. Every version read from 1.690.7 to 2.15.1 (91,
+#:   1.764.6 and 2.2.1 included) defines only the new name, and nothing in
+#:   1.690.7, 1.764.6, 2.2.1 or 2.15.1 reads it; the engine computes
+#:   ``medicare_part_b_premium`` itself. #590 dropped the transfer from the
+#:   build, and the rehearsal export no longer stores it, so the remedy is to
+#:   stop storing it.
 #:
 #: An entry must never be a variable of the certified engine. The engine reads
 #: such a column as an input, so the entry would be dead, and its reason (that
