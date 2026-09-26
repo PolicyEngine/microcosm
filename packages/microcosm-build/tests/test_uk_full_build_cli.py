@@ -68,6 +68,23 @@ from microcosm.graph.canonical import canonical_json
 
 PIN = "0" * 64
 STEM = "microcosm_uk_2024_25_local"
+SUPPORT_ARGUMENTS = (
+    "--atomic-support-ew",
+    "supports/ew.npz",
+    "--atomic-support-scotland",
+    "supports/scotland.npz",
+    "--atomic-support-ni",
+    "supports/ni.npz",
+)
+#: Synthetic support digests: a release candidate must pin all three.
+RELEASE_PINS = (
+    "--atomic-support-sha256-ew",
+    "c" * 64,
+    "--atomic-support-sha256-scotland",
+    "d" * 64,
+    "--atomic-support-sha256-ni",
+    "e" * 64,
+)
 
 
 def _placeholder(path: Path, payload: bytes) -> str:
@@ -76,13 +93,25 @@ def _placeholder(path: Path, payload: bytes) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
+def arguments(
+    tmp_path,
+    *extra,
+    role="dense",
+    staging="--no-staging",
+    supports=SUPPORT_ARGUMENTS,
+    release_pins=None,
+):
     """A dense request over stand-in input files, with staging disabled.
 
     The pins are the stand-ins' real digests so the validator and a real
     preparation would both accept them; the Ledger pins are synthetic
-    because these tests never compile targets.
+    because these tests never compile targets. The atomic-area supports are
+    unread stand-in paths (these tests stub the preparation) and a
+    ``--release-candidate`` request gets the synthetic support pins unless
+    ``release_pins`` says otherwise.
     """
+    if release_pins is None:
+        release_pins = RELEASE_PINS if "--release-candidate" in extra else ()
     spine = tmp_path / "spine.h5"
     ladder = tmp_path / "ladder.npz"
     return cli.parse_args(
@@ -97,6 +126,8 @@ def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
             str(ladder),
             "--ladder-sha256",
             _placeholder(ladder, b"ladder stand-in"),
+            *supports,
+            *release_pins,
             "--ledger-facts",
             str(tmp_path / "ledger"),
             "--ledger-facts-sha256",
@@ -109,6 +140,51 @@ def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
             *extra,
         ]
     )
+
+
+def test_geography_assignment_arguments_are_closed(tmp_path):
+    """Atomic is the default; the cross-flag rules live in the validator."""
+    assert arguments(tmp_path).geography_assignment == "atomic"
+    cli.validate_cli_args(arguments(tmp_path))
+    legacy = arguments(tmp_path, "--geography-assignment", "legacy", supports=())
+    assert legacy.geography_assignment == "legacy"
+    cli.validate_cli_args(legacy)
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--geography-assignment", "keyed", supports=())
+    with pytest.raises(SystemExit):
+        arguments(tmp_path, "--atomic-support-sha256-ew", "zz")
+    with pytest.raises(ValueError, match="requires the three atomic-area supports"):
+        cli.validate_cli_args(arguments(tmp_path, supports=()))
+    with pytest.raises(ValueError, match="--atomic-support-ni"):
+        cli.validate_cli_args(arguments(tmp_path, supports=SUPPORT_ARGUMENTS[:4]))
+    with pytest.raises(ValueError, match="legacy takes no atomic-area supports"):
+        cli.validate_cli_args(arguments(tmp_path, "--geography-assignment", "legacy"))
+    with pytest.raises(ValueError, match="--geography-assignment legacy"):
+        cli.validate_cli_args(
+            arguments(
+                tmp_path,
+                "--release-candidate",
+                "--geography-assignment",
+                "legacy",
+                supports=(),
+                release_pins=(),
+            )
+        )
+    with pytest.raises(ValueError, match="--atomic-support-sha256-ew"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--release-candidate", release_pins=())
+        )
+    release = arguments(tmp_path, "--release-candidate")
+    assert release.release_candidate and release.geography_assignment == "atomic"
+    cli.validate_cli_args(release)
+    # The national role is dispatched to the seam: the supports are refused
+    # by name with the other dense-only flags, and its default needs none.
+    cli.validate_cli_args(cli.parse_args(_national_argv(tmp_path)))
+    national = cli.parse_args(
+        _national_argv(tmp_path, "--atomic-support-sha256-ni", "e" * 64)
+    )
+    with pytest.raises(ValueError, match="--atomic-support-sha256-ni"):
+        cli.validate_cli_args(national)
 
 
 def test_every_scope_and_size_control_keeps_default_all(tmp_path):
@@ -181,6 +257,7 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
         PIN,
         "--ledger-manifest-sha256",
         PIN,
+        *SUPPORT_ARGUMENTS,
     ]
     with pytest.raises(ValueError, match="requires --ladder"):
         cli.validate_cli_args(cli.parse_args(argv))
@@ -206,6 +283,7 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
         PIN,
         "--ledger-manifest-sha256",
         PIN,
+        *SUPPORT_ARGUMENTS,
     ]
     cli.validate_cli_args(cli.parse_args(request))
 
@@ -346,6 +424,7 @@ def test_candidate_clone_counts_are_dry_run_only(tmp_path):
                 "--candidate-clone-counts",
                 "1,2,4",
                 "--no-staging",
+                *SUPPORT_ARGUMENTS,
             ]
         )
 

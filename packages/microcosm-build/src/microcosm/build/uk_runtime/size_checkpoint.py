@@ -27,6 +27,9 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.uk_runtime.atomic_area_support import (
+    SOURCES as ATOMIC_SUPPORT_SOURCES,
+)
 from microcosm.build.uk_runtime.dataset_size import UKSizeSelection
 from microcosm.build.uk_runtime.rowwise_cli import doctrine_bounds, posture_of
 from microcosm.calibrate import (
@@ -74,7 +77,7 @@ def uk_size_checkpoint_identity(
     resumes on the other.
     """
     posture = posture_of(args)
-    return {
+    identity: dict[str, object] = {
         "release_role": posture.role,
         "dataset_pin": dict(pins["dataset"]),
         "ladder_pin": dict(pins["ladder"]),
@@ -103,6 +106,18 @@ def uk_size_checkpoint_identity(
         # bound while the manifest declares the new one.
         "doctrine": doctrine_bounds(posture),
     }
+    # microcosm#932: an identity-keyed atomic run also binds the assignment
+    # and the three support pins (flat pin roles named by graph source); a
+    # legacy run adds nothing, so its checkpoints keep their identity.
+    if getattr(args, "geography_assignment", "legacy") == "atomic":
+        identity["geography"] = {
+            "assignment": "atomic",
+            "support_pins": {
+                system: dict(pins[source])
+                for system, source in ATOMIC_SUPPORT_SOURCES.items()
+            },
+        }
+    return identity
 
 
 @dataclass(frozen=True)

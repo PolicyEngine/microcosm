@@ -14,3 +14,219 @@ records:
     pointer: /dataset_run/target_period
   compatible_with:
   - vintage:uk_frs_2024_25
+- id: uk_ca_2019
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_scotland_output_area_2022_support
+    authority: uk_ca_2019
+  compatible_with:
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_dea_2014
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ni_data_zone_2021_support
+    authority: uk_dea_2014
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_dz_2021
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ni_data_zone_2021_support
+    authority: uk_dz_2021
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_itl_2025
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ew_output_area_2021_support
+    authority: uk_itl_2025
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_lad_2023
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ew_output_area_2021_support
+    authority: uk_lad_2023
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_lgd_2014
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ni_data_zone_2021_support
+    authority: uk_lgd_2014
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_oa_2021
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ew_output_area_2021_support
+    authority: uk_oa_2021
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_oa_2022
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_scotland_output_area_2022_support
+    authority: uk_oa_2022
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_pcon_2024
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ew_output_area_2021_support
+    authority: uk_pcon_2024
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_rgn_2024
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ew_output_area_2021_support
+    authority: uk_rgn_2024
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_wd_2024
+- id: uk_scotland_ew_2022
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_scotland_output_area_2022_support
+    authority: uk_scotland_ew_2022
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_wd_2024
+- id: uk_wd_2024
+  kind: geography_vintage_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_ew_output_area_2021_support
+    authority: uk_wd_2024
+  compatible_with:
+  - vintage:uk_ca_2019
+  - vintage:uk_dea_2014
+  - vintage:uk_dz_2021
+  - vintage:uk_itl_2025
+  - vintage:uk_lad_2023
+  - vintage:uk_lgd_2014
+  - vintage:uk_oa_2021
+  - vintage:uk_oa_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_rgn_2024
+  - vintage:uk_scotland_ew_2022
