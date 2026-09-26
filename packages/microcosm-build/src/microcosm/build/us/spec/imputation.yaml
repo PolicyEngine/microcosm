@@ -78,6 +78,7 @@ predictor_blocks:
     - puf_predictor_head_is_female
     - puf_predictor_dependent_count
     - puf_predictor_income_rank_share
+    - puf_predictor_has_earnings
     tags:
     - puf
     - primary
