@@ -17,12 +17,14 @@ from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.observation import StageObservation
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
+from microcosm.build.stage_evidence import snapshot_stage_evidence
 from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.build.uk_runtime import (
     frs_disability,
     frs_education_grants,
     frs_legacy_proxies,
     frs_take_up,
+    spine_build,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_relationships import (
@@ -48,7 +50,10 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.frame import Frame, WeightKind, engine_tables
 
-_TOOL_PATH = Path(__file__).resolve().parents[3] / "tools" / "build_uk_frs_spine.py"
+# The driver lives in the package now; ``tools/build_uk_frs_spine.py`` is a
+# shim over it. Each test still executes its own module copy so per-test
+# monkeypatches never leak through the shared import.
+_TOOL_PATH = Path(spine_build.__file__)
 
 
 def _load_tool():
@@ -56,8 +61,51 @@ def _load_tool():
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Register the copy before executing it (the documented recipe for
+    # importing a source file by path): ``dataclass`` resolves the driver's
+    # string annotations through ``sys.modules[cls.__module__]``, and each
+    # test's fresh copy replaces the previous one under this private name.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _stored_stage_evidence(*, stage_names, implementations) -> dict[str, object]:
+    """The sidecar's ``stage_evidence`` block from per-stage stored snapshots.
+
+    Mirrors ``spine_sidecar_evidence`` over ``snapshot_stage_evidence``: the
+    driver no longer collects from live objects, it reads what each kernel
+    stored. Only the executed stages are consulted, exactly as each kernel
+    snapshots its own transform after it has run.
+    """
+
+    documents = {
+        stage: snapshot_stage_evidence(stage, implementations[stage])
+        for stage in stage_names
+        if stage in implementations
+    }
+    return {
+        stage: document["evidence"]
+        for stage, document in documents.items()
+        if document["evidence"] is not None
+    }
+
+
+def _stored_fit_weight_records(
+    *, stage_names, implementations
+) -> dict[str, list[dict[str, str]]]:
+    """The sidecar's ``fit_weight_records`` block from per-stage stored snapshots."""
+
+    documents = {
+        stage: snapshot_stage_evidence(stage, implementations[stage])
+        for stage in stage_names
+        if stage in implementations
+    }
+    return {
+        stage: document["fit_weight_records"]
+        for stage, document in documents.items()
+        if "fit_weight_records" in document
+    }
 
 
 def test_staging_stage_observer_translates_shared_observation() -> None:
@@ -1297,18 +1345,17 @@ def _patch_spi_spine_driver_runtime(
             self.last_result = SimpleNamespace(replay_report={"report_kind": "fake"})
             return result
 
-    def _write_fake_replay(report, path):
-        output = Path(path)
-        output.write_text(
-            json.dumps({"report_kind": "fake_spine_replay"}) + "\n",
-            encoding="utf-8",
-        )
-        return output
+        def checkpoint_metadata(self) -> dict[str, object]:
+            if self.last_result is None:
+                raise RuntimeError("Stage evidence requires completed computation.")
+            return {
+                "evidence": {"stage": self.stage.stage},
+                "replay_payload": {"report_kind": "fake_spine_replay"},
+            }
 
     monkeypatch.setattr(tool, "UKFRSHMRCSpineLeavesStageTransform", _FakeStageTransform)
     monkeypatch.setattr(tool, "UKSPISupportChannelStageTransform", _FakeStageTransform)
     monkeypatch.setattr(tool, "UKSPIIncomeSpineStageTransform", _FakeStageTransform)
-    monkeypatch.setattr(tool, "write_hmrc_replay_report", _write_fake_replay)
     return spi_tab, hmrc_ods
 
 
@@ -2154,8 +2201,6 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
 
 
 def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
-    tool = _load_tool()
-
     class _EvidenceResult:
         def __init__(self, payload: dict[str, object]) -> None:
             self.payload = payload
@@ -2211,7 +2256,7 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
         "future_stage": _CheckpointStage(new_payload),
     }
 
-    evidence = tool._collect_stage_evidence(
+    evidence = _stored_stage_evidence(
         stage_names=(
             "frs_spine",
             "frs_hmrc_spine_leaves",
@@ -2247,8 +2292,6 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
 
 
 def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
-    tool = _load_tool()
-
     class _Record:
         def __init__(self, fit_name, weight_kind):
             self.fit_name = fit_name
@@ -2267,7 +2310,7 @@ def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
         "etb_vat": SimpleNamespace(fit_weight_records=()),
         "lcfs_consumption": _Broken(),
     }
-    records = tool._collect_fit_weight_records(
+    records = _stored_fit_weight_records(
         stage_names=("frs_spine", "was_wealth", "etb_vat", "lcfs_consumption"),
         implementations=implementations,
     )
@@ -2389,8 +2432,6 @@ def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
     its executed prefix — an un-run stage being consulted is the regression.
     """
 
-    tool = _load_tool()
-
     class _RefusesUntilRun:
         def __init__(self) -> None:
             self.ran = False
@@ -2407,13 +2448,13 @@ def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
 
     # The assembled-boundary call: only the executed prefix is offered, so the
     # un-run late stage is never consulted and nothing raises.
-    assembled = tool._collect_stage_evidence(
+    assembled = _stored_stage_evidence(
         stage_names=("early_stage",), implementations=implementations
     )
     assert assembled == {}
 
     late.ran = True
-    transferred = tool._collect_stage_evidence(
+    transferred = _stored_stage_evidence(
         stage_names=("early_stage", "late_stage"), implementations=implementations
     )
     assert transferred == {"late_stage": {"stage": "late_stage", "ok": True}}
@@ -2453,7 +2494,6 @@ def test_collect_fit_weight_records_sees_through_the_run_proxies():
 
     from microcosm.build.observation import ObservedTransform
 
-    tool = _load_tool()
     record = SimpleNamespace(
         fit_name="uk_was_2018_20_wealth:savings", weight_kind="design"
     )
@@ -2488,7 +2528,7 @@ def test_collect_fit_weight_records_sees_through_the_run_proxies():
         "was_wealth": observed(_Fit(), "was_wealth"),
         "etb_vat": observed(_GraphLike(_Fit()), "etb_vat"),
     }
-    records = tool._collect_fit_weight_records(
+    records = _stored_fit_weight_records(
         stage_names=("frs_spine", "was_wealth", "etb_vat"),
         implementations=implementations,
     )

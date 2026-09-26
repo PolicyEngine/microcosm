@@ -984,7 +984,6 @@ class TestUsSources:
             # never import or execute the retired data package.
             "packages/microcosm-build/src/microcosm/build/uk/efrs_parity_reference.json",
             "packages/microcosm-build/src/microcosm/build/uk/frs_release.json",
-            "packages/microcosm-build/src/microcosm/build/uk/hmrc_income_source_stages.json",
             # The UK population contract's registry-parity accounting names the
             # retired data package by necessity: 651 rows at pinned ref ebf733c
             # = 609 mapped + 42 signed exclusions + 3 unmapped declarations.

@@ -162,6 +162,10 @@ F0_CONTRACT_ONLY_KERNEL_IDS = frozenset(
         "assign_am_marz",
         "assign_uk_geography_ladder",
         "be_commune_geography_gate",
+        # microcosm#901: the UK spec projects the raw FRS tables through the
+        # canonical spine build; load_uk_national_frame stays registered for
+        # the seam's candidate projection until the national role moves over.
+        "build_uk_frs_spine",
         "clone_assign_communities",
         "clone_assign_communes",
         "load_populace_us_support_pool",

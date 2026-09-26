@@ -115,9 +115,10 @@ read-only credential.
 
 ## Command modes and files
 
-The two UK commands (`tools/build_uk_frs_spine.py` and
-`tools/build_uk_rowwise_candidate.py` in either release role, `national` or
-`dense`) support these staging modes:
+The two UK commands (`tools/build_uk_frs_spine.py`, a shim over
+`uk_runtime.spine_build`, and `microcosm-build-uk` / `tools/build_uk_full.py`
+in either release role, `national` or `dense`; `tools/build_uk_rowwise_candidate.py`
+is a stub over the same driver) support these staging modes:
 
 - Default: local version 2 files plus best-effort delivery to
   `policyengine/populace-uk-staging`.
@@ -153,8 +154,8 @@ rejected before remote storage is called.
 
 ## Staged datasets
 
-Telemetry is not the dataset. The rowwise candidate command (dense K=15 and
-exact-count `--dataset-households` runs alike) also stages the bundle its
+Telemetry is not the dataset. The build command (`microcosm-build-uk`; dense
+K=15, exact-count `--dataset-households` and national runs alike) also stages the bundle its
 manifest vouches for, so a run can be inspected by the team without being
 published. The two destinations share one run id:
 
@@ -242,7 +243,8 @@ role and is rebuilt, never grandfathered.
 
 ## Smoke verification
 
-The UK spine command keeps fractional input sampling for scale tests. The
+The UK spine command (`tools/build_uk_frs_spine.py`, a shim over the package's
+`uk_runtime.spine_build`) keeps fractional input sampling for scale tests. The
 `--smoke` option marks its H5, sidecar, and staging records as non-release. It
 does not invoke national calibration, release certification, release assembly,
 or publication.

@@ -2,7 +2,9 @@
 
 The dense line `microcosm-uk-2024-25-dense` is the spine cloned K=15 times
 through the OA geography ladder and calibrated to the national and local
-target surfaces in one solve (`tools/build_uk_rowwise_candidate.py`). It ships
+target surfaces in one solve (`microcosm-build-uk --release-role dense`, the
+graph driver `tools/build_uk_full.py`; `tools/build_uk_rowwise_candidate.py`
+is a stub over it). It ships
 on the **inspect lane only**: a constant release id, an immutable per-cut tag,
 `dataset_role: non_default_local_area`, an empty `default_datasets` map, and
 `--no-latest` at publication, so it can never displace the default artifact.
@@ -36,7 +38,7 @@ digest mismatch, or doctrine constants that are not the ruled ones.
 ## 2. Run the release candidate
 
 ```bash
-uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role dense \
+uv run --no-sync python tools/build_uk_full.py --release-role dense \
   --release-candidate --input-h5 <spine.h5> --input-sha256 <spine> \
   --ladder build/uk/uk_oa_ladder_2021.npz --ladder-sha256 <ladder> \
   --ledger-facts <chronicle-uk-artifact-dir> --ledger-facts-sha256 <facts> \
@@ -53,7 +55,14 @@ the doctrine (bound 10, `grain_equal`, K=15, 1500 epochs), resolves the
 engine in a single block, and runs the rotated holdout. Best-effort staging
 telemetry uploads every 300 s by default on this driver (the Hub allows about
 128 commits per hour per repository).
-Expect about 3.5 hours and 10 GB at K=15.
+Expect about 3.5 hours and 10 GB at K=15 (measured on the rowwise tool; the
+graph driver's dense build has not been timed yet). Since microcosm#901 the
+dense role runs through the [full-build graph](uk-full-build-graph.md): the
+candidate directory also holds `candidate.json`, `certification.json`,
+`operations.json` and the `build.json` completion marker, the graph store sits
+at `<candidate-dir>/.graph-store` unless `--graph-store` says otherwise, and
+`--input-h5` must be a spine whose gate manifest matches the branch's gate
+declarations.
 
 ## 3. Pre-flight the finished run, then score it
 

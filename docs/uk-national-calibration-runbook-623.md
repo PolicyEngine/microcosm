@@ -17,22 +17,26 @@ is the release-cut producer's job, not calibration's.
 
 ## Command shape
 
-Calibration runs through the rowwise driver's national release role,
-`tools/build_uk_rowwise_candidate.py --release-role national` (microcosm#823;
-it replaced the retired `tools/calibrate_uk_national_dataset.py`). The role
-delegates the build to the calibration seam library
-(`uk_runtime.calibration_run.run_uk_calibration`): it is the only path that
-builds the measure resolver from the input file and applies the committed
+Calibration runs through the UK build driver's national release role,
+`microcosm-build-uk --release-role national` (`tools/build_uk_full.py`;
+`tools/build_uk_rowwise_candidate.py` is a stub over the same driver). The
+role arrived with microcosm#823, which retired
+`tools/calibrate_uk_national_dataset.py`, and moved into the graph driver with
+microcosm#901. The driver validates the request with its posture-aware
+validator and, before any graph is prepared, dispatches to
+`uk_runtime.national_role`, which delegates the build to the calibration seam
+library (`uk_runtime.calibration_run.run_uk_calibration`): it is the only path
+that builds the measure resolver from the input file and applies the committed
 measure-exclusion register, and 187 of the activated references bind model
 outputs that no frame carries — so it is the only path on which this target
-surface materializes. No cloning, no ladder, national targets only. The June
-builder (`tools/build_uk_national_dataset.py`) constructs the calibration
-stage without either and aborts on the first unmaterializable reference; it
-also rebuilds SPI income onto its input, which a spine artifact already
-carries.
+surface materializes. No cloning, no ladder, national targets only; the role
+builds from a bound `--input-h5` and refuses a `--spine-request`. The retired
+June builder constructed the calibration stage without either and aborted on
+the first unmaterializable reference; it also rebuilt SPI income onto its
+input, which a spine artifact already carries.
 
 ```bash
-uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role national \
+uv run --no-sync python tools/build_uk_full.py --release-role national \
   --input-h5 data/ukds/acceptance/623-first-calibrated-candidate/input-spine.h5 \
   --input-sha256 <sha256-of-input-spine-h5> \
   --ledger-facts <ledger-consumer-artifact> \
@@ -100,7 +104,7 @@ side too. The receipt's `evaluation` block decides rule 1 (#578) on that
 surface: `verdict` is `passed` when the candidate's full loss is below the
 incumbent's, `failed` otherwise, and the release-cut certifier refuses any
 receipt whose verdict is not `passed` or whose surface does not close, so
-publication never runs on an unpassed evaluation. The rowwise driver's
+publication never runs on an unpassed evaluation. The build driver's
 national role runs this evaluation at the end of every build it is given an
 incumbent for (microcosm#965) and writes the same receipt as
 `score_vs_incumbent.json`.

@@ -43,7 +43,7 @@ UK_PACKAGE_DIR = (
 REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
 MANIFEST_PATH = UK_PACKAGE_DIR / "release_input_coverage_manifest.json"
-HMRC_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "hmrc_income_source_stages.json"
+CGT_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "cgt_source_stages.json"
 SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "source_stages.json"
 
 CANDIDATE_REPO_ID = "policyengine/populace-uk-private"
@@ -95,6 +95,7 @@ RESTORED_REQUIRED_COLUMN_EVIDENCE = {
         "promotion_basis": "weighted release gate stale-exclusion remediation",
         "reviewed_on": "2026-07-13",
         "stage": "hmrc_spi_income",
+        "current_producer_stage": "hmrc_spi_income_spine",
         "support_channel": "spi",
     },
     "gift_aid": {
@@ -104,6 +105,7 @@ RESTORED_REQUIRED_COLUMN_EVIDENCE = {
         "promotion_basis": "weighted release gate stale-exclusion remediation",
         "reviewed_on": "2026-07-13",
         "stage": "hmrc_spi_income",
+        "current_producer_stage": "hmrc_spi_income_spine",
         "support_channel": "spi",
     },
 }
@@ -1036,77 +1038,28 @@ def _hmrc_family_coverage_contract(
     *,
     candidate_source: dict[str, Any],
 ) -> dict[str, Any]:
-    payload = _load(HMRC_SOURCE_STAGES_PATH)
-    stages = payload.get("stages")
-    if not isinstance(stages, list) or len(stages) != 1:
-        raise ValueError(
-            f"{HMRC_SOURCE_STAGES_PATH}: expected exactly one source stage."
-        )
-    stage = stages[0]
-    if not isinstance(stage, dict) or stage.get("stage") != "hmrc_spi_income":
-        raise ValueError(f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage.")
-    canonical_payload = _load(SOURCE_STAGES_PATH)
-    canonical_stages = canonical_payload.get("stages")
-    if not isinstance(canonical_stages, list):
-        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
-    canonical_matches = [
-        candidate
-        for candidate in canonical_stages
-        if isinstance(candidate, dict) and candidate.get("stage") == "hmrc_spi_income"
-    ]
-    if len(canonical_matches) != 1:
-        raise ValueError(
-            f"{SOURCE_STAGES_PATH}: expected exactly one hmrc_spi_income stage."
-        )
-    canonical_stage = canonical_matches[0]
-    base_candidate = stage.get("base_candidate")
-    if not isinstance(base_candidate, dict):
-        raise ValueError(
-            f"{HMRC_SOURCE_STAGES_PATH}: base_candidate must be an object."
-        )
-    source_tier = validate_uk_release_tier(candidate_source.get("tier"))
-    base_candidate_tier = validate_uk_release_tier(base_candidate.get("tier"))
-    if base_candidate_tier != source_tier:
-        raise ValueError(
-            "HMRC source-stage base candidate tier disagrees with the certified "
-            f"candidate evidence: {base_candidate_tier!r} != {source_tier!r}."
-        )
-    artifacts = {
-        artifact["role"]: artifact
-        for artifact in stage.get("artifacts", [])
-        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
-    }
-    canonical_artifacts = {
-        artifact["role"]: artifact
-        for artifact in canonical_stage.get("artifacts", [])
-        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
-    }
-    operations = {
-        operation["kind"]: operation
-        for operation in stage.get("operations", [])
-        if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
-    }
-    required_artifacts = {"qrf_donor", "published_fact_surface"}
-    missing_artifacts = sorted(required_artifacts - set(artifacts))
-    missing_canonical_artifacts = sorted(required_artifacts - set(canonical_artifacts))
-    required_operations = {
-        "retain_adjudicated_frs_hmrc_leaves",
-        "verify_pinned_hmrc_source_pair",
-        "replace_zero_weight_spi_support",
-        "classify_hmrc_income_facts_with_reviewed_fences",
-        "gate_distributional_effective_mass",
-    }
-    missing_operations = sorted(required_operations - set(operations))
-    if missing_artifacts or missing_canonical_artifacts or missing_operations:
-        raise ValueError(
-            f"{HMRC_SOURCE_STAGES_PATH}: incomplete HMRC family contract; "
-            f"missing_artifacts={missing_artifacts}, "
-            f"missing_canonical_artifacts={missing_canonical_artifacts}, "
-            f"missing_operations={missing_operations}."
-        )
+    from microcosm.build.uk_runtime.hmrc_source_contract import (
+        assert_uk_hmrc_income_source_contract_current,
+    )
+    from microcosm.build.uk_runtime.spi_support import SPI_PRIOR_MASS_CHANGE_REASON
+
+    assert_uk_hmrc_income_source_contract_current(SOURCE_STAGES_PATH)
+    payload = _load(SOURCE_STAGES_PATH)
+    stages = {stage["stage"]: stage for stage in payload["stages"]}
+    stage = stages["hmrc_spi_income_spine"]
+    artifacts = {artifact["role"]: artifact for artifact in stage["artifacts"]}
+    operations = {operation["kind"]: operation for operation in stage["operations"]}
+    frs_leaves = next(
+        operation
+        for operation in stages["frs_hmrc_spine_leaves"]["operations"]
+        if operation["kind"] == "retain_adjudicated_frs_hmrc_leaves"
+    )
+    prior = next(
+        operation
+        for operation in stages["spi_support_channel"]["operations"]
+        if operation["kind"] == "allocate_zero_weight_prior_mass"
+    )
     classification = operations["classify_hmrc_income_facts_with_reviewed_fences"]
-    frs_leaves = operations["retain_adjudicated_frs_hmrc_leaves"]
-    prior = operations["replace_zero_weight_spi_support"]
     effective = operations["gate_distributional_effective_mass"]
     floor = float(effective["minimum_nondefault_mass_share"])
     if floor != EFFECTIVE_MASS_COVERAGE["minimum_nondefault_mass_share"]:
@@ -1145,42 +1098,27 @@ def _hmrc_family_coverage_contract(
         # truthfully retains the 208-fact adjudicated-partial-replay verdict.
         "status": "required_at_build",
         "restoration_status": str(frs_leaves["status"]),
-        "stage": "hmrc_spi_income",
-        "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
-        "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),
-        # The two re-mapped period fields below come from the CANONICAL
-        # manifest (the #723 signed re-map lives there; the frozen mirror
-        # keeps its June bytes), so the bytes they derive from are pinned
-        # separately - evidence fields and their hash must name the same
-        # source (adversarial-review finding, 2026-08-20).
-        "canonical_source_manifest": SOURCE_STAGES_PATH.name,
-        "canonical_source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
-        "superseded_by": {
-            "stage": "hmrc_spi_income_spine",
-            "source_manifest": SOURCE_STAGES_PATH.name,
-            "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
-            "reason": (
-                "The FRS spine build executes hmrc_spi_income_spine, which "
-                "supersedes the June retained-leaves/hmrc_spi_income pair "
-                "inside source_stages.json."
-            ),
-        },
-        "base_candidate_sha256": str(base_candidate["sha256"]),
-        "base_candidate_tier": base_candidate_tier,
+        "stage": "hmrc_spi_income_spine",
+        "source_manifest": SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+        "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
+        "required_predecessor_stages": [
+            "frs_hmrc_spine_leaves",
+            "spi_support_channel",
+            "spi_income_band_donors",
+        ],
         "source_vintages": {
             "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
             "hmrc_surface": str(artifacts["published_fact_surface"]["vintage"]),
             "mapped_build_period": str(
-                canonical_artifacts["published_fact_surface"]["mapped_build_period"]
+                artifacts["published_fact_surface"]["mapped_build_period"]
             ),
             "period_mapping": str(
-                canonical_artifacts["published_fact_surface"]["period_mapping"]
+                artifacts["published_fact_surface"]["period_mapping"]
             ),
         },
-        "spi_prior_national_household_mass_share": float(
-            prior["spi_prior_national_household_mass_share"]
-        ),
-        "required_mass_change_reason": str(prior["mass_change_reason"]),
+        "spi_prior_national_household_mass_share": float(prior["share"]),
+        "required_mass_change_reason": SPI_PRIOR_MASS_CHANGE_REASON,
         "input_weight_kind": str(classification["input_weight_kind"]),
         "output_weight_kind": str(classification["output_weight_kind"]),
         "calibration_permitted": bool(classification["calibration_permitted"]),

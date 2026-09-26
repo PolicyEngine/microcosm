@@ -117,6 +117,9 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
         "rng",
         "sources",
         "artifacts",  # amendment 19: declared typed opaque artifact inputs
+        "frame_metadata",  # amendment 27: the population version's metadata
+        "frame_mass_log",  # amendment 27: the version's incoming Frame mass log
+        "frame_column_order",  # amendment 27: the version's order, projected only
         "tolerances",  # amendment 13: declared tolerances of the inputs' owners
         "numerics",  # amendment 17: per-coordinate numeric class, bound, platform
     }

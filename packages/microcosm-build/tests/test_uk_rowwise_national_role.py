@@ -1,9 +1,11 @@
 """The UK rowwise driver's national release role (microcosm#823).
 
-The national role delegates the build to the calibration seam library, so
-these tests stand on the seam run suite's synthetic frame, sidecar and
-register (loaded from that module) and on the candidate suite's driver
-loader and fake Hub.
+The national role delegates the build to the calibration seam library
+through ``uk_runtime.national_role`` (the graph driver dispatches there
+before any graph preparation), so these tests stand on the seam run suite's
+synthetic frame, sidecar and register (loaded from that module) and on the
+candidate suite's driver loader and fake Hub; the seam's consumers are
+patched on ``national_role``.
 """
 
 from __future__ import annotations
@@ -20,7 +22,7 @@ import pytest
 
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.staging_v2 import validate_v2_bundle
-from microcosm.build.uk_runtime import calibration_run
+from microcosm.build.uk_runtime import calibration_run, national_role, rowwise_staging
 from microcosm.build.uk_runtime.calibration_run import UK_CALIBRATION_GATE_SCOPE
 from microcosm.build.uk_runtime.chronicle_feed import (
     UKChronicleFeedPinError,
@@ -60,7 +62,7 @@ class _FakeResolver:
         self.kwargs = kwargs
 
 
-def _national_inputs(builder, monkeypatch, tmp_path: Path, *, resolver=None):
+def _national_inputs(monkeypatch, tmp_path: Path, *, resolver=None):
     frame = _SEAM._frame()
     input_h5 = tmp_path / "spine.h5"
     write_uk_national_frame(frame, input_h5)
@@ -84,26 +86,28 @@ def _national_inputs(builder, monkeypatch, tmp_path: Path, *, resolver=None):
         to_dict=lambda: {"facts_sha256": "1" * 64, "manifest_sha256": "2" * 64}
     )
     monkeypatch.setattr(
-        builder, "load_ledger_consumer_artifact", lambda path, **kwargs: artifact
+        national_role, "load_ledger_consumer_artifact", lambda path, **kwargs: artifact
     )
     monkeypatch.setattr(
-        builder,
+        national_role,
         "require_committed_uk_chronicle_feed_pin",
         lambda facts_sha256, **kwargs: pin,
     )
     monkeypatch.setattr(
-        builder,
+        national_role,
         "compile_uk_target_registry",
         lambda facts, target_period: SimpleNamespace(registry=registry, unsupported=()),
     )
-    monkeypatch.setattr(builder, "load_uk_calibration_measure_exclusions", lambda p: ())
     monkeypatch.setattr(
-        builder,
+        national_role, "load_uk_calibration_measure_exclusions", lambda p: ()
+    )
+    monkeypatch.setattr(
+        national_role,
         "apply_uk_calibration_measure_exclusions",
         lambda reg, exclusions: (reg, {}),
     )
     monkeypatch.setattr(
-        builder,
+        national_role,
         "UKMeasureResolver",
         (lambda **kwargs: None) if resolver is None else resolver,
     )
@@ -193,10 +197,10 @@ def test_uk_national_role_delegates_to_the_seam_library(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
     input_h5, registry, artifact, pin = _national_inputs(
-        builder, monkeypatch, tmp_path, resolver=_FakeResolver
+        monkeypatch, tmp_path, resolver=_FakeResolver
     )
     calls: list[dict] = []
-    monkeypatch.setattr(builder, "run_uk_calibration", _fake_seam_run(calls))
+    monkeypatch.setattr(national_role, "run_uk_calibration", _fake_seam_run(calls))
     out = tmp_path / "national"
 
     assert builder.main(_argv(input_h5, out, "--no-staging")) == 0
@@ -329,9 +333,7 @@ def test_uk_national_role_builds_the_seam_evidence_and_stages_locally(
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     out = tmp_path / "national"
 
     assert (
@@ -406,12 +408,10 @@ def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     hub = _CANDIDATE._FakeHub()
-    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
-    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
     out = tmp_path / "national"
 
     assert (
@@ -480,9 +480,7 @@ def test_uk_national_dry_run_prints_the_plan_and_writes_nothing(
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     out = tmp_path / "national"
 
     assert builder.main(_argv(input_h5, out, "--dry-run")) == 0
@@ -508,11 +506,9 @@ def test_uk_national_role_marks_the_staging_run_failed_on_a_refusal(
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     monkeypatch.setattr(
-        builder,
+        national_role,
         "compile_uk_target_registry",
         lambda facts, target_period: SimpleNamespace(
             registry=None, unsupported=("dwp.uc.households",)
@@ -599,12 +595,10 @@ def test_uk_national_role_refuses_a_feed_outside_the_committed_pin(
 
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     # The fixture stubs the check; this test wants the real one.
     monkeypatch.setattr(
-        builder,
+        national_role,
         "require_committed_uk_chronicle_feed_pin",
         require_committed_uk_chronicle_feed_pin,
     )
@@ -615,13 +609,15 @@ def test_uk_national_role_refuses_a_feed_outside_the_committed_pin(
         manifest_sha256=manifest_sha256,
     )
     monkeypatch.setattr(
-        builder, "load_ledger_consumer_artifact", lambda path, **kwargs: artifact
+        national_role, "load_ledger_consumer_artifact", lambda path, **kwargs: artifact
     )
 
     def compile_must_not_run(facts, target_period):
         raise AssertionError("the register compiled before the feed pin was checked")
 
-    monkeypatch.setattr(builder, "compile_uk_target_registry", compile_must_not_run)
+    monkeypatch.setattr(
+        national_role, "compile_uk_target_registry", compile_must_not_run
+    )
     out = tmp_path / "national"
     with pytest.raises(UKChronicleFeedPinError, match="manifest: loaded"):
         builder.main(_argv(input_h5, out, "--staging-local-only"))
@@ -638,10 +634,10 @@ def test_uk_national_role_records_an_unpinned_feed_override(
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
     input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path, resolver=_FakeResolver
+        monkeypatch, tmp_path, resolver=_FakeResolver
     )
     monkeypatch.setattr(
-        builder,
+        national_role,
         "require_committed_uk_chronicle_feed_pin",
         require_committed_uk_chronicle_feed_pin,
     )
@@ -649,10 +645,10 @@ def test_uk_national_role_records_an_unpinned_feed_override(
         tmp_path / "ledger", facts_sha256="0" * 64, manifest_sha256="c" * 64
     )
     monkeypatch.setattr(
-        builder, "load_ledger_consumer_artifact", lambda path, **kwargs: artifact
+        national_role, "load_ledger_consumer_artifact", lambda path, **kwargs: artifact
     )
     calls: list[dict] = []
-    monkeypatch.setattr(builder, "run_uk_calibration", _fake_seam_run(calls))
+    monkeypatch.setattr(national_role, "run_uk_calibration", _fake_seam_run(calls))
     out = tmp_path / "national"
     assert (
         builder.main(_argv(input_h5, out, "--no-staging", "--allow-unpinned-feed")) == 0
@@ -780,9 +776,7 @@ def test_uk_dense_role_refuses_the_incumbent_flags(tmp_path) -> None:
 def test_uk_national_role_requires_the_incumbent_pair(monkeypatch, tmp_path):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     with pytest.raises(ValueError, match="must be given together"):
         builder.main(
             _argv(
@@ -796,13 +790,12 @@ def test_uk_national_role_requires_the_incumbent_pair(monkeypatch, tmp_path):
 
 
 def test_uk_national_role_refuses_the_incumbent_without_the_scorer() -> None:
-    builder = _CANDIDATE._load_builder_module()
 
     def missing(name: str):
         raise ImportError(name)
 
     with pytest.raises(ValueError, match="microcosm#967"):
-        builder._load_candidate_evaluator(importer=missing)
+        national_role._load_candidate_evaluator(importer=missing)
 
 
 def test_uk_national_role_evaluates_against_the_incumbent(
@@ -810,10 +803,8 @@ def test_uk_national_role_evaluates_against_the_incumbent(
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
-    monkeypatch.setattr(builder, "run_uk_calibration", _fake_seam_run([]))
+    input_h5, registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    monkeypatch.setattr(national_role, "run_uk_calibration", _fake_seam_run([]))
     calls: list[dict] = []
     module = _fake_evaluator(
         lambda kwargs: _receipt(
@@ -822,7 +813,7 @@ def test_uk_national_role_evaluates_against_the_incumbent(
         calls,
     )
     monkeypatch.setattr(
-        builder, "_load_candidate_evaluator", lambda importer=None: module
+        national_role, "_load_candidate_evaluator", lambda importer=None: module
     )
     out = tmp_path / "national"
 
@@ -870,17 +861,15 @@ def test_uk_national_role_records_an_evaluation_error_without_failing(
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
-    monkeypatch.setattr(builder, "run_uk_calibration", _fake_seam_run([]))
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    monkeypatch.setattr(national_role, "run_uk_calibration", _fake_seam_run([]))
 
     def explode(kwargs):
         raise RuntimeError("the incumbent frame refused to load")
 
     module = _fake_evaluator(explode, [])
     monkeypatch.setattr(
-        builder, "_load_candidate_evaluator", lambda importer=None: module
+        national_role, "_load_candidate_evaluator", lambda importer=None: module
     )
     out = tmp_path / "national"
 
@@ -905,13 +894,11 @@ def test_uk_national_role_evaluates_after_staging_the_bundle(
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     calls: list[dict] = []
     module = _fake_evaluator(lambda kwargs: _receipt(kwargs), calls)
     monkeypatch.setattr(
-        builder, "_load_candidate_evaluator", lambda importer=None: module
+        national_role, "_load_candidate_evaluator", lambda importer=None: module
     )
     out = tmp_path / "national"
 
@@ -975,12 +962,10 @@ def test_uk_national_role_evaluates_after_staging_the_bundle(
 def test_uk_national_dry_run_records_the_incumbent(monkeypatch, tmp_path, capsys):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
-    input_h5, _registry, _artifact, _pin = _national_inputs(
-        builder, monkeypatch, tmp_path
-    )
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     module = _fake_evaluator(lambda kwargs: _receipt(kwargs), [])
     monkeypatch.setattr(
-        builder, "_load_candidate_evaluator", lambda importer=None: module
+        national_role, "_load_candidate_evaluator", lambda importer=None: module
     )
 
     assert (
@@ -1006,8 +991,7 @@ def test_uk_national_dry_run_records_the_incumbent(monkeypatch, tmp_path, capsys
 def test_uk_national_role_loads_the_real_scorer_by_its_public_name() -> None:
     """The driver calls the scorer's public factory name; loading the real
     module (no stand-in) proves the name exists (Vahid's #965 note 1)."""
-    builder = _CANDIDATE._load_builder_module()
-    module = builder._load_candidate_evaluator()
+    module = national_role._load_candidate_evaluator()
     assert module.__name__ == "microcosm.build.uk_runtime.candidate_score"
     assert callable(module.uk_default_measure_resolver_factory)
     assert callable(module.evaluate_uk_candidate_against_incumbent)
@@ -1017,7 +1001,6 @@ def test_uk_score_receipt_telemetry_summary_keeps_the_pruned_block() -> None:
     """The staged copy drops the three per-target arrays and keeps the
     pruned block whole, including a populated pruned_targets mapping (the
     block a real run fills with 120 rows; Vahid's #965 note 2)."""
-    builder = _CANDIDATE._load_builder_module()
     pruned_targets = {
         f"dwp/uc/family_{i}": {
             "name": f"dwp/uc/family_{i}",
@@ -1045,7 +1028,7 @@ def test_uk_score_receipt_telemetry_summary_keeps_the_pruned_block() -> None:
         },
         "evaluation": {"verdict": "passed"},
     }
-    summary = builder._score_receipt_telemetry_summary(score)
+    summary = national_role._score_receipt_telemetry_summary(score)
     assert set(summary) == {
         "artifacts",
         "incumbent_unresolvable_pruned",

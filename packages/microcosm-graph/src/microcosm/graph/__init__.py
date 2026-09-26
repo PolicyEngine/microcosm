@@ -16,6 +16,7 @@ from .decl import (
     PARTITION_DTYPES,
     ROWS_ALL,
     WEIGHT_KINDS,
+    WEIGHT_UPDATE_MASS_POLICIES,
     ArtifactInput,
     ArtifactOutput,
     ArtifactType,
@@ -30,6 +31,7 @@ from .decl import (
     SourceRef,
     StructuralDelta,
     WeightTransition,
+    WeightUpdate,
     compile_graph,
 )
 from .errors import (
@@ -57,6 +59,7 @@ from .kernel import (
 )
 from .keys import platform_fingerprint
 from .randomness import keyed_uniform
+from .weight_update import WEIGHT_UPDATE_AXIS_SCHEMA, weight_update_receipt
 
 __all__ = [
     "platform_fingerprint",
@@ -117,6 +120,9 @@ __all__ = [
     "StoreUnavailable",
     "StructuralDelta",
     "WeightTransition",
+    "WeightUpdate",
+    "WEIGHT_UPDATE_AXIS_SCHEMA",
+    "WEIGHT_UPDATE_MASS_POLICIES",
     "compile_graph",
     "describe",
     "explain_html",
@@ -127,6 +133,7 @@ __all__ = [
     "load_source_bytes",
     "run_graph",
     "source_hash",
+    "weight_update_receipt",
 ]
 
 _FRAME_SERIES = "0.1"
