@@ -28,15 +28,18 @@ The rule itself is pure. :func:`undefined_stored_inputs` and
 variable names and the register, and never read a row.
 :func:`h5_stored_tables` lists an H5's stored tables from HDF metadata alone.
 :func:`installed_us_engine` reads the variable names of the installed
-policyengine-us. Two certification seams run the rule, each at the point where
-the installed engine is provably the one the release is certified against:
+policyengine-us. Three certification seams run the rule, each at the point
+where the installed engine is provably the one the release is certified
+against, because the same process records it as
+``build.built_with_model_package``:
 
 - the US fiscal-refresh release tool's batched pre-export gates
   (``tools/build_us_fiscal_refresh_release.py``), on the export frame's stored
-  tables, before the H5 is written. The tool writes the H5 with the installed
-  engine and records that engine's version as
-  ``build.built_with_model_package``. After the write it checks that the
-  verdict on the written bytes is the verdict the gate reached;
+  tables, before the H5 is written. The exact-k ladder lane
+  (``tools/build_us_exact_k_ladder_release.py``) runs this tool, so it passes
+  the same gate. The tool writes the H5 with the installed engine. After the
+  write it checks that the verdict on the written bytes is the verdict the
+  gate reached;
 - the source-enrichment native-loader probe
   (:func:`microcosm.data.source_enrichment.run_native_loader_compatibility`),
   on the candidate H5, through :func:`require_h5_stored_inputs`. The probe
@@ -44,7 +47,10 @@ the installed engine is provably the one the release is certified against:
   the contract replays it (validation, the publisher's preflight and
   publication), and the contract refuses a bundle whose
   ``build.built_with_model_package`` differs from the runtime the probe
-  tested. Both releases above went through this lane.
+  tested. Both releases above went through this lane;
+- the ACS local-area release tool's package stage
+  (``tools/build_us_acs_local_release.py``), on the calibrated H5, through
+  :func:`require_h5_stored_inputs`, before the release directory exists.
 
 **Naming convention, measured rather than assumed.** policyengine-us 2.2.1
 defines 6,167 variables. 6,114 match ``[a-z][a-z0-9_]*``. The other 53 are the
@@ -54,14 +60,16 @@ household Boolean formula per state, named by its code. No variable starts
 with an underscore or a digit. So any column outside the convention passes by
 rule: a column with an uppercase letter (the raw Census fields ``A_AGE``,
 ``H_TENURE``, ``SPM_WICVAL`` and so on), or one that starts with an underscore
-or a digit. The files examined for microcosm#1026 store 163 uppercase columns;
-none is an engine variable and none is one of the 53 codes. The 53 are all
-formulas, and the release writer
+or a digit. The files examined for microcosm#1026 store 163 to 189 uppercase
+columns each (191 distinct); none is an engine variable and none is one of the
+53 codes. The only two-letter ones are the ACS PUMS fields ``ST`` and ``NP``.
+The 53 are all formulas. The fiscal-refresh writer
 (:class:`microcosm.frame.adapters.policyengine_us.PolicyEngineUSEngine`)
-refuses to store a formula-owned column, so a release cannot store one of them
-either. Tests pin the convention and the formula ownership against the locked
-engine, so an engine that adds a variable outside the convention fails CI
-rather than passing silently.
+refuses to store a formula-owned column, and the ACS local-area lane holds
+every formula-owned column back from its H5 with the same classifier, so a
+release from either cannot store one of them. Tests pin the convention and the
+formula ownership against the locked engine, so an engine that adds a variable
+outside the convention fails CI rather than passing silently.
 """
 
 from __future__ import annotations
@@ -98,9 +106,25 @@ __all__ = [
 #: the measurement behind it.
 MODEL_NAMED_COLUMN_PATTERN = re.compile(r"[a-z][a-z0-9_]*")
 
-#: The one top-level H5 object that is not an entity table. The country loader
-#: (``USSingleYearDataset``) reads it as the dataset's period.
-_TIME_PERIOD_KEY = "_time_period"
+#: The top-level H5 objects that are metadata, not entity tables, and why each
+#: holds no stored model input. Each must be a pandas series, which has no
+#: columns to hide one in; any other top-level object that is not a pandas
+#: frame is refused.
+_METADATA_SERIES_KEYS: Mapping[str, str] = MappingProxyType(
+    {
+        "_time_period": (
+            "the dataset's period, which the country loader "
+            "(USSingleYearDataset) reads as the period, never as an input"
+        ),
+        "_populace_staging_metadata": (
+            "the JSON artifact metadata Microcosm's nullable US H5 writer "
+            "stores (microcosm.build.us_runtime.h5_io); USSingleYearDataset "
+            "reads only the six entity tables and _time_period"
+        ),
+    }
+)
+#: ``pandas_type`` attributes of a pandas series, fixed and table format.
+_PANDAS_SERIES = frozenset({"series", "series_table"})
 #: ``pandas_type`` attribute of a pandas ``format="table"`` frame.
 _PANDAS_TABLE_FRAME = "frame_table"
 #: ``pandas_type`` attribute of a pandas ``format="fixed"`` frame. The Frame
@@ -134,6 +158,42 @@ _SUPPORT_CLONE_INDEX = (
     "Support provenance: the clone index of the {entity} record within its "
     "source record (microcosm.build.us_runtime.support_provenance."
     "support_clone_index_column). Build lineage, not a model input."
+)
+_SPINE_SOURCE_ID = (
+    "Support provenance: the {entity} record's raw id in the source spine it "
+    "came from, before spine assembly remaps colliding ids (microcosm.build."
+    "us_runtime.support_provenance.spine_source_id_column, written by "
+    "microcosm.build.us_runtime.spine_assembly). The PUF support stage "
+    "requires it on a preassembled frame (microcosm.build.us_runtime."
+    "puf_support) and the stacked-spine lineage receipts bind it "
+    "(microcosm.build.us_runtime.stacked_spine). Build lineage, not a model "
+    "input."
+)
+_BASE_SPINE = (
+    "Base-spine tag: the spine the {entity} record came from, asec_puf or "
+    "acs_2024_1yr (microcosm.build.us_runtime.base_pool.spine_column, written "
+    "when microcosm.build.us_runtime.acs_multispine pools the ACS spine with "
+    "the ASEC-by-PUF base for the ACS local-area lane). Later stages read it "
+    "to tell the spines apart (for example microcosm.build.us_runtime."
+    "spm_universe_source and acs_local_hours). Build lineage, not a model "
+    "input."
+)
+_ACS_NATIVE_COMBINED = (
+    "ACS-native reported amount: {detail} (microcosm.build.us_runtime."
+    "acs_inputs, contract microcosm.build.us_runtime.operator_boundary."
+    "_ACS_NATIVE_INPUT_CONTRACTS). It combines what the engine models as "
+    "several inputs ({components}), so it keeps an acs_ name; the ACS "
+    "transfer reads it as a recipient-side predictor of those inputs "
+    "(microcosm.build.us_runtime.acs_transfer). It is not a model input."
+)
+_ACS_NATIVE_HOUSING = (
+    "ACS-native reported housing amount: {detail} (microcosm.build."
+    "us_runtime.acs_inputs, contract microcosm.build.us_runtime."
+    "operator_boundary._ACS_NATIVE_INPUT_CONTRACTS). The engine's housing "
+    "inputs are filled elsewhere: pre_subsidy_rent by the ACS transfer and "
+    "real_estate_taxes from TAXAMT on the reference person. This household "
+    "amount is source lineage recorded in the native-input receipt, not a "
+    "model input."
 )
 _POOLED_SOURCE = (
     "Pooled source provenance: {detail}. Assigned when a survey is pooled "
@@ -172,14 +232,22 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:
 #: Built from evidence, not guesses. It holds exactly the model-named
 #: non-variable columns stored by the H5 files examined for microcosm#1026 that
-#: are provenance or build construction outputs: the published default
-#: ``populace-us-2024-spm-20260915`` (26 such columns, 24 registered) and the
-#: Route A rehearsal export built from main's tools (30 such columns, all
-#: registered). ``tests/fixtures/stored_input_inventories.json`` records both
-#: files' stored columns, and a test requires every entry to appear in one of
-#: them. Two model-named non-variable columns of the published default are
-#: deliberately absent, because each is a stale model input rather than
-#: metadata:
+#: are provenance, source lineage or build construction outputs.
+#: ``tests/fixtures/stored_input_inventories.json`` records each file's stored
+#: columns, and a test requires every entry to appear in one of them:
+#:
+#: - the published default ``populace-us-2024-spm-20260915`` and its
+#:   reported-receipt child ``populace-us-2024-spm-receipts-20260923``;
+#: - the Route A rehearsal export built from main's tools;
+#: - the Build Q stacked multispine pool, which the fiscal-refresh tool accepts
+#:   as ``--base-h5`` (the ``*_spine_source_id`` columns, the six ACS-native
+#:   ``acs_*`` amounts and ``puma_geoid`` reach an export from it); and
+#: - the ACS local-area release ``populace-us-2024-buildo-acs-local-
+#:   767312d60-20260923T074941Z`` (the ``*_spine`` tags as well).
+#:
+#: Two model-named non-variable columns that the published default, its
+#: receipt child and the ACS local-area release store are deliberately absent,
+#: because each is a stale model input rather than metadata:
 #:
 #: - ``would_claim_wic``: the WIC take-up draw under its retired name. The live
 #:   input is ``takes_up_wic_if_eligible`` (#746 moved the builder).
@@ -208,6 +276,55 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
             f"{entity}_support_clone_index": _SUPPORT_CLONE_INDEX.format(entity=entity)
             for entity in _US_ENTITIES
         },
+        **{
+            f"{entity}_spine_source_id": _SPINE_SOURCE_ID.format(entity=entity)
+            for entity in _US_ENTITIES
+        },
+        **{
+            f"{entity}_spine": _BASE_SPINE.format(entity=entity)
+            for entity in _US_ENTITIES
+        },
+        "acs_social_security_income": _ACS_NATIVE_COMBINED.format(
+            detail="the person's ACS SSP Social Security income, times ADJINC",
+            components=(
+                "social_security_retirement, social_security_disability, "
+                "social_security_dependents and social_security_survivors"
+            ),
+        ),
+        "acs_retirement_income": _ACS_NATIVE_COMBINED.format(
+            detail="the person's ACS RETP retirement income, times ADJINC",
+            components=(
+                "taxable_private_pension_income, "
+                "tax_exempt_private_pension_income and taxable_ira_distributions"
+            ),
+        ),
+        "acs_interest_dividend_rental_income": _ACS_NATIVE_COMBINED.format(
+            detail=(
+                "the person's ACS INTP interest, dividend and net rental "
+                "income, times ADJINC"
+            ),
+            components=(
+                "taxable_interest_income, tax_exempt_interest_income, "
+                "qualified_dividend_income, non_qualified_dividend_income, "
+                "rental_income and estate_income"
+            ),
+        ),
+        "acs_monthly_contract_rent": _ACS_NATIVE_HOUSING.format(
+            detail="the household's ACS RNTP monthly contract rent, times ADJHSG"
+        ),
+        "acs_monthly_gross_rent": _ACS_NATIVE_HOUSING.format(
+            detail="the household's ACS GRNTP monthly gross rent, times ADJHSG"
+        ),
+        "acs_annual_property_tax": _ACS_NATIVE_HOUSING.format(
+            detail="the household's ACS TAXAMT annual property tax, times ADJHSG"
+        ),
+        "puma_geoid": (
+            "The household's seven-digit state FIPS plus 2020 PUMA geoid, "
+            "written by microcosm.build.us_runtime.acs_pums as an explicit "
+            "alias of the puma input. puma carries the same value and is the "
+            "column the engine reads, so this alias is not a separate model "
+            "input."
+        ),
         "source_year": _POOLED_SOURCE.format(
             detail="the source file's year (the ASEC year or the ACS vintage)",
             use=_POOLED_SOURCE_SEED_KEY,
@@ -422,14 +539,17 @@ def h5_stored_tables(path: Path | str) -> dict[str, tuple[str, ...]]:
     compound field names, or a ``format="fixed"`` frame's ``axis0`` labels).
     No row is loaded. The layout is the one ``USSingleYearDataset`` reads: one
     pandas frame per entity plus the ``_time_period`` series. The pandas index
-    field is not a stored column, and ``_time_period`` is not a table. Every
-    other pandas frame is listed, whatever its key, so a column cannot hide in
-    an unexpected table.
+    field is not a stored column. The metadata series in
+    :data:`_METADATA_SERIES_KEYS` (``_time_period``, and the
+    ``_populace_staging_metadata`` series Microcosm's nullable writer adds)
+    are not tables, and each must be a pandas series. Every other pandas frame
+    is listed, whatever its key, so a column cannot hide in an unexpected
+    table.
 
     Raises:
-        StoredTableLayoutError: A top-level object is not a pandas frame, or a
-            table hides its column names in ``values_block_*`` fields, so the
-            check cannot see what it stores.
+        StoredTableLayoutError: A top-level object is neither a pandas frame
+            nor a known metadata series, or a table hides its column names in
+            ``values_block_*`` fields, so the check cannot see what it stores.
     """
 
     import h5py
@@ -437,14 +557,20 @@ def h5_stored_tables(path: Path | str) -> dict[str, tuple[str, ...]]:
     tables: dict[str, tuple[str, ...]] = {}
     with h5py.File(path, "r") as h5:
         for key in h5:
-            if key == _TIME_PERIOD_KEY:
-                continue
             group = h5[key]
             pandas_type = (
                 _attribute_text(group.attrs.get("pandas_type"))
                 if isinstance(group, h5py.Group)
                 else None
             )
+            if key in _METADATA_SERIES_KEYS:
+                if pandas_type not in _PANDAS_SERIES:
+                    raise StoredTableLayoutError(
+                        f"{path}: metadata object {key!r} is not a pandas "
+                        "series, so the stored-input check cannot rule out "
+                        "that it stores columns."
+                    )
+                continue
             if pandas_type == _PANDAS_TABLE_FRAME:
                 table = group.get("table")
                 names = table.dtype.names if isinstance(table, h5py.Dataset) else None

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -22,8 +23,12 @@ import pandas as pd
 import pytest
 
 from microcosm.build.outer_stage_runtime import _POOLED_SOURCE_PROVENANCE_COLUMNS
+from microcosm.build.us_runtime import acs_pums, acs_transfer
 from microcosm.build.us_runtime import puf_capital_gains_tail as puf_tail
+from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.operator_boundary import _ACS_NATIVE_INPUT_CONTRACTS
 from microcosm.build.us_runtime.support_provenance import (
+    spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
     support_source_id_column,
@@ -122,10 +127,19 @@ def test_the_register_spells_the_us_entities_in_schema_order():
     assert _US_ENTITIES == tuple(US_SCHEMA.entities)
 
 
+#: The ACS-native amounts microcosm.build.us_runtime.acs_inputs maps under an
+#: acs_ name: every key of its contract that no engine version defines.
+_ACS_NATIVE_AMOUNTS = frozenset(
+    column for column in _ACS_NATIVE_INPUT_CONTRACTS if column.startswith("acs_")
+)
+
+
 def test_every_register_entry_is_a_named_producer_column():
-    """The register is exactly the support provenance columns of every US
-    entity, the pooled-source provenance columns, microunit's two tax-unit
-    construction columns and the PUF capital-gains tail provenance columns."""
+    """The register is exactly the four support provenance columns and the
+    base-spine tag of every US entity, the pooled-source provenance columns,
+    microunit's two tax-unit construction columns, the PUF capital-gains tail
+    provenance columns, the ACS-native acs_ amounts and acs_pums's puma_geoid
+    alias."""
 
     support = {
         column(entity)
@@ -134,6 +148,8 @@ def test_every_register_entry_is_a_named_producer_column():
             support_source_id_column,
             support_channel_column,
             support_clone_index_column,
+            spine_source_id_column,
+            spine_column,
         )
     }
     tail = {
@@ -147,9 +163,15 @@ def test_every_register_entry_is_a_named_producer_column():
     construction = {_TAX_UNIT_ROLE_COLUMN, TAX_UNIT_FILING_STATUS_COLUMN}
 
     assert set(US_STORED_NON_VARIABLE_COLUMNS) == (
-        support | set(_POOLED_SOURCE_PROVENANCE_COLUMNS) | construction | tail
+        support
+        | set(_POOLED_SOURCE_PROVENANCE_COLUMNS)
+        | construction
+        | tail
+        | _ACS_NATIVE_AMOUNTS
+        | {"puma_geoid"}
     )
-    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 18 + 4 + 2 + 6
+    assert len(_ACS_NATIVE_AMOUNTS) == 6
+    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1
 
 
 def test_every_register_reason_names_where_its_column_comes_from():
@@ -161,12 +183,19 @@ def test_every_register_reason_names_where_its_column_comes_from():
                 support_source_id_column,
                 support_channel_column,
                 support_clone_index_column,
+                spine_source_id_column,
             )
+        },
+        **{
+            spine_column(entity): "microcosm.build.us_runtime.base_pool.spine_column"
+            for entity in US_SCHEMA.entities
         },
         **{
             column: "_POOLED_SOURCE_PROVENANCE_COLUMNS"
             for column in _POOLED_SOURCE_PROVENANCE_COLUMNS
         },
+        **{column: "_ACS_NATIVE_INPUT_CONTRACTS" for column in _ACS_NATIVE_AMOUNTS},
+        "puma_geoid": "microcosm.build.us_runtime.acs_pums",
         _TAX_UNIT_ROLE_COLUMN: "microcosm.frame.units._TAX_UNIT_ROLE_COLUMN",
         TAX_UNIT_FILING_STATUS_COLUMN: (
             "microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN"
@@ -180,6 +209,42 @@ def test_every_register_reason_names_where_its_column_comes_from():
                 "microcosm.build.us_runtime.puf_capital_gains_tail"
                 in US_STORED_NON_VARIABLE_COLUMNS[column]
             )
+
+
+def test_the_acs_native_reasons_name_what_the_build_does_with_them():
+    """A combined ACS amount's reason lists exactly the engine inputs the ACS
+    transfer predicts from it; a housing amount's reason names the inputs the
+    build fills instead, and the build fills them that way."""
+
+    by_source = {
+        source: feature
+        for feature, source in acs_transfer._RECIPIENT_COMBINED_SOURCES.items()
+    }
+    for column in _ACS_NATIVE_AMOUNTS:
+        reason = US_STORED_NON_VARIABLE_COLUMNS[column]
+        source_columns = _ACS_NATIVE_INPUT_CONTRACTS[column][1]
+        assert f"ACS {source_columns[0]} " in reason
+        assert f"times {source_columns[1]}" in reason
+        if column in by_source:
+            components = acs_transfer._DONOR_COMBINED_COMPONENTS[by_source[column]]
+            (named,) = re.findall(r"several inputs \(([^)]*)\)", reason)
+            assert sorted(named.replace(" and ", ", ").split(", ")) == sorted(
+                components
+            )
+        else:
+            assert _ACS_NATIVE_INPUT_CONTRACTS[column][0] == "household"
+            assert "pre_subsidy_rent" in reason
+            assert "real_estate_taxes" in reason
+    assert set(by_source) < _ACS_NATIVE_AMOUNTS
+    assert "pre_subsidy_rent" in acs_transfer._HOUSING_TRANSFER_TARGETS
+    assert _ACS_NATIVE_INPUT_CONTRACTS["real_estate_taxes"][1][0] == "TAXAMT"
+
+
+def test_puma_geoid_is_the_alias_acs_pums_writes_for_puma():
+    source = Path(acs_pums.__file__).read_text()
+
+    assert 'household["puma_geoid"] = household["ST"] + household["PUMA"]' in source
+    assert 'household["puma"] = household["puma_geoid"].to_numpy()' in source
 
 
 # ---------------------------------------------------------------------------
@@ -392,6 +457,25 @@ def test_the_modeled_stored_tables_are_what_the_writer_stores(builder, tmp_path)
     assert details["refused"] == ["would_claim_wic"]
     assert len(failures) == 1
     assert builder._written_stored_input_verdict_mismatch(path, details) is None
+
+
+@pytest.mark.requires_us
+def test_the_inputs_the_acs_native_reasons_name_are_engine_inputs():
+    """What the ACS-native and alias reasons call engine inputs are inputs of
+    the installed engine, not formulas, and the acs_ amounts themselves are
+    not variables."""
+
+    from policyengine_us.system import system
+
+    named_inputs = {
+        component
+        for feature in acs_transfer._RECIPIENT_COMBINED_SOURCES
+        for component in acs_transfer._DONOR_COMBINED_COMPONENTS[feature]
+    } | {"pre_subsidy_rent", "real_estate_taxes", "puma"}
+    for name in sorted(named_inputs):
+        assert name in system.variables, name
+        assert not system.variables[name].formulas, name
+    assert not _ACS_NATIVE_AMOUNTS & set(system.variables)
 
 
 @pytest.mark.requires_us

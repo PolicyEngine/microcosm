@@ -53,7 +53,17 @@ from microcosm.data.stored_inputs import (
 _INVENTORIES = Path(__file__).parent / "fixtures" / "stored_input_inventories.json"
 _PUBLISHED_DEFAULT = "populace-us-2024-spm-20260915"
 _REHEARSAL_EXPORT = "route-a-r4-rehearsal-export"
+_RECEIPT_CHILD = "populace-us-2024-spm-receipts-20260923"
+_STACKED_POOL = "buildq-stacked-pool-f010-s578"
+_ACS_LOCAL_RELEASE = "populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z"
 _QUOTED = re.compile(r"'([^']*)'")
+#: The postal codes of the 50 states, DC, PR and VI: policyengine-us 2.2.1's
+#: only variable names outside the lowercase convention.
+_US_POSTAL_CODES = frozenset(
+    "AK AL AR AZ CA CO CT DC DE FL GA HI IA ID IL IN KS KY LA MA MD ME MI MN MO "
+    "MS MT NC ND NE NH NJ NM NV NY OH OK OR PA PR RI SC SD TN TX UT VA VI VT WA "
+    "WI WV WY".split()
+)
 _LOWER = string.ascii_lowercase
 _MODEL_CHARS = frozenset(string.ascii_lowercase + string.digits + "_")
 
@@ -83,13 +93,15 @@ def _write_pandas_layout(
     *,
     fixed: tuple[str, ...] = (),
     bytes_attrs: bool = False,
+    metadata: dict[str, str] | None = None,
 ) -> None:
     """Write the HDF layout pandas uses, with h5py and no pandas.
 
     A ``format="table"`` frame is a group whose ``table`` dataset has the
     ``index`` field followed by one field per data column; a ``format="fixed"``
-    frame keeps its column labels in ``axis0``. ``_time_period`` is the period
-    series the country loader reads.
+    frame keeps its column labels in ``axis0``. ``metadata`` maps each
+    top-level metadata key to its ``pandas_type``; by default it is the
+    ``_time_period`` table series the country loader reads.
     """
 
     def attr(text: str):
@@ -108,8 +120,10 @@ def _write_pandas_layout(
                 group.attrs["pandas_type"] = attr("frame_table")
                 dtype = np.dtype([("index", "<i8"), *((c, "<f8") for c in columns)])
                 group.create_dataset("table", data=np.zeros(2, dtype=dtype))
-        period = h5.create_group("_time_period")
-        period.attrs["pandas_type"] = attr("series_table")
+        for key, pandas_type in (
+            {"_time_period": "series_table"} if metadata is None else metadata
+        ).items():
+            h5.create_group(key).attrs["pandas_type"] = attr(pandas_type)
 
 
 def _hypothesis():
@@ -257,14 +271,18 @@ def test_every_register_entry_is_stored_by_a_file_examined_for_1026():
     assert set(US_STORED_NON_VARIABLE_COLUMNS) <= stored
 
 
-def test_the_examined_files_store_no_uppercase_two_letter_column():
-    """policyengine-us's only variables outside the convention are two-letter
-    state codes (pinned against the engine below). Neither examined file stores
-    a column of that shape, so none of their uppercase columns can collide."""
+def test_the_examined_files_store_no_state_code_column():
+    """policyengine-us's only variables outside the convention are the 53
+    state and territory codes (pinned against the engine below). No examined
+    file stores one, so none of their uppercase columns can collide. The only
+    two-letter columns they store are the ACS PUMS fields ST and NP."""
 
+    two_letter = set()
     for inventory in _inventories().values():
         for columns in inventory["tables"].values():
-            assert not [c for c in columns if re.fullmatch(r"[A-Z]{2}", c)]
+            assert not set(columns) & _US_POSTAL_CODES
+            two_letter |= {c for c in columns if re.fullmatch(r"[A-Z]{2}", c)}
+    assert two_letter == {"ST", "NP"}
 
 
 def test_register_sha256_is_canonical_and_moves_with_the_register():
@@ -327,6 +345,55 @@ def test_h5_objects_that_are_not_frames_are_refused(tmp_path):
         h5_stored_tables(path)
 
 
+def test_h5_metadata_series_are_not_tables(tmp_path):
+    """The nullable writer's ``_populace_staging_metadata`` series (the ACS
+    local-area release and the multispine pools store one) holds no columns;
+    fixed and table series both pass."""
+
+    path = tmp_path / "release.h5"
+    _write_pandas_layout(
+        path,
+        {"person": ["person_id", "would_claim_wic"]},
+        fixed=("person",),
+        bytes_attrs=True,
+        metadata={
+            "_time_period": "series",
+            "_populace_staging_metadata": "series_table",
+        },
+    )
+
+    assert h5_stored_tables(path) == {"person": ("person_id", "would_claim_wic")}
+
+
+@pytest.mark.parametrize("key", ["_time_period", "_populace_staging_metadata"])
+@pytest.mark.parametrize("pandas_type", ["frame", "frame_table", "", "wide"])
+def test_h5_metadata_keys_that_are_not_series_are_refused(tmp_path, key, pandas_type):
+    """A metadata key is skipped only as a series: stored as a frame, it could
+    hold columns, so the check refuses rather than skip it."""
+
+    path = tmp_path / "release.h5"
+    _write_pandas_layout(
+        path,
+        {"person": ["person_id"]},
+        metadata={"_time_period": "series_table", key: pandas_type},
+    )
+
+    with pytest.raises(StoredTableLayoutError, match=f"metadata object '{key}'"):
+        h5_stored_tables(path)
+
+
+def test_h5_series_under_an_unknown_key_are_refused(tmp_path):
+    path = tmp_path / "release.h5"
+    _write_pandas_layout(
+        path,
+        {"person": ["person_id"]},
+        metadata={"_time_period": "series_table", "_other_metadata": "series"},
+    )
+
+    with pytest.raises(StoredTableLayoutError, match="_other_metadata"):
+        h5_stored_tables(path)
+
+
 def test_h5_tables_without_an_index_field_are_refused(tmp_path):
     path = tmp_path / "release.h5"
     with h5py.File(path, "w") as h5:
@@ -352,6 +419,11 @@ def test_pandas_written_tables_round_trip(tmp_path):
         store.put("person", person, format="table", data_columns=True)
         store.put("household", household, format="fixed")
         store.put("_time_period", pd.Series([2024]), format="table")
+        store.put(
+            "_populace_staging_metadata",
+            pd.Series(['{"artifact_kind": "calibrated_local_area_artifact"}']),
+            format="table",
+        )
 
     assert h5_stored_tables(path) == {
         "person": ("person_id", "would_claim_wic", "A_AGE"),
@@ -563,13 +635,115 @@ def test_property_h5_metadata_round_trips_the_stored_columns(tmp_path_factory):
             entity, st.lists(name, min_size=1, max_size=8, unique=True), max_size=6
         ),
         fixed=st.sets(entity, max_size=3),
+        metadata=st.fixed_dictionaries(
+            {"_time_period": st.sampled_from(("series", "series_table"))},
+            optional={
+                "_populace_staging_metadata": st.sampled_from(
+                    ("series", "series_table")
+                )
+            },
+        ),
     )
-    def check(tables, fixed):
+    def check(tables, fixed, metadata):
         path = tmp_path_factory.mktemp("round_trip") / "release.h5"
-        _write_pandas_layout(path, tables, fixed=tuple(fixed))
+        _write_pandas_layout(path, tables, fixed=tuple(fixed), metadata=metadata)
         assert h5_stored_tables(path) == {
             key: tuple(columns) for key, columns in tables.items()
         }
+
+    check()
+
+
+_LAYOUT_DEFECTS = (
+    "values_block",
+    "index_not_first",
+    "no_index",
+    "stray_dataset",
+    "untyped_group",
+    "unknown_series",
+    "metadata_frame",
+    "fixed_without_axis",
+)
+
+
+def test_property_h5_layouts_the_reader_cannot_see_are_refused(tmp_path_factory):
+    """Invariant 5's refusal half: take any layout the reader round-trips and
+    add one defect anywhere. The reader then refuses rather than guess. The
+    defects are a ``values_block_*`` field at any position of any table, an
+    index field that is missing or not first, a top-level object that is not a
+    pandas frame (a bare dataset, an untyped group, a series under an unknown
+    key), a metadata key stored as a frame, and a fixed frame with no column
+    axis."""
+
+    hypothesis, st = _hypothesis()
+    name = st.from_regex(r"[A-Za-z][A-Za-z0-9_]{0,10}", fullmatch=True).filter(
+        lambda text: text != "index" and not text.startswith("values_block_")
+    )
+    entity = st.sampled_from(
+        ("person", "household", "tax_unit", "spm_unit", "family", "marital_unit")
+    )
+
+    @hypothesis.settings(max_examples=120, deadline=None)
+    @hypothesis.given(
+        tables=st.dictionaries(
+            entity,
+            st.lists(name, min_size=1, max_size=8, unique=True),
+            min_size=1,
+            max_size=6,
+        ),
+        fixed=st.sets(entity, max_size=3),
+        defect=st.sampled_from(_LAYOUT_DEFECTS),
+        data=st.data(),
+    )
+    def check(tables, fixed, defect, data):
+        path = tmp_path_factory.mktemp("refused") / "release.h5"
+        victim = data.draw(st.sampled_from(sorted(tables)), label="victim")
+        stray_key = name.filter(lambda text: text not in tables)
+        fixed = set(fixed)
+        if defect in {"values_block", "index_not_first", "no_index"}:
+            fixed.discard(victim)
+        elif defect == "fixed_without_axis":
+            fixed.add(victim)
+        _write_pandas_layout(path, tables, fixed=tuple(fixed))
+        with h5py.File(path, "a") as h5:
+            if defect in {"values_block", "index_not_first", "no_index"}:
+                fields = ["index", *tables[victim]]
+                if defect == "values_block":
+                    block = f"values_block_{data.draw(st.integers(0, 99))}"
+                    fields.insert(data.draw(st.integers(1, len(fields))), block)
+                elif defect == "index_not_first":
+                    fields.remove("index")
+                    fields.insert(data.draw(st.integers(1, len(fields))), "index")
+                else:
+                    fields.remove("index")
+                del h5[victim]["table"]
+                h5[victim].create_dataset(
+                    "table",
+                    data=np.zeros(2, dtype=[(field, "<f8") for field in fields]),
+                )
+            elif defect == "stray_dataset":
+                h5.create_dataset(data.draw(stray_key, label="stray"), data=np.zeros(3))
+            elif defect == "untyped_group":
+                group = h5.create_group(data.draw(stray_key, label="stray"))
+                group.create_dataset("axis0", data=np.array([b"hidden_input"]))
+            elif defect == "unknown_series":
+                stray = h5.create_group(data.draw(stray_key, label="stray"))
+                stray.attrs["pandas_type"] = "series_table"
+            elif defect == "metadata_frame":
+                key = data.draw(
+                    st.sampled_from(("_time_period", "_populace_staging_metadata"))
+                )
+                if key in h5:
+                    del h5[key]
+                frame = h5.create_group(key)
+                frame.attrs["pandas_type"] = data.draw(
+                    st.sampled_from(("frame", "frame_table"))
+                )
+            else:
+                del h5[victim]["axis0"]
+
+        with pytest.raises(StoredTableLayoutError):
+            h5_stored_tables(path)
 
     check()
 
@@ -766,7 +940,7 @@ def test_the_naming_convention_holds_for_the_installed_engine():
         assert variable.value_type is bool
         assert variable.formulas
     if metadata.version("policyengine-us") == "2.2.1":
-        assert (len(names), len(outside)) == (6167, 53)
+        assert (len(names), outside) == (6167, _US_POSTAL_CODES)
 
 
 @pytest.mark.requires_us
@@ -800,6 +974,10 @@ def test_the_1026_premises_hold_for_the_installed_engine():
     ):
         assert stale_or_construction not in variables
     assert "medicare_part_b_premiums_reported" in variables
+    # puma_geoid is registered as an alias of the puma input.
+    assert "puma_geoid" not in variables
+    puma = variables["puma"]
+    assert (puma.entity.key, bool(puma.formulas)) == ("household", False)
     for derived in (
         "filing_status",
         "is_tax_unit_head",
@@ -809,44 +987,70 @@ def test_the_1026_premises_hold_for_the_installed_engine():
         assert variables[derived].formulas
 
 
+#: Each examined file's expected verdict: the refused columns, and how many
+#: register entries it stores. The published default, its receipt child and
+#: the ACS local-area release store the #1026 WIC draw under its retired name
+#: and the dropped Medicare Part B target, so each is refused naming exactly
+#: those two. The files built from main's tools pass.
+_EXPECTED_VERDICTS = {
+    _PUBLISHED_DEFAULT: (["medicare_part_b_premiums", "would_claim_wic"], 24),
+    _RECEIPT_CHILD: (["medicare_part_b_premiums", "would_claim_wic"], 24),
+    _ACS_LOCAL_RELEASE: (["medicare_part_b_premiums", "would_claim_wic"], 37),
+    _REHEARSAL_EXPORT: ([], 30),
+    _STACKED_POOL: ([], 43),
+}
+
+
+def test_every_examined_file_has_an_expected_verdict():
+    assert set(_EXPECTED_VERDICTS) == set(_inventories())
+
+
 @pytest.mark.requires_us
-def test_the_published_default_is_refused_and_the_rehearsal_export_passes():
-    """The examined files, by their stored-column inventories: the published
-    default is refused, naming ``would_claim_wic`` and
-    ``medicare_part_b_premiums``; the rehearsal export built from main passes,
-    every non-variable column it stores being a register entry."""
+@pytest.mark.parametrize("name", sorted(_EXPECTED_VERDICTS))
+def test_each_examined_file_gets_its_expected_verdict(name):
+    """The examined files, by their stored-column inventories, against the
+    installed engine: each refusal names exactly the stale inputs, one person
+    table line each, and every other model-named non-variable column the file
+    stores is a register entry."""
 
     engine = stored_inputs.installed_us_engine()
-    inventories = _inventories()
+    tables = _inventories()[name]["tables"]
+    refused, registered_count = _EXPECTED_VERDICTS[name]
 
-    default = inventories[_PUBLISHED_DEFAULT]["tables"]
-    failures = stored_input_failures(default, engine=engine)
+    failures = stored_input_failures(tables, engine=engine)
+
     assert [_QUOTED.findall(line) for line in failures] == [
-        ["medicare_part_b_premiums"],
-        ["would_claim_wic"],
+        [column] for column in refused
     ]
     assert all("(person table)" in line for line in failures)
+    registered = {
+        column
+        for columns in tables.values()
+        for column in columns
+        if is_model_named(column)
+        and column not in engine.variables
+        and column in US_STORED_NON_VARIABLE_COLUMNS
+    }
+    assert len(registered) == registered_count
+    uppercase = {
+        column
+        for columns in tables.values()
+        for column in columns
+        if not is_model_named(column)
+    }
+    assert not uppercase & engine.variables
 
-    rehearsal = inventories[_REHEARSAL_EXPORT]["tables"]
-    assert stored_input_failures(rehearsal, engine=engine) == []
 
-    def registered(tables):
-        return {
-            column
-            for columns in tables.values()
-            for column in columns
-            if is_model_named(column)
-            and column not in engine.variables
-            and column in US_STORED_NON_VARIABLE_COLUMNS
-        }
+def test_no_register_entry_rests_only_on_the_stale_releases():
+    """The rehearsal export, the stacked pool and the ACS local-area release
+    between them store every register entry, so no entry is there only
+    because the published default or its receipt child stores it."""
 
-    assert len(registered(default)) == 24
-    assert registered(rehearsal) == set(US_STORED_NON_VARIABLE_COLUMNS)
-    for inventory in inventories.values():
-        uppercase = {
-            column
-            for columns in inventory["tables"].values()
-            for column in columns
-            if not is_model_named(column)
-        }
-        assert not uppercase & engine.variables
+    inventories = _inventories()
+    stored = {
+        column
+        for name in (_REHEARSAL_EXPORT, _STACKED_POOL, _ACS_LOCAL_RELEASE)
+        for columns in inventories[name]["tables"].values()
+        for column in columns
+    }
+    assert set(US_STORED_NON_VARIABLE_COLUMNS) <= stored
