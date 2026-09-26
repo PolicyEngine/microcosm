@@ -591,7 +591,7 @@ def test_other_income_rows_are_reviewed_concept_exclusions() -> None:
     for key in row_keys:
         assert key in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
         assert "4797" in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS[key]
-    assert set(row_keys) == US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
+    assert set(row_keys) <= US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
 
     control_source_record_id = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
     facts = [
@@ -719,18 +719,69 @@ def test_exclusion_vintage_bypass_fails_closed_naming_the_id(
     assert excluded not in compiled
 
 
-def test_allowlisted_tips_vintage_bypass_compiles_and_is_receipted() -> None:
-    """The ty2020 W-2 Box 7 return count falls back past the #451 ty2023
-    exclusion. It stays calibrated as a reviewed bypass pending Max's ruling
-    (decision d179), and the receipt discloses it with the exclusion it
-    bypasses."""
-    excluded = _W2_TIPS_RETURN_COUNT.format(year=2023)
-    bypass = _W2_TIPS_RETURN_COUNT.format(year=2020)
-    assert excluded in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
+def test_tips_return_count_is_excluded_at_every_vintage() -> None:
+    """Decision d179: the #451 W-2 Box 7 return-count exclusion holds at every
+    vintage. The ty2020 fact carries the same 6,038,613 returns as the
+    excluded ty2023 row and used to calibrate in its place as a reviewed
+    bypass. Now no vintage compiles, the receipt lists each one under the
+    all-vintage rule, nothing is allowed through, and a sibling Table 1.4 row
+    still compiles as the control."""
+    tips_ids = [_W2_TIPS_RETURN_COUNT.format(year=year) for year in (2020, 2023, 2024)]
+    control = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
     facts = [
         *packaged_reference_facts(),
-        _w2_tips_return_count_fact(2023),
-        _w2_tips_return_count_fact(2020),
+        *(_w2_tips_return_count_fact(year) for year in (2020, 2023, 2024)),
+        _soi_taxable_interest_fact(
+            2023,
+            source_record_id=control,
+            value=240_000_000_000,
+            layout_record_set_id="irs_soi.ty2023.table_1_4",
+        ),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+    compiled = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    assert not compiled & set(tips_ids)
+    assert control in compiled
+
+    rules = us_fiscal_target_exclusion_receipt(facts)["rules"]
+    assert rules["all_vintage_reviewed_exclusion"]["source_record_ids"] == sorted(
+        tips_ids
+    )
+    assert rules["reviewed_exclusion"]["source_record_ids"] == []
+    assert rules["allowlisted_vintage_bypass"] == {
+        "action": "allowed",
+        "scope": "selected at target_period in place of an excluded vintage",
+        "bypasses": [],
+        "source_record_ids": [],
+    }
+
+
+def test_reviewed_vintage_bypass_compiles_and_is_receipted(monkeypatch) -> None:
+    """The bypass register is empty since d179, but the mechanism stays: a
+    reviewed bypass calibrates in place of the vintage it falls back past,
+    and the receipt discloses it with that exclusion and its reason."""
+    excluded = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+    bypass = "irs_soi.ty2020.table_1_4.all.taxable_interest_amount"
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_SUPPORT_EXCLUSIONS, excluded, "test: synthetic exclusion"
+    )
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES, bypass, "test: reviewed bypass"
+    )
+    facts = [
+        *packaged_reference_facts(),
+        *(
+            _soi_taxable_interest_fact(
+                tax_year,
+                source_record_id=source_record_id,
+                value=240_000_000_000,
+                layout_record_set_id=f"irs_soi.ty{tax_year}.table_1_4",
+            )
+            for tax_year, source_record_id in ((2023, excluded), (2020, bypass))
+        ),
     ]
 
     registry = compile_us_fiscal_target_registry(
@@ -740,31 +791,84 @@ def test_allowlisted_tips_vintage_bypass_compiles_and_is_receipted() -> None:
     assert bypass in compiled
     assert excluded not in compiled
 
-    receipt = us_fiscal_target_exclusion_receipt(facts)
-    rules = receipt["rules"]
+    rules = us_fiscal_target_exclusion_receipt(facts)["rules"]
     assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == [bypass]
     assert rules["allowlisted_vintage_bypass"]["bypasses"] == [
         {
             "source_record_id": bypass,
             "bypassed_exclusions": [excluded],
-            "reason": US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES[bypass],
+            "reason": "test: reviewed bypass",
         }
     ]
     assert rules["reviewed_exclusion"]["source_record_ids"] == [excluded]
 
 
+def test_all_vintage_scope_is_vintage_invariant_and_cell_exact() -> None:
+    """Invariant (decision d179): an all-vintage entry drops its cell at every
+    tax-year token, and a sibling cell of the same record set only when that
+    sibling is itself an entry. Checked over generated vintages (ty/cy/fy
+    prefixes and bare years) and sibling measures. Hypothesis is a workspace
+    dependency; the wheels job installs no test extras, so it skips there."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    entries = sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
+    assert all(entry.split(".")[1] == "ty2023" for entry in entries)
+
+    def at_vintage(entry: str, token: str) -> str:
+        source, _, rest = entry.split(".", 2)
+        return f"{source}.{token}.{rest}"
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        entry=st.sampled_from(entries),
+        token=st.builds(
+            lambda prefix, year: f"{prefix}{year}",
+            st.sampled_from(["ty", "cy", "fy", ""]),
+            st.integers(1990, 2099),
+        ),
+        measure=st.sampled_from(
+            [
+                "amount",
+                "taxpayer_count",
+                "return_count",
+                "taxable_interest_amount",
+                "other_income_net_loss_amount",
+            ]
+        ),
+    )
+    def check(entry: str, token: str, measure: str) -> None:
+        assert fiscal_targets._is_all_vintage_support_exclusion(
+            at_vintage(entry, token)
+        )
+        sibling = at_vintage(entry, token).rsplit(".", 1)[0] + "." + measure
+        entries_at_vintage = {at_vintage(other, token) for other in entries}
+        assert fiscal_targets._is_all_vintage_support_exclusion(sibling) == (
+            sibling in entries_at_vintage
+        )
+
+    check()
+
+
 def test_exclusion_vintage_scope_registers_are_consistent() -> None:
     """Each all-vintage entry is a register key, and each bypass is another
     vintage of exactly one register key that is not all-vintage scoped (else
-    it could never be selected) and says why it may calibrate. The bypass
-    list holds only the tips row until decision d179 rules on it."""
+    it could never be selected) and says why it may calibrate. The all-vintage
+    set is the four #564 other-income rows plus the #451 tips return count
+    (decision d179), and no bypass remains."""
     period_free = fiscal_targets._period_free_source_record_id
     assert US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS <= set(
         US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
     )
-    assert set(US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES) == {
-        _W2_TIPS_RETURN_COUNT.format(year=2020)
+    assert US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS == {
+        *(
+            f"irs_soi.ty2023.table_1_4.all.{measure}"
+            for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+        ),
+        _W2_TIPS_RETURN_COUNT.format(year=2023),
     }
+    assert US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES == {}
     for source_record_id, reason in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES.items():
         assert reason
         assert source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
@@ -780,19 +884,31 @@ def test_exclusion_vintage_scope_registers_are_consistent() -> None:
     ) == ("cms_medicaid.state_enrollment.ca.total_chip_enrollment")
 
 
-def test_exclusion_receipt_lists_the_ids_each_rule_acts_on() -> None:
-    """One synthetic feed exercises all four rules. The M-CHIP and all-vintage
-    rules list every vintage the feed carries (both CMS months even though a
-    2024 build selects only 2024-12), exact-key hits land under
-    reviewed_exclusion, and the allowlisted bypass is the fact selection
-    activates. The receipt is plain JSON."""
+def _four_rule_synthetic_feed(monkeypatch):
+    """Synthetic facts that exercise every receipt rule, and each rule's ids.
+
+    The register holds no bypass since d179, so this reviews a synthetic one:
+    a taxable-interest cell excluded at ty2023 with its ty2020 vintage
+    allowlisted.
+    """
     tanf = (
         "hhs_acf_tanf.fy2024.cash_assistance.ar."
         "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
         "all_funds"
     )
+    interest_excluded = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+    interest_bypass = "irs_soi.ty2020.table_1_4.all.taxable_interest_amount"
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
+        interest_excluded,
+        "test: synthetic exclusion",
+    )
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
+        interest_bypass,
+        "test: reviewed bypass",
+    )
     facts = [
-        *packaged_reference_facts(),
         *_other_income_table_1_4_facts((2020, 2021, 2022, 2023)),
         *(
             _cms_state_enrollment_fact(
@@ -812,7 +928,50 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on() -> None:
         ),
         _w2_tips_return_count_fact(2023),
         _w2_tips_return_count_fact(2020),
+        *(
+            _soi_taxable_interest_fact(
+                tax_year,
+                source_record_id=source_record_id,
+                value=240_000_000_000,
+                layout_record_set_id=f"irs_soi.ty{tax_year}.table_1_4",
+            )
+            for tax_year, source_record_id in (
+                (2023, interest_excluded),
+                (2020, interest_bypass),
+            )
+        ),
     ]
+    expected = {
+        "reviewed_exclusion": sorted([tanf, interest_excluded]),
+        "all_vintage_reviewed_exclusion": sorted(
+            [
+                *(
+                    f"irs_soi.ty{tax_year}.table_1_4.all.{measure}"
+                    for tax_year in (2020, 2021, 2022, 2023)
+                    for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+                ),
+                _W2_TIPS_RETURN_COUNT.format(year=2020),
+                _W2_TIPS_RETURN_COUNT.format(year=2023),
+            ]
+        ),
+        "m_chip_state_chip_enrollment": sorted(
+            f"cms_medicaid.month{month}.state_enrollment.{state}.total_chip_enrollment"
+            for state in ("ca", "oh")
+            for month in ("2024_12", "2025_12")
+        ),
+        "allowlisted_vintage_bypass": [interest_bypass],
+    }
+    return facts, expected
+
+
+def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
+    """One synthetic feed exercises all four rules. The M-CHIP and all-vintage
+    rules list every vintage the feed carries (both CMS months even though a
+    2024 build selects only 2024-12), exact-key hits land under
+    reviewed_exclusion, and the allowlisted bypass is the fact selection
+    activates. The receipt is plain JSON."""
+    synthetic, expected = _four_rule_synthetic_feed(monkeypatch)
+    facts = [*packaged_reference_facts(), *synthetic]
 
     receipt = us_fiscal_target_exclusion_receipt(facts, target_period=2024)
 
@@ -825,28 +984,108 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on() -> None:
         "m_chip_state_chip_enrollment": "dropped",
         "allowlisted_vintage_bypass": "allowed",
     }
-    assert rules["reviewed_exclusion"]["source_record_ids"] == sorted(
-        [tanf, _W2_TIPS_RETURN_COUNT.format(year=2023)]
-    )
-    assert rules["all_vintage_reviewed_exclusion"]["source_record_ids"] == sorted(
-        f"irs_soi.ty{tax_year}.table_1_4.all.{measure}"
-        for tax_year in (2020, 2021, 2022, 2023)
-        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
-    )
+    for name, ids in expected.items():
+        assert rules[name]["source_record_ids"] == ids, name
     assert rules["all_vintage_reviewed_exclusion"]["entries"] == sorted(
         US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
-    )
-    assert rules["m_chip_state_chip_enrollment"]["source_record_ids"] == sorted(
-        f"cms_medicaid.month{month}.state_enrollment.{state}.total_chip_enrollment"
-        for state in ("ca", "oh")
-        for month in ("2024_12", "2025_12")
     )
     assert rules["m_chip_state_chip_enrollment"]["state_fips"] == sorted(
         _M_CHIP_STATE_FIPS
     )
-    assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == [
-        _W2_TIPS_RETURN_COUNT.format(year=2020)
-    ]
+
+
+def test_exclusion_receipt_is_complete_for_any_subfeed(monkeypatch) -> None:
+    """Invariant (receipt completeness): each rule lists exactly the facts it
+    drops or allows. For any subset of the four-rule synthetic feed, each rule
+    lists exactly the full feed's ids for that rule that the subset carries.
+    Hypothesis is a workspace dependency; the wheels job installs no test
+    extras, so it skips there."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    synthetic, expected = _four_rule_synthetic_feed(monkeypatch)
+    ids = [fiscal_targets._source_record_id(fact) for fact in synthetic]
+    reference = packaged_reference_facts()
+
+    @settings(max_examples=20, deadline=None)
+    @given(
+        mask=st.lists(st.booleans(), min_size=len(synthetic), max_size=len(synthetic))
+    )
+    def check(mask: list[bool]) -> None:
+        kept = [fact for fact, keep in zip(synthetic, mask, strict=True) if keep]
+        kept_ids = {i for i, keep in zip(ids, mask, strict=True) if keep}
+        rules = us_fiscal_target_exclusion_receipt(
+            [*reference, *kept], target_period=2024
+        )["rules"]
+        for name, full in expected.items():
+            assert rules[name]["source_record_ids"] == sorted(set(full) & kept_ids)
+
+    check()
+
+
+def test_exclusion_vintage_scope_fails_closed_for_any_vintage_pair(
+    monkeypatch,
+) -> None:
+    """Invariant (no silent fallback): when one vintage of a cell is an
+    exact-vintage exclusion and another vintage is present, the compile and
+    the receipt refuse the other vintage by name unless it is a reviewed
+    bypass, which then calibrates in the excluded row's place. Checked over
+    generated vintage pairs, older and newer, up to the 2024 build period.
+    Hypothesis is a workspace dependency; the wheels job installs no test
+    extras, so it skips there."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    reference = packaged_reference_facts()
+
+    def fact(tax_year: int, source_record_id: str) -> dict[str, object]:
+        return _soi_taxable_interest_fact(
+            tax_year,
+            source_record_id=source_record_id,
+            value=240_000_000_000,
+            layout_record_set_id=f"irs_soi.ty{tax_year}.table_1_4",
+        )
+
+    @settings(max_examples=25, deadline=None)
+    @given(
+        years=st.lists(st.integers(2015, 2024), min_size=2, max_size=2, unique=True),
+        reviewed=st.booleans(),
+    )
+    def check(years: list[int], reviewed: bool) -> None:
+        excluded_year, other_year = years
+        excluded = f"irs_soi.ty{excluded_year}.table_1_4.all.taxable_interest_amount"
+        other = f"irs_soi.ty{other_year}.table_1_4.all.taxable_interest_amount"
+        facts = [*reference, fact(excluded_year, excluded), fact(other_year, other)]
+        with monkeypatch.context() as patch:
+            patch.setitem(US_FISCAL_TARGET_SUPPORT_EXCLUSIONS, excluded, "test")
+            if reviewed:
+                patch.setitem(
+                    US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES, other, "test"
+                )
+                registry = compile_us_fiscal_target_registry(
+                    facts, allow_unaged_dollar_targets=True
+                )
+                compiled = {
+                    spec.metadata["ledger_source_record_id"] for spec in registry.specs
+                }
+                assert other in compiled
+                assert excluded not in compiled
+                rules = us_fiscal_target_exclusion_receipt(facts)["rules"]
+                assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == [
+                    other
+                ]
+            else:
+                message = f"{other} would calibrate in place of excluded {excluded}"
+                with pytest.raises(ValueError, match=re.escape(message)):
+                    compile_us_fiscal_target_registry(
+                        facts, allow_unaged_dollar_targets=True
+                    )
+                with pytest.raises(ValueError, match=re.escape(message)):
+                    us_fiscal_target_exclusion_receipt(facts)
+
+    check()
 
 
 # The pinned-feed checks below run only where the pinned Chronicle feed sits at
@@ -906,8 +1145,9 @@ def pinned_feed_national_state_surface():
 
 def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> None:
     """On the pinned feed the receipt names the 40 M-CHIP CHIP ids (20 states
-    x 2 CMS months), the 16 other-income ids (ty2020-ty2023) and the one
-    allowlisted tips id."""
+    x 2 CMS months), the 16 other-income ids (ty2020-ty2023) and the ty2020
+    and ty2023 tips return counts, and allows no vintage bypass (decision
+    d179)."""
     _, _, receipt = pinned_feed_national_state_surface
     rules = receipt["rules"]
     m_chip_ids = rules["m_chip_state_chip_enrollment"]["source_record_ids"]
@@ -921,27 +1161,33 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
         for state_fips in _M_CHIP_STATE_FIPS
     }
     assert rules["all_vintage_reviewed_exclusion"]["source_record_ids"] == sorted(
-        f"irs_soi.ty{tax_year}.table_1_4.all.{measure}"
-        for tax_year in (2020, 2021, 2022, 2023)
-        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+        [
+            *(
+                f"irs_soi.ty{tax_year}.table_1_4.all.{measure}"
+                for tax_year in (2020, 2021, 2022, 2023)
+                for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+            ),
+            _W2_TIPS_RETURN_COUNT.format(year=2020),
+            _W2_TIPS_RETURN_COUNT.format(year=2023),
+        ]
     )
-    assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == [
-        _W2_TIPS_RETURN_COUNT.format(year=2020)
-    ]
+    assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == []
 
 
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 32,843 compiled targets after
-    Medicaid substitution, 5,695 national_state targets at registry
-    386fac439e77, 32 CHIP rows none of them for an M-CHIP state, and no
-    other-income row. Before microcosm#956 it was 32,867 / 5,719 at
-    d5f9d854fe11 (docs/us-chronicle-feed-repin.md erratum)."""
+    """The release surface on the pinned feed: 32,842 compiled targets after
+    Medicaid substitution, 5,694 national_state targets at registry
+    d315c75804ef, 32 CHIP rows none of them for an M-CHIP state, no
+    other-income row and no tips return count. Before microcosm#956 it was
+    32,867 / 5,719 at d5f9d854fe11, and before decision d179 dropped the
+    ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
+    (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 32_843
-    assert len(surface.specs) == 5_695
-    assert surface.version == "386fac439e77"
+    assert len(registry.specs) == 32_842
+    assert len(surface.specs) == 5_694
+    assert surface.version == "d315c75804ef"
     chip = [
         spec
         for spec in surface.specs
@@ -955,6 +1201,17 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
         if spec.metadata.get("state_fips") in _M_CHIP_STATE_FIPS
     ]
     assert not [spec.name for spec in surface.specs if "other_income" in spec.name]
+    assert not [
+        spec.name
+        for spec in surface.specs
+        if spec.name.endswith("box_7_social_security_tips.return_count")
+    ]
+    # The fence drops the return count only: the tips amount row of the same
+    # record set still calibrates.
+    assert (
+        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
+        in {spec.name for spec in surface.specs}
+    )
 
 
 def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
@@ -4666,9 +4923,16 @@ def test_soi_form_w2_social_security_tips_return_count_targets_tip_income(
         "irs_soi.ty2024.form_w2_social_security_tips."
         "box_7_social_security_tips.return_count"
     )
-    # Every vintage of this cell is another vintage of the #451 ty2023
-    # exclusion, so the compile refuses it unless it is a reviewed bypass.
-    # This test pins only the variable mapping, so it allowlists its own id.
+    # Decision d179 drops every vintage of this cell (the #451 ty2023
+    # exclusion is all-vintage scoped). This test pins only the variable
+    # mapping, so it lifts that scope and allowlists its own id, which the
+    # compile would otherwise refuse as another vintage of the exclusion.
+    monkeypatch.setattr(
+        fiscal_targets,
+        "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
+        US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS
+        - {_W2_TIPS_RETURN_COUNT.format(year=2023)},
+    )
     monkeypatch.setitem(
         US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
         source_record_id,

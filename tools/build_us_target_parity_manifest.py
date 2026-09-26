@@ -501,12 +501,11 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     # tip_income was a structural zero. The SIPP tips source stage now
     # populates it and #465/#474 wired the amount target (named role,
     # wages-series aging), so the family compiles and the gate promotes it.
-    # The ty2023 return_count sub-row alone remains a support exclusion
+    # The return_count sub-row alone remains a support exclusion
     # (US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: tip support is under 1% of the
     # 6.04M-return Box 7 class; the count target waits for support widening,
-    # microcosm#451 item 3). Its ty2020 vintage still calibrates as a reviewed
-    # vintage bypass pending decision d179
-    # (US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES, microcosm#956).
+    # microcosm#451 item 3), at every vintage since decision d179
+    # (US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS, microcosm#956).
     "kff.marketplace_effectuated_enrollment": (
         "superseded",
         "Kaiser Family Foundation state marketplace enrollment — a secondary "
