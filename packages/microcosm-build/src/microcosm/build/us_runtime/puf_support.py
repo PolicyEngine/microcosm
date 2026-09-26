@@ -251,8 +251,9 @@ _PUF_COMPOSITE_INCOME_SOURCES: Mapping[str, tuple[str, ...]] = {
 #: half. Demographics (as in the archived eCPS, ``calibration/puf_impute.py``)
 #: plus the unit's weighted income rank in its own population let a top-ranked
 #: survey household draw a top-ranked PUF return's income vector while ordinary
-#: households keep their position; the earnings flag keeps survey non-earners
-#: from drawing PUF earnings.
+#: households keep their position; the earnings flag reduces earnings
+#: assignments to survey non-earners (7 of 67,908 units in the offline
+#: evaluation, experiments/982-puf-self-prediction).
 PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_filing_status_code",
     "puf_predictor_tax_unit_person_count",
@@ -4279,9 +4280,6 @@ def _earnings_indicator(components: Sequence[Any]) -> np.ndarray:
     indicator = (stacked != 0).any(axis=0).astype(np.float64)
     indicator[~np.isfinite(stacked).all(axis=0)] = np.nan
     return indicator
-
-
-_TAX_UNIT_ROLES = ("HEAD", "SPOUSE", "DEPENDENT")
 
 
 def _tax_unit_demographics(
