@@ -90,6 +90,11 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
             "model_variable": "capital_gains_tax",
             "measurement_period": 2024,
         },
+        # Table 4.1 bands and filters on the BADR measure (microcosm#1014).
+        "cgt_2024_badr_gains": {
+            "model_variable": "capital_gains_badr",
+            "measurement_period": 2024,
+        },
     }
     assert set(simulation.calls) == {
         ("capital_gains", 2024),

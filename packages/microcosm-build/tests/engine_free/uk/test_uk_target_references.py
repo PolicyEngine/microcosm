@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1124
+ACTIVE_REFERENCE_COUNT = 1140
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -749,18 +749,18 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1124,
+        "active": 1140,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 13,
+        "signed_excluded": 15,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
     outcomes = membership["fanout_family_outcomes"]
     (cgt_outcome,) = [entry for entry in outcomes if entry["family"] == "hmrc_cgt"]
-    # 24 age-band rows, 24 region-tier cells and 24 size-of-gain rows
-    # (microcosm#725, #467).
+    # 24 age-band rows, 24 region-tier cells, 24 size-of-gain rows
+    # (microcosm#725, #467) and 16 Table 4.1 BADR/IR band rows (microcosm#1014).
     assert cgt_outcome["status"] == "active_with_row_level_signed_exclusions"
-    assert cgt_outcome["active_reference_count"] == 74
+    assert cgt_outcome["active_reference_count"] == 90
     assert "scaled_by_ratio" in cgt_outcome["signed_rationale"]
     assert [entry for entry in outcomes if entry["family"] != "hmrc_cgt"] == [
         {
@@ -862,6 +862,14 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     rationales = membership["signed_exclusion_rationales"]
     cgt_rows = [entry for entry in rationales if entry["family"] == "hmrc_cgt"]
     assert [(entry["target_id"], entry["row"]) for entry in cgt_rows] == [
+        (
+            "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+            "hmrc.cgt.badr_ir_qualifying_gains_by_band.individuals_total",
+        ),
+        (
+            "hmrc.cgt.badr_ir_taxpayers_by_band",
+            "hmrc.cgt.badr_ir_taxpayers_by_band.individuals_total",
+        ),
         ("hmrc.cgt.gains_by_age_band", "hmrc.cgt.gains_by_age_band.age_0_to_15"),
         ("hmrc.cgt.gains_by_gain_band", "hmrc/capital_gains_band_0"),
         ("hmrc.cgt.tax_by_age_band", "hmrc.cgt.tax_by_age_band.age_0_to_15"),

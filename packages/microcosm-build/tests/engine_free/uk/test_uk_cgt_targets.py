@@ -407,6 +407,20 @@ RESIDENTIAL_TARGETS = (
     "hmrc.cgt.residential_property_taxpayers",
     "hmrc.cgt.residential_property_gains",
 )
+BADR_TARGETS = (
+    "hmrc.cgt.badr_ir_taxpayers_by_band",
+    "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+)
+BADR_BAND_VALUE_IDS = (
+    "gain_0_to_9999",
+    "gain_10000_to_24999",
+    "gain_25000_to_49999",
+    "gain_50000_to_99999",
+    "gain_100000_to_249999",
+    "gain_250000_to_499999",
+    "gain_500000_to_999999",
+    "gain_1000000_plus",
+)
 GAIN_BAND_METRICS = {
     "hmrc.cgt.taxpayers_by_gain_band": "hmrc/cgt_taxpayers_band",
     "hmrc.cgt.gains_by_gain_band": "hmrc/capital_gains_band",
@@ -553,6 +567,51 @@ def test_gain_band_rows_reuse_incumbent_names_and_skip_the_sub_aea_band():
         )
 
 
+def test_badr_rows_fan_out_over_the_eight_qualifying_gain_bands():
+    """Table 4.1 individuals bands, measured on the stage's qualifying gain."""
+    contract = json.loads(
+        (
+            _TEST_PATHS.package
+            / "src"
+            / "microcosm"
+            / "build"
+            / "uk"
+            / "uk_population_targets.json"
+        ).read_text(encoding="utf-8")
+    )
+    targets = {t["target_id"]: t for t in contract["targets"]}
+    for target_id in BADR_TARGETS:
+        rows = _references_for(target_id)
+        # Fan-out rows sort by their dimension value id, so compare as sets.
+        assert {r.name for r in rows} == {
+            f"{target_id}.{value_id}" for value_id in BADR_BAND_VALUE_IDS
+        }
+        assert len(rows) == len(BADR_BAND_VALUE_IDS)
+        for reference in rows:
+            assert reference.family == "hmrc_cgt"
+            assert reference.entity == "person"
+            selector = reference.ledger_selector
+            assert selector["period_value"] == 2024
+            assert selector["groupby_dimension"] == "cgt_badr_ir_gain_band"
+            assert selector["dimension_values"]["taxpayer_type"] == "individuals"
+            assert selector["source_table"].startswith(
+                "Capital Gains Tax statistics Table 4"
+            )
+            assert reference.metadata["measurement_period"] == "2024"
+        binding = targets[target_id]["bindings"]["policyengine"]
+        assert binding["kind"] == "parameter_gated_threshold"
+        assert binding["gated_variable"] == "cgt_2024_gains"
+        assert binding["groupby_variable"] == "cgt_2024_badr_gains"
+        assert binding["band_filter_dimension"] == "cgt_badr_ir_qualifying_gain"
+        # A non-claimant's qualifying gain is zero, inside the lowest band's
+        # [0, 10,000) range, so the claimant filter keeps them out of it.
+        assert binding["filters"] == [
+            {"variable": "cgt_2024_badr_gains", "operator": ">", "value": 0}
+        ]
+        assert target_id in contract["registry_parity"]["unmapped_declarations"]
+        assert target_id in contract["registry_parity"]["scope_target_ids"]
+
+
 def test_signed_out_rows_are_recorded_not_dropped():
     membership = json.loads(
         (
@@ -570,10 +629,16 @@ def test_signed_out_rows_are_recorded_not_dropped():
     assert signed == {
         *((target_id, "age_0_to_15") for target_id in AGE_BAND_TARGETS),
         *((target_id, "gain_0_to_2999") for target_id in GAIN_BAND_TARGETS),
+        *((target_id, "total") for target_id in BADR_TARGETS),
     }
     assert all(
         membership["targets"][target_id]["status"] == "active"
-        for target_id in (*AGE_BAND_TARGETS, *GAIN_BAND_TARGETS, *REGION_TARGETS)
+        for target_id in (
+            *AGE_BAND_TARGETS,
+            *GAIN_BAND_TARGETS,
+            *REGION_TARGETS,
+            *BADR_TARGETS,
+        )
     )
 
 
@@ -592,6 +657,7 @@ def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
         *REGION_TARGETS,
         *GAIN_BAND_TARGETS,
         *RESIDENTIAL_TARGETS,
+        *BADR_TARGETS,
     }
     references = [
         r
@@ -647,3 +713,23 @@ def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
         assert compiled.metadata["ledger_value_formula"] == (
             "base * numerator / denominator"
         )
+    # Table 4.1 individuals bands sum to the individuals total (61,000
+    # claimants, GBP 18,443m) within each row's rounding to the nearest
+    # thousand claimants and GBP 1m (microcosm#1014).
+    for target_id, total, half_unit in (
+        ("hmrc.cgt.badr_ir_taxpayers_by_band", 61_000, 500),
+        ("hmrc.cgt.badr_ir_qualifying_gains_by_band", 18_443e6, 0.5e6),
+    ):
+        rows = by_target[target_id]
+        assert len(rows) == len(BADR_BAND_VALUE_IDS)
+        assert abs(sum(s.value for s in rows) - total) <= half_unit * (len(rows) + 1)
+    # The open top band holds claims at the GBP 1m lifetime limit, so its
+    # qualifying gains over the limit sit inside the rounded count's
+    # half-width: the structural residual the target notes declare.
+    top = {
+        reference.name: compiled.value
+        for reference, compiled in zip(references, registry.specs, strict=True)
+    }
+    top_count = top["hmrc.cgt.badr_ir_taxpayers_by_band.gain_1000000_plus"]
+    top_gains = top["hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_1000000_plus"]
+    assert top_count - 500 <= top_gains / 1_000_000 < top_count

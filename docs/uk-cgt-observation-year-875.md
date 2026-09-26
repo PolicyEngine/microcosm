@@ -15,6 +15,13 @@ allowance; it does not identify every administrative taxpayer below that
 threshold. The gains input is net of losses before the allowance; the aggregate
 binding makes no additional loss or allowance deduction.
 
+A third dated measure, `cgt_<year>_badr_gains`, reads the engine-year
+`capital_gains_badr`, the Business Asset Disposal Relief or Investors' Relief
+qualifying gain the asset-type stage writes; the Table 4.1 rows band and filter
+on it (microcosm#1014). The resolver checks the measurement period of every dated
+measure a binding names, in `groupby_variable`, `filters` and
+`household_conditions` as well as the gate and value (measurement contract v3).
+
 ## Observed-year fit and cash diagnostic
 
 For this accepted FY2024–25 deliverable, the three published individual

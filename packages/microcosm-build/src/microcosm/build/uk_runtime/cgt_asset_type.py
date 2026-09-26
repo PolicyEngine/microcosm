@@ -1687,29 +1687,34 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
         "classify_cgt_asset_type_facts_with_reviewed_fence": {
             "calibration_permitted": False,
             "fact_fence_id": "cgt_asset_type_facts_sample_based_prior_vintage",
-            "fenced_fact_count": 65,
+            "fenced_fact_count": 49,
             "fenced_fact_composition": (
                 "Table 7 2023-24 rows: 6 asset-category rows, 3 category totals, "
                 "12 financial asset-type rows, 12 non-financial asset-type rows; "
-                "Table 4.1 2024-25 rows: 27 individuals rows (the eight "
-                "qualifying-gain bands and the total, each with claimants, "
-                "qualifying gains and tax), 2 trusts totals, 3 all-taxpayer totals"
+                "Table 4.1 2024-25 rows: 8 individuals tax rows by qualifying-gain "
+                "band, 3 individuals totals, 2 trusts totals, 3 all-taxpayer totals"
             ),
             "classification_rationale": (
                 "Table 7 is sample-based, published for 2023-24 only, counts "
                 "disposals rather than taxpayers and includes trusts and non-UK "
                 "assets; it seeds the asset-type draw and is reported against, "
                 "never fitted (microcosm#725). Table 4.1 conditions the BADR "
-                "draw: the stage solves each individuals band's claimants and "
-                "qualifying gains and reports its relief-rate tax against the "
-                "tax column, while the trusts and all-taxpayer totals only "
-                "reconcile the individuals rows (microcosm#1014)."
+                "draw, and its 16 individuals band rows of claimants and "
+                "qualifying gains are also bound; the tax column has no engine "
+                "variable to measure (the stage reports its relief-rate tax "
+                "against it), the individuals totals restate the bands, and the "
+                "trusts and all-taxpayer totals only reconcile the individuals "
+                "rows (microcosm#1014)."
             ),
             "calibrated_facts": (
                 "The Table 8a 2024-25 total residential property taxpayers and "
                 "gains restated on the individuals basis "
                 "(hmrc.cgt.residential_property_taxpayers, "
-                "hmrc.cgt.residential_property_gains in uk_population_targets.json)."
+                "hmrc.cgt.residential_property_gains in uk_population_targets.json), "
+                "and the Table 4.1 2024-25 individuals claimants and qualifying "
+                "gains in each of the eight qualifying-gain bands "
+                "(hmrc.cgt.badr_ir_taxpayers_by_band, "
+                "hmrc.cgt.badr_ir_qualifying_gains_by_band)."
             ),
             "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1014",
         },

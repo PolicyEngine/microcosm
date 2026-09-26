@@ -276,6 +276,8 @@
       "dwp.uc.two_child_limit.households_affected": "dwp.universal_credit_two_child_limit",
       "dwp.uc.two_child_limit.households_claimant_pip": "dwp.universal_credit_two_child_limit",
       "dwp.uc.two_child_limit.households_disabled_child_element": "dwp.universal_credit_two_child_limit",
+      "hmrc.cgt.badr_ir_qualifying_gains_by_band": "hmrc.capital_gains_tax",
+      "hmrc.cgt.badr_ir_taxpayers_by_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_by_age_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_by_gain_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_by_region": "hmrc.capital_gains_tax",
@@ -554,6 +556,8 @@
       "dwp.uc.two_child_limit.households_affected": "Households affected",
       "dwp.uc.two_child_limit.households_claimant_pip": "Households claimant Personal Independence Payment",
       "dwp.uc.two_child_limit.households_disabled_child_element": "Households disabled child element",
+      "hmrc.cgt.badr_ir_qualifying_gains_by_band": "Capital Gains Tax BADR and Investors' Relief qualifying gains by band",
+      "hmrc.cgt.badr_ir_taxpayers_by_band": "Capital Gains Tax BADR and Investors' Relief claimants by band of qualifying gain",
       "hmrc.cgt.gains_by_age_band": "Capital Gains Tax gains by age band",
       "hmrc.cgt.gains_by_gain_band": "Capital Gains Tax gains by size of gain",
       "hmrc.cgt.gains_by_region": "Capital Gains Tax gains by region",
@@ -27321,6 +27325,502 @@
           "aggregate_fact_key": "ledger.aggregate_fact.v2:0be097fa0d180fb2c5c66661"
         }
       ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_0_to_9999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_0_to_9999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_0_to_9999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_1000000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_1000000_plus"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_1000000_plus",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_100000_to_249999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_100000_to_249999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_100000_to_249999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_10000_to_24999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_10000_to_24999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_10000_to_24999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_250000_to_499999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_250000_to_499999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_250000_to_499999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_25000_to_49999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_25000_to_49999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_25000_to_49999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_500000_to_999999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_500000_to_999999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_500000_to_999999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_50000_to_99999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_50000_to_99999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_taxpayers_by_band.gain_50000_to_99999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_0_to_9999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_0_to_9999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_0_to_9999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_1000000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_1000000_plus"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_1000000_plus",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_100000_to_249999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_100000_to_249999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_100000_to_249999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_10000_to_24999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_10000_to_24999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_10000_to_24999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_250000_to_499999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_250000_to_499999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_250000_to_499999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_25000_to_49999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_25000_to_49999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_25000_to_49999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_500000_to_999999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_500000_to_999999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_500000_to_999999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_50000_to_99999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals",
+          "cgt_badr_ir_gain_band": "gain_50000_to_99999"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_50000_to_99999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },

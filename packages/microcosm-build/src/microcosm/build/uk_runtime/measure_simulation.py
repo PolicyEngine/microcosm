@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import warnings
+from collections.abc import Mapping
 from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -49,8 +50,26 @@ _UC_CALIBRATION_VARIABLES = frozenset(
 _CGT_CALIBRATION_VARIABLES = {
     "cgt_calibration_gains": "capital_gains",
     "cgt_calibration_tax": "capital_gains_tax",
+    # The BADR/Investors' Relief qualifying gain the asset-type stage writes
+    # (microcosm#1014); banded and filtered on for the Table 4.1 rows.
+    "cgt_calibration_badr_gains": "capital_gains_badr",
 }
-_CGT_DATED_MEASURE = re.compile(r"^cgt_(20[0-9]{2})_(gains|tax)$")
+_CGT_DATED_MEASURE = re.compile(r"^cgt_(20[0-9]{2})_(gains|tax|badr_gains)$")
+
+
+#: Every binding key that names a measured variable: a dated CGT measure in
+#: any of them must carry its own measurement period (microcosm#1014 bands
+#: and filters on dated measures, not only gates and values).
+_BINDING_VARIABLE_KEYS = ("gated_variable", "value_variable", "groupby_variable")
+
+
+def _binding_variable_names(binding: Mapping[str, Any]) -> list[str]:
+    names = [str(binding.get(key, "")) for key in _BINDING_VARIABLE_KEYS]
+    for key in ("filters", "household_conditions"):
+        for predicate in binding.get(key, ()) or ():
+            if isinstance(predicate, Mapping):
+                names.append(str(predicate.get("variable", "")))
+    return [name for name in names if name]
 
 
 def _cgt_model_measure(variable: str, default_year: int) -> tuple[str, int] | None:
@@ -314,8 +333,7 @@ class UKMeasureResolver:
         bound_cgt_periods = {}
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
-            for key in ("gated_variable", "value_variable"):
-                name = str(binding.get(key, ""))
+            for name in _binding_variable_names(binding):
                 cgt_measure = _cgt_model_measure(name, self.year)
                 if cgt_measure is None:
                     continue
@@ -333,13 +351,14 @@ class UKMeasureResolver:
             "source_path": str(source_path),
             "policyengine_uk_version": _policyengine_uk_version(policyengine_uk),
             "cgt_period_contract": {
-                "version": "uk-cgt-measurement-v2",
+                "version": "uk-cgt-measurement-v3",
                 "input_period": getattr(frame, "metadata", {}).get("time_period"),
                 "calibration_period": self.year,
                 "default_engine_period": self.year,
                 "bound_measurements": bound_cgt_periods,
                 "dated_measures": {
-                    "naming": "cgt_<disposal_year>_<gains|tax>",
+                    "naming": "cgt_<disposal_year>_<gains|tax|badr_gains>",
+                    "scanned_binding_keys": list(_BINDING_VARIABLE_KEYS),
                     "period": "explicit_disposal_year_in_variable_name",
                     "policy_threshold_period": "binding.measurement_period",
                 },

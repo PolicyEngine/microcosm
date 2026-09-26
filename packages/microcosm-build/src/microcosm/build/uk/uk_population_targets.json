@@ -744,6 +744,8 @@
       "hmrc.cgt.gains_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
       "hmrc.cgt.residential_property_taxpayers": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725).",
       "hmrc.cgt.residential_property_gains": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725).",
+      "hmrc.cgt.badr_ir_taxpayers_by_band": "New declaration backed by the HMRC CGT Table 4.1 2024-25 BADR and Investors' Relief facts in Chronicle (cgt_badr_ir_2026, PolicyEngine/chronicle#288); the incumbent registry has no BADR metric (microcosm#1014).",
+      "hmrc.cgt.badr_ir_qualifying_gains_by_band": "New declaration backed by the HMRC CGT Table 4.1 2024-25 BADR and Investors' Relief facts in Chronicle (cgt_badr_ir_2026, PolicyEngine/chronicle#288); the incumbent registry has no BADR metric (microcosm#1014).",
       "hmrc.itl.taxpayers_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle (income_tax_liabilities_july_2026): taxpayers by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds SPI 2023-24 component counts only (PolicyEngine/chronicle#280 lane).",
       "hmrc.itl.total_income_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: total income by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry has no total-income anchor (PolicyEngine/chronicle#280 lane).",
       "hmrc.itl.income_tax_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: Income Tax liabilities by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds the OBR receipts total only (PolicyEngine/chronicle#280 lane).",
@@ -1068,6 +1070,8 @@
       "hmrc.cgt.gains_by_gain_band",
       "hmrc.cgt.residential_property_taxpayers",
       "hmrc.cgt.residential_property_gains",
+      "hmrc.cgt.badr_ir_taxpayers_by_band",
+      "hmrc.cgt.badr_ir_qualifying_gains_by_band",
       "hmrc.itl.taxpayers_by_total_income_band",
       "hmrc.itl.total_income_by_total_income_band",
       "hmrc.itl.income_tax_by_total_income_band",
@@ -17713,6 +17717,144 @@
       },
       "category_id": "hmrc.capital_gains_tax",
       "label": "Capital Gains Tax residential property gains"
+    },
+    {
+      "target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.cgt_badr_ir_gain_band",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          },
+          {
+            "concept": "uk.income.capital_gains.badr.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_badr_ir_taxpayers_by_band",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "person_count",
+          "groupby_variable": "cgt_2024_badr_gains",
+          "band_filter_dimension": "cgt_badr_ir_qualifying_gain",
+          "filters": [
+            {
+              "variable": "cgt_2024_badr_gains",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "HMRC Table 4.1 2024-25, individuals claiming Business Asset Disposal Relief or Investors' Relief by band of the gain the relief was claimed on (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000, 1,000,000). The hmrc_cgt_asset_type_spine stage writes the qualifying gain as capital_gains_badr, drawing claimants band by band among liable gainers not flagged residential, so rows measure the engine-year capital_gains_badr of liable persons with a positive claim, banded on the qualifying gain: the claimant filter keeps non-claimants out of the lowest band, whose range starts at 0. The individuals total row restates the sum of the bands and carries no band edge, so it is signed out. The open top band holds claims at the GBP 1m lifetime limit, so its published count (7,000, rounded to the nearest thousand) sits 3 percent above its gains over the limit (6,787): the count row carries that residual at any weights, inside its rounding half-width. Tax at the relief rate is not bound: the engine exposes no BADR-tax variable, and the stage reports it against the published column (microcosm#1014)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_badr_ir_taxpayers_by_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_taxpayers",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax BADR and Investors' Relief claimants by band of qualifying gain"
+    },
+    {
+      "target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+      "family": "hmrc_cgt",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.capital_gains.badr.amount",
+        "groupby_dimension": "hmrc.cgt_badr_ir_gain_band",
+        "filters": [
+          {
+            "concept": "uk.income.capital_gains.amount",
+            "operator": ">",
+            "value": "gov.hmrc.cgt.annual_exempt_amount"
+          },
+          {
+            "concept": "uk.income.capital_gains.badr.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ],
+        "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/cgt_badr_ir_qualifying_gains_by_band",
+          "kind": "parameter_gated_threshold",
+          "gate_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+          "gated_variable": "cgt_2024_gains",
+          "gate_comparison": ">",
+          "from_entity": "person",
+          "map_to": "household",
+          "measurement_period": 2024,
+          "require_matching_fact_period": true,
+          "value_variable": "cgt_2024_badr_gains",
+          "groupby_variable": "cgt_2024_badr_gains",
+          "band_filter_dimension": "cgt_badr_ir_qualifying_gain",
+          "filters": [
+            {
+              "variable": "cgt_2024_badr_gains",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "HMRC Table 4.1 2024-25, individuals claiming Business Asset Disposal Relief or Investors' Relief by band of the gain the relief was claimed on (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000, 1,000,000). The hmrc_cgt_asset_type_spine stage writes the qualifying gain as capital_gains_badr, drawing claimants band by band among liable gainers not flagged residential, so rows measure the engine-year capital_gains_badr of liable persons with a positive claim, banded on the qualifying gain: the claimant filter keeps non-claimants out of the lowest band, whose range starts at 0. The individuals total row restates the sum of the bands and carries no band edge, so it is signed out. The open top band holds claims at the GBP 1m lifetime limit, so its published count (7,000, rounded to the nearest thousand) sits 3 percent above its gains over the limit (6,787): the count row carries that residual at any weights, inside its rounding half-width. Tax at the relief rate is not bound: the engine exposes no BADR-tax variable, and the stage reports it against the published column (microcosm#1014)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/cgt_badr_ir_qualifying_gains_by_band",
+          "status": "pending",
+          "value_rule": "uk.income.capital_gains.badr.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 4: BADR and Investors' Relief by size of qualifying gain",
+        "source_concept": "hmrc.cgt_badr_ir_qualifying_gains",
+        "groupby_dimension": "cgt_badr_ir_gain_band",
+        "dimension_values": {
+          "taxpayer_type": "individuals"
+        },
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024
+      },
+      "category_id": "hmrc.capital_gains_tax",
+      "label": "Capital Gains Tax BADR and Investors' Relief qualifying gains by band"
     },
     {
       "target_id": "hmrc.itl.taxpayers_by_total_income_band",
