@@ -71,7 +71,12 @@
    "soi_mean_agi": 3030000.0,
    "income_above_1m_bn": 36.245450229358276,
    "soi_income_above_1m_bn": 31.7,
-   "largest_record_share_of_income_above_1m": 0.31641697953914316
+   "largest_record_share_of_income_above_1m": 0.31641697953914316,
+   "largest_record": {
+    "proxy_agi": 8651003.607089654,
+    "weight": 1498.9766666666665,
+    "survey_six_item_total": 155160.0
+   }
   },
   "wages_self_prediction": {
    "rank_correlation_with_survey": 0.9999933532139345,
@@ -85,6 +90,9 @@
    "imputed_positive_share": 0.6768310624786186,
    "survey_zero_imputed_positive": 6.735653748692562e-05,
    "survey_non_earner_imputed_positive_wages": 7.351893875916396e-05,
+   "survey_non_earner_records": 67908,
+   "survey_non_earner_records_imputed_any_earnings": 127,
+   "survey_non_earner_imputed_any_earnings_weighted_share": 0.0016750845008267105,
    "survey_positive_imputed_zero": 8.656416696974001e-06,
    "survey_total_wages_tn": 11.276640693799852,
    "imputed_total_wages_tn": 11.276863640367434
@@ -168,7 +176,12 @@
    "soi_mean_agi": 3030000.0,
    "income_above_1m_bn": 62.99901562840228,
    "soi_income_above_1m_bn": 31.7,
-   "largest_record_share_of_income_above_1m": 0.6129629031941982
+   "largest_record_share_of_income_above_1m": 0.6129629031941982,
+   "largest_record": {
+    "proxy_agi": 45531581.02988822,
+    "weight": 867.1612061571366,
+    "survey_six_item_total": 1100000.36
+   }
   },
   "wages_self_prediction": {
    "rank_correlation_with_survey": 0.8487782332653889,
@@ -182,6 +195,9 @@
    "imputed_positive_share": 0.8045949146853619,
    "survey_zero_imputed_positive": 0.5111729841560451,
    "survey_non_earner_imputed_positive_wages": 0.47890361539748855,
+   "survey_non_earner_records": 67908,
+   "survey_non_earner_records_imputed_any_earnings": 36774,
+   "survey_non_earner_imputed_any_earnings_weighted_share": 0.5513954621416877,
    "survey_positive_imputed_zero": 0.05529368052192713,
    "survey_total_wages_tn": 11.276640693799852,
    "imputed_total_wages_tn": 9.761753391207202
@@ -265,7 +281,12 @@
    "soi_mean_agi": 3030000.0,
    "income_above_1m_bn": 128.47591566229514,
    "soi_income_above_1m_bn": 31.7,
-   "largest_record_share_of_income_above_1m": 0.8396350683483795
+   "largest_record_share_of_income_above_1m": 0.8396350683483795,
+   "largest_record": {
+    "proxy_agi": 125397728.4296138,
+    "weight": 867.1612061571366,
+    "survey_six_item_total": 1100000.36
+   }
   },
   "wages_self_prediction": {
    "rank_correlation_with_survey": 0.9060398862212984,
@@ -279,6 +300,9 @@
    "imputed_positive_share": 0.6754798358548498,
    "survey_zero_imputed_positive": 0.076483890895055,
    "survey_non_earner_imputed_positive_wages": 7.351893875916396e-05,
+   "survey_non_earner_records": 67908,
+   "survey_non_earner_records_imputed_any_earnings": 7,
+   "survey_non_earner_imputed_any_earnings_weighted_share": 9.111140907256344e-05,
    "survey_positive_imputed_zero": 0.038494633735558094,
    "survey_total_wages_tn": 11.276640693799852,
    "imputed_total_wages_tn": 9.67916292383692
@@ -362,7 +386,12 @@
    "soi_mean_agi": 3030000.0,
    "income_above_1m_bn": 19.113944169196692,
    "soi_income_above_1m_bn": 31.7,
-   "largest_record_share_of_income_above_1m": 0.28954819012991223
+   "largest_record_share_of_income_above_1m": 0.28954819012991223,
+   "largest_record": {
+    "proxy_agi": 4512926.807685373,
+    "weight": 1575.4407203495502,
+    "survey_six_item_total": 1877866.6
+   }
   },
   "wages_self_prediction": {
    "rank_correlation_with_survey": 0.9020895968430304,
@@ -376,6 +405,9 @@
    "imputed_positive_share": 0.6702521822619509,
    "survey_zero_imputed_positive": 0.07530836840922601,
    "survey_non_earner_imputed_positive_wages": 0.00010013906339174235,
+   "survey_non_earner_records": 67908,
+   "survey_non_earner_records_imputed_any_earnings": 6,
+   "survey_non_earner_imputed_any_earnings_weighted_share": 0.00010013906339174235,
    "survey_positive_imputed_zero": 0.04565721353111563,
    "survey_total_wages_tn": 11.276640693799852,
    "imputed_total_wages_tn": 7.928425679256726

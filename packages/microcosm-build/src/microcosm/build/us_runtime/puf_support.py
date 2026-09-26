@@ -245,12 +245,14 @@ _PUF_COMPOSITE_INCOME_SOURCES: Mapping[str, tuple[str, ...]] = {
 #: The survey's income amounts are deliberately NOT predictors. Conditioning an
 #: income target on the recipient's own survey value of that item teaches the
 #: forest "output ~ input": measured on the 2026-09-12 base build, PUF-clone
-#: wages had rank correlation 1.000 with the survey value and 99.98% landed
-#: within 10% of it, so no clone passed the survey topcodes and survey
-#: underreporting carried into the PUF half. Demographics (as in the archived
-#: eCPS, ``calibration/puf_impute.py``) plus the unit's weighted income rank in
-#: its own population let a top-ranked survey household draw a top-ranked PUF
-#: return's income vector while ordinary households keep their position.
+#: wages had rank correlation 1.000 with the survey value and, among units
+#: with positive survey wages, 99.98% landed within 10% of it, so no clone
+#: passed the survey topcodes and survey underreporting carried into the PUF
+#: half. Demographics (as in the archived eCPS, ``calibration/puf_impute.py``)
+#: plus the unit's weighted income rank in its own population let a top-ranked
+#: survey household draw a top-ranked PUF return's income vector while ordinary
+#: households keep their position; the earnings flag keeps survey non-earners
+#: from drawing PUF earnings.
 PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_filing_status_code",
     "puf_predictor_tax_unit_person_count",
@@ -4279,6 +4281,9 @@ def _earnings_indicator(components: Sequence[Any]) -> np.ndarray:
     return indicator
 
 
+_TAX_UNIT_ROLES = ("HEAD", "SPOUSE", "DEPENDENT")
+
+
 def _tax_unit_demographics(
     tax_unit_ids: Any,
     person_tax_unit_ids: Any,
@@ -4291,13 +4296,28 @@ def _tax_unit_demographics(
     """Derive head age, spouse age, head sex and dependent count per tax unit.
 
     One definition serves both sides of the PUF imputation (microcosm#982).
-    ``spouse_age`` is 0.0 for a unit without a spouse. ``head_age`` and
-    ``head_is_female`` are NaN for a unit without a head when nulls are
-    preserved, and zero otherwise. A unit with two heads or two spouses is a
-    malformed role structure and fails closed.
+    ``spouse_age`` is 0.0 for a unit without a spouse. A role outside
+    ``HEAD``/``SPOUSE``/``DEPENDENT`` and a unit with two heads or two spouses
+    are malformed role structures and fail closed. When nulls are preserved, a
+    unit with no head, a missing role, or a missing head or spouse age or head
+    sex gets NaN demographics so the strict completeness check names it; the
+    legacy policy refuses missing roles and zero-fills the rest.
     """
 
     roles = pd.Series(role, dtype="object").astype("string").str.upper()
+    unknown = roles.notna() & ~roles.isin(_TAX_UNIT_ROLES)
+    if unknown.any():
+        raise ValueError(
+            "PUF predictor demographics found unrecognized tax-unit role(s) "
+            f"{sorted(roles[unknown].unique().tolist())}; expected one of "
+            f"{list(_TAX_UNIT_ROLES)}."
+        )
+    missing_role = roles.isna().to_numpy()
+    if missing_role.any() and not preserve_nulls:
+        raise ValueError(
+            f"PUF predictor demographics found {int(missing_role.sum())} person(s) "
+            "without a tax-unit role."
+        )
     persons = pd.DataFrame(
         {
             "tax_unit_id": np.asarray(person_tax_unit_ids),
@@ -4311,9 +4331,9 @@ def _tax_unit_demographics(
         }
     )
     index = pd.Index(np.asarray(tax_unit_ids))
-    heads = persons.loc[persons["role"].eq("HEAD").fillna(False).to_numpy()]
-    spouses = persons.loc[persons["role"].eq("SPOUSE").fillna(False).to_numpy()]
-    dependents = persons.loc[persons["role"].eq("DEPENDENT").fillna(False).to_numpy()]
+    heads = persons.loc[roles.eq("HEAD").fillna(False).to_numpy()]
+    spouses = persons.loc[roles.eq("SPOUSE").fillna(False).to_numpy()]
+    dependents = persons.loc[roles.eq("DEPENDENT").fillna(False).to_numpy()]
     for label, members in (("head", heads), ("spouse", spouses)):
         if members["tax_unit_id"].duplicated().any():
             raise ValueError(
@@ -4338,46 +4358,93 @@ def _tax_unit_demographics(
         },
         index=index,
     )
+    if missing_role.any():
+        unresolved = index.isin(persons.loc[missing_role, "tax_unit_id"].unique())
+        result.loc[unresolved, :] = np.nan
     if not preserve_nulls:
         result = result.fillna(0.0)
     return result
+
+
+def _strict_numeric(values: Any) -> np.ndarray:
+    """Numeric array that keeps missing and unparseable entries as NaN."""
+
+    return pd.to_numeric(pd.Series(values), errors="coerce").to_numpy(dtype=np.float64)
 
 
 def _puf_donor_demographics(
     arrays: Mapping[str, Sequence[Any]],
     tax_unit_id: np.ndarray,
 ) -> pd.DataFrame | None:
-    """Donor demographics from processed PUF person arrays, or None if absent."""
+    """Donor demographics from processed PUF person arrays, or None if absent.
+
+    Missing values are never filled: a missing age, sex or role flag, a person
+    with no role or several, sex encodings that disagree, or a unit without a
+    head fails closed by name, so the donor cannot state a demographic the PUF
+    did not record (the survey side keeps the same cells missing under the
+    strict policy).
+    """
 
     required = ("person_tax_unit_id", "age", "is_tax_unit_head", "is_tax_unit_spouse")
     if any(column not in arrays for column in required):
         return None
-    if "is_female" in arrays:
-        is_female = _numeric_array(arrays["is_female"])
-    elif "is_male" in arrays:
-        is_female = 1.0 - _numeric_array(arrays["is_male"])
-    else:
+    if "is_female" not in arrays and "is_male" not in arrays:
         return None
-    head = _numeric_array(arrays["is_tax_unit_head"]) > 0
-    spouse = _numeric_array(arrays["is_tax_unit_spouse"]) > 0
+    columns = {
+        "person_tax_unit_id": _strict_numeric(arrays["person_tax_unit_id"]),
+        "age": _strict_numeric(arrays["age"]),
+        "is_tax_unit_head": _strict_numeric(arrays["is_tax_unit_head"]),
+        "is_tax_unit_spouse": _strict_numeric(arrays["is_tax_unit_spouse"]),
+    }
+    if "is_tax_unit_dependent" in arrays:
+        columns["is_tax_unit_dependent"] = _strict_numeric(
+            arrays["is_tax_unit_dependent"]
+        )
+    if "is_female" in arrays:
+        columns["is_female"] = _strict_numeric(arrays["is_female"])
+    if "is_male" in arrays:
+        columns["is_male"] = _strict_numeric(arrays["is_male"])
+    missing = {name: int(np.isnan(values).sum()) for name, values in columns.items()}
+    missing = {name: count for name, count in missing.items() if count}
+    if missing:
+        raise ValueError(f"PUF donor person arrays have missing values: {missing}.")
+    if "is_female" in columns:
+        is_female = columns["is_female"]
+        if "is_male" in columns and not np.array_equal(
+            is_female, 1.0 - columns["is_male"]
+        ):
+            raise ValueError("PUF donor is_female and is_male disagree.")
+    else:
+        is_female = 1.0 - columns["is_male"]
+    head = columns["is_tax_unit_head"] > 0
+    spouse = columns["is_tax_unit_spouse"] > 0
     dependent = (
-        _numeric_array(arrays["is_tax_unit_dependent"]) > 0
-        if "is_tax_unit_dependent" in arrays
+        columns["is_tax_unit_dependent"] > 0
+        if "is_tax_unit_dependent" in columns
         else ~(head | spouse)
     )
-    if ((head.astype(int) + spouse.astype(int) + dependent.astype(int)) > 1).any():
+    role_count = head.astype(int) + spouse.astype(int) + dependent.astype(int)
+    if (role_count > 1).any():
         raise ValueError("PUF donor person carries more than one tax-unit role.")
-    role = np.where(
-        head, "HEAD", np.where(spouse, "SPOUSE", np.where(dependent, "DEPENDENT", None))
-    )
+    if (role_count == 0).any():
+        raise ValueError(
+            f"PUF donor has {int((role_count == 0).sum())} person(s) with no "
+            "tax-unit role."
+        )
+    role = np.where(head, "HEAD", np.where(spouse, "SPOUSE", "DEPENDENT"))
     demographics = _tax_unit_demographics(
         tax_unit_id,
-        _numeric_array(arrays["person_tax_unit_id"]).astype("int64"),
-        age=_numeric_array(arrays["age"]),
+        columns["person_tax_unit_id"].astype("int64"),
+        age=columns["age"],
         is_female=is_female,
         role=role,
-        preserve_nulls=False,
+        preserve_nulls=True,
     )
+    headless = demographics["head_age"].isna()
+    if headless.any():
+        raise ValueError(
+            f"PUF donor has {int(headless.sum())} tax unit(s) without a head."
+        )
     return demographics
 
 

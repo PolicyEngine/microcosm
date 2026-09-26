@@ -172,6 +172,38 @@ def test_tax_unit_demographics_refuse_two_heads() -> None:
         )
 
 
+@pytest.mark.parametrize("bad_role", ["UNKNOWN", "", "householder"])
+def test_tax_unit_demographics_refuse_unrecognized_roles(bad_role: str) -> None:
+    with pytest.raises(ValueError, match="unrecognized tax-unit role"):
+        puf_support._tax_unit_demographics(
+            [10],
+            [10, 10],
+            age=[40, 12],
+            is_female=[True, False],
+            role=["HEAD", bad_role],
+            preserve_nulls=True,
+        )
+
+
+def test_tax_unit_demographics_keep_a_missing_role_missing() -> None:
+    kwargs = {
+        "age": [40, 12, 55],
+        "is_female": [True, False, False],
+        "role": ["HEAD", None, "HEAD"],
+    }
+    strict = puf_support._tax_unit_demographics(
+        [10, 20], [10, 10, 20], preserve_nulls=True, **kwargs
+    )
+    # The unit with an unresolved member is missing in full, not a unit with
+    # no dependent; the other unit is untouched.
+    assert strict.loc[10].isna().all()
+    assert strict.loc[20].tolist() == [55.0, 0.0, 0.0, 0.0]
+    with pytest.raises(ValueError, match="without a tax-unit role"):
+        puf_support._tax_unit_demographics(
+            [10, 20], [10, 10, 20], preserve_nulls=False, **kwargs
+        )
+
+
 def _donor_arrays() -> dict[str, list]:
     return {
         "tax_unit_id": [1, 2, 3],
@@ -240,6 +272,50 @@ def test_donor_without_person_roles_leaves_demographic_predictors_absent() -> No
             tax_unit_outputs=(),
             n_estimators=2,
             seed=0,
+        )
+
+
+def test_donor_sex_encodings_agree_and_must_not_conflict() -> None:
+    by_male = _donor_arrays()
+    by_female = _donor_arrays()
+    by_female["is_female"] = [1 - value for value in by_female.pop("is_male")]
+    common = {"person_outputs": _DONOR_OUTPUTS, "tax_unit_outputs": ()}
+    pd.testing.assert_series_equal(
+        puf_tax_unit_donor_from_arrays(by_male, **common)[
+            "puf_predictor_head_is_female"
+        ],
+        puf_tax_unit_donor_from_arrays(by_female, **common)[
+            "puf_predictor_head_is_female"
+        ],
+    )
+    conflicting = {**by_male, "is_female": list(by_male["is_male"])}
+    with pytest.raises(ValueError, match="disagree"):
+        puf_tax_unit_donor_from_arrays(conflicting, **common)
+
+
+@pytest.mark.parametrize("column", ["age", "is_male", "is_tax_unit_head"])
+def test_donor_refuses_missing_demographic_values(column: str) -> None:
+    arrays = _donor_arrays()
+    arrays[column] = [np.nan, *arrays[column][1:]]
+    with pytest.raises(ValueError, match="missing values"):
+        puf_tax_unit_donor_from_arrays(
+            arrays, person_outputs=_DONOR_OUTPUTS, tax_unit_outputs=()
+        )
+
+
+def test_donor_refuses_roleless_people_and_headless_units() -> None:
+    roleless = _donor_arrays()
+    roleless["is_tax_unit_dependent"] = [0, 0, 0, 0, 0, 1]
+    with pytest.raises(ValueError, match="no tax-unit role"):
+        puf_tax_unit_donor_from_arrays(
+            roleless, person_outputs=_DONOR_OUTPUTS, tax_unit_outputs=()
+        )
+    headless = _donor_arrays()
+    headless["is_tax_unit_head"] = [1, 0, 0, 0, 1, 0]
+    headless["is_tax_unit_dependent"] = [0, 0, 1, 1, 0, 1]
+    with pytest.raises(ValueError, match="without a head"):
+        puf_tax_unit_donor_from_arrays(
+            headless, person_outputs=_DONOR_OUTPUTS, tax_unit_outputs=()
         )
 
 

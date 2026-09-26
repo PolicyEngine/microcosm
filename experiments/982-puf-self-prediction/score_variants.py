@@ -112,6 +112,15 @@ def score(d: pd.DataFrame) -> dict[str, object]:
             above[colorado].max() / max(above[colorado].sum(), 1)
         ),
     }
+    if colorado_top.any():
+        largest = np.flatnonzero(colorado)[np.argmax(above[colorado])]
+        report["colorado_1m_plus"]["largest_record"] = {
+            "proxy_agi": float(agi[largest]),
+            "weight": float(w[largest]),
+            "survey_six_item_total": float(
+                d.filter(like="survey_puf_predictor_").iloc[largest].sum()
+            ),
+        }
 
     survey_wages = d["survey_puf_predictor_employment_income"].to_numpy(float)
     survey_se = d["survey_puf_predictor_self_employment_income"].to_numpy(float)
@@ -119,10 +128,13 @@ def score(d: pd.DataFrame) -> dict[str, object]:
     positive = survey_wages > 0
     survey_zero = survey_wages == 0
     survey_non_earner = (survey_wages == 0) & (survey_se == 0)
+    self_employment = d["self_employment_income_before_lsr"].to_numpy(float)
+    any_earnings = (wages != 0) | (self_employment != 0)
     report["wages_self_prediction"] = {
         "rank_correlation_with_survey": float(
             pd.Series(survey_wages).rank().corr(pd.Series(wages).rank())
         ),
+        # Denominator: units with positive survey wages only.
         "share_within_10pct_given_survey_positive": float(
             np.mean(
                 np.abs(wages[positive] - survey_wages[positive])
@@ -141,6 +153,13 @@ def score(d: pd.DataFrame) -> dict[str, object]:
         ),
         "survey_non_earner_imputed_positive_wages": float(
             w[survey_non_earner & (wages > 0)].sum() / w[survey_non_earner].sum()
+        ),
+        "survey_non_earner_records": int(survey_non_earner.sum()),
+        "survey_non_earner_records_imputed_any_earnings": int(
+            (survey_non_earner & any_earnings).sum()
+        ),
+        "survey_non_earner_imputed_any_earnings_weighted_share": float(
+            w[survey_non_earner & any_earnings].sum() / w[survey_non_earner].sum()
         ),
         "survey_positive_imputed_zero": float(
             w[positive & (wages == 0)].sum() / w[positive].sum()
