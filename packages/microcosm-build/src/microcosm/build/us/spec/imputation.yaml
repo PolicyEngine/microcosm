@@ -73,12 +73,12 @@ predictor_blocks:
     columns:
     - puf_predictor_filing_status_code
     - puf_predictor_tax_unit_person_count
-    - puf_predictor_employment_income
-    - puf_predictor_self_employment_income
-    - puf_predictor_taxable_interest_income
-    - puf_predictor_dividend_income
-    - puf_predictor_short_term_capital_gains
-    - puf_predictor_long_term_capital_gains
+    - puf_predictor_head_age
+    - puf_predictor_spouse_age
+    - puf_predictor_head_is_female
+    - puf_predictor_dependent_count
+    - puf_predictor_income_rank_share
+    - puf_predictor_has_earnings
     tags:
     - puf
     - primary
