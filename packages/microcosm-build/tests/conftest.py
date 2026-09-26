@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.uk_runtime.ods_tables import ODS_MIME_TYPE
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
@@ -77,10 +76,14 @@ def _write_ods(
     path: Path,
     tables_xml: str,
     *,
-    mimetype: str = ODS_MIME_TYPE,
+    mimetype: str | None = None,
     store_mimetype: bool = True,
     include_content: bool = True,
 ) -> Path:
+    if mimetype is None:
+        from microcosm.build.uk_runtime.ods_tables import ODS_MIME_TYPE
+
+        mimetype = ODS_MIME_TYPE
     with ZipFile(path, "w") as archive:
         archive.writestr(
             "mimetype",

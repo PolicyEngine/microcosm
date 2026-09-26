@@ -35,7 +35,10 @@ package; each is separately resumable):
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
                 sub-PUMA coverage), and flip the summary simulation-ready.
-  package     : assemble releases/<id>/ with the non-default local-area
+  package     : refuse a calibrated H5 that stores a model input the
+                installed policyengine-us does not define (microcosm#1026;
+                ``microcosm.data.stored_inputs``), then
+                assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
                 one-command refresh recipe) + sha256sums. Publication stays
@@ -563,13 +566,19 @@ def materialize_chunked(
     matrix = None
     chunk_stats = []
     n_chunks = (n_households + hh_chunk - 1) // hh_chunk
+    if n_chunks > 1:
+        release_tool._assert_group_entities_nest_in_households(projected)
+        release_tool._assert_medicaid_claiming_tax_units_local(projected)
     for chunk_index, low in enumerate(range(0, n_households, hh_chunk)):
         high = min(low + hh_chunk, n_households)
         started = time.time()
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
         target_frame, compiled_registry, _ = release_tool._materialize_target_frame(
-            sub_frame, tuple(specs), maximum_microsim_batch_size=batch
+            sub_frame,
+            tuple(specs),
+            maximum_microsim_batch_size=batch,
+            refuse_population_aggregates=True if n_chunks > 1 else None,
         )
         names = [spec.measure for spec in compiled_registry.specs]
         if measure_names is None:
@@ -1822,6 +1831,40 @@ def _require_recorded_soi_mode(materialize_rss: dict) -> str:
     return soi_mode
 
 
+def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
+    """Refuse an artifact that stores a model input the installed engine lacks.
+
+    microcosm#1026: the ACS local-area release of 2026-09-23 records
+    policyengine-us 2.2.1 as its built-with engine but stores the WIC take-up
+    draw under its retired name, ``would_claim_wic``, which 2.2.1 ignores.
+    :mod:`microcosm.data.stored_inputs` owns the rule and the reviewed register
+    of deliberately non-variable columns. The engine is the installed
+    policyengine-us, the one :func:`do_package` records as
+    ``build.built_with_model_package``. Only HDF metadata is read.
+
+    Returns the gate entry the release's gate summary records.
+    """
+
+    from microcosm.data import stored_inputs
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to package: the installed policyengine-us cannot be "
+            "imported, so the artifact cannot be checked against the engine "
+            f"the release records as built-with: {error}"
+        ) from error
+    try:
+        summary = stored_inputs.require_h5_stored_inputs(calibrated_h5, engine=engine)
+    except (
+        stored_inputs.StoredInputRefusalError,
+        stored_inputs.StoredTableLayoutError,
+    ) as error:
+        raise SystemExit(f"Refusing to package: {error}") from error
+    return {"passed": True, "failures": [], "engine": engine.label, **summary}
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_diagnostics.json")
     gate_report = _load_json(args.gate_report)
@@ -1842,6 +1885,13 @@ def do_package(args) -> dict:
     # Before any release directory exists: a refused smoke leaves nothing.
     staging_orchestration = _require_uncapped_staging(staging_summary)
     soi_mode = _require_recorded_soi_mode(materialize_rss)
+    calibrated_h5 = Path(args.out_h5)
+    if not calibrated_h5.exists():
+        raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
+    # microcosm#1026: the manifest below records the installed policyengine-us
+    # as build.built_with_model_package, so the artifact may store no model
+    # input that engine does not define. A refused artifact leaves nothing.
+    stored_inputs_gate = _require_stored_inputs(calibrated_h5)
 
     code = _repo_code_identity(args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -1849,9 +1899,6 @@ def do_package(args) -> dict:
     release_dir = args.out / "releases" / release_id
     release_dir.mkdir(parents=True, exist_ok=True)
 
-    calibrated_h5 = Path(args.out_h5)
-    if not calibrated_h5.exists():
-        raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
     log("hashing calibrated H5 …")
     h5_sha = _sha256(calibrated_h5)
     # The gate report certifies specific artifact bytes: the QA probe
@@ -1925,6 +1972,11 @@ def do_package(args) -> dict:
                 "passed": True,
                 "failures": [],
                 "detail": dict(package_hours_gate.details),
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+            "stored_inputs": {
+                **stored_inputs_gate,
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": "package",
             },

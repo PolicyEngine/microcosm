@@ -49,14 +49,14 @@ Five checks, each mirroring a live release gate but evaluated pre-solve:
 5. **SPM measurement composition** — does every SPM unit have a classified
    adult? In ``spm-calculator`` 1.0.0 a *single* SPM unit whose members are all
    under 18, with none aged 15-17 carrying an SPM independence role, raises
-   ``SPMInputError("SPM_COMPOSITION_REQUIRED")`` for the **whole population's**
-   SPM measurement (``spm_calculator/policyengine_adapter.py``
+   ``SPMInputError("SPM_COMPOSITION_REQUIRED")`` for the SPM measurement of
+   **every unit in its simulation** (``spm_calculator/policyengine_adapter.py``
    ``policyengine_amount``: ``if np.any(adults < 1): raise``). The release's 104
-   state SPM poverty levels run on one whole-dataset ``Microsimulation``
-   (:func:`~microcosm.build.us_runtime.reform_validation.default_simulate_factory`)
+   state SPM poverty levels are measured on the written H5, one engine per
+   household batch (the release tool's post-export scorer, microcosm#956),
    *after* calibration, export and the NPZ write, so that engine traceback —
-   which names neither the unit nor a remedy — is what an operator gets hours
-   into a build. This reproduces the engine rule
+   which names neither the unit nor a remedy, and aborts the stage — is what an
+   operator gets hours into a build. This reproduces the engine rule
    (``adult = (age >= 18) | ((age >= 15) & role)``) over frame columns and names
    the offending units and the remedy in seconds.
 

@@ -52,6 +52,7 @@ UK_SPINE_EXCLUSIONS = frozenset(
 UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {
         "spi_support_channel",
+        "spi_income_band_donors",
         "cgt_incidence_clone",
         "cgt_band_donors",
         "cgt_incidence_anchor",
@@ -73,6 +74,8 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
     "spi_support_channel": "declared",
+    # Reserved income rows add their published band mass, as the CGT donors do.
+    "spi_income_band_donors": "free",
     "cgt_incidence_clone": "conserve",
     "cgt_band_donors": "free",
     "cgt_incidence_anchor": "conserve",
@@ -80,6 +83,7 @@ _STRUCTURAL_MASS = {
 
 _STRUCTURAL_WEIGHT_KIND = {
     "spi_support_channel": "importance",
+    "spi_income_band_donors": "importance",
     "cgt_incidence_clone": "importance",
     "cgt_band_donors": "importance",
     "cgt_incidence_anchor": "importance",
@@ -114,16 +118,29 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_education": ("frs",),
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
+    "nts_bus_travel": (
+        "nts_household",
+        "nts_individual",
+        "nts_trip",
+        "nts_stage",
+        "nts_ticket",
+    ),
     "lcfs_consumption": ("lcfs_household", "lcfs_person"),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
+    "spi_income_band_donors": ("spi",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
 }
 
 _SPLIT_SOURCE_DESCRIPTIONS = {
     "frs": "Pinned local FRS table directory.",
     "was": "Pinned local WAS household donor table.",
+    "nts_household": "Pinned local NTS household donor table.",
+    "nts_individual": "Pinned local NTS individual donor table.",
+    "nts_trip": "Pinned local NTS trip donor table.",
+    "nts_stage": "Pinned local NTS stage donor table.",
+    "nts_ticket": "Pinned local NTS ticket donor table.",
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",
@@ -197,11 +214,15 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "property_wealth"),
         }
     ),
+    # The NTS band model materializes an engine predictor (household gross
+    # income) over the whole frame, an open surface like the LCFS QRF.
+    "nts_bus_travel": None,
     "lcfs_consumption": None,
     "etb_vat": None,
     "etb_services": None,
     "frs_hmrc_spine_leaves": frozenset({("person", "employee_pension_contributions")}),
     "spi_support_channel": None,
+    "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
@@ -525,6 +546,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells("household", ("mortgage_debt", "consumer_debt")),
         _Cell("person", "student_loan_balance", "float64"),
     ),
+    "nts_bus_travel": (
+        _Cell("person", "local_bus_use_band", "int64"),
+        *_cells(
+            "person",
+            ("bus_in_london_trips", "other_local_bus_trips", "local_bus_trips"),
+        ),
+        _Cell("person", "bus_pass_eligible", "bool"),
+        _Cell("person", "local_bus_single_fare_share", "float64"),
+        _Cell("household", "household_local_bus_trips", "float64"),
+    ),
     "regional_property_uprating": _cells(
         "household", ("main_residence_value", "property_wealth")
     ),
@@ -602,6 +633,23 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("household", "household_support_channel", "string"),
         _Cell("household", "household_support_clone_index", "int64"),
         _Cell("household", "household_is_spi_synthetic", "bool"),
+    ),
+    # The reserved copies rewrite the support channel's lineage cells (they
+    # join the synthetic channel at clone index 2) and add their own three.
+    "spi_income_band_donors": (
+        _Cell("person", "person_source_id", "int64"),
+        _Cell("person", "person_support_channel", "string"),
+        _Cell("person", "person_support_clone_index", "int64"),
+        _Cell("benunit", "benunit_source_id", "int64"),
+        _Cell("benunit", "benunit_support_channel", "string"),
+        _Cell("benunit", "benunit_support_clone_index", "int64"),
+        _Cell("household", "household_source_id", "int64"),
+        _Cell("household", "household_support_channel", "string"),
+        _Cell("household", "household_support_clone_index", "int64"),
+        _Cell("household", "household_is_spi_synthetic", "bool"),
+        _Cell("household", "household_is_spi_income_band_donor", "bool"),
+        _Cell("household", "spi_income_band_donor_lower_bound", "float64"),
+        _Cell("person", "person_is_spi_income_band_carrier", "bool"),
     ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
     "uc_reporter_redraw": (_Cell("person", "universal_credit_reported", "float64"),),

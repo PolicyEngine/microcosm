@@ -334,6 +334,7 @@ def _round_trip_fiscal_checkpoint(
         frame=frame,
         identity={"registry_fixture": True},
         compilation={},
+        build_commit="registry-fixture-commit",
     )
     with h5py.File(path, mode="r") as h5:
         person = h5["tables"]["person"]

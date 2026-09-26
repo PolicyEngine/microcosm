@@ -274,6 +274,7 @@ class UKSPIIncomeImputationResult:
     reviewed_absent_stage2_outputs: dict[str, str]
     pension_receipt_bridge: Mapping[str, object] | None = None
     income_uprating: Mapping[str, object] | None = None
+    band_donor_resample: Mapping[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -377,8 +378,15 @@ def impute_uk_spi_income_support(
     stage1_base_redraw_columns: Sequence[str] = (),
     condition_on_state_pension_receipt: bool = False,
     rebase_income_to_build_period: bool = False,
+    band_donor_resample: Mapping[str, object] | None = None,
 ) -> UKSPIIncomeImputationResult:
-    """Run strict SPI-income and FRS-only QRFs on rebuilt positive support."""
+    """Run strict SPI-income and FRS-only QRFs on rebuilt positive support.
+
+    ``band_donor_resample`` (``lower_bounds``, ``regional_pool_minimum``,
+    ``seed``) gives the reserved band carriers (PolicyEngine/chronicle#280 lane) a
+    band-conditional draw from the full prepared tape after the stage-1
+    forest draw; ``None`` leaves every synthetic adult on the forest draw.
+    """
 
     if support.household_weight_kind is not WeightKind.IMPORTANCE:
         raise ValueError(
@@ -415,6 +423,7 @@ def impute_uk_spi_income_support(
             raise TypeError("donor_table must be a pandas DataFrame.")
         raw_donor = donor_table.copy(deep=True)
     donor = _prepare_spi_donor(raw_donor, seed=seed)
+    donor_full = donor
     donor_fit_weights = donor["FACT"].to_numpy(dtype=np.float64)
     if donor_sample_size is not None:
         donor = donor.sample(
@@ -540,6 +549,16 @@ def impute_uk_spi_income_support(
             # protects the QRF from mistaking the fill for measured data.
             person[column] = 0.0
         person.loc[spi_people, column] = stage1_draws[column].to_numpy()
+    band_donor_receipt = None
+    if band_donor_resample is not None:
+        person, band_donor_receipt = _resample_band_donor_leaves(
+            person,
+            donor_full,
+            household=household,
+            spi_people=spi_people,
+            uprating_factors=uprating_factors,
+            **dict(band_donor_resample),
+        )
     person = _derive_policyengine_employment_input(person, spi_people=spi_people)
 
     taxable_interest_draw = person.loc[spi_people, "savings_interest_income"].to_numpy(
@@ -682,7 +701,188 @@ def impute_uk_spi_income_support(
         reviewed_absent_stage2_outputs=reviewed_absent,
         pension_receipt_bridge=pension_bridge,
         income_uprating=income_uprating,
+        band_donor_resample=band_donor_receipt,
     )
+
+
+SPI_INCOME_BAND_CARRIER_COLUMN = "person_is_spi_income_band_carrier"
+SPI_INCOME_BAND_LOWER_BOUND_COLUMN = "spi_income_band_donor_lower_bound"
+
+
+def _resample_band_donor_leaves(
+    person: pd.DataFrame,
+    donor: pd.DataFrame,
+    *,
+    household: pd.DataFrame,
+    spi_people: pd.Series,
+    uprating_factors: Mapping[str, float],
+    lower_bounds: Sequence[int],
+    regional_pool_minimum: int,
+    seed: int,
+) -> tuple[pd.DataFrame, dict[str, object]]:
+    """Give every reserved band carrier a band-conditional tape draw.
+
+    The pool for a carrier is every prepared tape record whose total income
+    *as it will be realised* lies in the carrier's band: the record's stage-1
+    leaves at the stage's uprating factors plus the published remainder of its
+    total income (TEI + TII) held nominal. The bands are the calibration
+    year's Table 2.5 bands and the reserved weights are that year's taxpayer
+    counts, so membership is asserted on the uprated amount, not on the
+    tape's 2022-23 nominal one. The pool narrows to the carrier's region when
+    that regional pool holds at least ``regional_pool_minimum`` records. One
+    record is drawn FACT-weighted with replacement and all stage-1 leaves are
+    copied from it, then uprated exactly as the forest draws were; the
+    accounting aggregates derive after the draw as usual. Composite records
+    stay in the pools as published. Every carrier's realised total income is
+    checked against its band after the draw and any breach refuses the stage.
+    """
+
+    if not isinstance(regional_pool_minimum, int) or regional_pool_minimum <= 0:
+        raise ValueError("regional_pool_minimum must be a positive integer.")
+    if not isinstance(seed, int):
+        raise ValueError("band donor resample seed must be an integer.")
+    lowers = sorted(int(value) for value in lower_bounds)
+    if not lowers or len(set(lowers)) != len(lowers):
+        raise ValueError("band donor lower bounds must be distinct.")
+    if SPI_INCOME_BAND_CARRIER_COLUMN not in person.columns:
+        # A frame built without the band-donor stage (a synthetic fixture or
+        # a test support) carries no reserved carriers; the receipt says so
+        # rather than the stage inventing any.
+        return person, {
+            "carriers": 0,
+            "skipped": (
+                f"no {SPI_INCOME_BAND_CARRIER_COLUMN} column on the frame; "
+                "spi_income_band_donors did not run before this stage"
+            ),
+            "bands": [],
+        }
+    _require_columns(
+        household,
+        ("household_id", "region", SPI_INCOME_BAND_LOWER_BOUND_COLUMN),
+        label="band donor households",
+    )
+    for column in ("total_income", "is_composite", "region", "FACT"):
+        if column not in donor.columns:
+            raise ValueError(f"band donor resample needs donor column {column!r}.")
+    carriers = person[SPI_INCOME_BAND_CARRIER_COLUMN].astype(bool) & spi_people.astype(
+        bool
+    )
+    if not carriers.any():
+        raise ValueError("band donor resample found no reserved carriers.")
+    by_household = household.set_index("household_id")
+    carrier_rows = person.loc[carriers]
+    bands = (
+        carrier_rows["person_household_id"]
+        .map(by_household[SPI_INCOME_BAND_LOWER_BOUND_COLUMN])
+        .to_numpy(dtype=float)
+    )
+    regions = (
+        carrier_rows["person_household_id"]
+        .map(by_household["region"])
+        .astype(str)
+        .to_numpy()
+    )
+    unknown = sorted({int(value) for value in bands} - set(lowers))
+    if unknown:
+        raise ValueError(f"band donor carriers name undeclared band(s) {unknown}.")
+    columns = list(SPI_INCOME_QRF_OUTPUT_COLUMNS)
+    factors = np.asarray([float(uprating_factors[column]) for column in columns])
+    published_total = donor["total_income"].to_numpy(dtype=float)
+    leaf_values = donor[columns].to_numpy(dtype=np.float64)
+    # The total income a drawn record realises on the frame: its leaves at the
+    # stage's factors plus whatever of the published total the leaves do not
+    # carry, held nominal.
+    total_income = leaf_values @ factors + np.maximum(
+        published_total - leaf_values.sum(axis=1), 0.0
+    )
+    donor_region = donor["region"].astype(str).to_numpy()
+    fact = donor["FACT"].to_numpy(dtype=float)
+    composite = donor["is_composite"].to_numpy(dtype=bool)
+    edges = [*lowers, np.inf]
+    pools: dict[int, np.ndarray] = {}
+    for position, lower in enumerate(lowers):
+        pool = np.flatnonzero(
+            (total_income >= lower) & (total_income < edges[position + 1])
+        )
+        if pool.size == 0:
+            raise ValueError(
+                "the SPI donor tape carries no record whose uprated total income "
+                f"lies in the band from {lower}."
+            )
+        pools[lower] = pool
+    rng = np.random.default_rng(seed)
+    drawn = np.empty(len(carrier_rows), dtype=np.int64)
+    matched = np.zeros(len(carrier_rows), dtype=bool)
+    regional_cache: dict[tuple[int, str], np.ndarray] = {}
+    for index, (band, region) in enumerate(zip(bands, regions, strict=True)):
+        lower = int(band)
+        key = (lower, region)
+        if key not in regional_cache:
+            national = pools[lower]
+            regional = national[donor_region[national] == region]
+            regional_cache[key] = (
+                regional if regional.size >= regional_pool_minimum else national
+            )
+            regional_cache[(lower, region, "matched")] = (  # type: ignore[index]
+                regional.size >= regional_pool_minimum
+            )
+        pool = regional_cache[key]
+        matched[index] = bool(regional_cache[(lower, region, "matched")])  # type: ignore[index]
+        weights = fact[pool]
+        drawn[index] = int(rng.choice(pool, p=weights / weights.sum()))
+    leaves = leaf_values[drawn] * factors
+    person = person.copy()
+    person.loc[carriers, columns] = leaves
+    realised_all = total_income[drawn]
+    uppers = np.asarray([edges[position + 1] for position in range(len(lowers))])
+    upper_by_carrier = uppers[np.searchsorted(np.asarray(lowers), bands)]
+    outside = (realised_all < bands) | (realised_all >= upper_by_carrier)
+    if outside.any():
+        raise ValueError(
+            f"{int(outside.sum())} reserved band carrier(s) realise a total income "
+            "outside their band after the uprated draw; the pools are cut on the "
+            "same uprated total, so this is a stage defect."
+        )
+    band_rows = []
+    for lower in lowers:
+        mask = bands == lower
+        pool = pools[lower]
+        realized = realised_all[mask] if mask.any() else np.asarray([])
+        band_rows.append(
+            {
+                "lower_bound": lower,
+                "carriers": int(mask.sum()),
+                "carriers_outside_band": int(outside[mask].sum()),
+                "pool_records": int(pool.size),
+                "pool_composite_records": int(composite[pool].sum()),
+                "pool_weighted_taxpayers": float(fact[pool].sum()),
+                "regional_matched_carriers": int(matched[mask].sum()),
+                "realized_min_total_income": (
+                    float(realized.min()) if realized.size else None
+                ),
+                "realized_mean_total_income": (
+                    float(realized.mean()) if realized.size else None
+                ),
+                "realized_max_total_income": (
+                    float(realized.max()) if realized.size else None
+                ),
+            }
+        )
+    receipt = {
+        "carriers": int(carriers.sum()),
+        "carriers_outside_band": int(outside.sum()),
+        "pool_basis": (
+            "uprated total income: stage-1 leaves at the stage's uprating factors "
+            "plus the published remainder held nominal"
+        ),
+        "regional_pool_minimum": regional_pool_minimum,
+        "seed": seed,
+        "weighting": "FACT",
+        "with_replacement": True,
+        "total_income_basis": "published TEI + TII, 2022-23 terms",
+        "bands": band_rows,
+    }
+    return person, receipt
 
 
 @cache
@@ -764,6 +964,16 @@ def _initialize_frs_channel_columns(
     return result
 
 
+def prepare_spi_donor_table(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
+    """Prepare a raw SPI 2022-23 tape exactly as the income stage does.
+
+    The band-donor stage shares this preparation so its propensity table and
+    the income stage's band pools read the same ages, regions and leaves.
+    """
+
+    return _prepare_spi_donor(raw, seed=seed)
+
+
 def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
     _require_columns(raw, SPI_DONOR_REQUIRED_COLUMNS, label="SPI 2022-23 donor")
     numeric = pd.DataFrame(
@@ -809,6 +1019,11 @@ def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:
     )
     for output, sources in _DIRECT_SPI_OUTPUT_SOURCE_COLUMNS.items():
         donor[output] = numeric[list(sources)].sum(axis=1)
+    # The published total income (TEI + TII) and the composite indicator stay
+    # on the prepared tape for the band donors' propensity and band pools;
+    # they are never QRF inputs or outputs.
+    donor["total_income"] = numeric["TI"].to_numpy(dtype=float)
+    donor["is_composite"] = numeric["AGERANGE"].astype(int).eq(-1).to_numpy()
     _require_finite_numeric(
         donor[["age", "FACT", *SPI_INCOME_QRF_OUTPUT_COLUMNS]],
         label="SPI 2022-23 derived donor",
@@ -1371,6 +1586,9 @@ __all__ = [
     "SPI_POLICYENGINE_EMPLOYMENT_SOURCE_COLUMNS",
     "SPI_QRF_SOURCE_COLUMNS",
     "SPI_SOURCE_COMPOSITE_INDICATOR",
+    "SPI_INCOME_BAND_CARRIER_COLUMN",
+    "SPI_INCOME_BAND_LOWER_BOUND_COLUMN",
+    "prepare_spi_donor_table",
     "SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP",
     "SPI_SOURCE_TEI_FORMULA",
     "SPI_SOURCE_TII_FORMULA",

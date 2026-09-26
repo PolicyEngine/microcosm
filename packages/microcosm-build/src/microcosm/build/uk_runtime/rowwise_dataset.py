@@ -62,6 +62,7 @@ UK_SPINE_LINEAGE_COLUMNS = (
     "household_support_channel",
     "household_support_clone_index",
     "household_is_spi_synthetic",
+    "household_is_spi_income_band_donor",
     "household_is_capital_gains_clone",
     "household_is_cgt_band_donor",
 )

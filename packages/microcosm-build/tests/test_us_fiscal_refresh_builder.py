@@ -531,11 +531,17 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
-    # 11 = target checkpoints preserve nullable booleans explicitly; schema 2
-    # distinguishes the new values+mask codec from schema-1 checkpoints.
+    # 12 = the identity carries the staged-frame digest (microcosm#956); 13 =
+    # the batched base pass. Schema 2 distinguishes the values+mask codec from
+    # schema-1 checkpoints.
     assert identity["schema_version"] == 2
-    assert identity["materializer_version"] == 11
+    assert (
+        identity["materializer_version"]
+        == builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
+    )
+    assert identity["staged_frame_sha256"] == "staged-frame-sha"
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -547,6 +553,7 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         frame=frame,
         identity=identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
     loaded = builder._read_target_frame_checkpoint(
         path,
@@ -622,6 +629,7 @@ def test_target_frame_checkpoint_nullable_boolean_storage_is_explicit(
         frame=frame,
         identity=identity,
         compilation={},
+        build_commit="fixture-commit",
     )
     loaded = builder._read_target_frame_checkpoint(
         path,
@@ -698,6 +706,7 @@ def test_target_frame_checkpoint_rejects_malformed_boolean_storage(
         frame=frame,
         identity={},
         compilation={},
+        build_commit="fixture-commit",
     )
 
     with h5py.File(path, mode="r+") as h5:
@@ -732,6 +741,7 @@ def test_target_frame_checkpoint_rejects_schema_one(
         frame=small_frame,
         identity={},
         compilation={},
+        build_commit="fixture-commit",
     )
     with h5py.File(path, mode="r+") as h5:
         h5.attrs["schema_version"] = 1
@@ -747,9 +757,11 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    Version 11 adds the lossless nullable-boolean checkpoint codec. The version
-    constant participates in the identity comparison; this pins stored-10
-    versus current-11 rejection directly.
+    Version 12 adds the staged-frame digest to the identity (microcosm#956)
+    and 13 the batched base pass. The version constant participates in the
+    identity comparison; this pins rejection of the immediately preceding
+    version and the one before it, derived from the current constant so every
+    bump moves the test with it.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -782,17 +794,21 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
-    # 10 = the pre-nullable-boolean-codec world; 9 = the still-older pre-#557
-    # release-refit world. Both must miss against expected version 11.
-    stale_identity = {**dict(identity), "materializer_version": 10}
-    older_identity = {**dict(identity), "materializer_version": 9}
+    current = builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
+    assert current >= 13  # microcosm#1018 uses version 12.
+    assert identity["materializer_version"] == current
+    # The two preceding versions must both miss against the current version.
+    stale_identity = {**dict(identity), "materializer_version": current - 1}
+    older_identity = {**dict(identity), "materializer_version": current - 2}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
         frame=frame,
         identity=stale_identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
 
     loaded = builder._read_target_frame_checkpoint(
@@ -808,6 +824,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         frame=frame,
         identity=older_identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
     assert (
         builder._read_target_frame_checkpoint(
@@ -835,6 +852,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         # frozen-assignment digest is covered separately below.
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
         ssi_take_up_prior_weight_basis_sha256="basis-artifact-sha",
     )
     basis_path = tmp_path / "target_frame_checkpoint_basis.h5"
@@ -843,6 +861,7 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         frame=frame,
         identity=identity,
         compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
     )
 
     loaded_with_basis = builder._read_target_frame_checkpoint(
@@ -968,6 +987,7 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
     stale_identity = {
         **fresh_identity,
@@ -979,6 +999,7 @@ def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
         frame=small_frame,
         identity=stale_identity,
         compilation={},
+        build_commit="fixture-commit",
     )
 
     loaded = builder._read_target_frame_checkpoint(
@@ -1014,6 +1035,7 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
         congressional_district_vintage_crosswalk_sha256=None,
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
 
     def fail_materialize(*args, **kwargs):
@@ -1036,12 +1058,426 @@ def test__given_matching_target_frame_checkpoint__then_builder_skips_materializa
             (target,),
             target_frame_checkpoint_path=tmp_path / "target_frame_checkpoint.h5",
             target_frame_checkpoint_identity=identity,
+            target_frame_checkpoint_build_commit="reading-commit",
         )
     )
 
     assert loaded_frame is small_frame
     assert loaded_registry is registry
     assert compilation["target_frame_checkpoint"]["status"] == "hit"
+
+
+def _restaged_frame(
+    frame: Frame,
+    *,
+    person: pd.DataFrame | None = None,
+    weights: Weights | None = None,
+    strata: pd.Series | None = None,
+) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    if person is not None:
+        tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household") if weights is None else weights},
+        frame.strata if strata is None else strata,
+    )
+
+
+def test_staged_frame_digest_moves_with_any_one_staged_input(small_frame) -> None:
+    """microcosm#956: one changed staged column, dtype, name, weight or
+    stratum changes the digest; an equal frame rebuilt from copies does not."""
+
+    builder = _load_builder_module()
+    digest = builder._staged_frame_sha256
+    baseline = digest(small_frame)
+    person = small_frame.table("person")
+
+    assert len(baseline) == 64
+    assert digest(_restaged_frame(small_frame, person=person.copy())) == baseline
+
+    one_value = person.copy()
+    one_value.loc[3, "income"] = 51.0
+    narrower = person.copy()
+    narrower["income"] = narrower["income"].astype(np.float32)
+    renamed = person.rename(columns={"income": "income_renamed"})
+    reordered = person[["person_id", "income", "person_household_id"]]
+    one_stratum = small_frame.strata.copy()
+    one_stratum.iloc[3] = "puf"
+    variants = {
+        "one staged value": _restaged_frame(small_frame, person=one_value),
+        "same values, narrower dtype": _restaged_frame(small_frame, person=narrower),
+        "renamed column": _restaged_frame(small_frame, person=renamed),
+        "reordered columns": _restaged_frame(small_frame, person=reordered),
+        "one weight": _restaged_frame(
+            small_frame,
+            weights=Weights(np.asarray([1000.0, 2001.0]), WeightKind.DESIGN),
+        ),
+        "weight kind": _restaged_frame(
+            small_frame,
+            weights=Weights(np.asarray([1000.0, 2000.0]), WeightKind.IMPORTANCE),
+        ),
+        "one stratum": _restaged_frame(small_frame, strata=one_stratum),
+    }
+    digests = {name: digest(frame) for name, frame in variants.items()}
+    assert all(value != baseline for value in digests.values()), digests
+    assert len(set(digests.values())) == len(digests)
+
+
+def test_staged_frame_digest_covers_every_entity_table() -> None:
+    """microcosm#956: every US entity table feeds the digest, not only person.
+
+    The materializer reads group-entity inputs too (household ``state_fips``,
+    for one), so one changed value or one added column in any table must move
+    the digest, as must a weight vector on a group entity. The loop runs over
+    the real ``US_SCHEMA``, so a new entity is covered as soon as it exists.
+    """
+
+    builder = _load_builder_module()
+    base = _multi_reform_frame(builder)
+    assert tuple(base.entities) == tuple(builder.US_SCHEMA.entities)
+    assert len(base.entities) == 6
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    for entity, table in tables.items():
+        # Column names are globally unique across tables (the flattening rule).
+        table[f"{entity}_staged_input"] = np.arange(len(table), dtype="int64")
+    household_weights = {"household": base.weights_for("household")}
+
+    def digest(
+        changed: dict[str, pd.DataFrame] | None = None,
+        weights: dict[str, Weights] | None = None,
+    ) -> str:
+        return builder._staged_frame_sha256(
+            Frame(
+                tables if changed is None else changed,
+                builder.US_SCHEMA,
+                household_weights if weights is None else weights,
+            )
+        )
+
+    def copied() -> dict[str, pd.DataFrame]:
+        return {entity: table.copy() for entity, table in tables.items()}
+
+    baseline = digest()
+    assert digest(copied()) == baseline
+    variants: dict[str, str] = {}
+    for entity in builder.US_SCHEMA.entities:
+        one_value = copied()
+        one_value[entity].loc[0, f"{entity}_staged_input"] = 7
+        variants[f"{entity}: one value"] = digest(one_value)
+        added = copied()
+        added[entity][f"{entity}_added_input"] = 0
+        variants[f"{entity}: added column"] = digest(added)
+    recoded = copied()
+    recoded["household"].loc[1, "state_fips"] = 34
+    variants["household: state_fips recode"] = digest(recoded)
+    variants["tax_unit: weights added"] = digest(
+        weights={
+            **household_weights,
+            "tax_unit": Weights(np.ones(3), WeightKind.DESIGN),
+        }
+    )
+    assert baseline not in variants.values(), variants
+    assert len(set(variants.values())) == len(variants)
+
+
+#: The staged-frame digest of ``_golden_staged_frame`` under
+#: ``us_fiscal_refresh_staged_frame_v1``. A pass-B checkpoint hit needs a new
+#: process to reproduce pass A's digest for an equal frame, so the value is
+#: pinned, not only compared within one process. If this assertion moves, the
+#: byte framing (or a dtype name it hashes) changed: rename
+#: ``STAGED_FRAME_DIGEST_CODEC`` and repin, never repin alone.
+GOLDEN_STAGED_FRAME_SHA256 = (
+    "26eb1cb211ad6f5c4fce85bca76a52986ba1bd390ca9db5c006ea5a477504305"
+)
+
+
+def _golden_staged_frame() -> Frame:
+    """A fixed frame that reaches every encoding branch of the digest."""
+
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(4, dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+            "income": np.asarray([100.5, 0.0, -250.25, np.nan]),
+            "is_flag": np.asarray([True, False, True, False]),
+            "masked_flag": pd.arrays.BooleanArray(
+                np.asarray([True, True, False, True]),
+                np.asarray([False, True, False, True]),
+            ),
+            "label": pd.Series(["a", "", None, "é"], dtype=object),
+            "mixed": pd.Series([1, "1", 1.5, None], dtype=object),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([1, 2], dtype="int64"),
+            "state_fips": np.asarray([6, 36], dtype="int32"),
+        }
+    )
+    return Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {
+            "household": Weights(np.asarray([1000.0, 2000.0]), WeightKind.DESIGN),
+            "person": Weights(np.asarray([1.0, 2.0, 3.0, 4.0]), WeightKind.IMPORTANCE),
+        },
+        pd.Series(["asec", "asec", "puf", "puf"], index=person.index),
+    )
+
+
+def test_staged_frame_digest_is_pinned_across_processes() -> None:
+    """microcosm#956: the digest of a fixed frame is a known constant."""
+
+    builder = _load_builder_module()
+    assert builder.STAGED_FRAME_DIGEST_CODEC == "us_fiscal_refresh_staged_frame_v1"
+    assert (
+        builder._staged_frame_sha256(_golden_staged_frame())
+        == GOLDEN_STAGED_FRAME_SHA256
+    )
+
+
+def _staged_digest_with_person_column(builder, frame: Frame, column) -> str:
+    """Digest ``frame`` with ``column`` appended to its person table."""
+
+    person = frame.table("person").copy()
+    person["staged"] = column
+    return builder._staged_frame_sha256(_restaged_frame(frame, person=person))
+
+
+def test_staged_frame_digest_names_the_dtype_of_same_width_values(
+    small_frame,
+) -> None:
+    """Equal bytes under another dtype still move the digest.
+
+    Each pair below has identical value bytes and byte length, so only the
+    digest's dtype field tells the columns apart; a staging cast between them
+    must not reuse a checkpoint materialized from the other dtype.
+    """
+
+    builder = _load_builder_module()
+    flags = [True, False, True, False]
+    pairs = {
+        "bool vs uint8 flags": (
+            np.asarray(flags, dtype=np.bool_),
+            np.asarray(flags, dtype=np.uint8),
+        ),
+        "int64 vs float64 zeros": (
+            np.zeros(4, dtype=np.int64),
+            np.zeros(4, dtype=np.float64),
+        ),
+        "int64 vs uint64 zeros": (
+            np.zeros(4, dtype=np.int64),
+            np.zeros(4, dtype=np.uint64),
+        ),
+    }
+    for name, (left, right) in pairs.items():
+        assert left.tobytes() == right.tobytes(), name
+        assert _staged_digest_with_person_column(
+            builder, small_frame, left
+        ) != _staged_digest_with_person_column(builder, small_frame, right), name
+
+
+def test_staged_frame_digest_frames_variable_width_and_masked_values(
+    small_frame,
+) -> None:
+    """Missing is not "", string boundaries cannot shift, mixed objects carry
+    their types, and bits hidden under a nullable mask cannot move the digest."""
+
+    builder = _load_builder_module()
+
+    def staged(column: pd.Series) -> str:
+        return _staged_digest_with_person_column(builder, small_frame, column)
+
+    assert staged(pd.Series(["ab", "c", "", None], dtype=object)) != staged(
+        pd.Series(["a", "bc", "", None], dtype=object)
+    )
+    assert staged(pd.Series(["a", "b", "", None], dtype=object)) != staged(
+        pd.Series(["a", "b", None, ""], dtype=object)
+    )
+    # A mixed column takes the typed encoding and an all-string column the
+    # utf8 one, so the two never collide.
+    assert staged(pd.Series([1, "1", "x", "y"], dtype=object)) != staged(
+        pd.Series(["1", "1", "x", "y"], dtype=object)
+    )
+    # Within the typed encoding every value carries its type, so swapping an
+    # integer with its spelling still moves the digest.
+    assert staged(pd.Series([1, "1", "x", "y"], dtype=object)) != staged(
+        pd.Series(["1", 1, "x", "y"], dtype=object)
+    )
+    mask = np.asarray([False, True, False, True])
+    hidden_true = pd.Series(
+        pd.arrays.BooleanArray(np.asarray([True, True, False, True]), mask)
+    )
+    hidden_false = pd.Series(
+        pd.arrays.BooleanArray(np.asarray([True, False, False, False]), mask)
+    )
+    assert staged(hidden_true) == staged(hidden_false)
+    assert staged(hidden_false) != staged(
+        pd.Series([True, False, False, False], dtype="boolean")
+    )
+
+
+def test_target_frame_checkpoint_hit_records_source_commit_not_identity(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    """microcosm#956: the build commit is provenance, never identity.
+
+    A checkpoint written at one commit serves a later commit that stages the
+    same frame, and the hit names the commit that wrote it. A frame that
+    differs in one staged column misses, whatever the commit.
+    """
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    target = TargetSpec(
+        name="mock.measure",
+        entity="household",
+        measure="household_id",
+        value=1.0,
+        source="Mock source",
+    )
+    materialized: list[str] = []
+
+    def fake_materialize(base_frame, target_specs, **kwargs):
+        materialized.append(builder._staged_frame_sha256(base_frame))
+        return (
+            base_frame,
+            TargetRegistry(target_specs, country="us"),
+            {"declared_targets": len(target_specs)},
+        )
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", fake_materialize)
+
+    def identity_for(frame: Frame) -> dict[str, object]:
+        return builder._target_frame_checkpoint_identity(
+            base_dataset_sha256="base-sha",
+            policyengine_us_version="1.2.3",
+            seed=0,
+            target_period=builder.PERIOD,
+            target_registry_version="registry-sha",
+            weeks_unemployed_source_sha256="weeks-source-sha",
+            congressional_district_vintage_crosswalk_sha256=None,
+            ssi_take_up_assignment_sha256="ssi-flags-sha",
+            selection_identities_sha256=None,
+            staged_frame_sha256=builder._staged_frame_sha256(frame),
+        )
+
+    def load(frame: Frame, commit: str) -> dict[str, object]:
+        _, _, compilation = builder._load_or_materialize_target_frame(
+            frame,
+            (target,),
+            target_frame_checkpoint_path=path,
+            target_frame_checkpoint_identity=identity_for(frame),
+            target_frame_checkpoint_build_commit=commit,
+        )
+        return compilation["target_frame_checkpoint"]
+
+    # The identity takes no commit, so no commit can move it.
+    parameters = inspect.signature(builder._target_frame_checkpoint_identity)
+    assert not [name for name in parameters.parameters if "commit" in name]
+    identity = identity_for(small_frame)
+    assert not [key for key in identity if "commit" in key]
+    path = tmp_path / "target_frame_checkpoint.h5"
+    writer_commit = "a" * 40
+    reader_commit = "b" * 40
+
+    written = load(small_frame, writer_commit)
+    assert written["status"] == "miss_written"
+    assert written["source_build_commit"] == writer_commit
+    assert written["staged_frame_sha256"] == identity["staged_frame_sha256"]
+    with h5py.File(path, "r") as h5:
+        assert str(h5.attrs["build_commit"]) == writer_commit
+        assert json.loads(str(h5.attrs["identity_json"])) == identity
+
+    rebuilt = _restaged_frame(small_frame)
+    hit = load(rebuilt, reader_commit)
+    assert hit["status"] == "hit"
+    assert hit["source_build_commit"] == writer_commit
+    assert hit["identity_sha256"] == written["identity_sha256"]
+    assert hit["staged_frame_sha256"] == written["staged_frame_sha256"]
+    assert len(materialized) == 1
+
+    person = small_frame.table("person").copy()
+    person.loc[0, "income"] = 101.0
+    restaged = _restaged_frame(small_frame, person=person)
+    missed = load(restaged, writer_commit)
+    assert missed["status"] == "miss_written"
+    assert missed["identity_sha256"] != written["identity_sha256"]
+    assert len(materialized) == 2
+    assert materialized[-1] == missed["staged_frame_sha256"]
+
+    with pytest.raises(ValueError, match="build_commit is required"):
+        builder._load_or_materialize_target_frame(
+            small_frame,
+            (target,),
+            target_frame_checkpoint_path=path,
+            target_frame_checkpoint_identity=identity,
+        )
+
+
+def test_reform_vector_cache_tightens_with_staged_frame_via_materializer_identity(
+    small_frame,
+) -> None:
+    """microcosm#956 leaves the reform-vector keys alone: they still bind the
+    materializer identity digest, which now moves with the staged frame, and
+    they still exclude the raw build commit (#217/#557)."""
+
+    builder = _load_builder_module()
+    keys = builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    assert "target_frame_materializer_identity_sha256" in keys
+    assert "staged_frame_sha256" not in keys
+    assert "build_commit" not in keys
+    person = small_frame.table("person").copy()
+    person.loc[0, "income"] = 101.0
+    restaged = _restaged_frame(small_frame, person=person)
+    reform_spec = SimpleNamespace(
+        measure="jct_mock_tax_expenditure",
+        neutralized_variable="mock_credit",
+    )
+
+    def cache_digest(frame: Frame, commit: str) -> tuple[str, str]:
+        materializer_identity = builder._target_frame_checkpoint_digest(
+            builder._target_frame_checkpoint_identity(
+                base_dataset_sha256="base-sha",
+                policyengine_us_version="1.2.3",
+                seed=0,
+                target_period=builder.PERIOD,
+                target_registry_version="registry-sha",
+                weeks_unemployed_source_sha256="weeks-source-sha",
+                congressional_district_vintage_crosswalk_sha256=None,
+                ssi_take_up_assignment_sha256="ssi-flags-sha",
+                selection_identities_sha256=None,
+                staged_frame_sha256=builder._staged_frame_sha256(frame),
+            )
+        )
+        cache_identity = builder._target_materialization_cache_identity(
+            context={
+                "base_dataset_sha256": "base-sha",
+                "build_commit": commit,
+                "target_frame_materializer_identity_sha256": materializer_identity,
+            },
+            reform_spec=reform_spec,
+            n_households=2,
+        )
+        assert (
+            cache_identity["context"]["target_frame_materializer_identity_sha256"]
+            == materializer_identity
+        )
+        assert "build_commit" not in cache_identity["context"]
+        return (
+            materializer_identity,
+            builder._target_materialization_cache_digest(cache_identity),
+        )
+
+    baseline = cache_digest(small_frame, "a" * 40)
+    assert cache_digest(small_frame, "b" * 40) == baseline
+    changed = cache_digest(restaged, "a" * 40)
+    assert changed[0] != baseline[0]
+    assert changed[1] != baseline[1]
 
 
 def test_runtime_versions_use_local_workspace_package_version(
@@ -2123,6 +2559,106 @@ def test_acs_predictor_join_precedes_all_six_archived_model_stages() -> None:
     )
     assert isinstance(receipt_keyword.value, ast.Name)
     assert receipt_keyword.value.id == "acs_predictor_join_receipt"
+
+
+def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverage() -> (
+    None
+):
+    """The receipt sees the compile's facts, period and crosswalk, and ships.
+
+    No _main test reaches the us_source_coverage.json write, so pin the wiring
+    (microcosm#956): the receipt call must replay exactly the arguments the
+    registry compile saw, and its result must land in the coverage payload
+    before that payload is written.
+
+    On the native integration line the compile lives in the shared
+    ``_compile_fiscal_release_target_registry`` (the native entry uses it
+    too), which ``_main`` calls once with its crosswalk and which returns the
+    ledger artifact whose facts it compiled; the receipt stays in ``_main``.
+    """
+
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    tree = ast.parse(inspect.getsource(builder._main))
+    shared_tree = ast.parse(
+        inspect.getsource(builder._compile_fiscal_release_target_registry)
+    )
+
+    def calls_to(scope, name):
+        return [
+            node
+            for node in ast.walk(scope)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        ]
+
+    calls = {
+        name: calls_to(tree, name)
+        for name in (
+            "_compile_fiscal_release_target_registry",
+            "us_fiscal_target_exclusion_receipt",
+            "write_us_source_coverage_diagnostics",
+        )
+    }
+    assert [len(found) for found in calls.values()] == [1, 1, 1]
+    assert calls_to(tree, "compile_us_fiscal_target_registry") == []
+    (compile_call,) = calls_to(shared_tree, "compile_us_fiscal_target_registry")
+    receipt_call = calls["us_fiscal_target_exclusion_receipt"][0]
+    # ``_main`` hands the shared compiler the crosswalk the receipt replays and
+    # takes back the ledger artifact whose facts the compiler compiled, and
+    # the receipt follows the compile.
+    shared_call = calls["_compile_fiscal_release_target_registry"][0]
+    shared_keywords = {
+        keyword.arg: ast.dump(keyword.value) for keyword in shared_call.keywords
+    }
+    assert shared_keywords == {
+        "congressional_district_vintage_crosswalk": ast.dump(
+            ast.Name("congressional_district_vintage_crosswalk", ast.Load())
+        )
+    }
+    (shared_assignment,) = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and node.value is shared_call
+    ]
+    assert isinstance(shared_assignment.targets[0], ast.Tuple)
+    assert ast.unparse(shared_assignment.targets[0].elts[0]) == "ledger_artifact"
+    assert ast.unparse(compile_call.args[0]) == "ledger_artifact.facts"
+    assert shared_call.lineno < receipt_call.lineno
+    assert ast.dump(receipt_call.args[0]) == ast.dump(compile_call.args[0])
+    compile_keywords = {
+        keyword.arg: ast.dump(keyword.value) for keyword in compile_call.keywords
+    }
+    for keyword in receipt_call.keywords:
+        assert keyword.arg in {
+            "target_period",
+            "congressional_district_vintage_crosswalk",
+        }
+        assert ast.dump(keyword.value) == compile_keywords[keyword.arg]
+    assert {keyword.arg for keyword in receipt_call.keywords} == {
+        "target_period",
+        "congressional_district_vintage_crosswalk",
+    }
+
+    coverage_writes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.targets[0], ast.Subscript)
+        and isinstance(node.targets[0].value, ast.Name)
+        and node.targets[0].value.id == "coverage"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "fiscal_target_exclusion_receipt"
+    ]
+    assert len(coverage_writes) == 1
+    assert (
+        receipt_call.lineno
+        < coverage_writes[0].lineno
+        < calls["write_us_source_coverage_diagnostics"][0].lineno
+    )
 
 
 def test_scf_full_extract_override_parses(monkeypatch) -> None:
@@ -5412,6 +5948,337 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
 
+#: What the stubbed stored-input gate refuses in the ``stored_input_refused``
+#: harness mode, in the gate's own line format.
+STORED_INPUT_REFUSAL_FIXTURE = (
+    "Stored model inputs failed (export frame): stored column "
+    "'would_claim_wic' (person table) looks like a model input but is not a "
+    "variable in policyengine-us 2.2.1, so the engine ignores it."
+)
+#: What the stubbed post-write check reports in ``stored_input_premise``.
+STORED_INPUT_PREMISE_FIXTURE = (
+    "Stored-input gate premise failed: the written H5 stores model-named "
+    "columns that policyengine-us 2.2.1 does not define ['would_claim_wic'], "
+    "but the pre-export gate graded the export frame's modeled stored tables "
+    "as refusing []."
+)
+
+
+def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
+    """How ``_main`` acts on each stored-input verdict (microcosm#1026).
+
+    A refusal is a batched pre-export gate failure: in an otherwise green run
+    it is the raise's only line, the gate ran once on the export frame and no
+    H5 is written. A premise failure aborts after the write and before any
+    post-export scorer opens the file, with no manifest minted.
+    """
+
+    with pytest.raises(RuntimeError) as abort:
+        builder.main()
+
+    assert captured["stored_input_gate_stages"] == ["export frame"]
+    assert not (release_dir / "release_manifest.json").exists()
+    assert not (release_dir / "build_manifest.json").exists()
+    assert "scorer_opened_on" not in captured
+    if mode == "stored_input_refused":
+        assert str(abort.value) == (
+            f"Release gates failed: {STORED_INPUT_REFUSAL_FIXTURE}"
+        )
+        assert "written_dataset" not in captured
+        assert "stored_input_post_write_check" not in captured
+    else:
+        assert str(abort.value) == STORED_INPUT_PREMISE_FIXTURE
+        assert captured["stored_input_post_write_check"] == (
+            captured["written_dataset"],
+            captured["written_dataset"],
+        )
+
+
+def _run_green_register_release(
+    builder,
+    monkeypatch,
+    *,
+    captured,
+    out: Path,
+    release_id: str,
+    tail_register: Path,
+    export_mass_reference: Path,
+    skipped_smoke: bool,
+    stored_input_mode: str | None = None,
+) -> None:
+    """Drive the harness's green register run through main() and check that
+    both manifests bind the run's gate evidence (route A remediation PR-3).
+
+    ``stored_input_mode`` injects one stored-input failure (microcosm#1026)
+    into that otherwise green run; see :func:`_assert_stored_input_abort`.
+    """
+    from microcosm.data.contract import (
+        _check_build_manifest,
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    release_dir = out / "releases" / release_id
+    # The harness stubs every hash to a constant. The run's own outputs, the
+    # register and the export-mass reference hash for real, so the manifests
+    # can be checked against the bytes on disk.
+    stub_sha256 = builder._sha256
+
+    def sha256(path):
+        path = Path(path)
+        if path in {tail_register, export_mass_reference} or out in path.parents:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        return stub_sha256(path)
+
+    monkeypatch.setattr(builder, "_sha256", sha256)
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "2.2.1",
+            "torch": "2.12.0",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, *, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "e" * 64, "n_targets": 1},
+        },
+    )
+    reference_frame = object()
+
+    def fake_load_us_frame(path):
+        captured["export_reference_loaded"] = Path(path)
+        return reference_frame
+
+    monkeypatch.setattr(builder, "load_us_frame", fake_load_us_frame)
+
+    class WrittenH5Scorer:
+        """The household-batched post-export scorer (#956) without an engine:
+        it binds the sha256 of the file it opens, as the real one does, and
+        hands each consumer a seam naming that file."""
+
+        def __init__(self, dataset_path, **kwargs):
+            self.dataset_path = Path(dataset_path)
+            self.dataset_sha256 = builder._sha256(self.dataset_path)
+            captured["scorer_opened_on"] = self.dataset_path
+
+        def open_consumer(self, name, baseline_plan):
+            record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
+            return SimpleNamespace(
+                name=name, simulate=self.dataset_path, record=lambda: record
+            )
+
+        def finish_consumer(self, scoring):
+            captured.setdefault("finished_consumers", []).append(scoring.name)
+            return scoring.record()
+
+        def manifest_record(self):
+            return {
+                "dataset_sha256": self.dataset_sha256,
+                "consumers": list(captured.get("finished_consumers", [])),
+            }
+
+        def close(self):
+            captured["scorer_closed"] = True
+
+    monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
+
+    def fake_smoke(*, simulate, period):
+        # The pre-export plan dry-runs the smoke on a recording seam first;
+        # the last call is the gate scoring the written release.
+        captured["smoke_scored"] = simulate
+        return builder.GateResult(
+            name="reform_coverage_smoke",
+            passed=True,
+            details={"probes": ["ssi_asset_limit"]},
+        )
+
+    monkeypatch.setattr(builder, "us_reform_coverage_smoke_gate", fake_smoke)
+    monkeypatch.setattr(
+        builder,
+        "us_take_up_participation_diagnostics",
+        lambda frame: {"programs": []},
+    )
+    monkeypatch.setattr(
+        builder, "_fiscal_target_source_provenance", lambda target_specs: []
+    )
+    # A superseded attempt under the same --release-id left a verdict for
+    # every gate behind. Each gate this run evaluates rewrites its file; the
+    # smoke, when skipped, must leave no verdict at all rather than the old one.
+    release_dir.mkdir(parents=True, exist_ok=True)
+    for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values():
+        (release_dir / filename).write_text('{"stale": true}')
+
+    if stored_input_mode is not None:
+        _assert_stored_input_abort(
+            builder, captured=captured, release_dir=release_dir, mode=stored_input_mode
+        )
+        return
+
+    builder.main()
+
+    assert captured["terminal_gate_events"] == [
+        "input_coverage",
+        "input_mass_parity",
+        "qrf_tail_concentration",
+    ]
+    # All four stale verdicts were cleared before any gate ran, including the
+    # three this run goes on to rewrite: a gate that crashed or was skipped
+    # must leave no verdict rather than the superseded one.
+    assert captured["gate_evidence_on_disk_at_first_gate"] == []
+    assert captured["qrf_tail_register_seen"] == {
+        "estate_income": "donor tail concentrated before calibration"
+    }
+    # microcosm#1026: the written H5, once it exists, is checked against the
+    # stored-input gate's verdict.
+    assert captured["stored_input_post_write_check"] == (
+        captured["written_dataset"],
+        captured["written_dataset"],
+    )
+    if skipped_smoke:
+        # No post-export stage runs, so no scorer opens.
+        assert "smoke_scored" not in captured
+        assert "scorer_opened_on" not in captured
+        assert not (release_dir / "reform_coverage_smoke.json").exists()
+    else:
+        assert captured["scorer_opened_on"] == captured["written_dataset"]
+        assert captured["smoke_scored"] == captured["written_dataset"]
+        assert captured["scorer_closed"] is True
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    if not skipped_smoke:
+        # The smoke verdict names the bytes it scored, and they are the bytes
+        # the manifest pins.
+        smoke_scoring = json.loads(
+            (release_dir / "reform_coverage_smoke.json").read_text()
+        )["post_export_scoring"]
+        assert smoke_scoring == {
+            "dataset_sha256": hashlib.sha256(b"release h5").hexdigest(),
+            "consumer": "reform_coverage_smoke",
+        }
+        assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
+    # Both manifests carry how the post-export gates were scored (route A
+    # remediation PR-3's rule): the scorer's block, taken after every consumer
+    # finished and naming the bytes the manifest pins. With no post-export
+    # stage there is no scorer and no block.
+    for block in (build_manifest, release_manifest["build"]):
+        if skipped_smoke:
+            assert "post_export_scoring" not in block
+        else:
+            assert block["post_export_scoring"] == {
+                "dataset_sha256": build_manifest["dataset"]["sha256"],
+                "consumers": ["reform_coverage_smoke"],
+            }
+
+    artifacts = release_manifest["artifacts"]
+    bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
+    if skipped_smoke:
+        bound.pop("reform_coverage_smoke")
+        assert "reform_coverage_smoke" not in artifacts
+    for key, filename in bound.items():
+        assert json.loads((release_dir / filename).read_text()) != {"stale": True}
+        assert artifacts[key] == {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "revision": release_id,
+            "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+        }
+    if not skipped_smoke:
+        smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
+        assert smoke["reform_coverage_smoke"]["passed"] is True
+    tail = json.loads((release_dir / "qrf_tail_concentration.json").read_text())
+    assert tail["tail_concentration"]["passed"] is True
+    assert set(tail["tail_concentration"]["details"]["reviewed_exclusions"]) == {
+        "estate_income"
+    }
+
+    register_sha256 = hashlib.sha256(tail_register.read_bytes()).hexdigest()
+    # The manifests bind the register the gate recorded, byte for byte.
+    assert tail["surface"]["reviewed_exclusions_sha256"] == register_sha256
+    expected_register = {
+        "path": str(tail_register),
+        "sha256": register_sha256,
+        "entries": {"estate_income": "donor tail concentrated before calibration"},
+        "mismatch": {"stale": [], "unused": []},
+        "enforced": True,
+    }
+    expected_reference = {
+        "path": str(export_mass_reference),
+        "sha256": hashlib.sha256(b"reference h5").hexdigest(),
+        "reference_name": export_mass_reference.name,
+        "evaluated": True,
+    }
+    # Whether the coverage file carries the PR-1 receipt depends on merge
+    # order; the reference must describe whichever bytes were written. Once
+    # PR-1's receipt compiler is in the tool, the receipt must be present:
+    # a writer/reader key drift would otherwise read as "no receipt".
+    coverage_path = release_dir / "us_source_coverage.json"
+    written_receipt = json.loads(coverage_path.read_text()).get(
+        builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY
+    )
+    if hasattr(builder, "us_fiscal_target_exclusion_receipt"):
+        assert written_receipt is not None
+    expected_receipt = {
+        "artifact": "us_source_coverage",
+        "path": "us_source_coverage.json",
+        "sha256": hashlib.sha256(coverage_path.read_bytes()).hexdigest(),
+        "key": builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+        "present": written_receipt is not None,
+        "receipt_sha256": (
+            hashlib.sha256(
+                json.dumps(
+                    written_receipt, sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest()
+            if written_receipt is not None
+            else None
+        ),
+    }
+    expected_gate_evidence = {
+        "input_coverage": "bound",
+        "input_mass_parity": "bound",
+        "qrf_tail_concentration": "bound",
+        "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+    }
+    for block in (build_manifest, release_manifest["build"]):
+        assert block["gate_evidence"] == expected_gate_evidence
+        assert block["qrf_tail_register"] == expected_register
+        assert block["export_input_mass_reference"] == expected_reference
+        runtime = block["calibration_runtime"]
+        assert set(runtime) == {"torch", "torch_num_threads", "omp_num_threads"}
+        assert runtime["torch_num_threads"] >= 1
+        assert runtime["omp_num_threads"] == os.environ["OMP_NUM_THREADS"]
+        # One reading, recorded in the diagnostics and both manifests.
+        assert runtime == captured["diagnostics"]["calibration_runtime"]
+        assert block["fiscal_target_exclusion_receipt"] == expected_receipt
+    # The manifests pin the reference the export-mass gate compared against.
+    assert captured["export_reference_loaded"] == export_mass_reference
+    parity_kwargs = captured["export_input_mass_kwargs"]
+    assert parity_kwargs["reference_frame"] is reference_frame
+    assert parity_kwargs["reference_name"] == export_mass_reference.name
+
+    # The publisher contract accepts both manifests, verifies every gate
+    # evidence hash against the local bytes, and uploads the files.
+    failures: list[str] = []
+    _check_build_manifest(build_manifest, release_id, failures)
+    _check_release_manifest(release_manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    assert failures == []
+    assert set(bound.values()) <= set(_release_manifest_release_artifacts(release_dir))
+    assert not list(release_dir.glob("final_household_weight*"))
+
+
 @pytest.mark.parametrize(
     "terminal_mode",
     [
@@ -5422,6 +6289,13 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         "telemetry",
         "puf_tail",
         "spm_missing_pool",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+        "target_frame_checkpoint",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+        "stored_input_refused",
+        "stored_input_premise",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -5452,9 +6326,66 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     every later terminal group runs, and release artifacts stay suppressed.
     ``spm_missing_pool``: a prepared pool without the source role fails at
     the real SPM signal gate before calibration or terminal coverage checks.
+    ``qrf_tail_register``: the per-run tail register carries a stale and an
+    absent entry under earlier failures; the mismatch rides the batch as its
+    own line (it used to collapse into one "evaluation error" line that nulled
+    the gate) while the tail JSON, the gate's own failures, and the
+    final-weight evidence all survive.
+    ``qrf_tail_register_clean``: the same register mismatch is the run's ONLY
+    terminal failure — every other group passes. This is the route A
+    premortem path: the old register raise escaped the batch here, before the
+    tail JSON and the #568 final-weight sidecar were written. The run must
+    now reach the batched raise with both on disk.
+    ``target_frame_checkpoint``: the ``merge`` run with the target-frame
+    checkpoint enabled, as release runs have it by default (microcosm#956).
+    main() must hand the checkpoint writer this build's full commit, and the
+    writer's payload, source commit included, must reach the written
+    diagnostics. Every other mode passes ``--no-target-frame-checkpoint`` and
+    must record the checkpoint as disabled.
+    ``qrf_tail_register_green``: the register names exactly the concentrated
+    column, so every terminal gate passes and the run goes on to write the
+    H5 and both manifests (route A remediation PR-3). The manifests must
+    bind the four gate-evidence files as release artifacts and record the
+    register the gate evaluated, the export-mass reference, the solve's
+    thread geometry, and where the fiscal-target exclusion receipt lives.
+    ``qrf_tail_register_green_skipped_smoke``: the same green run with the
+    reform-coverage smoke skipped, over a release directory a superseded
+    attempt left a smoke verdict in. That stale verdict must not be bound as
+    this run's.
+    ``stored_input_refused``: the green run, except that the stored-input gate
+    (microcosm#1026) refuses ``would_claim_wic``. Its line must be the batched
+    pre-export raise's only failure, and no H5 may be written.
+    ``stored_input_premise``: the green run, except that the written H5 does
+    not earn the gate's verdict. The run must abort with the premise failure
+    after the write and before any post-export scorer opens the file.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
+    # The two stored-input modes (microcosm#1026) are green register runs in
+    # every other respect, so their only failure is the one they inject.
+    stored_input_modes = {"stored_input_refused", "stored_input_premise"}
+    green_run = terminal_mode in {
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+        *stored_input_modes,
+    }
+    qrf_tail_register_modes = {
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+        *stored_input_modes,
+    }
+    clean_run = terminal_mode == "qrf_tail_register_clean" or green_run
+    checkpoint_run = terminal_mode == "target_frame_checkpoint"
+    # Outside ``out``, so the no-H5-under-out sweep below still pins that a
+    # failed run leaves no release artifact.
+    target_frame_checkpoint_path = (
+        tmp_path / "checkpoints" / "target_frame_checkpoint.h5"
+    )
+    # What ``git rev-parse HEAD`` returns here; distinct from the short-commit
+    # sentinel so the checkpoint can only have received the full commit.
+    harness_full_commit = "c0de" * 10
     release_id = (
         "populace-us-2024-k2-gate-failure-test"
         if terminal_mode == "puf_tail"
@@ -5484,6 +6415,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     result = SimpleNamespace(
         skipped=(),
         diagnostics=(),
+        # A calibration result always carries its compiled problem; the
+        # pre-export post-export-scoring plan reads its targets (#956).
+        problem=SimpleNamespace(targets=()),
         initial_loss=2.0,
         final_loss=1.0,
         l0_lambda=0.2,
@@ -5627,7 +6561,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             release_id,
             "--asec-2023-weeks-unemployed-source",
             str(weeks_source),
-            "--no-target-frame-checkpoint",
+            *(
+                ["--target-frame-checkpoint", str(target_frame_checkpoint_path)]
+                if checkpoint_run
+                else ["--no-target-frame-checkpoint"]
+            ),
         ]
     if terminal_mode != "telemetry" and not prepared_pool:
         argv.append("--no-staging")
@@ -5649,6 +6587,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "--incumbent-diagnostics",
             str(tmp_path / "missing-incumbent.json"),
         ]
+    if terminal_mode in qrf_tail_register_modes:
+        tail_register = tmp_path / "qrf_tail_exclusions.json"
+        tail_register.write_text(
+            json.dumps(
+                {"estate_income": "donor tail concentrated before calibration"}
+                if green_run
+                else {
+                    "estate_income": "measured concentrated on another lineage",
+                    "bond_assets": "measured concentrated on another lineage",
+                }
+            )
+        )
+        argv += ["--qrf-tail-concentration-exclusions", str(tail_register)]
+    if green_run:
+        export_mass_reference = tmp_path / "reference_populace_us_2024.h5"
+        export_mass_reference.write_bytes(b"reference h5")
+        argv += [
+            "--export-input-mass-reference-h5",
+            str(export_mass_reference),
+            "--skip-reform-validation",
+            "--skip-demographics",
+        ]
+        if terminal_mode == "qrf_tail_register_green_skipped_smoke":
+            argv.append("--skip-reform-coverage-smoke")
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
 
@@ -5664,7 +6626,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_sha256",
         fake_sha256,
     )
-    monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: (
+            harness_full_commit if args == ("rev-parse", "HEAD") else "commit"
+        ),
+    )
     monkeypatch.setattr(
         builder,
         "_assert_cd_vintage_support_matches",
@@ -5717,15 +6685,34 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "telemetry",
         "puf_tail",
         "spm_missing_pool",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+        *stored_input_modes,
     }:
+
+        def fake_write_dataset(frame, path, *, period):
+            captured["written_dataset"] = Path(path)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"release h5")
+
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
-            lambda: SimpleNamespace(),
+            lambda: SimpleNamespace(write_dataset=fake_write_dataset),
         )
 
         def fake_input_coverage_gate(frame, engine):
             captured["terminal_gate_events"].append("input_coverage")
+            # Route A PR-3: by the first terminal gate, no verdict from a
+            # superseded attempt may remain, whether or not this run's gate
+            # would rewrite it.
+            captured["gate_evidence_on_disk_at_first_gate"] = sorted(
+                filename
+                for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
+                if (out / "releases" / release_id / filename).exists()
+            )
             return builder.GateResult(
                 name="input_coverage",
                 passed=True,
@@ -5734,6 +6721,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
         def fake_export_input_mass_gate(export_frame, base_frame, **kwargs):
             captured["terminal_gate_events"].append("input_mass_parity")
+            captured["export_input_mass_kwargs"] = kwargs
             return builder.GateResult(
                 name="export_input_mass_parity",
                 passed=True,
@@ -5746,6 +6734,40 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             reviewed_exclusions,
         ):
             captured["terminal_gate_events"].append("qrf_tail_concentration")
+            if green_run:
+                # The register's one column is genuinely concentrated (a
+                # repeated donor-ceiling value in 100 of 600 carriers), so
+                # the reviewed exclusion is used and the register matches.
+                captured["qrf_tail_register_seen"] = dict(reviewed_exclusions)
+                concentrated = np.zeros(12_000)
+                concentrated[:100] = 594_484.0
+                concentrated[100:600] = 2_979.0
+                return (
+                    builder.tail_concentration_gate(
+                        {"estate_income": concentrated},
+                        {"estate_income": np.ones(12_000)},
+                        reviewed_exclusions=reviewed_exclusions,
+                    ),
+                    {"checked_sparse_columns": ["estate_income"]},
+                )
+            if terminal_mode in qrf_tail_register_modes:
+                # The real gate on a dispersed column: estate_income is
+                # checked and below threshold (stale), bond_assets never
+                # reaches the gate (absent), so the register mismatches.
+                captured["qrf_tail_register_seen"] = dict(reviewed_exclusions)
+                dispersed = np.zeros(12_000)
+                dispersed[:600] = 1_000.0
+                return (
+                    builder.tail_concentration_gate(
+                        {"estate_income": dispersed},
+                        {"estate_income": np.ones(12_000)},
+                        reviewed_exclusions=reviewed_exclusions,
+                    ),
+                    {
+                        "checked_sparse_columns": ["estate_income"],
+                        "absent_columns": ["bond_assets"],
+                    },
+                )
             return (
                 builder.GateResult(
                     name="qrf_tail_concentration",
@@ -5770,6 +6792,47 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_qrf_tail_concentration_gate",
             fake_qrf_tail_concentration_gate,
         )
+    if clean_run:
+        # The household-only fake export frame cannot be classified, which
+        # the batched SPM composition gate records as a failure line. The
+        # clean run needs an empty batch before the tail gate, so the
+        # composition passes here.
+        monkeypatch.setattr(
+            builder,
+            "_spm_composition_gate_failures",
+            lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
+        )
+
+    # The stored-input gate (microcosm#1026) and its post-write check read the
+    # installed policyengine-us, absent in the fast lane, and the fake writer
+    # writes placeholder bytes, not an H5. So both are stubbed. They pass
+    # except in the two stored-input modes, which pin how _main acts on each
+    # verdict; test_us_stored_input_register.py pins the gate and the check.
+    def fake_stored_input_gate(frame, *, stage):
+        captured.setdefault("stored_input_gate_stages", []).append(stage)
+        if terminal_mode == "stored_input_refused":
+            return (
+                [STORED_INPUT_REFUSAL_FIXTURE],
+                {"evaluated": True, "refused": ["would_claim_wic"], "fixture": stage},
+            )
+        return ([], {"evaluated": True, "refused": [], "fixture": stage})
+
+    monkeypatch.setattr(builder, "_stored_input_gate_failures", fake_stored_input_gate)
+
+    def fake_written_stored_input_check(path, pre_export):
+        captured["stored_input_post_write_check"] = (
+            Path(path),
+            captured.get("written_dataset"),
+        )
+        if terminal_mode == "stored_input_premise":
+            return STORED_INPUT_PREMISE_FIXTURE
+        return None
+
+    monkeypatch.setattr(
+        builder,
+        "_written_stored_input_verdict_mismatch",
+        fake_written_stored_input_check,
+    )
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
     monkeypatch.setattr(
@@ -6967,9 +8030,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["other_health_insurance_gate_called"] = True
         calls = captured.setdefault("other_health_gate_calls", 0) + 1
         captured["other_health_gate_calls"] = calls
-        if calls == 1:
+        if calls == 1 or clean_run:
             # Staging call on the base frame passes: the pre-solve gate
-            # fails fast by design (nothing to preserve yet).
+            # fails fast by design (nothing to preserve yet). The clean run
+            # passes the export-frame call too.
             return builder.GateResult(
                 name="other_health_insurance_premiums_signal",
                 passed=True,
@@ -7012,8 +8076,53 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     def fake_materialize_target_frame(frame, specs, **kwargs):
+        captured["materialize_frame"] = frame
         captured["materialize_kwargs"] = kwargs
         return frame, registry, {"dropped_target_names": []}
+
+    def fake_staged_frame_sha256(frame):
+        # The digest itself is tested on real frames; this harness's frame is a
+        # household-only fake. Record which frame main() digests, so the run
+        # can prove it is the very frame handed to the materializer.
+        captured.setdefault("staged_digest_frames", []).append(frame)
+        return "staged-frame-sentinel"
+
+    real_write_target_frame_checkpoint = builder._write_target_frame_checkpoint
+
+    def recording_write_target_frame_checkpoint(
+        path, *, frame, identity, compilation, build_commit
+    ):
+        captured["checkpoint_write"] = {
+            "path": path,
+            "frame": frame,
+            "identity": dict(identity),
+            "build_commit": build_commit,
+        }
+        # The harness frame is a household-only fake the HDF writer cannot
+        # serialize. The real writer runs on a one-household stand-in, so the
+        # payload that reaches the diagnostics is the writer's own.
+        stand_in = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": np.asarray([1], dtype="int64"),
+                        "person_household_id": np.asarray([1], dtype="int64"),
+                    }
+                ),
+                "household": pd.DataFrame(
+                    {"household_id": np.asarray([1], dtype="int64")}
+                ),
+            },
+            EntitySchema(group_entities=("household",)),
+            {"household": Weights(np.ones(1), WeightKind.DESIGN)},
+        )
+        return real_write_target_frame_checkpoint(
+            path,
+            frame=stand_in,
+            identity=identity,
+            compilation=compilation,
+            build_commit=build_commit,
+        )
 
     def fake_degenerate_input_signal_gate(frame, engine):
         # In retirement mode this gate ALSO fails: the production masking
@@ -7044,6 +8153,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_materialize_target_frame",
         fake_materialize_target_frame,
     )
+    monkeypatch.setattr(builder, "_staged_frame_sha256", fake_staged_frame_sha256)
+    monkeypatch.setattr(
+        builder,
+        "_write_target_frame_checkpoint",
+        recording_write_target_frame_checkpoint,
+    )
 
     def fake_calibrate_l0_refit(*args, **kwargs):
         captured["l0_args"] = args
@@ -7065,15 +8180,28 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 {
                     "build": {
                         "release_gates": dict(build["release_gates"]),
+                        # The real writer copies ``build`` whole; this block
+                        # carries the checkpoint provenance (microcosm#956).
+                        "target_compilation": build["target_compilation"],
+                        # Route A PR-3: the solve's thread geometry must
+                        # survive a gate-failed run, which mints no manifest.
+                        **(
+                            {"calibration_runtime": build["calibration_runtime"]}
+                            if "calibration_runtime" in build
+                            else {}
+                        ),
                     }
-                }
+                },
+                allow_nan=False,
             )
         )
         return path
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
     if terminal_mode == "puf_tail":
-        ladder_outcome = SimpleNamespace(
+        # The real receipt type, so ``_main``'s exact-k branch that drops the
+        # calibration frames before the export (microcosm#956) runs here.
+        ladder_outcome = builder.ExactKLadderCalibration(
             result=result,
             support=np.asarray([0, 1], dtype=np.int64),
             selected_inclusion_probabilities=np.ones(2),
@@ -7164,7 +8292,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # own early failure. Other modes retain the microcosm#547 delivery
         # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
-        passes = terminal_mode in {"integrity", "retirement", "puf_tail"}
+        passes = terminal_mode in {
+            "integrity",
+            "retirement",
+            "puf_tail",
+            "qrf_tail_register_clean",
+            "qrf_tail_register_green",
+            "qrf_tail_register_green_skipped_smoke",
+            *stored_input_modes,
+        }
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=passes,
@@ -7200,6 +8336,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     def fake_release_gate_failures(*args, **kwargs):
+        if clean_run:
+            return []
         if terminal_mode == "crash":
             raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
         if terminal_mode == "retirement":
@@ -7235,6 +8373,40 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "write_calibration_diagnostics",
         fake_write_calibration_diagnostics,
     )
+    # The pre-export post-export-scoring plan (microcosm#956) dry-runs the real
+    # smoke and reform-validation consumers without an engine; only the reform
+    # objects they build need policyengine-core, which the engine-free lane
+    # does not install.
+    import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
+    import microcosm.build.us_runtime.reform_validation as reform_validation_module
+
+    monkeypatch.setattr(smoke_module, "_build_reform", lambda probe: probe.id)
+    monkeypatch.setattr(
+        reform_validation_module.ReformValidationSpec,
+        "build_reform",
+        lambda spec: spec.id,
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: tuple(sorted(changes)),
+    )
+
+    if green_run:
+        _run_green_register_release(
+            builder,
+            monkeypatch,
+            captured=captured,
+            out=out,
+            release_id=release_id,
+            tail_register=tail_register,
+            export_mass_reference=export_mass_reference,
+            skipped_smoke=terminal_mode == "qrf_tail_register_green_skipped_smoke",
+            stored_input_mode=(
+                terminal_mode if terminal_mode in stored_input_modes else None
+            ),
+        )
+        return
 
     try:
         builder.main()
@@ -7286,16 +8458,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Bernoulli-law violation [final-integrity-sentinel]"
             )
             assert "SSI take-up delivery failed:" not in message
+        elif clean_run:
+            # The register mismatch is the run's only terminal failure, yet
+            # it reaches the batched raise (the old register raise escaped
+            # before it): the gate's own stale line, then the register line.
+            assert message == (
+                "Release gates failed: QRF tail concentration failed: Stale "
+                "reviewed exclusions — the column is below the concentration "
+                "threshold now, remove the exclusion: ['estate_income'].; "
+                + builder._qrf_tail_register_failures(
+                    {"stale": ["estate_income"], "unused": ["bond_assets"]}
+                )[0]
+            )
         else:
             assert message.startswith(
                 "Release gates failed: SSI take-up delivery failed: "
                 "18_64 delivered over envelope [cofailure-sentinel]"
             )
-        assert (
-            "Other health insurance signal failed on the export frame: "
-            "premiums signal flattened [cofailure-sentinel]" in message
-        )
-        if terminal_mode != "crash":
+        if not clean_run:
+            assert (
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]" in message
+            )
+        if clean_run:
+            pass
+        elif terminal_mode != "crash":
             assert "ctc failed" in message
             if terminal_mode == "telemetry":
                 assert (
@@ -7307,6 +8494,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert "health-input exploded [crash-sentinel]" in message
             assert "release-gate evaluation exploded [crash-sentinel]" in message
             assert "ctc failed" not in message
+        if terminal_mode in qrf_tail_register_modes:
+            # Both the gate's own stale line and the distinct register line
+            # ride the batch; the register never collapses into an
+            # "evaluation error" that nulls the gate.
+            assert "QRF tail concentration failed: Stale reviewed exclusions" in message
+            assert (
+                f"{builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX} the per-run "
+                "exclusion register must exactly match" in message
+            )
+            assert "['estate_income']" in message
+            assert "['bond_assets']" in message
+            assert "evaluation error" not in message
+            assert "QRF tail-concentration evaluation failed" not in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 
@@ -7314,6 +8514,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
+    # Route A PR-3: a gate-failed run writes no manifest, so its diagnostics
+    # are where the solve's thread geometry survives.
+    assert not (release_dir / "build_manifest.json").exists()
+    failed_runtime = written_diagnostics["build"]["calibration_runtime"]
+    assert set(failed_runtime) == {"torch", "torch_num_threads", "omp_num_threads"}
+    assert failed_runtime["torch_num_threads"] >= 1
+    assert failed_runtime["omp_num_threads"] == os.environ["OMP_NUM_THREADS"]
     if terminal_mode == "puf_tail":
         assert (
             "Exact-k PUF capital-gains tail failed: "
@@ -7368,6 +8575,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ],
         ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
         selection_identities_sha256=cache_context["selection_identities_sha256"],
+        staged_frame_sha256="staged-frame-sentinel",
     )
     assert evidence_identity == dict(expected_evidence_identity)
     ids_block = final_weights_metadata.pop("household_ids")
@@ -7406,6 +8614,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # H5s land under the out root (not the release dir), so sweep the tree.
     assert not list(out.rglob("*.h5"))
     assert not list(release_dir.glob("*manifest*"))
+    if terminal_mode in qrf_tail_register_modes:
+        assert captured["qrf_tail_register_seen"] == {
+            "estate_income": "measured concentrated on another lineage",
+            "bond_assets": "measured concentrated on another lineage",
+        }
+        tail_payload = json.loads(
+            (release_dir / "qrf_tail_concentration.json").read_text()
+        )
+        assert tail_payload["surface"]["register_mismatch"] == {
+            "stale": ["estate_income"],
+            "unused": ["bond_assets"],
+        }
+        tail_details = tail_payload["tail_concentration"]["details"]
+        assert tail_details["top_share"]["estate_income"] == pytest.approx(1 / 6)
+        assert tail_details["dormant_exclusions"] == ["bond_assets"]
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
         assert captured["weeks_unemployed_telemetry"] == {
@@ -7417,7 +8640,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "source_sha256": builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
             "source_rows": 2,
         }
-    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
+    if terminal_mode in {
+        "integrity",
+        "retirement",
+        "telemetry",
+        "puf_tail",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+    }:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
@@ -7458,6 +8688,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "premiums signal flattened [cofailure-sentinel]",
                 "ctc failed",
             ]
+        elif clean_run:
+            # Nothing failed before the terminal tail gate.
+            expected_gate_failures = []
         else:
             # The retry line carries the written artifact's sha256 — the
             # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
@@ -7515,6 +8748,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
     }
+    # The diagnostics carry a complete post-export scoring plan, never an
+    # error record, so no plan line joins the terminal batch (#956).
+    post_export_scoring = captured["diagnostics"]["post_export_scoring"]
+    assert "error" not in post_export_scoring
+    assert list(post_export_scoring["consumers"]) == [
+        "reform_coverage_smoke",
+        "reform_validation",
+        "demographics",
+    ]
     assert captured["diagnostics"]["default_dataset"] == {
         "method": "l0_refit",
         "sparse": True,
@@ -7685,10 +8927,47 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ],
         ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
         selection_identities_sha256=cache_context["selection_identities_sha256"],
+        staged_frame_sha256="staged-frame-sentinel",
     )
     assert cache_context[
         "target_frame_materializer_identity_sha256"
     ] == builder._target_frame_checkpoint_digest(expected_materializer_identity)
+    # microcosm#956: one staged digest per run, taken on the exact frame
+    # object the materializer received.
+    assert len(captured["staged_digest_frames"]) == 1
+    assert captured["staged_digest_frames"][0] is captured["materialize_frame"]
+    assert cache_context["build_commit"] == harness_full_commit
+    checkpoint_payload = written_diagnostics["build"]["target_compilation"][
+        "target_frame_checkpoint"
+    ]
+    if checkpoint_run:
+        # microcosm#956: main() hands the writer this build's full commit and
+        # the materialized frame, and the writer's payload reaches the written
+        # diagnostics unchanged.
+        checkpoint_write = captured["checkpoint_write"]
+        assert checkpoint_write["path"] == target_frame_checkpoint_path
+        assert checkpoint_write["frame"] is captured["materialize_frame"]
+        assert checkpoint_write["identity"] == dict(expected_materializer_identity)
+        assert checkpoint_write["build_commit"] == harness_full_commit
+        assert checkpoint_payload == {
+            "enabled": True,
+            "status": "miss_written",
+            "path": str(target_frame_checkpoint_path),
+            "identity_sha256": builder._target_frame_checkpoint_digest(
+                expected_materializer_identity
+            ),
+            "schema_version": builder.TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+            "staged_frame_sha256": "staged-frame-sentinel",
+            "source_build_commit": harness_full_commit,
+        }
+        with h5py.File(target_frame_checkpoint_path, "r") as h5:
+            assert str(h5.attrs["build_commit"]) == harness_full_commit
+            assert json.loads(str(h5.attrs["identity_json"])) == dict(
+                expected_materializer_identity
+            )
+    else:
+        assert "checkpoint_write" not in captured
+        assert checkpoint_payload == {"enabled": False, "status": "disabled"}
     # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
     # the #548 batched terminal gates): the final measurement hits disk
     # BEFORE the final integrity gate runs. Delivery still evaluates after
@@ -7700,7 +8979,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
     ]
-    if terminal_mode not in {"integrity", "retirement"}:
+    if terminal_mode not in {"integrity", "retirement", "qrf_tail_register_clean"}:
         # A delivery miss rewrites the final measurement as the retry basis.
         expected_ssi_event_order.append("write:us_ssi_take_up.json")
     assert captured["ssi_event_order"] == expected_ssi_event_order
@@ -9104,6 +10383,11 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
             assert kwargs == {}
             return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
 
+        def get_holder(self, variable):
+            # The batched base pass reads each population-aggregate holder;
+            # this engine never computes one.
+            return SimpleNamespace(get_known_periods=lambda: [])
+
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1
 
@@ -9193,15 +10477,18 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert dropped["target_materialization_cache"]["writes"] == 1
     assert len(list(tmp_path.glob("*.json"))) == 1
     assert len(list(tmp_path.glob("*.npy"))) == 1
+    # The base simulation runs over the same one-household batches as the
+    # reform family, so both build one dataset per household.
     assert [dataset[1] for dataset in datasets] == [
+        (),
         (),
         ("mock_credit",),
         ("mock_credit",),
     ]
-    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1]
-    assert [dataset[3] for dataset in datasets] == [False, False, False]
+    assert [dataset[0].n("household") for dataset in datasets] == [1, 1, 1, 1]
+    assert [dataset[3] for dataset in datasets] == [False, False, False, False]
     assert formula_owned_assertions == [2, 2]
-    assert len(simulations) == 3
+    assert len(simulations) == 4
     # microcosm#456: one reform system per target family (the metadata system
     # plus one family system), shared by every batch simulation of the family
     # — not one engine build per batch.
@@ -9209,13 +10496,18 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert [system.reform is not None for system in reform_systems] == [False, True]
     assert [simulation.tax_benefit_system for simulation in simulations] == [
         None,
+        None,
         reform_systems[1],
         reform_systems[1],
     ]
     # Each simulation was released (dataset reference severed), not merely
     # cache-invalidated.
-    assert [simulation.dataset for simulation in simulations] == [None, None, None]
-    assert [simulation.cache_invalidations for simulation in simulations] == [0, 0, 0]
+    assert [simulation.dataset for simulation in simulations] == [None] * 4
+    assert [simulation.cache_invalidations for simulation in simulations] == [0] * 4
+    assert dropped["target_materialization_batching"]["batches"] == 2
+    assert (
+        dropped["target_materialization_batching"]["jct_reform_families_simulated"] == 1
+    )
 
     target_frame_again, registry_again, dropped_again = (
         builder._materialize_target_frame(
@@ -9238,14 +10530,16 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert dropped_again["target_materialization_cache"]["writes"] == 0
     assert [dataset[1] for dataset in datasets] == [
         (),
+        (),
         ("mock_credit",),
         ("mock_credit",),
         (),
+        (),
     ]
-    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1, 2]
-    assert [dataset[3] for dataset in datasets] == [False, False, False, False]
+    assert [dataset[0].n("household") for dataset in datasets] == [1] * 6
+    assert [dataset[3] for dataset in datasets] == [False] * 6
     assert formula_owned_assertions == [2, 2, 2]
-    assert len(simulations) == 4
+    assert len(simulations) == 6
     # The cache hit skips reform materialization entirely, so the second run
     # adds only its metadata system — no new family system is built.
     assert len(reform_systems) == 3
@@ -9254,18 +10548,14 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         True,
         False,
     ]
-    assert [simulation.dataset for simulation in simulations] == [
-        None,
-        None,
-        None,
-        None,
-    ]
-    assert [simulation.cache_invalidations for simulation in simulations] == [
-        0,
-        0,
-        0,
-        0,
-    ]
+    assert [simulation.dataset for simulation in simulations] == [None] * 6
+    assert [simulation.cache_invalidations for simulation in simulations] == [0] * 6
+    assert (
+        dropped_again["target_materialization_batching"][
+            "jct_reform_families_simulated"
+        ]
+        == 0
+    )
 
 
 def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> None:
@@ -10840,6 +12130,435 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
     )
 
 
+def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
+    """A release dir with the contract files a manifest build hashes."""
+    release_id = "populace-us-2024-abcdef1-20260923"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text(json.dumps(coverage))
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "2.2.1",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+    return release_id, release_dir, artifact_root
+
+
+def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
+    monkeypatch, tmp_path
+) -> None:
+    """Route A remediation PR-3: a certified waiver must ship with the
+    release. The four gate verdicts become release artifacts, and both
+    manifests record the register the tail gate evaluated, the export-mass
+    reference, the solve's thread geometry and the exclusion receipt."""
+    from microcosm.data.contract import (
+        _check_build_manifest,
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    receipt = {
+        "reviewed_exclusion": ["irs_soi.ty2023.fixture_row"],
+        "vintage_bypass_allowlist": ["irs_soi.ty2020.fixture_row"],
+    }
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder,
+        monkeypatch,
+        tmp_path,
+        coverage={builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY: receipt},
+    )
+    register = _qrf_tail_register(
+        tmp_path, {"non_sch_d_capital_gains": "donor-ceiling tail, tracked #481"}
+    )
+    failures: list[str] = []
+    assert (
+        _record_qrf_tail(
+            builder,
+            release_dir,
+            _qrf_export_frame(builder, _qrf_build_m_values()),
+            register=register,
+            allow=False,
+            failures=failures,
+        )[0]
+        == []
+    )
+    assert failures == []
+    for filename in ("input_coverage.json", "input_mass_parity.json"):
+        (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
+    (release_dir / "reform_coverage_smoke.json").write_text(
+        '{"schema_version": 1, "enforced": true}'
+    )
+    reference = {
+        "path": "/runtime/forensics/populace_us_2024.h5",
+        "sha256": "c" * 64,
+        "reference_name": "populace_us_2024.h5",
+    }
+    runtime = builder._calibration_runtime()
+    # The register the gate evaluated, then an operator edit during the hours
+    # before the manifest write: the manifests must still bind the evaluated
+    # bytes and entries, never the file as it stands at manifest time.
+    evaluated_register_sha256 = hashlib.sha256(register.read_bytes()).hexdigest()
+    register.write_text(json.dumps({"estate_income": "edited after the gate ran"}))
+
+    builder._build_manifests(
+        export_input_mass_reference=reference,
+        calibration_runtime=runtime,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    for key, filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.items():
+        assert release_manifest["artifacts"][key] == {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "revision": release_id,
+            "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+        }
+    coverage_bytes = (release_dir / "us_source_coverage.json").read_bytes()
+    tail_surface = json.loads(
+        (release_dir / "qrf_tail_concentration.json").read_text()
+    )["surface"]
+    assert tail_surface["reviewed_exclusions_sha256"] == evaluated_register_sha256
+    assert (
+        evaluated_register_sha256 != hashlib.sha256(register.read_bytes()).hexdigest()
+    )
+    expected = {
+        "gate_evidence": dict.fromkeys(builder.US_RELEASE_GATE_EVIDENCE_FILES, "bound"),
+        "qrf_tail_register": {
+            "path": str(register),
+            "sha256": evaluated_register_sha256,
+            "entries": {"non_sch_d_capital_gains": "donor-ceiling tail, tracked #481"},
+            "mismatch": {"stale": [], "unused": []},
+            "enforced": True,
+        },
+        "export_input_mass_reference": reference,
+        "calibration_runtime": runtime,
+        "fiscal_target_exclusion_receipt": {
+            "artifact": "us_source_coverage",
+            "path": "us_source_coverage.json",
+            "sha256": hashlib.sha256(coverage_bytes).hexdigest(),
+            "key": builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+            "present": True,
+            "receipt_sha256": hashlib.sha256(
+                json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        },
+    }
+    for key, block in expected.items():
+        assert build_manifest[key] == block
+        assert release_manifest["build"][key] == block
+
+    # The publisher contract accepts the manifests and uploads the evidence.
+    contract_failures: list[str] = []
+    _check_build_manifest(build_manifest, release_id, contract_failures)
+    _check_release_manifest(release_manifest, release_id, contract_failures)
+    _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+    assert contract_failures == []
+    assert set(builder.US_RELEASE_GATE_EVIDENCE_FILES.values()) <= set(
+        _release_manifest_release_artifacts(release_dir)
+    )
+    # ...and its local hash check covers each file: an edited verdict fails.
+    for key, filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.items():
+        original = (release_dir / filename).read_bytes()
+        (release_dir / filename).write_bytes(original + b"\n")
+        contract_failures = []
+        _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+        assert len(contract_failures) == 1
+        assert f"artifact {key!r} declares sha256" in contract_failures[0]
+        (release_dir / filename).write_bytes(original)
+
+
+def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_receipt(
+    monkeypatch, tmp_path
+) -> None:
+    """A --allow-qrf-tail-concentration run on concentrated values, with no
+    register: the block still says so (null path and sha256, no entries) and
+    records that the tail gate was not enforced, and a coverage file without
+    the PR-1 receipt is referenced as absent rather than silently omitted."""
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    failures: list[str] = []
+    _record_qrf_tail(
+        builder,
+        release_dir,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=None,
+        allow=True,
+        failures=failures,
+    )
+    assert failures == []
+
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build = release_manifest["build"]
+    assert build["qrf_tail_register"] == {
+        "path": None,
+        "sha256": None,
+        "entries": {},
+        "mismatch": {"stale": [], "unused": []},
+        "enforced": False,
+    }
+    assert build["fiscal_target_exclusion_receipt"]["present"] is False
+    assert build["fiscal_target_exclusion_receipt"]["receipt_sha256"] is None
+    # A verdict that was not written is named, never silently missing.
+    assert build["gate_evidence"] == {
+        "input_coverage": "not_evaluated",
+        "input_mass_parity": "not_evaluated",
+        "qrf_tail_concentration": "bound",
+        "reform_coverage_smoke": "not_evaluated",
+    }
+    # Only the verdict this run wrote is an artifact; direct callers that
+    # pass no reference or runtime get no such block.
+    evidence_keys = set(builder.US_RELEASE_GATE_EVIDENCE_FILES)
+    assert evidence_keys & set(release_manifest["artifacts"]) == {
+        "qrf_tail_concentration"
+    }
+    assert "export_input_mass_reference" not in build
+    assert "calibration_runtime" not in build
+
+
+def test_build_manifests_without_gate_evidence_binds_none() -> None:
+    builder = _load_builder_module()
+    assert builder._qrf_tail_register_manifest_block(Path("/nonexistent")) is None
+    assert builder._gate_evidence_artifacts(Path("/nonexistent"), revision="r") == {}
+
+
+def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
+    """A skipped smoke and a gate that crashed under earlier failures both
+    leave no verdict; the status block tells them apart. A gate cannot be
+    both skipped and bound, and only the four bound gates can be skipped."""
+    builder = _load_builder_module()
+    bound = {"input_coverage": {}, "input_mass_parity": {}}
+
+    assert builder._gate_evidence_status(
+        bound, skipped_gates=("reform_coverage_smoke",)
+    ) == {
+        "input_coverage": "bound",
+        "input_mass_parity": "bound",
+        "qrf_tail_concentration": "not_evaluated",
+        "reform_coverage_smoke": "skipped",
+    }
+    with pytest.raises(ValueError, match=r"skipped have a verdict.*input_coverage"):
+        builder._gate_evidence_status(bound, skipped_gates=("input_coverage",))
+    with pytest.raises(ValueError, match=r"Unknown skipped release gates"):
+        builder._gate_evidence_status(bound, skipped_gates=("reform_validation",))
+
+
+def test_release_calibration_diagnostics_record_calibration_runtime(
+    monkeypatch, tmp_path
+) -> None:
+    """Route A PR-3: the diagnostics file is written before the batched
+    pre-export raise, so it is where a gate-failed run keeps the solve's
+    thread geometry. Direct callers that pass none get no block."""
+    builder = _load_builder_module()
+    builds: list[dict] = []
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        lambda result, path, *, target_registry, build: builds.append(build),
+    )
+    gate = SimpleNamespace(passed=True, failures=(), details={})
+    kwargs = dict(
+        result=SimpleNamespace(),
+        release_dir=tmp_path,
+        registry=TargetRegistry((), country="us"),
+        base_dataset_sha256="base-sha",
+        compilation={"dropped_target_names": []},
+        target_profile_gate=gate,
+        health_input_gate=None,
+        base_population_gate=None,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=["QRF tail concentration failed: fixture"],
+    )
+    runtime = {"torch": "2.12.0", "torch_num_threads": 16, "omp_num_threads": "16"}
+
+    builder._write_release_calibration_diagnostics(
+        calibration_runtime=runtime, **kwargs
+    )
+    builder._write_release_calibration_diagnostics(**kwargs)
+
+    assert builds[0]["calibration_runtime"] == runtime
+    assert builds[0]["release_gates"]["passed"] is False
+    assert "calibration_runtime" not in builds[1]
+
+
+def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
+    """Structural pin: every bound file name is the literal a gate writes,
+    and _main() clears them all before the first gate writes, so a rename
+    or a reordering cannot silently drop a verdict or bind a stale one."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values():
+        assert f'release_dir / "{filename}"' in source, filename
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    [clear_loop] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.For)
+        and ast.unparse(node.iter) == "US_RELEASE_GATE_EVIDENCE_FILES.values()"
+    ]
+    # Unconditional: a statement of _main itself (not under an if/try), whose
+    # whole body is one unlink of every file, so no edit can narrow it to
+    # some gates or some runs without failing here.
+    assert clear_loop in main_fn.body
+    assert [ast.unparse(statement) for statement in clear_loop.body] == [
+        f"(release_dir / {ast.unparse(clear_loop.target)}).unlink(missing_ok=True)"
+    ]
+    assert not clear_loop.orelse
+    first_gate = min(
+        node.lineno
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id
+        in {
+            "us_release_input_coverage_gate",
+            "_export_input_mass_gate",
+            "_record_qrf_tail_concentration_gate",
+            "us_reform_coverage_smoke_gate",
+        }
+    )
+    assert clear_loop.lineno < first_gate
+    [runtime_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_calibration_runtime"
+    ]
+    solves = [
+        node.lineno
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id
+        in {"calibrate", "calibrate_l0_refit", "calibrate_exact_k_ladder"}
+    ]
+    assert len(solves) == 3
+    assert runtime_call.lineno < min(solves)
+    [manifest_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    keywords = {
+        keyword.arg: ast.unparse(keyword.value) for keyword in manifest_call.keywords
+    }
+    assert keywords["export_input_mass_reference"] == "export_input_mass_reference"
+    assert keywords["calibration_runtime"] == "calibration_runtime"
+    assert keywords["skipped_gates"] == (
+        "('reform_coverage_smoke',) if args.skip_reform_coverage_smoke else ()"
+    )
+    [diagnostics_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_write_release_calibration_diagnostics"
+    ]
+    assert {
+        keyword.arg: ast.unparse(keyword.value) for keyword in diagnostics_call.keywords
+    }["calibration_runtime"] == "calibration_runtime"
+
+
+def test_fiscal_target_exclusion_receipt_writer_uses_the_manifest_key() -> None:
+    """The manifests look the PR-1 receipt up under
+    US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY. A writer keyed by its own string
+    literal would drift silently on a rename: every manifest would then say
+    present=false. So the coverage write must use the constant, and once the
+    receipt compiler is in the tool, exactly one such write must exist."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    main_fn = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    coverage_keys = [
+        target.slice
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Subscript)
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "coverage"
+    ]
+    assert coverage_keys, "the source-coverage writes moved; re-anchor this pin"
+    assert not [
+        key
+        for key in coverage_keys
+        if isinstance(key, ast.Constant)
+        and key.value == builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY
+    ], "write the receipt under US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY"
+    receipt_writes = [
+        key
+        for key in coverage_keys
+        if isinstance(key, ast.Name)
+        and key.id == "US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY"
+    ]
+    if hasattr(builder, "us_fiscal_target_exclusion_receipt"):
+        assert len(receipt_writes) == 1
+
+
+def test_calibration_runtime_records_the_solve_thread_geometry(monkeypatch) -> None:
+    import torch
+
+    builder = _load_builder_module()
+    monkeypatch.setenv("OMP_NUM_THREADS", "7")
+
+    runtime = builder._calibration_runtime()
+
+    assert runtime == {
+        "torch": str(torch.__version__),
+        "torch_num_threads": torch.get_num_threads(),
+        "omp_num_threads": "7",
+    }
+    json.dumps(runtime, allow_nan=False)
+
+
 def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> None:
     """The pool is post-agreement input, so its owned producers run only legacy."""
     import ast
@@ -11811,6 +13530,11 @@ def _install_multi_reform_fakes(
             }
             return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
 
+        def get_holder(self, variable):
+            # The batched base pass reads each population-aggregate holder;
+            # this engine never computes one.
+            return SimpleNamespace(get_known_periods=lambda: [])
+
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1
 
@@ -12495,6 +14219,7 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
     )
     legacy = builder._target_frame_checkpoint_identity(**common)
     default_kwarg = builder._target_frame_checkpoint_identity(
@@ -12531,6 +14256,7 @@ def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
         frame=small_frame,
         identity=legacy,
         compilation={"declared_targets": 0},
+        build_commit="fixture-commit",
     )
     assert (
         builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
@@ -12561,6 +14287,7 @@ def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
         "weeks_unemployed_source_sha256": "weeks-source-sha",
         "congressional_district_vintage_crosswalk_sha256": None,
         "ssi_take_up_assignment_sha256": "ssi-flags-sha",
+        "staged_frame_sha256": "staged-frame-sha",
     }
     full_pool = builder._target_frame_checkpoint_identity(
         **common, selection_identities_sha256=None
@@ -12586,6 +14313,7 @@ def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
         frame=small_frame,
         identity=prefix_shape,
         compilation={},
+        build_commit="fixture-commit",
     )
     assert (
         builder._read_target_frame_checkpoint(
@@ -12843,6 +14571,371 @@ def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
         ],
     )
     assert builder._parse_args().allow_qrf_tail_concentration
+
+
+# --- QRF tail register mismatch is a batched, evidence-preserving failure ---
+
+
+def _qrf_dispersed_values() -> np.ndarray:
+    # 500 equal carriers of 12,000 person records: top-100 share is 20%.
+    values = np.zeros(12_000)
+    values[:500] = 2_979.0
+    return values
+
+
+def _qrf_build_m_values() -> np.ndarray:
+    # The Build M point mass: the top 100 carriers hold ~98% of the mass.
+    values = np.zeros(12_000)
+    values[:100] = 594_484.0
+    values[100:500] = 2_979.0
+    return values
+
+
+def _qrf_tail_register(tmp_path, entries: dict[str, str]) -> Path:
+    path = tmp_path / "qrf_tail_exclusions.json"
+    path.write_text(json.dumps(entries))
+    return path
+
+
+class _RecordingTelemetry:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str, dict]] = []
+
+    def stage(self, stage, **details):
+        self.events.append(("stage", stage, dict(details)))
+
+    def attach_artifact(self, name, path, **details):
+        self.events.append(("attach_artifact", name, {"path": Path(path)}))
+
+
+def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
+    recorder = _RecordingTelemetry()
+    register_failures = builder._record_qrf_tail_concentration_gate(
+        frame,
+        exclusions_path=register,
+        allow_concentration=allow,
+        terminal_gate_failures=failures,
+        release_dir=tmp_path,
+        telemetry=builder._TerminalBatchTelemetry(recorder, failures),
+    )
+    return register_failures, recorder
+
+
+def test_qrf_tail_register_mismatch_splits_stale_and_unused_entries() -> None:
+    builder = _load_builder_module()
+    register = {
+        "non_sch_d_capital_gains": "checked, now dispersed",
+        "taxable_interest_income": "dense in this export",
+        "short_term_capital_gains": "absent from this export",
+        "not_a_qrf_output": "never a checked column",
+    }
+    gate, _ = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, _qrf_dispersed_values()),
+        reviewed_exclusions=register,
+    )
+
+    mismatch = builder._qrf_tail_register_mismatch(register, gate)
+
+    assert mismatch == {
+        "stale": ["non_sch_d_capital_gains"],
+        "unused": [
+            "not_a_qrf_output",
+            "short_term_capital_gains",
+            "taxable_interest_income",
+        ],
+    }
+    [line] = builder._qrf_tail_register_failures(mismatch)
+    assert line.startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    assert "['non_sch_d_capital_gains']" in line
+    assert "'taxable_interest_income'" in line
+    # A register that matches the concentrated surface exactly is clean.
+    concentrated, _ = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        reviewed_exclusions={"non_sch_d_capital_gains": "tracked #481"},
+    )
+    matched = builder._qrf_tail_register_mismatch(
+        {"non_sch_d_capital_gains": "tracked #481"}, concentrated
+    )
+    assert matched == {"stale": [], "unused": []}
+    assert builder._qrf_tail_register_failures(matched) == []
+
+
+def test_qrf_tail_register_mismatch_on_a_clean_run_is_batched_not_raised(
+    tmp_path,
+) -> None:
+    """The route A premortem blocker: a register mismatch that is the run's
+    FIRST terminal failure used to raise before the batched path, losing the
+    tail evidence and the #568 weight sidecar. It must now be one more batched
+    failure with qrf_tail_concentration.json on disk."""
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path,
+        {
+            "non_sch_d_capital_gains": "checked, now dispersed",
+            "taxable_interest_income": "dense in this export",
+        },
+    )
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_dispersed_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert len(register_failures) == 1
+    assert register_failures[0].startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    # The gate's own stale failure and the register line both ride the batch.
+    assert failures == [
+        "QRF tail concentration failed: Stale reviewed exclusions — the "
+        "column is below the concentration threshold now, remove the "
+        "exclusion: ['non_sch_d_capital_gains'].",
+        *register_failures,
+    ]
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["enforced"] is True
+    details = payload["tail_concentration"]["details"]
+    assert details["top_share"]["non_sch_d_capital_gains"] == pytest.approx(0.2)
+    assert details["carrier_counts"] == {"non_sch_d_capital_gains": 500}
+    assert payload["surface"]["register_mismatch"] == {
+        "stale": ["non_sch_d_capital_gains"],
+        "unused": ["taxable_interest_income"],
+    }
+    assert payload["surface"]["reviewed_exclusions_file"] == str(register)
+    assert payload["surface"]["reviewed_exclusions_sha256"] == (
+        hashlib.sha256(register.read_bytes()).hexdigest()
+    )
+    assert [event[:2] for event in recorder.events] == [
+        ("attach_artifact", "qrf_tail_concentration"),
+        ("stage", "export_dataset"),
+    ]
+    stage_details = recorder.events[1][2]
+    assert stage_details["status"] == "failed"
+    assert stage_details["failures"][-1] == register_failures[0]
+
+
+def test_qrf_tail_register_mismatch_under_earlier_failures_keeps_evidence(
+    tmp_path,
+) -> None:
+    """The degraded path: with earlier failures the old raise became an
+    ``evaluation error`` line and nulled the gate, so the JSON and the gate's
+    own failures were dropped. Now both are recorded."""
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path, {"short_term_capital_gains": "absent from this export"}
+    )
+    failures = ["Input mass parity failed: long_term_capital_gains +230.7%"]
+
+    _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert failures[0].startswith("Input mass parity failed:")
+    assert failures[1].startswith(
+        "QRF tail concentration failed: non_sch_d_capital_gains: top 100"
+    )
+    assert failures[2].startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    assert "['short_term_capital_gains']" in failures[2]
+    assert len(failures) == 3
+    assert not any("evaluation" in line for line in failures)
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["tail_concentration"]["details"]["top_share"][
+        "non_sch_d_capital_gains"
+    ] == pytest.approx(0.98, abs=0.01)
+    assert payload["surface"]["register_mismatch"]["unused"] == [
+        "short_term_capital_gains"
+    ]
+
+
+def test_qrf_tail_register_mismatch_refuses_whatever_the_allow_flag_says(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path, {"short_term_capital_gains": "absent from this export"}
+    )
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=True,
+        failures=failures,
+    )
+
+    # --allow-qrf-tail-concentration waives the concentrated column, never
+    # the register mismatch (the replaced raise ignored the flag too).
+    assert failures == register_failures
+    assert len(failures) == 1
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["enforced"] is False
+    assert payload["tail_concentration"]["passed"] is False
+    assert recorder.events[-1][2]["failures"] == register_failures
+
+
+def test_qrf_tail_matching_register_records_a_clean_pass(tmp_path) -> None:
+    builder = _load_builder_module()
+    register = _qrf_tail_register(tmp_path, {"non_sch_d_capital_gains": "#481"})
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert register_failures == []
+    assert failures == []
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["tail_concentration"]["passed"] is True
+    assert payload["surface"]["register_mismatch"] == {"stale": [], "unused": []}
+    assert [event[:2] for event in recorder.events] == [
+        ("attach_artifact", "qrf_tail_concentration")
+    ]
+
+
+def test_qrf_tail_evaluation_crash_keeps_the_degraded_contract(tmp_path) -> None:
+    builder = _load_builder_module()
+    bad_register = _qrf_tail_register(tmp_path, {"non_sch_d_capital_gains": " "})
+    frame = _qrf_export_frame(builder, _qrf_dispersed_values())
+
+    # A clean run still propagates a genuine evaluation crash.
+    with pytest.raises(ValueError, match="non-empty"):
+        _record_qrf_tail(
+            builder, tmp_path, frame, register=bad_register, allow=False, failures=[]
+        )
+
+    failures = ["ctc failed"]
+    assert (
+        _record_qrf_tail(
+            builder,
+            tmp_path,
+            frame,
+            register=bad_register,
+            allow=False,
+            failures=failures,
+        )[0]
+        == []
+    )
+    assert failures[1].startswith(
+        "QRF tail concentration failed: evaluation error under earlier gate "
+        "failures: ValueError:"
+    )
+    assert not (tmp_path / "qrf_tail_concentration.json").exists()
+    # The pre-refactor contract: an evaluation crash under earlier failures
+    # keeps the standing-owned prefix, so --evidence-release ownership of it
+    # is unchanged (only a register mismatch is refused outright).
+    builder._evidence_known_failures(failures[1:], builder.US_EVIDENCE_FAILURE_OWNERS)
+
+
+def test_evidence_release_refuses_a_qrf_tail_register_mismatch_even_when_owned(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    lines = builder._qrf_tail_register_failures(
+        {"stale": ["estate_income"], "unused": ["bond_assets"]}
+    )
+
+    # Never standing-owned: the prefix is not "QRF tail concentration failed:".
+    assert "QRF tail concentration failed:" not in lines[0]
+    with pytest.raises(RuntimeError, match="match no\\s+owner"):
+        builder._evidence_known_failures(lines, builder.US_EVIDENCE_FAILURE_OWNERS)
+    # Even a per-run adjudication that owns the line cannot carry it into an
+    # evidence export: a register mismatch is fixed in the register.
+    owners = tmp_path / "owners.json"
+    owners.write_text(
+        json.dumps(
+            {
+                builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX: (
+                    "PolicyEngine/microcosm#900"
+                )
+            }
+        )
+    )
+    patterns = builder._load_evidence_failure_owner_patterns(owners)
+    assert builder._evidence_known_failures(lines, patterns)
+    refusal = builder._qrf_tail_register_evidence_refusal(lines)
+    assert isinstance(refusal, RuntimeError)
+    assert "cannot be owned" in str(refusal)
+    assert lines[0] in str(refusal)
+    assert builder._qrf_tail_register_evidence_refusal([]) is None
+
+
+def test_qrf_tail_register_refusal_is_wired_into_the_evidence_batch() -> None:
+    """Structural pin (the #506/#568 AST pattern): _main() resolves the tail
+    register refusal under --evidence-release, from the helper's return value,
+    before the batched path writes the #568 weight sidecar; and no raise
+    remains between the tail helper and the batched raise."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(main_fn):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _calls(name: str) -> list[ast.Call]:
+        return [
+            node
+            for node in ast.walk(main_fn)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        ]
+
+    def _ancestor_if_tests(node: ast.AST) -> list[str]:
+        tests = []
+        while node in parents:
+            node = parents[node]
+            if isinstance(node, ast.If):
+                tests.append(ast.unparse(node.test))
+        return tests
+
+    [record] = _calls("_record_qrf_tail_concentration_gate")
+    record_assign = parents[record]
+    assert isinstance(record_assign, ast.Assign)
+    assert ast.unparse(record_assign.targets[0]) == "qrf_tail_register_failures"
+    [refusal] = _calls("_qrf_tail_register_evidence_refusal")
+    assert ast.unparse(refusal.args[0]) == "qrf_tail_register_failures"
+    assert "args.evidence_release" in _ancestor_if_tests(refusal)
+    [sidecar] = _calls("_write_final_household_weight_evidence")
+    assert record.lineno < refusal.lineno < sidecar.lineno
+    batched_raise = next(
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+        and node.lineno > sidecar.lineno
+    )
+    early_raises = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and record.lineno < node.lineno < sidecar.lineno
+        and ast.unparse(node) != "raise evidence_refusal"
+    ]
+    assert not early_raises, [ast.unparse(node) for node in early_raises]
+    assert batched_raise.lineno > sidecar.lineno
 
 
 # --- SSI take-up delivered-weight prior basis + delivery gate (#507/#508) ---
@@ -14085,3 +16178,473 @@ def test_spm_composition_gate_is_not_guarded_by_skip_reform_validation() -> None
         "--skip-reform-validation must not disable the SPM composition gate; "
         f"gate call at {gate_calls} sits inside one of its branches"
     )
+
+
+# ---------------------------------------------------------------------------
+# eCPS parity: the pinned reference's retired layer names are graded under the
+# live engine names (route A, 2026-09-23: the first fresh-base release on
+# policyengine-us 2.2.1 refused "would_claim_wic: reference populates 100.0%
+# of records, candidate is all-zero" although takes_up_wic_if_eligible was
+# populated).
+# ---------------------------------------------------------------------------
+
+
+def test_ecps_reference_layers_project_the_wic_rename() -> None:
+    builder = _load_builder_module()
+
+    projected, applied = builder._project_ecps_reference_layers(
+        {"would_claim_wic": 1.0, "employment_income": 0.5}
+    )
+
+    assert projected == {"takes_up_wic_if_eligible": 1.0, "employment_income": 0.5}
+    assert applied == {"would_claim_wic": "takes_up_wic_if_eligible"}
+
+
+def test_ecps_reference_projection_refuses_to_merge_two_layers() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(ValueError, match="would merge two layers"):
+        builder._project_ecps_reference_layers(
+            {"would_claim_wic": 1.0, "takes_up_wic_if_eligible": 0.4}
+        )
+
+
+def _parity_reference(builder, shares):
+    from microcosm.build.us_runtime.parity_reference import (
+        EcpsParityReference,
+        EcpsParitySource,
+    )
+
+    return EcpsParityReference(
+        source=EcpsParitySource(
+            repo_id="synthetic/ecps-parity-fixture",
+            repo_type="model",
+            filename="enhanced_cps_2024.h5",
+            revision="synthetic",
+            sha256="0" * 64,
+            vintage="synthetic",
+            period="2024",
+        ),
+        nonzero_shares=shares,
+    )
+
+
+def test_ecps_parity_gate_grades_the_renamed_wic_layer_live(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: ("takes_up_wic_if_eligible",)
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, *, columns: {"takes_up_wic_if_eligible": 0.42},
+    )
+
+    gate = builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, {"would_claim_wic": 1.0}),
+        known_gaps=(),
+    )
+
+    assert gate.passed, gate.failures
+    assert gate.details["reference_layer_renames"] == {
+        "would_claim_wic": "takes_up_wic_if_eligible"
+    }
+
+
+def test_ecps_parity_gate_still_fails_an_empty_renamed_layer(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: ("takes_up_wic_if_eligible",)
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, *, columns: {"takes_up_wic_if_eligible": 0.0},
+    )
+
+    gate = builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, {"would_claim_wic": 1.0}),
+        known_gaps=(),
+    )
+
+    assert not gate.passed
+    assert gate.failures[0].startswith("takes_up_wic_if_eligible:")
+
+
+# Known-gap exemptions resolve through the same rename register (gate peer P2
+# on #994): a register entry spelled with the reference's retired name must
+# exempt, go stale on, and go dormant on the live layer exactly as the
+# live-name entry does.
+
+_WIC_SPELLINGS = ("would_claim_wic", "takes_up_wic_if_eligible")
+
+
+#: Reference vintages the exemption projection must not depend on: the pinned
+#: historical spelling, a re-pinned reference already on the live name (no
+#: layer rename applies), and one that does not populate WIC at all.
+_WIC_REFERENCES = (
+    {"would_claim_wic": 1.0},
+    {"takes_up_wic_if_eligible": 1.0},
+    {"employment_income": 0.5},
+)
+
+
+def _wic_parity_gate(monkeypatch, *, candidate_share, gap_names, reference=None):
+    builder = _load_builder_module()
+    reference_shares = {"would_claim_wic": 1.0} if reference is None else reference
+    # The candidate populates every non-WIC reference layer, so only the WIC
+    # layer and its exemption decide the verdict.
+    candidate_shares = {
+        name: share
+        for name, share in reference_shares.items()
+        if name not in _WIC_SPELLINGS
+    }
+    candidate_shares["takes_up_wic_if_eligible"] = candidate_share
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: tuple(candidate_shares)
+    )
+    monkeypatch.setattr(
+        builder, "us_nonzero_shares", lambda frame, *, columns: candidate_shares
+    )
+    return builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, reference_shares),
+        known_gaps=tuple(
+            builder.ParityKnownGap(
+                variable=name,
+                reason=f"reason filed as {name}",
+                issue="PolicyEngine/microcosm#994",
+            )
+            for name in gap_names
+        ),
+    )
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_exempts_an_empty_wic_layer_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    gate = _wic_parity_gate(monkeypatch, candidate_share=0.0, gap_names=(spelling,))
+
+    assert gate.passed, gate.failures
+    assert gate.details["gaps"] == 0
+    assert gate.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["stale_exemptions"] == []
+    assert gate.details["dormant_exemptions"] == []
+    entry = {
+        "reason": f"reason filed as {spelling}",
+        "issue": "PolicyEngine/microcosm#994",
+    }
+    if spelling == "would_claim_wic":
+        entry["register_name"] = "would_claim_wic"
+        assert gate.details["known_gap_renames"] == {
+            "would_claim_wic": "takes_up_wic_if_eligible"
+        }
+    else:
+        assert gate.details["known_gap_renames"] == {}
+    assert gate.details["known_gaps"] == {"takes_up_wic_if_eligible": entry}
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_flags_a_stale_wic_exemption_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    gate = _wic_parity_gate(monkeypatch, candidate_share=0.42, gap_names=(spelling,))
+
+    assert not gate.passed
+    assert len(gate.failures) == 1
+    assert gate.failures[0].startswith("Stale known-gap exemptions")
+    assert "takes_up_wic_if_eligible" in gate.failures[0]
+    assert gate.details["stale_exemptions"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["dormant_exemptions"] == []
+
+
+@pytest.mark.parametrize("reference", _WIC_REFERENCES)
+@pytest.mark.parametrize("candidate_share", (0.0, 0.42))
+def test_ecps_parity_gate_grades_a_historical_exemption_like_the_live_one(
+    monkeypatch, candidate_share, reference
+) -> None:
+    # The exemption resolves through the rename register on its own, not only
+    # when the reference itself carried the retired name.
+    historical, live = (
+        _wic_parity_gate(
+            monkeypatch,
+            candidate_share=candidate_share,
+            gap_names=(spelling,),
+            reference=reference,
+        )
+        for spelling in _WIC_SPELLINGS
+    )
+
+    provenance_keys = {"known_gaps", "known_gap_renames"}
+    assert historical.passed == live.passed
+    assert historical.failures == live.failures
+    assert {
+        key: value
+        for key, value in historical.details.items()
+        if key not in provenance_keys
+    } == {
+        key: value for key, value in live.details.items() if key not in provenance_keys
+    }
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_reports_a_wic_exemption_dormant_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    # A reference that does not populate WIC: the exemption is dormant on the
+    # live layer, never on the retired name.
+    gate = _wic_parity_gate(
+        monkeypatch,
+        candidate_share=0.0,
+        gap_names=(spelling,),
+        reference={"employment_income": 0.5},
+    )
+
+    assert gate.passed, gate.failures
+    assert gate.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["dormant_exemptions"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["stale_exemptions"] == []
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_projects_the_exemption_against_a_live_name_reference(
+    monkeypatch, spelling
+) -> None:
+    # A re-pinned reference already on the live name applies no layer rename;
+    # the historical exemption must still exempt the empty live layer.
+    reference = {"takes_up_wic_if_eligible": 1.0}
+    empty = _wic_parity_gate(
+        monkeypatch, candidate_share=0.0, gap_names=(spelling,), reference=reference
+    )
+    populated = _wic_parity_gate(
+        monkeypatch, candidate_share=0.42, gap_names=(spelling,), reference=reference
+    )
+
+    assert empty.details["reference_layer_renames"] == {}
+    assert empty.passed, empty.failures
+    assert empty.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert not populated.passed
+    assert populated.details["stale_exemptions"] == ["takes_up_wic_if_eligible"]
+
+
+@pytest.mark.parametrize("gap_names", (_WIC_SPELLINGS, _WIC_SPELLINGS[::-1]))
+def test_ecps_parity_gate_refuses_one_layer_exempted_under_both_spellings(
+    monkeypatch, gap_names
+) -> None:
+    with pytest.raises(ValueError, match="would merge two exemptions"):
+        _wic_parity_gate(monkeypatch, candidate_share=0.0, gap_names=gap_names)
+
+
+def test_ecps_known_gap_projection_refuses_identical_entries_too() -> None:
+    # Mirrors the reference-layer collision rule: two register entries for one
+    # live layer are refused even when they agree, so the register names the
+    # gap once.
+    builder = _load_builder_module()
+    gaps = tuple(
+        builder.ParityKnownGap(
+            variable=name, reason="same reason", issue="PolicyEngine/microcosm#994"
+        )
+        for name in _WIC_SPELLINGS
+    )
+
+    with pytest.raises(ValueError, match="would merge two exemptions"):
+        builder._project_ecps_known_gaps(gaps)
+
+
+def test_checked_in_known_gap_register_projects_without_collision() -> None:
+    builder = _load_builder_module()
+    register = builder.load_ecps_parity_known_gaps()
+
+    projected, applied = builder._project_ecps_known_gaps(register)
+
+    assert len(projected) == len(register)
+    assert all(
+        builder.REFERENCE_ECPS_LAYER_RENAMES[historical] == live
+        for historical, live in applied.items()
+    )
+
+
+def test_shipped_registers_pass_the_register_consistency_preflight() -> None:
+    # The exact preflight main() runs (microcosm#377). The parity known-gap
+    # register now reaches it by name (it used to arrive as ParityKnownGap
+    # objects and never intersect a column), so pin that the shipped
+    # registers are consistent with it in play.
+    builder = _load_builder_module()
+
+    gate = builder.us_register_consistency_gate(
+        degenerate_reviewed_exclusions=builder.US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+        documented_absent_inputs=builder.US_DOCUMENTED_ABSENT_INPUTS,
+        nonconstant_required_columns=builder.US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+    )
+
+    assert gate.passed, gate.failures
+
+
+# ---------------------------------------------------------------------------
+# --target-surface: calibrate the national release to national + state targets
+# (Max, 2026-09-23, route A d122). The parity and profile-coverage gates keep
+# running on the full compiled surface; only the calibrated specs narrow.
+# ---------------------------------------------------------------------------
+
+
+def _surface_spec(name: str, **metadata) -> TargetSpec:
+    return TargetSpec(
+        name=name,
+        entity="household",
+        value=1.0,
+        measure=f"{name}_measure",
+        source="synthetic",
+        metadata=metadata,
+    )
+
+
+def test_target_surface_defaults_to_full_and_accepts_national_state() -> None:
+    builder = _load_builder_module()
+    base = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+
+    assert builder._parse_args(base).target_surface == "full"
+    assert (
+        builder._parse_args(
+            [*base, "--target-surface", "national_state"]
+        ).target_surface
+        == "national_state"
+    )
+    with pytest.raises(SystemExit):
+        builder._parse_args([*base, "--target-surface", "state"])
+
+
+def test_national_state_surface_drops_every_cd_classified_target() -> None:
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax", ledger_geography_level="us"),
+        _surface_spec("ca_agi", ledger_geography_level="state", state_fips="06"),
+        _surface_spec(
+            "cd_0601_agi",
+            ledger_geography_level="congressional_district",
+            congressional_district_geoid="0601",
+        ),
+        # A state-geography row sourced from the SOI CD file is CD-classified.
+        _surface_spec(
+            "ca_total_from_cd_file",
+            ledger_geography_level="state",
+            ledger_source_record_id="irs_soi.ty2023.congressional_district_2022.ca_total",
+        ),
+    )
+
+    kept, receipt = builder._select_target_surface(specs, "national_state")
+
+    assert [spec.name for spec in kept] == ["us_income_tax", "ca_agi"]
+    assert receipt == {
+        "mode": "national_state",
+        "compiled_targets": 4,
+        "calibrated_targets": 2,
+        "dropped_congressional_district_targets": 2,
+    }
+
+
+def test_full_surface_keeps_every_target() -> None:
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax"),
+        _surface_spec("cd_0601_agi", congressional_district_geoid="0601"),
+    )
+
+    kept, receipt = builder._select_target_surface(specs, "full")
+
+    assert kept == specs
+    assert receipt["dropped_congressional_district_targets"] == 0
+
+
+def test_target_surface_refuses_an_unknown_mode_or_an_empty_surface() -> None:
+    builder = _load_builder_module()
+    cd_only = (_surface_spec("cd_0601_agi", congressional_district_geoid="0601"),)
+
+    with pytest.raises(ValueError, match="Unknown target surface"):
+        builder._select_target_surface(cd_only, "state")
+    with pytest.raises(ValueError, match="keeps no targets"):
+        builder._select_target_surface(cd_only, "national_state")
+
+
+def _surface_source_coverage(builder, target_surface_selection):
+    # The composition _main writes to us_source_coverage.json.
+    active, surface_exclusions = builder._source_coverage_aliases(
+        target_surface_selection
+    )
+    return builder.us_source_coverage_diagnostics(
+        active_target_aliases=active,
+        reviewed_exclusions={
+            **builder._reviewed_exclusions(active),
+            **surface_exclusions,
+        },
+    )
+
+
+def test_full_surface_source_coverage_counts_cd_sources_active() -> None:
+    builder = _load_builder_module()
+
+    active, surface_exclusions = builder._source_coverage_aliases(None)
+    coverage = _surface_source_coverage(builder, None)
+
+    assert surface_exclusions == {}
+    for alias in builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES:
+        assert alias in active
+        assert alias in coverage["active_target_aliases"]
+        assert alias not in coverage["reviewed_exclusions"]
+    assert coverage["gate"]["passed"] is True
+
+
+def test_national_state_surface_source_coverage_excludes_dropped_cd_sources() -> None:
+    from microcosm.data.contract import _check_source_coverage_diagnostics
+
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax", ledger_geography_level="us"),
+        _surface_spec(
+            "cd_0601_agi",
+            ledger_geography_level="congressional_district",
+            congressional_district_geoid="0601",
+        ),
+    )
+    _, receipt = builder._select_target_surface(specs, "national_state")
+
+    coverage = _surface_source_coverage(builder, receipt)
+
+    assert coverage["gate"] == {
+        "name": "us_source_coverage",
+        "passed": True,
+        "failures": [],
+    }
+    for alias in builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES:
+        assert alias not in coverage["active_target_aliases"]
+        reason = coverage["reviewed_exclusions"][alias]
+        assert "--target-surface national_state dropped all 1 " in reason
+        assert "build.target_surface_selection" in reason
+    population = coverage["hard_target_families"]["population_age_sex"]
+    assert (
+        "census-acs-s0101-congressional-district-age-2024"
+        not in population["covered_package_aliases"]
+    )
+    # Every other alias keeps its fiscal-refresh standing.
+    full = _surface_source_coverage(builder, None)
+    assert set(full["active_target_aliases"]) - set(
+        coverage["active_target_aliases"]
+    ) == set(builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES)
+    # The publisher's contract check accepts the artifact.
+    failures: list[str] = []
+    _check_source_coverage_diagnostics(
+        {**coverage, "fiscal_target_sources": {}}, failures
+    )
+    assert failures == []
+
+
+def test_main_derives_source_coverage_aliases_from_the_target_surface() -> None:
+    builder = _load_builder_module()
+    main_source = inspect.getsource(builder._main)
+
+    assert "_source_coverage_aliases(\n        target_surface_selection\n    )" in (
+        main_source
+    )
+    assert '"soi-congressional-district-2022",' not in main_source

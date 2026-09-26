@@ -36,6 +36,14 @@ uv run pytest            # all packages, incl. behavioral contract tests
 uv run ruff check .
 ```
 
+Packaged country specs load once per process: `load_country_spec("uk")`
+returns the same object on every call. In a notebook or other long-lived
+session, edits to a country package under
+`packages/microcosm-build/src/microcosm/build/<country>/` are not picked up
+until you restart the kernel, load it by path with
+`load_country_spec(Path(...))` (always re-read), or call
+`microcosm.build.country_spec._load_packaged_country_spec.cache_clear()`.
+
 ## Staging build telemetry
 
 US fiscal refresh builds emit pre-release staging telemetry **by default**:
@@ -175,6 +183,45 @@ tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
 chosen from the repo id.
 
+Promotable UK release lines use pointers named `latest-<line>.json`. Publish a
+cut for inspection with `--no-latest --tag-name <cut-tag>`, then promote the
+reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
+only that line pointer; the UK repository-global `latest.json` remains frozen
+on the June 2023 release. Promotion reuses the immutable cut tag the inspect publication created (it checks the tagged manifest is byte-identical) and writes only the pointer commit, so the two-step sequence and a retry after a failed pointer commit both work. A line's registry entry is registered off the default variant until its first promotion; the default flips in a follow-up after the pointer exists.
+
+The publisher uploads only the contract files, the release manifest's
+artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
+its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
+`input_mass_parity.json`, `qrf_tail_concentration.json` and
+`reform_coverage_smoke.json`. Both manifests also record the per-run QRF tail
+register (`qrf_tail_register`) and the export-mass reference, so a waiver
+ships with the release it waives, and a `gate_evidence` block that says of
+each verdict whether it is bound, skipped by flag or never evaluated.
+
+A US release may not store a column that looks like a policyengine-us variable
+(lowercase snake_case) unless the engine it is certified against defines that
+variable or `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
+registers the column with a reviewed reason (microcosm#1026: the engine
+ignores such a column, which is how a renamed WIC take-up input shipped
+unread). Three release seams refuse one, each against the engine the release
+records as built-with:
+
+- the fiscal-refresh tool, in its batched pre-export gates, and it grades the
+  written H5, which must earn the same verdict (the exact-k ladder lane runs
+  this tool);
+- the source-enrichment probe, at certification, validation and publication;
+- the ACS local-area chain's package stage, before it assembles the release
+  directory.
+
+A refusal names each column: rename it to its live input, or add a reviewed
+register entry. The published default, its reported-receipt child and the
+2026-09-23 ACS local-area release built on that child all store two retired
+engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
+`takes_up_wic_if_eligible` and `medicare_part_b_premiums_reported`), so each
+would now be refused.
+Check local files from HDF metadata alone with
+`uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
+
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
 recorded in `package_result.json`. That command includes `--create-tag`,
@@ -184,7 +231,12 @@ main branch. The launcher also forces `--no-staging`, so the build writes neithe
 a production nor a staging pointer. The candidate is therefore available only
 by its explicit release id or tag until a separate promotion updates
 `latest.json`. Because Slack alerts are coupled to that production pointer
-update, tag-only publication sends no release alert.
+update, tag-only publication sends no release alert. The promotion is the
+standard publish of the same release directory, without `--no-latest` and
+`--tag-only`: it reuses the existing release-id tag once the tagged
+`release_manifest.json` is byte-identical to the local one, and writes only the
+main commit that carries `latest.json` (microcosm#450). A tag that describes
+another cut refuses before any commit.
 
 Evidence-tier releases (microcosm#506) are the third lane: the best available
 artifact when terminal gates failed, built with

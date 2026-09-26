@@ -13,18 +13,21 @@ from microcosm.build.gates import GateResult
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PERSON_SUPPORT_CHANNEL_COLUMN",
+    "PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "SPINE_ASSEMBLY_MANIFEST_KEY",
     "has_assembled_support_metadata",
     "has_support_role_metadata",
     "puf_tax_detail_clone_mask",
+    "require_assembled_support_provenance",
     "spine_assembly_manifest",
     "spine_assembly_receipt",
     "spine_provenance_counts",
     "spine_source_id_column",
     "support_channel_column",
     "support_clone_index_column",
+    "support_copy_rank_series",
     "support_role_series",
     "support_gate_source_channel_series",
     "support_source_id_column",
@@ -37,8 +40,13 @@ BASE_ASEC_SUPPORT_CHANNEL = "asec"
 PERSON_SUPPORT_CHANNEL_COLUMN = "person_support_channel"
 PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 PUF_TAX_DETAIL_CLONE_INDEX = 1
+PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX = 2
 SPINE_ASSEMBLY_MANIFEST_KEY = "us_spine_assembly_manifest"
 _SPINE_ASSEMBLY_MANIFEST_VERSION = 1
+_INT64_MAX = int(np.iinfo(np.int64).max)
+# 2**63 is exactly representable in float64 and is the first float past the
+# int64 range, so every integral float strictly below it casts exactly.
+_INT64_FLOAT_EXCLUSIVE_BOUND = float(2**63)
 
 
 class _ProvenanceSchema(Protocol):
@@ -174,20 +182,11 @@ def validate_assembly_provenance(
                 f"channel(s) {unknown}."
             )
 
-        numeric_clone_indices = pd.to_numeric(
-            table[clone_index_column],
-            errors="coerce",
+        clone_indices = _validated_clone_indices(
+            table,
+            clone_index_column,
+            owner=f"{boundary}: assembly manifest provenance",
         )
-        clone_indices = numeric_clone_indices.to_numpy(dtype=np.float64)
-        if (
-            numeric_clone_indices.isna().any()
-            or (clone_indices < 0.0).any()
-            or not np.equal(clone_indices, np.floor(clone_indices)).all()
-        ):
-            raise ValueError(
-                f"{boundary}: assembly manifest provenance column "
-                f"{clone_index_column!r} must contain nonnegative integers."
-            )
         expected_by_channel = raw_counts.get(entity)
         if (
             not isinstance(expected_by_channel, Mapping)
@@ -197,7 +196,7 @@ def validate_assembly_provenance(
                 f"{boundary}: assembly manifest row counts for {entity!r} "
                 "do not exactly cover its declared channels."
             )
-        native = clone_indices == 0.0
+        native = clone_indices == 0
         actual_counts = {
             channel: int(
                 np.count_nonzero(
@@ -290,10 +289,14 @@ def spine_provenance_counts(
     for entity in frame.entities:
         table = frame.table(entity)
         source = table[support_channel_column(entity)].astype(str)
-        clone_index = pd.to_numeric(
-            table[support_clone_index_column(entity)],
-            errors="raise",
-        ).astype("int64")
+        clone_index = pd.Series(
+            _validated_clone_indices(
+                table,
+                support_clone_index_column(entity),
+                owner=f"{boundary}: assembly manifest provenance",
+            ),
+            index=table.index,
+        )
         observed_clone_indices = sorted(int(value) for value in clone_index.unique())
         counts[entity] = {
             "rows": int(len(table)),
@@ -320,10 +323,16 @@ def has_support_role_metadata(
     *,
     entity: str,
 ) -> bool:
-    """Return whether clone-role or legacy support-role metadata is present."""
+    """Return whether assembly or legacy support-role metadata is present.
+
+    A raw spine ID still marks an assembled table after either role column
+    is lost. Role readers must validate it instead of taking a historical
+    no-metadata fallback.
+    """
 
     return (
-        support_clone_index_column(entity) in table
+        has_assembled_support_metadata(table, entity=entity)
+        or support_clone_index_column(entity) in table
         or support_channel_column(entity) in table
     )
 
@@ -341,6 +350,61 @@ def has_assembled_support_metadata(
     """
 
     return spine_source_id_column(entity) in table
+
+
+def require_assembled_support_provenance(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+) -> None:
+    """Refuse an assembled table whose support provenance is incomplete.
+
+    Multispine assembly writes the raw spine-record ID together with the
+    assembly-unique source ID, support channel and clone index. Source IDs
+    must be complete so grouping cannot silently drop an unkeyed copy.
+    On an assembled table the channel names a physical source (for example
+    ``asec`` or ``acs``), not an operator
+    role, so only the clone index can tell a native row from its donor
+    copies. An assembled table that has lost a required column must not fall back
+    to the logic for historical tables without clone indices: channel-only
+    role ranks, ``(source, role)`` occurrence pairing, or one row per source
+    ID. That fallback hides copies that disagree.
+
+    :func:`has_support_role_metadata` recognizes the raw spine ID even when
+    both role columns are missing, routing role readers through this check in
+    :func:`support_role_series`. Consumers with earlier fallbacks also call
+    it at entry. Historical tables without a raw spine ID pass unchanged.
+    """
+
+    if not has_assembled_support_metadata(table, entity=entity):
+        return
+    missing = [
+        column
+        for column in (
+            support_channel_column(entity),
+            support_clone_index_column(entity),
+            support_source_id_column(entity),
+        )
+        if column not in table
+    ]
+    if missing:
+        raise ValueError(
+            "assembled support metadata requires "
+            + " and ".join(repr(column) for column in missing)
+            + f" alongside {spine_source_id_column(entity)!r}: an assembled "
+            "table's channel names a physical source rather than a support "
+            "copy, so without complete source, channel and clone-index provenance its "
+            "copies cannot be ranked, paired or compared."
+        )
+    source_column = support_source_id_column(entity)
+    missing_sources = table[source_column].isna()
+    if missing_sources.any():
+        raise ValueError(
+            "assembled support metadata requires complete non-null "
+            f"{source_column!r} alongside {spine_source_id_column(entity)!r}; "
+            f"found {int(missing_sources.sum())} missing source ID(s), so its "
+            "copies cannot be ranked, paired or compared."
+        )
 
 
 def spine_source_id_column(entity: str) -> str:
@@ -376,12 +440,19 @@ def without_support_role_metadata(
     *,
     entity: str,
 ) -> pd.DataFrame:
-    """Copy a table without source-channel or clone-role metadata."""
+    """Project validated support rows into a historical source-kernel input.
 
+    Remove the assembly discriminator with the role columns so deliberately
+    stripped projections are not mistaken for incomplete assembled tables.
+    Stable source IDs remain available for reconciliation and output merging.
+    """
+
+    require_assembled_support_provenance(table, entity=entity)
     return table.drop(
         columns=[
             support_channel_column(entity),
             support_clone_index_column(entity),
+            spine_source_id_column(entity),
         ],
         errors="ignore",
     ).copy(deep=True)
@@ -397,9 +468,14 @@ def support_role_series(
     Native records have the ASEC-compatible role and every donor-detail clone
     has the PUF-compatible role. Clone provenance takes precedence. Legacy
     fixtures without clone indices may use the two historical role labels in
-    their support-channel column.
+    their support-channel column. An assembled table's channel names a
+    physical source, never a role, so an assembled table missing either
+    provenance column is refused first
+    (:func:`require_assembled_support_provenance`); its channel is never read
+    as a historical role.
     """
 
+    require_assembled_support_provenance(table, entity=entity)
     clone_index_column = support_clone_index_column(entity)
     if clone_index_column not in table:
         channel_column = support_channel_column(entity)
@@ -429,19 +505,11 @@ def support_role_series(
             index=table.index,
             name=f"{entity}_support_role",
         )
-    numeric = pd.to_numeric(table[clone_index_column], errors="coerce")
-    if numeric.isna().any():
-        raise ValueError(
-            f"PUF support metadata column {clone_index_column!r} must be integral."
-        )
-    clone_indices = numeric.to_numpy(dtype=np.float64)
-    if (clone_indices < 0).any() or not np.equal(
-        clone_indices, np.floor(clone_indices)
-    ).all():
-        raise ValueError(
-            f"PUF support metadata column {clone_index_column!r} must contain "
-            "nonnegative integers."
-        )
+    clone_indices = _validated_clone_indices(
+        table,
+        clone_index_column,
+        owner="PUF support metadata",
+    )
     channel_column = support_channel_column(entity)
     if channel_column not in table:
         raise ValueError(
@@ -493,6 +561,66 @@ def support_role_series(
     )
 
 
+def support_copy_rank_series(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+) -> pd.Series:
+    """Rank each support copy within its source unit, canonical copy first.
+
+    Clone provenance is authoritative whenever it is present, on assembled and
+    historical PUF-support frames alike: the rank is the validated clone index.
+    Historical ranks are restricted to the produced indices 0, 1 and 2;
+    assembled ranks retain the full nonnegative int64 domain.
+    Index 0 is the native record, 1 its primary PUF-detail copy, and 2 the
+    capital-gains own-tail copy, which splits weight off a PUF-detail household
+    while keeping that household's source IDs. A historical PUF-support base
+    therefore carries two PUF-role copies of each tail source unit that differ
+    only in clone index, so a ``(source ID, role)`` key cannot identify a copy.
+    Channel-only fixtures predate clone indices and cannot express a tail copy;
+    they rank their two historical roles ASEC 0 and PUF 1.
+
+    A source unit may carry at most one row per rank. Source-unit operators
+    refuse a repeated ``(source ID, rank)`` pair as a genuinely duplicated
+    support copy instead of choosing between its rows.
+
+    An assembled table missing its channel or clone index is refused first
+    (:func:`require_assembled_support_provenance`): its channel names a
+    physical source, so it cannot fall back to role ranks. Only a channel-only
+    historical table ranks by role.
+    """
+
+    require_assembled_support_provenance(table, entity=entity)
+    roles = support_role_series(table, entity=entity)
+    clone_index_column = support_clone_index_column(entity)
+    if clone_index_column in table:
+        ranks = _validated_clone_indices(
+            table,
+            clone_index_column,
+            owner="PUF support metadata",
+        )
+        if not has_assembled_support_metadata(table, entity=entity):
+            allowed = (
+                0,
+                PUF_TAX_DETAIL_CLONE_INDEX,
+                PUF_CAPITAL_GAINS_TAIL_CLONE_INDEX,
+            )
+            invalid = ~np.isin(ranks, allowed)
+            if invalid.any():
+                raise ValueError(
+                    "historical support clone indices must be one of 0, 1, 2; "
+                    f"{clone_index_column!r} contains unsupported value(s) "
+                    f"{np.unique(ranks[invalid]).tolist()}."
+                )
+    else:
+        ranks = np.where(
+            roles.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy(),
+            0,
+            PUF_TAX_DETAIL_CLONE_INDEX,
+        ).astype(np.int64)
+    return pd.Series(ranks, index=table.index, name=f"{entity}_support_copy_rank")
+
+
 def support_gate_source_channel_series(
     table: pd.DataFrame,
     *,
@@ -535,16 +663,63 @@ def puf_tax_detail_clone_mask(
     clone_index_column = support_clone_index_column(entity)
     if clone_index_column not in table:
         return roles.eq(PUF_TAX_DETAIL_SUPPORT_CHANNEL).to_numpy()
-    clone_indices = pd.to_numeric(
-        table[clone_index_column],
-        errors="raise",
-    ).to_numpy(dtype=np.int64)
+    clone_indices = _validated_clone_indices(
+        table,
+        clone_index_column,
+        owner="PUF support metadata",
+    )
     return clone_indices == PUF_TAX_DETAIL_CLONE_INDEX
 
 
 def _require_entity_name(entity: str) -> None:
     if not isinstance(entity, str) or not entity:
         raise ValueError("entity must be a non-empty string.")
+
+
+def _validated_clone_indices(
+    table: pd.DataFrame,
+    column: str,
+    *,
+    owner: str,
+) -> np.ndarray:
+    """Return a clone-index column as int64 after proving every value casts.
+
+    This is the module's only clone-index conversion, and validation precedes
+    the cast. NumPy maps NaN, infinities and out-of-range floats to an
+    arbitrary int64 (INT64_MIN or INT64_MAX, by platform) with at most a
+    RuntimeWarning, so an unchecked cast would turn malformed provenance into
+    a plausible clone role or copy rank. Every value must be a finite,
+    nonnegative integer representable as int64.
+    """
+
+    values = table[column]
+    numeric = pd.to_numeric(values, errors="coerce")
+    integer_dtype = pd.api.types.is_integer_dtype(numeric.dtype)
+    if integer_dtype:
+        # Compare integer dtypes exactly (including nullable and unsigned
+        # ones); a float64 view would round values past 2**53 before the
+        # representability check.
+        valid = (
+            (numeric.ge(0) & numeric.le(_INT64_MAX)).fillna(False).to_numpy(dtype=bool)
+        )
+    else:
+        as_float = numeric.to_numpy(dtype=np.float64, na_value=np.nan)
+        valid = (
+            np.isfinite(as_float)
+            & (as_float >= 0.0)
+            & (as_float < _INT64_FLOAT_EXCLUSIVE_BOUND)
+            & np.equal(as_float, np.floor(as_float))
+        )
+    if not valid.all():
+        invalid = values.to_numpy(dtype=object)[~valid]
+        raise ValueError(
+            f"{owner} column {column!r} must contain nonnegative integers "
+            f"(finite and representable as int64); found {invalid.size} "
+            f"invalid value(s), e.g. {invalid[:5].tolist()}."
+        )
+    if integer_dtype:
+        return numeric.to_numpy(dtype=np.int64)
+    return as_float.astype(np.int64)
 
 
 def _json_ready_mapping(value: Mapping[str, Any]) -> dict[str, object]:

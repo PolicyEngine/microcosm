@@ -41,6 +41,65 @@ def builder(monkeypatch):
     return _load_builder_module()
 
 
+class _NoParameters:
+    """Invented parameter tree without behavioral-response leaves."""
+
+    def get_child(self, path):
+        return SimpleNamespace(get_descendants=lambda: ())
+
+
+def _invented_engine_type(builder, log, *, stop_when):
+    """Record each written-H5 batch construction; stop where ``stop_when`` says.
+
+    A construction that does not stop scores every key as one invented weighted
+    zero per household batch and computes no watched aggregate. These are
+    array-routing stand-ins, not policy results.
+    """
+
+    class Simulation:
+        default_tax_benefit_system_instance = SimpleNamespace(
+            parameters=_NoParameters()
+        )
+
+        @staticmethod
+        def default_tax_benefit_system(**kwargs):
+            log.systems.append(kwargs)
+            return SimpleNamespace(parameters=_NoParameters())
+
+        def __init__(self, **kwargs):
+            log.simulations.append(kwargs)
+            if stop_when(kwargs):
+                raise StopBeforeCalculationError
+
+        def calculate(self, variable, period, map_to=None):
+            return builder._PostExportValues(np.zeros(1), np.ones(1))
+
+        def get_holder(self, variable):
+            return SimpleNamespace(get_known_periods=lambda: [])
+
+    return Simulation
+
+
+def _written_h5(tmp_path):
+    path = tmp_path / "invented.h5"
+    path.write_bytes(b"invented written release bytes")
+    return path
+
+
+def _frame_reader(builder, frame, constructors):
+    """An injected dataset class that reads ``frame`` back from a file path."""
+
+    def dataset(**kwargs):
+        constructors.datasets.append(kwargs)
+        if set(kwargs) != {"file_path"}:
+            return SimpleNamespace(**kwargs)
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        tables["household"]["household_weight"] = frame.weights_for("household").values
+        return SimpleNamespace(**tables)
+
+    return dataset
+
+
 class Constructors:
     def __init__(self):
         self.datasets = []
@@ -350,62 +409,82 @@ def test_each_reform_batch_receives_explicit_consumer(
 @pytest.mark.parametrize("reformed", [False, True])
 @pytest.mark.parametrize("household_position", [0, 1])
 def test_validation_batches_capture_independent_spm_selection(
-    builder, monkeypatch, reformed, household_position
+    builder, tmp_path, reformed, household_position
 ):
+    """The written-H5 scorer gives each batch engine the explicit consumer.
+
+    Route A (microcosm#956) replaced the frame-based reform-validation factory
+    with the household-batched post-export scorer, so the explicit
+    constructors and SPM selection now reach that scorer's batch engines. The
+    scorer must partition the pool, so each original household batch is
+    visited by stopping at its construction; the other batch runs an invented
+    engine. A reform engine receives the reform's system alone (no
+    ``reform=``), which carries the explicit selection too.
+    """
     frame = _multi_reform_frame(builder)
     constructors = Constructors()
     supplied = {"geography_kind": "national"}
     reform = object() if reformed else None
-
-    class Simulation:
-        default_tax_benefit_system = constructors.system
-
-        def __init__(self, **kwargs):
-            constructors.simulations.append(kwargs)
-            raise StopBeforeCalculationError
-
-    monkeypatch.setattr(
+    target = household_position + 1
+    simulation_type = _invented_engine_type(
         builder,
-        "_household_position_batches",
-        lambda *args: (np.asarray([household_position]),),
+        constructors,
+        stop_when=lambda kwargs: (
+            kwargs["dataset"].household["household_id"].tolist() == [target]
+        ),
     )
-    factory = builder._batched_reform_validation_simulate_factory_from_frame(
-        frame,
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        _written_h5(tmp_path),
         maximum_microsim_batch_size=1,
+        load_frame=lambda path, *, expected_sha256: frame,
         formula_metadata=Metadata(),
         dataset_cls=constructors.dataset,
-        microsimulation_cls=Simulation,
+        microsimulation_cls=simulation_type,
         spm=supplied,
     )
     supplied["geography_kind"] = "changed-after-binding"
-    wrapper = factory(reform)
+    key = ("never_calculated", 2024, None)
+    if reformed:
+        wrapper = scorer.open_consumer("reform_validation", ()).simulate(reform)
+
+        def attempt():
+            wrapper.calculate("never_calculated", 2024)
+
+    else:
+
+        def attempt():
+            scorer.open_consumer("reform_validation", (key,))
+
     with pytest.raises(StopBeforeCalculationError):
-        wrapper.calculate("never_calculated", 2024)
-    call = constructors.simulations[0]
+        attempt()
+    call = constructors.simulations[-1]
+    assert len(constructors.simulations) == target
     assert call["spm"] == {"geography_kind": "national"}
-    assert ("reform" in call) is reformed
+    assert "reform" not in call
     if reformed:
         assert constructors.systems == [
             {"reform": reform, "spm": {"geography_kind": "national"}}
         ]
         assert constructors.systems[0]["spm"] is not call["spm"]
+        assert call["tax_benefit_system"].parameters is not None
     else:
         assert not constructors.systems
-    assert constructors.datasets[0]["household"]["household_id"].tolist() == [
-        household_position + 1
-    ]
+        assert "tax_benefit_system" not in call
+    assert constructors.datasets[-1]["household"]["household_id"].tolist() == [target]
     # A consumer may mutate its own options even when construction fails. The
-    # same wrapper must retain its captured selection for the next attempt.
+    # same scorer must retain its captured selection for the next attempt.
     call["spm"]["geography_kind"] = "changed-by-first-consumer"
     with pytest.raises(StopBeforeCalculationError):
-        wrapper.calculate("never_calculated", 2024)
-    retried = constructors.simulations[1]
+        attempt()
+    retried = constructors.simulations[-1]
     assert retried["spm"] == {"geography_kind": "national"}
     assert retried["spm"] is not call["spm"]
     if reformed:
         assert len(constructors.systems) == 1
         assert constructors.systems[0]["spm"] == {"geography_kind": "national"}
         assert constructors.systems[0]["spm"] is not retried["spm"]
+    record = scorer.manifest_record()
+    assert record["spm"] == {"geography_kind": "national"}
 
 
 @pytest.mark.parametrize("helper", ["aca", "ssi"])
@@ -436,7 +515,7 @@ def test_source_amount_helpers_forward_before_any_calculation(builder, helper):
 
 
 @pytest.mark.parametrize("helper", ["aca", "ssi", "validation", "cached"])
-def test_provider_refusal_precedes_injected_execution(builder, helper):
+def test_provider_refusal_precedes_injected_execution(builder, tmp_path, helper):
     frame = _multi_reform_frame(builder)
     constructors = Constructors()
     common = dict(
@@ -453,8 +532,12 @@ def test_provider_refusal_precedes_injected_execution(builder, helper):
         elif helper == "ssi":
             builder._ssi_person_uncapped_amount(frame, **common)
         elif helper == "validation":
-            builder._batched_reform_validation_simulate_factory_from_frame(
-                frame, **common
+            # The written-H5 scorer that replaced the frame-based factory.
+            builder._HouseholdBatchedPostExportScorer(
+                _written_h5(tmp_path),
+                maximum_microsim_batch_size=1,
+                load_frame=lambda path, *, expected_sha256: frame,
+                **common,
             )
         else:
             builder._load_or_materialize_target_frame(
@@ -517,42 +600,64 @@ def test_target_wrappers_forward_captured_configuration(
 def test_demographics_forwards_selection_without_computing(
     builder, monkeypatch, tmp_path
 ):
+    """Demographics reads and scores the written H5 with the explicit consumer.
+
+    The written file is read back through the supplied dataset class, then
+    each household batch's engine receives an independent copy of the
+    explicit selection; construction stops before any calculation.
+    """
     constructors = Constructors()
     spm = {"geography_kind": "national"}
-
-    def stop(*args):
-        raise StopBeforeCalculationError
-
-    monkeypatch.setattr(builder, "population_by_age_from_sim", stop)
+    dataset_path = _written_h5(tmp_path)
+    frame = _multi_reform_frame(builder)
+    simulation_type = _invented_engine_type(
+        builder, constructors, stop_when=lambda kwargs: True
+    )
     with pytest.raises(StopBeforeCalculationError):
         builder._write_demographics(
             release_dir=tmp_path,
-            dataset_path=tmp_path / "invented.h5",
+            dataset_path=dataset_path,
             release_id="invented",
-            dataset_cls=constructors.dataset,
-            microsimulation_cls=constructors.simulation,
+            dataset_cls=_frame_reader(builder, frame, constructors),
+            microsimulation_cls=simulation_type,
             spm=spm,
         )
     assert constructors.simulations[0]["spm"] == spm
     assert constructors.simulations[0]["spm"] is not spm
-    assert constructors.datasets == [{"file_path": str(tmp_path / "invented.h5")}]
+    assert constructors.datasets[0] == {"file_path": str(dataset_path)}
+    assert constructors.datasets[1]["household"]["household_id"].tolist() == [1, 2]
+    assert len(constructors.simulations) == 1
 
 
 def test_reform_report_forwards_written_file_consumer_without_scores(
     builder, monkeypatch, tmp_path
 ):
+    """Reform validation scores the written H5 with the explicit consumer.
+
+    The selection is captured before spec loading. The baseline engine and
+    the reform's system and engine each receive it; the reform engine gets
+    the reform's system alone, as the household-batched scorer builds it.
+    """
     constructors = Constructors()
     spm = {"geography_kind": "national"}
+    dataset_path = _written_h5(tmp_path)
+    frame = _multi_reform_frame(builder)
 
     def load_specs(**kwargs):
         spm["geography_kind"] = "changed-during-spec-loading"
         return ()
 
     def payload(specs, *, simulate, **kwargs):
-        simulate(None)
-        simulate("invented reform marker")
-        raise StopBeforeCalculationError
+        # The same requests on the engine-free dry run and the scored run.
+        simulate(None).calculate("invented_measure", builder.PERIOD)
+        simulate("invented reform marker").calculate("invented_measure", builder.PERIOD)
+        return {}
 
+    simulation_type = _invented_engine_type(
+        builder,
+        constructors,
+        stop_when=lambda kwargs: "tax_benefit_system" in kwargs,
+    )
     monkeypatch.setattr(builder, "load_default_reform_specs", load_specs)
     monkeypatch.setattr(builder, "default_baseline_level_specs", lambda: ())
     monkeypatch.setattr(builder, "_in_sample_estimates", lambda result: {})
@@ -561,19 +666,25 @@ def test_reform_report_forwards_written_file_consumer_without_scores(
     with pytest.raises(StopBeforeCalculationError):
         builder._write_reform_validation(
             release_dir=tmp_path,
-            dataset_path=tmp_path / "invented.h5",
+            dataset_path=dataset_path,
             release_id="invented",
             result=None,
             registry=None,
             simulate_out_of_sample=True,
-            dataset_cls=constructors.dataset,
-            microsimulation_cls=constructors.simulation,
+            dataset_cls=_frame_reader(builder, frame, constructors),
+            microsimulation_cls=simulation_type,
             spm=spm,
         )
     assert [call["spm"] for call in constructors.simulations] == [
         {"geography_kind": "national"}
     ] * 2
-    assert constructors.simulations[1]["reform"] == "invented reform marker"
+    assert constructors.systems == [
+        {"reform": "invented reform marker", "spm": {"geography_kind": "national"}}
+    ]
+    reformed = constructors.simulations[1]
+    assert "reform" not in reformed
+    assert reformed["tax_benefit_system"].parameters is not None
+    assert constructors.datasets[0] == {"file_path": str(dataset_path)}
 
 
 def test_materializer_omission_preserves_constructor_call_shape(builder, monkeypatch):
@@ -611,10 +722,63 @@ def test_existing_ssi_simulation_refuses_unapplied_overrides(builder):
         )
 
 
-def test_custom_dataset_callback_refuses_competing_class(builder):
+def test_custom_dataset_callback_refuses_competing_class(builder, tmp_path):
     with pytest.raises(ValueError, match="not both"):
-        builder._batched_reform_validation_simulate_factory_from_frame(
-            None,
+        builder._HouseholdBatchedPostExportScorer(
+            tmp_path / "never-read.h5",
+            maximum_microsim_batch_size=None,
             dataset_from_frame=lambda frame: frame,
             dataset_cls=object,
         )
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"dataset_cls": object},
+        {"microsimulation_cls": object},
+        {"spm": {}},
+    ],
+)
+def test_existing_post_export_scorer_refuses_unapplied_overrides(builder, override):
+    """A shared scorer was already constructed; a writer cannot re-bind it."""
+
+    def forbidden(simulate):
+        raise AssertionError("an override must refuse before any scoring")
+
+    with pytest.raises(ValueError, match="existing post-export scorer"):
+        builder._score_post_export_consumer(
+            "invented",
+            forbidden,
+            dataset_path=None,
+            post_export_scorer=object(),
+            baseline_plan=(),
+            maximum_microsim_batch_size=None,
+            **override,
+        )
+
+
+def test_scorer_omission_preserves_release_selection_and_system_call(builder, tmp_path):
+    """Without explicit seams the scorer's calls are exactly the release's."""
+    frame = _multi_reform_frame(builder)
+    constructors = Constructors()
+    simulation_type = _invented_engine_type(
+        builder,
+        constructors,
+        stop_when=lambda kwargs: "tax_benefit_system" in kwargs,
+    )
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        _written_h5(tmp_path),
+        maximum_microsim_batch_size=None,
+        load_frame=lambda path, *, expected_sha256: frame,
+        dataset_from_frame=lambda batch_frame: batch_frame,
+        microsimulation_cls=simulation_type,
+    )
+    consumer = scorer.open_consumer("invented", (("invented_measure", 2024, None),))
+    with pytest.raises(StopBeforeCalculationError):
+        consumer.simulate("invented reform").calculate("invented_measure", 2024)
+    assert [call["spm"] for call in constructors.simulations] == [
+        dict(builder.US_RELEASE_SPM_SELECTION)
+    ] * 2
+    assert constructors.systems == [{"reform": "invented reform"}]
+    assert scorer.manifest_record()["spm"] == dict(builder.US_RELEASE_SPM_SELECTION)

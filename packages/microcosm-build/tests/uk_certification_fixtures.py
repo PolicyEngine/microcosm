@@ -167,7 +167,7 @@ def green_score_receipt(candidate_sha: str) -> dict:
 def green_certification_inputs(tmp_path: Path):
     """Three green signed parts plus a closed identity join."""
 
-    candidate = tmp_path / "microcosm_uk_2024.h5"
+    candidate = tmp_path / "microcosm_uk_2024_25.h5"
     candidate.write_bytes(b"candidate-bytes")
     candidate_sha = sha256(candidate)
     diagnostics = tmp_path / "calibration_diagnostics.json"
@@ -248,7 +248,7 @@ def green_certification_inputs(tmp_path: Path):
     )
     return {
         "release_id": "uk-757-first-certified-cut",
-        "candidate_name": "microcosm_uk_2024",
+        "candidate_name": "microcosm_uk_2024_25",
         "candidate_path": candidate,
         "candidate_sha256": candidate_sha,
         "spine_sha256": GREEN_PARENT_SPINE_SHA256,

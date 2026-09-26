@@ -637,7 +637,7 @@ def test_a_missing_clone_index_cannot_collapse_a_cross_copy_collision():
         _classify([dict(row, clone=None) for row in rows])
 
 
-@pytest.mark.parametrize("bad", [-1.0, 0.5, float("inf")])
+@pytest.mark.parametrize("bad", [-1.0, 0.5, float("inf"), float(2**63), 2**63])
 def test_an_invalid_clone_index_is_refused(bad):
     with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
         _classify(
@@ -652,6 +652,53 @@ def test_an_invalid_clone_index_is_refused(bad):
                 },
             ]
         )
+
+
+@pytest.mark.parametrize(
+    "missing_column",
+    ["person_support_clone_index", "person_support_channel"],
+)
+def test_assembled_missing_support_provenance_is_refused(missing_column):
+    household, person, unit_ids = _tables(
+        [{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11}],
+        person_extra_columns={
+            "person_source_id": [10],
+            "person_spine_source_id": [10],
+            "person_support_channel": ["asec"],
+        },
+    )
+    person = person.drop(columns=[missing_column])
+
+    with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
+        classify_spm_universe(household=household, person=person, unit_ids=unit_ids)
+
+
+def test_large_assembled_clone_indices_keep_distinct_native_partitions():
+    statuses = _classify(
+        [
+            {
+                "hid": 1,
+                "unit": 1,
+                "chan": _ASEC_CHANNEL,
+                "spm_id": 11,
+                "clone": 2**62,
+            },
+            {
+                "hid": 2,
+                "unit": 2,
+                "chan": _ASEC_CHANNEL,
+                "spm_id": 11,
+                "clone": 2**62 + 1,
+            },
+        ],
+        person_extra_columns={
+            "person_source_id": [10, 10],
+            "person_spine_source_id": [10, 10],
+            "person_support_channel": ["asec", "asec"],
+        },
+    )
+
+    assert statuses == {1: INCLUDED, 2: INCLUDED}
 
 
 @pytest.mark.requires_us

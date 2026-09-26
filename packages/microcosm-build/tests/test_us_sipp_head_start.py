@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.sipp_head_start as module
+from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.sipp_head_start import (
     HEAD_START_SIPP_DICTIONARY_URL,
     SIPP_2023_HEAD_START_DONOR_REVISION,
@@ -34,6 +35,18 @@ from microcosm.build.us_runtime.sipp_head_start import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_SIPP_HEAD_START_OUTPUT_COLUMNS[0]
+
+
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
 _policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
 requires_us = pytest.mark.skipif(
     not _policyengine_us_installed,
@@ -425,7 +438,7 @@ def test_imputer_rejects_identical_duplicate_same_role_source_rows(
         channels=["asec", "asec"],
     )
 
-    with pytest.raises(ValueError, match="duplicated same-role rows"):
+    with pytest.raises(ValueError, match="duplicated support copies"):
         impute_us_sipp_head_start(duplicate, _donor(), seed=0)
 
 
@@ -463,6 +476,347 @@ def test_assembled_clone_two_uses_lowest_clone_and_fans_to_every_clone(
     materialized.loc[materialized["person_support_clone_index"].eq(2), _OUTPUT] ^= True
     mismatch = us_sipp_head_start_summary(_replace_person(frame, materialized))
     assert mismatch["clone_mismatch_count"] == 2
+
+
+def _historical_tail_frame() -> Frame:
+    """A non-assembled PUF-support frame whose source 10 has a tail copy."""
+
+    native = _frame(
+        [10, 20, 30],
+        ages=[4, 5, 40],
+        female=[True, False, True],
+    )
+    native = _replace_person(
+        native, native.table("person").drop(columns=["person_source_id"])
+    )
+    cloned = clone_us_frame_for_puf_support(native)
+    tailed = _TAIL.with_capital_gains_tail_copies(cloned, [1])
+    person = tailed.table("person").copy()
+    # Source IDs are the pre-clone person IDs; restate them as the test's
+    # source labels so assertions read in source-person terms.
+    person["person_source_id"] = person["person_source_id"].map({1: 10, 2: 20, 3: 30})
+    return _replace_person(tailed, person)
+
+
+def test_historical_tail_copy_fans_the_source_decision_to_every_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person")
+    assert "person_spine_source_id" not in person
+    assert person["person_support_clone_index"].tolist() == [0, 0, 0, 1, 1, 1, 2]
+    assert person["person_support_channel"].tolist() == [
+        "asec",
+        "asec",
+        "asec",
+        "puf_tax_detail",
+        "puf_tax_detail",
+        "puf_tax_detail",
+        "puf_tax_detail",
+    ]
+
+    # Give the tail copy a predictor that would flip the fake QRF's decision:
+    # the native copy must still be the canonical predictor row.
+    divergent = person.copy()
+    divergent.loc[divergent["person_support_clone_index"].eq(2), "is_female"] = False
+    predicted = impute_us_sipp_head_start(
+        _replace_person(frame, divergent), _donor(), seed=3
+    )
+    receiver = _FakeQRF.instances[-1].receiver
+    assert receiver is not None
+    assert len(receiver) == 2  # one canonical row per eligible source person
+    by_source = pd.DataFrame(
+        {"source": person["person_source_id"], "value": predicted}
+    ).groupby("source")["value"]
+    assert (by_source.nunique() == 1).all()
+    assert by_source.first().to_dict() == {10: True, 20: False, 30: False}
+    tail = person["person_support_clone_index"].eq(2).to_numpy()
+    twin = (
+        person["person_support_clone_index"].eq(1) & person["person_source_id"].eq(10)
+    ).to_numpy()
+    assert predicted[tail].tolist() == predicted[twin].tolist() == [True]
+
+    materialized = person.copy()
+    materialized[_OUTPUT] = predicted.to_numpy()
+    summary = us_sipp_head_start_summary(_replace_person(frame, materialized))
+    assert summary["clone_group_count"] == 3
+    assert summary["clone_mismatch_count"] == 0
+    materialized.loc[tail, _OUTPUT] = False
+    mismatch = us_sipp_head_start_summary(_replace_person(frame, materialized))
+    assert mismatch["clone_mismatch_count"] == 1
+
+
+def test_historical_puf_only_survivor_predicts_from_the_primary_detail_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    # Selection kept only source 10's PUF-role copies, tail copy first.
+    survivor = ~(
+        person["person_source_id"].eq(10) & person["person_support_clone_index"].eq(0)
+    )
+    person = person.loc[survivor].iloc[::-1].reset_index(drop=True)
+    person.loc[person["person_support_clone_index"].eq(2), "is_female"] = False
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = person
+    kept_households = set(person["person_household_id"])
+    tables["household"] = tables["household"].loc[
+        tables["household"]["household_id"].isin(kept_households)
+    ]
+    weights = frame.weights_for("household").values[
+        frame.table("household")["household_id"].isin(kept_households).to_numpy()
+    ]
+    for entity in ("tax_unit", "spm_unit", "family", "marital_unit"):
+        membership = f"person_{entity}_id"
+        tables[entity] = tables[entity].loc[
+            tables[entity][f"{entity}_id"].isin(set(person[membership]))
+        ]
+    survivor_frame = Frame(
+        tables,
+        frame.schema,
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+
+    predicted = impute_us_sipp_head_start(survivor_frame, _donor(), seed=3)
+    source_ten = person["person_source_id"].eq(10).to_numpy()
+    # Copy rank, not row order or role, picks the primary PUF-detail copy.
+    assert predicted[source_ten].tolist() == [True, True]
+
+
+def test_historical_duplicate_clone_index_still_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    person.loc[
+        person["person_support_clone_index"].eq(2), "person_support_clone_index"
+    ] = 1
+    duplicated = _replace_person(frame, person)
+
+    with pytest.raises(ValueError, match=r"duplicated support copies.*\('10', 1\)"):
+        impute_us_sipp_head_start(duplicated, _donor(), seed=3)
+
+
+@pytest.mark.parametrize("clone_index", [3, 7, 2**62])
+@pytest.mark.parametrize("dtype", [np.int64, np.float64])
+def test_historical_out_of_domain_copy_refused_before_prediction(
+    monkeypatch: pytest.MonkeyPatch,
+    clone_index: int,
+    dtype: type,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    column = "person_support_clone_index"
+    tail = person[column].eq(2)
+    person[column] = person[column].astype(dtype)
+    person.loc[tail, column] = clone_index
+    with pytest.raises(ValueError, match="historical support clone indices.*0, 1, 2"):
+        impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
+@pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])
+@pytest.mark.parametrize(
+    "bad_index",
+    [np.inf, -np.inf, np.nan, 1.5, -1.0, float(2**63)],
+    ids=[
+        "inf",
+        "negative_inf",
+        "nan",
+        "non_integer",
+        "negative_float",
+        "float_past_int64",
+    ],
+)
+def test_malformed_clone_index_fails_closed_before_canonical_selection(
+    monkeypatch: pytest.MonkeyPatch,
+    assembled: bool,
+    bad_index: float,
+) -> None:
+    # Microcosm #992 gate finding: an assembled [0, inf] once ranked as
+    # INT64_MAX and passed canonical selection; a historical tail copy set to
+    # inf was likewise accepted as a distinct PUF-role copy. A float -1.0
+    # would rank ahead of the native row and silently replace it.
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    column = "person_support_clone_index"
+    if assembled:
+        frame = _frame([10, 10], ages=[4, 4], channels=["acs", "acs"])
+        person = frame.table("person").copy()
+        person["person_spine_source_id"] = [100, 100]
+        person[column] = [0.0, bad_index]
+    else:
+        frame = _historical_tail_frame()
+        person = frame.table("person").copy()
+        tail = person[column].eq(2)
+        person[column] = person[column].astype(np.float64)
+        person.loc[tail, column] = bad_index
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"clone-role metadata: PUF support metadata column "
+            r"'person_support_clone_index' must contain nonnegative integers"
+        ),
+    ):
+        impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
+def test_assembled_frame_without_clone_indices_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Microcosm #992 gate finding: with the clone-index column dropped, an
+    # assembled ASEC-channel frame once fell back to role ranks and passed
+    # canonical selection. Assembled channels name physical sources, so they
+    # cannot tell a native row from a donor copy; the base raised here.
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _frame([10, 11], ages=[4, 4], channels=["asec", "asec"])
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = [100, 101]
+    person = person.drop(columns=["person_support_clone_index"], errors="ignore")
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"assembled support metadata requires "
+            r"'person_support_clone_index'"
+        ),
+    ):
+        impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
+@pytest.mark.parametrize(
+    ("source_ids", "clone_indices", "missing"),
+    [
+        pytest.param(
+            [10, 20, 30, 40],
+            None,
+            r"'person_support_channel' and 'person_support_clone_index'",
+            id="no_channel_no_clone_unique_ids",
+        ),
+        pytest.param(
+            [10, 10, 20, 20],
+            None,
+            r"'person_support_channel' and 'person_support_clone_index'",
+            id="no_channel_no_clone_repeated_ids",
+        ),
+        pytest.param(
+            [10, 10, 20, 20],
+            [0, 1, 0, 1],
+            r"'person_support_channel'",
+            id="clone_index_without_channel",
+        ),
+    ],
+)
+def test_assembled_frame_missing_support_provenance_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    source_ids: list[int],
+    clone_indices: list[int] | None,
+    missing: str,
+) -> None:
+    # Microcosm #992 gate finding (b): an assembled person table (raw spine
+    # IDs present) stripped of both provenance columns reached the
+    # no-metadata early return in _support_group_keys, ranked every row 0 and
+    # passed canonical selection; the base raised KeyError here. Unique IDs
+    # hid it best: nothing even looked duplicated.
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _frame(source_ids, ages=[4] * len(source_ids))
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = source_ids
+    if clone_indices is not None:
+        person["person_support_clone_index"] = clone_indices
+    stripped = _replace_person(frame, person)
+
+    pattern = (
+        r"assembled support metadata requires "
+        + missing
+        + r" alongside 'person_spine_source_id'"
+    )
+    with pytest.raises(ValueError, match=pattern):
+        module._recipient_predictors(stripped)
+    with pytest.raises(ValueError, match=pattern):
+        impute_us_sipp_head_start(stripped, _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
+@pytest.mark.parametrize("entry", ["predictors", "impute", "gate"])
+def test_assembled_provenance_checked_before_other_receiver_inputs(
+    monkeypatch: pytest.MonkeyPatch, entry: str
+) -> None:
+    # Missing predictor/output inputs must not bypass the provenance check.
+    # The pre-fix predictors reported missing age, imputation read the donor,
+    # and the gate returned only the missing-output failure.
+    frame = _frame([10, 20, 30, 40])
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = person["person_source_id"]
+    person = person.drop(columns=["age"])
+    stripped = _replace_person(frame, person)
+    message = "assembled support metadata requires"
+    if entry == "gate":
+        gate = us_sipp_head_start_signal_gate(stripped)
+        assert not gate.passed
+        assert any(message in failure for failure in gate.failures)
+        assert gate.details["support_channel_invalid"] is True
+    else:
+        monkeypatch.setattr(module, "QRF", _FakeQRF)
+        with pytest.raises(ValueError, match=message):
+            if entry == "predictors":
+                module._recipient_predictors(stripped)
+            else:
+                impute_us_sipp_head_start(stripped, pd.DataFrame(), seed=3)
+        assert not _FakeQRF.instances
+
+
+@pytest.mark.parametrize(
+    "channels",
+    [None, ["asec"] * 4, ["asec", "puf_tax_detail"] * 2],
+    ids=["no_channel", "all_asec", "role_labels"],
+)
+def test_gate_flags_assembled_frame_missing_clone_indices(
+    channels: list[str] | None,
+) -> None:
+    # The summary groups copies by source ID and flags the incomplete
+    # provenance instead of raising, so the gate reports every failure. It
+    # must never read an assembled channel as a historical role.
+    frame = _frame(
+        [10, 10, 20, 20],
+        channels=channels,
+        output=[False, True, True, True],
+    )
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = [10, 10, 20, 20]
+    stripped = _replace_person(frame, person)
+
+    summary = us_sipp_head_start_summary(stripped)
+    assert summary["support_channel_invalid"] is True
+    assert summary["clone_group_count"] == 2
+    assert summary["clone_mismatch_count"] == 1
+    assert "channel_eligible_weighted_take_up_shares" not in summary
+    gate = us_sipp_head_start_signal_gate(stripped)
+    assert not gate.passed
+    assert f"{_OUTPUT}: support-channel provenance is invalid" in gate.failures
+
+
+def test_gate_flags_clone_index_past_int64() -> None:
+    # float(2**63) is the first float past int64; the base let it wrap to
+    # INT64_MAX. The gate now flags it as invalid provenance.
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    column = "person_support_clone_index"
+    tail = person[column].eq(2)
+    person[column] = person[column].astype(np.float64)
+    person.loc[tail, column] = float(2**63)
+    person[_OUTPUT] = [True, False, False, True, False, False, True]
+
+    summary = us_sipp_head_start_summary(_replace_person(frame, person))
+    assert summary["support_channel_invalid"] is True
+    gate = us_sipp_head_start_signal_gate(_replace_person(frame, person))
+    assert f"{_OUTPUT}: support-channel provenance is invalid" in gate.failures
 
 
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(

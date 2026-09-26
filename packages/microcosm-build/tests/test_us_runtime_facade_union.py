@@ -10,9 +10,10 @@ from microcosm.build import us_runtime as facade
 
 # Derived independently from __all__ in pinned B 2ebca68e, F eba103bb and
 # J 6f6087cb (906 names), plus the 11 SPM-role and reported-receipt exports
-# origin/main added by 23 September 2026 (917 names; native integration line).
-# Hash preimage is UTF-8 newline-joined sorted unique export names.
-_UNION_SHA256 = "4bdfd75527a8b0dbd29ffc26fa87872a42c16e3850e0d8b965f2f22b79a12bd4"
+# origin/main added by 23 September 2026 (917 names), plus the three fiscal
+# target exclusion exports main 2bce66156 added (920 names; native integration
+# line). Hash preimage is UTF-8 newline-joined sorted unique export names.
+_UNION_SHA256 = "5b9df20773d016ae9cb5b8f9b3669e373ec1fe57a5b6ea2e66e4197e32a08b43"
 _CONSTANTS = (
     "PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN",
@@ -31,8 +32,8 @@ _CONSTANTS = (
 )
 
 
-def test_facade_preserves_exact_917_name_union_without_duplicates():
-    assert len(facade.__all__) == len(set(facade.__all__)) == 917
+def test_facade_preserves_exact_920_name_union_without_duplicates():
+    assert len(facade.__all__) == len(set(facade.__all__)) == 920
     preimage = "\n".join(sorted(facade.__all__)).encode()
     assert hashlib.sha256(preimage).hexdigest() == _UNION_SHA256
     assert set(facade.__all__) <= set(dir(facade))

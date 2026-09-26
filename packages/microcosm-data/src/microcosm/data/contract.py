@@ -71,6 +71,7 @@ __all__ = [
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
     "compatibility_claim_declarer_error",
+    "line_for_release_id",
     "release_dataset_role",
     "required_release_files",
     "validate_evidence_release_dir",
@@ -416,13 +417,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "1f3980db96a922ced81c89b63daae829f180984b1157a0a73cdc768c1ade7017"
+    "77c39b24d445a1c71ae4a2eee370442dff00d03154041fa97941343f846c8d8c"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c9141c748dac31d4a0f37d746a8a7639080cf9a80f8cc296aae8e7ef6bafbf79"
+    "a9f73615aa7fe6c9e7a9b0edca82933d766ff3eaa20b39995426e6958b2ca800"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "4e88c60ff7688a8528b793bee666ec669b871899f9d8eae7a6d19eb0b659ddd2"
+    "150e7a8f0100cd1127cde8f1d79396a2dbf2acf7be440a058e4860bf36e7cb0e"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -467,11 +468,15 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
+    "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
+    "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred"),
     "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
+    "uk_stage_etb_services_support_pricing": ("stage_health", "transferred"),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -483,6 +488,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_band_donors_support": ("stage_health", "transferred"),
+    "uk_stage_spi_income_band_donors_support": ("stage_health", "transferred"),
     "uk_stage_hmrc_cgt_gains_spine_summary": (
         "stage_health",
         "transferred",
@@ -561,16 +567,21 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
+        "uk_stage_nts_bus_travel_support",
+        "uk_stage_nts_bus_travel_facts",
         "uk_stage_uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support",
         "uk_stage_lcfs_consumption_energy_rake",
+        "uk_stage_lcfs_consumption_bus_pricing",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
+        "uk_stage_etb_services_support_pricing",
         "uk_stage_frs_hmrc_spine_leaves_signal",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
         "uk_stage_cgt_incidence_clone_mass",
         "uk_stage_cgt_band_donors_support",
+        "uk_stage_spi_income_band_donors_support",
         "uk_stage_hmrc_cgt_gains_spine_summary",
         "uk_stage_hmrc_cgt_asset_type_spine_summary",
         "uk_stage_cgt_incidence_anchor_composition",
@@ -615,6 +626,38 @@ _UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
 # microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
 # data shard cannot import the build shard); lockstep-tested.
 _UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+_UK_LOCAL_LINE_RELEASE_ID_RE = re.compile(
+    r"^microcosm-uk-2024-25-local-k(?P<n>[1-9][0-9]*)$"
+)
+
+
+def line_for_release_id(release_id: str) -> str | None:
+    """Return the promotable UK publication line for ``release_id``."""
+    if release_id == _UK_NATIONAL_RELEASE_ID:
+        return "national"
+    match = _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id)
+    if match is not None:
+        return f"local-k{match.group('n')}"
+    return None
+
+
+def dataset_role_for_line(line: str) -> str:
+    """The one dataset role a publication line may carry.
+
+    The national line publishes national-default releases; every local-area
+    line publishes non-default local-area releases. The publisher refuses a
+    line promotion whose manifest declares another role, and the loader
+    refuses a manifest that reached a line pointer with the wrong role, so a
+    local-area release can never ride the national pointer (or the reverse)
+    on the strength of its release id alone.
+    """
+    if line == "national":
+        return NATIONAL_DEFAULT_DATASET_ROLE
+    if re.fullmatch(r"local-k[1-9][0-9]*", line):
+        return NON_DEFAULT_LOCAL_AREA_DATASET_ROLE
+    raise ValueError(f"{line!r} is not a publication line.")
+
+
 # The dense joint national + local line (microcosm#762 A18, ruling
 # 2026-09-03): the same constant-id approach, published on the inspect lane
 # under the non-default local-area role. Mirrored from
@@ -682,6 +725,17 @@ _UK_DENSE_SOURCE_COVERAGE_KEYS = (
 # a hand-edited or stale revision cannot claim a cut the attempt chain never
 # produced.
 _UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
+
+
+def _uk_line_cut_tag_re(release_id: str) -> re.Pattern[str] | None:
+    """Return the immutable cut-tag grammar for a promotable UK line."""
+    if line_for_release_id(release_id) is None:
+        return None
+    return re.compile(
+        re.escape(release_id) + "-" + _UK_NATIONAL_REVISION_SUFFIX_RE.pattern
+    )
+
+
 # The canonical release-dir filenames of the evidence the certification signs
 # (tools/assemble_uk_release_dir.py copies each byte-for-byte). Validation
 # binds every local file to its signed digest: a certification whose evidence
@@ -719,16 +773,21 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_band_donors_support",
             "uk_stage_cgt_incidence_anchor_composition",
+            "uk_stage_spi_income_band_donors_support",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_relationships_composition",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_nts_bus_travel_facts",
+            "uk_stage_nts_bus_travel_support",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
@@ -775,10 +834,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "59b636f960c2a9e4e6cfb7f989949b89c64330bf9f3784d897926e0a9c8dcea3"
+            "9b1984fc699ce1be2efa4d65456a277ecc2b0256eb43292bd5f80421b6e0b045"
         ),
         "policy_sha256": (
-            "a638c43c4b486962fba6bb6a6ffab557765dce26981b06f066ffdee36616482c"
+            "3c08258a6eba824287b50300b3438b4a2b241757457e8a9a8388349dbf227e7a"
         ),
     },
     "calibration_seam": {
@@ -791,10 +850,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "9b9623caf02ee37d48cef4ff60171877c94962b0526ee516c89fab253790e8f2"
+            "5f9681b56b64156c1fba9119b253416952cc35bd798dcc71fc2ffae4e79d386d"
         ),
         "policy_sha256": (
-            "77eace424e352172496f8fd99dbf68f858514198f87f6c6a6b33353d7eff55ad"
+            "ab39a3466feca64067a3b37106c2125196f7d53b1eb448f0415a5e6846379de8"
         ),
     },
 }
@@ -1276,6 +1335,7 @@ def _check_release_manifest(
             "release_manifest.json must declare a non-empty 'artifacts' mapping."
         )
     else:
+        line_cut_tag_re = _uk_line_cut_tag_re(release_id)
         diagnostics_artifact = artifacts.get("calibration_diagnostics")
         if not isinstance(diagnostics_artifact, Mapping):
             failures.append(
@@ -1303,13 +1363,9 @@ def _check_release_manifest(
                 revision == release_id
                 or (annual_revision is not None and revision == annual_revision)
                 or (
-                    release_id == _UK_NATIONAL_RELEASE_ID
+                    line_cut_tag_re is not None
                     and isinstance(revision, str)
-                    and revision.startswith(release_id + "-")
-                    and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
-                        revision[len(release_id) + 1 :]
-                    )
-                    is not None
+                    and line_cut_tag_re.fullmatch(revision) is not None
                 )
             )
             # A present-but-non-string revision must fail here rather than
@@ -1322,7 +1378,7 @@ def _check_release_manifest(
                 expected = (
                     f"the release id {release_id!r} or a "
                     f"'{release_id}-<YYYYMMDDTHHMMSSZ>-<uuid8>' per-cut tag"
-                    if release_id == _UK_NATIONAL_RELEASE_ID
+                    if line_cut_tag_re is not None
                     else f"the release id {release_id!r}"
                 )
                 failures.append(

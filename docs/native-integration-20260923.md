@@ -239,6 +239,122 @@ matches the unanchored substring `ARTIFACT_PRODUCER_KEY`; this test anchors both
 codes so that neither refusal can satisfy the other's assertion. No production
 module, source pin, implementation inventory or F0 identity changed.
 
+## Merge of main `2bce66156` (26 September)
+
+This merge brings in the 19 main merges since `6442030a2`:
+
+- US release: the Route A remediation stack, PR-1 to PR-5 and a follow-up
+  (#1016, #1018, #1017, #1025, #1024, #1028). Also the tips return-count
+  exclusion at every vintage (#1029, d179), the national + state target
+  surface (#1005) and its source coverage (#1008), and the QRF tail-register
+  batching (#1004). Also the capital-gains tail clone on a PUF-support base
+  (#992), the stored-input contract (#1031, #1026) and the publish-now,
+  flip-later tag flow (#1015).
+- US inputs and grading: the PUF imputation no longer predicts income from
+  itself (#1033, #982), and eCPS parity grades under the live engine names
+  (#994).
+- UK: bus fares from the NTS (#954), per-line release pointers and the
+  2024-25 national default (#966), and income anchors at the calibration year
+  (#1006).
+- Shared: each packaged country spec loads once per process (#1010).
+
+It had eight conflicted paths. The earlier resolutions recorded above were not revisited;
+each file below is listed once.
+
+| Paths | Resolution |
+| --- | --- |
+| `.github/workflows/test.yml` | Keep the native sharded matrix and diagnostic job. Main's only change since `6442030a2` adds `--durations=25` to the four pytest calls; the native text already carries it in each. |
+| `packages/microcosm-build/src/microcosm/build/us_runtime/__init__.py` | Keep the lazy facade. Add main's three fiscal-target exports (`US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS`, `US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`, `us_fiscal_target_exclusion_receipt`) to the `fiscal_targets` export map; `__all__` merged cleanly. The public export set is the parent union: 920 names. |
+| `packages/microcosm-build/src/microcosm/build/us_runtime/reform_validation.py` | Keep main's `_released_engine_state` helper and its two callers, which collect only after releasing an object that held engine state. Keep the native `default_simulate_factory` signature with explicit dataset and microsimulation constructors and SPM selection. |
+| `tools/build_us_fiscal_refresh_release.py` | Carry the native explicit-consumer seams onto main's Route A structures; details below. |
+| `packages/microcosm-build/src/microcosm/build/spec_engine/inventory_coverage.py`; `docs/evidence/spec-engine/us-f0-coverage.json` | Re-derive from the merged tree (below). |
+| `packages/microcosm-build/tests/test_spec_engine_loader.py`; `packages/microcosm-build/tests/test_us_multispine_pool_tool.py` | Re-derive the golden and live spec identities from the merged tree. |
+
+One further file had no textual conflict but pinned the facade size:
+`packages/microcosm-build/tests/test_us_runtime_facade_union.py` now asserts
+920 names and the union digest
+`5b9df20773d016ae9cb5b8f9b3669e373ec1fe57a5b6ea2e66e4197e32a08b43`. Each
+parent's `__all__` has 917 names, and their union is 920; the merged
+facade's digest equals the digest of that union.
+
+### Fiscal release tool
+
+Main's Route A PR-4 (#1025, `f1fa9f465`) replaced the frame-based reform-validation
+factory, `_batched_reform_validation_simulate_factory_from_frame`, with
+`_HouseholdBatchedPostExportScorer`. The scorer reads the written H5 once,
+binds its digest, scores each consumer in household batches, and records a
+`post_export_scoring` block in both manifests. The native line (`0b476f984`,
+`54f224f2f`) had added explicit consumer seams to the old factory: formula
+metadata, a dataset constructor, a microsimulation constructor and an SPM
+selection. The merge carries them onto the scorer:
+
+- The scorer accepts `formula_metadata`, `dataset_cls` and `spm` beside its
+  existing `microsimulation_cls`, `dataset_from_frame` and `load_frame`.
+  Supplied metadata checks the whole written frame before any batch dataset or
+  engine exists. `dataset_from_frame` and `dataset_cls` together refuse.
+- An explicit SPM selection is copied once at construction. Every batch engine
+  and every reform system receives its own copy, and the manifest block records
+  the selection actually used.
+- With no explicit seam, every call keeps main's shape exactly: the default
+  loader and dataset helper see their existing arguments, each engine declares
+  `US_RELEASE_SPM_SELECTION`, and a reform system is built from `reform=`
+  alone. `_main` supplies no seam.
+- `_score_post_export_consumer`, `_write_reform_validation` and
+  `_write_demographics` forward explicit seams only to a scorer they open
+  themselves. An existing scorer refuses them.
+
+Main's Route A PR-5 (#1024, `a13324e90`) batched the target materializer's base
+simulation. The native seams now reach each base batch as well as each JCT
+reform batch. PR-2 (#1018, `c1b0a3204`) made a build commit mandatory with a
+target-frame checkpoint path; two native checkpoint tests now supply one. The
+native shared helpers remain: `_main` calls
+`_compile_fiscal_release_target_registry` once, and it solves the dense and
+L0 arms through `_calibrate_fiscal_support`. Exact-k keeps its ladder path. Main's exclusion receipt (Route A PR-1,
+#1016, `8b228eccd`, written under the manifest receipt key by #1017) stays in
+`_main`, and still replays the facts, period and crosswalk that compiler
+used. The native survey handoff, the ACA frame-context fix and the
+private calibration attachment bridge are unchanged.
+
+Three native test files that addressed the removed factory now address the
+scorer. They keep their assertions: explicit seams reach every batch dataset,
+engine and reform system, captured selections survive caller mutation, and
+supplied metadata refuses before any engine work.
+`test_us_fiscal_consumer_propagation.py` adds a refusal test for overrides on
+an existing scorer, and a test that omitting every seam preserves the
+release's calls and manifest selection. `test_us_fiscal_formula_metadata.py`
+now expects four single-household batch datasets, two base and two reform,
+where the unbatched base used one. `test_us_fiscal_refresh_builder.py`'s
+receipt-replay test follows the compile into the shared helper. It asserts
+that `_main` has no direct compile call, passes the crosswalk, and takes back
+the ledger artifact whose facts were compiled.
+
+### Identity repairs for this merge
+
+Every value below was observed on the merged tree; none was hand-derived.
+`tools/generate_us_bundle_from_constants.py --check` passes: the committed US
+bundle equals the bundle generated from the merged constants. Its identity is
+`2dfa51b89e740c742437168cb07f3084a2ecd7f90ad61eb13d3b12b69f315e15`, which
+replaces both parents' values in the pool tool's live-constants assertion.
+Before the repair, four inventory items failed:
+primary predictor tuples, producer resource semantics, seed protocol and owner
+map digests, and the stacked checkpoint base identity. Their observed values:
+
+| `EXPECTED_HASHES` key | Native | Main | Merged |
+| --- | --- | --- | --- |
+| `primary_tuples` | `987b501c…` | `fdf23da4…` | `fdf23da4…` (main's #1033 predictor block; the native line did not change it) |
+| `late_resource_semantics` | `6c4f4ec0…` | `6abbfad7…` | `c0785687…` |
+| `seed_protocol` | `b1797d9b…` | `5f6d3b52…` | `6d673c33…` |
+| `seed_map` | `e04c4f86…` | `dad44808…` | `acab6b8d…` |
+| `full_checkpoint` | `cfa87759…` | `b1d5c652…` | `2a1ff0f7…` |
+
+`late_schedule`, `source_manifest`, `authority` and `graph_nodes` keep the
+native values, because main left them at the base values. After the repair,
+`tools/spec_engine_coverage.py` reports 42,239/42,239 configuration fields and
+41/41 inventory checks. The field count equals the previous integration's.
+The loader's minimal golden vector binds the seed protocol implementation
+digest, so it moves with it:
+`f2047cb96d0d063f40c2d5eb5afa2f3821e5667e49968268d14829bc5e09ab5a`.
+
 ## Local Git recovery and validation record
 
 The sandbox could read the original linked-worktree Git administration but could

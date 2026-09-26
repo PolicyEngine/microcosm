@@ -128,6 +128,15 @@ The country registers the native role class supplied by
 `spm_calculator/policyengine_adapter.py`; its source is bound to the calculator
 wheel, while country and wrapper loader sources bind to their respective wheels.
 
+Before either loader runs, certification also applies the stored-input
+contract (`microcosm.data.stored_inputs`, microcosm#1026): the candidate may
+store no lowercase snake_case column that the tested country does not define,
+unless the reviewed register lists it. The pinned BuildP parent stores
+`would_claim_wic` and `medicare_part_b_premiums`, two retired engine inputs
+(policyengine-us 2.2.1 names them `takes_up_wic_if_eligible` and
+`medicare_part_b_premiums_reported`), and a candidate preserves its parent's
+bytes, so a new role candidate from that parent is refused under 2.2.1.
+
 ```bash
 python -m microcosm.data.source_enrichment --certify \
   --release-dir /path/to/new-candidate/releases/RELEASE_ID \

@@ -927,6 +927,8 @@ class TestUKCountryPackage:
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
+            "hmrc_itl_taxpayer_counts.json",
+            "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
@@ -962,6 +964,7 @@ class TestUKCountryPackage:
             "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -988,17 +991,21 @@ class TestUKCountryPackage:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "dft_bus_journeys.json",
+            "nts_trip_rates.json",
+            "nts_car_availability.json",
         )
 
     def test_uk_source_manifest_loads_thirty_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 31 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
-        # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725, then
-        # cgt_incidence_anchor #970 as the newest) plus the two certified-pair
-        # stages the June path still uses.
-        assert len(spec.sources.stages) == 33
+        # 33 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
+        # cgt_incidence_anchor #970, nts_bus_travel #930, then
+        # spi_income_band_donors (PolicyEngine/chronicle#280 lane) as the newest) plus the two
+        # certified-pair stages the June path still uses.
+        assert len(spec.sources.stages) == 35
 
 
 class TestExistingPackagesGeneralize:
@@ -1035,6 +1042,8 @@ class TestExistingPackagesGeneralize:
             "calibration_measure_exclusions.json",
             "hmrc_cgt_conditioning_facts.json",
             "hmrc_cgt_asset_type_facts.json",
+            "hmrc_itl_taxpayer_counts.json",
+            "hmrc_uprating_engine_pins.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
@@ -1070,6 +1079,7 @@ class TestExistingPackagesGeneralize:
             "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -1096,6 +1106,9 @@ class TestExistingPackagesGeneralize:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "dft_bus_journeys.json",
+            "nts_trip_rates.json",
+            "nts_car_availability.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
@@ -1103,13 +1116,17 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 705
-        )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells;
+            len(references) == 1124
+        )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+        # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
+        # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
+        # ten regional bands over twelve areas); microcosm#905: 424 - 18 country
+        # rows + 189 region-tier cells;
         # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
         # cells and Wales gains ten country rows (bands A-I + total);
         # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
         # 24 size-of-gain rows
-        assert references["obr.esa"].value_operation == "sum"
+        assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
         )
@@ -1342,16 +1359,21 @@ class TestUKGatesManifest:
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
+            "uk_stage_nts_bus_travel_support",
+            "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
+            "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
@@ -1438,16 +1460,21 @@ class TestUKGatesManifest:
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
         assert flagged == [
             "uk_stage_was_wealth_support",
+            "uk_stage_nts_bus_travel_support",
+            "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
+            "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
@@ -1493,6 +1520,7 @@ class TestUKGatesManifest:
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
         )
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15

@@ -116,13 +116,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "1f3980db96a922ced81c89b63daae829f180984b1157a0a73cdc768c1ade7017"
+    "77c39b24d445a1c71ae4a2eee370442dff00d03154041fa97941343f846c8d8c"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c9141c748dac31d4a0f37d746a8a7639080cf9a80f8cc296aae8e7ef6bafbf79"
+    "a9f73615aa7fe6c9e7a9b0edca82933d766ff3eaa20b39995426e6958b2ca800"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "4e88c60ff7688a8528b793bee666ec669b871899f9d8eae7a6d19eb0b659ddd2"
+    "150e7a8f0100cd1127cde8f1d79396a2dbf2acf7be440a058e4860bf36e7cb0e"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -156,8 +156,12 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_services_support_pricing": ("stage_health", "transferred", None),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -179,6 +183,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_cgt_band_donors_support": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_spi_income_band_donors_support": (
         "stage_health",
         "transferred",
         None,
@@ -1178,13 +1187,18 @@ def _gate_battery_payload(
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_bus_pricing": "lcfs_consumption",
+        "uk_stage_nts_bus_travel_support": "nts_bus_travel",
+        "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
+        "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
+        "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
         "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
@@ -2161,6 +2175,19 @@ def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+@pytest.mark.parametrize(
+    ("release_id", "line"),
+    [
+        (UK_NATIONAL_RELEASE_ID, "national"),
+        ("microcosm-uk-2024-25-local-k55000", "local-k55000"),
+        ("microcosm-uk-2024-25-dense", None),
+        (UK_RELEASE_ID, None),
+    ],
+)
+def test_line_for_release_id(release_id: str, line: str | None) -> None:
+    assert contract.line_for_release_id(release_id) == line
 
 
 def test_uk_national_release_dir_validates(tmp_path: Path) -> None:
@@ -3515,6 +3542,138 @@ def test_release_manifest_local_us_source_coverage_hash_must_match(
     failures = "\n".join(excinfo.value.failures)
     assert "artifact 'us_source_coverage' declares sha256" in failures
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
+
+
+#: The terminal gate verdicts the US release tool binds as release artifacts
+#: (route A remediation PR-3), with the tool's key -> file name mapping.
+US_GATE_EVIDENCE_FILES = {
+    "input_coverage": "input_coverage.json",
+    "input_mass_parity": "input_mass_parity.json",
+    "qrf_tail_concentration": "qrf_tail_concentration.json",
+    "reform_coverage_smoke": "reform_coverage_smoke.json",
+}
+
+
+def _gate_evidence_payloads() -> dict[str, dict]:
+    """Minimal verdicts in the shapes the US release tool writes."""
+    register = {"farm_income": "donor tail over the line before calibration"}
+    return {
+        "input_coverage": {
+            "schema_version": 1,
+            "enforced": True,
+            "input_coverage": {"passed": True, "failures": [], "details": {}},
+        },
+        "input_mass_parity": {
+            "schema_version": 1,
+            "enforced": True,
+            "base_frame_vs_reference": None,
+            "export_vs_base_frame": {
+                "passed": True,
+                "failures": [],
+                "details": {"reference_name": "populace_us_2024.h5"},
+            },
+        },
+        "qrf_tail_concentration": {
+            "schema_version": 1,
+            "enforced": True,
+            "surface": {
+                "reviewed_exclusions_file": "/runtime/qrf_tail_exclusions.json",
+                "reviewed_exclusions_sha256": _canonical_sha256(register),
+                "reviewed_exclusions": register,
+                "register_mismatch": {"stale": [], "unused": []},
+            },
+            "tail_concentration": {
+                "passed": True,
+                "failures": [],
+                "details": {"reviewed_exclusions": register},
+            },
+        },
+        "reform_coverage_smoke": {
+            "schema_version": 1,
+            "enforced": True,
+            "reform_coverage_smoke": {"passed": True, "failures": [], "details": {}},
+        },
+    }
+
+
+def _bind_gate_evidence(release_dir: Path) -> dict[str, str]:
+    """Write the gate verdicts and bind them as the release tool does: one
+    diagnostics artifact per file, plus the evidence blocks in both
+    manifests. Returns the artifact key -> file name mapping."""
+    payloads = _gate_evidence_payloads()
+    release_path = release_dir / "release_manifest.json"
+    release_manifest = json.loads(release_path.read_text())
+    revision = release_manifest["artifacts"]["calibration_diagnostics"]["revision"]
+    for key, filename in US_GATE_EVIDENCE_FILES.items():
+        path = release_dir / filename
+        path.write_text(json.dumps(payloads[key], indent=2, sort_keys=True) + "\n")
+        release_manifest["artifacts"][key] = {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": "policyengine/populace-us",
+            "revision": revision,
+            "sha256": _sha256(path),
+        }
+    surface = payloads["qrf_tail_concentration"]["surface"]
+    blocks = {
+        "qrf_tail_register": {
+            "path": surface["reviewed_exclusions_file"],
+            "sha256": surface["reviewed_exclusions_sha256"],
+            "entries": surface["reviewed_exclusions"],
+            "mismatch": surface["register_mismatch"],
+            "enforced": True,
+        },
+        "export_input_mass_reference": {
+            "path": "/runtime/forensics/populace_us_2024.h5",
+            "sha256": "c" * 64,
+            "reference_name": "populace_us_2024.h5",
+        },
+        "calibration_runtime": {
+            "torch": "2.12.0",
+            "torch_num_threads": 16,
+            "omp_num_threads": "16",
+        },
+        "fiscal_target_exclusion_receipt": {
+            "artifact": "us_source_coverage",
+            "path": US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+            "sha256": _sha256(release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE),
+            "key": "fiscal_target_exclusion_receipt",
+            "present": False,
+            "receipt_sha256": None,
+        },
+    }
+    release_manifest["build"].update(blocks)
+    release_path.write_text(json.dumps(release_manifest))
+    build_path = release_dir / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest.update(blocks)
+    build_path.write_text(json.dumps(build_manifest))
+    return dict(US_GATE_EVIDENCE_FILES)
+
+
+def test_us_release_binding_gate_evidence_validates(release_dir: Path) -> None:
+    """Route A remediation PR-3: a US release carrying its terminal gate
+    verdicts as diagnostics artifacts, with the evidence blocks in both
+    manifests, still passes the full release contract."""
+    _bind_gate_evidence(release_dir)
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize("artifact_key", sorted(US_GATE_EVIDENCE_FILES))
+def test_us_release_gate_evidence_hash_must_match(
+    release_dir: Path, artifact_key: str
+) -> None:
+    """The local artifact hash check covers every bound verdict: editing one
+    after the manifest was written refuses the release by name."""
+    filename = _bind_gate_evidence(release_dir)[artifact_key]
+    path = release_dir / filename
+    path.write_text(path.read_text().replace('"passed": true', '"passed": false'))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert f"artifact {artifact_key!r} declares sha256" in failures
+    assert filename in failures
+    assert len(excinfo.value.failures) == 1
 
 
 def test_build_manifest_requires_clean_git_commit(release_dir: Path) -> None:
@@ -5068,6 +5227,23 @@ def _rewrite_evidence_manifest(evidence_release_dir: Path, mutate) -> None:
 
 def test_a_complete_evidence_release_passes(evidence_release_dir: Path) -> None:
     validate_evidence_release_dir(evidence_release_dir)
+
+
+def test_evidence_release_binding_gate_evidence_validates(
+    evidence_release_dir: Path,
+) -> None:
+    """An evidence-tier release is where a waived or failed verdict matters
+    most: it binds the same gate evidence and still passes its contract, and
+    the hash check covers each file there too."""
+    filenames = _bind_gate_evidence(evidence_release_dir)
+    validate_evidence_release_dir(evidence_release_dir)
+    path = evidence_release_dir / filenames["qrf_tail_concentration"]
+    path.write_text(path.read_text() + "\n")
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    assert "artifact 'qrf_tail_concentration' declares sha256" in "\n".join(
+        excinfo.value.failures
+    )
 
 
 def test_evidence_release_fails_the_certified_contract(

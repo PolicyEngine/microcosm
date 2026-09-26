@@ -243,7 +243,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
         == (inventory_coverage.EXPECTED_HASHES["seed_protocol"])
     )
     assert first.spec_sha256 == (
-        "2a35edbfbceb49debda576884c932bf82fd6ad675ff4f6cceb74b0f84d8e103c"
+        "f2047cb96d0d063f40c2d5eb5afa2f3821e5667e49968268d14829bc5e09ab5a"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

@@ -30,6 +30,12 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
 from microcosm.build.uk_runtime.lcfs_consumption import (
     donor_realized_ranges as lcfs_ranges,
 )
+from microcosm.build.uk_runtime.nts_bus_travel import (
+    CLEAN_NTS_TRAVEL_TABLES_KIND,
+    NTSColumns,
+    clean_nts_travel_tables,
+    nts_support_ranges,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 UK_PACKAGE = REPO_ROOT / "packages/microcosm-build/src/microcosm/build/uk"
@@ -99,14 +105,76 @@ def build_etb_services_support_bounds(etb_tab: Path) -> dict[str, object]:
     )
 
 
+def build_nts_support_bounds(
+    household_tab: Path,
+    individual_tab: Path,
+    trip_tab: Path,
+    stage_tab: Path,
+    ticket_tab: Path,
+) -> dict[str, object]:
+    """Bounds of the nts_bus_travel person outputs from the pinned NTS tabs (#930)."""
+
+    stage = _committed_stage("nts_bus_travel")
+    derive = next(
+        dict(op.parameters)
+        for op in stage.operations
+        if op.kind == CLEAN_NTS_TRAVEL_TABLES_KIND
+    )
+    columns = NTSColumns.from_parameters(derive)
+    cars_clip = tuple(int(v) for v in derive.get("cars_clip", (0, 5)))
+    donor = clean_nts_travel_tables(
+        pd.read_csv(household_tab, sep="\t", low_memory=False),
+        pd.read_csv(individual_tab, sep="\t", low_memory=False),
+        pd.read_csv(trip_tab, sep="\t", low_memory=False),
+        pd.read_csv(stage_tab, sep="\t", low_memory=False),
+        pd.read_csv(ticket_tab, sep="\t", low_memory=False),
+        columns=columns,
+        cars_clip=(cars_clip[0], cars_clip[1]),
+    )
+    return _payload(
+        source={
+            "ukds_study_number": 5340,
+            "doi": "10.5255/UKDA-SN-5340-19",
+            "household_tab_sha256": _sha256(household_tab),
+            "individual_tab_sha256": _sha256(individual_tab),
+            "trip_tab_sha256": _sha256(trip_tab),
+            "stage_tab_sha256": _sha256(stage_tab),
+            "ticket_tab_sha256": _sha256(ticket_tab),
+        },
+        bounds=nts_support_ranges(donor.person),
+        label="NTS bus travel",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--lcfs-hh-tab", type=Path)
     parser.add_argument("--lcfs-person-tab", type=Path)
     parser.add_argument("--etb-tab", type=Path)
+    parser.add_argument("--nts-household-tab", type=Path)
+    parser.add_argument("--nts-individual-tab", type=Path)
+    parser.add_argument("--nts-trip-tab", type=Path)
+    parser.add_argument("--nts-stage-tab", type=Path)
+    parser.add_argument("--nts-ticket-tab", type=Path)
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args(argv)
     jobs: list[tuple[Path, dict[str, object]]] = []
+    nts = (
+        args.nts_household_tab,
+        args.nts_individual_tab,
+        args.nts_trip_tab,
+        args.nts_stage_tab,
+        args.nts_ticket_tab,
+    )
+    if any(nts):
+        if not all(nts):
+            raise SystemExit("NTS support bounds require all five NTS tabs.")
+        jobs.append(
+            (
+                UK_PACKAGE / "nts_bus_travel_support_bounds.json",
+                build_nts_support_bounds(*nts),
+            )
+        )
     if args.lcfs_hh_tab or args.lcfs_person_tab:
         if not args.lcfs_hh_tab or not args.lcfs_person_tab:
             raise SystemExit("LCFS support bounds require both LCFS tabs.")

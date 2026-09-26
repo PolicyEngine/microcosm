@@ -819,3 +819,285 @@ def test_cgt_incidence_anchor_gate_holds_the_composition_and_the_pairs() -> None
         )
     with pytest.raises(ValueError, match="pair_count"):
         _anchor_gate(_anchor_evidence(pair_count=1.5))
+
+
+def _gate_parameters(gate_id: str) -> dict:
+    import json
+    from pathlib import Path
+
+    gates = json.loads(
+        (
+            Path(__file__).resolve().parents[1] / "src/microcosm/build/uk/gates.json"
+        ).read_text("utf-8")
+    )
+    entry = next(g for g in gates["gates"] if g["id"] == gate_id)
+    assert entry["gate"] == "stage_health"
+    assert entry["population_fact_check"] is True
+    assert entry["evidence_absent_blocks"] is True
+    return dict(entry["parameters"])
+
+
+def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> None:
+    """The lcfs bus_pricing receipt is fact-checked at stage time (microcosm#930 C6)."""
+
+    import copy
+
+    import pandas as pd
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_fare_pricing import (
+        BUS_IN_LONDON,
+        OTHER_LOCAL_BUS,
+        bus_fare_prices,
+        price_bus_journeys,
+    )
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_VENDORED_RESOURCES,
+        bus_pricing_operation,
+    )
+
+    parameters = _gate_parameters("uk_stage_lcfs_consumption_bus_pricing")
+    assert parameters["check"] == "bus_pricing"
+    declared = bus_pricing_operation(
+        load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    )
+    prices = bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4, 5],
+            "region": ["LONDON", "SOUTH_EAST", "WALES", "SCOTLAND", "NORTHERN_IRELAND"],
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [11, 12, 21, 31, 41, 51],
+            "person_household_id": [1, 1, 2, 3, 4, 5],
+            "bus_in_london_trips": [100.0, 50.0, 0.0, 0.0, 0.0, 0.0],
+            "other_local_bus_trips": [0.0, 10.0, 40.0, 30.0, 20.0, 25.0],
+            "bus_pass_eligible": [False, True, False, False, False, True],
+        }
+    )
+    _, _, receipt = price_bus_journeys(
+        person,
+        household,
+        prices=prices,
+        trips_columns={
+            BUS_IN_LONDON: "bus_in_london_trips",
+            OTHER_LOCAL_BUS: "other_local_bus_trips",
+        },
+        eligibility_column="bus_pass_eligible",
+        household_weights=np.array([1.0, 2.0, 3.0, 4.0, 5.0]),
+        raw_household_fares=np.array([500.0, 600.0, 700.0, 800.0, 900.0]),
+    )
+    receipt = {"chain_conditioned_on": "raw_draw", **prices.receipt, **receipt}
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "lcfs_consumption", "bus_pricing": ev},
+            stage="lcfs_consumption",
+            check="bus_pricing",
+            parameters=parameters,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["areas_fact_checked"] == 1 + len(
+        {a.label for a in prices.other_by_region.values()}
+    )
+    assert set(passed.details["frame_implied_over_published_boardings"]) >= {
+        "london_series",
+        "england_outside_london",
+    }
+    tampered = copy.deepcopy(receipt)
+    tampered["prices"]["london_series"]["yield_per_fare_paying_boarding"] *= 1.01
+    result = run(tampered)
+    assert not result.passed and any(
+        "yield_per_fare_paying_boarding" in f for f in result.failures
+    ), result.failures
+    tampered = copy.deepcopy(receipt)
+    tampered["prices"]["england_outside_london"]["boardings"]["value"] *= 1.01
+    result = run(tampered)
+    assert not result.passed and any(
+        "boardings" in f and "not the vendored" in f for f in result.failures
+    ), result.failures
+    tampered = copy.deepcopy(receipt)
+    tampered["chain_conditioned_on"] = "priced"
+    result = run(tampered)
+    assert not result.passed and any("raw draw" in f for f in result.failures)
+    tampered = copy.deepcopy(receipt)
+    tampered["unpriced_regions"] = ["WALES", "SCOTLAND"]
+    result = run(tampered)
+    assert not result.passed and any("unpriced regions" in f for f in result.failures)
+    with pytest.raises(ValueError, match="bus_pricing must be an object"):
+        run(None)
+
+
+def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows() -> (
+    None
+):
+    """The ETB bus-support pricing receipt is fenced at stage time (microcosm#930)."""
+
+    import copy
+
+    import pandas as pd
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_support_pricing import (
+        bus_support_pricing_operation,
+        price_bus_support,
+    )
+    from microcosm.build.uk_runtime.etb_services import (
+        UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
+
+    parameters = _gate_parameters("uk_stage_etb_services_support_pricing")
+    assert parameters["check"] == "bus_support_pricing"
+    declared = bus_support_pricing_operation(
+        load_country_spec("uk").sources.stage_map()["etb_services"]
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4, 5],
+            "region": ["LONDON", "SOUTH_EAST", "WALES", "SCOTLAND", "NORTHERN_IRELAND"],
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [11, 12, 21, 31, 41, 51],
+            "person_household_id": [1, 1, 2, 3, 4, 5],
+            "bus_in_london_trips": [100.0, 50.0, 0.0, 0.0, 0.0, 0.0],
+            "other_local_bus_trips": [0.0, 10.0, 40.0, 30.0, 20.0, 25.0],
+            "bus_pass_eligible": [False, True, False, False, True, True],
+        }
+    )
+    _, _, receipt = price_bus_support(
+        declared,
+        person=person,
+        household=household,
+        household_weights=np.array([1.0, 2.0, 3.0, 4.0, 5.0]),
+        raw_support=np.array([50.0, 60.0, 70.0, 80.0, 90.0]),
+        allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
+
+    def run(ev):
+        return uk_stage_health_gate(
+            evidence={"stage": "etb_services", "bus_support_pricing": ev},
+            stage="etb_services",
+            check="bus_support_pricing",
+            parameters=parameters,
+        )
+
+    passed = run(receipt)
+    assert passed.passed, passed.failures
+    assert passed.details["areas_fact_checked"] == 3
+    assert set(passed.details["priced_over_published"]) == {
+        "london",
+        "england_outside_london",
+        "scotland",
+    }
+    tampered = copy.deepcopy(receipt)
+    tampered["by_area"]["scotland"]["other_support_per_boarding"] *= 1.01
+    result = run(tampered)
+    assert not result.passed and any(
+        "scotland other_support_per_boarding" in f for f in result.failures
+    ), result.failures
+    tampered = copy.deepcopy(receipt)
+    tampered["by_area"]["london"]["net_support"]["value"] *= 1.01
+    result = run(tampered)
+    assert not result.passed and any("london net_support" in f for f in result.failures)
+    tampered = copy.deepcopy(receipt)
+    tampered["raw_draw_regions"] = ["WALES"]
+    result = run(tampered)
+    assert not result.passed and any("raw-draw regions" in f for f in result.failures)
+    tampered = copy.deepcopy(receipt)
+    tampered["applied"] = False
+    result = run(tampered)
+    assert not result.passed and any("applied pricing" in f for f in result.failures)
+    tampered = copy.deepcopy(receipt)
+    del tampered["by_area"]["scotland"]
+    result = run(tampered)
+    assert not result.passed and any(
+        "no support area 'scotland'" in f for f in result.failures
+    )
+    with pytest.raises(ValueError, match="bus_support_pricing must be an object"):
+        run(None)
+
+
+def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None:
+    bands = [200_000, 500_000, 1_000_000, 2_000_000]
+    taxpayers = {
+        200_000: 359_000.0,
+        500_000: 61_000.0,
+        1_000_000: 20_000.0,
+        2_000_000: 10_000.0,
+    }
+    rows = [
+        {
+            "lower_bound": lower,
+            "donor_households": 120,
+            "carriers": 120,
+            "donor_weight": taxpayers[lower] / 120,
+            "weighted_taxpayers": taxpayers[lower],
+            "published_taxpayers": taxpayers[lower],
+        }
+        for lower in bands
+    ]
+    evidence = {
+        "stage": "spi_income_band_donors",
+        "donors_per_band": 120,
+        "bands": rows,
+    }
+    parameters = {
+        "stage": "spi_income_band_donors",
+        "check": "spi_income_band_donor_support",
+        "donors_per_band": 120,
+        "band_lower_bounds": bands,
+    }
+    assert _passed(
+        uk_stage_health_gate(
+            evidence=evidence,
+            stage="spi_income_band_donors",
+            check="spi_income_band_donor_support",
+            parameters=parameters,
+        )
+    )
+    # A band whose copy lost its carrier fails.
+    broken = [dict(row) for row in rows]
+    broken[-1]["carriers"] = 119
+    result = uk_stage_health_gate(
+        evidence={**evidence, "bands": broken},
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=parameters,
+    )
+    assert not result.passed and "119 carriers" in " ".join(result.failures)
+    # A missing band fails against the declared four.
+    result = uk_stage_health_gate(
+        evidence={**evidence, "bands": rows[:-1]},
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=parameters,
+    )
+    assert not result.passed and "differ from the declared" in " ".join(result.failures)
+    # A scaled rung (fewer donors than declared) is not held to the published
+    # mass, but a full stack whose weights do not sum to it is.
+    scaled = [{**row, "donor_households": 2, "carriers": 2} for row in rows]
+    assert _passed(
+        uk_stage_health_gate(
+            evidence={**evidence, "donors_per_band": 2, "bands": scaled},
+            stage="spi_income_band_donors",
+            check="spi_income_band_donor_support",
+            parameters=parameters,
+        )
+    )
+    off = [dict(row) for row in rows]
+    off[0]["donor_weight"] = 1.0
+    result = uk_stage_health_gate(
+        evidence={**evidence, "bands": off},
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=parameters,
+    )
+    assert not result.passed and "differ from the published" in " ".join(
+        result.failures
+    )

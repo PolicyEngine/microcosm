@@ -49,9 +49,11 @@ from microcosm.build.us_runtime import (
     us_release_input_coverage_gate,
     us_release_reform_coverage_probes,
 )
+from microcosm.build.us_runtime.parity_reference import load_ecps_parity_known_gaps
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
     RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS,
+    project_ecps_parity_known_gap_names,
 )
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
@@ -1559,6 +1561,170 @@ class TestManifestGeneratorSync:
         # trip the live-tree guard it mirrors (test_us_plan does the same).
         assert ("policyengine-" + "us-data") not in rendered
         assert ("policyengine_" + "us_data") not in rendered
+
+
+_WIC_SPELLINGS = ("would_claim_wic", "takes_up_wic_if_eligible")
+_WIC_GAP_ENTRY = {
+    "reason": "pretend the WIC take-up stage regressed",
+    "issue": "PolicyEngine/microcosm#994",
+}
+
+
+def _generator_with_extra_gaps(monkeypatch, extra_gaps: dict[str, dict]):
+    """The manifest generator reading the shipped register plus ``extra_gaps``."""
+    generator = _load_manifest_generator()
+    real_load = generator._load
+
+    def _load(name: str) -> dict:
+        payload = real_load(name)
+        if name == "ecps_parity_known_gaps.json":
+            payload["known_gaps"] = {**payload["known_gaps"], **extra_gaps}
+        return payload
+
+    monkeypatch.setattr(generator, "_load", _load)
+    return generator
+
+
+class TestParityKnownGapRenameProjection:
+    """Known-gap names resolve through the one rename register everywhere.
+
+    Gate peer P2 on PolicyEngine/microcosm#994: once the parity gate graded a
+    ``would_claim_wic`` entry as an exemption of ``takes_up_wic_if_eligible``,
+    the coverage-manifest generator's restored-input guard still read register
+    keys raw and could not see it. Every consumer now projects register names
+    through ``REFERENCE_ECPS_LAYER_RENAMES`` via one shared helper.
+    """
+
+    def test_projection_resolves_historical_names_and_keeps_the_spelling(
+        self,
+    ) -> None:
+        assert project_ecps_parity_known_gap_names(
+            ["would_claim_wic", "survivor_benefits"]
+        ) == {
+            "takes_up_wic_if_eligible": "would_claim_wic",
+            "survivor_benefits": "survivor_benefits",
+        }
+
+    @pytest.mark.parametrize(
+        "names",
+        (
+            _WIC_SPELLINGS,
+            _WIC_SPELLINGS[::-1],
+            ("survivor_benefits", "survivor_benefits"),
+        ),
+    )
+    def test_projection_refuses_two_entries_for_one_live_layer(self, names) -> None:
+        with pytest.raises(ValueError, match="would merge two exemptions"):
+            project_ecps_parity_known_gap_names(names)
+
+    def test_shipped_register_projects_onto_its_own_names(self) -> None:
+        names = [gap.variable for gap in load_ecps_parity_known_gaps()]
+
+        projected = project_ecps_parity_known_gap_names(names)
+
+        assert list(projected) == [
+            REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in names
+        ]
+
+    def test_generator_uses_the_runtime_rename_register(self) -> None:
+        generator = _load_manifest_generator()
+
+        assert generator.REFERENCE_ECPS_LAYER_RENAMES is REFERENCE_ECPS_LAYER_RENAMES
+        assert not hasattr(generator, "REFERENCE_LAYER_RENAMES")
+
+    @pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+    def test_generator_refuses_a_restored_input_gap_under_either_spelling(
+        self, monkeypatch, spelling
+    ) -> None:
+        # takes_up_wic_if_eligible is restored (US_WIC_CLAIM_OUTPUT_COLUMNS).
+        # Filed under the reference's retired name it used to slip past this
+        # guard, leaving the committed manifest unchanged while the parity gate
+        # exempted the empty live layer.
+        generator = _generator_with_extra_gaps(
+            monkeypatch, {spelling: dict(_WIC_GAP_ENTRY)}
+        )
+
+        with pytest.raises(
+            ValueError, match="Restored reference inputs cannot remain"
+        ) as raised:
+            generator.build_manifest()
+
+        assert "takes_up_wic_if_eligible" in str(raised.value)
+        if spelling == "would_claim_wic":
+            assert "registered as 'would_claim_wic'" in str(raised.value)
+
+    def test_generator_refuses_one_column_excluded_under_both_spellings(
+        self, monkeypatch
+    ) -> None:
+        generator = _generator_with_extra_gaps(
+            monkeypatch,
+            {spelling: dict(_WIC_GAP_ENTRY) for spelling in _WIC_SPELLINGS},
+        )
+
+        with pytest.raises(ValueError, match="would merge two exemptions"):
+            generator.build_manifest()
+
+    @pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+    def test_generator_excludes_the_live_column_under_either_spelling(
+        self, monkeypatch, spelling
+    ) -> None:
+        # Were WIC not restored, a historical-name gap must exclude the live
+        # column (never declare the retired name) and say where it was filed.
+        generator = _generator_with_extra_gaps(
+            monkeypatch, {spelling: dict(_WIC_GAP_ENTRY)}
+        )
+        monkeypatch.setattr(
+            generator,
+            "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
+            tuple(
+                name
+                for name in generator.RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS
+                if name != "takes_up_wic_if_eligible"
+            ),
+        )
+
+        columns = generator.build_manifest()["columns"]
+
+        assert "would_claim_wic" not in columns
+        column = columns["takes_up_wic_if_eligible"]
+        assert column["status"] == "reviewed_exclusion"
+        assert column["reason"] == _WIC_GAP_ENTRY["reason"]
+        assert column["issue"] == _WIC_GAP_ENTRY["issue"]
+        if spelling == "would_claim_wic":
+            assert "'would_claim_wic'" in column["note"]
+        else:
+            assert "note" not in column
+
+    @pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+    def test_anti_rot_refuses_a_restored_input_gap_under_either_spelling(
+        self, spelling
+    ) -> None:
+        # The build preflight re-checks the register itself, so a register
+        # edited without regenerating the manifest still fails before staging.
+        with pytest.raises(
+            ValueError, match="cannot return to the parity known-gap register"
+        ) as raised:
+            assert_release_input_coverage_manifest_current(
+                engine=None, parity_known_gaps=(spelling,)
+            )
+
+        assert "takes_up_wic_if_eligible" in str(raised.value)
+        if spelling == "would_claim_wic":
+            assert "registered as 'would_claim_wic'" in str(raised.value)
+
+    def test_anti_rot_refuses_one_layer_exempted_under_both_spellings(self) -> None:
+        with pytest.raises(ValueError, match="would merge two exemptions"):
+            assert_release_input_coverage_manifest_current(
+                engine=None, parity_known_gaps=_WIC_SPELLINGS
+            )
+
+    def test_anti_rot_accepts_the_shipped_register(self) -> None:
+        assert_release_input_coverage_manifest_current(
+            engine=None,
+            parity_known_gaps=tuple(
+                gap.variable for gap in load_ecps_parity_known_gaps()
+            ),
+        )
 
 
 class TestCapitalGainDistributionRouteGuarantee:

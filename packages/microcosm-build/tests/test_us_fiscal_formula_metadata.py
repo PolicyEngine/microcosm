@@ -16,6 +16,12 @@ from test_us_fiscal_refresh_builder import (
 from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
 
+def _written_h5(tmp_path):
+    path = tmp_path / "invented.h5"
+    path.write_bytes(b"invented written release bytes")
+    return path
+
+
 class RecordingMetadata:
     def __init__(self, formula_columns=()):
         self.formula_columns = set(formula_columns)
@@ -110,7 +116,7 @@ def test_provider_failure_never_falls_back(builder, monkeypatch, small_frame):
     ["dataset", "aca", "reform", "materialize", "dense", "sparse", "validation"],
 )
 def test_supplied_provider_refuses_before_engine_or_weight_work(
-    builder, small_frame, helper
+    builder, small_frame, tmp_path, helper
 ):
     metadata = RecordingMetadata({"income"})
     before = {
@@ -147,10 +153,12 @@ def test_supplied_provider_refuses_before_engine_or_weight_work(
         "sparse": lambda: builder._with_l0_refit_weights(
             small_frame, None, formula_metadata=metadata
         ),
-        "validation": lambda: (
-            builder._batched_reform_validation_simulate_factory_from_frame(
-                small_frame, formula_metadata=metadata
-            )
+        # The written-H5 scorer that replaced the frame-based factory.
+        "validation": lambda: builder._HouseholdBatchedPostExportScorer(
+            _written_h5(tmp_path),
+            maximum_microsim_batch_size=None,
+            load_frame=lambda path, *, expected_sha256: small_frame,
+            formula_metadata=metadata,
         ),
     }
     with pytest.raises(ValueError, match="Formula-owned.*income"):
@@ -215,6 +223,7 @@ def test_checkpoint_hit_checks_supplied_metadata_before_read(
     kwargs = dict(
         target_frame_checkpoint_path=tmp_path / "invented",
         target_frame_checkpoint_identity={"invented": True},
+        target_frame_checkpoint_build_commit="invented-commit",
         formula_metadata=provider,
     )
     if reject:
@@ -271,7 +280,9 @@ def test_materialization_and_reforms_forward_provider_to_each_batch(
     target_frame, _, _ = builder._materialize_target_frame(
         frame, targets, maximum_microsim_batch_size=1, formula_metadata=provider
     )
-    assert datasets == [(2, provider), (1, provider), (1, provider)]
+    # Route A PR-5 batches the base simulation over the same household
+    # partition as the JCT reform loop: two base batches, then two reform ones.
+    assert datasets == [(1, provider)] * 4
     assert reform_calls == ["invented_credit"]
     assert len(provider.calls) == 2
     assert builder._FORMULA_OWNED_GATE_ADAPTER is None
@@ -281,18 +292,27 @@ def test_materialization_and_reforms_forward_provider_to_each_batch(
 
 
 def test_validation_factory_forwards_provider_to_maintained_dataset_helper(
-    builder, monkeypatch
+    builder, monkeypatch, tmp_path
 ):
+    """The written-H5 scorer forwards the provider to each batch's dataset.
+
+    Route A replaced the frame-based reform-validation factory with the
+    household-batched post-export scorer; one whole-frame ownership check
+    precedes batching, and every batch dataset receives the same provider.
+    """
     frame = _multi_reform_frame(builder)
     provider = RecordingMetadata()
     seen = []
 
     class Simulation:
-        def __init__(self, *, dataset):
-            pass
+        def __init__(self, *, dataset, spm):
+            assert spm == dict(builder.US_RELEASE_SPM_SELECTION)
 
         def calculate(self, measure, period):
-            return np.asarray([1.0])
+            return builder._PostExportValues(np.asarray([1.0]), np.asarray([1.0]))
+
+        def get_holder(self, variable):
+            return SimpleNamespace(get_known_periods=lambda: [])
 
     def dataset(
         frame_arg,
@@ -308,13 +328,17 @@ def test_validation_factory_forwards_provider_to_maintained_dataset_helper(
         return object()
 
     monkeypatch.setattr(builder, "_dataset_from_frame", dataset)
-    factory = builder._batched_reform_validation_simulate_factory_from_frame(
-        frame,
+    scorer = builder._HouseholdBatchedPostExportScorer(
+        _written_h5(tmp_path),
         maximum_microsim_batch_size=1,
+        load_frame=lambda path, *, expected_sha256: frame,
         microsimulation_cls=Simulation,
         formula_metadata=provider,
     )
-    assert factory(None).calculate("invented_measure", 2024).sum() == 2.0
+    consumer = scorer.open_consumer(
+        "reform_validation", (("invented_measure", 2024, None),)
+    )
+    assert consumer.simulate(None).calculate("invented_measure", 2024).sum() == 2.0
     assert seen == [(1, provider), (1, provider)]
     assert len(provider.calls) == 1
 
@@ -389,6 +413,7 @@ def test_default_checkpoint_path_keeps_existing_behavior(
             (),
             target_frame_checkpoint_path=tmp_path / "invented",
             target_frame_checkpoint_identity={"invented": True},
+            target_frame_checkpoint_build_commit="invented-commit",
         )
         is cached
     )

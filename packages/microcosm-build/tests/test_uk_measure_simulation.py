@@ -615,13 +615,18 @@ _PACKAGED_EXCLUSION_CENSUS = {
 _UC_ELEMENT_REGISTER_ROWS = ("dwp.uc.households_housing_element",)
 
 _A16_UNREACHABLE_ROWS = (
-    "ons.savings_interest_income",
     "slc.borrowers.plan_2_liable",
     "slc.borrowers.plan_2_above_threshold",
     "obr.housing_benefit",
     "dwp.jsa_claimants",
+    "ons.savings_interest_income",
 )
 _A16_READJUDICATED_ROWS = ("obr.housing_benefit", "dwp.jsa_claimants")
+# PolicyEngine/chronicle#280 lane (María's ruling of 2026-09-22, R3): the SPI 2023-24
+# interest rows by band are the fitting anchor for interest, uprated to the
+# calibration year; the ONS D.41 row stays on the register as a measured
+# diagnostic with the concept reason and the UC-tranche clock.
+_A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 
 
 def test_packaged_exclusions_load():
@@ -688,7 +693,7 @@ def test_packaged_exclusions_load():
         "dwp.jsa_claimants": "microcosm#869",
     }
     a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
-    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS[:3])
+    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS[:2])
     for entry in a16:
         assert entry["expires_on"] == "2026-10-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
@@ -698,9 +703,17 @@ def test_packaged_exclusions_load():
         assert entry["approved_on"] == "2026-09-16", name
         assert entry["expires_on"] == "2026-12-08", name
         assert entry["tracking"] == a16_issues[name], name
-        assert "tools/diagnose_uk_legacy_benefits.py" in entry["adjudication"], name
-        assert "issuecomment-5694598278" in entry["adjudication"], name
-        assert "SPI support channel" in entry["reason"], name
+    for name in _A16_CONCEPT_ROWS:
+        entry = next(e for e in exclusions if e["name"] == name)
+        assert entry["approved_on"] == "2026-09-22", name
+        assert entry["expires_on"] == "2026-10-22", name
+        assert entry["tracking"] == a16_issues[name], name
+        assert "microcosm#1006" in entry["adjudication"], name
+        assert "D.41" in entry["reason"] and "diagnostic" in entry["reason"], name
+        # The fitting anchor the row hands over to: the SPI Table 3.7 interest
+        # rows, uprated (PolicyEngine/chronicle#280 lane).
+        assert "hmrc.spi.savings_interest_income" in entry["reason"], name
+        assert "never fitted" in entry["reason"], name
 
     # The 2026-09-16 tranche also carries the Housing Benefit caseload rows
     # (tracked on #867 like the spend row) and the benefit-cap amount bands

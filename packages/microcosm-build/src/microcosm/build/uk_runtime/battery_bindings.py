@@ -547,6 +547,7 @@ def _evaluate_support(
         "etb_vat_support_bounds.json",
         "etb_services_support_bounds.json",
         "uc_deduction_support_bounds.json",
+        "nts_bus_travel_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -1620,11 +1621,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_relative_composition_error",
                 "maximum_pair_relative_error",
                 "minimum_pair_count",
+                # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
+                # reserved bands and the donors each must carry.
+                "band_lower_bounds",
+                "donors_per_band",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
                 # design weights, with the published gas-connected share.
                 "margins",
                 "margins_period_value",
                 "maximum_connected_share_deviation",
+                # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
+                # trip rates recomputed from the vendored rows.
+                "trip_rates_period_value",
+                "maximum_user_share_deviation",
+                "maximum_trip_rate_deviation",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

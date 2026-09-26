@@ -1884,6 +1884,10 @@ def _producer_dtype_acs_source_frame() -> Frame:
     person = tables["person"]
     person["is_female"] = [True, False]
     person["is_household_head"] = [True, True]
+    # Each ACS person heads a one-person tax unit; production ACS spines carry
+    # the role from assign_us_unit_structure, and the PUF demographic
+    # predictors refuse a person without one (microcosm#982).
+    person["tax_unit_role_input"] = ["HEAD", "HEAD"]
     person["employment_income_before_lsr"] = [30_000.0, 45_000.0]
     person["self_employment_income_before_lsr"] = [0.0, 5_000.0]
     person["acs_social_security_income"] = [0.0, 12_000.0]
@@ -2121,6 +2125,10 @@ def _assert_pool_transfer_produced_encodings(
     assert isinstance(chain_inputs, puf_support_module.PufTaxDetailChainInputs)
     primary_predictors = tuple(chain_inputs.predictors)
     primary_targets = tuple(chain_inputs.target_order)
+    # Filing status, person count, four demographics, the income rank and
+    # earnings participation; no survey income level is a predictor
+    # (microcosm#982).
+    assert primary_predictors == puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS
     assert len(primary_predictors) == 8
     assert len(primary_targets) == 65
 
