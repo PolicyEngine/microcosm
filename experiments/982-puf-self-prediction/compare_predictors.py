@@ -104,6 +104,7 @@ VARIANTS = {
     "current": INCOME8,
     "demographic_midrank6": [*DEMO, "income_rank_share"],
     "demographic_midrank6_earn": [*DEMO, "income_rank_share", "has_earnings"],
+    "demographic_stratrank6_earn": [*DEMO, "earnings_group_rank_share", "has_earnings"],
 }
 
 
@@ -118,6 +119,18 @@ def mid_share(values: np.ndarray, weights: np.ndarray) -> np.ndarray:
     tie_weight = np.bincount(group, weights=sorted_weights)[group]
     out = np.empty_like(values, dtype=float)
     out[order] = (before[first][group] + tie_weight / 2) / weights.sum()
+    return out
+
+
+def group_mid_share(
+    values: np.ndarray, weights: np.ndarray, groups: np.ndarray
+) -> np.ndarray:
+    """Mid-rank share computed separately within each group."""
+
+    out = np.empty(len(values), dtype=float)
+    for group in np.unique(groups):
+        mask = groups == group
+        out[mask] = mid_share(values[mask], weights[mask])
     return out
 
 
@@ -221,14 +234,16 @@ def main() -> None:
         frame["head_male"] = demo["head_male"].fillna(0).to_numpy()
         frame["spouse_age"] = demo["spouse_age"].fillna(0).to_numpy()
         frame["n_dependents"] = demo["n_dependents"].fillna(0).to_numpy()
-        frame["income_rank_share"] = mid_share(
-            units[SIX].astype(float).sum(axis=1).to_numpy(), weight
-        )
+        total = units[SIX].astype(float).sum(axis=1).to_numpy()
+        frame["income_rank_share"] = mid_share(total, weight)
         # Earnings participation: nonzero wages or self-employment income.
         frame["has_earnings"] = (
             (units["puf_predictor_employment_income"].astype(float) != 0)
             | (units["puf_predictor_self_employment_income"].astype(float) != 0)
         ).to_numpy(dtype=float)
+        frame["earnings_group_rank_share"] = group_mid_share(
+            total, weight, frame["has_earnings"].to_numpy()
+        )
         for column in SIX:
             frame[column] = units[column].to_numpy()
         return frame.set_index(units.index)

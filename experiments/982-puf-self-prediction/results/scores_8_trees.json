@@ -1,0 +1,390 @@
+{
+ "current": {
+  "total_proxy_agi_tn": 17.02052490757407,
+  "bands": {
+   "1m_to_1_5m": {
+    "returns": 834033.5237733945,
+    "soi_returns": 368931,
+    "agi_bn": 987.9540528354877,
+    "soi_agi_bn": 443.658,
+    "records": 1045,
+    "wages_pct": 54.909880459472284,
+    "soi_wages_pct": 47.6,
+    "capital_gains_pct": 4.003289430891578,
+    "soi_capital_gains_pct": 12.2
+   },
+   "1_5m_to_2m": {
+    "returns": 199842.7767805223,
+    "soi_returns": 147290,
+    "agi_bn": 343.1866754034334,
+    "soi_agi_bn": 252.903,
+    "records": 241,
+    "wages_pct": 25.27793571955139,
+    "soi_wages_pct": 40.3,
+    "capital_gains_pct": 5.101631627388862,
+    "soi_capital_gains_pct": 14.4
+   },
+   "2m_to_5m": {
+    "returns": 200740.5766045462,
+    "soi_returns": 203229,
+    "agi_bn": 544.7221121397331,
+    "soi_agi_bn": 602.653,
+    "records": 244,
+    "wages_pct": 23.350660086867084,
+    "soi_wages_pct": 33.1,
+    "capital_gains_pct": 3.2360325833681665,
+    "soi_capital_gains_pct": 18.1
+   },
+   "5m_to_10m": {
+    "returns": 23600.436272197952,
+    "soi_returns": 49262,
+    "agi_bn": 162.59814257545418,
+    "soi_agi_bn": 336.335,
+    "records": 31,
+    "wages_pct": 6.448791701213661,
+    "soi_wages_pct": 26.3,
+    "capital_gains_pct": 1.8835545084735956,
+    "soi_capital_gains_pct": 24.2
+   },
+   "10m_plus": {
+    "returns": 8186.391854233814,
+    "soi_returns": 30382,
+    "agi_bn": 184.54085065421765,
+    "soi_agi_bn": 907.901,
+    "records": 9,
+    "wages_pct": 1.4889862845554664,
+    "soi_wages_pct": 17.0,
+    "capital_gains_pct": 0.1054418003796087,
+    "soi_capital_gains_pct": 39.5
+   }
+  },
+  "top_concentration": {
+   "records_10m_plus": 9,
+   "top1_share": 0.5251403176683872,
+   "top3_share": 0.6939300862085058,
+   "max_proxy_agi": 121938370.30972688
+  },
+  "colorado_1m_plus": {
+   "returns": 27549.65240250287,
+   "records": 26,
+   "mean_proxy_agi": 2315640.9271452515,
+   "soi_mean_agi": 3030000.0,
+   "income_above_1m_bn": 36.245450229358276,
+   "soi_income_above_1m_bn": 31.7,
+   "largest_record_share_of_income_above_1m": 0.31641697953914316
+  },
+  "wages_self_prediction": {
+   "rank_correlation_with_survey": 0.9999933532139345,
+   "share_within_10pct_given_survey_positive": 0.9997961238038201,
+   "survey_max": 2449998.0,
+   "imputed_max": 2424015.920893465,
+   "records_above_survey_max": 0
+  },
+  "wages_participation": {
+   "survey_positive_share": 0.6768151526603218,
+   "imputed_positive_share": 0.6768310624786186,
+   "survey_zero_imputed_positive": 6.735653748692562e-05,
+   "survey_non_earner_imputed_positive_wages": 7.351893875916396e-05,
+   "survey_positive_imputed_zero": 8.656416696974001e-06,
+   "survey_total_wages_tn": 11.276640693799852,
+   "imputed_total_wages_tn": 11.276863640367434
+  },
+  "positive_shares": {
+   "qualified_dividend_income": 0.14961842443159457,
+   "taxable_interest_income": 0.5991063188388389,
+   "long_term_capital_gains_before_response": 0.06258953982869686,
+   "partnership_income": 0.053554896835077526
+  }
+ },
+ "demographic_midrank6": {
+  "total_proxy_agi_tn": 15.640706896857358,
+  "bands": {
+   "1m_to_1_5m": {
+    "returns": 374022.3510969521,
+    "soi_returns": 368931,
+    "agi_bn": 446.8352451486898,
+    "soi_agi_bn": 443.658,
+    "records": 468,
+    "wages_pct": 34.9338320007303,
+    "soi_wages_pct": 47.6,
+    "capital_gains_pct": 18.42342562273293,
+    "soi_capital_gains_pct": 12.2
+   },
+   "1_5m_to_2m": {
+    "returns": 132120.70972093893,
+    "soi_returns": 147290,
+    "agi_bn": 227.65634696485301,
+    "soi_agi_bn": 252.903,
+    "records": 171,
+    "wages_pct": 38.854667609994934,
+    "soi_wages_pct": 40.3,
+    "capital_gains_pct": 16.5164205925558,
+    "soi_capital_gains_pct": 14.4
+   },
+   "2m_to_5m": {
+    "returns": 224116.96052675025,
+    "soi_returns": 203229,
+    "agi_bn": 662.8900024757945,
+    "soi_agi_bn": 602.653,
+    "records": 278,
+    "wages_pct": 24.934600468798376,
+    "soi_wages_pct": 33.1,
+    "capital_gains_pct": 26.089948361694244,
+    "soi_capital_gains_pct": 18.1
+   },
+   "5m_to_10m": {
+    "returns": 47581.964228757824,
+    "soi_returns": 49262,
+    "agi_bn": 315.132467101385,
+    "soi_agi_bn": 336.335,
+    "records": 53,
+    "wages_pct": 26.87041244848809,
+    "soi_wages_pct": 26.3,
+    "capital_gains_pct": 35.38063850235277,
+    "soi_capital_gains_pct": 24.2
+   },
+   "10m_plus": {
+    "returns": 31403.709155975423,
+    "soi_returns": 30382,
+    "agi_bn": 1041.2296662419192,
+    "soi_agi_bn": 907.901,
+    "records": 37,
+    "wages_pct": 9.122426448692318,
+    "soi_wages_pct": 17.0,
+    "capital_gains_pct": 43.58986856373579,
+    "soi_capital_gains_pct": 39.5
+   }
+  },
+  "top_concentration": {
+   "records_10m_plus": 37,
+   "top1_share": 0.1465466519783328,
+   "top3_share": 0.28702983203414567,
+   "max_proxy_agi": 196169805.523334
+  },
+  "colorado_1m_plus": {
+   "returns": 15128.056646196392,
+   "records": 14,
+   "mean_proxy_agi": 5164382.58408042,
+   "soi_mean_agi": 3030000.0,
+   "income_above_1m_bn": 62.99901562840228,
+   "soi_income_above_1m_bn": 31.7,
+   "largest_record_share_of_income_above_1m": 0.6129629031941982
+  },
+  "wages_self_prediction": {
+   "rank_correlation_with_survey": 0.8487782332653889,
+   "share_within_10pct_given_survey_positive": 0.2363625938149059,
+   "survey_max": 2449998.0,
+   "imputed_max": 34235366.874910645,
+   "records_above_survey_max": 47
+  },
+  "wages_participation": {
+   "survey_positive_share": 0.6768151526603218,
+   "imputed_positive_share": 0.8045949146853619,
+   "survey_zero_imputed_positive": 0.5111729841560451,
+   "survey_non_earner_imputed_positive_wages": 0.47890361539748855,
+   "survey_positive_imputed_zero": 0.05529368052192713,
+   "survey_total_wages_tn": 11.276640693799852,
+   "imputed_total_wages_tn": 9.761753391207202
+  },
+  "positive_shares": {
+   "qualified_dividend_income": 0.23901214370962262,
+   "taxable_interest_income": 0.35393868736130085,
+   "long_term_capital_gains_before_response": 0.12324390644597932,
+   "partnership_income": 0.032835467003601876
+  }
+ },
+ "demographic_midrank6_earn": {
+  "total_proxy_agi_tn": 16.194077312627012,
+  "bands": {
+   "1m_to_1_5m": {
+    "returns": 397045.4010890536,
+    "soi_returns": 368931,
+    "agi_bn": 479.0338823565597,
+    "soi_agi_bn": 443.658,
+    "records": 515,
+    "wages_pct": 32.13893169918729,
+    "soi_wages_pct": 47.6,
+    "capital_gains_pct": 17.39417589550678,
+    "soi_capital_gains_pct": 12.2
+   },
+   "1_5m_to_2m": {
+    "returns": 147280.21148873988,
+    "soi_returns": 147290,
+    "agi_bn": 251.68608707045703,
+    "soi_agi_bn": 252.903,
+    "records": 195,
+    "wages_pct": 37.988445056992,
+    "soi_wages_pct": 40.3,
+    "capital_gains_pct": 14.579770777939785,
+    "soi_capital_gains_pct": 14.4
+   },
+   "2m_to_5m": {
+    "returns": 213124.9247529706,
+    "soi_returns": 203229,
+    "agi_bn": 622.7889721385293,
+    "soi_agi_bn": 602.653,
+    "records": 278,
+    "wages_pct": 26.434320434398586,
+    "soi_wages_pct": 33.1,
+    "capital_gains_pct": 22.656745188205075,
+    "soi_capital_gains_pct": 18.1
+   },
+   "5m_to_10m": {
+    "returns": 48629.4646892415,
+    "soi_returns": 49262,
+    "agi_bn": 312.2497355518415,
+    "soi_agi_bn": 336.335,
+    "records": 52,
+    "wages_pct": 23.659373884940454,
+    "soi_wages_pct": 26.3,
+    "capital_gains_pct": 34.10017229511464,
+    "soi_capital_gains_pct": 24.2
+   },
+   "10m_plus": {
+    "returns": 33919.63607849233,
+    "soi_returns": 30382,
+    "agi_bn": 1037.445361560811,
+    "soi_agi_bn": 907.901,
+    "records": 38,
+    "wages_pct": 9.412782805040239,
+    "soi_wages_pct": 17.0,
+    "capital_gains_pct": 42.64825750378589,
+    "soi_capital_gains_pct": 39.5
+   }
+  },
+  "top_concentration": {
+   "records_10m_plus": 38,
+   "top1_share": 0.17992964896425495,
+   "top3_share": 0.3464157001528837,
+   "max_proxy_agi": 239981461.1298356
+  },
+  "colorado_1m_plus": {
+   "returns": 14847.21743587981,
+   "records": 15,
+   "mean_proxy_agi": 9653198.231731962,
+   "soi_mean_agi": 3030000.0,
+   "income_above_1m_bn": 128.47591566229514,
+   "soi_income_above_1m_bn": 31.7,
+   "largest_record_share_of_income_above_1m": 0.8396350683483795
+  },
+  "wages_self_prediction": {
+   "rank_correlation_with_survey": 0.9060398862212984,
+   "share_within_10pct_given_survey_positive": 0.2396500974783063,
+   "survey_max": 2449998.0,
+   "imputed_max": 22673214.5392092,
+   "records_above_survey_max": 50
+  },
+  "wages_participation": {
+   "survey_positive_share": 0.6768151526603218,
+   "imputed_positive_share": 0.6754798358548498,
+   "survey_zero_imputed_positive": 0.076483890895055,
+   "survey_non_earner_imputed_positive_wages": 7.351893875916396e-05,
+   "survey_positive_imputed_zero": 0.038494633735558094,
+   "survey_total_wages_tn": 11.276640693799852,
+   "imputed_total_wages_tn": 9.67916292383692
+  },
+  "positive_shares": {
+   "qualified_dividend_income": 0.3172076358121757,
+   "taxable_interest_income": 0.4300193721393943,
+   "long_term_capital_gains_before_response": 0.16250242832920292,
+   "partnership_income": 0.03776464762983
+  }
+ },
+ "demographic_stratrank6_earn": {
+  "total_proxy_agi_tn": 14.003041186642356,
+  "bands": {
+   "1m_to_1_5m": {
+    "returns": 329429.21180386224,
+    "soi_returns": 368931,
+    "agi_bn": 401.0021612619176,
+    "soi_agi_bn": 443.658,
+    "records": 403,
+    "wages_pct": 30.536196266259115,
+    "soi_wages_pct": 47.6,
+    "capital_gains_pct": 21.28902804473941,
+    "soi_capital_gains_pct": 12.2
+   },
+   "1_5m_to_2m": {
+    "returns": 126008.375570696,
+    "soi_returns": 147290,
+    "agi_bn": 216.65968399521466,
+    "soi_agi_bn": 252.903,
+    "records": 168,
+    "wages_pct": 27.00587773595027,
+    "soi_wages_pct": 40.3,
+    "capital_gains_pct": 26.318777066489584,
+    "soi_capital_gains_pct": 14.4
+   },
+   "2m_to_5m": {
+    "returns": 206877.97424378322,
+    "soi_returns": 203229,
+    "agi_bn": 602.5105852023457,
+    "soi_agi_bn": 602.653,
+    "records": 245,
+    "wages_pct": 22.3643357073543,
+    "soi_wages_pct": 33.1,
+    "capital_gains_pct": 28.914376585898033,
+    "soi_capital_gains_pct": 18.1
+   },
+   "5m_to_10m": {
+    "returns": 49568.611842932616,
+    "soi_returns": 49262,
+    "agi_bn": 345.6387764315715,
+    "soi_agi_bn": 336.335,
+    "records": 57,
+    "wages_pct": 17.054056602963513,
+    "soi_wages_pct": 26.3,
+    "capital_gains_pct": 46.09795429038728,
+    "soi_capital_gains_pct": 24.2
+   },
+   "10m_plus": {
+    "returns": 29040.62551345989,
+    "soi_returns": 30382,
+    "agi_bn": 998.1597226598199,
+    "soi_agi_bn": 907.901,
+    "records": 32,
+    "wages_pct": 7.592909886418676,
+    "soi_wages_pct": 17.0,
+    "capital_gains_pct": 48.37686649881704,
+    "soi_capital_gains_pct": 39.5
+   }
+  },
+  "top_concentration": {
+   "records_10m_plus": 32,
+   "top1_share": 0.17560209681820463,
+   "top3_share": 0.38105001274077566,
+   "max_proxy_agi": 225340610.22645015
+  },
+  "colorado_1m_plus": {
+   "returns": 13840.188114938626,
+   "records": 12,
+   "mean_proxy_agi": 2381046.558793934,
+   "soi_mean_agi": 3030000.0,
+   "income_above_1m_bn": 19.113944169196692,
+   "soi_income_above_1m_bn": 31.7,
+   "largest_record_share_of_income_above_1m": 0.28954819012991223
+  },
+  "wages_self_prediction": {
+   "rank_correlation_with_survey": 0.9020895968430304,
+   "share_within_10pct_given_survey_positive": 0.02835153353126314,
+   "survey_max": 2449998.0,
+   "imputed_max": 22673214.5392092,
+   "records_above_survey_max": 31
+  },
+  "wages_participation": {
+   "survey_positive_share": 0.6768151526603218,
+   "imputed_positive_share": 0.6702521822619509,
+   "survey_zero_imputed_positive": 0.07530836840922601,
+   "survey_non_earner_imputed_positive_wages": 0.00010013906339174235,
+   "survey_positive_imputed_zero": 0.04565721353111563,
+   "survey_total_wages_tn": 11.276640693799852,
+   "imputed_total_wages_tn": 7.928425679256726
+  },
+  "positive_shares": {
+   "qualified_dividend_income": 0.21892965742798962,
+   "taxable_interest_income": 0.30985461877837256,
+   "long_term_capital_gains_before_response": 0.12626040465946414,
+   "partnership_income": 0.03452025556311993
+  }
+ }
+}
