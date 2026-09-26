@@ -403,7 +403,7 @@
    }
   },
   "route-a-r4-rehearsal-export": {
-   "role": "Route A rehearsal export built from main's tools; expected to pass",
+   "role": "Route A rehearsal export written by the Route A integration tool (8f63bf000); expected to pass",
    "source": "Route A remediation rehearsal R4 (not published): run 8f63bf000254's export frame written with PolicyEngineUSEngine().write_dataset.",
    "sha256": "58304078320ebab536f5361c354f1d43445f1442cfd01e423160cfea407f7c3f",
    "tables": {

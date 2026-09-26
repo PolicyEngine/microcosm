@@ -1142,8 +1142,8 @@ def test_the_1026_premises_hold_for_the_installed_engine():
 #: draw as would_claim_wic, and the Medicare Part B target as
 #: medicare_part_b_premiums (an input in every policyengine-us version read
 #: from 1.452.0 to 1.670.2, replaced by medicare_part_b_premiums_reported by
-#: 1.690.7). So each is refused naming exactly those two. The files built from
-#: main's tools pass.
+#: 1.690.7). So each is refused naming exactly those two. The Route A
+#: rehearsal export and the Build Q stacked multispine pool pass.
 _EXPECTED_VERDICTS = {
     _PUBLISHED_DEFAULT: (["medicare_part_b_premiums", "would_claim_wic"], 24),
     _RECEIPT_CHILD: (["medicare_part_b_premiums", "would_claim_wic"], 24),

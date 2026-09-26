@@ -1,7 +1,8 @@
 """Refuse stored model inputs the certified engine does not define.
 
-PolicyEngine-US 2.x renamed the WIC take-up input from ``would_claim_wic`` to
-``takes_up_wic_if_eligible`` (microcosm#1026). The published national default
+policyengine-us 1.777.0 renamed the WIC take-up input from ``would_claim_wic``
+to ``takes_up_wic_if_eligible`` (microcosm#1026; the cached versions read
+bracket it: 1.775.8 defines only the old name, 1.779.4 only the new). The published national default
 ``populace-us-2024-spm-20260915`` and its reported-receipt child
 ``populace-us-2024-spm-receipts-20260923`` both record policyengine-us 2.2.1
 as ``build.built_with_model_package``. 2.2.1 defines
@@ -253,7 +254,9 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:
 #: - the published default ``populace-us-2024-spm-20260915`` and its
 #:   reported-receipt child ``populace-us-2024-spm-receipts-20260923``;
-#: - the Route A rehearsal export built from main's tools;
+#: - the Route A rehearsal export, written by the Route A integration tool
+#:   (commit 8f63bf000 on route-a-integration-20260923, per its rebuild
+#:   receipt);
 #: - the Build Q stacked multispine pool, which the fiscal-refresh tool accepts
 #:   as ``--base-h5`` (the ``*_spine_source_id`` columns, the six ACS-native
 #:   ``acs_*`` amounts and ``puma_geoid`` reach an export from it); and
@@ -270,8 +273,10 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:   a retired engine input name, the same defect class as ``would_claim_wic``.
 #:   Every policyengine-us version read from 1.452.0 to 1.670.2 (the nine in
 #:   the local uv cache) defines it as a Person, YEAR, float input with no
-#:   formula, and 1.670.2 adds it into ``health_insurance_premiums`` and
-#:   ``spm_unit_medical_out_of_pocket_expenses``. By 1.690.7 it was replaced
+#:   formula. In 1.670.2 ``health_insurance_premiums`` adds it, and
+#:   ``spm_unit_medical_out_of_pocket_expenses`` subtracts it and adds the
+#:   rules-based ``income_adjusted_part_b_premium`` in its place. By 1.690.7 it
+#:   was replaced
 #:   by ``medicare_part_b_premiums_reported``, the same Person, YEAR, float
 #:   input under a new name. Every version read from 1.690.7 to 2.15.1 (91,
 #:   1.764.6 and 2.2.1 included) defines only the new name, and nothing in

@@ -6977,9 +6977,9 @@ def _stored_input_gate_failures(
     policyengine-us ignores a stored column it defines no variable for: it
     logs one warning and drops the column. ``populace-us-2024-spm-20260915``
     and its reported-receipt child, both certified against policyengine-us
-    2.2.1, stored the WIC take-up draw as ``would_claim_wic``, which 2.2.1
-    renamed to ``takes_up_wic_if_eligible``, so every WIC-eligible person took
-    WIC up. This refuses, by name, every column the export would store that
+    2.2.1, stored the WIC take-up draw as ``would_claim_wic``, which
+    policyengine-us 1.777.0 renamed to ``takes_up_wic_if_eligible`` (2.2.1
+    defines only the new name), so every WIC-eligible person took WIC up. This refuses, by name, every column the export would store that
     looks like a model input, is not a variable of the installed engine and is
     not in the reviewed register
     (:data:`microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`).
@@ -14185,7 +14185,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # Stored model inputs (microcosm#1026, decision d271), as a batched
     # pre-export gate. The engine ignores a stored column it defines no
     # variable for, so a renamed input (would_claim_wic after policyengine-us
-    # 2.x) ships as data the model never reads. The installed engine here is
+    # 1.777.0) ships as data the model never reads. The installed engine here is
     # the one this run writes the H5 with and records as
     # build.built_with_model_package. Column names only: no rows are read, and
     # the verdict joins the one batched pre-export raise below, so a refusal
