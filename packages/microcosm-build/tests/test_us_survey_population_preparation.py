@@ -1,0 +1,875 @@
+"""Actual complete source catalogues and native issuers over invented bytes."""
+
+import copy
+import json
+import os
+import shutil
+import sys
+from fractions import Fraction
+from types import SimpleNamespace
+
+import pandas as pd
+import pytest
+from test_us_acs_person_coverage_authentication import (
+    Member,
+    _csv,
+    _household,
+    _person,
+    build_fixture,
+)
+from test_us_asec_2024_native_population import _fixture as asec_fixture
+
+from microcosm.build.us_runtime import survey_population_preparation as owner
+from microcosm.frame import WeightKind
+
+
+def fixture(
+    tmp_path,
+    monkeypatch,
+    fraction=Fraction(1),
+    seed=41,
+    *,
+    zero=True,
+    zero_key=None,
+    missing_asec_money=None,
+    current_predictor_money=None,
+    acs_ssp_values=None,
+):
+    asec_root = tmp_path / "asec-original"
+    asec_root.mkdir()
+    paths = asec_fixture(
+        asec_root,
+        monkeypatch,
+        extra_household=True,
+        missing_money=missing_asec_money,
+        current_predictor_money=current_predictor_money,
+        tokens=("2", "1", "2", "1", "2", "1"),
+        household_rows=None
+        if zero and zero_key is None
+        else [
+            [
+                "00007",
+                "1",
+                "0" if zero_key == "00007" else "000255212",
+                "6",
+                "1",
+                "2",
+            ],
+            [
+                "00008",
+                "1",
+                "0" if zero_key == "00008" else "000010000",
+                "6",
+                "1",
+                "2",
+            ],
+        ],
+    )
+    monkeypatch.setattr(
+        owner.acs_native.housing.shutil,
+        "disk_usage",
+        lambda _: SimpleNamespace(free=64 * 1024**3),
+    )
+    households = [
+        _household("2024HU0000001", NP=2),
+        _household("2024HU0000002", NP=1),
+        _household("2024GQ0000001", NP=1, TYPEHUGQ=2, WGTP=0, TEN=""),
+        _household("2024GQ0000002", NP=1, TYPEHUGQ=3, WGTP=0, TEN=""),
+        _household("2024HU0000003", NP=0, TEN=""),
+    ]
+    people = [
+        _person("2024HU0000001", 1, 20, AGEP=30, MIL="1", ESR="4"),
+        _person("2024HU0000001", 2, 25, AGEP=15, MIL="", ESR=""),
+        _person("2024HU0000002", 1, 20, AGEP=80, MIL="4", ESR="6"),
+        _person("2024GQ0000001", 1, 37, AGEP=40, MIL="4", ESR="6", PWGTP=77),
+        _person("2024GQ0000002", 1, 38, AGEP=50, MIL="4", ESR="6", PWGTP=78),
+    ]
+    if acs_ssp_values is not None:
+        seen = set()
+        for person in people:
+            key = (person["SERIALNO"], person["SPORDER"])
+            if key in acs_ssp_values:
+                person["SSP"] = acs_ssp_values[key]
+                seen.add(key)
+        assert seen == set(acs_ssp_values)
+    acs = build_fixture(
+        tmp_path / "acs-original",
+        monkeypatch,
+        household_members=(Member("psam_husa.csv", _csv(households)),),
+        person_members=(Member("psam_pusa.csv", _csv(people)),),
+    )
+    source = tmp_path / "combined-source"
+    source.mkdir()
+    (source / "acs").mkdir()
+    (source / "asec").mkdir()
+    for name in ("csv_hus.zip", "csv_pus.zip"):
+        shutil.copyfile(acs.source_dir / name, source / "acs" / name)
+    for argument, name in (
+        ("parent_path", "parent.h5"),
+        ("household_attachment_path", "household-attachment.h5"),
+        ("person_income_attachment_path", "person-income-attachment.h5"),
+        ("household_member_path", "hhpub25.csv"),
+    ):
+        shutil.copyfile(paths[argument], source / "asec" / name)
+    for year, path in paths["person_member_paths"].items():
+        shutil.copyfile(path, source / "asec" / f"pppub{year - 1999}.csv")
+    request = {
+        "protocol": owner.REQUEST_PROTOCOL,
+        "declaration": owner.domains.DECLARATION,
+        "fraction": [fraction.numerator, fraction.denominator],
+        "seed": seed,
+    }
+    (source / "selection-request.json").write_bytes(
+        json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
+    )
+    snapshots = tmp_path / "captures"
+    snapshots.mkdir()
+    return dict(
+        source_dir=source, snapshot_root=snapshots, fraction=fraction, seed=seed
+    )
+
+
+def test_real_sources_prepare_once_without_allocation(tmp_path, monkeypatch):
+    arguments = fixture(tmp_path, monkeypatch)
+    result = owner.prepare_authenticated_survey_population(**arguments)
+    view = result.checked_view()
+    frame = view.frame
+    assert frame.weights_for("household").kind is WeightKind.DESIGN
+    assert frame.n("household") == 6 and frame.n("person") == 9
+    assert not view.receipt["release_eligible"]
+    assert len(view.receipt["origins"]["households"]) == 6
+    assert any(
+        row["original_anchor"] == [0, 1]
+        for row in view.receipt["origins"]["households"]
+    )
+    assert view.receipt["catalogues"]["acs"]["counts"]["vacancies"] == 1
+    assert view.selection_plan.source_authenticated is False
+    assert view.receipt["protocol"] == "microcosm.us.survey-population-preparation.v2"
+    assert owner.REQUEST_PROTOCOL == "microcosm.us.survey-population-request.v1"
+    assert owner.SOURCE_CODEC == "us-survey-population-source-v1"
+    state = owner._ISSUED[id(result)][2]
+    native_acs, native_asec = state.source_frames
+    known_acs_ages = {
+        ("2024HU0000001", "1"): 30,
+        ("2024HU0000001", "2"): 15,
+        ("2024HU0000002", "1"): 80,
+        ("2024GQ0000001", "1"): 40,
+        ("2024GQ0000002", "1"): 50,
+    }
+    acs_households = native_acs.table("household").set_index("household_id")
+    acs_serials = native_acs.person["person_household_id"].map(
+        acs_households["SERIALNO"]
+    )
+    assert not acs_serials.isna().any()
+    acs_keys = list(
+        zip(
+            acs_serials.map(str),
+            native_acs.person["SPORDER"].map(str),
+            strict=True,
+        )
+    )
+    assert len(acs_keys) == len(known_acs_ages) and set(acs_keys) == set(known_acs_ages)
+    expected_acs = [known_acs_ages[key] for key in acs_keys]
+    known_asec_ages = {
+        str(5).zfill(22): 55,
+        str(6).zfill(22): 14,
+        str(7).zfill(22): 55,
+        str(8).zfill(22): 14,
+    }
+    asec_keys = native_asec.person["PERIDNUM"].map(str).tolist()
+    assert len(asec_keys) == len(known_asec_ages) and set(asec_keys) == set(
+        known_asec_ages
+    )
+    expected_asec = [known_asec_ages[key] for key in asec_keys]
+    assert native_acs.person["AGEP"].map(str).tolist() == list(map(str, expected_acs))
+    assert native_acs.person["A_AGE"].tolist() == expected_acs
+    assert native_asec.person["A_AGE"].tolist() == expected_asec
+    assert frame.person["A_AGE"].tolist() == expected_acs + expected_asec
+    assert frame.person["age"].tolist() == expected_acs + expected_asec
+    assert not frame.person["age"].isna().any()
+    assert "age" not in native_asec.person  # The original ASEC owner stays raw.
+    evidence = view.receipt["origins"]["observed_age_normalization"]
+    assert evidence["rule"] == owner.observed_age.rule_document()
+    assert evidence["sources"]["acs"]["common_age_preexisting"] is True
+    assert evidence["sources"]["asec"]["common_age_preexisting"] is False
+    for index, channel in enumerate(("acs", "asec")):
+        assert (
+            evidence["sources"][channel]["native_frame_sha256"]
+            == state.source_frame_seals[index]
+            == view.receipt["native"][channel]["frame_sha256"]
+        )
+
+    # Copy comparisons use the real issued source Frame, with no new source read.
+    normalized = owner._normalized_source_copy(native_asec)
+    owner._verify_normalized_copy(native_asec, normalized)
+    normalized.person["A_AGE"] = normalized.person["A_AGE"] + 1
+    assert normalized.person["A_AGE"].iloc[0] == 56
+    assert native_asec.person["A_AGE"].iloc[0] == 55
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="NORMALIZED_SOURCE_STORAGE"
+    ):
+        owner._verify_normalized_copy(native_asec, normalized)
+    normalized = owner._normalized_source_copy(native_asec)
+    normalized.person["age"] = normalized.person["age"] + 1
+    assert normalized.person["age"].iloc[0] == 56
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="NORMALIZED_AGE_IDENTITY"
+    ):
+        owner._verify_normalized_copy(native_asec, normalized)
+    for change in ("column_name", "column_dtype", "strata_name"):
+        normalized = owner._normalized_source_copy(native_asec)
+        if change == "column_name":
+            normalized.person.columns = normalized.person.columns.rename("changed")
+        elif change == "column_dtype":
+            dtype = "string" if normalized.person.columns.dtype == object else object
+            normalized.person.columns = pd.Index(normalized.person.columns, dtype=dtype)
+        else:
+            normalized.strata.name = "changed"
+        with pytest.raises(owner.SurveyPopulationPreparationError, match="NORMALIZED_"):
+            owner._verify_normalized_copy(native_asec, normalized)
+
+    # A temporary rule/callable change cannot borrow this issued preparation.
+    assert owner.observed_age in owner._modules()
+    assert owner.graph_population in owner._modules()
+    for module, name, changed in (
+        (owner.observed_age, "RULE", "changed"),
+        (owner.observed_age, "AGE_CONVENTION", "changed"),
+        (owner.observed_age, "MAX_ROWS", 1),
+        (owner.observed_age, "MAX_EXACT_FLOAT64_INTEGER", 1),
+        (owner.observed_age, "normalize_observed_age", lambda *args: None),
+        (owner.graph_population, "_storage_parts", lambda *args: None),
+    ):
+        with monkeypatch.context() as local:
+            local.setattr(module, name, changed)
+            with pytest.raises(
+                owner.SurveyPopulationPreparationError, match="AUTHORITY_CHANGED"
+            ):
+                owner.verify_survey_population_preparation(result)
+    owner.verify_materialized_survey_population(result, frame)
+
+
+def test_single_selection_uses_complete_n_and_exact_fraction(tmp_path, monkeypatch):
+    arguments = fixture(tmp_path, monkeypatch, fraction=Fraction(2, 3), zero=False)
+    calls = []
+
+    def trace(frame, event, arg):
+        if (
+            event == "call"
+            and frame.f_code
+            is owner.survey_domain_sample.select_domain_households.__code__
+        ):
+            calls.append(True)
+
+    previous = sys.getprofile()
+    sys.setprofile(trace)
+    try:
+        result = owner.prepare_authenticated_survey_population(**arguments)
+        view = result.checked_view()
+        owner.verify_survey_population_preparation(result)
+    finally:
+        sys.setprofile(previous)
+    assert len(calls) == 1
+    cell = next(
+        c
+        for c in view.selection_plan.cells
+        if c.source is owner.domains.Source.ASEC
+        and c.domain is owner.domains.Domain.SHARED_HOUSING
+    )
+    assert (
+        cell.eligible_households,
+        cell.selected_households,
+        cell.inclusion_probability,
+    ) == (2, 1, Fraction(1, 2))
+    assert view.frame.n("household") == 5
+    assert view.receipt["native"]["asec"]["households"] == 1
+    assert view.receipt["native"]["asec"]["persons"] == 2
+    asec_people = [
+        r for r in view.receipt["origins"]["persons"]["rows"] if r[1] == "asec"
+    ]
+    assert len(asec_people) == 2 and len({r[-1] for r in asec_people}) == 1
+    asec = next(
+        r for r in view.receipt["origins"]["households"] if r["source"] == "asec"
+    )
+    assert asec["raw_native_id"] in {"00007", "00008"}
+    assert all(r["source_year"] == 2024 for r in view.receipt["origins"]["households"])
+
+
+def test_replay_reconstructs_sources_and_rejects_changed_candidate(
+    tmp_path, monkeypatch
+):
+    arguments = fixture(tmp_path, monkeypatch)
+    first = owner.prepare_authenticated_survey_population(**arguments)
+    payload = first.to_bytes()
+    assert (
+        json.loads(payload)["protocol"]
+        == "microcosm.us.survey-population-preparation.v2"
+    )
+    replay = owner.prepare_authenticated_survey_population(
+        **arguments, candidate=payload
+    )
+    assert replay is not first and replay.to_bytes() == payload
+    document = json.loads(payload)
+    document["selection"]["cells"][0]["share"] = [999, 1]
+    calls = []
+
+    def trace(frame, event, arg):
+        if (
+            event == "call"
+            and frame.f_code
+            is owner.asec_native.load_authenticated_asec_2024_native_population.__code__
+        ):
+            calls.append(True)
+
+    previous = sys.getprofile()
+    sys.setprofile(trace)
+    try:
+        with pytest.raises(
+            owner.SurveyPopulationPreparationError, match="CANDIDATE_MISMATCH"
+        ):
+            owner.prepare_authenticated_survey_population(
+                **arguments, candidate=owner._encode(document)
+            )
+    finally:
+        sys.setprofile(previous)
+    assert calls == [True]
+
+
+def test_selected_zero_support_refuses_without_redraw_or_native_issuance(
+    tmp_path, monkeypatch
+):
+    # Direct the invented source weights before pinning. The fixed seed is not
+    # searched or retried; this fixture-design draw is outside source issuance.
+    fraction, seed = Fraction(2, 3), 41
+    domain = owner.domains.Domain.SHARED_HOUSING.value
+    control = owner.survey_domain_sample.select_domain_households(
+        row_ids=("00007", "00008"),
+        source_channels=("asec", "asec"),
+        domain_keys=(domain, domain),
+        cells=((domain, "asec"),),
+        fraction=fraction,
+        seed=seed,
+    )[0]
+    assert control.eligible_households == 2 and len(control.positions) == 1
+    selected_key = ("00007", "00008")[control.positions[0]]
+    arguments = fixture(tmp_path, monkeypatch, fraction, seed, zero_key=selected_key)
+    calls = {"sampler": 0, "acs_native": 0, "asec_native": 0}
+    codes = {
+        owner.survey_domain_sample.select_domain_households.__code__: "sampler",
+        owner.acs_native.issue_acs_native_coverage.__code__: "acs_native",
+        owner.asec_native.load_authenticated_asec_2024_native_population.__code__: "asec_native",
+    }
+    refusals = []
+
+    def profile(frame, event, arg):
+        if event == "call" and frame.f_code in codes:
+            calls[codes[frame.f_code]] += 1
+
+    def trace(frame, event, arg):
+        if event == "exception" and frame.f_code is owner.selection._require.__code__:
+            refusals.append(str(arg[1]))
+        return trace
+
+    old_profile, old_trace = sys.getprofile(), sys.gettrace()
+    sys.setprofile(profile)
+    sys.settrace(trace)
+    try:
+        with pytest.raises(owner.SurveyPopulationPreparationError):
+            owner.prepare_authenticated_survey_population(**arguments)
+    finally:
+        sys.setprofile(old_profile)
+        sys.settrace(old_trace)
+    assert "SELECTED_CELL_HAS_NO_POSITIVE_ANCHOR" in refusals
+    assert calls == {"sampler": 1, "acs_native": 0, "asec_native": 0}
+
+
+@pytest.mark.parametrize("kind", ["wrapped_code", "closure", "default", "kwdefault"])
+def test_callable_configuration_drift_refuses_before_producer_io(monkeypatch, kind):
+    if kind == "wrapped_code":
+        monkeypatch.setattr(
+            owner._regular_reader.__wrapped__, "__code__", (lambda p, n: None).__code__
+        )
+    elif kind == "closure":
+        monkeypatch.setattr(
+            owner._regular_reader.__closure__[0], "cell_contents", lambda p, n: None
+        )
+    elif kind == "default":
+        monkeypatch.setattr(owner._check_scalars, "__defaults__", (999,))
+    else:
+        monkeypatch.setitem(
+            owner.prepare_authenticated_survey_population.__kwdefaults__,
+            "candidate",
+            b"substitution",
+        )
+    calls = []
+
+    def profile(frame, event, arg):
+        if event == "call" and frame.f_code is owner._code_bytes.__code__:
+            calls.append(True)
+
+    previous = sys.getprofile()
+    sys.setprofile(profile)
+    try:
+        with pytest.raises(
+            owner.SurveyPopulationPreparationError, match="PRODUCER_CHANGED"
+        ):
+            owner._producer()
+    finally:
+        sys.setprofile(previous)
+    assert calls == []
+
+
+def test_defensive_view_forgery_and_materialized_copy(tmp_path, monkeypatch):
+    result = owner.prepare_authenticated_survey_population(
+        **fixture(tmp_path, monkeypatch)
+    )
+    view = result.checked_view()
+    view.receipt["release_eligible"] = True
+    assert result.checked_view().receipt["release_eligible"] is False
+    for forged in (copy.copy(result), view, view.receipt, view.payload):
+        with pytest.raises(owner.SurveyPopulationPreparationError):
+            owner.verify_survey_population_preparation(forged)
+    materialized = owner._copy_source(view.frame)
+    materialized.weights_for("household").values.setflags(write=True)
+    owner.verify_materialized_survey_population(result, materialized)
+    materialized.person.iloc[0, materialized.person.columns.get_loc("age")] += 1
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="MATERIALIZED_FRAME_CHANGED"
+    ):
+        owner.verify_materialized_survey_population(result, materialized)
+    object.__setattr__(result, "payload", result.payload + b" ")
+    for borrow in (
+        lambda: result.frame,
+        lambda: result.context,
+        lambda: result.selection_plan,
+        lambda: result.receipt,
+        result.to_bytes,
+        result.checked_view,
+        lambda: owner.verify_survey_population_preparation(result),
+        lambda: owner.verify_materialized_survey_population(result, view.frame),
+    ):
+        with pytest.raises(owner.SurveyPopulationPreparationError):
+            borrow()
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["frame", "plan", "payload", "nested_acs", "nested_asec", "source", "source_extra"],
+)
+def test_late_mutation_at_final_producer_return_refuses_current_borrow(
+    tmp_path, monkeypatch, kind
+):
+    arguments = fixture(tmp_path, monkeypatch)
+    result = owner.prepare_authenticated_survey_population(**arguments)
+    state = owner._ISSUED[id(result)][2]
+    fired = []
+
+    def trace(frame, event, arg):
+        if (
+            event == "return"
+            and frame.f_code is owner._producer.__code__
+            and frame.f_back.f_code is owner._validate.__code__
+            and not fired
+        ):
+            fired.append(True)
+            if kind == "source_extra":
+                (arguments["source_dir"] / "asec" / "extra.txt").write_text("invented")
+            elif kind == "frame":
+                state.frame.person.iloc[
+                    0, state.frame.person.columns.get_loc("age")
+                ] += 1
+            elif kind == "plan":
+                object.__setattr__(state.plan.selected[0], "share", Fraction(99))
+            elif kind == "payload":
+                object.__setattr__(result, "payload", result.payload + b" ")
+            elif kind == "nested_acs":
+                literal = owner.acs_native._owned(state.native[0]).literal
+                object.__setattr__(literal, "payload", literal.payload + b" ")
+            elif kind == "nested_asec":
+                nested = owner.asec_native._ISSUED[id(state.native[1])][2]
+                object.__setattr__(
+                    nested.coverage, "_body", nested.coverage._body + b"x"
+                )
+            else:
+                path = arguments["source_dir"] / "selection-request.json"
+                path.write_bytes(path.read_bytes() + b" ")
+
+    previous = sys.getprofile()
+    sys.setprofile(trace)
+    try:
+        with pytest.raises(owner.SurveyPopulationPreparationError):
+            result.checked_view()
+    finally:
+        sys.setprofile(previous)
+    assert fired == [True]
+
+
+@pytest.mark.parametrize("change", ["extra", "symlink", "missing"])
+def test_exact_source_roster_refuses_before_issuers(tmp_path, monkeypatch, change):
+    arguments = fixture(tmp_path, monkeypatch)
+    source = arguments["source_dir"]
+    if change == "extra":
+        (source / "extra.json").write_bytes(b"{}")
+    elif change == "missing":
+        (source / "asec/hhpub25.csv").unlink()
+    else:
+        path = source / "asec/hhpub25.csv"
+        target = source.parent / "member.csv"
+        path.rename(target)
+        path.symlink_to(target)
+    calls = []
+
+    def trace(frame, event, arg):
+        if (
+            event == "call"
+            and frame.f_code is owner.acs_catalogue.issue_acs_source_catalogue.__code__
+        ):
+            calls.append(True)
+
+    previous = sys.getprofile()
+    sys.setprofile(trace)
+    try:
+        with pytest.raises(owner.SurveyPopulationPreparationError):
+            owner.prepare_authenticated_survey_population(**arguments)
+    finally:
+        sys.setprofile(previous)
+    assert not calls
+
+
+def test_request_changed_between_decode_and_roster_binding_refuses(
+    tmp_path, monkeypatch
+):
+    arguments = fixture(tmp_path, monkeypatch)
+    fired = []
+
+    def profile(frame, event, arg):
+        if (
+            event == "return"
+            and frame.f_code is owner._request.__code__
+            and frame.f_back.f_code
+            is owner.prepare_authenticated_survey_population.__code__
+            and not fired
+        ):
+            fired.append(True)
+            path = arguments["source_dir"] / "selection-request.json"
+            document = json.loads(path.read_bytes())
+            document["seed"] += 1
+            path.write_bytes(owner._encode(document))
+
+    previous = sys.getprofile()
+    sys.setprofile(profile)
+    try:
+        with pytest.raises(owner.SurveyPopulationPreparationError):
+            owner.prepare_authenticated_survey_population(**arguments)
+    finally:
+        sys.setprofile(previous)
+    assert fired == [True]
+
+
+@pytest.mark.parametrize(
+    "change", ["duplicate", "whitespace", "unreduced", "bool_seed", "extra", "oversize"]
+)
+def test_request_is_canonical_and_bounded(tmp_path, change):
+    request = {
+        "protocol": owner.REQUEST_PROTOCOL,
+        "declaration": owner.domains.DECLARATION,
+        "fraction": [1, 2],
+        "seed": 41,
+    }
+    if change == "unreduced":
+        request["fraction"] = [2, 4]
+    elif change == "bool_seed":
+        request["seed"] = True
+    elif change == "extra":
+        request["extra"] = 0
+    payload = json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
+    if change == "duplicate":
+        payload = payload.replace(b'"seed":41', b'"seed":41,"seed":41')
+    elif change == "whitespace":
+        payload += b"\n"
+    elif change == "oversize":
+        payload = b"x" * (owner.MAX_REQUEST_BYTES + 1)
+    (tmp_path / "selection-request.json").write_bytes(payload)
+    with pytest.raises(owner.SurveyPopulationPreparationError):
+        owner.read_survey_population_request(tmp_path)
+
+
+@pytest.mark.parametrize("change", ["fifo", "symlink"])
+def test_regular_reader_refuses_replacement_without_blocking(
+    tmp_path, monkeypatch, change
+):
+    path = tmp_path / "input.txt"
+    path.write_bytes(b"invented")
+    target = tmp_path / "other.txt"
+    target.write_bytes(b"different")
+    actual_open = os.open
+    fired = []
+
+    def replace_at_open(value, flags, *args, **kwargs):
+        if value == path and not fired:
+            fired.append(True)
+            path.unlink()
+            if change == "fifo":
+                os.mkfifo(path)
+            else:
+                path.symlink_to(target)
+        return actual_open(value, flags, *args, **kwargs)
+
+    monkeypatch.setattr(os, "open", replace_at_open)
+    with pytest.raises((owner.SurveyPopulationPreparationError, OSError)):
+        with owner._regular_reader(path, 100) as (stream, _info):
+            pytest.fail("Replacement must be refused before reading")
+    assert fired == [True]
+
+
+def test_transport_bound_precedes_append():
+    rows = []
+    # The row budget bounds the Python row list, not a transport, so its
+    # ceiling is the explicit roster one; the refusal and its code are the same.
+    budget = [owner.MAX_ROSTER_BYTES - 1]
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ORIGIN_LIMIT"):
+        owner._bounded_append(rows, [1, "acs", 2], budget)
+    assert rows == []
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PAYLOAD_LIMIT"):
+        owner._encode({"rows": ["invented"] * 100}, 30)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="SCALAR_LIMIT"):
+        owner._encode({"nested": ["x" * (owner._MAX_SCALAR_BYTES + 1)]})
+
+
+def test_row_budget_admits_a_full_source_roster_and_still_refuses_above_it():
+    # A full-source preparation roster is 1.02 GiB of rows; the ceiling admits
+    # it and refuses one byte past its own bound.
+    rows, budget = [], [1024**3]
+    owner._bounded_append(rows, [1, "acs", 2], budget)
+    assert rows == [[1, "acs", 2]] and budget[0] > 1024**3
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ORIGIN_LIMIT"):
+        owner._bounded_append(rows, [1, "acs", 2], [owner.MAX_ROSTER_BYTES])
+
+
+_ROSTER_DOCUMENTS = [
+    {},
+    {"a": 1},
+    {"protocol": "x", "rows": [[i, "acs", i * 7] for i in range(4000)]},
+    {"nested": {"deep": [[["a" * 300]]], "zero": -0.0, "big": 10**40}},
+    {"unicode": "\u00e9\u4e2d\U0001f600", "escapes": 'quote" slash\\ \x00\x1f'},
+]
+
+
+@pytest.mark.parametrize("document", _ROSTER_DOCUMENTS)
+def test_roster_transport_carries_the_single_encode_byte_stream(document):
+    payload, header = owner._roster_payload(document)
+    assert payload == owner._encode(document)
+    assert owner._sha(payload) == owner._digest(document)
+    assert header is None
+
+
+@pytest.mark.parametrize("document", _ROSTER_DOCUMENTS)
+@pytest.mark.parametrize("multiple", [1, 2, 3, 17, 4096])
+def test_roster_segments_reassemble_to_the_same_bytes_at_every_segment_size(
+    document, multiple
+):
+    """A segment holds whole tokens, so the smallest useful one is the longest.
+
+    ``_chunks`` yields one JSON token at a time and a segment never splits one,
+    so a segment smaller than the longest token refuses ``PAYLOAD_LIMIT`` --
+    which is the next test. ``_check_scalars`` bounds every string to 1 MiB
+    before this runs, so the shipped 64 MiB segment always holds any token.
+    """
+    expected = owner._encode(document)
+    longest = max(
+        (len(chunk.encode("utf-8")) for chunk in owner._chunks(document)), default=1
+    )
+    segment = longest * multiple
+    segments, table, digest, total = owner._roster_segments(document, segment=segment)
+    assert b"".join(segments) == expected
+    assert digest == owner._digest(document) and total == len(expected)
+    assert table == tuple((owner._sha(raw), len(raw)) for raw in segments)
+    assert all(0 < size <= segment for _sha256, size in table)
+    assert len(segments) >= -(-len(expected) // segment)
+
+
+@pytest.mark.parametrize("document", _ROSTER_DOCUMENTS)
+def test_a_segment_smaller_than_one_token_refuses_payload_limit(document):
+    longest = max(
+        (len(chunk.encode("utf-8")) for chunk in owner._chunks(document)), default=1
+    )
+    if longest == 1:
+        pytest.skip("this document has no token longer than one byte to split")
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PAYLOAD_LIMIT"):
+        owner._roster_segments(document, segment=longest - 1)
+
+
+def test_roster_transport_exceeds_the_single_encode_ceiling():
+    # The document the single bounded encode refuses is the document this
+    # transport carries: same bytes, same digest, one segment per 64 KiB here.
+    document = {"rows": [[i, "acs", i * 7] for i in range(20000)]}
+    encoded = owner._encode(document)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PAYLOAD_LIMIT"):
+        owner._encode(document, len(encoded) - 1)
+    payload, _ = owner._roster_payload(
+        document, segment=65536, maximum=owner.MAX_ROSTER_BYTES
+    )
+    assert payload == encoded
+    segments, _table, digest, _total = owner._roster_segments(document, segment=65536)
+    assert len(segments) > 1 and digest == owner._sha(encoded)
+
+
+def test_roster_transport_keeps_every_refusal_it_touches():
+    document = {"rows": [[i, "acs", i * 7] for i in range(4000)]}
+    # PAYLOAD_LIMIT still guards each segment: one token larger than a whole
+    # segment is the only thing that can overflow one, and it still refuses.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PAYLOAD_LIMIT"):
+        owner._roster_payload({"k": "x" * 64}, segment=4)
+    # ROSTER_LIMIT is the new total ceiling, and it fails closed.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_LIMIT"):
+        owner._roster_payload(document, maximum=100)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_LIMIT"):
+        owner._roster_payload(document, segment=64, maximum=1000)
+    # The scalar and depth guards are the encoder's and are unmoved.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="SCALAR_LIMIT"):
+        owner._roster_payload({"s": "x" * (owner._MAX_SCALAR_BYTES + 1)})
+    deep = value = []
+    for _ in range(80):
+        nested = []
+        value.append(nested)
+        value = nested
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="VALUE_DEPTH"):
+        owner._roster_payload(deep)
+
+
+def test_roster_spill_names_its_segments_and_verifies_them(tmp_path):
+    document = {"rows": [[i, "acs", i * 7] for i in range(4000)]}
+    payload, header = owner._roster_payload(
+        document, spill=tmp_path, name="preparation", segment=4096
+    )
+    assert payload == owner._encode(document)
+    assert header["protocol"] == owner.ROSTER_PROTOCOL
+    assert header["name"] == "preparation"
+    assert header["sha256"] == owner._digest(document) == owner._sha(payload)
+    assert header["size"] == len(payload)
+    assert sum(size for _sha256, size in header["segments"]) == len(payload)
+    directory = tmp_path / "preparation"
+    assert json.loads((directory / "header.json").read_bytes()) == header
+    rebuilt = b""
+    for sha256, size in header["segments"]:
+        raw = (directory / (sha256 + ".segment")).read_bytes()
+        assert owner._sha(raw) == sha256 and len(raw) == size
+        rebuilt += raw
+    assert rebuilt == payload
+    # A spill name is a directory component, and only an identifier is accepted.
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_NAME"):
+        owner._roster_payload(document, spill=tmp_path, name="../escape")
+
+
+@pytest.mark.parametrize("keep_length", [False, True])
+def test_roster_spill_refuses_a_replaced_segment(tmp_path, keep_length):
+    """A shorter replacement fails on size; a same-length one fails on content.
+
+    The run's own bytes come from memory either way, so this is about the claim
+    that the spill is a re-verifiable on-disk form, which it would not be if
+    same-size different content passed.
+    """
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    _payload, header = owner._roster_payload(
+        document, spill=tmp_path, name="preparation"
+    )
+    victim = tmp_path / "preparation" / (header["segments"][0][0] + ".segment")
+    original = victim.read_bytes()
+    victim.write_bytes(
+        original[:-1] + bytes([original[-1] ^ 0x20]) if keep_length else b"shorter"
+    )
+    assert (len(victim.read_bytes()) == len(original)) is keep_length
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SEGMENT_CHANGED"
+    ):
+        owner._roster_payload(document, spill=tmp_path, name="preparation")
+
+
+def test_roster_spill_refuses_a_symlinked_segment(tmp_path):
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    _payload, header = owner._roster_payload(
+        document, spill=tmp_path, name="preparation"
+    )
+    victim = tmp_path / "preparation" / (header["segments"][0][0] + ".segment")
+    target = tmp_path / "elsewhere"
+    target.write_bytes(victim.read_bytes())
+    victim.unlink()
+    victim.symlink_to(target)
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SEGMENT_CHANGED"
+    ):
+        owner._roster_payload(document, spill=tmp_path, name="preparation")
+
+
+def test_roster_payload_refuses_a_segment_table_that_does_not_name_its_bytes(
+    monkeypatch,
+):
+    """The last guard: the joined bytes must hash to the stream digest.
+
+    It cannot fire while the segment table and the segments agree, so it is
+    driven by a table that disagrees -- which is what a corrupted or
+    mis-ordered table looks like from inside the transport.
+    """
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    original = owner._roster_segments
+
+    def wrong_digest(*args, **kwargs):
+        segments, table, _digest, total = original(*args, **kwargs)
+        return segments, table, "0" * 64, total
+
+    monkeypatch.setattr(owner, "_roster_segments", wrong_digest)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_DIGEST"):
+        owner._roster_payload(document)
+
+    def wrong_order(value, **kwargs):
+        kwargs["segment"] = 64
+        segments, table, digest, total = original(value, **kwargs)
+        assert len(segments) > 1
+        return segments[::-1], table[::-1], digest, total
+
+    monkeypatch.setattr(owner, "_roster_segments", wrong_order)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="ROSTER_DIGEST"):
+        owner._roster_payload(document)
+
+
+def test_roster_spill_refuses_a_redirected_location(tmp_path):
+    document = {"rows": [[i, "acs", i * 7] for i in range(200)]}
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (tmp_path / "preparation").symlink_to(elsewhere, target_is_directory=True)
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SPILL_LOCATION"
+    ):
+        owner._roster_payload(document, spill=tmp_path, name="preparation")
+    # A redirected header is refused on the same code, after the segments.
+    other = tmp_path / "second"
+    other.mkdir()
+    owner._roster_payload(document, spill=other, name="preparation")
+    header = other / "preparation/header.json"
+    header.unlink()
+    header.symlink_to(tmp_path / "target.json")
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="ROSTER_SPILL_LOCATION"
+    ):
+        owner._roster_payload(document, spill=other, name="preparation")
+
+
+def test_candidate_bound_admits_a_full_source_receipt(tmp_path, monkeypatch):
+    arguments = fixture(tmp_path, monkeypatch)
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="CANDIDATE_LIMIT"):
+        owner.prepare_authenticated_survey_population(
+            **arguments, candidate=b"x" * (owner.MAX_ROSTER_BYTES + 1)
+        )
+
+
+def test_semantic_identity_includes_column_and_strata_indexes(tmp_path, monkeypatch):
+    result = owner.prepare_authenticated_survey_population(
+        **fixture(tmp_path, monkeypatch)
+    )
+    view = result.checked_view()
+    candidate = owner._copy_source(view.frame)
+    expected = owner._frame_identity(candidate)
+    candidate.person.columns.name = "different"
+    assert owner._frame_identity(candidate) != expected
+    candidate.person.columns.name = None
+    candidate.strata.index.name = "different"
+    assert owner._frame_identity(candidate) != expected

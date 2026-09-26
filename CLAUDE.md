@@ -26,7 +26,8 @@ PR CI (`.github/workflows/test.yml`) has four lanes — `lint`, `fast`,
 the diff into `shared`/`us`/`uk`. `lint` verifies
 `tools/ci_test_groups.py --verify`, syncs with `--locked`, and runs ruff.
 `fast` runs the full tracked test-file inventory without engine extras in
-three groups (`trade`, `spine-uk`, `rest`); engine-gated tests skip there
+three groups (`trade`, `spine-uk`, `rest`), with `rest` split across six
+parallel matrix jobs per Python version; engine-gated tests skip there
 through whichever guard they carry — the `requires_*` markers, or the
 `importorskip` calls that remain the norm on the US side. `engine-shared` always syncs
 `--extra us --extra uk` and runs the shared/spec group. `engine-us` and
@@ -39,6 +40,31 @@ shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
 wheels. The `fast` and engine lanes pass `--durations=25`, so each job log ends
 with its slowest tests; check there first when a lane's runtime jumps.
+
+`us-am` likewise has four matrix subdivisions. Within each, build and other-shard
+tests retain separate pytest processes to isolate their import state. Every wheel
+job retains the complete build/install/smoke boundary and runs one of eight
+disjoint file subdivisions, including engine-only files whose markers skip when
+the engine is absent. Other groups and both Python versions are unchanged.
+`tools/ci_test_groups.py --list GROUP[:PROCESS] --shard INDEX/COUNT` selects
+sorted whole files round-robin; indices are 1-based and counts are capped at 64.
+An invalid or empty selection fails before pytest. `--verify` proves the
+configured shard unions and process partitions, while the stdlib-only
+`python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py` checks
+the actual matrix and selection contract. See [CI file sharding](docs/ci-file-sharding.md).
+File counts are not measured runtime weights; a single expensive module can
+still dominate a job, and module-scoped fixtures must remain intact.
+
+After checking the base wheel boundary, the wheel lane installs the built
+`microcosm-frame[us]` and `microcosm-build[source-io]` extras for engine-free
+source tests. An invented pandas HDF round trip checks the compiled reader;
+the country rules engine must still be absent.
+
+The shared engine lane also runs a bounded source/seed identity diagnostic on
+Python 3.14.4 after its normal tests, including when those tests fail. Its six
+JSON artifacts retain candidate digests and their complete canonical seed
+records for review. They never replace the test assertions or certify coverage;
+review the captured source and dependency identities before updating any pins.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
@@ -61,10 +87,9 @@ load, or it silently receives the spec an earlier test cached.
 
 **Adding a test file.** It must sit directly in `packages/<shard>/tests/` — flat,
 no subdirectories; `fixtures/` and `golden/` hold data only — and be named
-`test_*.py`. The lanes run explicit file lists built from a flat pathspec, while
-local `uv run pytest` and the wheels lane discover recursively, so a test parked
-next to its fixtures would run locally and stay green in CI without ever
-executing against an engine. `--verify` fails on such a file rather than letting
+`test_*.py`. All lanes, including wheels, run explicit flat file lists, while
+local `uv run pytest` discovers recursively. A test parked next to its fixtures
+could run locally without being selected in CI. `--verify` fails on such a file rather than letting
 it hide. Build tests that exercise a country engine must be named `test_us_*` or
 `test_uk_*` so they land in that country's lane; an engine-dependent file named
 anything else falls into the always-on `shared-spec` group and runs on every PR.
@@ -170,6 +195,13 @@ not weaken the exact-k manifest arm or authorize publication by itself.
 A sealed deny-list in `microcosm.build.us_runtime.h5_io` overrides this opt-in
 for known-excluded publications while preserving their scoring-only diagnostic
 path.
+
+The native survey development handoff is documented in
+[the native handoff guide](docs/us-native-survey-development-handoff.md).
+`prepare_native_survey_development_input` in the maintained US release tool
+accepts a live issued enrichment owner and returns a verified Frame checkpoint
+plus missing-input/gate inventory. This development checkpoint is not accepted
+as native authority, a legacy pool manifest, or a certified dataset.
 
 `tools/build_us_acs_donor_receipt_qualification.py` is a third local,
 non-publishing lane. It takes one of two exact pinned Build P lineage parents

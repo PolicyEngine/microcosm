@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
 import json
+import sys
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -339,8 +341,28 @@ def test_changed_producer_source_refuses_after_validation(inputs, monkeypatch):
 
 
 def test_producer_receipt_hashes_the_loaded_checkout():
-    identity = builder._producer_identity()
     root = Path(builder.__file__).resolve().parents[1]
+    loaded = (
+        inspect.getsourcefile(builder.derive_spm_role_source),
+        builder.education_assistance_source.__file__,
+        inspect.getsourcefile(builder.append_native_spm_role),
+        inspect.getsourcefile(builder.validate_source_enrichment_candidate),
+        inspect.getsourcefile(builder.ReleaseContractError),
+    )
+    assert all(path is not None for path in loaded)
+    actual = tuple(Path(path).resolve() for path in loaded)
+    expected = tuple((root / name).resolve() for name in builder._PRODUCER_FILES[1:])
+    if actual != expected:
+        # Wheels run the checkout's tool against five installed dependencies.
+        # That is a known rejection case, not permission to claim source custody.
+        prefix = Path(sys.prefix).resolve()
+        assert not Path(builder.__file__).resolve().is_relative_to(prefix)
+        assert all(path.is_relative_to(prefix) for path in actual)
+        with pytest.raises(ValueError, match="execute this checkout"):
+            builder._producer_identity()
+        return
+
+    identity = builder._producer_identity()
     assert identity["source_files_sha256"] == {
         name: hashlib.sha256((root / name).read_bytes()).hexdigest()
         for name in builder._PRODUCER_FILES

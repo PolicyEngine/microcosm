@@ -109,6 +109,16 @@ class Weights:
         values.setflags(write=False)
         object.__setattr__(self, "values", values)
 
+    def __reduce_ex__(self, protocol: int):
+        # Keep subclasses' existing state/custom protocols rather than assuming
+        # their constructor accepts only (values, kind).
+        if type(self) is not Weights:
+            return super().__reduce_ex__(protocol)
+        # Revalidate and restore read-only storage on copy/unpickle. An explicit
+        # reduction also avoids copyreg's __slotnames__ class mutation, which
+        # changes the captured annotation namespace on Python 3.14.
+        return Weights, (self.values, self.kind)
+
     def __len__(self) -> int:
         return int(self.values.size)
 

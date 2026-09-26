@@ -1,0 +1,29 @@
+{
+  "before_after_current_frozen_and_maintained_source_equal": true,
+  "before_after_current_model_and_code_resources_equal": true,
+  "code_resources": 12,
+  "cpu_seconds": 18.064019,
+  "independent_selected_value_oracle": "all 55 direct finalizer outputs compared by entity id",
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 630538240,
+  "predictor_count": 9,
+  "previous_receipt_sha256": "ad8519d867279ebce9ee78bf8f495f3799afb45ec1b3fcda1be649f8a129af30",
+  "receipt_sha256": "e3a4d548f0209cfacd7d9e3beddb63c1b46204a3168eb9869d2b2eafe9cf2291",
+  "release_eligible": false,
+  "required_replay": "passed",
+  "result": 0,
+  "scope": "Invented PUF55 whole-Population attachment/replay and independent direct-finalizer oracle; no native recipient qualification or release acceptance.",
+  "source_and_owned_files": 486,
+  "ss_incumbent_bits_and_unknownness_preserved": true,
+  "tampered_ss_population_refusals": 2,
+  "target_count": 55,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 3
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 20.73042149998946
+}

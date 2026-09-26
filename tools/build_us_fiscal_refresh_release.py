@@ -45,10 +45,12 @@ import time
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager, nullcontext
+from copy import deepcopy
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MethodType
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -2965,7 +2967,29 @@ def _download_base_h5() -> Path:
     )
 
 
-def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
+def prepare_native_survey_development_input(
+    run, checkpoint_directory, *, export_contract=None
+):
+    """Hand an issued native survey to this builder's Frame consumers for development.
+
+    The returned Frame preserves the native schema and typed weights. Its audit
+    lists unqualified inputs and remaining release gates. This does not enter
+    ``--base-h5``/``--pool-manifest``, which require different evidence, and it
+    neither constructs a legacy assembly receipt nor certifies the checkpoint.
+    Keep ``run`` alive; the checkpoint cannot restore its source authority.
+    """
+    from microcosm.build.us_runtime.native_survey_handoff import (
+        write_native_survey_development_checkpoint,
+    )
+
+    return write_native_survey_development_checkpoint(
+        run, checkpoint_directory, export_contract=export_contract
+    )
+
+
+def _load_frame(
+    path: Path, *, expected_sha256: str | None = None, dataset_cls=None
+) -> Frame:
     consumer = "US fiscal refresh release builder generic H5 loader (_load_frame)"
     sha256 = refuse_denied_pool_h5(path, consumer=consumer)
     if expected_sha256 is not None and sha256 != expected_sha256:
@@ -2974,9 +2998,12 @@ def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
             f"(SHA-256 {sha256}, expected {expected_sha256}); the read is refused."
         )
 
-    from policyengine_us.data import USSingleYearDataset
+    if dataset_cls is None:
+        from policyengine_us.data import USSingleYearDataset
 
-    dataset = USSingleYearDataset(file_path=str(path))
+        dataset_cls = USSingleYearDataset
+
+    dataset = dataset_cls(file_path=str(path))
     tables = {
         "person": dataset.person.copy(),
         "household": dataset.household.copy(),
@@ -3519,8 +3546,14 @@ def _aca_source_tax_unit_table_batched(
     *,
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
+    formula_metadata=None,
+    dataset_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> pd.DataFrame:
-    _assert_no_formula_owned_columns(frame)
+    spm = None if spm is None else dict(spm)
+    _assert_no_formula_owned_columns(
+        frame, **_explicit_kwargs(formula_metadata=formula_metadata)
+    )
     tax_unit = frame.table("tax_unit").copy()
     household = frame.table("household")
     positions = _tax_unit_to_household_positions(frame)
@@ -3573,7 +3606,10 @@ def _aca_source_tax_unit_table_batched(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
-                )
+                    formula_metadata=formula_metadata,
+                    dataset_cls=dataset_cls,
+                ),
+                **_spm_simulation_kwargs(spm),
             )
             batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
                 batch_frame,
@@ -3694,6 +3730,8 @@ def _with_aca_marketplace_source_outputs(
         frame.schema,
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
 
 
@@ -3816,6 +3854,10 @@ def _ssi_person_uncapped_amount(
     *,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> np.ndarray:
     """December person-level potential federal SSI, batched like Medicaid.
 
@@ -3824,6 +3866,15 @@ def _ssi_person_uncapped_amount(
     candidate mask and does not depend on the take-up input being assigned.
     """
 
+    spm = None if spm is None else dict(spm)
+    if formula_metadata is not None:
+        _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
+    if simulation is not None and (
+        dataset_cls is not None or microsimulation_cls is not None or spm is not None
+    ):
+        raise ValueError(
+            "An existing SSI simulation cannot receive constructor or SPM overrides."
+        )
     period = f"{PERIOD}-12"
 
     def calculate(active_simulation) -> np.ndarray:
@@ -3844,7 +3895,10 @@ def _ssi_person_uncapped_amount(
     if simulation is not None:
         return calculate(simulation)
 
-    from policyengine_us import Microsimulation
+    if microsimulation_cls is None:
+        from policyengine_us import Microsimulation
+
+        microsimulation_cls = Microsimulation
 
     person_ids = frame.table("person")["person_id"].to_numpy()
     uncapped = np.zeros(len(person_ids), dtype=np.float64)
@@ -3870,11 +3924,14 @@ def _ssi_person_uncapped_amount(
                 if full_batch
                 else _select_households_by_position(frame, household_positions)
             )
-            batch_simulation = Microsimulation(
+            batch_simulation = microsimulation_cls(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
-                )
+                    formula_metadata=formula_metadata,
+                    dataset_cls=dataset_cls,
+                ),
+                **_spm_simulation_kwargs(spm),
             )
             batch_uncapped = calculate(batch_simulation)
             positions = person_positions.reindex(
@@ -4158,8 +4215,22 @@ def _formula_owned_gate_adapter() -> PolicyEngineUSVariableMetadataIndex:
     return _FORMULA_OWNED_GATE_ADAPTER
 
 
-def _assert_no_formula_owned_columns(frame: Frame) -> None:
-    adapter = _formula_owned_gate_adapter()
+def _assert_no_formula_owned_columns(
+    frame: Frame,
+    *,
+    formula_metadata: PolicyEngineUSVariableMetadataIndex
+    | PolicyEngineUSEngine
+    | None = None,
+) -> None:
+    """Check ownership with the supplied metadata or the cached static default.
+
+    Supplying metadata does not qualify a consumer, source input, or release.
+    It only selects whose period-specific formula ownership is checked; the
+    caller must separately bind that provider to its admitted consumer.
+    """
+    adapter = (
+        _formula_owned_gate_adapter() if formula_metadata is None else formula_metadata
+    )
     tables = {entity: frame.table(entity) for entity in frame.entities}
     formula_owned = adapter._engine_computed_columns(tables, period=PERIOD)
     if formula_owned:
@@ -4175,11 +4246,18 @@ def _dataset_from_frame(
     zero_variables: Iterable[str] = (),
     system=None,
     assert_no_formula_owned_columns: bool = True,
+    formula_metadata=None,
+    dataset_cls=None,
 ):
     if assert_no_formula_owned_columns:
-        _assert_no_formula_owned_columns(frame)
+        _assert_no_formula_owned_columns(
+            frame, **_explicit_kwargs(formula_metadata=formula_metadata)
+        )
 
-    from policyengine_us.data import USSingleYearDataset
+    if dataset_cls is None:
+        from policyengine_us.data import USSingleYearDataset
+
+        dataset_cls = USSingleYearDataset
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for variable_name in zero_variables:
@@ -4189,7 +4267,7 @@ def _dataset_from_frame(
         if entity is not None and variable_name in tables[entity]:
             tables[entity][variable_name] = 0
     tables["household"]["household_weight"] = frame.weights_for("household").values
-    return USSingleYearDataset(
+    return dataset_cls(
         person=tables["person"],
         household=tables["household"],
         tax_unit=tables["tax_unit"],
@@ -4198,6 +4276,21 @@ def _dataset_from_frame(
         marital_unit=tables["marital_unit"],
         time_period=PERIOD,
     )
+
+
+def _spm_simulation_kwargs(spm: Mapping[str, object] | None) -> dict[str, object]:
+    """Copy explicit flat SPM options without changing an omitted engine default."""
+    return {} if spm is None else {"spm": dict(spm)}
+
+
+def _explicit_kwargs(**values: object) -> dict[str, object]:
+    """Forward only the explicit consumer seams a caller supplied.
+
+    An omitted (``None``) seam is not forwarded at all, so a default call keeps
+    the maintained helper's exact call shape; a supplied value, even a falsey
+    one, is forwarded unchanged.
+    """
+    return {name: value for name, value in values.items() if value is not None}
 
 
 def _calculate_array(
@@ -4309,7 +4402,9 @@ def _select_households_by_position(frame: Frame, positions: np.ndarray) -> Frame
 #   split once into household batches; every group entity must nest in one
 #   household and the batches must partition every entity, or the scorer
 #   refuses before any engine exists;
-# * every construction declares ``spm=US_RELEASE_SPM_SELECTION``;
+# * every construction declares ``spm=US_RELEASE_SPM_SELECTION`` (a direct
+#   caller's explicit selection replaces it, and the records name the one
+#   used; ``_main`` never supplies one);
 # * a consumer's baseline requests are learned by an engine-free recording
 #   dry run and scored in ONE batch-outer pass, in ascending period order;
 #   the served baseline refuses any key outside that recorded plan;
@@ -4856,16 +4951,41 @@ class _HouseholdBatchedPostExportScorer:
         microsimulation_cls=None,
         dataset_from_frame=None,
         load_frame=None,
+        formula_metadata=None,
+        dataset_cls=None,
+        spm: Mapping[str, object] | None = None,
     ) -> None:
+        # Explicit consumer seams (``formula_metadata``, ``dataset_cls``,
+        # ``spm``, ``microsimulation_cls``) select execution dependencies, not
+        # runtime approval. Omitted, each keeps the maintained construction
+        # exactly: the default loader and dataset helper see their existing
+        # call shapes and every engine declares ``US_RELEASE_SPM_SELECTION``.
+        if dataset_from_frame is not None and dataset_cls is not None:
+            raise ValueError("Choose dataset_from_frame or dataset_cls, not both.")
+        # Captured before any read, so a caller's later mutation cannot move
+        # it; every construction receives its own copy.
+        self._explicit_spm = None if spm is None else dict(spm)
+        self.spm_selection = dict(
+            US_RELEASE_SPM_SELECTION if spm is None else self._explicit_spm
+        )
         self.dataset_path = Path(dataset_path)
         self.maximum_batch_size = maximum_microsim_batch_size
         # The scored bytes are bound to this digest: the loader refuses a file
         # whose bytes differ from it, and the manifest's dataset sha must equal
         # it (``_build_manifests(scored_dataset_sha256=...)``).
         self.dataset_sha256 = _sha256(self.dataset_path)
-        frame = (load_frame or _load_frame)(
-            self.dataset_path, expected_sha256=self.dataset_sha256
-        )
+        if load_frame is None:
+            frame = _load_frame(
+                self.dataset_path,
+                expected_sha256=self.dataset_sha256,
+                **_explicit_kwargs(dataset_cls=dataset_cls),
+            )
+        else:
+            frame = load_frame(self.dataset_path, expected_sha256=self.dataset_sha256)
+        if formula_metadata is not None:
+            # A supplied provider checks the whole written frame before any
+            # batch dataset or engine is constructed.
+            _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
         self.n_households = int(frame.n("household"))
         if (
             expected_n_households is not None
@@ -4896,11 +5016,15 @@ class _HouseholdBatchedPostExportScorer:
             microsimulation_cls = Microsimulation
         self._microsimulation_cls = microsimulation_cls
         if dataset_from_frame is None:
+            dataset_kwargs = _explicit_kwargs(
+                formula_metadata=formula_metadata, dataset_cls=dataset_cls
+            )
 
             def dataset_from_frame(batch_frame: Frame):
                 return _dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    **dataset_kwargs,
                 )
 
         self._dataset_from_frame = dataset_from_frame
@@ -4939,7 +5063,7 @@ class _HouseholdBatchedPostExportScorer:
             "n_households": self.n_households,
             "n_batches": self.n_batches,
             "max_batch_households": self.max_batch_households,
-            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "spm": dict(self.spm_selection),
             "consumers": {
                 name: {
                     key: record[key]
@@ -4967,7 +5091,7 @@ class _HouseholdBatchedPostExportScorer:
         dataset = self._dataset_from_frame(batch_frame)
         if reform_system is None:
             return self._microsimulation_cls(
-                dataset=dataset, spm=dict(US_RELEASE_SPM_SELECTION)
+                dataset=dataset, spm=dict(self.spm_selection)
             )
         # The reform's system alone, not ``reform=`` as well. Given both,
         # policyengine-us 2.2.1 clones the supplied system on every
@@ -4983,7 +5107,17 @@ class _HouseholdBatchedPostExportScorer:
         return self._microsimulation_cls(
             tax_benefit_system=reform_system,
             dataset=dataset,
-            spm=dict(US_RELEASE_SPM_SELECTION),
+            spm=dict(self.spm_selection),
+        )
+
+    def _reform_system(self, reform):
+        """Build one reform's tax-benefit system (microcosm#456).
+
+        The default passes ``reform=`` alone, as before. An explicit SPM
+        selection is declared on the system too, as its batch engines do.
+        """
+        return self._microsimulation_cls.default_tax_benefit_system(
+            reform=reform, **_spm_simulation_kwargs(self._explicit_spm)
         )
 
     def _assert_reform_keeps_baseline_responses(
@@ -5144,7 +5278,7 @@ class _PostExportConsumer:
             "n_households": scorer.n_households,
             "n_batches": scorer.n_batches,
             "max_batch_households": scorer.max_batch_households,
-            "spm": dict(US_RELEASE_SPM_SELECTION),
+            "spm": dict(scorer.spm_selection),
             "baseline_plan": _post_export_baseline_plan_record(self.baseline_plan),
             "baseline_passes": self.baseline_passes,
             "reform_passes": self.reform_passes,
@@ -5201,10 +5335,7 @@ class _BatchedPostExportReform:
         key = _post_export_key(variable, period, map_to)
         if key not in self._results:
             if self._system is None:
-                scorer = self._consumer._scorer
-                self._system = scorer._microsimulation_cls.default_tax_benefit_system(
-                    reform=self._reform
-                )
+                self._system = self._consumer._scorer._reform_system(self._reform)
                 self._consumer.reform_systems += 1
             self._results[key] = self._consumer._reform_values(self._system, key)
         return self._results[key]
@@ -5219,10 +5350,22 @@ def _reform_household_income_tax(
     n_households: int,
     batch_size: int | None,
     refuse_population_aggregates: bool | None = None,
+    formula_metadata=None,
+    dataset_cls=None,
+    spm: Mapping[str, object] | None = None,
+    zero_variable_reform_factory=None,
 ) -> np.ndarray:
-    _assert_no_formula_owned_columns(base_frame)
+    spm = None if spm is None else dict(spm)
+    _assert_no_formula_owned_columns(
+        base_frame, **_explicit_kwargs(formula_metadata=formula_metadata)
+    )
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
-    reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
+    make_reform = (
+        _make_zero_variable_reform
+        if zero_variable_reform_factory is None
+        else zero_variable_reform_factory
+    )
+    reform = make_reform(system, reform_spec.neutralized_variable)
     # microcosm#456: a reform simulation cannot reuse the engine's shared
     # class-level system instance, so letting each batch construct its own
     # ``Microsimulation(reform=...)`` rebuilt the full tax-benefit system per
@@ -5232,7 +5375,9 @@ def _reform_household_income_tax(
     # system once per target family instead — the same
     # ``default_tax_benefit_system(reform=...)`` construction the engine ran
     # per batch — and hand it to every batch simulation explicitly.
-    reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
+    reform_system = microsimulation_cls.default_tax_benefit_system(
+        reform=reform, **_spm_simulation_kwargs(spm)
+    )
     batches = tuple(_household_position_batches(n_households, batch_size))
     guard_armed = (
         len(batches) > 1
@@ -5262,11 +5407,15 @@ def _reform_household_income_tax(
                 zero_variables=(reform_spec.neutralized_variable,),
                 system=system,
                 assert_no_formula_owned_columns=False,
+                **_explicit_kwargs(
+                    formula_metadata=formula_metadata, dataset_cls=dataset_cls
+                ),
             )
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
                 dataset=reformed_dataset,
                 reform=reform,
+                **_spm_simulation_kwargs(spm),
             )
             try:
                 with (
@@ -5904,12 +6053,20 @@ def _person_variable_to_tax_unit(*, frame: Frame, values: np.ndarray) -> np.ndar
     return out
 
 
-def _make_zero_variable_reform(system, variable_name: str):
-    from policyengine_us.model_api import Reform, Variable
+def _make_zero_variable_reform(
+    system, variable_name: str, *, reform_cls=None, variable_cls=None
+):
+    if reform_cls is None or variable_cls is None:
+        from policyengine_us.model_api import Reform, Variable
+
+        if reform_cls is None:
+            reform_cls = Reform
+        if variable_cls is None:
+            variable_cls = Variable
 
     original = system.variables[variable_name]
 
-    class NeutralizedVariable(Variable):
+    class NeutralizedVariable(variable_cls):
         value_type = original.value_type
         entity = original.entity
         label = f"Neutralized {variable_name}"
@@ -5924,7 +6081,7 @@ def _make_zero_variable_reform(system, variable_name: str):
 
     NeutralizedVariable.__name__ = variable_name
 
-    class NeutralizeVariableReform(Reform):
+    class NeutralizeVariableReform(reform_cls):
         def apply(self):
             self.replace_variable(NeutralizedVariable)
 
@@ -5970,7 +6127,25 @@ def _load_or_materialize_target_frame(
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = True,
+    formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    system_factory=None,
+    spm: Mapping[str, object] | None = None,
+    zero_variable_reform_factory=None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    if zero_variable_reform_factory is not None and (
+        target_frame_checkpoint_path is not None
+        or target_materialization_cache_dir is not None
+    ):
+        raise ValueError("Explicit reform factory requires target caches disabled.")
+    # Dependency injection does not declare cache identity: the caller must
+    # bind the actual consumer and effective SPM selection in its context.
+    spm = None if spm is None else dict(spm)
+    if formula_metadata is not None:
+        # A checkpoint is not a substitute for the current consumer's source
+        # ownership check. Keep the legacy checkpoint path unchanged.
+        _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     if (
         target_frame_checkpoint_path is not None
         and target_frame_checkpoint_identity is None
@@ -6007,6 +6182,12 @@ def _load_or_materialize_target_frame(
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context=target_materialization_cache_context,
         gate_congressional_district_targets=gate_congressional_district_targets,
+        formula_metadata=formula_metadata,
+        dataset_cls=dataset_cls,
+        microsimulation_cls=microsimulation_cls,
+        system_factory=system_factory,
+        spm=spm,
+        zero_variable_reform_factory=zero_variable_reform_factory,
     )
     if (
         target_frame_checkpoint_path is not None
@@ -6521,6 +6702,9 @@ def _materialize_base_simulation_columns(
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
     refuse_population_aggregates: bool | None = None,
+    formula_metadata=None,
+    dataset_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> tuple[dict[str, np.ndarray], dict[str, object]]:
     """Run the target materializer's base simulation over household batches.
 
@@ -6536,9 +6720,15 @@ def _materialize_base_simulation_columns(
     batches must return the same columns.
 
     Returns the columns in write order, plus a receipt for the compilation
-    record.
+    record. Explicit ``formula_metadata``, ``dataset_cls`` and ``spm`` reach
+    every batch's dataset and engine; omitted, each keeps the maintained
+    construction exactly. The caller runs the whole-frame ownership check.
     """
 
+    spm = None if spm is None else dict(spm)
+    dataset_kwargs = _explicit_kwargs(
+        formula_metadata=formula_metadata, dataset_cls=dataset_cls
+    )
     n_households = base_frame.n("household")
     household_ids = base_frame.table("household")["household_id"].to_numpy()
     batches = tuple(
@@ -6587,7 +6777,9 @@ def _materialize_base_simulation_columns(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
-                )
+                    **dataset_kwargs,
+                ),
+                **_spm_simulation_kwargs(spm),
             )
             try:
                 with (
@@ -6681,8 +6873,28 @@ def _materialize_target_frame(
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = False,
     refuse_population_aggregates: bool | None = None,
+    formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    system_factory=None,
+    spm: Mapping[str, object] | None = None,
+    zero_variable_reform_factory=None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
-    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+    if (
+        zero_variable_reform_factory is not None
+        and target_materialization_cache_dir is not None
+    ):
+        raise ValueError("Explicit reform factory requires target caches disabled.")
+    spm = None if spm is None else dict(spm)
+    if formula_metadata is not None:
+        _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
+    if microsimulation_cls is None or system_factory is None:
+        from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+
+        if microsimulation_cls is None:
+            microsimulation_cls = Microsimulation
+        if system_factory is None:
+            system_factory = CountryTaxBenefitSystem
 
     if (
         target_materialization_cache_dir is not None
@@ -6693,17 +6905,21 @@ def _materialize_target_frame(
             "target_materialization_cache_dir is set."
         )
     _assert_supported_ledger_filter_metadata(target_specs)
-    _assert_no_formula_owned_columns(base_frame)
-    system = CountryTaxBenefitSystem()
+    if formula_metadata is None:
+        _assert_no_formula_owned_columns(base_frame)
+    system = system_factory(**_spm_simulation_kwargs(spm))
     n_households = base_frame.n("household")
     # The base simulation uses the JCT reform loop's household partition.
     base_columns, base_simulation_batching = _materialize_base_simulation_columns(
         base_frame,
         target_specs,
         system=system,
-        microsimulation_cls=Microsimulation,
+        microsimulation_cls=microsimulation_cls,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
         refuse_population_aggregates=refuse_population_aggregates,
+        **_explicit_kwargs(
+            formula_metadata=formula_metadata, dataset_cls=dataset_cls, spm=spm
+        ),
     )
 
     materialized = {
@@ -6775,10 +6991,18 @@ def _materialize_target_frame(
                 base_frame=base_frame,
                 reform_spec=reform_spec,
                 system=system,
-                microsimulation_cls=Microsimulation,
+                microsimulation_cls=microsimulation_cls,
                 n_households=n_households,
                 batch_size=maximum_microsim_batch_size,
                 refuse_population_aggregates=refuse_population_aggregates,
+                formula_metadata=formula_metadata,
+                dataset_cls=dataset_cls,
+                spm=spm,
+                **(
+                    {}
+                    if zero_variable_reform_factory is None
+                    else {"zero_variable_reform_factory": zero_variable_reform_factory}
+                ),
             )
             jct_reform_families_simulated += 1
             if (
@@ -6855,10 +7079,443 @@ def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
     return measure_ready and filter_ready
 
 
+def _compile_fiscal_release_target_registry(
+    args: argparse.Namespace,
+    *,
+    congressional_district_vintage_crosswalk,
+):
+    """Load and compile the maintained target surface before source preparation.
+
+    Profile and source-specific take-up checks remain at their existing call
+    sites. Both native and legacy preparation must consume these same targets.
+    """
+    ledger_artifact = load_ledger_consumer_artifact(
+        args.ledger_facts,
+        expected_facts_sha256=args.ledger_facts_sha256,
+        expected_manifest_sha256=args.ledger_manifest_sha256,
+    )
+    _check_committed_us_ledger_feed_pin(
+        ledger_artifact.facts_sha256,
+        manifest_sha256=ledger_artifact.manifest_sha256,
+        allow_unpinned_feed=args.allow_unpinned_feed,
+    )
+    target_registry = compile_us_fiscal_target_registry(
+        ledger_artifact.facts,
+        target_period=PERIOD,
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
+        ),
+        age_targets=args.age_targets,
+        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+    )
+    # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
+    # whose point-in-time snapshot is unreported at source ships its cited
+    # nearest-prior-month count instead of failing the take-up gate closed.
+    # The records ride the take-up diagnostics; the gate fails a stale entry
+    # (CMS backfilled the substituted-for month) so the register cannot rot.
+    # Applied once here, before the dense/sparse split, so the injected spec
+    # flows through `target_specs` into the materialized calibration registry
+    # that BOTH the dense (`calibrate`) and sparse (`calibrate_l0_refit`) arms
+    # consume, and into the take-up target table and build manifest.
+    target_registry, medicaid_enrollment_substitutions = (
+        apply_us_medicaid_enrollment_substitutions(target_registry)
+    )
+    # Target-parity contract (launch gate): every administrative target family
+    # the retired us-data/eCPS pipeline calibrated to must be compiled into the
+    # registry or carry a reviewed exclusion (target_parity_manifest.json). Runs
+    # on the full compiled + substituted registry — before the optional
+    # diagnostic JCT skip — so the gate sees the true family surface, and
+    # hard-fails the build on a silently dropped family or a rotted manifest,
+    # exactly like the release input-coverage gate on the export frame.
+    assert_target_parity_manifest_current(registry=target_registry)
+    target_parity_gate = us_release_target_parity_gate(target_registry)
+    if not target_parity_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Target parity coverage failed: {failure}"
+                for failure in target_parity_gate.failures
+            )
+        )
+    return (
+        ledger_artifact,
+        target_registry,
+        medicaid_enrollment_substitutions,
+        target_parity_gate,
+    )
+
+
+def _calibrate_fiscal_support(
+    target_frame: Frame,
+    registry: TargetRegistry,
+    *,
+    args: argparse.Namespace,
+    target_loss_weights: np.ndarray,
+    warm_start_weights: np.ndarray | None,
+    progress_callback=None,
+):
+    """Run the maintained dense or L0 solve for an already prepared support.
+
+    Source preparation and release qualification remain the caller's job. The
+    exact-k ladder keeps its separate selection contract in the legacy entry.
+    """
+    if args.exact_k is not None:
+        raise ValueError("Exact-k selection must use the maintained ladder path")
+    candidate_households = int(target_frame.n("household"))
+    l0_refit_lambda = (
+        None
+        if args.dense_default_dataset
+        else args.l0_refit_lambda_share / float(candidate_households)
+    )
+    if args.dense_default_dataset:
+        result = calibrate(
+            target_frame,
+            registry.to_target_set(),
+            epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            seed=args.seed,
+            mass="conserve",
+            l2_lambda=args.l2_lambda,
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+            warm_start_weights=warm_start_weights,
+            progress_callback=progress_callback,
+        )
+        default_dataset = {
+            "method": "dense_no_l0",
+            "sparse": False,
+            "n_candidate_households": candidate_households,
+            "n_exported_households": int(target_frame.n("household")),
+            "epochs": int(args.epochs),
+            "l2_lambda": float(args.l2_lambda),
+            "final_loss": float(result.final_loss),
+        }
+    else:
+        result = calibrate_l0_refit(
+            target_frame,
+            registry.to_target_set(),
+            epochs=args.epochs,
+            refit_epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            seed=args.seed,
+            mass="conserve",
+            l0_lambda=float(l0_refit_lambda),
+            l2_lambda=args.l2_lambda,
+            refit_l2_lambda=args.refit_l2_lambda,
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+            warm_start_weights=warm_start_weights,
+            progress_callback=progress_callback,
+        )
+        default_dataset = {
+            "method": "l0_refit",
+            "sparse": True,
+            "n_candidate_households": candidate_households,
+            "n_selected_households": int(result.selection.n_nonzero),
+            "n_exported_households": int(result.frame.n("household")),
+            "l0_lambda_share": float(args.l0_refit_lambda_share),
+            "l0_lambda": float(result.l0_lambda),
+            "selection_epochs": int(args.epochs),
+            "refit_epochs": int(args.epochs),
+            "selection_l2_lambda": float(args.l2_lambda),
+            "refit_l2_lambda": float(
+                args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
+            ),
+            # Same scrub as default_dataset["final_loss"] below: these losses
+            # ride the diagnostics build payload, which serializes strict JSON
+            # (allow_nan=False), and a non-finite loss is a BATCHED gate
+            # failure the artifact must survive to report (microcosm#547).
+            "selection_final_loss": _finite_or_none(result.selection.final_loss),
+            "refit_initial_loss": _finite_or_none(result.initial_loss),
+            "refit_final_loss": _finite_or_none(result.final_loss),
+        }
+    return result, default_dataset
+
+
+class _NativeCalibrationAttachment(NamedTuple):
+    """Detached measured outputs, not a native issuer or release verdict."""
+
+    frame: Frame
+    result: Any
+    default_dataset: dict
+    ordered_household_ids: np.ndarray
+    full_parent_weights: np.ndarray
+    comparison_specification: bytes
+    binding: bytes
+
+
+def _calibrate_native_input_frame(
+    input_frame: Frame,
+    target_frame: Frame,
+    registry: TargetRegistry,
+    *,
+    args: argparse.Namespace,
+    target_loss_weights: np.ndarray,
+    formula_metadata,
+    parent_reference: str,
+    calibration_specification: bytes,
+    progress_callback=None,
+) -> _NativeCalibrationAttachment:
+    """Solve supplied targets and attach weights only to unchanged input cells.
+
+    This private bridge accepts a closed ordinary-solve option set, not legacy
+    checkpoints, warm starts or exact-k identities. Target/source/runtime
+    qualification remains the host's responsibility. Caller metadata and target
+    configuration are snapshotted; all returned Frames are detached. Sparse
+    output preserves the maintained selected support, including any zero refit
+    weights, rather than applying a second pruning rule.
+    """
+    from microcosm.build.us_runtime.common_frame_export_contract import (
+        MAX_SPECIFICATION_BYTES,
+        verify_retained_frame_export,
+    )
+    from microcosm.build.us_runtime.native_survey_handoff import _projection_stamp
+    from microcosm.calibrate import CalibrationResult, L0RefitResult
+    from microcosm.graph.population import storage_equal
+
+    def require(condition, code):
+        if not condition:
+            raise ValueError("NATIVE_CALIBRATION_" + code)
+
+    def detached(frame):
+        return Frame(
+            {entity: frame.table(entity).copy(deep=True) for entity in frame.entities},
+            frame.schema,
+            {
+                entity: Weights(
+                    frame.weights_for(entity).values.copy(),
+                    frame.weights_for(entity).kind,
+                )
+                for entity in frame.weighted_entities
+            },
+            frame.strata.copy(deep=True),
+            metadata=frame.metadata,
+            mass_log=deepcopy(frame.mass_log),
+        )
+
+    def same(left, right):
+        return storage_equal(pd.Series(left), pd.Series(right))
+
+    try:
+        solve_fields = {
+            "exact_k",
+            "dense_default_dataset",
+            "epochs",
+            "learning_rate",
+            "max_weight_ratio",
+            "seed",
+            "l2_lambda",
+            "refit_l2_lambda",
+            "l0_refit_lambda_share",
+        }
+        require(
+            type(args) is argparse.Namespace and set(vars(args)) == solve_fields,
+            "OPTIONS",
+        )
+        require(
+            args.exact_k is None and type(args.dense_default_dataset) is bool, "OPTIONS"
+        )
+        options = argparse.Namespace(**json.loads(_strict_json_bytes(vars(args))))
+        require(formula_metadata is not None, "FORMULA_METADATA")
+        require(type(parent_reference) is str and bool(parent_reference), "REFERENCE")
+        require(
+            type(calibration_specification) is bytes
+            and 0 < len(calibration_specification) <= MAX_SPECIFICATION_BYTES,
+            "SPECIFICATION",
+        )
+        require(
+            type(target_loss_weights) is np.ndarray
+            and target_loss_weights.dtype == np.dtype("float64")
+            and target_loss_weights.shape == (len(registry),)
+            and np.isfinite(target_loss_weights).all()
+            and (target_loss_weights >= 0).all(),
+            "LOSS_WEIGHTS",
+        )
+        loss_weights = target_loss_weights.copy()
+        owned_registry = deepcopy(registry)
+        require(type(registry) is TargetRegistry, "REGISTRY")
+        require(
+            isinstance(input_frame, Frame) and isinstance(target_frame, Frame), "FRAME"
+        )
+        require(
+            input_frame.schema == target_frame.schema
+            and not input_frame.schema.links
+            and input_frame.weighted_entities
+            == target_frame.weighted_entities
+            == ("household",),
+            "STRUCTURE",
+        )
+        original_stamps = (
+            _projection_stamp(input_frame),
+            _projection_stamp(target_frame),
+        )
+        parent, targets = detached(input_frame), detached(target_frame)
+        for entity in parent.entities:
+            left, right = parent.table(entity), targets.table(entity)
+            require(
+                len(left) == len(right) and left.index.identical(right.index),
+                "TARGET_ORDER",
+            )
+            for name in left:
+                require(
+                    name in right and storage_equal(left[name], right[name]),
+                    "TARGET_INPUT:" + entity + "." + str(name),
+                )
+        require(storage_equal(parent.strata, targets.strata), "TARGET_STRATA")
+        initial = parent.weights_for("household")
+        target_initial = targets.weights_for("household")
+        require(
+            initial.kind is target_initial.kind
+            and same(initial.values, target_initial.values),
+            "TARGET_WEIGHTS",
+        )
+        parent_stamp, target_stamp = (
+            _projection_stamp(parent),
+            _projection_stamp(targets),
+        )
+        ids = (
+            parent.table("household")[parent.schema.id_column("household")]
+            .to_numpy()
+            .copy()
+        )
+        require(
+            ids.dtype.kind in "iu" and len(np.unique(ids)) == len(ids), "HOUSEHOLD_IDS"
+        )
+        specification = _strict_json_bytes(
+            {
+                "supplied_specification_sha256": hashlib.sha256(
+                    calibration_specification
+                ).hexdigest(),
+                "input_frame_sha256": parent_stamp,
+                "target_frame_sha256": target_stamp,
+                "registry_sha256": hashlib.sha256(
+                    _strict_json_bytes(
+                        {
+                            "country": owned_registry.country,
+                            "specs": [asdict(spec) for spec in owned_registry],
+                        }
+                    )
+                ).hexdigest(),
+                "solver_options": vars(options),
+                "target_loss_weights": {
+                    "dtype": loss_weights.dtype.str,
+                    "rows": len(loss_weights),
+                    "sha256": hashlib.sha256(loss_weights.tobytes()).hexdigest(),
+                },
+                "mass": "conserve",
+                "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+            }
+        )
+        _assert_no_formula_owned_columns(parent, formula_metadata=formula_metadata)
+        result, default_dataset = _calibrate_fiscal_support(
+            targets,
+            owned_registry,
+            args=options,
+            target_loss_weights=loss_weights,
+            warm_start_weights=None,
+            progress_callback=progress_callback,
+        )
+        dense = options.dense_default_dataset
+        require(
+            type(result) is (CalibrationResult if dense else L0RefitResult),
+            "RESULT_TYPE",
+        )
+        require(result.weight_entity == "household", "RESULT_ENTITY")
+        weights = result.weights
+        require(
+            type(weights) is np.ndarray
+            and weights.dtype == np.dtype("float64")
+            and weights.ndim == 1
+            and np.isfinite(weights).all()
+            and (weights >= 0).all()
+            and (weights > 0).any(),
+            "RESULT_WEIGHTS",
+        )
+        initial.assert_mass_conserved(
+            Weights(weights, WeightKind.CALIBRATED), rtol=1e-9
+        )
+        if dense:
+            require(
+                weights.shape == ids.shape
+                and same(result.initial_weights, initial.values),
+                "RESULT_INITIAL_WEIGHTS",
+            )
+            full_weights, scope = weights.copy(), None
+            candidate = _with_calibrated_weights(
+                parent, weights, formula_metadata=formula_metadata
+            )
+        else:
+            selected = result.selected_entity_ids
+            mask = result.selected_mask
+            require(
+                type(selected) is np.ndarray
+                and selected.dtype == ids.dtype
+                and selected.ndim == 1
+                and selected.shape == weights.shape,
+                "RESULT_IDS",
+            )
+            require(
+                type(mask) is np.ndarray
+                and mask.dtype == np.dtype("bool")
+                and mask.shape == ids.shape
+                and np.array_equal(ids[mask], selected),
+                "RESULT_SUPPORT",
+            )
+            require(
+                same(result.selection.initial_weights, initial.values),
+                "RESULT_INITIAL_WEIGHTS",
+            )
+            full_weights = np.zeros(len(ids), dtype=np.float64)
+            full_weights[mask] = weights
+            scope = selected.copy()
+            candidate = _with_l0_refit_weights(
+                parent, result, formula_metadata=formula_metadata
+            )
+        comparison = dict(
+            parent_reference=parent_reference,
+            ordered_household_ids=ids,
+            calibrated_weights=full_weights,
+            calibration_specification=specification,
+            scope_household_ids=scope,
+            prune_zero_weight=False,
+        )
+        # Check the solver's returned support independently of the clean input
+        # attachment. A same-shaped result from a different target parent refuses.
+        verify_retained_frame_export(targets, result.frame, **comparison)
+        binding = verify_retained_frame_export(parent, candidate, **comparison)
+        require(
+            _projection_stamp(parent) == parent_stamp
+            and _projection_stamp(targets) == target_stamp
+            and (_projection_stamp(input_frame), _projection_stamp(target_frame))
+            == original_stamps,
+            "CHANGED",
+        )
+        ids.setflags(write=False)
+        full_weights.setflags(write=False)
+        return _NativeCalibrationAttachment(
+            candidate,
+            result,
+            deepcopy(default_dataset),
+            ids,
+            full_weights,
+            specification,
+            binding,
+        )
+    except (AttributeError, KeyError, TypeError, ValueError, OverflowError) as error:
+        if type(error) is ValueError and str(error).startswith("NATIVE_CALIBRATION_"):
+            raise
+        # Frame/solver exceptions may otherwise include private row examples.
+        raise ValueError("NATIVE_CALIBRATION_STRUCTURE_OR_RESULT") from None
+
+
 def _with_calibrated_weights(
-    base_frame: Frame, calibrated_weights: np.ndarray
+    base_frame: Frame, calibrated_weights: np.ndarray, *, formula_metadata=None
 ) -> Frame:
-    _assert_no_formula_owned_columns(base_frame)
+    _assert_no_formula_owned_columns(
+        base_frame, **_explicit_kwargs(formula_metadata=formula_metadata)
+    )
     return base_frame.with_weights(
         "household",
         Weights(calibrated_weights, WeightKind.CALIBRATED),
@@ -7104,9 +7761,13 @@ def _written_stored_input_verdict_mismatch(
     )
 
 
-def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
+def _with_l0_refit_weights(
+    base_frame: Frame, result, *, formula_metadata=None
+) -> Frame:
     """Attach post-L0 refit weights to the clean selected base-frame support."""
-    _assert_no_formula_owned_columns(base_frame)
+    _assert_no_formula_owned_columns(
+        base_frame, **_explicit_kwargs(formula_metadata=formula_metadata)
+    )
     return attach_l0_refit_entity_weights(
         base_frame,
         weight_entity=result.weight_entity,
@@ -9766,11 +10427,25 @@ def _assert_export_matches_calibration(
     target_specs: tuple,
     *,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    system_factory=None,
+    spm: Mapping[str, object] | None = None,
 ) -> None:
+    spm = None if spm is None else dict(spm)
     target_frame, registry, compilation = _materialize_target_frame(
-        _load_frame(dataset_path),
+        _load_frame(
+            dataset_path,
+            **({"dataset_cls": dataset_cls} if dataset_cls is not None else {}),
+        ),
         target_specs,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
+        formula_metadata=formula_metadata,
+        dataset_cls=dataset_cls,
+        microsimulation_cls=microsimulation_cls,
+        system_factory=system_factory,
+        spm=spm,
     )
     dropped = compilation.get("dropped_target_names") or []
     if dropped:
@@ -9998,19 +10673,33 @@ def _score_post_export_consumer(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None,
     baseline_plan: Sequence[PostExportKey] | None,
     maximum_microsim_batch_size: int | None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
 ):
     """Run one post-export consumer through the household-batched scorer.
 
     ``_main`` passes the scorer it opened on the written H5 and the plan it
     recorded in the calibration diagnostics. A direct caller may pass neither:
     the scorer is then opened (and closed) here, and the plan is recorded by
-    the same engine-free dry run.
+    the same engine-free dry run. Explicit ``dataset_cls``,
+    ``microsimulation_cls`` and ``spm`` reach only a scorer opened here; an
+    existing scorer was already constructed and refuses them.
     """
+    overrides = _explicit_kwargs(
+        dataset_cls=dataset_cls, microsimulation_cls=microsimulation_cls, spm=spm
+    )
+    if post_export_scorer is not None and overrides:
+        raise ValueError(
+            "An existing post-export scorer cannot receive constructor or SPM "
+            "overrides."
+        )
     scorer = post_export_scorer
     if scorer is None:
         scorer = _HouseholdBatchedPostExportScorer(
             dataset_path,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            **overrides,
         )
     try:
         plan = (
@@ -10046,6 +10735,9 @@ def _write_reform_validation(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
     baseline_plan: Sequence[PostExportKey] | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
@@ -10055,6 +10747,8 @@ def _write_reform_validation(
     False, e.g. for a fast diagnostics-only build). The shared baseline is one
     batch-outer pass over the plan's keys in ascending period order.
     """
+    # Captured before spec loading, so a later caller mutation cannot move it.
+    spm = None if spm is None else dict(spm)
     payload_for = _reform_validation_consumer(result=result, release_id=release_id)
     if not simulate_out_of_sample:
         print(
@@ -10082,6 +10776,9 @@ def _write_reform_validation(
             post_export_scorer=post_export_scorer,
             baseline_plan=baseline_plan,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            dataset_cls=dataset_cls,
+            microsimulation_cls=microsimulation_cls,
+            spm=spm,
         )
     write_reform_validation(payload, release_dir / "reform_validation.json")
 
@@ -10094,6 +10791,9 @@ def _write_demographics(
     post_export_scorer: _HouseholdBatchedPostExportScorer | None = None,
     baseline_plan: Sequence[PostExportKey] | None = None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> None:
     """Emit demographics.json: the dataset's weighted population by age band.
 
@@ -10101,6 +10801,7 @@ def _write_demographics(
     this file remains a compact summary diagnostic for release consumers. Ages
     and person weights are scored on the written H5 in household batches.
     """
+    spm = None if spm is None else dict(spm)
     ages, weights = _score_post_export_consumer(
         "demographics",
         _demographics_consumer,
@@ -10108,6 +10809,9 @@ def _write_demographics(
         post_export_scorer=post_export_scorer,
         baseline_plan=baseline_plan,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
+        dataset_cls=dataset_cls,
+        microsimulation_cls=microsimulation_cls,
+        spm=spm,
     )
     payload = demographics_payload(ages, weights, period=PERIOD, release_id=release_id)
     # Household-record counts by state and congressional district: the
@@ -11521,29 +12225,22 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # build, not merely a test.
     assert_take_up_contract_current()
     assert_take_up_treatments_consistent()
-    ledger_artifact = load_ledger_consumer_artifact(
-        args.ledger_facts,
-        expected_facts_sha256=args.ledger_facts_sha256,
-        expected_manifest_sha256=args.ledger_manifest_sha256,
-    )
-    _check_committed_us_ledger_feed_pin(
-        ledger_artifact.facts_sha256,
-        manifest_sha256=ledger_artifact.manifest_sha256,
-        allow_unpinned_feed=args.allow_unpinned_feed,
-    )
-    target_registry = compile_us_fiscal_target_registry(
-        ledger_artifact.facts,
-        target_period=PERIOD,
+    (
+        ledger_artifact,
+        target_registry,
+        medicaid_enrollment_substitutions,
+        target_parity_gate,
+    ) = _compile_fiscal_release_target_registry(
+        args,
         congressional_district_vintage_crosswalk=(
             congressional_district_vintage_crosswalk
         ),
-        age_targets=args.age_targets,
-        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
     )
     # The exclusion register's keys do not say which feed facts a compile
     # dropped or let through by vintage (microcosm#956), so record the concrete
     # ids per rule now, while the facts and crosswalk are at hand; it lands in
-    # us_source_coverage.json beside the register.
+    # us_source_coverage.json beside the register. The shared compiler above
+    # compiled exactly these facts, at this period, with this crosswalk.
     fiscal_target_exclusion_receipt = us_fiscal_target_exclusion_receipt(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -11551,35 +12248,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
             congressional_district_vintage_crosswalk
         ),
     )
-    # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
-    # whose point-in-time snapshot is unreported at source ships its cited
-    # nearest-prior-month count instead of failing the take-up gate closed.
-    # The records ride the take-up diagnostics; the gate fails a stale entry
-    # (CMS backfilled the substituted-for month) so the register cannot rot.
-    # Applied once here, before the dense/sparse split, so the injected spec
-    # flows through `target_specs` into the materialized calibration registry
-    # that BOTH the dense (`calibrate`) and sparse (`calibrate_l0_refit`) arms
-    # consume, and into the take-up target table and build manifest.
-    target_registry, medicaid_enrollment_substitutions = (
-        apply_us_medicaid_enrollment_substitutions(target_registry)
-    )
-    # Target-parity contract (launch gate): every administrative target family
-    # the retired us-data/eCPS pipeline calibrated to must be compiled into the
-    # registry or carry a reviewed exclusion (target_parity_manifest.json). Runs
-    # on the full compiled + substituted registry — before the optional
-    # diagnostic JCT skip — so the gate sees the true family surface, and
-    # hard-fails the build on a silently dropped family or a rotted manifest,
-    # exactly like the release input-coverage gate on the export frame.
-    assert_target_parity_manifest_current(registry=target_registry)
-    target_parity_gate = us_release_target_parity_gate(target_registry)
-    if not target_parity_gate.passed:
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Target parity coverage failed: {failure}"
-                for failure in target_parity_gate.failures
-            )
-        )
     target_specs = target_registry.specs
     active_target_registry = TargetRegistry(target_specs, country="us")
     # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
@@ -13628,74 +14296,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 "details": dict(exact_k_puf_tail_gate.details),
             },
         }
-    elif args.dense_default_dataset:
-        result = calibrate(
-            target_frame,
-            registry.to_target_set(),
-            epochs=args.epochs,
-            learning_rate=args.learning_rate,
-            max_weight_ratio=args.max_weight_ratio,
-            seed=args.seed,
-            mass="conserve",
-            l2_lambda=args.l2_lambda,
-            target_loss_weights=target_loss_weights,
-            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
-            warm_start_weights=warm_start_weights,
-            progress_callback=(
-                telemetry.calibration_progress if telemetry is not None else None
-            ),
-        )
-        default_dataset = {
-            "method": "dense_no_l0",
-            "sparse": False,
-            "n_candidate_households": candidate_households,
-            "n_exported_households": int(target_frame.n("household")),
-            "epochs": int(args.epochs),
-            "l2_lambda": float(args.l2_lambda),
-            "final_loss": float(result.final_loss),
-        }
     else:
-        result = calibrate_l0_refit(
+        result, default_dataset = _calibrate_fiscal_support(
             target_frame,
-            registry.to_target_set(),
-            epochs=args.epochs,
-            refit_epochs=args.epochs,
-            learning_rate=args.learning_rate,
-            max_weight_ratio=args.max_weight_ratio,
-            seed=args.seed,
-            mass="conserve",
-            l0_lambda=float(l0_refit_lambda),
-            l2_lambda=args.l2_lambda,
-            refit_l2_lambda=args.refit_l2_lambda,
+            registry,
+            args=args,
             target_loss_weights=target_loss_weights,
-            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
             warm_start_weights=warm_start_weights,
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
         )
-        default_dataset = {
-            "method": "l0_refit",
-            "sparse": True,
-            "n_candidate_households": candidate_households,
-            "n_selected_households": int(result.selection.n_nonzero),
-            "n_exported_households": int(result.frame.n("household")),
-            "l0_lambda_share": float(args.l0_refit_lambda_share),
-            "l0_lambda": float(result.l0_lambda),
-            "selection_epochs": int(args.epochs),
-            "refit_epochs": int(args.epochs),
-            "selection_l2_lambda": float(args.l2_lambda),
-            "refit_l2_lambda": float(
-                args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
-            ),
-            # Same scrub as default_dataset["final_loss"] below: these losses
-            # ride the diagnostics build payload, which serializes strict JSON
-            # (allow_nan=False), and a non-finite loss is a BATCHED gate
-            # failure the artifact must survive to report (microcosm#547).
-            "selection_final_loss": _finite_or_none(result.selection.final_loss),
-            "refit_initial_loss": _finite_or_none(result.initial_loss),
-            "refit_final_loss": _finite_or_none(result.final_loss),
-        }
     # Frame.with_weights copies the target tables into each calibrated frame.
     # Drop the input now and replace those result frames after building the
     # clean export from base_frame and the calibrated weights below.

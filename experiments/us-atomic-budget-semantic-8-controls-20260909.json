@@ -1,0 +1,29 @@
+{
+  "code_resources": 12,
+  "cpu_seconds": 313.261743,
+  "frozen_before_after_current_equal": true,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 447545344,
+  "publisher_provenance_established": false,
+  "receipt_sha256": "76a132f01c33bd71af65eb0c17bb2187d9b15dfefc6e7e61ad5f935ea14f59bb",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "Corrected semantic budget replay identity and FIFO/owner/mutation refusals. Invented data only; no native or publisher admission, no release.",
+  "source_and_owned_files": 492,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 8
+  },
+  "tested_source_changes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/survey_age_calibration.py": "a10b9f3552c84563d845675c772130073b925b5835d6730ffb9afc0e93170777",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/survey_origin_budget.py": "c0667ad329af2f58901b0fd2f333489ad2366b83e2bac8ded95b51088d9e5d5e",
+    "packages/microcosm-build/tests/test_us_survey_age_calibration_atomic_geography.py": "25a414517974d345541bcec6152b61151b09ccc476a5350a36015c4b33dcd70e",
+    "packages/microcosm-build/tests/test_us_survey_origin_budget_atomic_geography.py": "d130335f5fb8d66e3e032984c326e1077b0a889162da8d97324f85866095905d",
+    "packages/microcosm-build/tests/test_us_survey_origin_budget_predictor_compatibility.py": "d81a82b9aedecd26d62831e93355c233093dc8fc3adec1e702d8c7f138fd8bbd"
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 321.5954028330161
+}

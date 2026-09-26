@@ -1,0 +1,41 @@
+{
+  "all_successor_controls_passed": false,
+  "approval_sha256": "91efa2d737f38d6d6b11890241a1a9b5dbb1c6840da3a49f58966101e3f967ef",
+  "cpu_seconds": 647.185773,
+  "fixture_original_teardowns_passed": true,
+  "guard_sha256": "a9566eb1783d71dd1fc3c0468e2f1af763fbd5ed218f0a87d2cbca3ae1d4011b",
+  "interpretation": "The original financial replay and financial-to-weight-only successor behavior passes; remaining refusal/callback cases and native calibration admission are pending.",
+  "junit_sha256": "2af08e54f972192d299281c992dd4306dde99399699c4684037ad6bf60804d9a",
+  "limits": {
+    "cpu_seconds": 1200,
+    "numerical_threads": 1,
+    "wall_seconds": 1800
+  },
+  "memo_or_profiler": false,
+  "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+  "native_acceptance": false,
+  "original_acs_owner_sha256": "db7aaae06961cc1ed9ce13b28dac74d8fd1041b9cd4c32294d2b11105fbef7af",
+  "peak_rss_bytes": 570884096,
+  "postcheck_sha256": "8698b43174b17faa1bcc4123ae1b7c7c1ea65bba94f5d41f207c259dc3c951e8",
+  "receipt_sha256": "96819afd6805e5cbcd6dfb2271ec1d8c4c3b72775135904a9efe1d97cbb79791",
+  "release_acceptance": false,
+  "remaining_controls": 7,
+  "resource_map_sha256": "088a55cd36f83e4b466947a216b0315a983d5888c603103e575f0cc7ae2ece38",
+  "schema_version": 1,
+  "scope": "one_invented_financial_successor_positive_control",
+  "source_map_sha256": "44d9306d0964a4b72490a07895a080b129b83c251866c2aeac06c74deb4ca762",
+  "status": "one_positive_control_accepted",
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  },
+  "unexpected_refusals": {},
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 499
+  },
+  "wall_seconds": 651.2133005840005
+}

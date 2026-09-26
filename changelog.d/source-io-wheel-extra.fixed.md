@@ -1,0 +1,1 @@
+Declare an engine-free HDF source extra and install it in the isolated wheel test environment. Verify an invented pandas HDF round trip before source tests, while retaining the base wheel import boundary and excluding the US rules engine.

@@ -1,0 +1,85 @@
+{
+  "actual_original_source_issuer_comparisons": true,
+  "actual_twenty_two_node_cold_and_required_replay": true,
+  "adopted_source_hashes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_puf55_survey_recipients.py": "888caefb31861bc5892d607ed3598c1ea86eb78ecf1e06035cf3f4f004c8cbd4",
+    "packages/microcosm-build/tests/test_us_graph_puf55_survey_recipients.py": "b50b99d259c21ac71c4e07f6438465b6614f15ee937d496bac5a45720216246b",
+    "packages/microcosm-build/tests/test_us_puf55_survey_recipients.py": "fd7ff35d8e752ca7350c7022897f5afa806732ba7f1526f3ea2a1f26bf0a40b6"
+  },
+  "calibration_acceptance": false,
+  "changed_source_files": [
+    "packages/microcosm-build/tests/test_us_puf55_survey_recipients.py"
+  ],
+  "corrected_successor": {
+    "actual_model_chain_verified": false,
+    "actual_nan_storage_mutation_verified_by_test": true,
+    "approval_sha256": "fcc818febc58926eb12333217276daf3c41cfd665419b3583ef7d92422412a6a",
+    "cpu_seconds": 390.301149,
+    "financial_fixture_fit_and_graph_execution": true,
+    "full65_and_puf55_chain_acceptance": false,
+    "guard_sha256": "92b3cda8a663b073b55c5370a6a41d2a9143b30eb6a0c268ad7d9c561d1bd4c4",
+    "junit_sha256": "5fdb73added770d03cc56847234579f4dc4b7ac9cb11640337782d07d3966bd4",
+    "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+    "native_acceptance": false,
+    "native_access": false,
+    "peak_rss_bytes": 539738112,
+    "postcheck_script_sha256": "f6d472f7e29dda2184df6b1819656c2ecf0679352b6517a44681d966b1fea90c",
+    "production_adopted": false,
+    "production_changes": false,
+    "project_imports_or_runtime_reexecution": false,
+    "puf_fit_or_finalization": false,
+    "receipt_sha256": "79d339ff7eb1fe9f9370d3f89976351612a8334bcce46ac91c4e3f549a05ba3d",
+    "recipient_test_sha256": "fd7ff35d8e752ca7350c7022897f5afa806732ba7f1526f3ea2a1f26bf0a40b6",
+    "release_acceptance": false,
+    "resource_map_sha256": "7200349a765cd20316304c73632608851b1320293f797c7c3da7e7daf2229742",
+    "root_review_sha256": "bb8d8adbea2e8579a39b69b32b774a0acaccf6b59d48d243f91164724fcc734a",
+    "scope": "five_invented_detached_recipient_output_mutation_controls",
+    "selected_test_cases": [
+      "test_final_run_check_cannot_mutate_detached_recipient_outputs[person]",
+      "test_final_run_check_cannot_mutate_detached_recipient_outputs[matrix]",
+      "test_final_run_check_cannot_mutate_detached_recipient_outputs[columns_name]",
+      "test_final_run_check_cannot_mutate_detached_recipient_outputs[nan_bits]",
+      "test_final_run_check_cannot_mutate_detached_recipient_outputs[mutable_matrix]"
+    ],
+    "source_count": 499,
+    "source_map_sha256": "5d19ee15bcff9bd26458258bcff86fa18f03856afd93df32f214b599ab120695",
+    "test_counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 5
+    },
+    "unexpected_refusals": {},
+    "verification_passed": true,
+    "verified_current": {
+      "code_resources": 12,
+      "model_source": 5983,
+      "source_and_owned": 507
+    },
+    "wall_seconds": 392.8034432080458
+  },
+  "current_checkout_runtime_certification": false,
+  "distinct_passing_controls": 28,
+  "duplicated_passing_cases": 4,
+  "historical_run": {
+    "failed": 1,
+    "failed_case": "test_final_run_check_cannot_mutate_detached_recipient_outputs[nan_bits]",
+    "junit_sha256": "256569c21fa52f78f4e8e3e809b81fd738564aca32f02b2876e0d625168fe1ed",
+    "passed": 27,
+    "receipt_sha256": "c174e4051b711f3beee1a1aff20f8d7aced657b094cd4831ceec5b82fd224451",
+    "root_evidence_verification_sha256": "d70f8cb7edc2ab2d026fe5ca282e54d45576536d5cb48eb84d92a125ed2bae39",
+    "source_map_sha256": "9a4888a721f53a4203ed188b81642bed5b423616991ab4c191081afdd1f43af4",
+    "suite_accepted": false,
+    "tests": 28
+  },
+  "native_acceptance": false,
+  "new_nan_setup_asserts_actual_uint64_storage_change": true,
+  "passing_executions": 32,
+  "production_changed_between_runs": false,
+  "puf_fit_or_finalization": false,
+  "recipient_nodes_declare_original_survey_and_atomic_support_sources": true,
+  "release_acceptance": false,
+  "retained_source_files": 498,
+  "scope_note": "28 distinct public controls are covered by 27 passing cases in the preserved failed run plus five passing test-only successor cases, four overlapping. This is not a single all-green 28-case invocation. The only source change between these frozen runs makes the NaN test mutation observable; all production and original fixtures are identical. These runs use actual issuers and graphs over invented survey sources.",
+  "status": "public_recipient_controls_covered_across_preserved_run_and_test_only_successor"
+}

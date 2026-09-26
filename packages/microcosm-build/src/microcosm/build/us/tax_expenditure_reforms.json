@@ -12,6 +12,7 @@
    "budget_measure": "income_tax",
    "description": "Repeal the Child Tax Credit and Credit for Other Dependents. JCT line is 'Credit for children and other dependents'; the Table 1 figure already includes the refundable outlay portion (footnote [4]; 46.7B of the 127.1B).",
    "benchmark": {
+    "publisher": "jct",
     "score": 127100000000.0,
     "score_type": "tax_expenditure",
     "window": "FY2024",
@@ -29,6 +30,7 @@
    "budget_measure": "income_tax",
    "description": "Repeal the EITC. Mostly refundable: JCX-48-24's Table 1 figure already includes the outlay portion (footnote [4]; 57.3B of the 66.9B), so the outlay table is a breakdown, not an addition. The dataset is calibrated to SOI EITC-by-AGI targets, so this is an in-sample check.",
    "benchmark": {
+    "publisher": "jct",
     "score": 66900000000.0,
     "score_type": "tax_expenditure",
     "window": "FY2024",
@@ -46,6 +48,7 @@
    "budget_measure": "income_tax",
    "description": "Repeal the CDCC. JCT bundles it with the employer-provided-childcare exclusion, so the clean CDCC-only benchmark is Treasury's.",
    "benchmark": {
+    "publisher": "treasury",
     "score": 3690000000,
     "score_type": "tax_expenditure",
     "window": "FY2024",

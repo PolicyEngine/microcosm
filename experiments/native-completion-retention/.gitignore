@@ -1,0 +1,11 @@
+# Preserve local synthetic run evidence without committing machine-specific paths.
+*-command.json
+*-results.xml
+*.log
+partial-validation.json
+review-request*.txt
+review-source*.patch
+review-source-fingerprint.json
+source-fingerprint-v2.json
+final-source-fingerprint.json
+synthetic-runtime*.json

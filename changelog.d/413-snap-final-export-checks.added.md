@@ -1,0 +1,1 @@
+Add scoped SNAP checks that reopen an identified final export, recompute 51-state caseload and benefit estimates, verify county/state consistency, and preserve pending status when runtime evidence or reviewed tolerances are missing.

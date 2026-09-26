@@ -1,0 +1,1 @@
+Stream eligible ACS catalogue seals through bounded record JSON encoding while preserving canonical digest bytes, full-value fallback, and repeated source and owner validation. Bind the additional JSON provider calls into the existing preparation authority checks.

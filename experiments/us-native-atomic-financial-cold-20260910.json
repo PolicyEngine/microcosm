@@ -1,0 +1,104 @@
+{
+  "age_calibration_acceptance": false,
+  "approval_sha256": "837bf6c06fbe186f615080cd844ce0e92eecbad387e800f6d7cc4bfa02b673ae",
+  "artifact_identity_verification": "pinned manifest metadata and internal producer/key/size relations only; no graph store, export or snapshot reopen",
+  "collected_tests": 1,
+  "compiled_nodes": 20,
+  "composed_prefix_store_hits": 10,
+  "cpu_seconds": 6591.938158,
+  "cross_process_source_authority_granted": false,
+  "current_checkout_certified": false,
+  "date": "2026-09-10",
+  "entity_rows": {
+    "clone": {
+      "household": 3168,
+      "person": 6928
+    },
+    "create": {
+      "household": 1584,
+      "person": 3464
+    },
+    "financial": {
+      "household": 3168,
+      "person": 6928
+    }
+  },
+  "features": [
+    "survey_predictor_age",
+    "survey_predictor_employment_income",
+    "survey_predictor_self_employment_income",
+    "survey_predictor_is_female",
+    "survey_predictor_state_fips"
+  ],
+  "financial_cold_nodes": 10,
+  "financial_successor_acceptance": false,
+  "guard_before_after_identity_count": 509,
+  "guard_sha256": "5bffe33e4c60055070bb9ab9a51ad2e87bfbf86fcd843e1da0d6407d53debda1",
+  "head_coordinate": "e0718150d062f0fb34702d1443c701f0e1ac59e9",
+  "implementation_overlays": {
+    "acs_fingerprint_sharing": false,
+    "budget_detached_view_correction": false,
+    "compilation_cache": false
+  },
+  "limits": {
+    "automatic_retry": false,
+    "children": 0,
+    "cpu_seconds": 7200,
+    "engine": false,
+    "network": false,
+    "numeric_threads": 1,
+    "peak_rss_bytes": 34359738368,
+    "wall_seconds": 10800
+  },
+  "manifest_metadata_sha256": "2168b79ff60b481636b4dacf504ff70f4f1934b92359d86cb95ce1ae78987b7a",
+  "model_quality_established": false,
+  "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+  "native_identity_verification": "config/staging/manifest/guard before-after metadata; no postcheck payload read, hash or stat",
+  "native_input_bytes": 3735332980,
+  "native_input_count": 10,
+  "owned_columns": [
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response"
+  ],
+  "peak_rss_bytes": 11452743680,
+  "postcheck_script_sha256": "ae9b4dacefbfb06c7571c81a55a87f50c080b9e3c27e4c3b39f8e4f878a95d1e",
+  "puf_enrichment_acceptance": false,
+  "receipt_sha256": "aea67b38a7a9af17a87b3bdce9e31c8033bdf2d14f7f01191cc7ec12d0d43eae",
+  "release_acceptance": false,
+  "remaining": [
+    "Required cached replay on this exact native source and graph",
+    "Actual two-route PUF55 fitting and single finalization/attachment",
+    "Model-input coverage and fit-quality checks",
+    "National and congressional-district calibration/holdouts",
+    "Full and pruned export verification with exact-file dashboard"
+  ],
+  "required_replay_run": false,
+  "resource_map_sha256": "62a6329a8d84ad96410581f4e5043c4b62fb648a7aa7737a2ee8eed61a80a7bc",
+  "root_postcheck_sha256": "50eabf02b476f2fdc55e15812e374fd76cf6002feb7fd60f10810e4d2122ac8c",
+  "runtime_result": 0,
+  "schema_version": "microcosm.scoped-native-control.v1",
+  "scope": "one_selected_native_survey_atomic_financial_cold_development_pilot",
+  "source_count": 491,
+  "source_map_sha256": "44d9306d0964a4b72490a07895a080b129b83c251866c2aeac06c74deb4ca762",
+  "status": "cold_development_pilot_accepted",
+  "targets": [
+    "survey_current_INT_VAL",
+    "survey_current_DIV_VAL",
+    "survey_current_CAP_VAL"
+  ],
+  "test_outcomes": [
+    "passed"
+  ],
+  "unexpected_refusals": {},
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_safe_owned": 505
+  },
+  "wall_seconds": 6607.312281332968
+}

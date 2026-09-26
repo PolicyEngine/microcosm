@@ -1,3 +1,232 @@
+# Retention: replay by content seal, not by retained population
+
+> **Historical (2026-09-23).** This journal was written on
+> `native-retention-seal` (#950). That branch is now merged into
+> `native-integration-20260923`, which also carries current main, so its
+> "State", "Pull request" and "Next" sections describe #950 as it was,
+> not the current tree. See docs/us-native-retention-seal.md, "Integration
+> note", for how the seal and compact retention were combined.
+
+Lane: `native-retention-seal`, off `origin/native-scale-transport` at
+`a64f7b733`, worktree `~/PolicyEngine/_worktrees/microcosm-native-retention`.
+Started 2026-09-17. Everything below the `---` rule at the end of this section
+is prior-lane history; see "Root journals are history, not state" in
+`CLAUDE.md`.
+
+## State
+
+Implemented; both required runs have run. The 1/1000 cold run **and its
+required replay completed** and export byte-identical bytes (identical manifest
+key, 0 store paths added or changed), at 1,714.92 CPU-s against the transport
+after-run's 1,907.58. The **1/15 run refused** 605.65 CPU-s in, at 8.28 GB,
+having run no node: `PREPARATION_ISSUANCE_REFUSED`, the catch-all that discards
+its cause. The predicted cause is a 1 MiB canonical-JSON cap on the
+selected-ACS-`SERIALNO` list — **below** the row-count ceiling the base branch
+lifted, and in no census — and a non-invasive 1/15 diagnostic is running to
+name it rather than infer it. The discrimination battery is 116 comparisons,
+116 agreements, 0 disagreements. Draft PR #950 is open and stays draft.
+
+## Done
+
+- Verified worktree/branch/head; synced `uv sync --all-packages --locked --extra us`.
+- Read both authorities in full and the code at this head.
+- `docs/us-native-retention-seal.md` — the four required answers.
+- `survey_population_replay.py` — the purpose-built seal, beside the
+  comparison it replaces.
+- `test_us_survey_population_replay.py` — every mutation now runs through BOTH
+  the object comparison and the seal, and must reach the same verdict with the
+  same code; plus the discriminations the first battery missed.
+- `executor.py` — `run_graph(_population_observer_detach=False)`, its own
+  commit, four tests, no US import.
+- `graph_atomic_survey_financial.py` — declared-consumer retention, both
+  comparisons sealed, `_node_population_stamp` on both arms.
+- Repaired a **stale implementation contract inherited from the transport
+  branch** and added the guard that would have caught it.
+- Armed both runs with their gates and their source trees, and ran both.
+- The 1/1000 cold run plus required replay, under a byte-identical copy of the
+  transport lane's committed harness: `COMPLETED_NINETEEN_NODE_AND_REQUIRED_REPLAY`,
+  every node a store hit on the replay, manifest key identical, store bytes
+  identical. Recorded with the three causes that move the key off the base
+  branch's `bd511d92…`, one of which is this lane's own executor commit.
+- The 1/10 refusal diagnostic, three rounds, the third non-invasive: the cause
+  the three nested catch-alls discard is
+  `ACSCoverageAuthenticationError: CANONICAL_SIZE`, and the ceiling it belongs
+  to was computed from measured inputs and committed **before** the 1/15 run.
+- The 1/15 run: refused as predicted, recorded with its CPU, wall, peak RSS and
+  the fact that no node ran.
+- Found and recorded a defect in the 1/15 harness's own receipt: `sample.fraction`
+  and the `scope` sentence were left as the tenth harness's while the call site
+  ran `Fraction(1, 15)`. The harness stays as it ran; the 1/15 diagnostic
+  harness corrects both fields and says so.
+
+## Pull request
+
+**[PolicyEngine/microcosm#950](https://github.com/PolicyEngine/microcosm/pull/950)**
+— draft, base `native-scale-transport`, `MERGEABLE`. It stays draft.
+
+## Done (2026-09-17, second session)
+
+- **The 1/15 refusal is named from the run's own raises.** The measurement
+  refused with the catch-all; `harness19_diag_fifteenth.py` (the 1/15 harness
+  plus the committed `sys.monitoring` RAISE block, diffed both ways) re-ran it
+  and the trace ends in `ACSCoverageAuthenticationError: CANONICAL_SIZE` from
+  `issue_acs_native_coverage` with exactly two `visit` frames — the same guard
+  and signature as 1/10. The prediction committed before the run is confirmed.
+- Recorded a defect in the 1/15 harness's own receipt: `sample.fraction` and
+  the `scope` sentence were left as the tenth's while the call site ran
+  `Fraction(1, 15)`. The harness stays as it ran; the diagnostic corrects both.
+- Corrected the guard's citation: `acs_native_coverage_binding.py:563-565`,
+  not `:562-564`, in the report and the ceiling receipt's generator.
+- **Pinned five of the six refusal codes this change adds**, which had none,
+  and verified each of the three seal tests goes red against its own reverted
+  guard. `ATOMIC_OBSERVER_RETENTION` stays unpinned and both documents now say
+  why, including that its second conjunct is a self-comparison that cannot
+  fire. That is report question 7.
+- **`battery_receipt.py`** rebuilds the battery's receipt from its own rows and
+  reproduces the committed one exactly; the design note's stale 109 comparisons
+  and eleven accepted pairs are corrected to 116 and fourteen.
+- **The identity receipt now emits every ordered pair.** Section 7c had cited
+  `transport_after → us_only` for "the US half moves no key", and that row says
+  the opposite; `base → us_only` is the row, and it did not exist. Regenerating
+  at this head also re-ran the contract arm: ten of ten accepted.
+- Verified, rather than assumed: both measured trees carry `packages/*/src`
+  byte-identical to this head; §7a's table regenerates cell for cell; §7b's
+  replay proof and §7d's RSS phase split match the artifacts exactly; the §2
+  battery table matches the receipt row for row; and the base branch's
+  `bd511d92…` key is the one the brief quoted.
+- Report restructured to the brief's order — tests (9), PR (10), questions (11),
+  caveats (12) — and five wrong cross-references repointed, including §12's
+  claim that the committed 1/10 trace came from a round that patches the
+  catch-all. It came from the round that patches nothing.
+
+## Done (2026-09-17, second session) — the adversarial pass
+
+**68 agents over six review dimensions, every finding put to two independent
+verifiers whose default answer is refuted: 31 findings, 25 survived.** Five
+answered in code, four in tests, sixteen in the documents, none left open.
+Receipt: `experiments/native-retention-seal/adversarial-verification-receipt.json`.
+
+The three that mattered, each reproduced before being believed and again after
+being fixed:
+
+- **The seal ACCEPTED a pair the comparison refuses.** An object-axis value
+  carrying its own `__eq__` has equal codec bytes to the plain int of the same
+  value and is not `==` to it. That is the dangerous direction — a run
+  accepting a replay the comparison refuses.
+- **The seal REFUSED a pair the comparison accepts.** pandas holds `None` and
+  every NaN interchangeable on an object axis; the codec spelled them apart, so
+  a green run would have turned red.
+- **A masked-integer axis folded through float64**, because `np.asarray` on a
+  masked integer array returns float64 with NA as NaN — lossy above `2**53`,
+  and the refusal code moved.
+
+The fold now reproduces the equivalence classes `Index.equals` actually has,
+**measured** rather than read off pandas' source, and refuses `AXIS` at seal
+construction for the one case a digest cannot represent. 124 new battery cases
+pin all three; each half of the fix was reverted to confirm its own cases go
+red.
+
+**And the change broke a gate that passes at the base.**
+`test_us_spine_blindness.py::test_runtime_population_operators_are_source_spine_blind`
+refuses a statically unresolvable subscript on a name it infers to be a column
+container; every seal record is a positional tuple, so it reported 48 sites.
+Verified both ways: `1 passed` at `a64f7b733`, red here. The records are now
+unpacked into named fields, the one dynamic `getattr` reads through a literal
+reader per comparable, and the gate passes (`1 passed in 217.42s`). Nothing
+moved: no record changed shape, order or `repr`.
+
+**Two tests were vacuous.** An executor test's default-mode arm compared one
+run's objects against another run's; the dtype census asserted the same
+predicate twice and called no seal function. Both now fail against the defect
+they pin.
+
+**Four documents described mechanisms that are not in the code** — a dtype
+token, a `_comparables` digest, a `repr()` fallback and the residual risk built
+on it — and the design note's own §4(1) had argued the token would be wrong.
+
+## Next
+
+1. The **quiet-machine 1/1000 re-run at the finished head** (pid 7656, launched
+   2026-09-18T01:58:01Z at 79.8 GB available, head `6e3b3091c`). It re-proves
+   the replay at the head that ships and answers question 5's request for a
+   repeat without contention. `RUN-RECORD-after2.txt` states what it must
+   reproduce before the outcome.
+2. The 21-file dependent battery, **re-run clean**. The first run had three red
+   files: the spine-blindness failure was real and is fixed; the completion-host
+   and person-status results were invalidated by my own concurrent edits to
+   `survey_population_replay.py` during the run, which an implementation hash
+   is over — the report says so rather than quoting them.
+3. The final CI-shaped verification at the finished head, the PR body, and the
+   report's remaining open questions (now eight).
+
+## Inherited defect, repaired here (for the report and for Max)
+
+`survey_population_preparation._spill_roster` gained a `Path.read_bytes` on
+`native-scale-transport` at **`b6081efcb`** ("Hash a spill segment that was
+already there"). That added a `resource_accesses` entry, leaving
+`graph_implementation_inventory.json`'s declared `resource_accesses_sha256`
+stale, so `implementation_manifest("authenticated_survey_population_v1")`
+**refused** — and `SurveyPopulationCreateKernel.implementation_hash` calls it.
+**No 19-node graph run was possible at `a64f7b733`.** Bisected across
+`5ff889814` → `5307249b3` (both clean) → `baaf4270c` onward (all refusing).
+The transport report's §4 "No committed pin moves" was recomputed before
+`b6081efcb` and is stale at its own tip. Repaired in `43fb39270`, guarded by
+`test_us_implementation_inventory_contracts.py` (135 assertions; reverting the
+re-pin turns both arms red, verified).
+
+## What moves, measured exactly
+
+`experiments/native-retention-seal/implementation-identity-receipt.json`:
+
+| comparison | roster module digests that move |
+|---|---|
+| `a64f7b733` → US-only commits | **none** |
+| `a64f7b733` → head with the executor commit | `microcosm.graph/executor.py`, in **all ten** stages |
+
+`survey_population_replay.py`, `graph_atomic_survey_financial.py` and
+`survey_atomic_geography.py` are in no stage roster; `executor.py` is in every
+one. The re-pin above moves `inventory_sha256`, which is also in every stage
+manifest.
+
+## Findings, proved by running code at this head
+
+**Neither existing seal is the seal.** The transport report's §10 question 2(b)
+says "`_population_stamp` already folds everything `same_replayed_population`
+compares except the *type* assertions". That sentence is wrong in **both**
+directions, and both halves are proved by scripts committed under
+`experiments/native-retention-seal/`:
+
+1. **`_population_stamp` is too strict.**
+   `probe_stamp_vs_comparison.py` builds a US_SCHEMA population, round-trips its
+   frame through `ContentStore.put_frame`/`load_frame`, and gets:
+   `same_replayed_population` **ACCEPTS** (the store zeroed `_data` under the
+   null mask, which `NONCANONICAL_NULL_BACKING`,
+   `survey_population_replay.py:79-82`, deliberately permits) while
+   `_population_stamp(expected) != _population_stamp(actual)`. So a
+   stamp-equality seal would **refuse a required replay**. Its own docstring
+   says so (`survey_atomic_geography.py:231-237`).
+2. **`_frame_identity` is too weak.** `probe_frame_identity_gaps.py` finds three
+   discriminations `same_replayed_frame` makes that `_frame_identity` does not:
+   float64 NaN **payload bits** (two quiet NaNs; `NATIVE_BITS`), quiet versus
+   signalling NaN (`NATIVE_BITS`), and
+   `DataFrame.flags.allows_duplicate_labels` (`TABLE_TYPE_OR_FLAGS`). `_cell`
+   maps every NaN to `None`, so `_frame_identity` spells all of them `null`.
+   It also cannot be applied to a non-US_SCHEMA frame at all (`FRAME_TYPE`).
+
+**Therefore the seal is purpose-built and lives in `survey_population_replay.py`,
+beside the comparison it replaces**, folding exactly the bytes each comparison
+compares — no more, no less.
+
+**A fourth gap, from pandas rather than from this repo.**
+`pd.DatetimeIndex._comparables == ['name', 'freq']`, and two DatetimeIndexes with
+equal values, dtype and name but different `freq` are **not** `identical()` while
+their bytes are equal. Any seal that folds only (class, dtype, name, bytes)
+misses it. The seal folds `type(index)._comparables` generically.
+
+**Admitted dtypes are narrow**, which bounds the problem: `_series` refuses
+`CategoricalDtype`, `Float64Dtype` and `DatetimeTZDtype` with
+`UNSUPPORTED_EXTENSION_DTYPE`; only masked integer/boolean, `StringDtype`,
+`object` and plain numpy dtypes get through.
 # US Chronicle feed re-pin (dimension labels)
 
 Lane: `us-chronicle-feed-repin`, off `origin/main` at
@@ -419,6 +648,148 @@ one tolerance so none can report a bundle differently from the others.
 
 - Whole-workspace run and PR CI to finish; hand to human review. Do not merge;
   do not publish.
+
+# Grouped solver x calibration target snapshots integration - 2026-09-12
+
+Historical note, 12 September 2026: this grouped-lane journal was subsequently
+integrated with PR #914's corrected iteration identities and the actual fiscal
+host observer. Its 443-test evidence and statements that host wiring is absent
+describe that earlier lane. Current source and acceptance are recorded in
+[the fiscal-host evidence](experiments/fiscal-target-snapshot-host-20260912.md).
+
+Lane: `microcosm-grouped-target-snapshot-integration-20260912`, branch
+`grouped-target-snapshot-integration-20260912`. Base: fresh `origin/main`
+`116d46ee9dc2aafdc68259b7c06e4c3462522e8b` (unmoved; it is exactly the shared
+base both reviewed heads were cut from). Integrates the exact reviewed heads
+`536f1ceefcdafda3cc619c14b4da18e012a7be57` (G, US grouped/fixed-zero Adam) and
+`b43369dc49e175803f62020cc1e72fa53926aed8` (S, calibration target snapshots,
+PR #914) against the read-only checklist
+`grouped-snapshot-integration-review.md`.
+
+Everything below this section is prior-lane history and was accurate when
+written; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+Complete and local. Four commits: the merge, the grouped instrumentation, the
+identity recomputation, and the cross-product controls. Nothing pushed, no PR,
+no release action. Root reviews and integrates.
+
+Scope is the shared solver seam only. `graph_fiscal_dense_calibration.py` still
+calls `calibrate` without an observer, so this branch emits no snapshot for the
+real US fiscal path; that host wiring is a separate step, and no observer
+registry, `Node.params` callback or replay-reruns-the-optimizer claim was
+invented here. See
+[the lane experiment](experiments/grouped-target-snapshot-integration-20260912.md)
+for scope, evidence and residual risks.
+
+## Done
+
+- Fetched `origin/main`; confirmed it is still `116d46ee9`, so no main drift
+  had to be preserved. Recorded as the integration base.
+- Created this worktree on a new branch from that base; fast-forwarded to G,
+  then merged S. Verified all four pinned source hashes
+  (`solve.py` and `calibrate/__init__.py` on both heads) match
+  `grouped-snapshot-integration-review-pins.json` byte for byte before merging.
+- `calibrate/__init__.py` auto-merged as a true union: `GroupedUpperBounds`
+  export retained alongside every snapshot export.
+- `solve.py`: the single textual conflict was the `calibrate()` signature;
+  resolved as a union of S's `target_snapshots` and G's
+  `grouped_upper_bounds` / `grouped_preserve_zeros` /
+  `_post_projection_observer`.
+- `test_us_multispine_pool_tool.py`: resolved semantically. G's unrelated US
+  integration delta (schema_version 2 PUMA-ladder fixture with joint
+  PUMA/tract/CD overlap arrays and per-layer `source` labels) merged cleanly
+  and is retained; the only textual conflict was the `spec_sha256` pin.
+- The five source-derived identity conflicts
+  (`inventory_coverage.py` EXPECTED_HASHES, `us-f0-coverage.json`,
+  `test_spec_engine_loader.py` golden, the multispine `spec_sha256`, and the
+  calibrate parity `pins.json`) carry a placeholder in this merge commit. None
+  of them is an ours/theirs decision: both sides' values describe their own
+  tree, and neither describes the merged one. They are recomputed against the
+  final merged sources in a later commit on this branch.
+
+## Done (continued)
+
+- Instrumented `_optimize_grouped`: the grouped early return in `_optimize`
+  bypassed every hook S added, so grouped runs emitted only a closing snapshot.
+  The in-loop emission sits after the progress callback and before `backward()`
+  and reads the exact float32 estimate tensor the epoch's loss was computed
+  from. Returned weights, trajectory and RNG state are bit-identical with the
+  observer on and off, and no evaluation is added.
+- Separated retain-best detection from the receipt for grouped runs, so a later
+  change that populated a grouped receipt cannot make the reused final emitter
+  claim a retained best. The receipt stays empty.
+- Recomputed six source-derived identity artifacts against this checkout (the
+  five conflicted ones plus the country-bundle digests, which were not
+  conflicted because only G had touched them but which move for the same
+  reason). No value equals either branch's. The simulate and fit.qrf pins were
+  deliberately left alone.
+- Added the checklist's cross product to the three existing grouped test files
+  rather than a new one, so every case reuses fixtures already there.
+
+## Next
+
+Root's independent review and integration. Open follow-ups, none owned here:
+the host observer seam for the US fiscal dense calibration path, a country-scale
+cadence choice backed by a real measurement, and the dashboard consumer.
+
+---
+
+# #893 reconciliation to main's amended graph interface (amendments 19 and 20)
+
+Lane: `microcosm-us-launch-verified-lanes-20260910` (the live integration
+worktree for PR #893, branch `microcosm-us-launch-integration-20260909`).
+Started 2026-09-12 at `069d5ed9a`. Everything below the `---` rule at the end
+of this section is prior-lane history; see "Root journals are history, not
+state" in `CLAUDE.md`.
+
+## State
+
+Merges done, four graph pieces re-applied, graph package green (518 passed),
+fit green (191), spec check / groups verify / ruff clean. Build-side consumer
+suites running at the time of this entry; final results in `out.md` §5 and
+`experiments/893-reconciliation-amendments-19-20-20260912.md`. Nothing
+pushed, no PR, no new branch, `uv.lock` untouched.
+
+## Done
+
+- Read `CLAUDE.md`, the charter's "Interface freeze" at `23ba24770`, PR
+  #893's body, the Amendment 19 lane's "Scope" list; diffed the graph package
+  against `23ba24770` per file; AST-scanned every non-graph consumer.
+- `uv sync --all-packages --locked --extra us --extra uk` exit 0. Baseline
+  graph suite: 5 failed / 362 passed (the five the brief names).
+- `3010b7788` merge `origin/main`: graph package, fit sources, lock and
+  charter resolved to main's bytes; branch-only `attachments.py`,
+  `availability.py`, `schema.py` and the two branch-only graph tests removed
+  in the merge, to return only where consumed.
+- `051357909` merge `23ba24770` (amendment 20, merged from the branch head
+  because #912 was still on CI; the dispatcher re-runs `git merge origin/main`
+  after it lands — expected no-op for graph/fit/lock/charter).
+- `dc621c14c` seed digests re-pinned (the branch's `acs_transfer` and
+  `housing_inputs` plus amendment 20's `fit.qrf` move them); coverage report
+  regenerated; `--check` exit 0.
+- `cff8fbf32` calibrate/simulate H1 pins re-recorded (the branch's solver and
+  `Frame.__reduce__` changes move them); parity files 27 passed.
+- Pieces re-applied on main's files, each with graph-level tests the branch
+  never had: `752ab840f` raw-byte codec (13 US consumers; 8 codec tests),
+  `db1b7821a` Frame-metadata store (3 named consumers; 274 passed across the
+  store/population/executor/manifest files), `d1019762b` execution states
+  (the post-clone geography gate's typed artifact; replaces the amendment-19
+  gate refusal and its test; whole graph package 518 passed), `a16eeacf8`
+  population observer (4 consumers; 94 passed on the executor + B/F files).
+- Dropped for lack of a consumer: lazy retention (`attachments.py`, layer
+  08), `schema.py`, `keys._stream_file`, the `_write_node` refactor.
+- Layer map computed from `git log --name-only` attribution plus an AST
+  import scan with hard / name-hard / soft link classes; written to `out.md`.
+
+## Next
+
+- Record the build-side consumer results in `out.md` §5, commit the
+  `experiments/` copy of the report, leave `out.md` uncommitted (it is
+  another lane's tracked report; see the memory note).
+- For Max: piece C supersedes amendment 19's gate refusal (`out.md` §8.1);
+  the dropped lazy retention / `_stream_file` / `_write_node` pieces (§8.2–3).
 
 ---
 
@@ -1384,3 +1755,354 @@ The still-earlier PolicyEngine-US 1.819.0 lock-bump lane merged into
 `origin/main` at `7b90bb18` on 2026-08-24; its final state remains at commit
 `05d254aa` and its detailed receipts remain in the historical section of
 `_LANE-NOTES.md`.
+
+## US launch integration staging — 2026-09-09
+
+### State
+Source-only staging in progress. Execution and source/data admission remain root-owned.
+
+### Done
+Verified requested clean branch, base HEAD, main ancestry and preservation pins.
+
+### Next
+Apply thirteen explicit source layers, commit each, then separately review isolated ordinary execution. Existing journal history above is retained.
+
+Layer 1: SAFE-ADDITIVE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 2: GRAPH-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 3: ACCEPTED-SHARED-RESTORE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 4: PUF-SUPPORT-MERGE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 5: SOLVE-MERGE-PROPOSAL.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 6: J-GRAPH-COMPATIBILITY.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 7: F-CATALOGUE-OPTIMIZATION.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 8: GRAPH-ATTACHMENT-METADATA.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 9: F-JOINT-GEOGRAPHY-GATE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 10: SOURCE-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 11: PLACEMENT-ADDITIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 12: ORDINARY-CLOSURE.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+Layer 13: INTEGRATION-REGRESSIONS.patch applied; all declared postimages and preservation hashes verified. No tests executed.
+
+### State
+All thirteen source layers staged and committed; behavioral qualification pending.
+
+### Done
+Per-layer pins and actual commit messages checked; store/current-main preservation retained.
+
+### Next
+Root reviews exact ordinary guard/source/resource admissions before execution. Full65 findings and survey/SCF lanes remain separately owned. No remote action is authorized.
+
+### Integration source-resource closure — 2026-09-09
+
+Root preflight found seven JSON source definitions declared by the ordinary guard but omitted by the staged patch delivery. Added the exact previously reviewed resource bytes from the accepted full65 source projection; no new resource admission or genuine payload. Preserved source staging and earlier evidence.
+
+## Layer14 full65 replay correction — 2026-09-09
+
+State: exact accepted two-file correction staged; successor57 integration execution pending.
+Done: verified clean84243 preimages, exact r2 postimages, fixed store/current-main sources and frozen36 evidence.
+Next: root admits the separate exact-allowlist57-case guard and final source identities before execution; no new resources.
+
+## Source review publication — 2026-09-09
+
+The user explicitly authorized pushing the current source work and creating PRs for Anthony to review. This supersedes earlier source-only local restrictions for source publication; it does not authorize a data release, merge or deployment.
+
+Integration controls passed 36 cases; the exact replay correction subsequently passed all 57 cases at dfa7f872cd3eba3c42adf5758cde8b3ca38f3d17. Source/control, model-declaration and resource hashes matched externally after both runs. A final formatting/import cleanup and explicit test-observer loop binding are included for CI; no release result is claimed. See docs/us-launch-review.md for current scope, evidence and related PRs.
+
+
+# US completion host integration — 2026-09-13
+
+State: source implementation and bounded tests authored for root review; all runtime checks and tests UNRUN.
+The task-specific no-commit instruction overrides the standing commit order.
+Base: 6aa745c8762c3e4a140b8168470de5827e12c5cb.
+
+Done: inspected status, branch, HEAD, AGENTS.md, CLAUDE.md, frozen R2 plan and
+independent source-plan review. Concurrent completion/tax seam files are excluded
+from this work's ownership.
+
+Done: added private completion custody, retained issued property parent, registry
+copies, actual union artifact/state checks, role/child reconstruction and separate
+tax gate wiring. Authored 10 test functions / 20 source-expanded cases and docs.
+AST, direct Ruff lint/format, and tracked whitespace checks pass.
+
+Next: root review and reconciliation, inventories/test-spine updates, bounded
+resource/guard proposal, and actual fixture/cold/required/adversarial validation.
+45/49 counts remain source-derived; combined 51 and fixture assumptions are UNRUN.
+Final report: FINAL_REPORT.md. No acceptance or publication claim.
+
+## Bounded completion-host source corrections — 2026-09-13
+
+State: bounded source corrections complete; all runtime checks remain UNRUN.
+This correction pass used the 20-minute source-only window beginning 22:09 UTC.
+The later explicit no-commit/no-staging instruction governs this correction pass.
+Ownership is limited to graph_survey_completion_host.py,
+test_us_graph_atomic_completion_host.py, docs/us-survey-completion-host.md,
+and this exact PROGRESS.md / FINAL_REPORT.md update.
+
+Done: read the full independent source review and full approved R2 plan from
+the supplied recovered absolute paths. The R2 SHA-256 matches
+b402d6be9d374774e27da7bf42fb83a216305d4cddd2ad8347c8149536269a29.
+Confirmed intentional dirty worktree and HEAD
+6aa745c8762c3e4a140b8168470de5827e12c5cb. Earlier journal content is preserved.
+
+Done: exact receiving1/roles0-or-2/child6/tax3 ordered rosters are bound before
+compilation; child document count and knownness derive from retained nodes and
+reconstructed/materialized-verified evidence. Authored separate 49/45 cold+required
+acceptance, equal-values/replaced-Population refusal, real observed base-hit/union
+and final-I/O identity controls, actual tax-rebased parent refusal, exact child
+adversary reasons, full-spine writer ordering, both FILTER conservation ledgers,
+dimensions and owner/version transitions. Source proves table copying; immediate
+base preservation assertions remain alongside permanent revocation. Fixture-only
+composition wrappers now restore before issuance to avoid cross-fixture chaining.
+
+Done: AST parsing, direct Ruff lint/format and git diff --check pass. AST reports
+16 test functions / 32 source-expanded cases. All tests, collection and project
+imports remain UNRUN. Only the five explicitly owned files were edited; no
+commits, staging, agents, dependency/network/browser access or payload execution.
+
+Next: root reviews exact source/hashes and budgets separately selected execution.
+T4 financial-only-parent coverage, remaining T5 initial/final/reconciliation
+adversaries, T6 actual fixture validation and T7 GQ/zero-weight scientific fixtures
+remain open with concrete reasons in FINAL_REPORT.md. The independently confirmed
+old status/tax42 owner repair, inventories, CI/source closure, scientific/native
+capacity and release/default/PR893 decisions remain separately owned.
+
+---
+
+# Lane: verify native sources once per run (`native-verify-once`)
+
+Branch `native-verify-once`, worktree `~/PolicyEngine/_worktrees/microcosm-verify-once`,
+base `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` (PR #893 head). Started
+2026-09-15.
+
+**State (2026-09-16, third session):** all five mechanisms landed with proofs
+and the epoch wired into both atomic capsules; draft PR #935 open; the
+CI-shaped test battery is green (no test group failed; `ruff format --check .`
+is red on 77 pre-existing files that this branch does not touch, and CI does
+not run it); the before/after probe and the nineteen-node harness have run; the
+lane report `experiments/native-verify-once/out.md` is complete, with the
+measurement, the pins, the verbatim summaries and the open questions. The open
+work is the main-only split (its commits sit on
+`graph-verify-once-main-stale-20260916-0057`, unpushed) and Max's answers to the
+report's open questions.
+*(Historical as of 2026-09-17: the split is now draft PR #938, and an
+adversarial verification of this branch has since been resolved by ten further
+commits on a rebased branch — see "Done (2026-09-17, fourth session)" below.)*
+
+**Goal.** The 9/15 pilot v5 measurement
+(`~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2) attributes ~79 %
+of a native 1/1000 run to repeated admission and verification of 3.48 GiB of
+staged source: node execution is 1,143 s of a 5,362 s run. Make source
+authentication and identity verification happen once per run instead of once
+per accessor use and once per executed node, without weakening any refusal and
+without moving any digest value.
+
+**Done:** read the evidence base; located all five mechanisms at base HEAD.
+
+**Done (2026-09-16):**
+
+- `docs/us-native-verification-once.md` — the design note, written before any
+  capsule changed.
+- **Mechanism 5**: `_object_stream` builds each plain float/int/bool column's
+  context-digest bytes with numpy. Byte-identical against a verbatim copy of the
+  pre-change body over every column kind, the float specials, non-canonical NaN
+  payloads, both int64 endpoints and a 200-frame random sweep. 0.47 s -> 0.09 s
+  on a 6,928 x 240 frame.
+- **Mechanism 4**: the ACS record fence now uses `bytes.find`/`bytes.count` with
+  cached terminator cursors. Proven against the byte loop on 46,655 exhaustive
+  short strings across five ceiling settings, 4,500 random strings, and the real
+  staged `csv_pus.zip`: 3,422,890 records, identical digests, 226.9 s -> 4.6 s
+  (49x). Re-pins `_ACCEPTED["acs_person_coverage_authentication.py"]`.
+- **Mechanism 3**: `run_graph` carries a `_SourceIdentities` cache keyed on stat
+  signatures, and re-derives every source in full before building the manifest.
+  `RunManifest.source_identities` records it without moving any existing value.
+  The refusal it protects had no test at all; `test_graph_executor_source_identity`
+  now pins it. Graph suite 108 s -> 72 s.
+- **Mechanisms 1 and 2**: `survey_population_preparation.verification_epoch()`,
+  an opt-in scoped memo. Cheap tier every borrow (live authority, attached
+  payloads, producer encoding); expensive tier skipped only while a signature
+  over every path it reads — the roster stat identities among them — and every
+  live buffer it digests is unchanged; unconditional full re-validation on
+  leaving the epoch. The two moved inventory contracts are re-derived (below).
+  (The roster stat identities were compared in the cheap tier when this line
+  was first written; the fourth session moved them into the signature so a
+  memo miss raises the code an unmemoised borrow raises. See below.)
+
+**Done (2026-09-16, second session):**
+
+- Draft PR [#935](https://github.com/PolicyEngine/microcosm/pull/935), base
+  `microcosm-us-launch-integration-20260909`.
+- Main-only split branch `graph-verify-once-main`, worktree
+  `~/PolicyEngine/_worktrees/microcosm-graph-verify-once-main`, branched from
+  `origin/main` (51c314382). It carries the graph-shard change only: the three
+  commits re-applied, plus a changelog fragment. Its one deliberate difference
+  from this branch is that `_update_scalar` has no exact-float `struct.pack`
+  shortcut on main -- that belongs to PR #893 -- so the parity test's reference
+  copy was aligned to main's actual pre-change body, which makes it a literal
+  verbatim copy there too.
+- Before/after measurement staging in `.measure/` (gitignored): a parameterised
+  copy of the v5 pilot probe that takes the source tree, the staged run inputs
+  and the output directory from the environment, asserts every imported
+  `microcosm` module resolves inside the measured tree, and enforces a 16 GiB
+  resident ceiling alongside the CPU one. Baseline worktree
+  `~/PolicyEngine/_worktrees/microcosm-verify-once-baseline` is detached at
+  `f7bb88525`.
+
+**Done (2026-09-17, fourth session) — the verification findings:** an
+adversarial static verification of the branch returned four medium and seven low
+findings and no high one
+(`~/PolicyEngine/_recovered/scratch-backup/893/lanes/verify-once-findings-20260916.json`).
+Ten commits answer them, on a branch rebased onto the base tip `363a9033b`:
+
+- rebased onto `363a9033b` and force-pushed, so two-dot and three-dot diffs
+  agree again (26 files, +5,422 / −819);
+- a mutation test per memoised capsule that changes file **content** while the
+  cheap tier's view of it stays byte-identical, so the memo-miss branch itself
+  refuses rather than a stat comparison in front of it;
+- the roster stat identities moved out of the refusing cheap tier into the
+  signature, so an in-epoch refusal carries the code an unmemoised borrow
+  carries (behaviour, not documentation: the design note promised it and the
+  fix is smaller than the divergence, and it deletes a redundant `_file_stats`
+  walk per borrow);
+- `verification_epoch()`'s record is bound by both runners and attached to the
+  manifest as `RunManifest.verification_epoch` — outside the key, the JSON,
+  every node receipt and every cache record. A real nine-node run over invented
+  sources reports `{"capsules": 1, "hits": 20, "misses": 3,
+  "final_validations": 1}`;
+- `_source_stat_signature` follows a member symlink, as `_directory_identity`
+  does, so a target rewritten mid-run refuses at the next node rather than at
+  run end; `_object_stream` packs floats in native order, as the loop it
+  replaces does;
+- the dead `_stat_or_absent` is deleted; the four `_path_stat` copies and the
+  two `_stat_identity` definitions stay, with the pin cost of consolidating
+  them re-derived through the modules' own generator and stated in the report;
+- the design note's five inaccuracies are corrected, the nested finalizer
+  chains its refusal instead of dropping it, and the report's stale items are
+  historicized.
+
+Re-run afterwards, all rc 0: `769 passed, 1 skipped in 44.56s`
+(`packages/microcosm-graph/tests`), `128 passed in 188.39s` (the four new test
+files), `1811 passed, 1 skipped, 38 warnings in 11200.54s (3:06:40)` (the 46
+build test files that reach a changed module), plus `ruff check` clean,
+`17 files already formatted`, `uv lock --check`, both `ci_test_groups` checks.
+
+**Done (2026-09-17, second fix pass) — the two residuals:** a re-verification of
+the ten commits above left two low findings, and two commits answer them. (1)
+Only the nine-node runner had a test that read `RunManifest.verification_epoch`
+back off a real run, so
+`test_nineteen_node_financial_cold_and_required_replay` now reads it off both
+manifests the financial runner returns — its own epoch's and the nested
+population epoch's — for the cold run and the required replay, asserting the
+protocol label, `final_validations == capsules >= 1`, and that `to_json` still
+cannot see it; and the committed probe
+(`experiments/native-verify-once/probe_verify_once.py`) now copies the record
+into its output as `verification_epoch`, so the next measured run is the first
+that will carry counts. Nothing was re-measured, and the three measurement files
+the report quotes predate that line, which the report, the README and the design
+note all state. (2) This journal's "Next" and the report's open question 4
+restated #938 at its current head and size, with the mirror recorded as landed.
+No `packages/*/src` file changed in either commit.
+
+Re-run, both rc 0: `7 passed in 119.98s (0:01:59)`
+(`test_us_graph_atomic_survey_financial.py`) and
+`24 passed in 157.61s (0:02:37)` (`test_us_native_verify_once_epoch.py`), plus
+`ruff check` and `ruff format --check` clean on the two changed Python files.
+
+**Done (2026-09-17, third fix pass) — one medium and two low:** a second
+re-verification found that the 2026-09-16 refusal-code fix had weakened one
+at-borrow refusal, and three commits answer it and the two low findings.
+(1) `_finalize_epoch` recorded its memo signature *after* validating, so at an
+inner nested close — whose memo survives into the outer epoch — a roster file
+whose stat moved during the trailing part of `_validate` was absorbed as the
+new normal and the outer borrows were hits until the outermost close. Each
+close now takes the signature before validating and again after and records
+none when they differ, so the next borrow is a miss that refuses;
+`asec_2024_native_population._epoch_exit` had the same ordering and is fixed
+the same way. Two new tests move a source from a profile hook as that close's
+own validation returns and fail with `DID NOT RAISE` against the previous
+ordering. `_memoized_validate`'s signature handler also narrowed from
+`BaseException` to `Exception`, which is what its own comment describes.
+(2) `RunManifest.verification_epoch` and `run_graph(_verification_epoch=)` had
+no graph-shard test on either branch: `test_graph_verification_epoch.py` adds
+nine, and two build-shard tests cover the signature-cannot-be-taken handler and
+the `raise own from nested` branch. (3) The stale cheap-tier descriptions the
+2026-09-16 fix left behind — test-file docstrings, the module block comment, the
+design note and this report — now say what the code does, and `executor.py:2100`
+is corrected to `:2105`. Two `packages/*/src` files changed and no pin moved:
+`graph_implementation._dependency_contract` was re-run over both edited modules
+and `imports`, `resource_accesses_sha256` and `unbound_uses_sha256` are all
+unchanged.
+
+Re-run, all rc 0: `778 passed, 1 skipped in 37.72s`
+(`packages/microcosm-graph/tests`, up from 769 — the new
+`test_graph_verification_epoch.py` adds nine), `28 passed in 190.65s (0:03:10)`
+(`test_us_native_verify_once_epoch.py`, up from 24),
+`1607 passed, 38 warnings in 8311.33s (2:18:31)` (the 34 build test files naming
+either changed module), `8 passed in 0.68s`
+(`test_us_asec_prepared_resources.py`, which builds the stage implementation
+manifests), and `597 passed, 2 skipped in 17.75s` in the
+`graph-verify-once-main` worktree. Plus `ruff check .`, `ruff format --check` on
+all five changed Python files, `uv lock --check`, both `ci_test_groups` checks.
+
+**Next:** Max's rulings on the report's remaining open questions. Open question
+4 is answered and needs nothing further: the split is draft PR
+[#938](https://github.com/PolicyEngine/microcosm/pull/938), opened 2026-09-16
+and now at head `33f3150bb` (base `main`, 7 files +1,430/−8, MERGEABLE, still
+draft; `gh pr view 938`, 2026-09-17 07:43 UTC). The graph-shard commits made
+after the verification findings were mirrored into it on 2026-09-17 at
+06:45–06:46 UTC — the verification epoch on the manifest, the member-symlink
+follow, the native-order float cast and the docstring fix — and the third fix
+pass's new `test_graph_verification_epoch.py` followed as `33f3150bb`. Diffed
+the same morning, its five earlier graph files differ from this branch's only by
+the documented `import struct` and exact-`float` hunks that belong to #893's
+base.
+#935's body already carries the measurement table. Measured: nine-node prefix
+before 1,803.87 CPU s without completing (ceiling) against after 1,444.78 CPU s
+completing; nineteen-node 5,278.61 -> 2,010.07 CPU s (2.63x) against the v4 cold
+receipt, peak RSS 9.31 -> 13.31 GB.
+
+**Pins re-derived so far:**
+
+| pin | old | new |
+|---|---|---|
+| `acs_native_coverage_binding._ACCEPTED["acs_person_coverage_authentication.py"]` | `475aa795…fe85bcff` | `9ec68721…d88e8e49f` |
+| `graph_implementation_inventory.json` `survey_population_preparation.py` `unbound_uses_sha256` | `29c09f6f…d296ef91` | `d114117c…dd4005910` |
+| `graph_implementation_inventory.json` `asec_2024_native_population.py` `unbound_uses_sha256` | `71463df4…d7f287608` | `7bb20439…40d58cdf4` |
+
+**Lane notes.** Root `out.md` is a tracked file holding the Amendment 19 lane's
+committed report; this lane's report goes to
+`experiments/native-verify-once/out.md`. The v5 cold run (`run_v5.py`, pid
+81194) is live on this machine, so probe runs wait for the window the lane
+brief allows (`pgrep -f run_v5.py` empty, or > 40 GB free).
+## Stack reconcile after #938 — 2026-09-18
+
+Lane: bring `microcosm-us-launch-integration-20260909` (#893) level with
+`origin/main` 8c44daa52 (#938 verify-once merged 2026-09-17), then carry the
+merge down the stacked branches `native-verify-once` (#935),
+`native-scale-transport` (#945), `native-row-ceilings` (#949) and
+`native-retention-seal` (#950). Merges only, never rebases; pins regenerate
+through their generators. Report: `experiments/stack-reconcile-20260918/out.md`.
+
+State: worktree `_worktrees/microcosm-stack-reconcile`, local branches
+`reconcile/<remote-name>`, pushed with `git push origin HEAD:<remote-name>`.
+Starting heads: main 8c44daa52; integration 8a7e1b12d; native-verify-once
+0d04abfcf; native-scale-transport 6fca96f31 (one commit past the brief's
+886f777eb); native-row-ceilings c5ac78d2d; native-retention-seal db7c93871.
+
+Done: survey. Main's delta since the d1196af10 merge base is #938 alone:
+nine files, all under `packages/microcosm-graph/` plus one changelog fragment;
+uv.lock and every pyproject are unchanged, so the approved-lock digest does
+not move. `git merge-tree` predicts one textual conflict, an import-line clash
+in `graph/executor.py` (`import struct` on the branch, `import stat` on main).
+The four downstream merges preview conflict-free at today's heads.
+
+Next: step 1 merge, checks, push; then steps 2–4 in order; then the report.

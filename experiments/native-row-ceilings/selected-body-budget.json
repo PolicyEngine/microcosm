@@ -1,0 +1,37 @@
+{
+ "scope": "Measurement of acs_person_coverage_authentication's SELECTED_BODY_BUDGET over a bounded prefix of the pilot's captured public ACS PUMS archive. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "max_body_bytes": 67108864,
+ "charge_expression": "6 * len(raw) + 1024 per selected row",
+ "refusal": "SELECTED_BODY_BUDGET (ACSCoverageAuthenticationError, a ValueError)",
+ "roles": {
+  "person": {
+   "archive": "/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native19-required-20260912/run/snapshots/acs-hu-capture-e5pg8w1z/csv_pus.zip",
+   "records_sampled": 200000,
+   "record_bytes_mean": 695.57,
+   "record_bytes_min": 525,
+   "record_bytes_max": 852,
+   "charge_per_selected_row_mean": 5197.43,
+   "rows_the_64MiB_budget_admits_mean": 12911,
+   "rows_the_64MiB_budget_admits_worst": 10936,
+   "full_source_rows": 3422888,
+   "fraction_of_source_admitted": 0.0037719609873299973,
+   "full_source_budget_bytes": 17790225775,
+   "full_source_over_cap": 265.0950219520402
+  },
+  "household": {
+   "archive": "/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native19-required-20260912/run/snapshots/acs-hu-capture-e5pg8w1z/csv_hus.zip",
+   "records_sampled": 200000,
+   "record_bytes_mean": 589.12,
+   "record_bytes_min": 363,
+   "record_bytes_max": 756,
+   "charge_per_selected_row_mean": 4558.75,
+   "rows_the_64MiB_budget_admits_mean": 14720,
+   "rows_the_64MiB_budget_admits_worst": 12069,
+   "full_source_rows": 1531614,
+   "fraction_of_source_admitted": 0.009610776605593837,
+   "full_source_budget_bytes": 6982242749,
+   "full_source_over_cap": 104.0435247032118
+  }
+ }
+}

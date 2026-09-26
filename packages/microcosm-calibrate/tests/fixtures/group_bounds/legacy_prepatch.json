@@ -1,0 +1,217 @@
+{
+  "fixture_source": "packages/microcosm-calibrate/tests/test_solve.py::_exact_k_design_fixture",
+  "inputs": {
+    "measure": [
+      1.0,
+      2.0,
+      3.0,
+      0.5
+    ],
+    "target": 800.0,
+    "weights": [
+      100.0,
+      120.0,
+      80.0,
+      40.0
+    ]
+  },
+  "launch": {
+    "dont_write_bytecode": 1,
+    "isolated": 1,
+    "pycache_prefix": "/private/tmp/origin-cap-prepatch-FBB56CDA-23F6-45AC-9C67-0370A90813D0"
+  },
+  "loaded_source_before_after": {
+    "packages/microcosm-calibrate/src/microcosm/calibrate/__init__.py": {
+      "git_blob": "5aa9db0832e58c44479eeef11b08a7a5ea2710f4",
+      "sha256": "c15615552128dbaae6f71cc3156105cf04a29a8cf5885ed8c6b318782d61fd19"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/_target_loss_attribution.py": {
+      "git_blob": "1bdeb3c3ed65debb6549fcbb2d94956a43c5617a",
+      "sha256": "5addce7c3c708117bba12639b2949c18c99a810533ae94d89851d8fe7b15e2fb"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/diagnostics.py": {
+      "git_blob": "f63913d683dfdf20ba5df6bcff312af7bbf62a6a",
+      "sha256": "87ff674609f428ec49d64edbcb5ee8062cf6efb8058542a4add8e3ef50d2f156"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/exact_k.py": {
+      "git_blob": "82a745b114e1567f72547d88f58d350ace688f91",
+      "sha256": "c5084a0dd45617922f8efca08560f243195eb4456430c1d87258e6240f379ab4"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/gates.py": {
+      "git_blob": "306d426156f38c0c1f5c01b5268e0b8ef52b714f",
+      "sha256": "379e4adbb3ed7cdd13f7c7c548da45163f2a50330c874ee51095d38243d392e6"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/matrix.py": {
+      "git_blob": "11aeb35c47e0210d1baeb987aadb7ef68e17c615",
+      "sha256": "ca609f47ba7f5bf55ab8a0c85c07d2dac9b7a52fffcf0816f8289f143764c55a"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/monetary_binding.py": {
+      "git_blob": "ff41bd38e240030482718fb8e1ab527a93acbbf1",
+      "sha256": "f68027f38aa90738870addbe3da55ccfaa0f13a48c8d79a3f54d41abdc723867"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/registry.py": {
+      "git_blob": "f2cf74646d1c63c4aee0892d46ad2e113a1f48e2",
+      "sha256": "94952d466a21c6913019d5f14f50d322b90cb51205672758b76696d5f2ba5520"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/score.py": {
+      "git_blob": "00290a3a5b9d2c0e133343d39e3c2425d15f2c88",
+      "sha256": "aabf8f2fc44ac062a6af74463ccba225a6dacb8855db5ca5d50c0bd461a23662"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py": {
+      "git_blob": "746ed9e6a6d4ddab9262c9cbd411242af5a6c8f7",
+      "sha256": "f4b32c40a8675c37b0a4f3c1e48ca7b2078e803dac4413221aeb98c23b9e2066"
+    },
+    "packages/microcosm-calibrate/src/microcosm/calibrate/target.py": {
+      "git_blob": "c3c8c39a6810ab20e6693218e7aa8d7052c15287",
+      "sha256": "764e87f4895930e1df725bc3c38c2d119afe10f7c715956cbcdb8d55ccc91b7a"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/__init__.py": {
+      "git_blob": "c0a97a493cddba1a75014dce33cd061ae08b18a0",
+      "sha256": "3a43c2b2812720d49b70db66cdfaaf2cfb045cf4718c033bcca2d92f87af0245"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/accounting.py": {
+      "git_blob": "f739f8de3893c559d9f470b08773d5de8ddfc563",
+      "sha256": "8c37f1394db523a8e0bcc98350456e4d9c8c268ca5a4432c07fc72ab218eaea3"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/bundle.py": {
+      "git_blob": "e16c3a45a7d940f979d384f17043df08834dd3bd",
+      "sha256": "2acfda18180003898f0453fbf7244540820cdc9ba755f0a917b768055e5b6ff1"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/materialize.py": {
+      "git_blob": "be49c5ebe7e807150e90d6491225e4f6e732ff21",
+      "sha256": "86c404724319099001132897a7ad82a5fb6b1e808cca29804ae3ef6d4310d0a3"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/rules.py": {
+      "git_blob": "34a3e1ca5f19c1f71bcf1f60d3665629b20ef759",
+      "sha256": "ea754746d47f7cb7311edfd7eeed7c8e84cccfebbf990df1e8fa4ce1965baaff"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/schema.py": {
+      "git_blob": "72db5c81b168afb184c5e23a4ef19eb5e32d9f9a",
+      "sha256": "75ba6c47b95ff826384e23f11e94178bdf89696f651df3cc6c93cee75e768946"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/units.py": {
+      "git_blob": "bdc4b6f48c58ee23633e4b5d64093ddad88e2817",
+      "sha256": "7ff5d7aea68dfc96e8528e3d604220b5cfc4728dd7436627bac904e7bb0a1b86"
+    },
+    "packages/microcosm-frame/src/microcosm/frame/weights.py": {
+      "git_blob": "d4419a3faf7619b2a7b8da4e00aa8d651b745df0",
+      "sha256": "76ac3d735976e807d6df003bb75b901834f0bd1cdc91dfcac9cd903cec518e9d"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/__init__.py": {
+      "git_blob": "bbcbc5ea7a61cbab1466db25a3bd4707be66f52a",
+      "sha256": "c2e7710e96bb7ace608f8381c1a94767cff0c58a30fde62636ac05de2d1dc031"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/artifact_edges.py": {
+      "git_blob": "0b84849e57744448a1e627133a4550d12b0dad1e",
+      "sha256": "0e0fc6d9fe7e0d4790621be3f9fc7834d90ff78cc28ceb6373ae9cec9acec226"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/attachments.py": {
+      "git_blob": "885e2360722238b7398432f5807b089220900ae7",
+      "sha256": "e2f139086ca73d44a771f6266a7971324129161b92db58f45f49b52cb6eb3cf5"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/availability.py": {
+      "git_blob": "e89b1d90f0715d8536b41036cb388dcbda6fc504",
+      "sha256": "35bda816bd1b9a1324847c1b1389bd312edd889898876f8cb1e22a98f439df42"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/canonical.py": {
+      "git_blob": "50e6dd65c8b0541399370fbfc9091785ddf87fe9",
+      "sha256": "001b4a58439a1703df69c42cb1c355cd51f409f301984b70b141c5671217e79d"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/codecs.py": {
+      "git_blob": "3ebc9d8e9399af1a8020b4e0533aee8b287316b0",
+      "sha256": "9ef98d1ea83c8f52152b57e09eff6cfb472fd675f100d352e90b8470bf002b6e"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/decl.py": {
+      "git_blob": "b6134c210b913e552a0a204a2de0f4691c50fe3b",
+      "sha256": "8229270f3328f537c8f8e83d6c81af39aa75d4ca5aa6a7bd3d37ecfc25aee2fe"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/errors.py": {
+      "git_blob": "297f1b50705de9f8da2b736f15e2e13aa2b33beb",
+      "sha256": "917e3adb200f15e984b418529fb05eb8e74c4ea7517af6f3cdf4e75a29253296"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/executor.py": {
+      "git_blob": "ec54c905f4dad7aebd71497b5d124908a9fd887a",
+      "sha256": "1ffa7c6958ce67c406c2be5ae3c0faef306661a2d21de5c032cf6ff4437862d7"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/explain.py": {
+      "git_blob": "26abfdbd4d93495360ad0317eb059d431e52d2d2",
+      "sha256": "5e81b2162a9172fedd980ad76a576796cc07e6ce3ae28691f53b0475f83b0e05"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/kernel.py": {
+      "git_blob": "0846a3eaac1faeb1425103c85affc740048b2ddc",
+      "sha256": "07691fb5cf45ae700a258713ebdc9aa845891a432ec9107e223b8c943b5f3cb6"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/keys.py": {
+      "git_blob": "3844ec56e44cbfc8252efaaaca4ef0e5cbb67929",
+      "sha256": "d1bf4e5298dd04ef8445f42702d85e349262031191a24fe034d75ac47efafa3d"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/manifest.py": {
+      "git_blob": "f7b1dd066cab17aeebd3e5ffeab841595a497641",
+      "sha256": "2e459faab7b008c3636501638ca4757b9a5b0d5c97d72fb349437152eabf8674"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/population.py": {
+      "git_blob": "1a52baf3f62ca2e1da10d134f0538ddeb4f7f5a7",
+      "sha256": "4c272bcff4f5f24f02ca110a7018886adf725ddabc191b8777fb0bd78a0792b8"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/randomness.py": {
+      "git_blob": "5a5510bc276b5d80222e803c5b6e03db7eeecb1d",
+      "sha256": "797fa7e4c7cc2fc81312f7886521e9b0f3e02be577e601a9cabc24362485847a"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/serialize.py": {
+      "git_blob": "85c71b4de6b41e29810672af90edb56306d43ec1",
+      "sha256": "1137264eaa5faedb04f06284c5b0737dd3b13c12edbf2e78255827618540a8cc"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/store.py": {
+      "git_blob": "6f93b8b650515b1da2a4d5968ba95df84d21aa39",
+      "sha256": "f16dfca2bf77843594fc3848bceab52379438ad722f800063cde445f63f196f3"
+    },
+    "packages/microcosm-graph/src/microcosm/graph/view.py": {
+      "git_blob": "446a788385e407889d6880c2be921cd0a623d8c9",
+      "sha256": "e3b155b2eb004a121f8a129b92efb2506d17310f41ddff4fe1a0a7e820296b59"
+    }
+  },
+  "options": {
+    "epochs": 7,
+    "learning_rate": 0.02,
+    "mass": "free",
+    "max_weight_ratio": 2.0,
+    "seed": 0
+  },
+  "settings": {
+    "backend": "Adam",
+    "device": "cpu",
+    "matrix_dtype": "float32",
+    "numpy": "2.4.6",
+    "output_dtype": "float64",
+    "parameter_dtype": "float32",
+    "platform_fingerprint": "arm64/darwin/py3.14",
+    "python": "3.14.4 (main, Apr 14 2026, 14:46:33) [Clang 22.1.3 ]",
+    "python_binary_sha256": "bf4ea26231212e330b8e9b6f24969a30f894fec88665bf42754070d114ac7fc6",
+    "thread_environment": {
+      "MKL_NUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1"
+    },
+    "torch": "2.12.0",
+    "torch_interop_threads": 18,
+    "torch_threads": 1
+  },
+  "source_head": "a4e69c0a1e7b5e953922d6d0a0d0283890c3c329",
+  "source_tree": "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-us-national-age-root-20260906",
+  "trajectory": {
+    "bytes_hex": "000000000000d03f000000a0870fce3f00000040ca14cc3f000000c0650fca3f00000080f4fec73f000000200ce3c53f000000803dbbc33f",
+    "sha256": "01943d29ea7d5e727cf88b02fb37416640471509212cd59181e6b1af6b9b4459",
+    "shape": [
+      7
+    ]
+  },
+  "weights": {
+    "bytes_hex": "00000000d2c45c4000000060e442614000000040db035740000000c0d9034740",
+    "sha256": "260f8beb3154aab82e1484e41f2b8d0cf33e45478b2b106deb66f97b64cbe11a",
+    "shape": [
+      4
+    ]
+  }
+}

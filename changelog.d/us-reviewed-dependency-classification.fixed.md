@@ -1,0 +1,1 @@
+Adopt the reviewed exact-buffer store read and optional consumer-metadata adapter dependency contracts so US implementation manifests validate their current source. Retain scoped dependency tripwires and invalidate affected implementation identities rather than reusing earlier cache keys.

@@ -1,0 +1,61 @@
+{
+  "rows_per_column": 1000000,
+  "loadavg": [
+    7.36572265625,
+    8.1474609375,
+    8.31201171875
+  ],
+  "dtype_census_from_graph_json": {
+    "Int64": 154,
+    "float64": 54,
+    "int64": 30,
+    "string": 28,
+    "bool": 1,
+    "boolean": 2
+  },
+  "columns": {
+    "float64": {
+      "bytes_identical": true,
+      "walk_microseconds_per_cell": 0.5702,
+      "per_column_microseconds_per_cell": 0.105,
+      "ratio": 5.43
+    },
+    "int64": {
+      "bytes_identical": true,
+      "walk_microseconds_per_cell": 0.3892,
+      "per_column_microseconds_per_cell": 0.059,
+      "ratio": 6.6
+    },
+    "Int64": {
+      "bytes_identical": true,
+      "walk_microseconds_per_cell": 0.5125,
+      "per_column_microseconds_per_cell": 0.0659,
+      "ratio": 7.78
+    },
+    "bool": {
+      "bytes_identical": true,
+      "walk_microseconds_per_cell": 0.3061,
+      "per_column_microseconds_per_cell": 0.0159,
+      "ratio": 19.31
+    },
+    "boolean": {
+      "bytes_identical": true,
+      "walk_microseconds_per_cell": 0.4017,
+      "per_column_microseconds_per_cell": 0.0165,
+      "ratio": 24.3
+    },
+    "string": {
+      "bytes_identical": true,
+      "walk_microseconds_per_cell": 0.616,
+      "per_column_microseconds_per_cell": 0.0201,
+      "ratio": 30.67
+    }
+  },
+  "blended_on_the_frame_census": {
+    "walk_microseconds_per_cell": 0.5195,
+    "per_column_microseconds_per_cell": 0.0677,
+    "ratio": 7.68
+  },
+  "release_eligible": false,
+  "scope": "Per-dtype rate on invented columns, both sides shipped code, byte equality asserted before timing. Not a build, not a certification, not release eligible."
+}

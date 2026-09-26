@@ -1,0 +1,1 @@
+Add an explicit 159-name native US national/CD diagnostic profile that excludes the canonical prior-year income family and reports those scope exclusions. Preserve the existing 163-name historical and 161-name national/CD profiles and their defaults; native source and release qualification remain separate.

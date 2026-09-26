@@ -1,0 +1,34 @@
+[
+  {
+    "url": "https://www.irs.gov/pub/irs-soi/15in14ar.xls",
+    "bytes": 83456,
+    "sha256": "9f41bee263f5a8bb971df39a9673b55136c94954131a95bfd83b73a22801ec89",
+    "format": "OLE xls",
+    "max_bytes": 4194304,
+    "filename": "15in14ar.xls"
+  },
+  {
+    "url": "https://www.irs.gov/pub/irs-soi/23in14ar.xls",
+    "bytes": 115712,
+    "sha256": "b6c1f87fbb5533417e195f6938538e5de09b6a0825a6a54346bf9363a18d96af",
+    "format": "OLE xls",
+    "max_bytes": 4194304,
+    "filename": "23in14ar.xls"
+  },
+  {
+    "url": "https://www.irs.gov/pub/irs-soi/15in14acg.xls",
+    "bytes": 64000,
+    "sha256": "7e128eb06e14371a15baa72060e91d74e4c55ba8596610ddd047c9ef168cbbd1",
+    "format": "OLE xls",
+    "max_bytes": 4194304,
+    "filename": "15in14acg.xls"
+  },
+  {
+    "url": "https://www.irs.gov/pub/irs-soi/23in14acg.xls",
+    "bytes": 74752,
+    "sha256": "5b35c2f007f16503c0dcf6cc085d3a6b049ca523d99b7d7ae29afdbdd2d02e70",
+    "format": "OLE xls",
+    "max_bytes": 4194304,
+    "filename": "23in14acg.xls"
+  }
+]

@@ -672,7 +672,8 @@ def apply_us_medicaid_enrollment_substitutions(
     Raises:
         ValueError: If an active substitution's ``substitute_source_record_id``
             is not a well-formed CMS state-enrollment fact id (a malformed
-            register entry, surfaced by :func:`_state_enrollment_record_id_parts`).
+            register entry, surfaced by :func:`_state_enrollment_record_id_parts`),
+            or a hierarchical template has no reviewed substitute state label.
     """
     natural = _medicaid_enrollment_state_specs(registry)
     template = next(iter(natural.values()), None)
@@ -721,8 +722,9 @@ def _medicaid_enrollment_state_specs(
     """Natural state-level ``medicaid_enrollment`` specs keyed by state FIPS.
 
     Prior substitutions (metadata ``medicaid_enrollment_substitution == 'true'``)
-    are excluded so applying the register is idempotent and a substitution is
-    rot-checked only against a genuine, CMS-reported per-state count.
+    are excluded so a substitution is rot-checked only against a genuine,
+    CMS-reported per-state count. This lookup does not deduplicate specs when
+    the register is applied again to an already augmented registry.
     """
     specs: dict[str, TargetSpec] = {}
     for spec in registry.specs:
@@ -763,13 +765,14 @@ def _substituted_medicaid_enrollment_spec(
         f"{substitution.substitute_source_record_id}.medicaid_enrollment_substitution"
     )
     metadata = dict(template.metadata)
-    # Per-fact content-hash keys describe the template state's row; drop them
+    # Per-fact keys and labels describe the template state's row; drop them
     # rather than stamp a neighbouring state's identity onto this one.
     for per_fact_key in (
         "ledger_fact_key",
         "ledger_aggregate_fact_key",
         "ledger_semantic_fact_key",
         "ledger_legacy_fact_key",
+        "ledger_fact_label",
     ):
         metadata.pop(per_fact_key, None)
     metadata.update(
@@ -792,6 +795,13 @@ def _substituted_medicaid_enrollment_spec(
             "substitution_issue": substitution.issue,
         }
     )
+    # The template's labels describe another state. The reviewed register owns
+    # the replacement label, just as it owns the replacement source and value.
+    state_name = substitution.state_name.strip()
+    for label_key in ("ledger_geography_name", "ledger_layout_groupby_value_label"):
+        metadata.pop(label_key, None)
+        if state_name:
+            metadata[label_key] = state_name
     return replace(
         template,
         name=name,

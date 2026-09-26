@@ -1,0 +1,497 @@
+--- a/packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py
++++ b/packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py
+@@ -48,13 +48,103 @@
+         raise ACSNativeCoverageBindingError(code)
+ 
+ 
+-def _live_code(module, compiled):
++def _immutable_code_constants(value, immutable_codes, depth=0):
++    """Recognize exact immutable compiler values without invoking custom equality.
++
++    Runtime-created CodeType constants need not be compiler values. Unfamiliar
++    values and deeply nested trees take the original uncached equality path;
++    eligibility is never a new source-acceptance requirement. Positive code
++    entries retain the object itself so integer identity keys cannot be reused.
++    """
++    if depth > 64:
++        return False
++    kind = type(value)
++    if any(
++        kind is scalar
++        for scalar in (
++            type(None),
++            bool,
++            int,
++            float,
++            complex,
++            str,
++            bytes,
++            type(Ellipsis),
++        )
++    ):
++        return True
++    if kind is tuple or kind is frozenset:
++        return all(
++            _immutable_code_constants(item, immutable_codes, depth + 1)
++            for item in value
++        )
++    if kind is not CodeType:
++        return False
++    if immutable_codes.get(id(value)) is value:
++        return True
++    # Check all stored public CodeType fields, not merely co_consts: runtime
++    # constructors may admit scalar subclasses with custom comparison methods.
++    if not all(
++        type(getattr(value, name)) is int
++        for name in (
++            "co_argcount",
++            "co_posonlyargcount",
++            "co_kwonlyargcount",
++            "co_nlocals",
++            "co_stacksize",
++            "co_flags",
++            "co_firstlineno",
++        )
++    ) or not all(
++        type(getattr(value, name)) is str
++        for name in ("co_filename", "co_name", "co_qualname")
++    ):
++        return False
++    if not all(
++        type(getattr(value, name)) is bytes
++        for name in ("co_code", "co_linetable", "co_exceptiontable")
++    ):
++        return False
++    for name in ("co_names", "co_varnames", "co_freevars", "co_cellvars"):
++        items = getattr(value, name)
++        if type(items) is not tuple or any(type(item) is not str for item in items):
++            return False
++    if type(value.co_consts) is not tuple or not _immutable_code_constants(
++        value.co_consts, immutable_codes, depth + 1
++    ):
++        return False
++    immutable_codes[id(value)] = value
++    return True
++
++
++def _same_loaded_code(live, reference, code_pairs, immutable_codes):
++    """Memoize equality only for strongly retained, immutable code pairs."""
++    if type(live) is not CodeType or type(reference) is not CodeType:
++        return live == reference
++    key = (id(live), id(reference))
++    retained = code_pairs.get(key)
++    if retained is not None and retained[0] is live and retained[1] is reference:
++        return True
++    eligible = _immutable_code_constants(
++        live, immutable_codes
++    ) and _immutable_code_constants(reference, immutable_codes)
++    matches = live == reference
++    if matches and eligible:
++        code_pairs[key] = (live, reference)
++    return matches
++
++
++def _live_code(module, compiled, code_pairs=None, immutable_codes=None):
+     """Check loaded Python implementations against their current source bytes.
+ 
+     Covers module functions, imported function aliases and source class methods;
+     generated dataclass methods have no source code object. This is a drift
+     check in a trusted process, not a sandbox against arbitrary Python execution.
+     """
++    if code_pairs is None:
++        code_pairs = {}
++    if immutable_codes is None:
++        immutable_codes = {}
+     path = getattr(module, "__file__", None)
+     if path is None:
+         return
+@@ -102,15 +192,19 @@
+ 
+             visit(compile(Path(path).read_bytes(), path, "exec", dont_inherit=True))
+             compiled[path] = codes
++        live = function.__code__
++        _require(function.__globals__ is vars(origin), "LOADED_PRODUCER")
+         _require(
+-            function.__globals__ is vars(origin)
+-            and function.__code__ == compiled[path].get(function.__code__.co_qualname),
++            _same_loaded_code(
++                live, compiled[path].get(live.co_qualname), code_pairs, immutable_codes
++            ),
+             "LOADED_PRODUCER",
+         )
+ 
+         for cell in function.__closure__ or ():
+             if isinstance(cell.cell_contents, FunctionType):
+                 check(cell.cell_contents)
++        _require(function.__code__ is live, "LOADED_PRODUCER")
+ 
+     for value in vars(module).values():
+         if isinstance(value, FunctionType):
+@@ -147,10 +241,12 @@
+         name = package + "." + relative.removesuffix(".py").replace("/", ".")
+         names.add(name.removesuffix(".__init__"))
+     compiled = {}
++    code_pairs = {}
++    immutable_codes = {}
+     for name in sorted(names):
+         module = sys.modules.get(name)
+         if module is not None:
+-            _live_code(module, compiled)
++            _live_code(module, compiled, code_pairs, immutable_codes)
+     return {
+         "preparation": manifest,
+         "coverage": coverage._producer(),
+--- /dev/null
++++ b/packages/microcosm-build/tests/test_us_acs_loaded_code_validation.py
+@@ -0,0 +1,351 @@
++"""Invented Python source controls for invocation-local ACS code equality memo."""
++
++from __future__ import annotations
++
++import sys
++from pathlib import Path
++from types import CodeType, FunctionType, ModuleType
++
++import pytest
++
++from microcosm.build.us_runtime import acs_native_coverage_binding as owner
++
++
++def _module(tmp_path, monkeypatch, name, source):
++    path = tmp_path / (name + ".py")
++    path.write_text(source, encoding="utf-8")
++    module = ModuleType(name)
++    module.__file__ = str(path)
++    module.__package__ = ""
++    monkeypatch.setitem(sys.modules, name, module)
++    exec(compile(source, str(path), "exec", dont_inherit=True), vars(module))
++    return module
++
++
++def _code(source="def f():\n    return 7\n"):
++    compiled = compile(source, "invented-code.py", "exec", dont_inherit=True)
++    return next(value for value in compiled.co_consts if type(value) is CodeType)
++
++
++def _state():
++    return {}, {}, {}
++
++
++def _refuses():
++    return pytest.raises(owner.ACSNativeCoverageBindingError, match="^LOADED_PRODUCER$")
++
++
++def _cell(value):
++    return (lambda: value).__closure__[0]
++
++
++def test_repeated_exact_pair_skips_only_second_deep_comparison():
++    live, reference = _code(), _code()
++    pairs, immutable = {}, {}
++    eligibility_calls = []
++    eligibility_code = owner._immutable_code_constants.__code__
++
++    def profile(frame, event, _arg):
++        if event == "call" and frame.f_code is eligibility_code:
++            eligibility_calls.append(1)
++
++    previous = sys.getprofile()
++    try:
++        sys.setprofile(profile)
++        assert owner._same_loaded_code(live, reference, pairs, immutable)
++        first_calls = len(eligibility_calls)
++        assert first_calls > 0
++        assert owner._same_loaded_code(live, reference, pairs, immutable)
++        assert len(eligibility_calls) == first_calls
++    finally:
++        sys.setprofile(previous)
++    assert list(pairs) == [(id(live), id(reference))]
++    assert pairs[(id(live), id(reference))][0] is live
++    assert pairs[(id(live), id(reference))][1] is reference
++    assert immutable[id(live)] is live
++    assert immutable[id(reference)] is reference
++
++
++def test_wrong_strong_reference_does_not_authorize_an_identity_key():
++    live, reference, changed = _code(), _code(), _code("def f():\n    return 8\n")
++    pairs = {(id(changed), id(reference)): (live, reference)}
++    assert not owner._same_loaded_code(changed, reference, pairs, {})
++
++
++def test_historical_two_argument_caller_keeps_fresh_validation(tmp_path, monkeypatch):
++    module = _module(
++        tmp_path, monkeypatch, "memo_legacy_call", "def f():\n    return 7\n"
++    )
++    compiled = {}
++    owner._live_code(module, compiled)
++    owner._live_code(module, compiled)
++    monkeypatch.setattr(module.f, "__code__", _code("def f():\n    return 8\n"))
++    with _refuses():
++        owner._live_code(module, compiled)
++
++
++def test_import_alias_is_rechecked_after_pair_hit(tmp_path, monkeypatch):
++    origin = _module(tmp_path, monkeypatch, "memo_origin", "def f():\n    return 7\n")
++    alias = _module(tmp_path, monkeypatch, "memo_alias", "from memo_origin import f\n")
++    state = _state()
++    owner._live_code(origin, *state)
++    owner._live_code(alias, *state)
++    alias.f = FunctionType(origin.f.__code__, vars(origin))
++    with _refuses():
++        owner._live_code(alias, *state)
++
++
++def test_equal_code_with_non_origin_globals_refuses_after_pair_hit(
++    tmp_path, monkeypatch
++):
++    module = _module(
++        tmp_path, monkeypatch, "memo_globals", "def f():\n    return 7\nalias = f\n"
++    )
++    state = _state()
++    owner._live_code(module, *state)
++    module.alias = FunctionType(module.f.__code__, {"__name__": module.__name__})
++    with _refuses():
++        owner._live_code(module, *state)
++
++
++def test_replaced_code_refuses_after_pair_hit(tmp_path, monkeypatch):
++    module = _module(tmp_path, monkeypatch, "memo_replaced", "def f():\n    return 7\n")
++    state = _state()
++    owner._live_code(module, *state)
++    monkeypatch.setattr(module.f, "__code__", _code("def f():\n    return 8\n"))
++    with _refuses():
++        owner._live_code(module, *state)
++
++
++_CLOSURE_SOURCE = """def factory():
++    def inner():
++        return 7
++    def wrapped():
++        return inner()
++    return wrapped
++wrapped = factory()
++"""
++
++
++def test_replaced_closure_function_is_rechecked_after_pair_hit(tmp_path, monkeypatch):
++    module = _module(tmp_path, monkeypatch, "memo_closure", _CLOSURE_SOURCE)
++    state = _state()
++    owner._live_code(module, *state)
++    cell = module.wrapped.__closure__[0]
++    original = cell.cell_contents
++    bad = FunctionType(original.__code__, {"__name__": module.__name__})
++    monkeypatch.setattr(cell, "cell_contents", bad)
++    with _refuses():
++        owner._live_code(module, *state)
++
++
++def test_distinct_closure_with_same_outer_code_is_not_memoized_as_valid(
++    tmp_path, monkeypatch
++):
++    module = _module(tmp_path, monkeypatch, "memo_second_closure", _CLOSURE_SOURCE)
++    state = _state()
++    owner._live_code(module, *state)
++    original = module.wrapped.__closure__[0].cell_contents
++    bad = FunctionType(original.__code__, {"__name__": module.__name__})
++    module.second = FunctionType(
++        module.wrapped.__code__, vars(module), closure=(_cell(bad),)
++    )
++    with _refuses():
++        owner._live_code(module, *state)
++
++
++def test_source_read_and_replacement_remain_fresh_within_shared_invocation_state(
++    tmp_path, monkeypatch
++):
++    source = "def f():\n    return 7\n"
++    module = _module(tmp_path, monkeypatch, "memo_source", source)
++    path = Path(module.__file__)
++    state = _state()
++    reads = []
++    reader = Path.read_bytes.__code__
++
++    def profile(frame, event, _arg):
++        if (
++            event == "call"
++            and frame.f_code is reader
++            and frame.f_locals["self"] == path
++        ):
++            reads.append(1)
++
++    previous = sys.getprofile()
++    try:
++        sys.setprofile(profile)
++        owner._live_code(module, *state)
++        owner._live_code(module, *state)
++    finally:
++        sys.setprofile(previous)
++    # One AST read on each scan, plus the existing first code-compilation read.
++    assert len(reads) == 3
++    changed = "def f():\n    return 8\n"
++    fired = []
++
++    def change_after_scan(frame, event, _arg):
++        if (
++            event == "return"
++            and frame.f_code is owner._live_code.__code__
++            and frame.f_locals["module"] is module
++            and not fired
++        ):
++            fired.append(1)
++            path.write_text(changed, encoding="utf-8")
++            exec(compile(changed, str(path), "exec", dont_inherit=True), vars(module))
++
++    try:
++        sys.setprofile(change_after_scan)
++        owner._live_code(module, *state)
++        with _refuses():
++            owner._live_code(module, *state)
++    finally:
++        sys.setprofile(previous)
++    assert fired == [1]
++    # A distinct producer invocation recompiles the new current source bytes.
++    owner._live_code(module, *_state())
++
++
++def test_code_swap_on_pair_return_refuses_before_function_check_returns(
++    tmp_path, monkeypatch
++):
++    module = _module(tmp_path, monkeypatch, "memo_return", "def f():\n    return 7\n")
++    state = _state()
++    owner._live_code(module, *state)
++    original = module.f.__code__
++    changed = _code("def f():\n    return 8\n")
++    target = owner._same_loaded_code.__code__
++    fired = []
++
++    def profile(frame, event, _arg):
++        if (
++            event == "return"
++            and frame.f_code is target
++            and frame.f_locals["live"] is original
++            and not fired
++        ):
++            fired.append(1)
++            module.f.__code__ = changed
++
++    previous = sys.getprofile()
++    try:
++        sys.setprofile(profile)
++        with _refuses():
++            owner._live_code(module, *state)
++    finally:
++        sys.setprofile(previous)
++        module.f.__code__ = original
++    assert fired == [1]
++
++
++@pytest.mark.parametrize(
++    "container", [lambda x: x, lambda x: (x,), lambda x: frozenset((x,))]
++)
++def test_mutable_custom_constants_never_gain_pair_or_eligibility_authority(container):
++    class MutableEqual:
++        def __init__(self):
++            self.equal = True
++
++        def __eq__(self, _other):
++            return self.equal
++
++        __hash__ = object.__hash__
++
++    value = MutableEqual()
++    reference = _code()
++    live = reference.replace(co_consts=(None, container(value)))
++    pairs, immutable = {}, {}
++    for equal in (True, False, True):
++        value.equal = equal
++        # CPython may reject custom constant types before calling __eq__.
++        # Preserve the original decision; do not assume initial acceptance.
++        expected = live == reference
++        assert owner._same_loaded_code(live, reference, pairs, immutable) is expected
++        assert not pairs
++        assert id(live) not in immutable
++
++
++def test_nested_code_with_mutable_constant_remains_uncached():
++    mutable = []
++    inner = _code().replace(co_consts=(None, mutable))
++    outer = _code().replace(co_consts=(None, inner))
++    reference = _code().replace(co_consts=(None, _code()))
++    pairs, immutable = {}, {}
++    for content in ((), (7,), (8,)):
++        mutable[:] = content
++        assert owner._same_loaded_code(outer, reference, pairs, immutable) is (
++            outer == reference
++        )
++        assert not pairs
++        assert id(inner) not in immutable
++        assert id(outer) not in immutable
++
++
++def test_constant_eligibility_never_calls_custom_metaclass_equality():
++    class CustomType(type):
++        def __eq__(cls, _other):
++            raise AssertionError("constant eligibility called custom type equality")
++
++    class CustomValue(metaclass=CustomType):
++        pass
++
++    live = _code().replace(co_consts=(None, CustomValue()))
++    immutable = {}
++    assert owner._immutable_code_constants(live, immutable) is False
++    assert id(live) not in immutable
++
++
++def test_scalar_subclasses_and_deep_values_fall_back_without_new_refusal():
++    class CustomInt(int):
++        pass
++
++    deep = 7
++    for _ in range(70):
++        deep = (deep,)
++    for value in (CustomInt(7), deep):
++        live = _code().replace(co_consts=(None, value))
++        reference = live.replace()
++        pairs, immutable = {}, {}
++        assert owner._same_loaded_code(live, reference, pairs, immutable) is (
++            live == reference
++        )
++        assert not pairs
++
++
++def test_compiler_constant_shapes_and_nested_functions_are_cacheable():
++    source = """def f(x):
++    def inner():
++        return (None, True, 7, 1.25, 2j, 'text', b'bytes', ...)
++    return x in {1, 2, 3}, inner
++"""
++    live, reference = _code(source), _code(source)
++    pairs, immutable = {}, {}
++    assert owner._same_loaded_code(live, reference, pairs, immutable)
++    assert pairs[(id(live), id(reference))] == (live, reference)
++    assert all(type(code) is CodeType for code in immutable.values())
++
++
++def test_source_class_methods_properties_and_dataclass_escape_keep_existing_behavior(
++    tmp_path, monkeypatch
++):
++    source = """class Example:
++    @classmethod
++    def named(cls):
++        return cls.__name__
++    @staticmethod
++    def value():
++        return 7
++    @property
++    def amount(self):
++        return 7
++"""
++    module = _module(tmp_path, monkeypatch, "memo_methods", source)
++    state = _state()
++    owner._live_code(module, *state)
++    owner._live_code(module, *state)
++    # Match only the pre-existing generated-code escape; it is not broadened.
++    module.generated = FunctionType(
++        _code().replace(co_filename="<string>"), vars(module)
++    )
++    owner._live_code(module, *state)

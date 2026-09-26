@@ -1,0 +1,1 @@
+Normalize pinned population-only Census API responses into atomic block support. Reconcile every positive block against independent state totals and CD/PUMA mappings, retain exact source bytes and request descriptions, and keep publisher qualification separate from byte integrity.

@@ -1,0 +1,2840 @@
+"""Checked survey financial outputs before or after atomic geography.
+
+The atomic nineteen-node and pre-geography fourteen-node bases both retain the
+raw allocation and pre-financial clone. An explicit property option adds sixteen
+nodes and retains the complete legacy financial population alongside its extended
+output. Support
+bytes establish integrity, not publisher provenance or release eligibility.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+import weakref
+from dataclasses import dataclass, replace
+from types import FunctionType, SimpleNamespace
+
+import numpy as np
+import pandas as pd
+
+from microcosm.fit import qrf_target
+from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
+from microcosm.fit.graph_legacy_train import LegacyQRFTrainKernel
+from microcosm.frame import Frame
+from microcosm.graph import (
+    ArtifactInput,
+    ArtifactValue,
+    KernelBase,
+    KernelRegistry,
+    KernelResult,
+    StructuralDelta,
+    compile_graph,
+    run_graph,
+    source_hash,
+)
+from microcosm.graph import population as population_ops
+from microcosm.graph.artifact_edges import numeric_scope, typed_contracts
+from microcosm.graph.executor import (
+    _all_node_keys,
+    _apply_result,
+    _observer_snapshot,
+    _project_context,
+    _source_paths_and_keys,
+)
+from microcosm.graph.keys import _capabilities_projection, opaque_artifact_key
+from microcosm.graph.population import Population
+from microcosm.graph.serialize import graph_to_json
+
+from . import _survey_population_witness as observation
+from . import graph_atomic_survey_population as atomic
+from . import graph_current_survey_predictors as financial
+from .survey_population_replay import (
+    replayed_population_seal,
+    same_replayed_population_seals,
+    seal_identity,
+)
+
+values = financial.values
+codec = financial.codec
+survey = atomic.survey
+reconstruction = atomic.reconstruction
+require = values.require
+RUN_PROTOCOL = "microcosm.us.atomic-survey-financial-run.v1"
+PRE_GEOGRAPHY_RUN_PROTOCOL = "microcosm.us.pre-geography-survey-financial-run.v1"
+_ATOMIC = "atomic_assigned"
+_PRE_GEOGRAPHY = "pre_geography"
+_ISSUED_RUNS = {}
+
+
+@dataclass(frozen=True)
+class AtomicSurveyFinancialRunValues:
+    """Development output, retaining the independently admitted prefix values."""
+
+    prefix: atomic.AtomicSurveyPopulationRunValues
+    financial_population: Population
+    manifest: object
+    compiled: object
+    store: object
+    kernels: object
+    sources: dict
+    projection: bytes
+    matrix: bytes
+
+    def checked_view(self):
+        """Recheck a completed actual run; public dataclass copies are unissued."""
+        return check_atomic_survey_financial_run(self)
+
+
+@dataclass(frozen=True)
+class PreGeographySurveyFinancialRunValues:
+    """Issued financial output over the genuine four-node survey clone prefix."""
+
+    prefix: survey.SurveyPopulationRunValues
+    financial_population: Population
+    manifest: object
+    compiled: object
+    store: object
+    kernels: object
+    sources: dict
+    projection: bytes
+    matrix: bytes
+
+    def checked_view(self):
+        return check_pre_geography_survey_financial_run(self)
+
+
+@dataclass(frozen=True)
+class CheckedPreGeographySurveyFinancialRun:
+    """Descriptive values; no assigned geography or independent authority."""
+
+    payload: bytes
+    digest: str
+    population: Population
+
+
+@dataclass(frozen=True)
+class CheckedAtomicSurveyFinancialRun:
+    """Descriptive values; authority remains in the actual issued run handle."""
+
+    payload: bytes
+    digest: str
+    population: Population
+
+
+@dataclass(frozen=True)
+class _FinancialRunState:
+    prefix_mode: str
+    prefix: object
+    prefix_objects: tuple
+    preparation_entry: tuple
+    financial_population: Population
+    populations: tuple
+    manifest: object
+    manifest_bytes: bytes
+    prefix_manifest_bytes: bytes
+    compiled: object
+    declaration: str
+    prefix_declaration: str
+    store: object
+    kernels: object
+    source_items: tuple
+    config_bytes: bytes | None
+    projection: bytes
+    matrix: bytes
+    pins: bytes
+    n_estimators: int
+    demographic_conditioning: bool
+    source_keys: tuple
+    keys: tuple
+    implementations: tuple
+    artifact_hashes: tuple
+    manifest_populations: tuple
+    prefix_manifest_populations: tuple
+    live: dict
+    property_income: object = None
+    property_income_bytes: bytes | None = None
+    legacy_financial_population: Population | None = None
+    legacy_financial_stamp: object = None
+    rebase_property_taxes: bool = False
+    property_population: Population | None = None
+    property_population_stamp: object = None
+    tax_verification: bytes | None = None
+    person_status_boundary: object = None
+    completion_boundary: object = None
+    completion_stamp: object = None
+    node_populations: tuple = ()
+    node_states: object = None
+    registry: tuple = ()
+    retention_profile: str = "all"
+    retained_node_ids: tuple = ()
+    node_witnesses: tuple = ()
+    node_population_inputs: tuple = ()
+    development_boundary: object = None
+
+
+def _development_module():
+    from . import graph_current_asec_development_inputs
+
+    return graph_current_asec_development_inputs
+
+
+class _DevelopmentBoundary:
+    """Existing preparation custody; detached mappings never grant admission."""
+
+    def __init__(self, preparation, entry, receiving, pins):
+        graph = _development_module()
+        require(graph._live() == graph._LIVE, "DEVELOPMENT_IMPLEMENTATION_CHANGED")
+        self.preparation, self.entry, self.receiving = preparation, entry, receiving
+        self.originals, _ = graph.original_source._origins(
+            entry[2].frame, codec.decode_json(entry[1])
+        )
+        self.originals_seal = graph.fixed.recipients._table_digest(self.originals)
+        self.qualified = graph.routing.qualify_current_asec_income_routing(preparation)
+        self.projection = graph.qualification_payload(self.qualified)
+        self.receiving_stamp = reconstruction._population_stamp(receiving)
+        self.pins = codec.encode_json(pins)
+        self.live = graph._live()
+        self.nodes, self.keys = (), ()
+        self.pure()
+
+    def seal(self):
+        graph = _development_module()
+        return (
+            graph.qualification_payload(self.qualified),
+            self.projection,
+            graph.fixed.recipients._table_digest(self.originals),
+            reconstruction._population_stamp(self.receiving),
+            self.pins,
+            tuple(n.normative() for n in self.nodes),
+            self.keys,
+        )
+
+    def pure(self):
+        graph = _development_module()
+        require(
+            graph._live() == self.live == graph._LIVE,
+            "DEVELOPMENT_IMPLEMENTATION_CHANGED",
+        )
+        require(
+            values.source._ISSUED.get(id(self.preparation)) is self.entry
+            and self.preparation.payload == self.entry[1]
+            and graph.fixed.recipients._table_digest(self.originals)
+            == self.originals_seal,
+            "DEVELOPMENT_OWNER_CHANGED",
+        )
+        values.source._pure_final(self.entry[2])
+        require(
+            graph.qualification_payload(self.qualified) == self.projection
+            and reconstruction._population_stamp(self.receiving)
+            == self.receiving_stamp,
+            "DEVELOPMENT_SOURCE_OR_RECEIVING_CHANGED",
+        )
+
+    def requalify(self):
+        graph = _development_module()
+        self.pure()
+        fresh = graph.routing.qualify_current_asec_income_routing(self.preparation)
+        require(
+            graph.qualification_payload(fresh) == self.projection,
+            "DEVELOPMENT_SOURCE_CHANGED",
+        )
+        self.pure()
+
+    def context(self, context):
+        graph = _development_module()
+        require(
+            context.node in self.nodes and context.node.id in dict(self.keys),
+            "DEVELOPMENT_CONTEXT_NODE",
+        )
+        require(
+            set(context.artifacts) == {e.name for e in context.node.artifact_inputs},
+            "DEVELOPMENT_CONTEXT_ARTIFACTS",
+        )
+        pins = codec.decode_json(self.pins)
+        for edge in context.node.artifact_inputs:
+            actual = context.artifacts[edge.name]
+            require(
+                type(actual) is ArtifactValue
+                and actual.type == edge.type
+                and actual.producer_key == dict(self.keys)[edge.producer]
+                and actual.key
+                == opaque_artifact_key(actual.producer_key, edge.artifact),
+                "DEVELOPMENT_ARTIFACT_PRODUCER",
+            )
+            if edge.name in pins:
+                pin = pins[edge.name]
+                require(
+                    actual.producer_key == pin["producer_key"]
+                    and actual.key == pin["artifact_key"]
+                    and codec.sha(actual.payload) == pin["payload_sha256"],
+                    "DEVELOPMENT_HOST_ARTIFACT",
+                )
+            elif edge == graph.projection_edge():
+                require(
+                    actual.payload
+                    == graph.projection_payload(
+                        self.qualified, context.node, context.tables["person"]
+                    ),
+                    "DEVELOPMENT_PROJECTION",
+                )
+        people = context.tables["person"]
+        for column in (
+            "person_id",
+            *(
+                self.receiving.frame.schema.membership_column(g)
+                for g in self.receiving.frame.schema.group_entities
+            ),
+            *graph._identity_columns(),
+        ):
+            require(
+                population_ops.storage_equal(
+                    people[column], self.receiving.frame.person[column]
+                ),
+                "DEVELOPMENT_CONTEXT_ORIGIN",
+            )
+
+    def complement(self, population):
+        graph = _development_module()
+        self.pure()
+        complete = set(graph.OUTPUTS) & set(population.frame.person)
+        if not complete:
+            return population
+        require(complete == set(graph.OUTPUTS), "DEVELOPMENT_PARTIAL_COLUMNS")
+        parent = graph.complement(population)
+        expected = graph.columns(self.qualified, self.originals, parent.frame.person)
+        for (entity, column), vector in expected.items():
+            require(
+                population_ops.storage_equal(
+                    vector.reset_index(drop=True),
+                    population.frame.table(entity)[column].reset_index(drop=True),
+                ),
+                "DEVELOPMENT_VALUE_CHANGED",
+            )
+        self.pure()
+        return parent
+
+
+def _development_complement(boundary, population):
+    return population if boundary is None else boundary.complement(population)
+
+
+def _person_status_module():
+    """Load descriptive person status only for the explicitly enabled graph."""
+    from . import graph_current_survey_person_status
+
+    return graph_current_survey_person_status
+
+
+class _PersonStatusBoundary:
+    """Retained source authority and a disjoint full-population verification.
+
+    Existing financial source owners still receive the original geography
+    population. Their complete result is checked on the exact complement of
+    these new columns, and this boundary reconstructs all status cells and
+    their original placement. Neither check alone accepts the combined result.
+    """
+
+    def __init__(self, preparation, entry, incoming, qualified, nodes):
+        graph = _person_status_module()
+        self.preparation, self.entry = preparation, entry
+        self.incoming, self.qualified, self.nodes = incoming, qualified, nodes
+        self.incoming_stamp = reconstruction._population_stamp(incoming)
+        self.seal = graph.person_status_seal(qualified)
+        self.live = graph._live()
+        self.host_live = _live(person_status=True)
+        self.source_bytes = graph._source_bytes()
+        self.binding = graph._result(
+            qualified, nodes[-1], incoming.frame.person
+        ).artifacts["binding"]
+        self.pure()
+
+    def pure(self):
+        graph = _person_status_module()
+        require(
+            graph._live() == self.live
+            and self.live == graph._LIVE
+            and _live(person_status=True) == self.host_live,
+            "PERSON_STATUS_IMPLEMENTATION_CHANGED",
+        )
+        require(
+            values.source._ISSUED.get(id(self.preparation)) is self.entry
+            and self.preparation.payload == self.entry[1],
+            "PERSON_STATUS_OWNER_CHANGED",
+        )
+        values.source._pure_final(self.entry[2])
+        graph._pure_owner(self.qualified)
+        require(
+            graph.person_status_seal(self.qualified) == self.seal
+            and self.qualified.source_frame is self.entry[2].frame
+            and reconstruction._population_stamp(self.incoming) == self.incoming_stamp,
+            "PERSON_STATUS_RETAINED_CHANGED",
+        )
+        require(
+            self.binding
+            == graph._result(
+                self.qualified, self.nodes[-1], self.incoming.frame.person
+            ).artifacts["binding"],
+            "PERSON_STATUS_BINDING_CHANGED",
+        )
+
+    def requalify(self):
+        """Finish actual source I/O before checking all detached retained bytes."""
+        graph = _person_status_module()
+        self.pure()
+        self.qualified.validate()
+        current = graph.qualify_current_survey_person_status(self.preparation)
+        require(
+            current.source_frame is self.qualified.source_frame
+            and current.receipt == self.qualified.receipt
+            and current.raw.equals(self.qualified.raw)
+            and current.observations.equals(self.qualified.observations)
+            and current.origins.equals(self.qualified.origins),
+            "PERSON_STATUS_SOURCE_CHANGED",
+        )
+        require(
+            graph._source_bytes() == self.source_bytes,
+            "PERSON_STATUS_SOURCE_IMPLEMENTATION_CHANGED",
+        )
+        self.pure()
+
+    def complement(self, population):
+        """Return only the exact old financial contract, after a full status check."""
+        self.pure()
+        graph = _person_status_module()
+        frame = population.frame
+        columns = graph.BIND_COLUMNS
+        require(set(columns) <= set(frame.person), "PERSON_STATUS_MISSING_COLUMN")
+        require(
+            all(
+                population.owners.get(("person", c)) == graph.BIND_NODE for c in columns
+            ),
+            "PERSON_STATUS_WRITER",
+        )
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        tables.update({name: frame.link(name).copy() for name in frame.links})
+        tables["person"] = tables["person"].drop(columns=list(columns))
+        complement_frame = Frame(
+            tables,
+            frame.schema,
+            dict(frame._weights),
+            frame.strata,
+            metadata=frame.metadata,
+            mass_log=frame.mass_log,
+        )
+        complement = replace(
+            population,
+            frame=complement_frame,
+            owners={
+                key: owner
+                for key, owner in population.owners.items()
+                if key not in {("person", c) for c in columns}
+            },
+        )
+        # This uses the original raw-derived values, never the columns removed
+        # above. The old verifier independently closes every complement cell.
+        result = graph._result(
+            self.qualified, self.nodes[-1], self.incoming.frame.person
+        )
+        expected = population_ops.patch(complement, self.nodes[-1], result)
+        original = tuple(self.incoming.frame.person.columns)
+        order = (
+            *original,
+            *columns,
+            *(c for c in complement_frame.person if c not in original),
+        )
+        require(
+            len(order) == len(set(order)) == len(expected.frame.person.columns),
+            "PERSON_STATUS_COLUMN_ORDER",
+        )
+        expected_tables = {
+            entity: expected.frame.table(entity).copy()
+            for entity in expected.frame.entities
+        }
+        expected_tables.update(
+            {name: expected.frame.link(name).copy() for name in expected.frame.links}
+        )
+        expected_tables["person"] = expected_tables["person"].loc[:, list(order)]
+        expected = replace(
+            expected,
+            frame=Frame(
+                expected_tables,
+                frame.schema,
+                dict(expected.frame._weights),
+                expected.frame.strata,
+                metadata=expected.frame.metadata,
+                mass_log=expected.frame.mass_log,
+            ),
+        )
+        atomic.same_replayed_population(expected, population)
+        self.pure()
+        return complement
+
+
+class _PersonStatusOrderedDonor(KernelBase):
+    """One visible dependency around the unchanged deterministic donor operation."""
+
+    def __init__(self, delegate, boundary, original_node, ordered_node):
+        self.delegate, self.boundary = delegate, boundary
+        self.original_node, self.ordered_node = original_node, ordered_node
+        self.ref, self.capabilities = delegate.ref, delegate.capabilities
+
+    def implementation_hash(self):
+        return codec.sha(
+            codec.encode_json(
+                {
+                    "delegate": self.delegate.implementation_hash(),
+                    "person_status_ordering": source_hash(
+                        sys.modules[__name__],
+                        _person_status_module(),
+                        dependencies=self.capabilities.dependencies,
+                    ),
+                }
+            )
+        )
+
+    def run(self, context):
+        graph = _person_status_module()
+        context_seal = graph._context_seal(context)
+        self.boundary.pure()
+        edge = graph.binding_edge()
+        require(
+            context.node == self.ordered_node
+            and self.ordered_node
+            == replace(
+                self.original_node,
+                artifact_inputs=(*self.original_node.artifact_inputs, edge),
+            )
+            and set(context.artifacts)
+            == {e.name for e in self.ordered_node.artifact_inputs},
+            "PERSON_STATUS_DONOR_DECLARATION",
+        )
+        value = context.artifacts[edge.name]
+        require(
+            type(value) is ArtifactValue
+            and value.type == edge.type
+            and value.key == opaque_artifact_key(value.producer_key, edge.artifact)
+            and value.payload == self.boundary.binding,
+            "PERSON_STATUS_DONOR_BINDING",
+        )
+        # Only the added ordering edge is consumed here. The donor still checks
+        # its exact original declaration, preparation and geography evidence.
+        delegated = replace(
+            context,
+            node=self.original_node,
+            artifacts={
+                e.name: context.artifacts[e.name]
+                for e in self.original_node.artifact_inputs
+            },
+        )
+        result = self.delegate.run(delegated)
+        sealed = graph._result_seal(result)
+        self.boundary.pure()
+        require(
+            graph._result_seal(result) == sealed, "PERSON_STATUS_DONOR_RESULT_CHANGED"
+        )
+        require(
+            graph._context_seal(context) == context_seal,
+            "PERSON_STATUS_DONOR_CONTEXT_CHANGED",
+        )
+        return result
+
+
+def _status_complement(boundary, population):
+    return population if boundary is None else boundary.complement(population)
+
+
+def _property_module():
+    """Load the explicitly selected extension without changing the default path."""
+    from . import graph_current_survey_property
+
+    return graph_current_survey_property
+
+
+def _tax_module():
+    from . import graph_property_tax_leaves
+
+    return graph_property_tax_leaves
+
+
+def _completion_module():
+    from . import graph_survey_completion_host
+
+    return graph_survey_completion_host
+
+
+def _tax_nodes(frame, population, options, *, anticipated_outputs=(), completion=None):
+    property_graph = _property_module()
+    reconciliation = options.nodes((property_graph.PROPERTY_REPORTED_TOTAL,))[-1]
+    output = reconciliation.artifact_outputs[0]
+    return _tax_module().property_tax_leaf_nodes(
+        frame,
+        population=population,
+        projection=ArtifactInput(
+            "projection",
+            property_graph.PROJECTION_NODE,
+            "projection",
+            property_graph.PROJECTION_TYPE,
+        ),
+        reconciliation=ArtifactInput(
+            "reconciliation",
+            reconciliation.id,
+            output.name,
+            output.type,
+        ),
+        atol=float(options.atol),
+        rtol=float(options.rtol),
+        anticipated_outputs=anticipated_outputs,
+        completion=completion,
+    )
+
+
+def _reconstruct_tax(
+    population, *, compiled, kernels, keys, loaded, options, completion=None
+):
+    """Replay three deterministic operations on the actual complete post35 Frame."""
+    tax = _tax_module()
+    nodes = _tax_nodes(
+        population.frame, population.version, options, completion=completion
+    )
+    classes = (
+        tax.PropertyTaxReceivingKernel,
+        tax.PropertyTaxLeavesKernel,
+        tax.PropertyTaxLeafGateKernel,
+    )
+    populations, results = {}, {}
+    for node, cls in zip(nodes, classes, strict=True):
+        require(
+            node.normative() == compiled.graph.node(node.id).normative(),
+            "PROPERTY_TAX_DECLARATION",
+        )
+        artifacts = {
+            edge.name: ArtifactValue(
+                loaded[edge.producer, edge.artifact],
+                edge.type,
+                opaque_artifact_key(keys[edge.producer], edge.artifact),
+                keys[edge.producer],
+                numeric_scope(
+                    kernels.get(compiled.graph.node(edge.producer).kernel).capabilities
+                ),
+            )
+            for edge in node.artifact_inputs
+        }
+        context = _project_context(
+            node,
+            population,
+            key=keys[node.id],
+            sources={},
+            tolerances={},
+            numerics={},
+            artifacts=artifacts,
+        )
+        result = cls().run(context)
+        require(
+            all(
+                loaded[node.id, name] == payload
+                for name, payload in result.artifacts.items()
+            ),
+            "PROPERTY_TAX_ARTIFACT",
+        )
+        population = _apply_result(
+            node,
+            result,
+            population,
+            mass_partition=compiled.graph.mass_partition,
+        )
+        populations[node.id], results[node.id] = population, result
+    return populations, results
+
+
+def financial_tax_gate_edges(run):
+    """Declare the real numerical gate only for an issued opt-in run."""
+    state = _run_entry(run)[2]
+    if not state.rebase_property_taxes:
+        return ()
+    tax = _tax_module()
+    return (
+        ArtifactInput(
+            "property_tax_verification",
+            tax.GATE_NODE,
+            "verification",
+            tax.VERIFICATION_TYPE,
+        ),
+    )
+
+
+def require_complete_property_taxes(run):
+    """Require the already checked numerical gate before PUF source qualification."""
+    entry = _run_entry(run)
+    _pure_run(run, entry)
+    state = entry[2]
+    if state.rebase_property_taxes:
+        document = codec.decode_json(state.tax_verification)
+        require(
+            document["numeric_verified"] is True and document["complete"] is True,
+            "PROPERTY_TAX_INPUTS_INCOMPLETE",
+        )
+
+
+def _node_population_stamp(
+    compiled, node_id, population, completion_boundary=None, *, manifest=False
+):
+    if type(population) is tuple:
+        # A node the run sealed and dropped rather than retained. The stamp is
+        # re-derived from the retained seal record exactly as the Population
+        # arm re-derives it from the retained object, so
+        # FINANCIAL_NODE_POPULATION_CHANGED keeps a defined, non-vacuous
+        # meaning on both arms: something the run retained about this node's
+        # population is not what it was at issuance.
+        require(
+            completion_boundary is None and not manifest, "FINANCIAL_SEALED_NODE_SCOPE"
+        )
+        return seal_identity(population)
+    if completion_boundary is None:
+        return reconstruction._population_stamp(population)
+    # Dispatch through the maintained module, never an arbitrary boundary method.
+    return _completion_module()._population_stamp(
+        completion_boundary, compiled, node_id, population, manifest=manifest
+    )
+
+
+def _compact_retained_roster(
+    compiled, property_income, rebase_property_taxes, completion_boundary=None
+):
+    if completion_boundary is not None:
+        base = set(completion_boundary.base.compiled.order)
+        return tuple(node for node in compiled.order if node not in base)
+    required = {financial.ATTACH_NODE}
+    if _development_module().ATTACH_NODE in compiled.order:
+        required.add(_development_module().ATTACH_NODE)
+    if property_income is not None:
+        required.add(_property_module().ATTACH_NODE)
+    if rebase_property_taxes:
+        required.add(_tax_module().GATE_NODE)
+    require(required <= set(compiled.order), "COMPACT_BOUNDARY_ROSTER")
+    return tuple(node for node in compiled.order if node in required)
+
+
+def _compact_capsule_seal(state):
+    require(
+        type(state.node_witnesses) is tuple
+        and type(state.node_population_inputs) is tuple
+        and tuple(n for n, _ in state.node_witnesses) == state.compiled.order
+        and tuple(n for n, _ in state.node_population_inputs) == state.compiled.order
+        and all(
+            type(payload) is bytes
+            for _, payload in (*state.node_witnesses, *state.node_population_inputs)
+        ),
+        "COMPACT_CAPSULE_ROSTER",
+    )
+    return codec.encode_json(
+        {
+            "profile": state.retention_profile,
+            "retained": state.retained_node_ids,
+            "order": state.compiled.order,
+            "versions": tuple(sorted(state.compiled.versions.items())),
+            "keys": state.keys,
+            "implementations": state.implementations,
+            "sources": state.source_keys,
+            "witnesses": [
+                (n, codec.sha(payload)) for n, payload in state.node_witnesses
+            ],
+            "population_inputs": [
+                (n, codec.sha(payload)) for n, payload in state.node_population_inputs
+            ],
+        }
+    )
+
+
+def _node_population_seals(
+    compiled, node_populations, completion_boundary=None, *, retained_node_ids=None
+):
+    """Retain the existing pair format with an exact compiled-order binding.
+
+    A value is either a ``Population`` the run retained -- stamped as before --
+    or, under the default ``"all"`` retention profile, the content seal of one
+    it sealed on arrival and dropped. The roster still binds to
+    ``compiled.order`` exactly (or to the compact profile's
+    ``retained_node_ids``), so a gap is still refused.
+    """
+    if not node_populations and completion_boundary is None:
+        return ()  # Preserve the existing optional path for non-completion runs.
+    require(
+        node_populations is not None
+        and tuple(node_populations)
+        == (compiled.order if retained_node_ids is None else retained_node_ids),
+        "FINANCIAL_NODE_POPULATION_ROSTER",
+    )
+    return tuple(
+        (
+            population,
+            _node_population_stamp(compiled, node_id, population, completion_boundary),
+        )
+        for node_id, population in node_populations.items()
+    )
+
+
+def _manifest_population_seals(manifest, compiled, *, completion_boundary=None):
+    """Include transient attached Frames, which portable JSON deliberately omits."""
+    return tuple(
+        (
+            version,
+            _node_population_stamp(
+                compiled,
+                version,  # A structural version is the exact node that created it.
+                Population.from_frame(
+                    manifest.population(version),
+                    version,
+                    mass_ledger=manifest.mass_ledger(version),
+                ),
+                completion_boundary,
+                manifest=True,
+            ),
+        )
+        for version in sorted(set(compiled.versions.values()))
+    )
+
+
+def _result_mode(run):
+    if type(run) is AtomicSurveyFinancialRunValues:
+        return _ATOMIC
+    require(type(run) is PreGeographySurveyFinancialRunValues, "UNISSUED_FINANCIAL_RUN")
+    return _PRE_GEOGRAPHY
+
+
+def _prefix_names(mode):
+    require(mode in (_ATOMIC, _PRE_GEOGRAPHY), "FINANCIAL_PREFIX_MODE")
+    if mode == _ATOMIC:
+        return (
+            "allocated_population",
+            "observed_population",
+            "expanded_population",
+            "geography_population",
+            "clone_population",
+        )
+    return ("allocated_population", "clone_population")
+
+
+def _prefix_config(prefix, mode):
+    expected = (
+        atomic.AtomicSurveyPopulationRunValues
+        if mode == _ATOMIC
+        else survey.SurveyPopulationRunValues
+    )
+    require(
+        mode in (_ATOMIC, _PRE_GEOGRAPHY) and type(prefix) is expected,
+        "FINANCIAL_PREFIX_TYPE",
+    )
+    return prefix.geography_config if mode == _ATOMIC else None
+
+
+def _prefix_objects(prefix, mode):
+    config = _prefix_config(prefix, mode)
+    return (
+        prefix.preparation,
+        prefix.manifest,
+        prefix.compiled,
+        prefix.store,
+        prefix.kernels,
+        prefix.sources,
+        *((config,) if mode == _ATOMIC else ()),
+    )
+
+
+def _prefix_host_edges(mode):
+    _prefix_names(mode)
+    return (
+        *financial.host.current_survey_host_edges(),
+        *((financial._geography_edge(),) if mode == _ATOMIC else ()),
+    )
+
+
+def _run_entry(run):
+    entry = _ISSUED_RUNS.get(id(run))
+    mode = _result_mode(run)
+    require(
+        entry is not None and entry[0]() is run and entry[2].prefix_mode == mode,
+        "UNISSUED_FINANCIAL_RUN",
+    )
+    _prefix_config(entry[2].prefix, mode)
+    return entry
+
+
+def financial_host_edges(run):
+    """The exact prefix evidence of an issued run, never caller-selected edges."""
+    return _prefix_host_edges(_run_entry(run)[2].prefix_mode)
+
+
+def _pre_geography_prefix_expectations(prefix):
+    """Reconstruct both clone observations without assigning or borrowing geography.
+
+    The prefix container is descriptive. Its real preparation and exact complete
+    allocation/clone values establish this numerical expectation; the financial
+    host still verifies the actual executor, registry, artifacts and final seals.
+    """
+    _prefix_config(prefix, _PRE_GEOGRAPHY)
+    entry = prefix.preparation._checked()
+    view = values.source.CheckedSurveyPopulationView(
+        entry[1],
+        entry[2].context,
+        entry[2].frame,
+        entry[2].plan,
+        json.loads(entry[1]),
+    )
+    columns, nodes = reconstruction._raw_allocation(view, prefix.allocated_population)
+    clone_nodes = atomic.clone.us_combined_survey_clone_nodes(
+        columns,
+        base=survey.ALLOCATION_NODE,
+        source_channels=("acs", "asec"),
+    )
+    require(
+        tuple(n.normative() for n in prefix.compiled.graph.nodes)
+        == tuple(n.normative() for n in (*nodes, *clone_nodes))
+        and len(prefix.compiled.order) == 4,
+        "PRE_GEOGRAPHY_PREFIX_DECLARATION",
+    )
+    values.host.survey_budget._initial(
+        view,
+        prefix.allocated_population,
+        prefix.clone_population,
+        preparation=prefix.preparation,
+        geography_config=None,
+    )
+    cloned, receipts = reconstruction._clone_expectations(
+        prefix.allocated_population,
+        clone_nodes,
+        prefix.compiled,
+    )
+    atomic.same_replayed_population(
+        cloned[atomic.clone.COMBINED_CLONE_CLAIM_NODE],
+        prefix.clone_population,
+    )
+    expected = {
+        survey.CREATE_NODE: Population.from_frame(entry[2].frame, survey.CREATE_NODE),
+        survey.ALLOCATION_NODE: prefix.allocated_population,
+        **cloned,
+    }
+    values.source._pure_final(entry[2])
+    require(
+        values.source._ISSUED.get(id(prefix.preparation)) is entry,
+        "PRE_GEOGRAPHY_PREPARATION_CHANGED",
+    )
+    return expected, receipts
+
+
+def _financial_terminal(
+    *,
+    property_income,
+    rebase_property_taxes,
+    completion_boundary=None,
+    development_boundary=None,
+):
+    # Completion's receiving FILTER carries these additions from its authentic
+    # base. Child/roles then precede the final tax gate on the newer version.
+    if development_boundary is not None and completion_boundary is None:
+        return _development_module().ATTACH_NODE
+    if rebase_property_taxes:
+        return _tax_module().GATE_NODE
+    return (
+        financial.ATTACH_NODE
+        if property_income is None
+        else _property_module().ATTACH_NODE
+    )
+
+
+def financial_output_node(run):
+    """Name the actual final writer of an already issued financial run."""
+    state = _run_entry(run)[2]
+    return _financial_terminal(
+        property_income=state.property_income,
+        rebase_property_taxes=state.rebase_property_taxes,
+        completion_boundary=state.completion_boundary,
+        development_boundary=state.development_boundary,
+    )
+
+
+def _run_document(run, state):
+    """Portable ancestry omits timing/cache hits and private physical seals."""
+    return codec.encode_json(
+        {
+            "protocol": RUN_PROTOCOL
+            if state.prefix_mode == _ATOMIC
+            else PRE_GEOGRAPHY_RUN_PROTOCOL,
+            "graph_sha256": codec.sha(state.declaration.encode()),
+            "manifest_key": state.manifest.key,
+            "preparation_sha256": codec.sha(state.preparation_entry[1]),
+            **(
+                {"geography_config_sha256": codec.sha(state.config_bytes)}
+                if state.prefix_mode == _ATOMIC
+                else {"prefix_mode": _PRE_GEOGRAPHY, "atomic_geography_assigned": False}
+            ),
+            "projection_sha256": codec.sha(state.projection),
+            "matrix_sha256": codec.sha(state.matrix),
+            "host_edges": codec.decode_json(state.pins),
+            "node_keys": dict(state.keys),
+            "artifact_payload_sha256": [list(row) for row in state.artifact_hashes],
+            "financial_frame_sha256": values.source._frame_identity(
+                run.financial_population.frame
+            ),
+            "financial_version": run.financial_population.version,
+            "financial_owners": sorted(
+                (e, c, writer)
+                for (e, c), writer in run.financial_population.owners.items()
+            ),
+            "owned_columns": [
+                *values.OUTPUTS,
+                *(
+                    ()
+                    if state.development_boundary is None
+                    else _development_module().OUTPUTS
+                ),
+                *(
+                    ()
+                    if state.person_status_boundary is None
+                    else _person_status_module().BIND_COLUMNS
+                ),
+                *(
+                    ()
+                    if state.property_income is None
+                    else (owned.column for owned in _property_module().owned_columns())
+                ),
+                *(
+                    ()
+                    if state.completion_boundary is None
+                    else state.completion_boundary.owned_columns()
+                ),
+            ],
+            **(
+                {}
+                if state.completion_boundary is None
+                else state.completion_boundary.document()
+            ),
+            **(
+                {}
+                if state.development_boundary is None
+                else {
+                    "source_qualified_development_inputs": {
+                        "projection_sha256": codec.sha(
+                            state.development_boundary.projection
+                        ),
+                        "rule_metadata": _development_module().fixed.development_rule_metadata(
+                            _development_module().fixed.DEVELOPMENT_RULES
+                        ),
+                        "node_count": 2,
+                        "release_science_accepted": False,
+                    }
+                }
+            ),
+            "demographic_conditioning": state.demographic_conditioning,
+            "n_estimators": state.n_estimators,
+            "release_eligible": False,
+            **(
+                {}
+                if state.person_status_boundary is None
+                else {
+                    "person_status": {
+                        "node_count": 4,
+                        "descriptive_only": True,
+                        "projection_sha256": codec.sha(
+                            _person_status_module().projection_payload(
+                                state.person_status_boundary.qualified
+                            )
+                        ),
+                        "binding_sha256": codec.sha(
+                            state.person_status_boundary.binding
+                        ),
+                        "source_artifact_required": True,
+                    },
+                }
+            ),
+            **(
+                {}
+                if state.property_income is None
+                else {
+                    "property_income": codec.decode_json(state.property_income_bytes),
+                    "property_node_count": 16,
+                    "tax_split_rebased": state.rebase_property_taxes,
+                    "capital_gains_conditioning": _property_module().CAP_LIMITATION,
+                    "legacy_financial_frame_sha256": values.source._frame_identity(
+                        state.legacy_financial_population.frame
+                    ),
+                }
+            ),
+            **(
+                {}
+                if not state.rebase_property_taxes
+                else {
+                    "tax_rebase_node_count": 3,
+                    "tax_rebased_columns": _tax_module().TAX_LEAF_COLUMNS,
+                    "tax_verification_sha256": codec.sha(state.tax_verification),
+                    "property_frame_sha256": values.source._frame_identity(
+                        state.property_population.frame
+                    ),
+                    "tax_leaf_complete": codec.decode_json(state.tax_verification)[
+                        "complete"
+                    ],
+                }
+            ),
+        }
+    )
+
+
+def _pure_run(run, entry):
+    """Check retained graph/source/Population state after all external I/O."""
+    require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
+    state = entry[2]
+    prefix = state.prefix
+    if state.development_boundary is not None:
+        state.development_boundary.pure()
+        state.development_boundary.complement(run.financial_population)
+    require(state.retention_profile in ("all", "compact"), "RETENTION_PROFILE")
+    if state.retention_profile == "compact":
+        require(
+            len(entry) == 4
+            and state.retained_node_ids
+            == _compact_retained_roster(
+                state.compiled,
+                state.property_income,
+                state.rebase_property_taxes,
+                state.completion_boundary,
+            )
+            and _compact_capsule_seal(state) == entry[3],
+            "COMPACT_CAPSULE_CHANGED",
+        )
+    else:
+        require(len(entry) == 3, "COMPACT_CAPSULE_CHANGED")
+    if state.completion_boundary is not None:
+        require(
+            state.completion_boundary.attestation() == state.completion_stamp,
+            "COMPLETION_CUSTODY_CHANGED",
+        )
+        state.completion_boundary.pure()
+    require(
+        tuple(run.kernels.as_mapping().items()) == state.registry,
+        "FINANCIAL_KERNEL_REGISTRY_CHANGED",
+    )
+    require(
+        (
+            state.retention_profile == "all"
+            and not state.node_populations
+            and state.completion_boundary is None
+        )
+        or len(state.node_populations)
+        == len(
+            state.compiled.order
+            if state.retention_profile == "all"
+            else state.retained_node_ids
+        ),
+        "FINANCIAL_NODE_POPULATION_ROSTER",
+    )
+    for node_id, (population, stamp) in zip(
+        (
+            state.compiled.order
+            if state.retention_profile == "all"
+            else state.retained_node_ids
+        )
+        if state.node_populations
+        else (),
+        state.node_populations,
+        strict=True,
+    ):
+        require(
+            _node_population_stamp(
+                state.compiled, node_id, population, state.completion_boundary
+            )
+            == stamp,
+            "FINANCIAL_NODE_POPULATION_CHANGED",
+        )
+    if state.node_states is not None:
+        survey._check_node_states(run.manifest, state.node_states)
+    require(
+        run.prefix is prefix
+        and run.financial_population is state.financial_population
+        and run.manifest is state.manifest
+        and run.compiled is state.compiled
+        and run.store is state.store
+        and run.kernels is state.kernels
+        and run.projection == state.projection
+        and run.matrix == state.matrix
+        and tuple(sorted(run.sources.items())) == state.source_items
+        and tuple(sorted(prefix.sources.items())) == state.source_items
+        and all(
+            a is b
+            for a, b in zip(
+                _prefix_objects(prefix, state.prefix_mode),
+                state.prefix_objects,
+                strict=True,
+            )
+        )
+        and values.host.survey_budget._config_payload(
+            _prefix_config(prefix, state.prefix_mode)
+        )
+        == state.config_bytes
+        and run.manifest.to_json_bytes() == state.manifest_bytes
+        and prefix.manifest.to_json_bytes() == state.prefix_manifest_bytes
+        and graph_to_json(run.compiled.graph) == state.declaration
+        and graph_to_json(prefix.compiled.graph) == state.prefix_declaration
+        and run.compiled == compile_graph(run.compiled.graph)
+        and prefix.compiled == compile_graph(prefix.compiled.graph),
+        "FINANCIAL_RUN_BINDINGS_CHANGED",
+    )
+    require(
+        _manifest_population_seals(
+            run.manifest, run.compiled, completion_boundary=state.completion_boundary
+        )
+        == state.manifest_populations
+        and _manifest_population_seals(prefix.manifest, prefix.compiled)
+        == state.prefix_manifest_populations,
+        "FINANCIAL_RUN_ATTACHED_POPULATION_CHANGED",
+    )
+    require(
+        values.source._ISSUED.get(id(prefix.preparation)) is state.preparation_entry
+        and prefix.preparation.payload == state.preparation_entry[1],
+        "FINANCIAL_RUN_SOURCE_CHANGED",
+    )
+    values.source._pure_final(state.preparation_entry[2])
+    if state.person_status_boundary is not None:
+        state.person_status_boundary.pure()
+        # Check the original status writer on the retained property parent,
+        # before either completion or tax FILTER carries its columns into a
+        # new version. Final populations retain separate full custody seals
+        # and independent completion/tax reconstruction.
+        state.person_status_boundary.complement(
+            state.property_population
+            if state.rebase_property_taxes
+            else run.financial_population
+        )
+    if state.property_income is not None:
+        require(
+            type(state.property_income) is _property_module().PropertyIncomeOptions
+            and state.property_income.to_bytes() == state.property_income_bytes
+            and reconstruction._population_stamp(state.legacy_financial_population)
+            == state.legacy_financial_stamp,
+            "PROPERTY_OPTIONS_OR_LEGACY_POPULATION_CHANGED",
+        )
+    if state.rebase_property_taxes:
+        require(
+            state.property_income is not None
+            and reconstruction._population_stamp(state.property_population)
+            == state.property_population_stamp,
+            "PROPERTY_TAX_PARENT_POPULATION_CHANGED",
+        )
+    for name, population, stamp in state.populations:
+        actual = (
+            run.financial_population if name == "financial" else getattr(prefix, name)
+        )
+        require(
+            actual is population and reconstruction._population_stamp(actual) == stamp,
+            "FINANCIAL_RUN_POPULATION_CHANGED",
+        )
+    require(
+        _run_document(run, state) == entry[1]
+        and _live(
+            state.property_income,
+            state.rebase_property_taxes,
+            state.person_status_boundary is not None,
+            state.completion_boundary,
+            state.development_boundary is not None,
+        )
+        == state.live,
+        "FINAL_FINANCIAL_RUN_SEAL",
+    )
+    require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
+
+
+def child_verification_operation(run):
+    """Scope child-only reconstruction reuse for an existing financial owner.
+
+    Direct financial checks keep their original full verification behavior.
+    Higher operations join this scope and seal their results after it closes.
+    """
+    from contextlib import nullcontext
+
+    if _run_entry(run)[2].completion_boundary is None:
+        return nullcontext()
+    return _completion_module().child.verification_operation()
+
+
+def check_atomic_survey_financial_run(run):
+    """Check only the issued atomic variant; absence is never inferred."""
+    require(type(run) is AtomicSurveyFinancialRunValues, "UNISSUED_FINANCIAL_RUN")
+    return check_survey_financial_run(run)
+
+
+def check_pre_geography_survey_financial_run(run):
+    """Check only the issued financial variant preceding atomic assignment."""
+    require(type(run) is PreGeographySurveyFinancialRunValues, "UNISSUED_FINANCIAL_RUN")
+    return check_survey_financial_run(run)
+
+
+def check_survey_financial_run(run):
+    """Check the exact two issued variants; revoke completion on refusal."""
+    entry = _run_entry(run)
+    try:
+        with survey._source_owner().verification_epoch(join=True):
+            return _check_atomic_survey_financial_run(run)
+    except Exception:
+        if entry[2].completion_boundary is not None:
+            entry[2].completion_boundary.revoke()
+        raise
+
+
+def _check_atomic_survey_financial_run(run):
+    """Requalify existing artifacts and live owners without fitting or execution."""
+    entry = _run_entry(run)
+    _pure_run(run, entry)
+    state, prefix = entry[2], entry[2].prefix
+    _, source_keys = _source_paths_and_keys(run.compiled, run.sources, run.store)
+    keys, implementations = _all_node_keys(run.compiled, run.kernels, source_keys)
+    require(
+        tuple(sorted(source_keys.items())) == state.source_keys
+        and tuple(sorted(keys.items())) == state.keys
+        and tuple(sorted(implementations.items())) == state.implementations,
+        "FINANCIAL_RUN_IMPLEMENTATIONS_CHANGED",
+    )
+    loaded = _artifacts(
+        run.manifest, run.compiled, run.store, run.kernels, keys, implementations
+    )
+    require(
+        tuple(
+            sorted(
+                (node, name, codec.sha(payload))
+                for (node, name), payload in loaded.items()
+            )
+        )
+        == state.artifact_hashes,
+        "FINANCIAL_RUN_ARTIFACT_CHANGED",
+    )
+    if state.completion_boundary is not None:
+        state.completion_boundary.verify(run, keys=keys, loaded=loaded)
+    if state.rebase_property_taxes:
+        tax_populations, _ = _reconstruct_tax(
+            state.property_population
+            if state.completion_boundary is None
+            else state.completion_boundary.completed,
+            compiled=run.compiled,
+            kernels=run.kernels,
+            keys=keys,
+            loaded=loaded,
+            options=state.property_income,
+            completion=None
+            if state.completion_boundary is None
+            else state.completion_boundary.tax_edge(),
+        )
+        atomic.same_replayed_population(
+            tax_populations[_tax_module().GATE_NODE],
+            (
+                _development_complement(
+                    state.development_boundary, run.financial_population
+                )
+                if state.completion_boundary is None
+                else run.financial_population
+            ),
+        )
+    # These exact fitted artifacts were checked at actual execution/required
+    # replay before issuance. Rechecking their identities needs no new pickle
+    # decode or fit; the materialized verifier freshly derives current values.
+    financial.verify_materialized_current_survey_predictors(
+        prefix.preparation,
+        prefix.allocated_population,
+        prefix.clone_population,
+        population=_status_complement(
+            state.person_status_boundary,
+            (
+                _development_complement(
+                    state.development_boundary, run.financial_population
+                )
+                if state.property_income is None
+                else state.legacy_financial_population
+            ),
+        ),
+        projection=state.projection,
+        matrix=state.matrix,
+        matrix_producer_key=keys[financial.PROJECTION_NODE],
+        raw_draws=tuple(
+            loaded[f"{financial.APPLY_PREFIX}.{i:03d}", "raw_draw"] for i in range(3)
+        ),
+        apply_states=tuple(
+            loaded[f"{financial.APPLY_PREFIX}.{i:03d}", "apply_state"] for i in range(3)
+        ),
+        host_pins=codec.decode_json(state.pins),
+        n_estimators=state.n_estimators,
+        demographic_conditioning=state.demographic_conditioning,
+        geography_config=_prefix_config(prefix, state.prefix_mode),
+    )
+    if state.property_income is not None:
+        _property_module().verify_materialized_property_income(
+            prefix.preparation,
+            prefix.allocated_population,
+            prefix.clone_population,
+            legacy_population=_status_complement(
+                state.person_status_boundary, state.legacy_financial_population
+            ),
+            population=_status_complement(
+                state.person_status_boundary,
+                (
+                    _development_complement(
+                        state.development_boundary, state.property_population
+                    )
+                    if state.rebase_property_taxes
+                    else _development_complement(
+                        state.development_boundary, run.financial_population
+                    )
+                ),
+            ),
+            host_pins=codec.decode_json(state.pins),
+            options=state.property_income,
+            artifacts=loaded,
+            legacy_matrix_producer_key=keys[financial.PROJECTION_NODE],
+            demographic_conditioning=state.demographic_conditioning,
+            geography_config=_prefix_config(prefix, state.prefix_mode),
+        )
+    if state.person_status_boundary is not None:
+        state.person_status_boundary.requalify()
+    if state.development_boundary is not None:
+        state.development_boundary.requalify()
+    checked_type = (
+        CheckedAtomicSurveyFinancialRun
+        if state.prefix_mode == _ATOMIC
+        else CheckedPreGeographySurveyFinancialRun
+    )
+    result = checked_type(entry[1], codec.sha(entry[1]), run.financial_population)
+    _pure_run(run, entry)
+    return result
+
+
+def _issue_run(
+    result,
+    *,
+    preparation_entry,
+    pins,
+    n_estimators,
+    demographic_conditioning,
+    source_keys,
+    keys,
+    implementations,
+    loaded,
+    live,
+    property_income=None,
+    legacy_financial_population=None,
+    rebase_property_taxes=False,
+    property_population=None,
+    person_status_boundary=None,
+    completion_boundary=None,
+    node_populations=None,
+    node_states=None,
+    retention_profile="all",
+    node_witnesses=None,
+    node_population_inputs=None,
+    development_boundary=None,
+):
+    """Called only after this runner's complete materialization/replay checks."""
+    prefix = result.prefix
+    mode = _result_mode(result)
+    config = _prefix_config(prefix, mode)
+    require((config is not None) == (mode == _ATOMIC), "FINANCIAL_PREFIX_CONFIG")
+    populations = tuple(
+        (name, population, reconstruction._population_stamp(population))
+        for name, population in (
+            *((name, getattr(prefix, name)) for name in _prefix_names(mode)),
+            ("financial", result.financial_population),
+        )
+    )
+    retained_node_ids = (
+        None
+        if retention_profile == "all"
+        else _compact_retained_roster(
+            result.compiled,
+            property_income,
+            rebase_property_taxes,
+            completion_boundary,
+        )
+    )
+    state = _FinancialRunState(
+        mode,
+        prefix,
+        _prefix_objects(prefix, mode),
+        preparation_entry,
+        result.financial_population,
+        populations,
+        result.manifest,
+        result.manifest.to_json_bytes(),
+        prefix.manifest.to_json_bytes(),
+        result.compiled,
+        graph_to_json(result.compiled.graph),
+        graph_to_json(prefix.compiled.graph),
+        result.store,
+        result.kernels,
+        tuple(sorted(result.sources.items())),
+        values.host.survey_budget._config_payload(config),
+        result.projection,
+        result.matrix,
+        codec.encode_json(pins),
+        n_estimators,
+        demographic_conditioning,
+        tuple(sorted(source_keys.items())),
+        tuple(sorted(keys.items())),
+        tuple(sorted(implementations.items())),
+        tuple(
+            sorted(
+                (node, name, codec.sha(payload))
+                for (node, name), payload in loaded.items()
+            )
+        ),
+        _manifest_population_seals(
+            result.manifest, result.compiled, completion_boundary=completion_boundary
+        ),
+        _manifest_population_seals(prefix.manifest, prefix.compiled),
+        live,
+        property_income,
+        None if property_income is None else property_income.to_bytes(),
+        legacy_financial_population,
+        None
+        if legacy_financial_population is None
+        else reconstruction._population_stamp(legacy_financial_population),
+        rebase_property_taxes,
+        property_population,
+        None
+        if property_population is None
+        else reconstruction._population_stamp(property_population),
+        None
+        if not rebase_property_taxes
+        else loaded[_tax_module().GATE_NODE, "verification"],
+        person_status_boundary,
+        completion_boundary,
+        None if completion_boundary is None else completion_boundary.attestation(),
+        _node_population_seals(
+            result.compiled,
+            node_populations,
+            completion_boundary,
+            retained_node_ids=retained_node_ids,
+        ),
+        node_states,
+        tuple(result.kernels.as_mapping().items()),
+        retention_profile,
+        () if retained_node_ids is None else retained_node_ids,
+        () if node_witnesses is None else tuple(node_witnesses.items()),
+        () if node_population_inputs is None else tuple(node_population_inputs.items()),
+        development_boundary,
+    )
+    identifier = id(result)
+
+    def forget(reference):
+        entry = _ISSUED_RUNS.get(identifier)
+        if entry is not None and entry[0] is reference:
+            _ISSUED_RUNS.pop(identifier, None)
+
+    reference = weakref.ref(result, forget)
+    _ISSUED_RUNS[identifier] = (reference, _run_document(result, state), state)
+    if retention_profile == "compact":
+        _ISSUED_RUNS[identifier] += (_compact_capsule_seal(state),)
+    _pure_run(result, _run_entry(result))
+
+
+def _live(
+    property_income=None,
+    rebase_property_taxes=False,
+    person_status=False,
+    completion_boundary=None,
+    source_qualified_development_inputs=False,
+):
+    """Pure final fence over this composition and its existing owner closure."""
+    result = dict(values.host.survey_budget._live())
+    if source_qualified_development_inputs:
+        result["development_inputs"] = _development_module()._live()
+    modules = (
+        sys.modules[__name__],
+        atomic,
+        financial,
+        values,
+        codec,
+        qrf_target,
+        financial.qrf,
+        financial.model_input,
+        sys.modules[LegacyQRFTrainKernel.__module__],
+        sys.modules[LegacyQRFApplyMatrixKernel.__module__],
+        observation,
+    )
+    if completion_boundary is not None:
+        result["survey_completion"] = _completion_module()._live(
+            completion_boundary.household_roles
+        )
+    if person_status:
+        result["person_status"] = _person_status_module()._live()
+    if property_income is not None:
+        from . import current_asec_property_basis, graph_property_income_receipts
+
+        extension = _property_module()
+        modules = (
+            *modules,
+            extension,
+            extension.completion,
+            extension.completion.provenance,
+            extension.sources,
+            current_asec_property_basis,
+            extension.sources.acs,
+            extension.sources.interest,
+            extension.sources.routing,
+            extension.sources.dividend,
+            extension.model,
+            extension.signed_graph,
+            graph_property_income_receipts,
+            sys.modules[extension.LegacyQRFApplyKernel.__module__],
+        )
+        result["property_contract"] = values.source._runtime_marker(
+            (
+                extension.PROTOCOL,
+                extension.completion.PROTOCOL,
+                extension.completion.PROPERTY_COMPLETION_TYPE,
+                extension.completion._COMPONENT_FIELDS,
+                extension.completion._ASEC_STATUSES,
+                extension.completion._ACS_STATUSES,
+                extension.completion._LITERAL_STATUSES,
+                extension.completion._PUBLIC_ROUTES,
+                extension.completion._PUBLIC_REASONS,
+                extension.completion._PUBLIC_MEASURES,
+                extension.PREFIX,
+                extension.CAP_LIMITATION,
+                extension.LEGACY_DIFFERENCE,
+                extension.BASIS_DIAGNOSTICS,
+                extension.PROPERTY_COMPONENTS,
+                extension.PROPERTY_DRAW_COLUMNS,
+                extension.PROPERTY_REPORTED_TOTAL,
+                extension.model.PROTOCOL,
+                extension.sources.PROTOCOL,
+                current_asec_property_basis.OTHER_PROPERTY_CATEGORIES,
+                current_asec_property_basis.OTHER_UNSPECIFIED_CATEGORY,
+            )
+        )
+    if rebase_property_taxes:
+        tax = _tax_module()
+        modules = (*modules, tax, tax.cps_carried)
+        result["property_tax_contract"] = values.source._runtime_marker(
+            (
+                tax.PROTOCOL,
+                tax.RECEIVING_NODE,
+                tax.TAX_LEAVES_NODE,
+                tax.GATE_NODE,
+                tax.TAX_LEAF_COLUMNS,
+                tax.DIAGNOSTICS_TYPE,
+                tax.VERIFICATION_TYPE,
+                tax.PROPERTY_COMPONENTS,
+                tax._INPUTS,
+                tax.cps_carried.TAXABLE_INTEREST_FRACTION,
+                tax.cps_carried.QUALIFIED_DIVIDEND_FRACTION,
+            )
+        )
+    for module in modules:
+        for name, value in vars(module).items():
+            if isinstance(value, FunctionType):
+                result[module.__name__, name] = values.source._function_seal(value)
+            elif isinstance(value, type) and value.__module__ == module.__name__:
+                result[module.__name__, name] = value
+                for method, function in vars(value).items():
+                    if isinstance(function, (staticmethod, classmethod)):
+                        function = function.__func__
+                    if isinstance(function, property):
+                        function = function.fget
+                    if isinstance(function, FunctionType):
+                        result[module.__name__, name, method] = (
+                            values.source._function_seal(function)
+                        )
+    result["financial_contract"] = values.source._runtime_marker(
+        (
+            RUN_PROTOCOL,
+            PRE_GEOGRAPHY_RUN_PROTOCOL,
+            _ATOMIC,
+            _PRE_GEOGRAPHY,
+            values.FEATURES,
+            values.DEMOGRAPHIC_FEATURES,
+            values.TARGETS,
+            values.OUTPUTS,
+            values.PROTOCOL,
+            values.PHASE,
+            values.SEED,
+        )
+    )
+    result["compact_observation_contract"] = values.source._runtime_marker(
+        (
+            observation.PROTOCOL,
+            tuple((type(dtype), str(dtype)) for dtype in observation._MASKED),
+        )
+    )
+    return result
+
+
+def _artifacts(manifest, compiled, store, kernels, keys, implementations):
+    """Read only the declared outputs after binding their actual producer keys."""
+    require(set(manifest.nodes) == set(compiled.order), "ATOMIC_NODE_ROSTER")
+    loaded = {}
+    for node_id in compiled.order:
+        node, record = compiled.graph.node(node_id), manifest.node(node_id)
+        kernel = kernels.get(node.kernel)
+        require(
+            record.key == keys[node_id]
+            and record.kernel_ref == node.kernel
+            and record.kernel_impl_hash == implementations[node_id]
+            and _capabilities_projection(record.capabilities)
+            == _capabilities_projection(kernel.capabilities)
+            and record.typed_artifacts
+            == typed_contracts(compiled, node, keys, kernels),
+            "ATOMIC_ARTIFACT_PRODUCER",
+        )
+        require(
+            set(record.opaque_artifacts) == {o.name for o in node.artifact_outputs},
+            "ATOMIC_ARTIFACT_ROSTER",
+        )
+        for output in node.artifact_outputs:
+            payload = store.load_bytes(record.opaque_artifacts[output.name])
+            survey._final_artifact(
+                manifest,
+                store,
+                node_id=node_id,
+                name=output.name,
+                type_=output.type,
+                payload=payload,
+                capabilities=kernel.capabilities,
+            )
+            loaded[node_id, output.name] = payload
+    return loaded
+
+
+def _model_receipts(nodes, donor, qualified, loaded, matrix_key):
+    """Bind fitted checkpoints to the exact source-derived design-weight donor.
+
+    The start-chain operation only resolves inputs and initializes RNG state;
+    this verifier does not fit a second model. Pickles are decoded only after
+    the caller has checked the actual store and typed graph producer closure.
+    """
+    fits = tuple(n for n in nodes if n.kernel == LegacyQRFTrainKernel.ref)
+    first = fits[0]
+    model_frame = codec.model_frame(
+        SimpleNamespace(weights={"person": donor.frame.resolve_weights("person")}),
+        first.inputs[0],
+        donor.frame.person,
+    )
+    predictors = values.feature_columns(qualified.demographic_conditioning)
+    model = financial.qrf.RegimeGatedQRF(
+        seed=values.SEED,
+        n_estimators=first.params["n_estimators"],
+        zero_atol=0,
+        max_samples_leaf=None,
+    )
+    before = qrf_target.LegacyQRFTrainingState.from_chain(
+        model.start_chain(
+            model_frame, list(predictors), list(values.TARGETS), weights="design"
+        )
+    )
+    receipts, history = {}, []
+    for i, fit in enumerate(fits):
+        target = values.TARGETS[i]
+        payload = loaded[fit.id, "model"]
+        packet, after = codec.read_training(loaded[fit.id, "training_state"])
+        require(
+            len(packet["models"]) == i + 1
+            and packet["models"][:i] == history
+            and packet["models"][-1]["sha256"] == codec.sha(payload),
+            "ATOMIC_TRAINING_HISTORY",
+        )
+        fitted = qrf_target.LegacyQRFTargetArtifact.from_trusted_bytes(
+            payload, expected_sha256=packet["models"][-1]["sha256"]
+        )
+        require(
+            fitted.training_state == before
+            and fitted.next_training_state == after
+            and fitted.donor_sha256
+            == qrf_target._consumed_values_sha256(
+                model_frame.person, (*predictors, *values.TARGETS[:i], target)
+            ),
+            "ATOMIC_TRAINING_DONOR",
+        )
+        history = [
+            *history,
+            {
+                "target": target,
+                "sha256": codec.sha(payload),
+                "training_id": fitted.training_id,
+            },
+        ]
+        require(packet["models"] == history, "ATOMIC_TRAINING_HISTORY")
+        before = after
+        receipts[fit.id] = {
+            "phase": values.PHASE,
+            "target": target,
+            "training_id": fitted.training_id,
+            "model_sha256": codec.sha(payload),
+            "donor_rows": len(model_frame.person),
+            "entity": "person",
+            "weight_kind": "design",
+            "regime": fitted.regime,
+        }
+        apply_id = f"{financial.APPLY_PREFIX}.{i:03d}"
+        application = financial.decode_matrix_apply_state(
+            loaded[apply_id, "apply_state"]
+        )
+        require(
+            application["application"]["models"] == history,
+            "ATOMIC_APPLY_MODEL_HISTORY",
+        )
+        receipts[apply_id] = {
+            "phase": values.PHASE,
+            "target": target,
+            "recipient_rows": len(
+                financial.model_input.decode_recipient_matrix(qualified.matrix).features
+            ),
+            "entity": "person",
+            "model_sha256": codec.sha(payload),
+            "raw_sha256": codec.sha(loaded[apply_id, "raw_draw"]),
+            "regime": fitted.regime,
+            "matrix_sha256": codec.sha(qualified.matrix),
+            "matrix_producer_key": matrix_key,
+        }
+    return receipts
+
+
+def run_atomic_survey_financial(
+    source_dir,
+    *,
+    snapshot_root,
+    store_root,
+    fraction,
+    seed,
+    geography_config,
+    demographic_conditioning=False,
+    n_estimators=100,
+    property_income=None,
+    rebase_property_taxes=False,
+    person_status=False,
+    household_roles=False,
+    child_property=None,
+    source_qualified_development_inputs=False,
+    resume="auto",
+    return_values=False,
+    _population_retention="all",
+    _retain_every_node_population=False,
+):
+    """Complete finances after the existing atomic geography prefix."""
+    return _run_survey_financial(
+        source_dir,
+        snapshot_root=snapshot_root,
+        store_root=store_root,
+        fraction=fraction,
+        seed=seed,
+        geography_config=geography_config,
+        demographic_conditioning=demographic_conditioning,
+        n_estimators=n_estimators,
+        property_income=property_income,
+        rebase_property_taxes=rebase_property_taxes,
+        person_status=person_status,
+        household_roles=household_roles,
+        child_property=child_property,
+        source_qualified_development_inputs=source_qualified_development_inputs,
+        resume=resume,
+        return_values=return_values,
+        _population_retention=_population_retention,
+        _retain_every_node_population=_retain_every_node_population,
+        _prefix_mode=_ATOMIC,
+    )
+
+
+def run_pre_geography_survey_financial(
+    source_dir,
+    *,
+    snapshot_root,
+    store_root,
+    fraction,
+    seed,
+    demographic_conditioning=False,
+    n_estimators=100,
+    property_income=None,
+    rebase_property_taxes=False,
+    person_status=False,
+    household_roles=False,
+    child_property=None,
+    source_qualified_development_inputs=False,
+    resume="auto",
+    return_values=False,
+    _population_retention="all",
+    _retain_every_node_population=False,
+):
+    """Complete finances on genuine clones before assigning atomic geography."""
+    return _run_survey_financial(
+        source_dir,
+        snapshot_root=snapshot_root,
+        store_root=store_root,
+        fraction=fraction,
+        seed=seed,
+        geography_config=None,
+        demographic_conditioning=demographic_conditioning,
+        n_estimators=n_estimators,
+        property_income=property_income,
+        rebase_property_taxes=rebase_property_taxes,
+        person_status=person_status,
+        household_roles=household_roles,
+        child_property=child_property,
+        source_qualified_development_inputs=source_qualified_development_inputs,
+        resume=resume,
+        return_values=return_values,
+        _population_retention=_population_retention,
+        _retain_every_node_population=_retain_every_node_population,
+        _prefix_mode=_PRE_GEOGRAPHY,
+    )
+
+
+def _run_survey_financial(
+    source_dir,
+    *,
+    snapshot_root,
+    store_root,
+    fraction,
+    seed,
+    geography_config,
+    _prefix_mode,
+    demographic_conditioning=False,
+    n_estimators=100,
+    property_income=None,
+    rebase_property_taxes=False,
+    person_status=False,
+    household_roles=False,
+    child_property=None,
+    source_qualified_development_inputs=False,
+    resume="auto",
+    return_values=False,
+    _population_retention="all",
+    _retain_every_node_population=False,
+):
+    """Verify one of the two explicit prefixes and the same financial operations.
+
+    The private ``_retain_every_node_population`` flag names the one caller
+    whose declared consumers are every node rather than the compact roster
+    below: under the default ``"all"`` retention profile the completion host
+    reads this run's whole per-node population roster as its own expected
+    populations (``graph_survey_completion_host.py``, ``base_expected``) and
+    hands them to ``_states``, which needs the frames themselves. The
+    recursive base call below sets it for that profile; nothing else does.
+    The compact profile witnesses instead, so it refuses the flag. See
+    docs/us-native-retention-seal.md.
+    """
+    _prefix_names(_prefix_mode)
+    # One verification epoch for the whole financial run. The existing atomic
+    # prefix opens its own nested scope; the raw four-node clone prefix uses
+    # this outer scope. Every independent scope closes with full source checks.
+    with survey._source_owner().verification_epoch() as verification:
+        require(
+            type(_population_retention) is str
+            and _population_retention in ("all", "compact"),
+            "RETENTION_PROFILE",
+        )
+        require(
+            type(source_qualified_development_inputs) is bool, "DEVELOPMENT_INPUTS_FLAG"
+        )
+        require(type(return_values) is bool, "RETURN_VALUES_FLAG")
+        require(
+            type(_retain_every_node_population) is bool
+            and not (_retain_every_node_population and child_property is not None)
+            and not (
+                _retain_every_node_population and _population_retention == "compact"
+            ),
+            "RETAIN_EVERY_NODE_POPULATION_FLAG",
+        )
+        require(type(person_status) is bool, "PERSON_STATUS_FLAG")
+        require(type(rebase_property_taxes) is bool, "PROPERTY_TAX_FLAG")
+        require(
+            not rebase_property_taxes or property_income is not None,
+            "PROPERTY_TAX_REQUIRES_PROPERTY",
+        )
+        require(type(household_roles) is bool, "HOUSEHOLD_ROLES_FLAG")
+        require(
+            not household_roles or child_property is not None, "ROLES_REQUIRE_CHILD"
+        )
+        require(
+            child_property is None or property_income is not None,
+            "CHILD_REQUIRES_PROPERTY",
+        )
+        require(
+            child_property is None or rebase_property_taxes, "CHILD_REQUIRES_TAX_REBASE"
+        )
+        if child_property is not None:
+            extension = _completion_module()
+            extension.validate_options(child_property)
+            base = _run_survey_financial(
+                source_dir,
+                snapshot_root=snapshot_root,
+                store_root=store_root,
+                fraction=fraction,
+                seed=seed,
+                geography_config=geography_config,
+                _prefix_mode=_prefix_mode,
+                demographic_conditioning=demographic_conditioning,
+                n_estimators=n_estimators,
+                property_income=property_income,
+                person_status=person_status,
+                source_qualified_development_inputs=source_qualified_development_inputs,
+                rebase_property_taxes=False,
+                resume=resume,
+                return_values=True,
+                _population_retention=_population_retention,
+                _retain_every_node_population=_population_retention == "all",
+            )
+            result = extension.extend(
+                base,
+                options=child_property,
+                household_roles=household_roles,
+                resume=resume,
+            )
+            return result if return_values else result.manifest
+        values.feature_columns(demographic_conditioning)
+        property_graph = None if property_income is None else _property_module()
+        if property_graph is not None:
+            require(
+                type(property_income) is property_graph.PropertyIncomeOptions,
+                "PROPERTY_OPTIONS_TYPE",
+            )
+            property_income_bytes = property_income.to_bytes()
+        else:
+            property_income_bytes = None
+        live = _live(
+            property_income,
+            rebase_property_taxes,
+            person_status,
+            source_qualified_development_inputs=source_qualified_development_inputs,
+        )
+        config_bytes = values.host.survey_budget._config_payload(geography_config)
+        require(
+            (config_bytes is not None)
+            if _prefix_mode == _ATOMIC
+            else config_bytes is None,
+            "ATOMIC_GEOGRAPHY_REQUIRED"
+            if _prefix_mode == _ATOMIC
+            else "PRE_GEOGRAPHY_CONFIG",
+        )
+        prefix_arguments = dict(
+            snapshot_root=snapshot_root,
+            store_root=store_root,
+            fraction=fraction,
+            seed=seed,
+            resume=resume,
+            return_values=True,
+        )
+        if _prefix_mode == _ATOMIC:
+            prefix = atomic.run_atomic_survey_population(
+                source_dir,
+                **prefix_arguments,
+                geography_config=geography_config,
+            )
+        else:
+            prefix = survey.run_authenticated_survey_population(
+                source_dir,
+                **prefix_arguments,
+                clones=True,
+            )
+        entry = prefix.preparation._checked()
+        prefix_objects = _prefix_objects(prefix, _prefix_mode)
+        prefix_manifest_bytes = prefix.manifest.to_json_bytes()
+        prefix_declaration = graph_to_json(prefix.compiled.graph)
+        retained = {
+            name: (
+                getattr(prefix, name),
+                reconstruction._population_stamp(getattr(prefix, name)),
+            )
+            for name in _prefix_names(_prefix_mode)
+        }
+        qualified = values.qualify_current_survey_predictors(
+            prefix.preparation,
+            prefix.allocated_population,
+            prefix.clone_population,
+            demographic_conditioning=demographic_conditioning,
+            geography_config=geography_config,
+        )
+        projection_bytes, matrix_bytes = qualified.projection, qualified.matrix
+        property_qualified = (
+            None
+            if property_graph is None
+            else property_graph.sources.qualify_current_property_income_sources(
+                prefix.preparation,
+                prefix.allocated_population,
+                prefix.clone_population,
+                demographic_conditioning=demographic_conditioning,
+                geography_config=geography_config,
+            )
+        )
+        if _prefix_mode == _ATOMIC:
+            geography = reconstruction.reconstruct_atomic_survey_geography(
+                prefix.preparation, prefix.allocated_population, geography_config
+            )
+            base_expected = {
+                survey.CREATE_NODE: Population.from_frame(
+                    entry[2].frame, survey.CREATE_NODE
+                ),
+                survey.ALLOCATION_NODE: prefix.allocated_population,
+                **{stage.node.id: stage.population for stage in geography.stages},
+            }
+            prefix_receipts = {
+                stage.node.id: json.loads(stage.receipt) for stage in geography.stages
+            }
+        else:
+            base_expected, prefix_receipts = _pre_geography_prefix_expectations(prefix)
+        host_edges = _prefix_host_edges(_prefix_mode)
+        ordering_edge = (
+            financial._geography_edge()
+            if _prefix_mode == _ATOMIC
+            else next(edge for edge in host_edges if edge.name == "frame_context")
+        )
+        pins, prefix_artifacts = {}, {}
+        for node_id, record in prefix.manifest.nodes.items():
+            for name, key in record.opaque_artifacts.items():
+                prefix_artifacts[node_id, name] = prefix.store.load_bytes(key)
+        for edge in host_edges:
+            record = prefix.manifest.node(edge.producer)
+            pins[edge.name] = {
+                "producer_key": record.key,
+                "artifact_key": record.opaque_artifacts[edge.artifact],
+                "payload_sha256": codec.sha(
+                    prefix_artifacts[edge.producer, edge.artifact]
+                ),
+            }
+        status_graph = _person_status_module() if person_status else None
+        status_boundary, status_nodes = None, ()
+        if status_graph is not None:
+            status_qualified = status_graph.qualify_current_survey_person_status(
+                prefix.preparation
+            )
+            status_edges = host_edges
+            status_nodes = status_graph.current_survey_person_status_nodes(
+                status_qualified,
+                prefix.clone_population.frame,
+                receiving_version=prefix.clone_population.version,
+                after=ordering_edge,
+                host_edges=status_edges,
+                host_pins=pins,
+            )
+            status_boundary = _PersonStatusBoundary(
+                prefix.preparation,
+                entry,
+                prefix.clone_population,
+                status_qualified,
+                status_nodes,
+            )
+        nodes = financial.current_survey_predictor_nodes(
+            qualified,
+            prefix.clone_population.frame,
+            host_pins=pins,
+            n_estimators=n_estimators,
+        )
+        original_donor = next(n for n in nodes if n.id == financial.DONOR_NODE)
+        if status_graph is not None:
+            nodes = tuple(
+                replace(
+                    node,
+                    artifact_inputs=(
+                        *node.artifact_inputs,
+                        status_graph.binding_edge(),
+                    ),
+                )
+                if node.id == financial.DONOR_NODE
+                else node
+                for node in nodes
+            )
+        property_nodes = (
+            ()
+            if property_graph is None
+            else property_graph.current_survey_property_nodes(
+                property_qualified,
+                prefix.clone_population.frame,
+                host_pins=pins,
+                options=property_income,
+            )
+        )
+        tax_nodes = (
+            ()
+            if not rebase_property_taxes
+            else _tax_nodes(
+                prefix.clone_population.frame,
+                prefix.clone_population.version,
+                property_income,
+                anticipated_outputs=(
+                    *(() if status_graph is None else status_nodes[-1].outputs),
+                    *next(n.outputs for n in nodes if n.id == financial.ATTACH_NODE),
+                    *property_graph.owned_columns(),
+                ),
+            )
+        )
+        development_boundary, development_nodes = None, ()
+        if source_qualified_development_inputs:
+            development_graph = _development_module()
+            development_boundary = _DevelopmentBoundary(
+                prefix.preparation, entry, prefix.clone_population, pins
+            )
+            final_outputs = (
+                *values.OUTPUTS,
+                *(
+                    ()
+                    if property_graph is None
+                    else (o.column for o in property_graph.owned_columns())
+                ),
+            )
+            development_nodes = development_graph.nodes(
+                development_boundary.qualified,
+                prefix.clone_population.frame,
+                population=tax_nodes[-1].population
+                if rebase_property_taxes
+                else prefix.clone_population.version,
+                host_edges=host_edges,
+                host_pins=pins,
+                after_columns=final_outputs,
+                after_edges=()
+                if not rebase_property_taxes
+                else (
+                    ArtifactInput(
+                        "property_tax_verification",
+                        _tax_module().GATE_NODE,
+                        "verification",
+                        _tax_module().VERIFICATION_TYPE,
+                    ),
+                ),
+            )
+            development_boundary.nodes = development_nodes
+        compiled = compile_graph(
+            replace(
+                prefix.compiled.graph,
+                nodes=(
+                    *prefix.compiled.graph.nodes,
+                    *status_nodes,
+                    *nodes,
+                    *property_nodes,
+                    *tax_nodes,
+                    *development_nodes,
+                ),
+            )
+        )
+        require(
+            len(prefix.compiled.order) == (9 if _prefix_mode == _ATOMIC else 4)
+            and len(property_nodes) == (0 if property_graph is None else 16)
+            and len(tax_nodes) == (3 if rebase_property_taxes else 0)
+            and len(status_nodes) == (4 if person_status else 0)
+            and len(compiled.order)
+            == (19 if _prefix_mode == _ATOMIC else 14)
+            + len(status_nodes)
+            + len(property_nodes)
+            + len(tax_nodes)
+            + len(development_nodes),
+            "ATOMIC_COMPILER_ROSTER",
+        )
+        if _prefix_mode == _ATOMIC:
+            gate_edge = financial._geography_edge()
+            require(
+                gate_edge.producer in compiled.predecessors[financial.DONOR_NODE]
+                and prefix_artifacts[gate_edge.producer, gate_edge.artifact]
+                == qualified.geography_validation,
+                "ATOMIC_GEOGRAPHY_GATE_EDGE",
+            )
+        else:
+            require(
+                qualified.geography_validation is None
+                and financial._geography_edge().producer not in compiled.order,
+                "PRE_GEOGRAPHY_GATE_ABSENT",
+            )
+        if status_graph is not None:
+            require(
+                status_graph.BIND_NODE in compiled.predecessors[financial.DONOR_NODE]
+                and ordering_edge.producer
+                in compiled.predecessors[status_graph.SOURCE_NODE],
+                "PERSON_STATUS_ORDERING",
+            )
+        declaration = graph_to_json(compiled.graph)
+        kernels, store, sources = KernelRegistry(), prefix.store, dict(prefix.sources)
+        for kernel in prefix.kernels.as_mapping().values():
+            kernels.register(kernel)
+        source_items = tuple(sorted(sources.items()))
+        for cls in (
+            financial.CurrentSurveyPredictorProjectionKernel,
+            financial.CurrentSurveyPredictorDonorFilterKernel,
+            financial.CurrentSurveyPredictorDonorColumnsKernel,
+            financial.CurrentSurveyPredictorAttachKernel,
+        ):
+            kernel = cls(
+                prefix.preparation,
+                prefix.allocated_population,
+                prefix.clone_population,
+                host_pins=pins,
+                n_estimators=n_estimators,
+                demographic_conditioning=demographic_conditioning,
+                geography_config=geography_config,
+            )
+            if (
+                status_graph is not None
+                and cls is financial.CurrentSurveyPredictorDonorFilterKernel
+            ):
+                kernel = _PersonStatusOrderedDonor(
+                    kernel,
+                    status_boundary,
+                    original_donor,
+                    compiled.graph.node(financial.DONOR_NODE),
+                )
+            kernels.register(kernel)
+        if status_graph is not None:
+
+            def require_status_current():
+                status_boundary.pure()
+
+            declared, status_kernels = status_graph.person_status_kernels(
+                status_qualified,
+                prefix.clone_population.frame,
+                receiving_version=prefix.clone_population.version,
+                after=ordering_edge,
+                host_edges=status_edges,
+                host_pins=pins,
+                require_current=require_status_current,
+            )
+            require(declared == status_nodes, "PERSON_STATUS_DECLARATIONS_CHANGED")
+            for kernel in status_kernels:
+                kernels.register(kernel)
+        kernels.register(LegacyQRFTrainKernel())
+        kernels.register(LegacyQRFApplyMatrixKernel())
+        if property_graph is not None:
+            property_graph.register_property_kernels(
+                kernels,
+                prefix.preparation,
+                prefix.allocated_population,
+                prefix.clone_population,
+                host_pins=pins,
+                options=property_income,
+                demographic_conditioning=demographic_conditioning,
+                geography_config=geography_config,
+            )
+        if rebase_property_taxes:
+            tax = _tax_module()
+            for cls in (
+                tax.PropertyTaxReceivingKernel,
+                tax.PropertyTaxLeavesKernel,
+                tax.PropertyTaxLeafGateKernel,
+            ):
+                kernels.register(cls())
+        if development_boundary is not None:
+            for node in development_nodes:
+                kernels.register(
+                    _development_module().DevelopmentKernel(development_boundary, node)
+                )
+        _, source_keys = _source_paths_and_keys(compiled, sources, store)
+        keys, implementations = _all_node_keys(compiled, kernels, source_keys)
+        if development_boundary is not None:
+            development_boundary.keys = tuple(sorted(keys.items()))
+        receipts = {
+            **{n: r.receipt for n, r in prefix.manifest.nodes.items()},
+            **prefix_receipts,
+        }
+        donor_node = compiled.graph.node(financial.DONOR_NODE)
+        donor = population_ops.patch(
+            base_expected[survey.CREATE_NODE],
+            donor_node,
+            KernelResult(frame=qualified.donor_frame),
+        )
+        receipts[donor_node.id] = {
+            "selection": "ASEC_native_whole_households",
+            "fit_weight_kind": "design",
+            "release_eligible": False,
+        }
+        columns_node = compiled.graph.node(financial.DONOR_COLUMNS_NODE)
+        donor_columns = population_ops.patch(
+            donor,
+            columns_node,
+            KernelResult(
+                columns={
+                    ("person", c): qualified.donor_columns[c]
+                    for c in (
+                        *values.feature_columns(demographic_conditioning),
+                        *values.TARGETS,
+                    )
+                }
+            ),
+        )
+        receipts[financial.PROJECTION_NODE] = qualified.evidence
+        receipts[columns_node.id] = qualified.evidence
+        # Retention, declared rather than universal. Nineteen detached
+        # populations between the observation and the replay comparison below
+        # are ~290 GiB at full source; the comparison itself needs only what
+        # ``same_replayed_population`` compares, which the seal carries in
+        # space proportional to columns. What cannot be sealed is object
+        # IDENTITY: ``result.financial_population is observed[final_node]``
+        # further down is an identity check, and the extension host has its
+        # own. Those consumers are named here, before the run, and only they
+        # are retained -- detached with the executor's own snapshot function,
+        # so the object a caller receives is exactly what it is today.
+        # See docs/us-native-retention-seal.md.
+        # The declared consumers are the compact profile's own retained roster:
+        # the financial attach, the development attach when this run has one
+        # (it becomes ``final_node`` below), the property attach and the tax
+        # gate. Both profiles name the same identity consumers from one place.
+        retained_nodes = _compact_retained_roster(
+            compiled,
+            property_income,
+            rebase_property_taxes,
+        )
+        declared_consumers = (
+            frozenset(compiled.order)
+            if _retain_every_node_population
+            else frozenset(retained_nodes)
+        )
+        observed, observed_stamps = {}, {}
+        # The compact profile witnesses every node and retains its roster; the
+        # default profile seals every node and retains the declared consumers.
+        witnessed = {} if _population_retention == "compact" else None
+        observed_seals, observed_seal_ids = {}, {}
+
+        def observe(node_id, population):
+            if witnessed is not None:
+                require(node_id not in observed, "ATOMIC_OBSERVER_DUPLICATE")
+                require(node_id not in witnessed, "ATOMIC_OBSERVER_DUPLICATE")
+                witnessed[node_id] = observation.population_witness(population)
+                if node_id not in retained_nodes:
+                    return
+                observed[node_id] = population
+                observed_stamps[node_id] = reconstruction._population_stamp(population)
+                return
+            require(node_id not in observed_seals, "ATOMIC_OBSERVER_DUPLICATE")
+            # Seal exactly the object this run goes on to hold. For a declared
+            # consumer that is the detached snapshot, which is what the
+            # comparison ran against before this change; for every other node
+            # there is no snapshot to take, and the live population seals to
+            # the same record because the detachment preserves content --
+            # pinned by test_an_observer_snapshot_preserves_the_replay_seal.
+            # The executor hands the live population (detach=False below) and
+            # sealing is read-only, so this allocates one copy per declared
+            # consumer and none at all for the rest.
+            if node_id in declared_consumers:
+                population = _observer_snapshot(population)
+                observed[node_id] = population
+                observed_stamps[node_id] = reconstruction._population_stamp(population)
+            seal = replayed_population_seal(population)
+            observed_seals[node_id] = seal
+            observed_seal_ids[node_id] = seal_identity(seal)
+
+        manifest = run_graph(
+            compiled,
+            sources=sources,
+            store=store,
+            kernels=kernels,
+            resume=resume,
+            _population_observer=observe,
+            # The default profile's observer seals and drops; it retains only
+            # the declared consumers, and it detaches those itself, so the
+            # executor's own per-node pickle round trip is not needed. The
+            # compact profile keeps the executor's detachment: its witness
+            # observer and its non-retention test were written against the
+            # detached snapshot.
+            _population_observer_detach=witnessed is not None,
+            _verification_epoch=verification,
+        )
+        require(
+            tuple(observed_seals if witnessed is None else witnessed) == compiled.order,
+            "ATOMIC_OBSERVER_ROSTER",
+        )
+        if witnessed is not None:
+            require(tuple(observed) == retained_nodes, "COMPACT_BOUNDARY_ROSTER")
+        else:
+            require(
+                set(observed) == declared_consumers
+                and all(
+                    seal_identity(observed_seals[node_id]) == recorded
+                    for node_id, recorded in observed_seal_ids.items()
+                ),
+                "ATOMIC_OBSERVER_RETENTION",
+            )
+        loaded = _artifacts(manifest, compiled, store, kernels, keys, implementations)
+        require(
+            all(loaded[k] == v for k, v in prefix_artifacts.items()),
+            "ATOMIC_PREFIX_ARTIFACTS",
+        )
+        require(
+            loaded[financial.PROJECTION_NODE, "projection"] == projection_bytes
+            and loaded[financial.PROJECTION_NODE, "matrix"] == matrix_bytes,
+            "ATOMIC_SOURCE_ARTIFACTS",
+        )
+        raw = tuple(
+            loaded[f"{financial.APPLY_PREFIX}.{i:03d}", "raw_draw"] for i in range(3)
+        )
+        applications = tuple(
+            loaded[f"{financial.APPLY_PREFIX}.{i:03d}", "apply_state"] for i in range(3)
+        )
+        matrix_key = keys[financial.PROJECTION_NODE]
+        drawn = financial.read_current_survey_draws(
+            matrix_bytes,
+            matrix_key,
+            raw,
+            applications,
+            demographic_conditioning=demographic_conditioning,
+        )
+        receipts.update(
+            _model_receipts(nodes, donor_columns, qualified, loaded, matrix_key)
+        )
+        receipts[financial.ATTACH_NODE] = {
+            **qualified.evidence,
+            "raw_sha256": [codec.sha(r) for r in raw],
+            "all_output_cells_available": True,
+            "ACS_financial_origin": "modeled",
+            "paired_draws": "source_origin_join",
+            "host_weights_changed": False,
+        }
+        property_results = (
+            {}
+            if property_graph is None
+            else property_graph.reconstruct_property_results(
+                property_qualified,
+                prefix.clone_population.frame,
+                host_pins=pins,
+                options=property_income,
+                artifacts=loaded,
+                legacy_matrix_producer_key=matrix_key,
+            )
+        )
+        receipts.update(
+            {name: result.receipt for name, result in property_results.items()}
+        )
+        expected, current, tax_populations = {}, {}, {}
+        for node_id in compiled.order:
+            node, version = compiled.graph.node(node_id), compiled.versions[node_id]
+            if (
+                development_boundary is not None
+                and node_id in _development_module().NODE_IDS
+            ):
+                graph = _development_module()
+                actual_result = graph.result(
+                    development_boundary.qualified,
+                    development_boundary.originals,
+                    node,
+                    current[version].frame.person,
+                )
+                require(
+                    all(
+                        loaded[node_id, name] == payload
+                        for name, payload in actual_result.artifacts.items()
+                    ),
+                    "DEVELOPMENT_OUTPUT_ARTIFACT",
+                )
+                population = population_ops.patch(current[version], node, actual_result)
+                receipts[node_id] = dict(actual_result.receipt)
+            elif status_graph is not None and node_id in status_graph.NODE_IDS:
+                artifacts = {
+                    edge.name: ArtifactValue(
+                        loaded[edge.producer, edge.artifact],
+                        edge.type,
+                        opaque_artifact_key(keys[edge.producer], edge.artifact),
+                        keys[edge.producer],
+                        numeric_scope(
+                            kernels.get(
+                                compiled.graph.node(edge.producer).kernel
+                            ).capabilities
+                        ),
+                    )
+                    for edge in node.artifact_inputs
+                }
+                population, status_result = (
+                    status_graph.expected_person_status_population(
+                        None
+                        if node.structural is StructuralDelta.CREATE
+                        else current[version],
+                        qualified=status_qualified,
+                        node=node,
+                        artifacts=artifacts,
+                    )
+                )
+                require(
+                    all(
+                        loaded[node_id, name] == payload
+                        for name, payload in status_result.artifacts.items()
+                    ),
+                    "PERSON_STATUS_OUTPUT_ARTIFACT",
+                )
+                receipts[node_id] = dict(status_result.receipt)
+            elif rebase_property_taxes and node_id == _tax_module().RECEIVING_NODE:
+                tax_populations, tax_results = _reconstruct_tax(
+                    current[node.base],
+                    compiled=compiled,
+                    kernels=kernels,
+                    keys=keys,
+                    loaded=loaded,
+                    options=property_income,
+                )
+                receipts.update(
+                    {name: result.receipt for name, result in tax_results.items()}
+                )
+                population = tax_populations[node_id]
+            elif node_id in tax_populations:
+                population = tax_populations[node_id]
+            elif node_id in property_results:
+                incumbent = (
+                    version if node.structural is StructuralDelta.NONE else node.base
+                )
+                property_result = property_results[node_id]
+                if node.structural is StructuralDelta.FILTER:
+                    frame = current[incumbent].frame
+                    entity = frame.schema.person_entity
+                    id_column = frame.schema.entity_id_column(entity)
+                    ids = pd.Index(frame.table(entity)[id_column], name=id_column)
+                    mask = property_result.keep.reindex(ids).to_numpy(
+                        dtype=np.bool_, copy=True
+                    )
+                    property_result = replace(
+                        property_result, frame=frame.select(mask), keep=None
+                    )
+                population = population_ops.patch(
+                    current[incumbent], node, property_result
+                )
+            elif node_id == donor_node.id:
+                population = donor
+            elif node_id == columns_node.id:
+                population = donor_columns
+            elif node_id == financial.ATTACH_NODE:
+                population = population_ops.patch(
+                    current[version],
+                    node,
+                    KernelResult(
+                        columns=values.complete_predictor_columns(
+                            qualified, prefix.clone_population.frame, drawn
+                        )
+                    ),
+                )
+            elif node_id in base_expected:
+                population = base_expected[node_id]
+            else:
+                population = current[version]
+            expected[node_id] = current[version] = population
+            if witnessed is None:
+                same_replayed_population_seals(
+                    replayed_population_seal(population), observed_seals[node_id]
+                )
+            elif node_id not in observed:
+                observation.same_population_witness(population, witnessed[node_id])
+            else:
+                atomic.same_replayed_population(population, observed[node_id])
+        if property_graph is not None:
+            from .graph_property_income_receipts import verify_property_model_receipts
+
+            receipts.update(
+                verify_property_model_receipts(
+                    property_nodes,
+                    expected[property_graph.DONOR_COLUMNS_NODE],
+                    expected[property_graph.RECIPIENT_COLUMNS_NODE],
+                    loaded,
+                )
+            )
+        expected_stamps = {
+            n: reconstruction._population_stamp(p) for n, p in expected.items()
+        }
+        states = atomic._states(compiled, kernels, source_keys, expected, receipts)
+        population_inputs = (
+            None
+            if witnessed is None
+            else {
+                n: atomic._state_population_inputs(compiled, n, expected[n])
+                for n in compiled.order
+            }
+        )
+        survey._check_node_states(manifest, states)
+        final_node = (
+            financial.ATTACH_NODE
+            if property_graph is None
+            else property_graph.ATTACH_NODE
+        )
+        property_population = observed[final_node] if rebase_property_taxes else None
+        if rebase_property_taxes:
+            final_node = _tax_module().GATE_NODE
+        if development_boundary is not None:
+            final_node = _development_module().ATTACH_NODE
+        legacy_population = observed[financial.ATTACH_NODE]
+        require(final_node in observed, "ATOMIC_OBSERVER_RETENTION")
+        result_type = (
+            AtomicSurveyFinancialRunValues
+            if _prefix_mode == _ATOMIC
+            else PreGeographySurveyFinancialRunValues
+        )
+        result = result_type(
+            prefix,
+            observed[final_node],
+            manifest,
+            compiled,
+            store,
+            kernels,
+            sources,
+            projection_bytes,
+            matrix_bytes,
+        )
+        # Implementation/source/store I/O precedes the last owner/support borrow.
+        current_keys, current_implementations = _all_node_keys(
+            compiled, kernels, source_keys
+        )
+        require(
+            current_keys == keys and current_implementations == implementations,
+            "ATOMIC_FINAL_IMPLEMENTATIONS",
+        )
+        financial.verify_materialized_current_survey_predictors(
+            prefix.preparation,
+            prefix.allocated_population,
+            prefix.clone_population,
+            population=_status_complement(status_boundary, legacy_population),
+            projection=projection_bytes,
+            matrix=matrix_bytes,
+            matrix_producer_key=matrix_key,
+            raw_draws=raw,
+            apply_states=applications,
+            host_pins=pins,
+            n_estimators=n_estimators,
+            demographic_conditioning=demographic_conditioning,
+            geography_config=geography_config,
+        )
+        if property_graph is not None:
+            property_graph.verify_materialized_property_income(
+                prefix.preparation,
+                prefix.allocated_population,
+                prefix.clone_population,
+                legacy_population=_status_complement(
+                    status_boundary, legacy_population
+                ),
+                population=_status_complement(
+                    status_boundary,
+                    (
+                        property_population
+                        if rebase_property_taxes
+                        else _development_complement(
+                            development_boundary, result.financial_population
+                        )
+                    ),
+                ),
+                host_pins=pins,
+                options=property_income,
+                artifacts=loaded,
+                legacy_matrix_producer_key=matrix_key,
+                demographic_conditioning=demographic_conditioning,
+                geography_config=geography_config,
+            )
+            require(
+                property_income.to_bytes() == property_income_bytes,
+                "PROPERTY_OPTIONS_CHANGED",
+            )
+        if status_boundary is not None:
+            status_boundary.requalify()
+        if development_boundary is not None:
+            development_boundary.requalify()
+        values.source._pure_final(entry[2])
+        require(
+            values.source._ISSUED.get(id(prefix.preparation)) is entry
+            and prefix.preparation.payload == entry[1]
+            and _prefix_config(prefix, _prefix_mode) is geography_config
+            and values.host.survey_budget._config_payload(geography_config)
+            == config_bytes
+            and result.prefix is prefix
+            and result.manifest is manifest
+            and result.compiled is compiled
+            and result.store is store
+            and result.kernels is kernels
+            and result.financial_population is observed[final_node]
+            and result.projection == projection_bytes
+            and result.matrix == matrix_bytes
+            and all(
+                a is b
+                for a, b in zip(
+                    _prefix_objects(prefix, _prefix_mode),
+                    prefix_objects,
+                    strict=True,
+                )
+            )
+            and prefix.manifest.to_json_bytes() == prefix_manifest_bytes
+            and graph_to_json(prefix.compiled.graph) == prefix_declaration
+            and prefix.compiled == compile_graph(prefix.compiled.graph)
+            and tuple(sorted(result.sources.items())) == source_items
+            and tuple(sorted(prefix.sources.items())) == source_items
+            and graph_to_json(compiled.graph) == declaration
+            and compiled == compile_graph(compiled.graph)
+            and _live(
+                property_income,
+                rebase_property_taxes,
+                person_status,
+                source_qualified_development_inputs=source_qualified_development_inputs,
+            )
+            == live,
+            "ATOMIC_FINAL_BINDINGS",
+        )
+        for name, (population, stamp) in retained.items():
+            require(
+                getattr(prefix, name) is population
+                and reconstruction._population_stamp(population) == stamp,
+                "ATOMIC_FINAL_PREFIX_MUTATION",
+            )
+        for version, population in (
+            (survey.CREATE_NODE, base_expected[survey.CREATE_NODE]),
+            (
+                survey.ALLOCATION_NODE,
+                prefix.observed_population
+                if _prefix_mode == _ATOMIC
+                else prefix.allocated_population,
+            ),
+            (atomic.clone.COMBINED_CLONE_NODE, prefix.clone_population),
+        ):
+            survey._same_frame(population.frame, prefix.manifest.population(version))
+            require(
+                population.mass_ledger == prefix.manifest.mass_ledger(version),
+                "ATOMIC_FINAL_PREFIX_LEDGER",
+            )
+        for node_id, population in expected.items():
+            require(
+                reconstruction._population_stamp(population) == expected_stamps[node_id]
+                and (
+                    node_id not in observed
+                    or reconstruction._population_stamp(observed[node_id])
+                    == observed_stamps[node_id]
+                )
+                and (
+                    witnessed is not None
+                    or seal_identity(observed_seals[node_id])
+                    == observed_seal_ids[node_id]
+                ),
+                "ATOMIC_FINAL_POPULATION_MUTATION",
+            )
+            if witnessed is None:
+                same_replayed_population_seals(
+                    replayed_population_seal(population), observed_seals[node_id]
+                )
+            elif node_id not in observed:
+                observation.same_population_witness(population, witnessed[node_id])
+            else:
+                atomic.same_replayed_population(population, observed[node_id])
+        for version, population in current.items():
+            survey._same_frame(population.frame, manifest.population(version))
+            require(
+                population.mass_ledger == manifest.mass_ledger(version),
+                "ATOMIC_FINAL_LEDGER",
+            )
+        survey._check_node_states(manifest, states)
+        _issue_run(
+            result,
+            preparation_entry=entry,
+            pins=pins,
+            n_estimators=n_estimators,
+            demographic_conditioning=demographic_conditioning,
+            source_keys=source_keys,
+            keys=keys,
+            implementations=implementations,
+            loaded=loaded,
+            live=live,
+            property_income=property_income,
+            legacy_financial_population=None
+            if property_graph is None
+            else legacy_population,
+            rebase_property_taxes=rebase_property_taxes,
+            property_population=property_population,
+            person_status_boundary=status_boundary,
+            development_boundary=development_boundary,
+            node_populations=(
+                observed
+                if witnessed is not None
+                else {
+                    node_id: observed.get(node_id, seal)
+                    for node_id, seal in observed_seals.items()
+                }
+            ),
+            retention_profile=_population_retention,
+            node_witnesses=witnessed,
+            node_population_inputs=population_inputs,
+            node_states=states,
+        )
+        return result if return_values else manifest

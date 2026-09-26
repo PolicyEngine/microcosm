@@ -24,7 +24,7 @@ from microcosm.calibrate import (
     TargetSpec,
     calibrate,
 )
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
 
 def _load_builder_module():
@@ -2570,6 +2570,11 @@ def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverag
     (microcosm#956): the receipt call must replay exactly the arguments the
     registry compile saw, and its result must land in the coverage payload
     before that payload is written.
+
+    On the native integration line the compile lives in the shared
+    ``_compile_fiscal_release_target_registry`` (the native entry uses it
+    too), which ``_main`` calls once with its crosswalk and which returns the
+    ledger artifact whose facts it compiled; the receipt stays in ``_main``.
     """
 
     import ast
@@ -2577,23 +2582,52 @@ def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverag
 
     builder = _load_builder_module()
     tree = ast.parse(inspect.getsource(builder._main))
-    calls = {
-        name: [
+    shared_tree = ast.parse(
+        inspect.getsource(builder._compile_fiscal_release_target_registry)
+    )
+
+    def calls_to(scope, name):
+        return [
             node
-            for node in ast.walk(tree)
+            for node in ast.walk(scope)
             if isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == name
         ]
+
+    calls = {
+        name: calls_to(tree, name)
         for name in (
-            "compile_us_fiscal_target_registry",
+            "_compile_fiscal_release_target_registry",
             "us_fiscal_target_exclusion_receipt",
             "write_us_source_coverage_diagnostics",
         )
     }
     assert [len(found) for found in calls.values()] == [1, 1, 1]
-    compile_call = calls["compile_us_fiscal_target_registry"][0]
+    assert calls_to(tree, "compile_us_fiscal_target_registry") == []
+    (compile_call,) = calls_to(shared_tree, "compile_us_fiscal_target_registry")
     receipt_call = calls["us_fiscal_target_exclusion_receipt"][0]
+    # ``_main`` hands the shared compiler the crosswalk the receipt replays and
+    # takes back the ledger artifact whose facts the compiler compiled, and
+    # the receipt follows the compile.
+    shared_call = calls["_compile_fiscal_release_target_registry"][0]
+    shared_keywords = {
+        keyword.arg: ast.dump(keyword.value) for keyword in shared_call.keywords
+    }
+    assert shared_keywords == {
+        "congressional_district_vintage_crosswalk": ast.dump(
+            ast.Name("congressional_district_vintage_crosswalk", ast.Load())
+        )
+    }
+    (shared_assignment,) = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign) and node.value is shared_call
+    ]
+    assert isinstance(shared_assignment.targets[0], ast.Tuple)
+    assert ast.unparse(shared_assignment.targets[0].elts[0]) == "ledger_artifact"
+    assert ast.unparse(compile_call.args[0]) == "ledger_artifact.facts"
+    assert shared_call.lineno < receipt_call.lineno
     assert ast.dump(receipt_call.args[0]) == ast.dump(compile_call.args[0])
     compile_keywords = {
         keyword.arg: ast.dump(keyword.value) for keyword in compile_call.keywords
@@ -9734,8 +9768,13 @@ def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
     assert marketplace_takers["above_benchmark_count"] == 1
 
 
-def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> None:
+@pytest.mark.parametrize("context", ["empty", "metadata", "mass_log", "both"])
+def test_aca_source_runtime_refreshes_degenerate_release_inputs(
+    monkeypatch, context
+) -> None:
     builder = _load_builder_module()
+    has_metadata = context in ("metadata", "both")
+    has_mass_log = context in ("mass_log", "both")
     person = pd.DataFrame(
         {
             "person_id": np.asarray([1, 2, 3], dtype="int64"),
@@ -9771,11 +9810,20 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
         builder.US_SCHEMA,
         {
             "household": builder.Weights(
-                values=np.asarray([1.0, 1.0]),
+                values=np.asarray([0.5, 0.5] if has_mass_log else [1.0, 1.0]),
                 kind=WeightKind.DESIGN,
             )
         },
+        metadata={"invented_native_context": {"period": 2024, "flags": [False, True]}}
+        if has_metadata
+        else None,
     )
+    if has_mass_log:
+        frame = frame.with_weights(
+            "household",
+            Weights(np.asarray([1.0, 1.0]), WeightKind.DESIGN),
+            mass=MassChange(factor=2.0, reason="Invented pre-ACA support expansion"),
+        )
     specs = (
         TargetSpec(
             name="cms_aca.oep2024.state_marketplace.al.aptc_recipients",
@@ -9835,9 +9883,37 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
         frame.table("tax_unit")["selected_marketplace_plan_benchmark_ratio"].nunique()
         == 1
     )
+    # ACA owns only its two tax-unit outputs. Context and all other data must
+    # survive the real writeback, including a retained native handoff's history.
+    assert refreshed.metadata == frame.metadata
+    assert refreshed.mass_log == frame.mass_log
+    assert bool(refreshed.metadata) is has_metadata
+    assert bool(refreshed.mass_log) is has_mass_log
+    assert refreshed.schema == frame.schema
+    pd.testing.assert_series_equal(refreshed.strata, frame.strata)
+    assert refreshed.weighted_entities == frame.weighted_entities
+    for entity in frame.weighted_entities:
+        before, after = frame.weights_for(entity), refreshed.weights_for(entity)
+        assert after.kind is before.kind
+        assert after.values.dtype == before.values.dtype
+        assert after.values.tobytes() == before.values.tobytes()
+    for entity in frame.entities:
+        columns = [
+            name
+            for name in frame.table(entity)
+            if name not in builder.US_ACA_SOURCE_OUTPUT_COLUMNS
+        ]
+        pd.testing.assert_frame_equal(
+            refreshed.table(entity)[columns],
+            frame.table(entity)[columns],
+            check_exact=True,
+        )
 
 
-def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
+@pytest.mark.parametrize("explicit_metadata", [False, True])
+def test_aca_source_tax_unit_table_batches_policyengine_inputs(
+    monkeypatch, explicit_metadata
+) -> None:
     builder = _load_builder_module()
     person = pd.DataFrame(
         {
@@ -9910,6 +9986,10 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
     seen_tax_unit_batches: list[tuple[int, ...]] = []
     formula_owned_assertions: list[int] = []
     dataset_assert_flags: list[bool | None] = []
+    formula_metadata = object() if explicit_metadata else None
+    seen_metadata = []
+    before = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
+    before_weights = frame.weights_for("household").values.copy()
 
     class FakeMicrosimulation:
         def __init__(self, *, dataset):
@@ -9939,11 +10019,13 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
             dtype=np.float64,
         )
 
-    def fake_assert_no_formula_owned_columns(frame_arg):
+    def fake_assert_no_formula_owned_columns(frame_arg, *, formula_metadata=None):
         formula_owned_assertions.append(frame_arg.n("household"))
+        seen_metadata.append(formula_metadata)
 
     def fake_dataset_from_frame(frame_arg, **kwargs):
         dataset_assert_flags.append(kwargs.get("assert_no_formula_owned_columns"))
+        seen_metadata.append(kwargs.get("formula_metadata"))
         return frame_arg
 
     monkeypatch.setattr(
@@ -9959,11 +10041,17 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
         target_tables,
         microsimulation_cls=FakeMicrosimulation,
         maximum_microsim_batch_size=1,
+        formula_metadata=formula_metadata,
     ).set_index("tax_unit_id")
 
     assert seen_tax_unit_batches == [(10,), (20,), (30,)]
     assert formula_owned_assertions == [3]
     assert dataset_assert_flags == [False, False, False]
+    assert len(seen_metadata) == 4
+    assert all(metadata is formula_metadata for metadata in seen_metadata)
+    for entity, original in before.items():
+        pd.testing.assert_frame_equal(frame.table(entity), original, check_exact=True)
+    np.testing.assert_array_equal(frame.weights_for("household").values, before_weights)
     assert tax_unit.loc[10, "tax_unit_weight"] == 20.0
     assert tax_unit.loc[20, "tax_unit_weight"] == 20.0
     assert tax_unit.loc[30, "tax_unit_weight"] == 0.0
@@ -10024,6 +10112,8 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         schema = object()
         weighted_entities = ()
         strata = None
+        mass_log = ()
+        metadata = {}
 
         def table(self, entity):
             assert entity == "tax_unit"
@@ -10060,7 +10150,9 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "Frame",
-        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+        lambda tables, schema, weights, strata, *, mass_log, metadata: SimpleNamespace(
+            tables=tables
+        ),
     )
 
     specs = (
@@ -10305,6 +10397,8 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        formula_metadata=None,
+        dataset_cls=None,
     ):
         datasets.append(
             (
@@ -10321,7 +10415,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         assert variable_name == "mock_credit"
         return object()
 
-    def fake_assert_no_formula_owned_columns(frame_arg):
+    def fake_assert_no_formula_owned_columns(frame_arg, *, formula_metadata=None):
         formula_owned_assertions.append(frame_arg.n("household"))
 
     monkeypatch.setitem(
@@ -12845,7 +12939,7 @@ def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
 ) -> None:
     builder = _load_builder_module()
 
-    def fake_assert_no_formula_owned_columns(frame):
+    def fake_assert_no_formula_owned_columns(frame, *, formula_metadata=None):
         assert frame is small_frame
         raise ValueError("formula-owned guard fired")
 
@@ -12885,7 +12979,9 @@ def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> Non
 
 def test_l0_refit_export_subsets_clean_base_frame(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
-    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    monkeypatch.setattr(
+        builder, "_assert_no_formula_owned_columns", lambda frame, **kwargs: None
+    )
     result = SimpleNamespace(
         selected_entity_ids=np.asarray([2], dtype="int64"),
         weight_entity="household",
@@ -13448,6 +13544,8 @@ def _install_multi_reform_fakes(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        formula_metadata=None,
+        dataset_cls=None,
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
@@ -13467,7 +13565,7 @@ def _install_multi_reform_fakes(
     monkeypatch.setattr(
         builder,
         "_assert_no_formula_owned_columns",
-        lambda frame_arg: None,
+        lambda frame_arg, **kwargs: None,
     )
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(
@@ -15768,9 +15866,17 @@ def _minimal_pin_argv() -> list[str]:
 
 
 def test_main_checks_the_committed_feed_pin_before_compiling_targets() -> None:
-    """The pin check sits between loading the feed and compiling on it."""
+    """The pin check sits between loading the feed and compiling on it.
+
+    On the native integration line ``_main`` compiles its targets through
+    the shared ``_compile_fiscal_release_target_registry`` (which the native
+    entry also uses), so the check lives there, once.
+    """
     builder = _load_builder_module()
-    source = inspect.getsource(builder._main)
+    main_source = inspect.getsource(builder._main)
+    assert main_source.count("_compile_fiscal_release_target_registry(") == 1
+    assert "_check_committed_us_ledger_feed_pin(" not in main_source
+    source = inspect.getsource(builder._compile_fiscal_release_target_registry)
     loaded = source.index("ledger_artifact = load_ledger_consumer_artifact(")
     checked = source.index("_check_committed_us_ledger_feed_pin(")
     compiled = source.index("target_registry = compile_us_fiscal_target_registry(")

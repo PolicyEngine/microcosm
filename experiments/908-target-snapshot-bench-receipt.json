@@ -1,0 +1,84 @@
+{
+  "label": "SYNTHETIC \u2014 invented matrices and frames, not US or UK calibration",
+  "dimension_points": {
+    "codec_target_counts": [
+      500,
+      2000,
+      5000,
+      10000
+    ],
+    "solver_records": 10000,
+    "solver_targets": 100,
+    "solver_epochs": 300
+  },
+  "bounds": {
+    "numeric_threads": 1,
+    "cpu_seconds_limit_applied": 120,
+    "memory_bytes_limit_applied": null,
+    "peak_rss_bytes": 289800192,
+    "native_inputs_read": 0
+  },
+  "codec_costs": [
+    {
+      "n_targets": 500,
+      "build_and_validate_ms": 2.099,
+      "serialize_ms": 0.603,
+      "store_write_ms": 3.913,
+      "serialized_bytes": 88625,
+      "bytes_per_target": 177.2
+    },
+    {
+      "n_targets": 2000,
+      "build_and_validate_ms": 9.087,
+      "serialize_ms": 2.321,
+      "store_write_ms": 13.491,
+      "serialized_bytes": 353895,
+      "bytes_per_target": 176.9
+    },
+    {
+      "n_targets": 5000,
+      "build_and_validate_ms": 18.943,
+      "serialize_ms": 5.723,
+      "store_write_ms": 29.589,
+      "serialized_bytes": 885599,
+      "bytes_per_target": 177.1
+    },
+    {
+      "n_targets": 10000,
+      "build_and_validate_ms": 38.339,
+      "serialize_ms": 11.357,
+      "store_write_ms": 60.114,
+      "serialized_bytes": 1771933,
+      "bytes_per_target": 177.2
+    }
+  ],
+  "solver_overhead": [
+    {
+      "cadence": "observer_off",
+      "best_of_3_seconds": 0.036,
+      "closing_loss": 2.7968459435242565e-07,
+      "weights_bitwise_equal_to_observer_off": true,
+      "snapshots_emitted": null,
+      "chunks_retained_on_disk": 0,
+      "retained_bytes_on_disk": 0
+    },
+    {
+      "cadence": "bounded_every_25",
+      "best_of_3_seconds": 0.0597,
+      "closing_loss": 2.7968459435242565e-07,
+      "weights_bitwise_equal_to_observer_off": true,
+      "snapshots_emitted": 14,
+      "chunks_retained_on_disk": 14,
+      "retained_bytes_on_disk": 231241
+    },
+    {
+      "cadence": "every_epoch",
+      "best_of_3_seconds": 0.594,
+      "closing_loss": 2.7968459435242565e-07,
+      "weights_bitwise_equal_to_observer_off": true,
+      "snapshots_emitted": 301,
+      "chunks_retained_on_disk": 256,
+      "retained_bytes_on_disk": 4220712
+    }
+  ]
+}

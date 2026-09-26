@@ -1361,6 +1361,13 @@ class _FrozenMapping(Mapping[str, Any]):
     def __len__(self) -> int:
         return len(self._items)
 
+    def __reduce__(self):
+        # An explicit representation keeps copy/pickle from populating the
+        # class's __slotnames__ cache. Python 3.14 annotation closures capture
+        # that namespace, so the incidental mutation changes producer seals.
+        # Constructor arguments still undergo normal recursive deepcopy.
+        return type(self), (self._items,)
+
 
 def _freeze_metadata(metadata: Mapping[str, Any] | None) -> Mapping[str, Any]:
     """Return a recursively immutable copy of frame metadata."""

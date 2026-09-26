@@ -1,0 +1,1 @@
+Add a retained development immigration assignment over the complete original ASEC donor, using qualified current source evidence, 2025 observation years and original household design weights. Preserve original-key status pairs before selection, disclose unchanged mixed-date control assumptions, and keep national stock alignment unqualified.

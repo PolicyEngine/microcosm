@@ -1,0 +1,1 @@
+Take the whole series by slice at the remaining US in-process seal sites (atomic geography, input coverage, origin budget, current survey predictors and PUF55 recipients), preserving each seal's emitted bytes exactly.

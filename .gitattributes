@@ -1,0 +1,2 @@
+# Preserve exact unified-diff context markers in the archived measured experiment.
+experiments/us-acs-code-memo-not-adopted-20260910.patch -whitespace

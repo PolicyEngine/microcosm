@@ -20,6 +20,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ga_fiscal_note",
     "score": -680000000.0,
     "score_type": "fiscal_note",
     "window": "FY2028 (first clean full-cut year, individual income tax only)",
@@ -80,6 +81,7 @@
     }
    },
    "benchmark": {
+    "publisher": "md_fiscal_note",
     "score": -115200000.0,
     "score_type": "fiscal_note",
     "window": "FY2028 (annualized single tax year, state GF)",
@@ -105,6 +107,7 @@
     }
    },
    "benchmark": {
+    "publisher": "co_fiscal_note",
     "score": -530000000.0,
     "score_type": "fiscal_note",
     "window": "TY2027",
@@ -157,6 +160,7 @@
     }
    },
    "benchmark": {
+    "publisher": "nd_fiscal_note",
     "score": -20278500.0,
     "score_type": "fiscal_note",
     "window": "per year (2025-27 biennium \u00f7 2)",
@@ -185,6 +189,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ia_fiscal_note",
     "score": -17700000.0,
     "score_type": "fiscal_note",
     "window": "FY2026",
@@ -249,6 +254,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ok_fiscal_note",
     "score": -4947128000.0,
     "score_type": "fiscal_note",
     "window": "TY2026 (note's tax-year table)",
@@ -271,6 +277,7 @@
     }
    },
    "benchmark": {
+    "publisher": "mi_fiscal_note",
     "score": -700000000.0,
     "score_type": "fiscal_note",
     "window": "annual (approximate)",
@@ -293,6 +300,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ca_fiscal_note",
     "score": -7000000000.0,
     "score_type": "fiscal_note",
     "window": "first full year (FY2027-28)",
@@ -314,6 +322,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ks_fiscal_note",
     "score": -5000000,
     "window": "FY2027",
     "source": "Kansas Division of the Budget fiscal note on HB2620 (2/19/2026), incorporating KDOR estimate",
@@ -347,6 +356,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ks_fiscal_note",
     "score": -10400000,
     "window": "TY2026",
     "source": "Kansas Division of the Budget fiscal note on HB2629 (2/20/2026): KDOR simulation on TY2024 return data",
@@ -368,6 +378,7 @@
     }
    },
    "benchmark": {
+    "publisher": "id_fiscal_note",
     "score": -66000000,
     "window": "FY2027",
     "source": "Idaho S1450 Statement of Purpose / Fiscal Note RS33273 (sponsor-prepared under Joint Rule 18)",
@@ -392,6 +403,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ct_fiscal_note",
     "score": 240500000,
     "window": "FY2027",
     "source": "CT OFA Connecticut Tax Expenditure Report, February 2026, summary table p.5 (detail p.37): EITC revenue gain in FY27 if repealed",
@@ -413,6 +425,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ct_fiscal_note",
     "score": -316000000,
     "window": "FY2027",
     "source": "CT OFA fiscal note on sSB-6 sec. 1 (File #705, 4/17/2026) - the identical $600/child, up-to-3-children refundable CTC",
@@ -434,6 +447,7 @@
     }
    },
    "benchmark": {
+    "publisher": "ct_fiscal_note",
     "score": -500000000,
     "window": "FY2027 (one-time)",
     "source": "CT OPM, Governor's FY2027 Midterm Adjustment Budget (2/4/2026), Refunds of Taxes line; corroborated by OFA's Synopsis of the Governor's Budget",
@@ -464,6 +478,7 @@
     }
    },
    "benchmark": {
+    "publisher": "jct",
     "score": -105075000000,
     "window": "FY2021+FY2022 (single tax year 2021)",
     "source": "JCT JCX-14-21 (3/9/2021), H.R.1319 as amended: Child Tax Credit improvements for 2021, FY21 -$25,826M + FY22 -$79,249M",
@@ -499,6 +514,7 @@
     }
    },
    "benchmark": {
+    "publisher": "jct",
     "score": -11882000000,
     "window": "FY2021-FY2031 (single tax year 2021)",
     "source": "JCT JCX-14-21 (3/9/2021): strengthening the EITC for individuals with no qualifying children, total -$11,882M (nearly all FY2022)",
@@ -537,6 +553,7 @@
     }
    },
    "benchmark": {
+    "publisher": "cbo",
     "score": 106300000000,
     "window": "FY2026 (first full fiscal year)",
     "source": "CBO, Options for Reducing the Deficit: 2025 to 2034 (Dec 2024), 'Increase Individual Income Tax Rates on Ordinary Income', alternative 1 (JCT staff estimate)",
@@ -557,6 +574,7 @@
     }
    },
    "benchmark": {
+    "publisher": "census_pep",
     "score": 408133185600,
     "window": "CY2024",
     "source": "Mechanical: Census PEP Vintage 2024 national resident population (340,110,988) x $1,200",

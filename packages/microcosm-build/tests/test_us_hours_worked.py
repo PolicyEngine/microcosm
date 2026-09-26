@@ -5,6 +5,8 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.source_runtime import SourceRuntimeError
@@ -19,6 +21,9 @@ from microcosm.build.us_runtime import (
     us_hours_worked_stage_spec,
     us_hours_worked_summary,
     with_us_hours_worked_inputs,
+)
+from microcosm.build.us_runtime.hours_worked import (
+    us_hours_worked_gate_from_summary,
 )
 from microcosm.build.us_runtime.source_runtime import us_source_operation_handlers
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -341,3 +346,93 @@ class TestGate:
             _us_frame(rows), required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
         )
         assert not gate.passed
+
+
+_WEEKS = "weeks_worked"
+_POOL = US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+
+
+def _summary(unique_counts, *, worked_share=0.5, mean_hours=38.0):
+    return {
+        "worked_share": worked_share,
+        "mean_weekly_hours_workers": mean_hours,
+        "worked_share_band": [0.35, 0.62],
+        "mean_weekly_hours_band": [30.0, 45.0],
+        "unique_counts": dict(unique_counts),
+    }
+
+
+class TestGateFromSummary:
+    """The summary gate's scope decides which counted columns must be present.
+
+    The native line applies the gate to typed producer summaries; main's
+    pool/ACS surface (microcosm#765) counts only the columns it carries. The
+    default scope stays the complete three-column surface.
+    """
+
+    def test_default_scope_refuses_a_summary_without_weeks_worked(self) -> None:
+        counts = {column: 5 for column in _POOL}
+        with pytest.raises(ValueError, match="complete original summary"):
+            us_hours_worked_gate_from_summary(_summary(counts))
+        gate = us_hours_worked_gate_from_summary(
+            _summary(counts), required_columns=_POOL
+        )
+        assert gate.passed, gate.failures
+
+    def test_pool_scope_refuses_a_missing_required_or_undeclared_column(self) -> None:
+        with pytest.raises(ValueError, match="complete original summary"):
+            us_hours_worked_gate_from_summary(
+                _summary({"weekly_hours_worked_before_lsr": 5}), required_columns=_POOL
+            )
+        with pytest.raises(ValueError, match="complete original summary"):
+            us_hours_worked_gate_from_summary(
+                _summary({**{column: 5 for column in _POOL}, "invented": 5}),
+                required_columns=_POOL,
+            )
+
+    @pytest.mark.parametrize(
+        "scope",
+        [(), ("invented",), ("weeks_worked", "weeks_worked")],
+    )
+    def test_scope_must_name_distinct_declared_outputs(self, scope) -> None:
+        counts = {column: 5 for column in US_HOURS_WORKED_OUTPUT_COLUMNS}
+        with pytest.raises(ValueError, match="distinct declared output columns"):
+            us_hours_worked_gate_from_summary(_summary(counts), required_columns=scope)
+
+    def test_pool_scope_still_fails_a_counted_constant_weeks_worked(self) -> None:
+        counts = {**{column: 5 for column in _POOL}, _WEEKS: 1}
+        gate = us_hours_worked_gate_from_summary(
+            _summary(counts), required_columns=_POOL
+        )
+        assert not gate.passed
+        assert any(failure.startswith(_WEEKS) for failure in gate.failures)
+
+    @settings(max_examples=300, deadline=None)
+    @given(
+        counts=st.fixed_dictionaries(
+            {column: st.integers(0, 4) for column in _POOL},
+            optional={_WEEKS: st.integers(0, 4)},
+        ),
+        worked_share=st.floats(0.0, 1.0),
+        mean_hours=st.floats(0.0, 80.0),
+    )
+    def test_scope_changes_only_which_counted_columns_are_required(
+        self, counts, worked_share, mean_hours
+    ) -> None:
+        summary = _summary(counts, worked_share=worked_share, mean_hours=mean_hours)
+        pool = us_hours_worked_gate_from_summary(summary, required_columns=_POOL)
+        if _WEEKS in counts:
+            full = us_hours_worked_gate_from_summary(summary)
+            assert (full.passed, full.failures) == (pool.passed, pool.failures)
+        else:
+            with pytest.raises(ValueError, match="complete original summary"):
+                us_hours_worked_gate_from_summary(summary)
+        constant = [column for column, count in counts.items() if count < 2]
+        for column in constant:
+            assert any(failure.startswith(column) for failure in pool.failures)
+        in_bands = 0.35 <= worked_share <= 0.62 and 30.0 <= mean_hours <= 45.0
+        assert pool.passed is (in_bands and not constant)
+        # Failure order follows the declared output order, whatever the scope.
+        named = [f.split(":")[0] for f in pool.failures if ":" in f]
+        assert named == [c for c in US_HOURS_WORKED_OUTPUT_COLUMNS if c in constant]
+

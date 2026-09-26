@@ -1,0 +1,61 @@
+{
+  "all_successor_controls_passed": true,
+  "approval_sha256": "9e4ed7c7924b130212a4580fa4ee4298bf7ea33d2ae3e5f2e9798226fb07baee",
+  "cpu_seconds": 798.6069409999999,
+  "guard_sha256": "51b3a5adad3c14e11a2f69b8566702abe5aecfffbc1c315dd6f08c412c5e671e",
+  "interpretation": "Together with the accepted positive control, all eight original financial successor cases pass. Native artifact replay, calibration admission in the completed graph and release verification remain separate.",
+  "junit_sha256": "6cffe5cac9baca685a7c2c0b032580edf83059bd653d4695b08aab75172d7a8c",
+  "limits": {
+    "cpu_seconds": 2400,
+    "native_threads": 1,
+    "qrf_fit_n_jobs": "1",
+    "qrf_predict_workers": "1",
+    "rss_monitor": false,
+    "rss_reporting": "final peak only",
+    "wall_seconds": 3600
+  },
+  "memo_or_profiler": false,
+  "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+  "native_acceptance": false,
+  "original_fixture_and_teardowns": true,
+  "peak_rss_bytes": 563593216,
+  "peer_source_review_sha256": "12a541b3bcf620f0d931815f40f6b9fffac36e59064222c071c8128b9bdbab7d",
+  "positive_evidence": "us-financial-successor-positive-20260910.json",
+  "postcheck_sha256": "423a6cd3ae1537bfe372b7d735ad3a907e6fcc6837257e6c65d538db18e13486",
+  "receipt_sha256": "e394516086ca0f4c773764027ad2d7270a8a9d82d038873f0640cd49e3db483d",
+  "release_acceptance": false,
+  "resource_map_sha256": "63de09c280f733c91d07e674bf753c3017b7a375901623a2200a8538f835a4a2",
+  "root_source_review_sha256": "db0d7f3424cd85bcbc58c690d375d0ef58c557e8d4fefad3dddc666101143c12",
+  "schema_version": 1,
+  "scope": "seven_unchanged_invented_financial_successor_refusal_and_callback_controls",
+  "selected_test_cases": [
+    "test_us_survey_financial_successor.py::test_unissued_copy_and_wrong_original_budget_refuse",
+    "test_us_survey_financial_successor.py::test_arbitrary_nonweight_changes_still_refuse",
+    "test_us_survey_financial_successor.py::test_rehashed_graph_artifact_cannot_replace_issued_draw",
+    "test_us_survey_financial_successor.py::test_final_budget_support_borrow_cannot_mutate_financial_run",
+    "test_us_survey_financial_successor.py::test_final_support_borrow_cannot_forge_returned_view",
+    "test_us_survey_financial_successor.py::test_financial_borrow_cannot_relax_detached_budget_bounds",
+    "test_us_survey_financial_successor.py::test_run_borrow_cannot_forge_original_budget_digest"
+  ],
+  "source_count": 491,
+  "source_map_sha256": "44d9306d0964a4b72490a07895a080b129b83c251866c2aeac06c74deb4ca762",
+  "status": "seven_remaining_controls_accepted",
+  "subsequent_source_review": {
+    "covered_by_these_eight_controls": false,
+    "finding": "Budget and weight-only checked views were constructed before the last support I/O, exposing returned detached values to callbacks.",
+    "status": "additional_gap_under_correction"
+  },
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 7
+  },
+  "unexpected_refusals": {},
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 499
+  },
+  "wall_seconds": 802.8923444160027
+}

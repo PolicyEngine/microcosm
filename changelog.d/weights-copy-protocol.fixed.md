@@ -1,0 +1,1 @@
+Reconstruct base `Weights` through validation during shallow copy, deep copy and pickle round trips, preserving exact values and read-only storage without changing class metadata. Preserve existing subclass copy protocols.

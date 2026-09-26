@@ -906,12 +906,14 @@ def restore_cached_expand(
 
     if node.structural is not StructuralDelta.EXPAND or result.frame is None:
         raise PopulationError("restore_cached_expand requires an EXPAND Frame.")
+    _assert_expand_weight_topology(population.frame, node)
     if result.strata is not None:
         raise PopulationError(
             f"Cached EXPAND node {node.id!r} returned kernel strata instead of "
             "its executor frame artifact."
         )
     frame = result.frame
+    _assert_expand_weight_topology(frame, node)
     if frame.schema != population.frame.schema:
         raise PopulationError(f"Cached EXPAND node {node.id!r} changed schema.")
     receipt_lineage = _expand_lineage_from_receipt(
@@ -1060,8 +1062,11 @@ def storage_equal(
 
     if left.dtype != right.dtype or len(left) != len(right):
         return False
+    selected: np.ndarray | slice
     if positions is None:
-        selected = np.ones(len(left), dtype=np.bool_)
+        # Whole-series comparison: the slice selects the same rows in the same
+        # order as an all-True mask, without building three temporaries per side.
+        selected = slice(None)
     else:
         selected = np.asarray(positions)
         if selected.dtype != np.bool_ or selected.shape != (len(left),):
@@ -1094,6 +1099,8 @@ def patch(
         raise PopulationError(
             "CREATE has no incumbent Population; use Population.from_frame()."
         )
+    if node.structural is StructuralDelta.EXPAND:
+        _assert_expand_weight_topology(population.frame, node)
     if node.weights is not None and node.structural is StructuralDelta.NONE:
         raise PopulationError(
             f"Node {node.id!r} declares a weight transition without a structural "
@@ -1148,6 +1155,8 @@ def patch(
     else:
         _assert_carried_weights(population.frame, frame, node)
 
+    if node.structural is StructuralDelta.EXPAND:
+        _assert_expand_weight_topology(frame, node)
     frame = _append_frame_mass_log(population.frame, frame, node, result)
 
     design_weights = _carry_design_weights(population, frame, node, result)
@@ -1416,6 +1425,28 @@ def _assert_expand_memberships(
                 f"incumbent or same-EXPAND entrant {group} ids."
             )
     return frozenset(repointed)
+
+
+def _assert_expand_weight_topology(frame: Frame, node: Node) -> None:
+    """Optional strict stored-weight topology, checked on cold and cached paths.
+
+    Effective kernel weights cannot distinguish a separately stored vector
+    from an inherited one with the same values. A selective support expansion
+    can opt into this stronger condition without changing existing EXPANDs.
+    """
+    required = node.params.get("expand_require_sole_weight_entity", False)
+    if type(required) is not bool:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} requires a boolean "
+            "params['expand_require_sole_weight_entity']."
+        )
+    if required:
+        entity = _expand_weight_entity(node)
+        if set(frame.weighted_entities) != {entity}:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} requires {entity!r} as its sole "
+                "stored weight entity."
+            )
 
 
 def _patch_expand(
@@ -2736,15 +2767,29 @@ def _object_storage_values(values: np.ndarray) -> bytes:
     return bytes(payload)
 
 
-def _storage_parts(series: pd.Series, selected: np.ndarray) -> tuple[bytes, bytes]:
-    nulls = series.isna().to_numpy(dtype=np.bool_, copy=False)[selected]
+def _storage_parts(
+    series: pd.Series, selected: np.ndarray | slice
+) -> tuple[bytes, bytes]:
+    """Physical value bytes and null bytes for the ``selected`` rows.
+
+    ``selected`` is a row-aligned bool mask, or ``slice(None)`` for the whole
+    series.  The two forms are byte-identical: an all-True mask selects a copy
+    in row order and ``slice(None)`` a view in the same order, and every byte
+    payload below is taken either through ``np.ascontiguousarray`` or by an
+    in-order walk.  Whole-series callers pass the slice so that no all-True
+    selector, null-selection copy or value-selection copy is built at all.
+    """
+
     array = series.array
     data = getattr(array, "_data", None)
     mask = getattr(array, "_mask", None)
     if isinstance(data, np.ndarray) and isinstance(mask, np.ndarray):
+        # Masked storage carries its own nulls, so the isna() below — which
+        # would only rebuild this same mask — stays out of this branch.
         values = np.ascontiguousarray(data[selected]).tobytes()
         bitmap = np.ascontiguousarray(mask[selected]).tobytes()
         return values, bitmap
+    nulls = series.isna().to_numpy(dtype=np.bool_, copy=False)[selected]
     if isinstance(series.dtype, pd.StringDtype):
         payload = bytearray()
         for value, is_null in zip(

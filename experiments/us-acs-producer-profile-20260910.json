@@ -1,0 +1,354 @@
+{
+  "accepted_diagnostic": true,
+  "cprofile_options": {
+    "builtins": true,
+    "subcalls": false
+  },
+  "current_reverified_files": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 500
+  },
+  "date": "2026-09-10",
+  "decision": "Source-only experiment in bounded bytecode compilation reuse; preserve fresh reads and all loaded-function checks. No optimization adopted or native speedup established.",
+  "fixture_constructed": false,
+  "graph_executed": false,
+  "guard_sha256": "426cd0370e3e94d4d4e022fdcf954b89b373af7992da88e2d21a37e8670ec2a4",
+  "native_inputs_used": false,
+  "postcheck_sha256": "3426339877891cc0659118f788487fe54e7659094dcd454e193284cf6a6e60e7",
+  "producer_completed": true,
+  "producer_invocations_requested": 1,
+  "profile_sha256": "6b4508e6e96226746381a9862997c22eebb9880a328d50b24b9c19f9fd0e78a1",
+  "profiled_elapsed_cpu_seconds": 0.6406650000000003,
+  "profiled_elapsed_wall_seconds": 0.6561586250318214,
+  "protocol": "microcosm.acs-original-producer-profile.v1",
+  "receipt_sha256": "a956298f6bbe11438256ac5ad7183098c89ed889c457666602c68c32d4bc5e12",
+  "records": [
+    {
+      "calls": 1,
+      "cumulative_seconds": 0.6560935,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "_producer",
+      "kind": "frozen_source",
+      "line": 129,
+      "recursive_calls": 0,
+      "self_seconds": 0.005839213
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 0.42354929100000005,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "implementation_manifest",
+      "kind": "frozen_source",
+      "line": 411,
+      "recursive_calls": 0,
+      "self_seconds": 0.000314576
+    },
+    {
+      "calls": 59,
+      "cumulative_seconds": 0.36231329,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_dependency_contract",
+      "kind": "frozen_source",
+      "line": 303,
+      "recursive_calls": 0,
+      "self_seconds": 0.005696675
+    },
+    {
+      "calls": 59,
+      "cumulative_seconds": 0.355838413,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_dependency_details",
+      "kind": "frozen_source",
+      "line": 202,
+      "recursive_calls": 0,
+      "self_seconds": 0.023903589000000003
+    },
+    {
+      "calls": 44,
+      "cumulative_seconds": 0.212273085,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "_live_code",
+      "kind": "frozen_source",
+      "line": 51,
+      "recursive_calls": 0,
+      "self_seconds": 0.021575394
+    },
+    {
+      "calls": 2586,
+      "cumulative_seconds": 0.128561793,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "check",
+      "kind": "frozen_source",
+      "line": 86,
+      "recursive_calls": 66,
+      "self_seconds": 0.0032278470000000003
+    },
+    {
+      "calls": 979,
+      "cumulative_seconds": 0.103954326,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "visit_FunctionDef",
+      "kind": "frozen_source",
+      "line": 243,
+      "recursive_calls": 344,
+      "self_seconds": 0.000322374
+    },
+    {
+      "calls": 9482,
+      "cumulative_seconds": 0.052384176000000005,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "visit_Call",
+      "kind": "frozen_source",
+      "line": 260,
+      "recursive_calls": 2364,
+      "self_seconds": 0.002310004
+    },
+    {
+      "calls": 3,
+      "cumulative_seconds": 0.016132043000000002,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_validate_package_roster",
+      "kind": "frozen_source",
+      "line": 332,
+      "recursive_calls": 0,
+      "self_seconds": 7.2842e-05
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 0.014024958,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_person_coverage_authentication.py",
+      "function": "_producer",
+      "kind": "frozen_source",
+      "line": 124,
+      "recursive_calls": 0,
+      "self_seconds": 4.2163e-05
+    },
+    {
+      "calls": 36445,
+      "cumulative_seconds": 0.008270251000000001,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "visit_Name",
+      "kind": "frozen_source",
+      "line": 252,
+      "recursive_calls": 0,
+      "self_seconds": 0.005725035000000001
+    },
+    {
+      "calls": 16,
+      "cumulative_seconds": 0.005612417000000001,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_person_coverage_authentication.py",
+      "function": "_sha",
+      "kind": "frozen_source",
+      "line": 65,
+      "recursive_calls": 0,
+      "self_seconds": 8.211e-06
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 0.004030375,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_package_roots",
+      "kind": "frozen_source",
+      "line": 180,
+      "recursive_calls": 0,
+      "self_seconds": 9.082e-06
+    },
+    {
+      "calls": 59,
+      "cumulative_seconds": 0.0036707920000000004,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_covered_imports",
+      "kind": "frozen_source",
+      "line": 286,
+      "recursive_calls": 0,
+      "self_seconds": 0.001535637
+    },
+    {
+      "calls": 3277,
+      "cumulative_seconds": 0.002018209,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "visit",
+      "kind": "frozen_source",
+      "line": 97,
+      "recursive_calls": 3223,
+      "self_seconds": 0.0012540350000000001
+    },
+    {
+      "calls": 1451,
+      "cumulative_seconds": 0.001515904,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "<genexpr>",
+      "kind": "frozen_source",
+      "line": 229,
+      "recursive_calls": 0,
+      "self_seconds": 0.000852642
+    },
+    {
+      "calls": 181,
+      "cumulative_seconds": 0.000619031,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_digest",
+      "kind": "frozen_source",
+      "line": 176,
+      "recursive_calls": 0,
+      "self_seconds": 6.2668e-05
+    },
+    {
+      "calls": 118,
+      "cumulative_seconds": 0.000576835,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_canonical",
+      "kind": "frozen_source",
+      "line": 170,
+      "recursive_calls": 0,
+      "self_seconds": 7.5121e-05
+    },
+    {
+      "calls": 555,
+      "cumulative_seconds": 0.00047688000000000006,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "<genexpr>",
+      "kind": "frozen_source",
+      "line": 289,
+      "recursive_calls": 0,
+      "self_seconds": 0.00047688000000000006
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 0.000265083,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_inventory",
+      "kind": "frozen_source",
+      "line": 312,
+      "recursive_calls": 0,
+      "self_seconds": 4.0999000000000005e-05
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 0.000205333,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "_projections",
+      "kind": "frozen_source",
+      "line": 352,
+      "recursive_calls": 0,
+      "self_seconds": 4.0830000000000005e-06
+    },
+    {
+      "calls": 76,
+      "cumulative_seconds": 0.00019908300000000002,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "columns",
+      "kind": "frozen_source",
+      "line": 355,
+      "recursive_calls": 74,
+      "self_seconds": 4.3078e-05
+    },
+    {
+      "calls": 3811,
+      "cumulative_seconds": 0.00012806000000000002,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py",
+      "function": "_require",
+      "kind": "frozen_source",
+      "line": 46,
+      "recursive_calls": 0,
+      "self_seconds": 0.00012806000000000002
+    },
+    {
+      "calls": 555,
+      "cumulative_seconds": 8.0924e-05,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "<genexpr>",
+      "kind": "frozen_source",
+      "line": 290,
+      "recursive_calls": 0,
+      "self_seconds": 8.0924e-05
+    },
+    {
+      "calls": 303,
+      "cumulative_seconds": 4.1642000000000006e-05,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "<genexpr>",
+      "kind": "frozen_source",
+      "line": 358,
+      "recursive_calls": 0,
+      "self_seconds": 3.0757000000000004e-05
+    },
+    {
+      "calls": 240,
+      "cumulative_seconds": 3.2792e-05,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/graph_implementation.py",
+      "function": "<genexpr>",
+      "kind": "frozen_source",
+      "line": 296,
+      "recursive_calls": 0,
+      "self_seconds": 3.2792e-05
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 8.400000000000001e-08,
+      "file": "packages/microcosm-build/src/microcosm/build/us_runtime/acs_person_coverage_authentication.py",
+      "function": "_require",
+      "kind": "frozen_source",
+      "line": 60,
+      "recursive_calls": 0,
+      "self_seconds": 8.400000000000001e-08
+    },
+    {
+      "calls": 157,
+      "cumulative_seconds": 0.237641084,
+      "function": "builtins.compile",
+      "kind": "builtin",
+      "recursive_calls": 0,
+      "self_seconds": 0.237641084
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 2.92e-07,
+      "function": "time.perf_counter",
+      "kind": "builtin",
+      "recursive_calls": 0,
+      "self_seconds": 2.92e-07
+    },
+    {
+      "calls": 1,
+      "cumulative_seconds": 3e-06,
+      "function": "time.process_time",
+      "kind": "builtin",
+      "recursive_calls": 0,
+      "self_seconds": 3e-06
+    },
+    {
+      "calls": 103,
+      "cumulative_seconds": 0.12155241700000001,
+      "function": "ast.parse",
+      "kind": "stdlib",
+      "recursive_calls": 0,
+      "self_seconds": 4.1292000000000004e-05
+    }
+  ],
+  "scope": "one_original_producer_invocation_after_normal_helper_imports",
+  "source_or_population_authority_issued": false,
+  "successor_or_release_acceptance": false,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  },
+  "timing_limitations": [
+    "normal imports are outside profiling and no fixture is requested",
+    "one producer call has no within-process repetition or warmup",
+    "cumulative times overlap and must not be summed",
+    "ast.parse wraps compile and their cumulative times overlap",
+    "cProfile adds overhead; this diagnostic cannot establish a speedup",
+    "source rows cover only the three declared owner/manifest modules",
+    "other external time remains within cumulative callers",
+    "compiled-reference visitation and deep code equality remain unmodified"
+  ],
+  "whole_guard": {
+    "cpu_seconds": 4.779278,
+    "peak_rss_bytes": 481591296,
+    "wall_seconds": 6.85519720899174
+  }
+}

@@ -4,9 +4,8 @@ The owner's publish bar for the next US artifact is a head-to-head: the live
 artifact versus the candidate on the SAME yardstick, flipped on evidence.
 This tool is that yardstick. It has two parts:
 
-* every row of one compiled fiscal target registry, evaluated under each
-  artifact's own shipped weights with production's concept-budgeted
-  amount/count loss; and
+* every row of one compiled fiscal target registry, evaluated with production's
+  concept-budgeted amount/count loss and an explicit population-weight mode; and
 * the terminal by-origin battery: reported from an authenticated pool
   manifest receipt when the artifact is a pool, computed on an ephemeral
   terminal gate view for a finished H5 carrying both origins, and reported as
@@ -16,7 +15,11 @@ This tool is that yardstick. It has two parts:
 Artifacts differ only at the loading boundary. Both normalized frames pass
 through the same population repair, target materialization, constraint
 matrix, scoring, loss attribution, contract checks, and rendering path.
-Scoring is sequential and refuses a process peak at or above 20 GiB RSS.
+The historical default rescales household weights to the Census population.
+Use ``--population-weight-mode shipped`` to compare the weights actually in the
+files, without that adjustment. Both sides always use the same mode; the
+population-scale diagnostic is reported in either case. Scoring is sequential
+and refuses a process peak at or above 20 GiB RSS.
 
 Memory design, from measurements on the live incumbent (57,240 households,
 166,321 persons): the unbatched full-frame base microsimulation alone peaks
@@ -44,8 +47,21 @@ its identity is (context, measure, n_households), so equal-sized slices of
 one artifact would collide into one cache entry and poison each other
 (tools/build_us_fiscal_refresh_release.py:1717-1739).
 
+Every fiscal row additionally carries the national/state/CD comparison view
+its declared geography evidence names, and both the per-artifact payload and
+the head-to-head comparison are rolled up on that axis. That axis is the
+missing producer for the ``national_and_cd_target_fit`` item of
+``native_survey_handoff.REQUIRED_RELEASE_EVIDENCE``; classification lives in
+``microcosm.build.us_runtime.target_geography_view`` and a row whose scope no
+declared evidence identifies is reported ``unresolved`` rather than counted as
+national. A row's area identifier is read only from a declaration at that same
+level, so the distinct-area counts never borrow a district's parent state or a
+sub-view geography; a row with no identifier at its level is counted in
+``rows_without_geography_id`` rather than given one.
+
 No gate, threshold, tolerance, or band is applied to the comparison: the
-output is evidence for the owner's flip decision, not a verdict.
+output is evidence for the owner's flip decision, not a verdict. The
+geography view decomposes that evidence; it does not decide anything with it.
 """
 
 from __future__ import annotations
@@ -61,6 +77,8 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
+from typing import Literal
 
 import build_us_fiscal_refresh_release as release
 import h5py
@@ -92,11 +110,16 @@ from microcosm.build.us_runtime.support_provenance import (
     support_channel_column,
     support_clone_index_column,
 )
+from microcosm.build.us_runtime.target_geography_view import (
+    UNRESOLVED_GEOGRAPHY_VIEW_LEVEL,
+    US_TARGET_GEOGRAPHY_VIEW_ORDER,
+    us_target_spec_geography_view,
+)
 from microcosm.calibrate import TargetRegistry, score_targets
 from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import US_SCHEMA, Frame
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 6
 MAX_RSS_BYTES = 20 * 1024**3
 MARKDOWN_WORST_TARGET_ROWS = 50
 # Registry chunk size for streaming materialize-and-score. The target-column
@@ -108,6 +131,15 @@ MARKDOWN_WORST_TARGET_ROWS = 50
 # deterministic.
 MATERIALIZE_SCORE_CHUNK_SPECS = 8_192
 _STREAMING_TARGET_COLUMN_COPIES = 3
+_POPULATION_WEIGHT_MODES = ("rescaled", "shipped")
+# Which per-view counter one row's lower-absolute-error verdict increments.
+_LOWER_ERROR_COUNT_KEYS = MappingProxyType(
+    {
+        "candidate": "candidate_lower_count",
+        "equal": "equal_count",
+        "incumbent": "incumbent_lower_count",
+    }
+)
 
 # The package resolver authority for the live US incumbent, read from
 # policyengine.py 5.0.3 (PyPI latest, tagged 2026-08-21) this lane session:
@@ -219,6 +251,22 @@ _CODE_CITATIONS = {
     "cd_provenance_check": (
         "tools/build_us_fiscal_refresh_release.py:2519-2567,2570-2597"
     ),
+    "geography_view_classification": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "target_geography_view.py (declared-evidence level resolution and "
+        "level-bound identifier binding); "
+        "packages/microcosm-data/src/microcosm/data/"
+        "us_critical_targets.py:68-82 (shared CD classifier); "
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "fiscal_targets.py:2816-2826 (ledger country -> national rename); "
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "graph_fiscal_measurement.py:58,129-153 (the same three scopes on "
+        "the native measurement side)"
+    ),
+    "required_release_evidence_item": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "native_survey_handoff.py:42-54 (national_and_cd_target_fit)"
+    ),
     "incumbent_package_resolution": (
         "policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json:"
         "113-140,156-160,181-189; src/policyengine/provenance/manifest.py:"
@@ -234,6 +282,62 @@ def _empty_historical_formula_owned_columns_receipt() -> dict[str, object]:
         "count": 0,
         "columns_by_entity": {},
     }
+
+
+@dataclass(frozen=True)
+class HeadToHeadConsumer:
+    """Explicit execution dependencies shared by both comparison artifacts.
+
+    This is configuration, not runtime qualification. The caller must bind the
+    engine and constructors to its reviewed runtime and the same SPM selection.
+    No dependency is resolved from the default country package in this mode.
+    Historical normalization and the ephemeral battery projection still apply;
+    their receipts are diagnostics, not native-source or publication authority.
+    """
+
+    engine: object
+    dataset_cls: object
+    microsimulation_cls: object
+    system_factory: object
+    zero_variable_reform_factory: object
+    spm: Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "dataset_cls",
+            "microsimulation_cls",
+            "system_factory",
+            "zero_variable_reform_factory",
+        ):
+            if not callable(getattr(self, name)):
+                raise TypeError(f"Explicit comparison consumer requires {name}.")
+        for name in (
+            "_engine_computed_columns",
+            "variable_dependency_closure",
+            "variable_metadata",
+            "materialize",
+        ):
+            if not callable(getattr(self.engine, name, None)):
+                raise TypeError(f"Explicit comparison engine requires {name}.")
+        if self.spm is not None:
+            object.__setattr__(self, "spm", MappingProxyType(dict(self.spm)))
+
+    def materialization_kwargs(self) -> dict[str, object]:
+        return {
+            "formula_metadata": self.engine,
+            "dataset_cls": self.dataset_cls,
+            "microsimulation_cls": self.microsimulation_cls,
+            "system_factory": self.system_factory,
+            "zero_variable_reform_factory": self.zero_variable_reform_factory,
+            "spm": None if self.spm is None else dict(self.spm),
+        }
+
+    def variable_entity_map(self) -> dict[str, str]:
+        kwargs = {} if self.spm is None else {"spm": dict(self.spm)}
+        system = self.system_factory(**kwargs)
+        return {
+            name: variable.entity.key for name, variable in system.variables.items()
+        }
 
 
 @dataclass(frozen=True)
@@ -324,6 +428,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--congressional-district-vintage-crosswalk",
         type=Path,
         default=None,
+    )
+    parser.add_argument(
+        "--population-weight-mode",
+        choices=_POPULATION_WEIGHT_MODES,
+        default="rescaled",
+        help=(
+            "Use shipped household weights unchanged, or retain the historical "
+            "Census population rescaling. Applies identically to both files."
+        ),
     )
     parser.add_argument(
         "--maximum-microsim-batch-size",
@@ -431,6 +544,8 @@ def _live_incumbent_identity_if_matched(sha256: str) -> dict[str, object] | None
 
 def _drop_historical_formula_owned_columns(
     frame: Frame,
+    *,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Normalize one loaded artifact to current-engine input leaves.
 
@@ -442,7 +557,9 @@ def _drop_historical_formula_owned_columns(
     the one comparison engine recompute them.
     """
 
-    metadata_index = release._formula_owned_gate_adapter()
+    metadata_index = (
+        release._formula_owned_gate_adapter() if consumer is None else consumer.engine
+    )
     tables = {entity: frame.table(entity) for entity in frame.entities}
     formula_owned = metadata_index._engine_computed_columns(
         tables,
@@ -508,13 +625,16 @@ def _load_pool_manifest(
     *,
     expected_manifest_sha256: str | None,
     worker_identity_attestation: Path | None,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> LoadedArtifact:
     frame, manifest, authenticated = load_authenticated_us_multispine_pool_for_scoring(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
         worker_identity_attestation=worker_identity_attestation,
     )
-    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(frame)
+    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(
+        frame, **({} if consumer is None else {"consumer": consumer})
+    )
     terminal_gates = manifest.get("terminal_gates")
     if not isinstance(terminal_gates, Mapping):
         raise ValueError(
@@ -553,7 +673,9 @@ def _load_pool_manifest(
     )
 
 
-def _load_h5(path: Path) -> LoadedArtifact:
+def _load_h5(
+    path: Path, *, consumer: HeadToHeadConsumer | None = None
+) -> LoadedArtifact:
     layout = _h5_layout(path)
     if layout == "entity_tables":
         try:
@@ -568,19 +690,30 @@ def _load_h5(path: Path) -> LoadedArtifact:
             )
         # The exact loader the canonical read-only fiscal scorer uses
         # (tools/score_us_fiscal_targets.py:436 -> release._load_frame).
-        frame = release._load_frame(path)
+        frame = release._load_frame(
+            path, **({} if consumer is None else {"dataset_cls": consumer.dataset_cls})
+        )
         loader: dict[str, object] = {
             "kind": "microcosm_entity_h5",
             "weight_kind": frame.weights_for("household").kind.value,
         }
     else:
-        frame, layout_receipt = fiscal_scorer._load_legacy_pe_flat_frame(path)
+        loader_kwargs = (
+            {}
+            if consumer is None
+            else {"variable_entity_by_name": consumer.variable_entity_map()}
+        )
+        frame, layout_receipt = fiscal_scorer._load_legacy_pe_flat_frame(
+            path, **loader_kwargs
+        )
         loader = {
             "kind": "legacy_policyengine_flat_h5",
             "weight_kind": frame.weights_for("household").kind.value,
             "layout_receipt": layout_receipt,
         }
-    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(frame)
+    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(
+        frame, **({} if consumer is None else {"consumer": consumer})
+    )
     sha256 = _sha256(path)
     identity: dict[str, object] = {
         "kind": "h5",
@@ -605,6 +738,7 @@ def load_artifact(
     *,
     expected_manifest_sha256: str | None = None,
     worker_identity_attestation: Path | None = None,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> LoadedArtifact:
     """Load a role-neutral H5 or authenticated pool into the common frame API."""
 
@@ -614,6 +748,7 @@ def load_artifact(
             resolved,
             expected_manifest_sha256=expected_manifest_sha256,
             worker_identity_attestation=worker_identity_attestation,
+            consumer=consumer,
         )
     else:
         if (
@@ -624,7 +759,7 @@ def load_artifact(
                 "Candidate manifest authentication options apply only to a "
                 "pool manifest."
             )
-        artifact = _load_h5(resolved)
+        artifact = _load_h5(resolved, consumer=consumer)
     _assert_rss_below_limit(f"after loading {artifact.identity['filename']}")
     return artifact
 
@@ -794,6 +929,7 @@ def _score_chunk_household_sliced(
     artifact_name: str,
     chunk_label: str,
     maximum_microsim_batch_size: int | None,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> ScoredChunk:
     """Materialize, score, and reduce one chunk without a dense full-pool table.
 
@@ -840,6 +976,7 @@ def _score_chunk_household_sliced(
                 refuse_population_aggregates=True if len(slice_batches) > 1 else None,
                 target_materialization_cache_dir=None,
                 target_materialization_cache_context=None,
+                **({} if consumer is None else consumer.materialization_kwargs()),
             )
         )
         _assert_nothing_dropped(
@@ -1105,6 +1242,7 @@ def _fiscal_rows_and_aggregate(
         weight = float(weights[index])
         weight_share = weight / total_weight
         capped_error = min(abs(estimate - target) / scale, cap)
+        view = us_target_spec_geography_view(spec)
         rows.append(
             {
                 "name": spec.name,
@@ -1112,6 +1250,29 @@ def _fiscal_rows_and_aggregate(
                 "entity": spec.entity,
                 "family": spec.family,
                 "value_basis": release._fiscal_target_value_basis(spec),
+                "geography_level": view.level,
+                "geography_id": view.geography_id,
+                "geography_level_source": view.level_source,
+                "geography_id_source": view.geography_id_source,
+                "geography_id_is_canonical": view.geography_id_is_canonical,
+                "geography_id_is_bare": view.geography_id_is_bare,
+                # Carried only where they say something the bound identifier
+                # and its source do not: a row declaring one identifier is
+                # fully described without restating it.
+                "geography_id_declarations": (
+                    [
+                        [source, identifier]
+                        for source, identifier in view.declared_geography_ids
+                    ]
+                    if len({value for _, value in view.declared_geography_ids}) > 1
+                    else []
+                ),
+                "geography_id_declarations_conflict": (
+                    view.geography_id_declarations_conflict
+                ),
+                "congressional_district_evidence": (
+                    view.congressional_district_evidence
+                ),
                 "target": target,
                 "actual": estimate,
                 "relative_error": float(relative_error),
@@ -1138,6 +1299,187 @@ def _fiscal_rows_and_aggregate(
     return rows, {
         "weighted_loss": float(aggregate_loss),
         "fraction_within_10pct": within / len(specs),
+    }
+
+
+def _view_order_index(level: str) -> tuple[int, str]:
+    """Declared views first in their advertised order, then anything else."""
+
+    try:
+        return (US_TARGET_GEOGRAPHY_VIEW_ORDER.index(level), level)
+    except ValueError:
+        return (len(US_TARGET_GEOGRAPHY_VIEW_ORDER), level)
+
+
+def _geography_view_rollup(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """One artifact's loss decomposed over the national/state/CD views.
+
+    Weight shares and loss contributions are the same whole-registry
+    normalized quantities the rows carry, so a view's contributions sum to the
+    artifact's aggregate loss exactly as the family rollup's do. No threshold
+    is applied and no view is dropped: a view with zero rows simply does not
+    appear, and unresolved rows keep their own bucket.
+
+    ``distinct_canonical_geography_id_count`` counts distinct *census GEOIDs*
+    — one encoding, bound at the row's own level — so it is an area count
+    rather than a string count. The other counters describe rows, not distinct
+    areas: ``rows_with_bare_geography_id`` are
+    rows whose area is named only in the prefix-stripped bare form and are
+    therefore outside the count (mixing the two spellings in one set would
+    count one area twice). ``rows_with_unrecognized_geography_id`` retains
+    other nonempty identifiers; ``rows_without_geography_id`` includes every
+    row without an identifier, including unresolved scopes.
+    """
+
+    groups: dict[str, dict[str, object]] = {}
+    for row in rows:
+        level = str(row["geography_level"])
+        group = groups.setdefault(
+            level,
+            {
+                "geography_level": level,
+                "target_count": 0,
+                "weight_share": 0.0,
+                "loss_contribution": 0.0,
+                "rows_over_10pct": 0,
+                "rows_with_bare_geography_id": 0,
+                "rows_with_unrecognized_geography_id": 0,
+                "rows_without_geography_id": 0,
+                "geography_id_source_counts": {},
+                "distinct_canonical_geography_ids": set(),
+                "worst_target": None,
+                "worst_contribution": -1.0,
+            },
+        )
+        group["target_count"] = int(group["target_count"]) + 1
+        group["weight_share"] = float(group["weight_share"]) + float(
+            row["target_loss_weight_share"]
+        )
+        contribution = float(row["weighted_loss_contribution"])
+        group["loss_contribution"] = float(group["loss_contribution"]) + contribution
+        if abs(float(row["absolute_relative_error"])) > 0.10:
+            group["rows_over_10pct"] = int(group["rows_over_10pct"]) + 1
+        geography_id = str(row["geography_id"])
+        id_source = str(row["geography_id_source"])
+        source_counts = group["geography_id_source_counts"]
+        source_counts[id_source] = int(source_counts.get(id_source, 0)) + 1  # type: ignore[union-attr]
+        if not geography_id:
+            group["rows_without_geography_id"] = (
+                int(group["rows_without_geography_id"]) + 1
+            )
+        elif bool(row["geography_id_is_canonical"]):
+            group["distinct_canonical_geography_ids"].add(geography_id)  # type: ignore[union-attr]
+        elif bool(row["geography_id_is_bare"]):
+            group["rows_with_bare_geography_id"] = (
+                int(group["rows_with_bare_geography_id"]) + 1
+            )
+        else:
+            group["rows_with_unrecognized_geography_id"] = (
+                int(group["rows_with_unrecognized_geography_id"]) + 1
+            )
+        if contribution > float(group["worst_contribution"]):
+            group["worst_contribution"] = contribution
+            group["worst_target"] = f"{row['name']}@{row['period']}"
+    rollup = []
+    for level in sorted(groups, key=_view_order_index):
+        group = groups[level]
+        share = float(group["weight_share"])
+        group["distinct_canonical_geography_id_count"] = len(
+            group["distinct_canonical_geography_ids"]  # type: ignore[arg-type]
+        )
+        del group["distinct_canonical_geography_ids"]
+        del group["worst_contribution"]
+        group["geography_id_source_counts"] = dict(
+            sorted(group["geography_id_source_counts"].items())  # type: ignore[union-attr]
+        )
+        group["mean_capped_scaled_error"] = (
+            float(group["loss_contribution"]) / share if share > 0 else 0.0
+        )
+        rollup.append(group)
+    return rollup
+
+
+def _geography_view_resolution(
+    rows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """How every row got its view, and where the evidence disagrees.
+
+    ``unresolved_target_count`` above zero means the scorecard could not name
+    a view for those rows from declared evidence. They are excluded from the
+    three declared views rather than absorbed into the national one, so this
+    count is the honest completeness statement for the
+    ``national_and_cd_target_fit`` evidence item.
+
+    ``geography_id_source_counts`` is the same statement one level down: which
+    declaration named each row's area, with
+    :data:`~microcosm.build.us_runtime.target_geography_view.UNBOUND_GEOGRAPHY_ID_SOURCE`
+    counting all rows without an identifier. The narrower
+    ``resolved_without_geography_id_count`` excludes unresolved scopes.
+    """
+
+    by_source: dict[str, int] = {}
+    by_id_source: dict[str, int] = {}
+    unresolved: list[str] = []
+    disagreements: list[dict[str, object]] = []
+    id_conflicts: list[dict[str, object]] = []
+    resolved_without_id = 0
+    for row in rows:
+        source = str(row["geography_level_source"])
+        by_source[source] = by_source.get(source, 0) + 1
+        id_source = str(row["geography_id_source"])
+        by_id_source[id_source] = by_id_source.get(id_source, 0) + 1
+        level = str(row["geography_level"])
+        if bool(row["geography_id_declarations_conflict"]):
+            id_conflicts.append(
+                {
+                    "target": str(row["name"]),
+                    "level": level,
+                    "declared": row["geography_id_declarations"],
+                }
+            )
+        if level == UNRESOLVED_GEOGRAPHY_VIEW_LEVEL:
+            unresolved.append(str(row["name"]))
+        else:
+            if not row["geography_id"]:
+                resolved_without_id += 1
+            if bool(row["congressional_district_evidence"]) and (
+                level != "congressional_district"
+            ):
+                disagreements.append({"target": str(row["name"]), "level": level})
+    return {
+        "declared_levels": list(US_TARGET_GEOGRAPHY_VIEW_ORDER),
+        "level_source_counts": dict(sorted(by_source.items())),
+        "geography_id_source_counts": dict(sorted(by_id_source.items())),
+        "conflicting_geography_id_declaration_count": len(id_conflicts),
+        "conflicting_geography_id_declaration_examples": sorted(
+            id_conflicts,
+            key=lambda row: str(row["target"]),
+        )[:20],
+        "unresolved_target_count": len(unresolved),
+        "resolved_without_geography_id_count": resolved_without_id,
+        "unresolved_target_examples": sorted(unresolved)[:20],
+        "congressional_district_evidence_disagreement_count": len(disagreements),
+        "congressional_district_evidence_disagreement_examples": sorted(
+            disagreements,
+            key=lambda row: str(row["target"]),
+        )[:20],
+        "note": (
+            "declared evidence only; an unresolved row is never counted as "
+            "national, an identifier is read only from a declaration at the "
+            "row's own level, and a disagreement between the shared CD "
+            "classifier and an explicit declared level is reported rather "
+            "than resolved. conflicting_geography_id_declaration_count is a "
+            "defensive invariant over the two verbatim copies of one ledger "
+            "field, which the target compiler already refuses to let diverge "
+            "(ledger_targets.py:934-952): on the compiled path it is expected "
+            "to read zero, and a non-zero value means a producer bypassed "
+            "that constructor. It does not adjudicate a bare identifier "
+            "against a prefixed one; this axis declares no equivalence "
+            "between the two encodings"
+        ),
+        "code_citation": _CODE_CITATIONS["geography_view_classification"],
     }
 
 
@@ -1423,7 +1765,9 @@ def _inapplicable_battery_payload(
     }
 
 
-def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
+def _battery_payload_from_observed_origins(
+    frame: Frame, *, consumer: HeadToHeadConsumer | None = None
+) -> dict[str, object]:
     observed = _observed_origin_receipt(frame)
     if observed["entities_missing_provenance_columns"]:
         reason = (
@@ -1455,7 +1799,9 @@ def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
             "mode": "artifact_already_carried_ssi"
         }
     else:
-        materialized = materialize_multispine_agreement_outputs(frame)
+        materialized = materialize_multispine_agreement_outputs(
+            frame, **({} if consumer is None else {"engine": consumer.engine})
+        )
         evaluation_frame = materialized.frame
         materialization_receipt = dict(materialized.receipt)
     gate = by_origin_battery_artifact_evidence(evaluation_frame)
@@ -1511,10 +1857,15 @@ def _battery_payload_from_pool_receipt(
     }
 
 
-def _terminal_battery_payload(artifact: LoadedArtifact) -> dict[str, object]:
-    if artifact.terminal_gates is not None:
+def _terminal_battery_payload(
+    artifact: LoadedArtifact, *, consumer: HeadToHeadConsumer | None = None
+) -> dict[str, object]:
+    # A historical pool receipt does not bind this explicit comparison model.
+    # Keep the original receipt on the loaded artifact; calculate the common
+    # model's observed battery separately (or report its inapplicability).
+    if artifact.terminal_gates is not None and consumer is None:
         return _battery_payload_from_pool_receipt(artifact.terminal_gates)
-    return _battery_payload_from_observed_origins(artifact.frame)
+    return _battery_payload_from_observed_origins(artifact.frame, consumer=consumer)
 
 
 def score_loaded_artifact(
@@ -1523,15 +1874,25 @@ def score_loaded_artifact(
     artifact_name: str,
     yardstick: FiscalYardstick,
     maximum_microsim_batch_size: int | None,
+    population_weight_mode: Literal["rescaled", "shipped"] = "rescaled",
+    consumer: HeadToHeadConsumer | None = None,
 ) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
     """Run the common scoring path for one already-normalized artifact."""
 
+    if population_weight_mode not in _POPULATION_WEIGHT_MODES:
+        raise ValueError("Unknown population weight mode.")
     cd_provenance = _validate_cd_provenance(artifact, yardstick)
-    terminal_battery = _terminal_battery_payload(artifact)
-    base_frame, mass_repair = release._with_base_population_mass_repair(artifact.frame)
+    terminal_battery = _terminal_battery_payload(artifact, consumer=consumer)
+    if population_weight_mode == "rescaled":
+        base_frame, mass_repair = release._with_base_population_mass_repair(
+            artifact.frame
+        )
+    else:
+        base_frame = artifact.frame
+        mass_repair = {"method": "none", "applied": False, "reason": "shipped_weights"}
     population_gate = release._base_population_scale_gate(
         base_frame,
-        mass_repair=mass_repair,
+        mass_repair=mass_repair if population_weight_mode == "rescaled" else None,
     )
     health_gate = release._health_input_signal_gate(base_frame)
     specs = yardstick.registry.specs
@@ -1563,6 +1924,7 @@ def score_loaded_artifact(
             artifact_name=artifact_name,
             chunk_label=chunk_label,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            consumer=consumer,
         )
         _assert_nothing_dropped(
             artifact_name=f"{artifact_name} {chunk_label}",
@@ -1610,10 +1972,13 @@ def score_loaded_artifact(
             "household_count": household_count,
             "nonzero_household_weight_count": nonzero_count,
             "target_count": len(rows),
+            "by_geography_level": _geography_view_rollup(rows),
+            "geography_view_resolution": _geography_view_resolution(rows),
             "targets": rows,
         },
         "terminal_battery": terminal_battery,
         "normalization_receipts": {
+            "population_weight_mode": population_weight_mode,
             "historical_formula_owned_columns": dict(
                 artifact.historical_formula_owned_columns
             ),
@@ -1713,6 +2078,7 @@ def _comparison_payload(
     candidate_lower = 0
     equal = 0
     incumbent_lower = 0
+    view_buckets: dict[str, dict[str, object]] = {}
     for incumbent_row, candidate_row in zip(
         incumbent_rows,
         candidate_rows,
@@ -1723,6 +2089,13 @@ def _comparison_payload(
         if candidate_key != key:
             raise ValueError(
                 f"Target comparison contracts differ: {key!r} vs {candidate_key!r}."
+            )
+        view = str(incumbent_row["geography_level"])
+        candidate_view = str(candidate_row["geography_level"])
+        if candidate_view != view:
+            raise ValueError(
+                f"Target {key[0]!r} geography view differs between artifacts: "
+                f"{view!r} vs {candidate_view!r}."
             )
         incumbent_error = float(incumbent_row["absolute_relative_error"])
         candidate_error = float(candidate_row["absolute_relative_error"])
@@ -1735,10 +2108,44 @@ def _comparison_payload(
         else:
             equal += 1
             lower = "equal"
+        bucket = view_buckets.setdefault(
+            view,
+            {
+                "geography_level": view,
+                "target_count": 0,
+                "weight_share": 0.0,
+                "incumbent_loss_contribution": 0.0,
+                "candidate_loss_contribution": 0.0,
+                "candidate_lower_count": 0,
+                "equal_count": 0,
+                "incumbent_lower_count": 0,
+                "worst_candidate_regression_target": None,
+                "worst_candidate_regression_delta": 0.0,
+            },
+        )
+        bucket["target_count"] = int(bucket["target_count"]) + 1
+        bucket["weight_share"] = float(bucket["weight_share"]) + float(
+            incumbent_row["target_loss_weight_share"]
+        )
+        incumbent_contribution = float(incumbent_row["weighted_loss_contribution"])
+        candidate_contribution = float(candidate_row["weighted_loss_contribution"])
+        bucket["incumbent_loss_contribution"] = (
+            float(bucket["incumbent_loss_contribution"]) + incumbent_contribution
+        )
+        bucket["candidate_loss_contribution"] = (
+            float(bucket["candidate_loss_contribution"]) + candidate_contribution
+        )
+        lower_key = _LOWER_ERROR_COUNT_KEYS[lower]
+        bucket[lower_key] = int(bucket[lower_key]) + 1
+        row_delta = candidate_contribution - incumbent_contribution
+        if row_delta > float(bucket["worst_candidate_regression_delta"]):
+            bucket["worst_candidate_regression_delta"] = row_delta
+            bucket["worst_candidate_regression_target"] = f"{key[0]}@{key[1]}"
         target_comparisons.append(
             {
                 "name": key[0],
                 "period": key[1],
+                "geography_level": view,
                 "incumbent_absolute_relative_error": incumbent_error,
                 "candidate_absolute_relative_error": candidate_error,
                 "candidate_minus_incumbent_absolute_relative_error": (
@@ -1747,6 +2154,13 @@ def _comparison_payload(
                 "lower_absolute_relative_error": lower,
             }
         )
+    by_geography_level = []
+    for view in sorted(view_buckets, key=_view_order_index):
+        bucket = view_buckets[view]
+        bucket["candidate_minus_incumbent_loss_contribution"] = float(
+            bucket["candidate_loss_contribution"]
+        ) - float(bucket["incumbent_loss_contribution"])
+        by_geography_level.append(bucket)
     incumbent_loss = float(incumbent_fiscal["weighted_loss"])
     candidate_loss = float(candidate_fiscal["weighted_loss"])
     incumbent_battery = incumbent["terminal_battery"]
@@ -1777,6 +2191,20 @@ def _comparison_payload(
             "incumbent_lower_count": incumbent_lower,
             "targets": target_comparisons,
         },
+        "by_geography_level": {
+            "views": by_geography_level,
+            "resolution": _geography_view_resolution(incumbent_rows),
+            "required_release_evidence_item": "national_and_cd_target_fit",
+            "note": (
+                "both artifacts are scored on one frozen registry, so every "
+                "row sits in the same view on both sides; the view axis "
+                "decomposes the same weighted loss and applies no threshold"
+            ),
+            "code_citations": [
+                _CODE_CITATIONS["geography_view_classification"],
+                _CODE_CITATIONS["required_release_evidence_item"],
+            ],
+        },
         "terminal_battery": {
             "head_to_head_comparable": both_computable,
             "incumbent_status": incumbent_battery.get("status"),
@@ -1805,9 +2233,13 @@ def score_head_to_head(
     ),
     candidate_manifest_sha256: str | None = None,
     candidate_worker_identity_attestation: Path | None = None,
+    population_weight_mode: Literal["rescaled", "shipped"] = "rescaled",
+    consumer: HeadToHeadConsumer | None = None,
 ) -> dict[str, object]:
     """Compile once, then score incumbent and optional candidate sequentially."""
 
+    if population_weight_mode not in _POPULATION_WEIGHT_MODES:
+        raise ValueError("Unknown population weight mode.")
     crosswalk = congressional_district_vintage_crosswalk or (
         release.default_congressional_district_vintage_crosswalk_path()
     )
@@ -1843,12 +2275,15 @@ def score_head_to_head(
             path,
             expected_manifest_sha256=expected_manifest_sha256,
             worker_identity_attestation=worker_identity_attestation,
+            **({} if consumer is None else {"consumer": consumer}),
         )
         artifact_payload, contract = score_loaded_artifact(
             artifact=loaded,
             artifact_name=name,
             yardstick=yardstick,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            population_weight_mode=population_weight_mode,
+            **({} if consumer is None else {"consumer": consumer}),
         )
         artifacts[name] = artifact_payload
         contracts[name] = contract
@@ -1866,6 +2301,7 @@ def score_head_to_head(
     return {
         "schema_version": SCHEMA_VERSION,
         "yardstick": {
+            "population_weight_mode": population_weight_mode,
             "fiscal_registry": dict(yardstick.identity),
             "fiscal_aggregate": {
                 "name": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
@@ -2080,7 +2516,8 @@ def render_markdown(payload: Mapping[str, object]) -> str:
     """Render a deterministic head-to-head Markdown scorecard.
 
     The complete per-target table (every registry row) lives in the JSON twin;
-    this scorecard renders the aggregate, family rollups, and the worst rows.
+    this scorecard renders the aggregate, the national/state/CD view rollups,
+    the family rollups, and the worst rows.
     """
 
     yardstick = payload["yardstick"]
@@ -2110,6 +2547,12 @@ def render_markdown(payload: Mapping[str, object]) -> str:
         f"- Fiscal registry: `{registry['version']}` with "
         f"{registry['target_count']:,} targets from Ledger facts "
         f"`{registry['ledger_facts']['sha256']}`.",
+        "- Population weights: "
+        + (
+            "shipped weights unchanged on both sides."
+            if yardstick.get("population_weight_mode", "rescaled") == "shipped"
+            else "rescaled to the Census population on both sides."
+        ),
         f"- Weighted aggregate: `{aggregate['name']}` with cap "
         f"`{aggregate['target_loss_cap']}` and no family multipliers.",
         f"- Weighting rule: {aggregate['weighting_rule']}.",
@@ -2211,11 +2654,112 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 "is imposed.",
             ]
         )
+        views = comparison["by_geography_level"]
+        if not isinstance(views, Mapping):
+            raise TypeError("Comparison by_geography_level must be a mapping.")
+        resolution = views["resolution"]
+        if not isinstance(resolution, Mapping):
+            raise TypeError("Comparison geography view resolution must be a mapping.")
+        lines.extend(
+            [
+                "",
+                "### National / state / CD view",
+                "",
+                "The same weighted loss decomposed over each row's declared "
+                "geographic scope. This is the "
+                f"`{views['required_release_evidence_item']}` evidence item; "
+                "it decomposes the comparison and decides nothing.",
+                "",
+                "| view | targets | weight share | incumbent "
+                "contribution | candidate contribution | delta | candidate "
+                "lower | equal | incumbent lower | worst candidate row |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+            ]
+        )
+        for view in views["views"]:
+            lines.append(
+                f"| {_markdown_escape(view['geography_level'])} | "
+                f"{view['target_count']:,} | "
+                f"{_markdown_number(view['weight_share'])} | "
+                f"{_markdown_number(view['incumbent_loss_contribution'])} | "
+                f"{_markdown_number(view['candidate_loss_contribution'])} | "
+                f"{_markdown_number(view['candidate_minus_incumbent_loss_contribution'])} | "
+                f"{view['candidate_lower_count']:,} | "
+                f"{view['equal_count']:,} | "
+                f"{view['incumbent_lower_count']:,} | "
+                f"{_markdown_escape(view['worst_candidate_regression_target'] or '—')} |"
+            )
+        lines.extend(
+            [
+                "",
+                "Rows whose scope no declared evidence identifies: "
+                f"**{resolution['unresolved_target_count']:,}** (never counted "
+                "as national). Rows where the shared congressional-district "
+                "classifier disagrees with an explicit declared level: "
+                f"**{resolution['congressional_district_evidence_disagreement_count']:,}** "
+                "(reported, not resolved). Rows whose level is known but "
+                "whose area is not declared at that level: "
+                f"**{resolution['resolved_without_geography_id_count']:,}**. "
+                "Rows whose two ledger copies of one geography id disagree: "
+                f"**{resolution['conflicting_geography_id_declaration_count']:,}** "
+                "(expected zero).",
+            ]
+        )
     for role, artifact in roles:
         fiscal = artifact["fiscal"]
         rows = fiscal["targets"]
         if not isinstance(rows, list):
             raise TypeError("Artifact fiscal targets must be a list.")
+        view_rollup = fiscal["by_geography_level"]
+        if not isinstance(view_rollup, list):
+            raise TypeError("Artifact by_geography_level must be a list.")
+        resolution = fiscal["geography_view_resolution"]
+        if not isinstance(resolution, Mapping):
+            raise TypeError("Artifact geography_view_resolution must be a mapping.")
+        lines.extend(
+            [
+                "",
+                f"## {role}: loss by national / state / CD view",
+                "",
+                "| view | targets | distinct areas (census GEOID) | rows with "
+                "bare area id | rows with unrecognized area id | rows without "
+                "area id | weight share | loss "
+                "contribution | weighted mean capped error | rows over 10% | "
+                "worst target |",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+            ]
+        )
+        for group in view_rollup:
+            lines.append(
+                f"| {_markdown_escape(group['geography_level'])} | "
+                f"{group['target_count']:,} | "
+                f"{group['distinct_canonical_geography_id_count']:,} | "
+                f"{group['rows_with_bare_geography_id']:,} | "
+                f"{group['rows_with_unrecognized_geography_id']:,} | "
+                f"{group['rows_without_geography_id']:,} | "
+                f"{_markdown_number(group['weight_share'])} | "
+                f"{_markdown_number(group['loss_contribution'])} | "
+                f"{_markdown_number(group['mean_capped_scaled_error'])} | "
+                f"{group['rows_over_10pct']:,} | "
+                f"{_markdown_escape(group['worst_target'])} |"
+            )
+        lines.append(
+            "\nUnresolved-scope rows: "
+            f"**{resolution['unresolved_target_count']:,}**; level sources: "
+            + ", ".join(
+                f"`{source}`={count:,}"
+                for source, count in resolution["level_source_counts"].items()
+            )
+            + "; identifier sources: "
+            + ", ".join(
+                f"`{source}`={count:,}"
+                for source, count in resolution["geography_id_source_counts"].items()
+            )
+            + ". Rows whose two ledger copies of one geography id disagree: "
+            f"**{resolution['conflicting_geography_id_declaration_count']:,}** "
+            "(a defensive invariant the target compiler already enforces; "
+            "expected zero)."
+        )
         rollup = _family_basis_rollup(rows)
         lines.extend(
             [
@@ -2325,6 +2869,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         candidate_worker_identity_attestation=(
             args.candidate_worker_identity_attestation
         ),
+        population_weight_mode=args.population_weight_mode,
     )
     json_path, markdown_path = write_scorecard(payload, args.out_prefix)
     print(

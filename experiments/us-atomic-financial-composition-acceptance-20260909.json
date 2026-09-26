@@ -1,0 +1,42 @@
+{
+  "calibration_successor_accepted": false,
+  "completed_controls": [
+    "cold and required replay across all20 actual graph nodes",
+    "complete retained fields, metadata, IDs, weights, owners and clone inheritance",
+    "explicit five-feature conditioning and default three-feature compatibility",
+    "refuse detached money mutation during final support return",
+    "refuse materialized geography mutation during final owner return"
+  ],
+  "fit_quality_accepted": false,
+  "graph_nodes": 20,
+  "native_payloads_read": 0,
+  "native_survey_replay_accepted": false,
+  "negative_controls_repeated": false,
+  "population_scope": "invented original survey inputs; native survey replay pending",
+  "puf_attachment_accepted": false,
+  "release_eligible": false,
+  "runs": [
+    {
+      "experiment": "us-atomic-financial-4-controls-20260909.json",
+      "failed_test_code_defects": [
+        "nonexistent assertion helper name",
+        "incorrect expected refusal string"
+      ],
+      "receipt_sha256": "ae0397762505db7059865abf28e739b534026416cd39b690ca50dc27310cb34b",
+      "result": "two negative mutation controls passed; two test-code defects failed"
+    },
+    {
+      "experiment": "us-atomic-financial-corrected-2-controls-20260909.json",
+      "receipt_sha256": "adc535f414c62ab01240f98d0a50f498f4b345531157f1b67c6be23c6deaa0b5",
+      "result": "two corrected tests passed with the same implementation and full cold/required fixture"
+    }
+  ],
+  "status": "invented_composition_controls_passed",
+  "test_only_corrections": true,
+  "tested_source_changes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_predictors.py": "0e32704bd82e32382cd03936b8cb6faada32afc10e9256c78c9a4b2f9b3372c8",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_financial.py": "af365e9135f2fffa9cdcaed643be9a082cb2d382255c9d93fdd4e7cd4cfe8a77",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_current_survey_predictors.py": "fd643fcaca956ea4830e2022ad737c7321dbc3e59057230c56c31f303e8f5c27",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py": "1b441049e527f24f339e2c2fed289ae8ff434015d7bc0b025cebda87f32d52d0"
+  }
+}

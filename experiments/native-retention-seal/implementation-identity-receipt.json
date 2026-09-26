@@ -1,0 +1,496 @@
+{
+  "inventory_sha256_by_revision": {
+    "base": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+    "head": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "seal_and_battery": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+    "transport_after": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093"
+  },
+  "moved_module_digests": {
+    "base->head": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      }
+    },
+    "base->seal_and_battery": {},
+    "base->transport_after": {
+      "authenticated_survey_population_v1": {
+        "microcosm.build/us_runtime/survey_population_preparation.py": {
+          "base": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
+        }
+      }
+    },
+    "head->base": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f"
+        }
+      }
+    },
+    "head->seal_and_battery": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      }
+    },
+    "head->transport_after": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.build/us_runtime/survey_population_preparation.py": {
+          "head": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
+        },
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      }
+    },
+    "seal_and_battery->base": {},
+    "seal_and_battery->head": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      }
+    },
+    "seal_and_battery->transport_after": {
+      "authenticated_survey_population_v1": {
+        "microcosm.build/us_runtime/survey_population_preparation.py": {
+          "seal_and_battery": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
+        }
+      }
+    },
+    "transport_after->base": {
+      "authenticated_survey_population_v1": {
+        "microcosm.build/us_runtime/survey_population_preparation.py": {
+          "base": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
+        }
+      }
+    },
+    "transport_after->head": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.build/us_runtime/survey_population_preparation.py": {
+          "head": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
+        },
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "head": "f9b8eca9170371a10a88e0cfebee22e59bde98de8905c5d58a74be3ffb521b7f",
+          "transport_after": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      }
+    },
+    "transport_after->seal_and_battery": {
+      "authenticated_survey_population_v1": {
+        "microcosm.build/us_runtime/survey_population_preparation.py": {
+          "seal_and_battery": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
+        }
+      }
+    }
+  },
+  "release_eligible": false,
+  "revisions": {
+    "base": "a64f7b733",
+    "head": "HEAD",
+    "seal_and_battery": "1b0b915b0",
+    "transport_after": "5307249b3"
+  },
+  "scope": "diagnostic only; not a build, certification or release artifact",
+  "stages": [
+    "acs_codec_2024",
+    "acs_housing_universe_2024",
+    "asec_codec_v4",
+    "asec_prepared_v3",
+    "assembly_harmonize",
+    "assembly_prepare",
+    "authenticated_survey_population_v1",
+    "composed_asec_binding_v1",
+    "composed_population_v1",
+    "geography"
+  ],
+  "working_tree_contract_acceptance": {
+    "acs_codec_2024": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "baceb9735d8fc3e74d657d841132cebda07e2c0004eb711861d7fda7477180d4"
+    },
+    "acs_housing_universe_2024": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "9dfb0a552efbee7d6bdcfffb01d1f7d562b0795cec1e26789905cb499e875230"
+    },
+    "asec_codec_v4": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "3eebe66cac3fe74450f56661b34c9715087d576052b321d4649236fbad2634b1"
+    },
+    "asec_prepared_v3": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "2e5deba5a31551c45383c6777974d4802fb55df5b8c39f141ae8ac95f8434068"
+    },
+    "assembly_harmonize": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "56b48d7fc1468c397a3ba9779e01e02356355eefe55647aa112340ae3c71213e"
+    },
+    "assembly_prepare": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "efea7d171ee31c330fd40adaaa47e1ec6c395ad8a37d7665ad804c9b78a3222b"
+    },
+    "authenticated_survey_population_v1": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "03e87c236baa92ad4f4098814ef2dca7b12ce3c5d637a2e36999c816c9c51ce0"
+    },
+    "composed_asec_binding_v1": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "b6114b124080aa4e2a1e19863c950a4e9e4d666bb7a6fdb777a5ee550c83fd9c"
+    },
+    "composed_population_v1": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "25b08d10180346ed7ec403d6d29fb32762c4ba1e01e439f632df13945544d4f5"
+    },
+    "geography": {
+      "accepted": true,
+      "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+      "modules_sha256": "7ac8fd33bb308bb54409d4e1b55e18bdbefed93df6d3df2c5103feab4ba2bfbc"
+    }
+  }
+}

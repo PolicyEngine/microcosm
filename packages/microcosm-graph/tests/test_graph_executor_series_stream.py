@@ -13,6 +13,7 @@ pre-change body, at the byte level rather than only at the digest.
 from __future__ import annotations
 
 import hashlib
+import struct
 
 import numpy as np
 import pandas as pd
@@ -30,6 +31,8 @@ def _reference_update_scalar(digest, value):
         payload = b"pd.NaT"
     elif value is None:
         payload = b"None"
+    elif type(value) is float:
+        payload = b"f" + struct.pack("=d", value)
     elif isinstance(value, (float, np.floating)):
         payload = b"f" + np.asarray([value], dtype=np.float64).tobytes()
     elif isinstance(value, (bool, np.bool_)):

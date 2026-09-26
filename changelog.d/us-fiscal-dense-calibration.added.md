@@ -1,0 +1,1 @@
+Add a numerical fiscal graph calibration stage using existing grouped Adam, explicit original weight and origin bounds, exact household alignment, and target and origin diagnostics without claiming source or release admission.

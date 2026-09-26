@@ -1,0 +1,1 @@
+Give graph population observers detached snapshots so callback mutations and retained references cannot change subsequent calculations or cached populations. Preserve the complete frame, provenance, weights and mass accounting on both cold runs and cache hits.

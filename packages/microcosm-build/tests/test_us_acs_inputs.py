@@ -98,6 +98,30 @@ def test_acs_usual_hours_preserve_forty_and_allocation_despite_current_unemploym
     assert receipt["observed_rows"] == 1
 
 
+def test_acs_deferred_usual_hours_preserve_raw_observations_without_claiming_output():
+    from microcosm.build.us_runtime.operator_boundary import (
+        assert_operator_free_source_frame,
+    )
+
+    before = _hours_frame(WKHP=["40", ""], WKL=["1", ""], FWKHP=["1", "0"])
+    result = map_acs_native_inputs(before, include_usual_hours=False)
+    for column in ("WKHP", "WKL", "FWKHP", "AGEP"):
+        pd.testing.assert_series_equal(
+            result.frame.person[column], before.person[column]
+        )
+    assert "weekly_hours_worked_before_lsr" not in result.frame.person
+    assert "weekly_hours_worked_before_lsr" not in result.native_inputs
+    assert_operator_free_source_frame(
+        result.frame, label="ACS deferred hours", native_inputs=result.native_inputs
+    )
+
+
+@pytest.mark.parametrize("mode", [None, 0, 1, "false"])
+def test_acs_usual_hours_mapping_mode_requires_bool(mode):
+    with pytest.raises(TypeError, match="include_usual_hours must be a bool"):
+        map_acs_native_inputs(_acs_frame(), include_usual_hours=mode)
+
+
 @pytest.mark.parametrize("wkl", [2, 3])
 def test_acs_blank_usual_hours_are_zero_for_confirmed_past_year_nonworkers(wkl):
     result = map_acs_native_inputs(_hours_frame(WKHP=[" ", np.nan], WKL=[wkl, np.nan]))
@@ -148,9 +172,15 @@ def test_acs_usual_hours_topcode_and_unknown_allocation_are_explicit():
 
 
 @pytest.mark.parametrize("invalid", [0, -1, 100, 40.5, "unknown", np.inf])
-def test_acs_ftp_hours_reject_invalid_codes_including_api_zero(invalid):
+@pytest.mark.parametrize("include_usual_hours", [True, False])
+def test_acs_ftp_hours_reject_invalid_codes_including_api_zero(
+    invalid, include_usual_hours
+):
     with pytest.raises(ValueError, match="WKHP requires blank or integer"):
-        map_acs_native_inputs(_hours_frame(WKHP=[invalid, np.nan]))
+        map_acs_native_inputs(
+            _hours_frame(WKHP=[invalid, np.nan]),
+            include_usual_hours=include_usual_hours,
+        )
 
 
 @pytest.mark.parametrize(
@@ -162,9 +192,14 @@ def test_acs_ftp_hours_reject_invalid_codes_including_api_zero(invalid):
         {"WKHP": [40, np.nan], "FWKHP": [2, 0]},
     ],
 )
-def test_acs_usual_hours_refuse_conflicting_universe_or_invalid_allocation(columns):
+@pytest.mark.parametrize("include_usual_hours", [True, False])
+def test_acs_usual_hours_refuse_conflicting_universe_or_invalid_allocation(
+    columns, include_usual_hours
+):
     with pytest.raises(ValueError):
-        map_acs_native_inputs(_hours_frame(**columns))
+        map_acs_native_inputs(
+            _hours_frame(**columns), include_usual_hours=include_usual_hours
+        )
 
 
 def test_acs_income_mapping_adjusts_native_dollars_without_splitting_aggregates() -> (

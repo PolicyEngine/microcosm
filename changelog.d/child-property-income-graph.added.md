@@ -1,0 +1,1 @@
+Add an opt-in source-owned child property-income graph fragment with explicit private model-support schemas, paired empirical draws and independent full-population verification; integration and runtime acceptance remain separate.

@@ -1,0 +1,42 @@
+{
+  "archive_members": [
+    "01_AL_CD119.txt",
+    "13_GA_CD119.txt",
+    "22_LA_CD119.txt",
+    "36_NY_CD119.txt",
+    "37_NC_CD119.txt",
+    "NationalCD119.txt"
+  ],
+  "automatic_retry": false,
+  "code_resources_rechecked": 12,
+  "corrected_control_executed": false,
+  "cpu_seconds": 3.002104,
+  "diagnosis": "The acquired CD archive contains six members; the test incorrectly declared only NationalCD119.txt. The exact-roster validation correctly refused it.",
+  "diagnostic_receipt_sha256": "54405497257274709b458baad3d0a8b0f4fd2727406d794d42f962d12cd851ca",
+  "failure_class": "ValueError",
+  "frozen_before_after_equal": true,
+  "frozen_code_current_equal": true,
+  "metadata_probe_member_contents_opened": 0,
+  "model_source_files": 5983,
+  "native_inputs_reopened_in_postcheck": false,
+  "native_resource_pins_receipt_only": 4,
+  "peak_rss_bytes": 372555776,
+  "receipt_sha256": "063d36af8b4a8352bb573396b39a921c21c8703d484e32542f24680702428df0",
+  "release_eligible": false,
+  "reserved_housing_targets_read": false,
+  "result": 1,
+  "scope": "One native DE original P1 population/state-total plus CD119/PUMA source normalization control. Exact four input pins, block preservation and state reconciliation, full support readback. No national coverage, survey Frame, source admission or release acceptance.",
+  "selected_member": "NationalCD119.txt",
+  "selected_member_size_bytes": 163499110,
+  "source_and_owned_files": 497,
+  "source_control_accepted": false,
+  "status": "failed_pending_diagnosis",
+  "test_counts": {
+    "errors": 0,
+    "failures": 1,
+    "skipped": 0,
+    "tests": 1
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 4.633959750004578
+}

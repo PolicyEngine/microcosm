@@ -1,0 +1,1 @@
+Allow fiscal materialization, batched reform and source-amount helpers, and written-file diagnostics to receive explicit dataset, simulation and system constructors with copied SPM settings. Existing default constructors and county reform-validation settings remain unchanged; injected dependencies do not establish runtime approval or cache identity.

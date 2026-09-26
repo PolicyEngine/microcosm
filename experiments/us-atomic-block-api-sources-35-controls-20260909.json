@@ -1,0 +1,26 @@
+{
+  "code_resources": 12,
+  "cpu_seconds": 2.923694,
+  "frozen_before_after_current_equal": true,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 349110272,
+  "publisher_provenance_established": false,
+  "receipt_sha256": "e76a4373281f38f98d794c89265cedbaf50744e63c60f5256dbbdb7905a3a586",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "35 invented population-only Census API source controls through actual CD/PUMA parsers and atomic normalization. Exact response header, row/code types, source hashes, state/block totals, retained byte snapshots and mapping completeness; no queries, credentials, native inputs, publisher admission or release.",
+  "source_and_owned_files": 496,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 35
+  },
+  "tested_source_changes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/atomic_block_api_sources.py": "4bb9f58364e75846d4cbb19c3e0254468089481e28caacb67ae17eb87d802235",
+    "packages/microcosm-build/tests/test_us_atomic_block_api_sources.py": "69821ca1b81c47647d4a6a7faaf0bf9279889ef409368ed20b84779613ab5241"
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 4.598902583005838
+}

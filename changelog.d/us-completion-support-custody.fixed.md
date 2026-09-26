@@ -1,0 +1,1 @@
+Keep child donor/recipient support observations and attached manifest views under their declared private schema during combined survey completion. Preserve full Population custody, permanent refusal, and the strict US receiving/source boundary.

@@ -8,13 +8,14 @@ import pandas as pd
 import pytest
 
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from microcosm.build.us_runtime import acs_pums
 from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     AcsPumsSource,
     build_acs_pums_unit_frame,
     load_acs_pums_tables,
 )
-from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.graph_sources import load_graph_acs
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -126,6 +127,15 @@ def _source(tmp_path: Path) -> AcsPumsSource:
     return AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
 
 
+def _axis_household(kinds: list[int]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "SERIALNO": [f"2024HU000000{index}" for index in range(len(kinds))],
+            "TYPEHUGQ": kinds,
+        }
+    )
+
+
 def test_acs_loader_preserves_hours_and_allocation_without_filling_blanks(tmp_path):
     household_zip = tmp_path / "hours-hh.zip"
     person_zip = tmp_path / "hours-person.zip"
@@ -144,6 +154,76 @@ def test_acs_loader_preserves_hours_and_allocation_without_filling_blanks(tmp_pa
     assert pd.isna(tables["person"]["WKHP"].iloc[1])
     assert tables["person"]["FWKHP"].tolist() == [1, 0]
     assert "weekly_hours_worked_before_lsr" not in tables["person"]
+
+
+def test_acs_loader_carries_immigration_evidence_only_when_supplied(tmp_path):
+    household_zip = tmp_path / "evidence-hh.zip"
+    person_zip = tmp_path / "evidence-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("evid", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("evid", 1, 20, CIT=1, POBP=6, YOEP=None),
+                _person("evid", 2, 25, AGEP=12, CIT=5, POBP=373, YOEP=2022),
+            ]
+        },
+    )
+    tables, _ = load_acs_pums_tables(AcsPumsSource(household_zip, person_zip))
+    person = tables["person"]
+    assert person["CIT"].tolist() == [1, 5]
+    assert person["POBP"].tolist() == [6, 373]
+    # A native-born person has no entry year; the blank stays missing.
+    assert pd.isna(person["YOEP"].iloc[0]) and person["YOEP"].iloc[1] == 2022
+
+    bare = tmp_path / "bare-person.zip"
+    _write_csv_zip(bare, {"psam_pusa.csv": [_person("evid", 1, 20)]})
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("evid", NP=1)]})
+    tables, _ = load_acs_pums_tables(AcsPumsSource(household_zip, bare))
+    assert not {"CIT", "POBP", "YOEP"} & set(tables["person"])
+
+
+def _graph_hours_source(tmp_path, **hours):
+    observed = {"WKHP": 40, "WKL": 1, "FWKHP": 1, **hours}
+    _write_csv_zip(
+        tmp_path / "csv_hus.zip", {"psam_husa.csv": [_household("hours", NP=2)]}
+    )
+    _write_csv_zip(
+        tmp_path / "csv_pus.zip",
+        {
+            "psam_pusa.csv": [
+                _person("hours", 1, 20, **observed),
+                _person("hours", 2, 25, AGEP=12, MAR=5, WKHP=None, WKL=None, FWKHP=0),
+            ]
+        },
+    )
+    return tmp_path
+
+
+def test_graph_acs_source_preserves_raw_hours_for_completion(tmp_path):
+    frame = load_graph_acs(_graph_hours_source(tmp_path))
+    person = frame.person
+    assert person["WKHP"].iloc[0] == 40
+    assert person["WKL"].iloc[0] == 1
+    assert pd.isna(person["WKHP"].iloc[1])
+    assert pd.isna(person["WKL"].iloc[1])
+    assert person["FWKHP"].tolist() == [1, 0]
+    assert person["age"].tolist() == [40, 12]
+    assert "weekly_hours_worked_before_lsr" not in person
+
+
+@pytest.mark.parametrize(
+    "hours, message",
+    (
+        ({"WKHP": 100}, "ACS WKHP requires"),
+        ({"WKL": 4}, "ACS WKL requires"),
+        ({"FWKHP": 2}, "ACS FWKHP requires"),
+        ({"WKL": 2}, "ACS WKHP/WKL contradict"),
+    ),
+)
+def test_graph_acs_source_still_rejects_invalid_raw_hours(tmp_path, hours, message):
+    with pytest.raises(ValueError, match=message):
+        load_graph_acs(_graph_hours_source(tmp_path, **hours))
 
 
 def _asec_shaped_frame() -> Frame:
@@ -283,6 +363,8 @@ def test_built_acs_lineage_assembles_with_asec_without_measured_coercion(
     acs, _metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=1)
     measured_wages = acs.table("person")["WAGP"].copy()
     raw_serials = acs.table("household")["SERIALNO"].copy()
+
+    from microcosm.build.us_runtime.spine_assembly import assemble_spines
 
     assembled = assemble_spines(
         {"asec": _asec_shaped_frame(), "acs": acs},
@@ -615,3 +697,227 @@ def test_load_acs_pums_tables_requires_native_mapping_columns(
         load_acs_pums_tables(
             AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
         )
+
+
+def test_load_acs_pums_tables_rejects_group_quarters_with_positive_weight(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    _write_csv_zip(
+        source.household_zip,
+        {
+            "psam_husa.csv": [
+                _household(
+                    "2024GQ0000001",
+                    WGTP=7,
+                    TYPEHUGQ=2,
+                    TEN=None,
+                    TAXAMT=None,
+                )
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="TYPEHUGQ/WGTP disagree"):
+        load_acs_pums_tables(source, chunksize=1)
+
+
+def test_load_acs_pums_tables_rejects_housing_unit_with_zero_weight(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    _write_csv_zip(
+        source.household_zip,
+        {"psam_husa.csv": [_household("2024HU0000001", WGTP=0)]},
+    )
+
+    with pytest.raises(ValueError, match="TYPEHUGQ/WGTP disagree"):
+        load_acs_pums_tables(source, chunksize=1)
+
+
+def test_build_acs_pums_unit_frame_reports_household_axis_composition(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("2024HU0000001", WGTP=10, NP=2),
+                _household("2024HU0000002", WGTP=20),
+                _household(
+                    "2024GQ0000001",
+                    WGTP=0,
+                    TYPEHUGQ=2,
+                    TEN=None,
+                    TAXAMT=None,
+                ),
+                _household(
+                    "2024GQ0000002",
+                    WGTP=0,
+                    TYPEHUGQ=3,
+                    TEN=None,
+                    TAXAMT=None,
+                ),
+                _household("2024HU0000003", WGTP=40, NP=0),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("2024HU0000001", 1, 20, PWGTP=11),
+                _person("2024HU0000001", 2, 25, MAR=5, PWGTP=12),
+                _person("2024HU0000002", 1, 20, PWGTP=13),
+                _person("2024GQ0000001", 1, 37, MAR=5, PWGTP=99),
+                _person("2024GQ0000002", 1, 38, MAR=5, PWGTP=55),
+            ]
+        },
+    )
+
+    frame, metadata = build_acs_pums_unit_frame(
+        AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+    )
+
+    composition = metadata["household_axis_composition"]
+    assert composition == {
+        "occupied_housing_unit_rows": 2,
+        "occupied_housing_unit_design_weight_total": 30.0,
+        "institutional_gq_person_rows": 1,
+        "institutional_gq_person_design_weight_total": 99.0,
+        "noninstitutional_gq_person_rows": 1,
+        "noninstitutional_gq_person_design_weight_total": 55.0,
+    }
+    # The dropped vacant housing unit is outside the described axis entirely.
+    assert metadata["vacant_household_rows_dropped"] == 1
+    # Units conserve, and design mass conserves separately from units.
+    assert (
+        composition["occupied_housing_unit_rows"]
+        + composition["institutional_gq_person_rows"]
+        + composition["noninstitutional_gq_person_rows"]
+        == metadata["household_rows"]
+        == frame.n("household")
+        == 4
+    )
+    assert composition["occupied_housing_unit_design_weight_total"] + composition[
+        "institutional_gq_person_design_weight_total"
+    ] + composition["noninstitutional_gq_person_design_weight_total"] == pytest.approx(
+        metadata["weighted_household_population"]
+    )
+
+
+# Reached through the module, not imported by name, so this file still imports
+# against a build without the helper: the four checks below then fail on their
+# own instead of erroring the whole module at collection.
+def test_household_axis_composition_separates_units_and_design_mass() -> None:
+    household = _axis_household([1, 1, 2, 3])
+    weights = Weights(
+        np.asarray([10.0, 20.0, 99.0, 55.0]),
+        WeightKind.DESIGN,
+    )
+
+    composition = acs_pums._household_axis_composition(household, weights)
+
+    assert composition == {
+        "occupied_housing_unit_rows": 2,
+        "occupied_housing_unit_design_weight_total": 30.0,
+        "institutional_gq_person_rows": 1,
+        "institutional_gq_person_design_weight_total": 99.0,
+        "noninstitutional_gq_person_rows": 1,
+        "noninstitutional_gq_person_design_weight_total": 55.0,
+    }
+    assert sum(
+        value for key, value in composition.items() if key.endswith("_rows")
+    ) == len(household)
+    assert sum(
+        value
+        for key, value in composition.items()
+        if key.endswith("_design_weight_total")
+    ) == pytest.approx(weights.total)
+
+
+def test_household_axis_composition_requires_typehugq() -> None:
+    household = _axis_household([1]).drop(columns=["TYPEHUGQ"])
+    weights = Weights(np.asarray([10.0]), WeightKind.DESIGN)
+
+    with pytest.raises(ValueError, match="requires the TYPEHUGQ column"):
+        acs_pums._household_axis_composition(household, weights)
+
+
+def test_household_axis_composition_refuses_unpartitioned_rows() -> None:
+    household = _axis_household([1, 4])
+    weights = Weights(np.asarray([10.0, 20.0]), WeightKind.DESIGN)
+
+    with pytest.raises(ValueError, match="does not partition the loaded rows"):
+        acs_pums._household_axis_composition(household, weights)
+
+
+def test_household_axis_composition_refuses_misaligned_weights() -> None:
+    household = _axis_household([1, 2])
+    weights = Weights(np.asarray([10.0, 99.0, 20.0]), WeightKind.DESIGN)
+
+    with pytest.raises(ValueError, match="one DESIGN weight per loaded"):
+        acs_pums._household_axis_composition(household, weights)
+
+
+def _serialnos(count: int) -> tuple[str, ...]:
+    return tuple(f"2024HU{index:07d}" for index in range(1, count + 1))
+
+
+def test_exact_household_ceiling_refuses_at_its_own_number(monkeypatch) -> None:
+    """The refusal is `<= MAX_EXACT_HOUSEHOLDS`, whatever that number is.
+
+    Driven at a patched-down ceiling so the boundary is exercised without
+    building a full-source key tuple; `test_us_native_row_ceilings.py` carries
+    the separate assertion that the shipped number admits the 1,531,614
+    households a full-source ACS selection supplies.
+    """
+    monkeypatch.setattr(acs_pums, "MAX_EXACT_HOUSEHOLDS", 3)
+    accepted = _serialnos(3)
+    assert AcsPumsSource.snapshot_serialnos(accepted) == accepted
+    with pytest.raises(ValueError, match="bounded unique raw native keys"):
+        AcsPumsSource.snapshot_serialnos(_serialnos(4))
+    with pytest.raises(ValueError, match="bounded unique raw native keys"):
+        AcsPumsSource.snapshot_serialnos(())
+
+
+def test_exact_person_row_ceiling_counts_np_not_person_records(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """NP is a declared count, so the ceiling is driven at full-source scale free.
+
+    The check sums NP over the selected households before the person archive is
+    opened, so a two-row household table declaring 3,422,888 people -- the whole
+    2024 ACS person file -- exercises the shipped ceiling without materialising
+    a single person row.
+    """
+    household_zip = tmp_path / "h.zip"
+    person_zip = tmp_path / "p.zip"
+    serialnos = ("2024HU0000001", "2024HU0000002")
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_hus.csv": [
+                _household(serialnos[0], NP=3_422_887),
+                _household(serialnos[1], NP=1),
+            ]
+        },
+    )
+    _write_csv_zip(person_zip, {"psam_pus.csv": [_person(serialnos[0], 1, 20)]})
+    source = AcsPumsSource(household_zip, person_zip)
+
+    # The shipped ceiling admits the whole 2024 ACS person file: the load runs
+    # past this check and refuses later, on the person archive it then opens.
+    assert acs_pums.MAX_EXACT_PERSON_ROWS > 3_422_888
+    with pytest.raises(ValueError, match="NP/person row-count mismatch"):
+        load_acs_pums_tables(source, serialnos=serialnos)
+
+    # Patched below that roster, the same expression refuses it.
+    monkeypatch.setattr(acs_pums, "MAX_EXACT_PERSON_ROWS", 3_422_887)
+    with pytest.raises(
+        ValueError, match="selected complete roster exceeds native person budget"
+    ):
+        load_acs_pums_tables(source, serialnos=serialnos)

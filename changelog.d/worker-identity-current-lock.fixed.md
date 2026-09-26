@@ -1,0 +1,1 @@
+Update the primary QRF worker's approved lock identity for the reviewed source-I/O packaging metadata change while preserving strict rejection of other locks and the explicit legacy campaign boundary.

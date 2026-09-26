@@ -1,6 +1,5 @@
 """US PUF support-channel expansion tests."""
 
-import importlib
 from collections.abc import Sequence
 
 import numpy as np
@@ -975,17 +974,20 @@ def test_assert_formula_owned_blocklist_current_flags_stale_entries() -> None:
         assert_formula_owned_blocklist_current(drifted_engine)
 
 
-def test_resolve_formula_owned_outputs_engine_none_falls_back_to_static() -> None:
+def test_resolve_formula_owned_outputs_engine_none_falls_back_to_static(
+    monkeypatch,
+) -> None:
     # With no engine passed and metadata unavailable, resolution falls back to
     # the static seed. The fallback is exercised by monkeypatching the lazy
     # engine resolver to report no engine, so the test is deterministic even
-    # where policyengine_us is installed.
-    puf_support_module._formula_owned_engine = lambda: None
-    try:
-        requested = {"interest_deduction", "employment_income_before_lsr"}
-        assert resolve_formula_owned_outputs(requested) == {"interest_deduction"}
-    finally:
-        importlib.reload(puf_support_module)
+    # where policyengine_us is installed. Restoring the original attribute
+    # (never reloading the module) keeps every function object in
+    # puf_support identical afterwards: the survey-origin budget seals this
+    # module's live functions, and a reload would refuse every later freeze
+    # in the same process with PRODUCER_CHANGED.
+    monkeypatch.setattr(puf_support_module, "_formula_owned_engine", lambda: None)
+    requested = {"interest_deduction", "employment_income_before_lsr"}
+    assert resolve_formula_owned_outputs(requested) == {"interest_deduction"}
 
 
 class _ImportErrorEngine:

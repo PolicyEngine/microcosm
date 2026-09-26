@@ -25,6 +25,41 @@ ignore = ["E501"]
 # defaults before numpy/torch load, which requires statements above the
 # import block.
 "tools/build_us_fiscal_refresh_release.py" = ["E402"]
+# The native-scale lane's measurement harnesses are committed byte-identical to
+# what ran, so that the numbers they produced are re-derivable. They import
+# every us_runtime module the measured path loads -- including ones no wrapper
+# names -- because the stray-module assertion beneath the import block proves
+# each one resolves under the measured source tree and not under an editable
+# install. Removing the "unused" import would weaken that check and would make
+# the committed copy differ from the one that ran.
+"experiments/native-scale-transport/harness19_base.py" = ["F401"]
+"experiments/native-scale-transport/harness19_tenth.py" = ["F401"]
+"experiments/native-scale-transport/harness19_after_with_required_replay.py" = ["F401"]
+# The row-ceiling lane's pin tools put the worktree's own packages on
+# sys.path before importing them, and assert beneath the import block that
+# each module resolved inside this tree -- a pin re-derived from another
+# checkout would be the wrong value. That ordering requires E402.
+"experiments/native-row-ceilings/repin.py" = ["E402"]
+"experiments/native-row-ceilings/regenerate_inventory_contract.py" = ["E402"]
+"experiments/native-row-ceilings/origin_budget_size.py" = ["E402"]
+"experiments/native-row-ceilings/selected_body_budget.py" = ["E402"]
+"experiments/native-row-ceilings/consumer_gap.py" = ["E402"]
+"experiments/native-row-ceilings/roles_projection_size.py" = ["E402"]
+# The byte-transport lane: the same two shapes. Its census and sweep tools put
+# the worktree's packages on sys.path before importing them and assert each
+# module resolved here (E402); its 1/15 harness copies keep the measured
+# path's full import roster for the stray-module assertion (F401).
+"experiments/native-byte-transports/agreement_sweep.py" = ["E402"]
+"experiments/native-byte-transports/byte_census_measure.py" = ["E402"]
+"experiments/native-byte-transports/fifteenth/harness19_fifteenth.py" = ["F401"]
+"experiments/native-byte-transports/fifteenth/harness19_diag_fifteenth.py" = ["F401"]
+# The retention lane's 1/15 harness is that lane's harness19_tenth.py with three
+# named changes and is committed byte-identical to what ran, for the same reason.
+"experiments/native-retention-seal/harness19_fifteenth.py" = ["F401"]
+# The 1/10 refusal diagnostic's harness, committed as it ran, for the same reason.
+"experiments/native-retention-seal/harness19_diag.py" = ["F401"]
+# The 1/15 refusal diagnostic's harness, likewise.
+"experiments/native-retention-seal/harness19_diag_fifteenth.py" = ["F401"]
 # Evidence scripts are frozen receipts of one-off measurements: formatted and
 # import-sorted, but their logic stays exactly as it produced the committed
 # outputs, so style rules that would edit that logic are waived.
@@ -40,6 +75,9 @@ testpaths = ["packages"]
 # importlib mode lets shards share test-file basenames (each has its own
 # test_compat.py) without the prepend-mode rootdir collision.
 addopts = "-q --import-mode=importlib"
+# Build tests share named fixture helpers across CI shards. This test-only
+# path also works for installed-wheel runs without exposing any package/src.
+pythonpath = ["packages/microcosm-build/tests"]
 markers = [
     "slow: end-to-end tests that require large local source artifacts",
     "requires_us: needs policyengine-us (the us extra); auto-skipped when absent",

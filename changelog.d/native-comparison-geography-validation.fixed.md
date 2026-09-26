@@ -1,0 +1,1 @@
+Validate geographic identifier encodings before counting census areas, preserve unsupported explicit scopes, and exclude unresolved scopes from the known-level missing-area count in schema-6 US comparison scorecards.

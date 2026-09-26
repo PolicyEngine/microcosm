@@ -1,0 +1,2284 @@
+"""Authenticate complete catalogues, select once, and stack original anchors.
+
+The selection is a development declaration. Source issuers retain their own
+exact-key/unknown-inclusion receipts; this successor binds the separately
+demonstrated catalogue sampling relation. No allocation, calibration or donor
+operation runs here. Source catalogues/parents still have full-source costs.
+"""
+
+from __future__ import annotations
+
+import _csv
+import csv
+import hashlib
+import json
+import math
+import os
+import stat
+import sys
+import weakref
+from contextlib import contextmanager
+from dataclasses import InitVar, dataclass, fields
+from enum import Enum
+from fractions import Fraction
+from pathlib import Path
+from types import FunctionType
+
+import numpy as np
+import pandas as pd
+
+from microcosm.build import survey_domain_sample
+from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.graph import population as graph_population
+from microcosm.graph.population import dtype_for_token, storage_equal
+
+from . import acs_native_coverage_binding as acs_native
+from . import acs_population_catalogue as acs_catalogue
+from . import asec_2024_native_population as asec_native
+from . import asec_current_money as current_money
+from . import asec_population_catalogue as asec_catalogue
+from . import graph_context, graph_sources, spine_assembly
+from . import survey_catalogue_selection as selection
+from . import survey_observed_age as observed_age
+from . import survey_population_domains as domains
+from .support_provenance import spine_source_id_column, support_channel_column
+
+PROTOCOL = "microcosm.us.survey-population-preparation.v2"
+REQUEST_PROTOCOL = "microcosm.us.survey-population-request.v1"
+SPM_REQUEST_PROTOCOL = "microcosm.us.survey-population-request.v2"
+SOURCE_CODEC = "us-survey-population-source-v1"
+MAX_REQUEST_BYTES = 4096
+MAX_PAYLOAD_BYTES = 64 * 1024**2
+# One whole-roster receipt carries one record per source household and per
+# person, so a full-source document is 1.02 GiB (docs/us-native-scale-transport.md
+# §1) and a single bounded encode refuses at 6.1% of the source. The transport
+# below keeps every accumulation inside the value the old ceiling allowed --
+# MAX_SEGMENT_BYTES is that ceiling, unchanged -- and adds one explicit resource
+# ceiling for the total, which is not a transport shape.
+MAX_SEGMENT_BYTES = MAX_PAYLOAD_BYTES
+MAX_ROSTER_BYTES = 64 * MAX_SEGMENT_BYTES
+ROSTER_PROTOCOL = "microcosm.us.survey-population-roster-transport.v1"
+LEGACY_HEAD_COLUMN = "legacy_prepared_is_household_head"
+LEGACY_HEAD_RULE = "microcosm.us.legacy-headship-namespace.v1"
+_MAX_SCALAR_BYTES = 1024**2
+_FRAME_FAST_STRING_CHARS = 4096
+_SOURCE_ROSTER = (
+    "selection-request.json",
+    "acs/csv_hus.zip",
+    "acs/csv_pus.zip",
+    "asec/parent.h5",
+    "asec/household-attachment.h5",
+    "asec/person-income-attachment.h5",
+    "asec/pppub23.csv",
+    "asec/pppub24.csv",
+    "asec/pppub25.csv",
+    "asec/hhpub25.csv",
+)
+_TOKEN = object()
+_ISSUED = {}
+
+
+class SurveyPopulationPreparationError(ValueError):
+    """Static refusal; messages contain no source observations or paths.
+
+    Every catch-all chains the exception it caught, so a refused run names
+    what refused; the code itself stays static.
+    """
+
+
+def _require(condition, code):
+    if not condition:
+        raise SurveyPopulationPreparationError(code)
+
+
+def _sha(value):
+    return hashlib.sha256(value).hexdigest()
+
+
+def _check_scalars(value, depth=0):
+    _require(depth <= 64, "VALUE_DEPTH")
+    if type(value) is str:
+        _require(len(value) <= _MAX_SCALAR_BYTES, "SCALAR_LIMIT")
+    elif type(value) in (tuple, list):
+        for item in value:
+            _check_scalars(item, depth + 1)
+    elif type(value) is dict:
+        for key, item in value.items():
+            _check_scalars(key, depth + 1)
+            _check_scalars(item, depth + 1)
+
+
+def _chunks(value):
+    # A single primitive is bounded before JSON quoting. The encoder never
+    # builds an unbounded complete JSON string before enforcing the transport.
+    _check_scalars(value)
+    yield from json.JSONEncoder(
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).iterencode(value)
+
+
+def _encode(value, maximum=MAX_PAYLOAD_BYTES):
+    result = bytearray()
+    for chunk in _chunks(value):
+        encoded = chunk.encode("utf-8")
+        _require(len(result) + len(encoded) <= maximum, "PAYLOAD_LIMIT")
+        result.extend(encoded)
+    return bytes(result)
+
+
+def _digest(value):
+    digest = hashlib.sha256()
+    for chunk in _chunks(value):
+        digest.update(chunk.encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _roster_segments(value, *, segment=MAX_SEGMENT_BYTES, maximum=MAX_ROSTER_BYTES):
+    """Encode one whole-roster document as bounded, content-addressed segments.
+
+    ``_encode`` accumulates the complete canonical stream before it enforces
+    anything, so its bound is a ceiling on the document rather than on the
+    process's allocation. This walks the same ``_chunks`` stream, closes a
+    segment whenever the next chunk would carry it past ``segment``, and keeps
+    ``PAYLOAD_LIMIT`` on each segment at the same number the single encode used.
+    The total is bounded separately, by ``ROSTER_LIMIT``.
+
+    The running digest is over the chunks in order, so it equals
+    ``_digest(value)`` exactly -- and therefore equals ``_sha(_encode(value))``
+    for every document ``_encode`` accepts, because sha256 is a streaming hash
+    over those same bytes. The canonical byte stream is unchanged; only its
+    materialization is bounded.
+    """
+    digest = hashlib.sha256()
+    segments, table, current, total = [], [], bytearray(), 0
+
+    def close():
+        raw = bytes(current)
+        digest.update(raw)
+        table.append((_sha(raw), len(raw)))
+        segments.append(raw)
+        current.clear()
+
+    for chunk in _chunks(value):
+        encoded = chunk.encode("utf-8")
+        if current and len(current) + len(encoded) > segment:
+            close()
+        # A single chunk is one JSON token, and _check_scalars has already
+        # bounded every string, so this refuses only a token larger than one
+        # whole segment -- the same refusal, at the same number.
+        _require(len(current) + len(encoded) <= segment, "PAYLOAD_LIMIT")
+        _require(total + len(encoded) <= maximum, "ROSTER_LIMIT")
+        current.extend(encoded)
+        total += len(encoded)
+    if current or not segments:
+        close()
+    return segments, tuple(table), digest.hexdigest(), total
+
+
+def _absent(path):
+    """True only when nothing at all sits at ``path``, symlinks included."""
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def _spill_roster(root, name, segments, table, digest, total):
+    """Write the segments beside a header naming them, as the store's own shape.
+
+    ``ContentStore.put_frame`` already writes content-addressed bodies under a
+    ``meta.json`` payload table of sha256 and size per file. This is that shape
+    for a receipt: one ``<sha256>.segment`` per segment and one ``header.json``
+    naming the whole-stream digest, the size and the ordered segment table, so
+    the receipt has a re-verifiable on-disk form that does not depend on the
+    graph store.
+    """
+    _require(type(name) is str and name.isidentifier(), "ROSTER_NAME")
+    directory = root / name
+    directory.mkdir(parents=True, exist_ok=True)
+    # The inventory's resource contract covers reads, not writes, so nothing
+    # else in this repository would notice a redirected spill. Every component
+    # of the path this module writes through is checked here: ``root`` is
+    # already a validated snapshot root, ``name`` is an identifier, and each
+    # segment's own name is the sha256 of its bytes.
+    _require(
+        not stat.S_ISLNK(directory.lstat().st_mode) and directory.is_dir(),
+        "ROSTER_SPILL_LOCATION",
+    )
+    for raw, (sha, size) in zip(segments, table, strict=True):
+        path = directory / (sha + ".segment")
+        # lstat, not exists(): a broken symlink does not exist and would be
+        # written straight through.
+        if _absent(path):
+            path.write_bytes(raw)
+        stats = path.lstat()
+        _require(
+            not stat.S_ISLNK(stats.st_mode)
+            and stat.S_ISREG(stats.st_mode)
+            and stats.st_size == size,
+            "ROSTER_SEGMENT_CHANGED",
+        )
+        # A segment that was already there is read back and hashed, not trusted
+        # for its size. The run's own bytes come from memory either way, so this
+        # protects the claim that the spill is a re-verifiable on-disk form --
+        # which it would not be if same-size different content passed.
+        _require(_sha(path.read_bytes()) == sha, "ROSTER_SEGMENT_CHANGED")
+    header = {
+        "protocol": ROSTER_PROTOCOL,
+        "name": name,
+        "sha256": digest,
+        "size": total,
+        "segments": [[sha, size] for sha, size in table],
+    }
+    path = directory / "header.json"
+    if not _absent(path):
+        stats = path.lstat()
+        _require(
+            not stat.S_ISLNK(stats.st_mode) and stat.S_ISREG(stats.st_mode),
+            "ROSTER_SPILL_LOCATION",
+        )
+    path.write_bytes(_encode(header))
+    return header
+
+
+def _roster_payload(
+    value, *, spill=None, name=None, segment=MAX_SEGMENT_BYTES, maximum=MAX_ROSTER_BYTES
+):
+    """One whole-roster receipt's bytes, and the header that names its segments.
+
+    The bytes are identical to ``_encode(value)`` wherever ``_encode`` accepts
+    the document, and exist wherever it does not. They are materialized once,
+    because ``KernelResult.artifacts`` is a mapping of ``bytes`` and
+    ``ContentStore.put_bytes`` takes whole bytes; removing that copy needs a
+    streaming artifact channel in ``microcosm-graph``, which is not this
+    module's to change.
+    """
+    segments, table, digest, total = _roster_segments(
+        value, segment=segment, maximum=maximum
+    )
+    header = None
+    if spill is not None:
+        header = _spill_roster(spill, name, segments, table, digest, total)
+    for raw, (sha, size) in zip(segments, table, strict=True):
+        _require(len(raw) == size and _sha(raw) == sha, "ROSTER_SEGMENT_CHANGED")
+    payload = b"".join(segments)
+    _require(len(payload) == total <= maximum, "ROSTER_LIMIT")
+    _require(_sha(payload) == digest, "ROSTER_DIGEST")
+    return payload, header
+
+
+def _catalogue_fast_path(value):
+    """Recognize immutable, bounded raw records without changing admission."""
+    if type(value) is not tuple or len(value) != 2:
+        return False
+    for group in value:
+        if type(group) is not tuple:
+            return False
+        for record in group:
+            if type(record) is not tuple or len(record) != 7:
+                return False
+            people = record[6]
+            if type(people) is not tuple or len(people) > 20:
+                return False
+            if any(type(person) is not tuple or len(person) != 9 for person in people):
+                return False
+            characters = 0
+            for row in (record[:6], *people):
+                for item in row:
+                    if type(item) is str:
+                        if not item.isascii():
+                            return False
+                        characters += len(item)
+                        if characters > 65_536:
+                            return False
+                    elif type(item) is int:
+                        if not -(2**63) <= item < 2**63:
+                            return False
+                    else:
+                        return False
+    return True
+
+
+def _catalogue_chunks(value):
+    # Decide for the whole value before encoding. Unexpected shapes retain
+    # the generic encoder's full-depth scalar pass and error precedence.
+    if not _catalogue_fast_path(value):
+        yield from _chunks(value)
+        return
+    _check_scalars(value)
+    encoder = json.JSONEncoder(
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
+    yield "["
+    for group_index, group in enumerate(value):
+        if group_index:
+            yield ","
+        yield "["
+        for record_index, record in enumerate(group):
+            if record_index:
+                yield ","
+            # encode uses the ordinary one-shot C provider when available.
+            # At most 186 leaves and 65,536 ASCII characters bound this
+            # individual JSON record below 400 KiB, including escaping.
+            yield encoder.encode(record)
+        yield "]"
+    yield "]"
+
+
+def _catalogue_digest(value):
+    digest = hashlib.sha256()
+    for chunk in _catalogue_chunks(value):
+        digest.update(chunk.encode("utf-8"))
+    return digest.hexdigest()
+
+
+def _catalogue_memo(value, expected_digest):
+    """Retain one proved immutable tree, never an unchecked caller digest.
+
+    The exact-tuple/int/ASCII-str eligibility test also excludes mutable leaves
+    and subclasses. Strong references prevent identity reuse. Rehash once while
+    creating the memo to bind those exact immutable roots to the earlier seal.
+    A replacement tree or an ineligible shape keeps the original digest path.
+    """
+    if not _catalogue_fast_path(value):
+        return None
+    if _catalogue_digest(value) != expected_digest:
+        return None
+    return (value[0], value[1], expected_digest)
+
+
+def _memoized_catalogue_digest(value, memo=None, *, expected_digest=None):
+    """Reuse only the issued preparation's unchanged immutable record roots.
+
+    This private memo is not source authority. The owning preparation still
+    performs every source/producer borrow and full physical Frame seal. Its
+    original nested digest is checked independently of the memo's digest.
+    """
+    if (
+        type(value) is tuple
+        and len(value) == 2
+        and type(memo) is tuple
+        and len(memo) == 3
+        and value[0] is memo[0]
+        and value[1] is memo[1]
+        and type(memo[2]) is str
+        and memo[2] == expected_digest
+    ):
+        return memo[2]
+    return _catalogue_digest(value)
+
+
+def _value(value):
+    if isinstance(value, Enum):
+        return value.value
+    if type(value) is Fraction:
+        return [value.numerator, value.denominator]
+    if hasattr(type(value), "__dataclass_fields__"):
+        return {
+            field.name: _value(getattr(value, field.name)) for field in fields(value)
+        }
+    if type(value) in (tuple, list):
+        return [_value(item) for item in value]
+    if type(value) is dict:
+        return {key: _value(item) for key, item in value.items()}
+    if isinstance(value, np.generic):
+        return value.item()
+    _require(value is None or type(value) in (str, int, bool, float), "VALUE_TYPE")
+    return value
+
+
+def _plan_document(plan):
+    _require(type(plan) is selection.CatalogueSelectionPlan, "SELECTION_TYPE")
+    result = {
+        "fraction": _value(plan.fraction),
+        "seed": plan.seed,
+        "supplied_households": plan.supplied_households,
+    }
+    budget = [0]
+    for name in ("selected", "excluded", "cells"):
+        result[name] = []
+        for row in getattr(plan, name):
+            _bounded_append(result[name], _value(row), budget)
+    return result
+
+
+def _root(value, *, allow_missing=False):
+    _require(isinstance(value, (str, Path)), "PATH_TYPE")
+    path = Path(value).absolute()
+    for component in (path, *path.parents):
+        if allow_missing:
+            try:
+                component.lstat()
+            except FileNotFoundError:
+                continue
+        _require(not stat.S_ISLNK(component.lstat().st_mode), "SOURCE_SYMLINK")
+    return path
+
+
+def _stat_identity(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+@contextmanager
+def _regular_reader(path, maximum):
+    """Never follow a replaced final symlink or block on a substituted FIFO."""
+    _root(path.parent)
+    before = path.lstat()
+    _require(
+        stat.S_ISREG(before.st_mode) and 0 <= before.st_size <= maximum,
+        "SOURCE_REGULAR_FILE",
+    )
+    descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+    try:
+        opened = os.fstat(descriptor)
+        _require(
+            stat.S_ISREG(opened.st_mode)
+            and _stat_identity(opened) == _stat_identity(before),
+            "SOURCE_DESCRIPTOR_CHANGED",
+        )
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            yield stream, opened
+            after = os.fstat(descriptor)
+            current = path.lstat()
+            _require(
+                stat.S_ISREG(current.st_mode)
+                and _stat_identity(opened)
+                == _stat_identity(after)
+                == _stat_identity(current),
+                "SOURCE_CHANGED",
+            )
+    finally:
+        os.close(descriptor)
+
+
+def _request(source_dir):
+    root = _root(source_dir)
+    path = root / "selection-request.json"
+    info = path.lstat()
+    _require(
+        stat.S_ISREG(info.st_mode) and info.st_size <= MAX_REQUEST_BYTES, "REQUEST_FILE"
+    )
+    with _regular_reader(path, MAX_REQUEST_BYTES) as (stream, _opened):
+        payload = stream.read(MAX_REQUEST_BYTES + 1)
+    _require(len(payload) <= MAX_REQUEST_BYTES, "REQUEST_LIMIT")
+    document = json.loads(payload)
+    _require(type(document) is dict, "REQUEST_FIELDS")
+    fields = {"protocol", "declaration", "fraction", "seed"}
+    if document.get("protocol") == SPM_REQUEST_PROTOCOL:
+        fields.add("acs_spm_construction")
+    _require(set(document) == fields, "REQUEST_FIELDS")
+    _require(
+        document["protocol"] in (REQUEST_PROTOCOL, SPM_REQUEST_PROTOCOL)
+        and document["declaration"] == domains.DECLARATION,
+        "REQUEST_DECLARATION",
+    )
+    pair = document["fraction"]
+    _require(
+        type(pair) is list
+        and len(pair) == 2
+        and all(type(v) is int for v in pair)
+        and pair[1] > 0,
+        "REQUEST_FRACTION",
+    )
+    fraction = Fraction(*pair)
+    _require(
+        0 < fraction <= 1 and [fraction.numerator, fraction.denominator] == pair,
+        "REQUEST_FRACTION",
+    )
+    seed = document["seed"]
+    _require(type(seed) is int and 0 <= seed < 2**64, "REQUEST_SEED")
+    _require(_encode(document, MAX_REQUEST_BYTES) == payload, "REQUEST_CANONICAL")
+    _request_construction(document)
+    return root, document, payload, fraction, seed
+
+
+def _request_construction(document):
+    """Decode only explicit v2 options; v1 never imports an SPM helper."""
+    if document["protocol"] == REQUEST_PROTOCOL:
+        return None
+    options = document["acs_spm_construction"]
+    _require(
+        type(options) is dict and set(options) == {"policy", "minor_partner_role"},
+        "REQUEST_SPM_OPTIONS",
+    )
+    from microcosm.build.acs_spm_source_assembly import AcsSpmSourceAssemblyOptions
+
+    return AcsSpmSourceAssemblyOptions(**options)
+
+
+def read_survey_population_request(source_dir):
+    """Decode bounded request arguments, without granting source authority."""
+    try:
+        _path, _document, _payload, fraction, seed = _request(source_dir)
+        return fraction, seed
+    except SurveyPopulationPreparationError:
+        raise
+    except Exception as error:
+        raise SurveyPopulationPreparationError("REQUEST_REFUSED") from error
+
+
+def _file_limits():
+    # Limits bound only transport. Actual closed owners independently verify
+    # their pinned source bytes and stricter member/row/receipt contracts.
+    return {
+        **{name: asec_native._MAX_CHECKPOINT_BYTES for name in _SOURCE_ROSTER},
+        **{
+            f"asec/pppub{year}.csv": asec_native.coverage_owner.literal.MAX_MEMBER_BYTES
+            for year in (23, 24, 25)
+        },
+        "asec/hhpub25.csv": asec_native.anchor_owner._MAX_MEMBER_BYTES,
+        "selection-request.json": MAX_REQUEST_BYTES,
+        "acs/csv_hus.zip": acs_catalogue._ARCHIVE_BYTES,
+        "acs/csv_pus.zip": acs_catalogue._ARCHIVE_BYTES,
+    }
+
+
+def _source_files(root):
+    _root(root)
+    _require(stat.S_ISDIR(root.lstat().st_mode), "SOURCE_ROOT")
+    found = []
+    for directory, expected in (
+        (root, {"acs", "asec", "selection-request.json"}),
+        (root / "acs", {"csv_hus.zip", "csv_pus.zip"}),
+        (
+            root / "asec",
+            {Path(n).name for n in _SOURCE_ROSTER if n.startswith("asec/")},
+        ),
+    ):
+        _require(stat.S_ISDIR(directory.lstat().st_mode), "SOURCE_DIRECTORY")
+        children = tuple(directory.iterdir())
+        _require(
+            {p.name for p in children} == expected and len(children) == len(expected),
+            "SOURCE_ROSTER",
+        )
+        for path in children:
+            mode = path.lstat().st_mode
+            _require(not stat.S_ISLNK(mode), "SOURCE_SYMLINK")
+            if path.name in {"acs", "asec"} and path.parent == root:
+                _require(stat.S_ISDIR(mode), "SOURCE_DIRECTORY")
+            else:
+                _require(stat.S_ISREG(mode), "SOURCE_REGULAR_FILE")
+                found.append(path.relative_to(root).as_posix())
+    _require(set(found) == set(_SOURCE_ROSTER), "SOURCE_ROSTER")
+    limits = _file_limits()
+    _require(
+        sum(
+            (root / name).lstat().st_size
+            for name in ("acs/csv_hus.zip", "acs/csv_pus.zip")
+        )
+        <= acs_catalogue._ARCHIVE_BYTES,
+        "ARCHIVE_LIMIT",
+    )
+    result = []
+    for name in _SOURCE_ROSTER:
+        path = root / name
+        digest, size = hashlib.sha256(), 0
+        with _regular_reader(path, limits[name]) as (stream, opened):
+            while block := stream.read(1024**2):
+                size += len(block)
+                _require(size <= limits[name], "SOURCE_FILE_LIMIT")
+                digest.update(block)
+        _require(size == opened.st_size, "SOURCE_CHANGED")
+        result.append([name, size, digest.hexdigest()])
+    return tuple(tuple(row) for row in result)
+
+
+def _file_stats(root):
+    _root(root)
+    result = []
+    # Directory ctime/mtime also bind the exact admitted roster across the last
+    # producer I/O, including a newly added unlisted entry in either source arm.
+    for directory in (root, root / "acs", root / "asec"):
+        info = directory.lstat()
+        _require(stat.S_ISDIR(info.st_mode), "SOURCE_DIRECTORY")
+        result.append(_stat_identity(info))
+    for name in _SOURCE_ROSTER:
+        path = root / name
+        _root(path.parent)
+        info = path.lstat()
+        _require(stat.S_ISREG(info.st_mode), "SOURCE_REGULAR_FILE")
+        result.append(_stat_identity(info))
+    return tuple(result)
+
+
+def _modules():
+    modules = (
+        sys.modules[__name__],
+        domains,
+        selection,
+        survey_domain_sample,
+        spine_assembly,
+        graph_sources,
+        graph_context,
+        graph_population,
+        observed_age,
+        acs_catalogue,
+        asec_catalogue,
+        acs_native,
+        acs_native.housing,
+        acs_native.coverage,
+        acs_native.coverage.literal,
+        sys.modules[acs_native.housing.build_acs_pums_unit_frame.__module__],
+        sys.modules[acs_native.housing.map_acs_native_inputs.__module__],
+        *asec_native._modules(),
+    )
+    return tuple({module.__name__: module for module in modules}.values())
+
+
+def _runtime_marker(value, depth=0):
+    """Detach simple callable configuration, retaining opaque dependency identity."""
+    _require(depth <= 16, "PRODUCER_CONFIGURATION_DEPTH")
+    if type(value) in (type(None), bool, int, float, str, bytes):
+        return type(value), value
+    if type(value) in (tuple, list):
+        return type(value), tuple(_runtime_marker(v, depth + 1) for v in value)
+    if type(value) is dict:
+        return tuple(
+            (_runtime_marker(k, depth + 1), _runtime_marker(v, depth + 1))
+            for k, v in value.items()
+        )
+    if isinstance(value, FunctionType):
+        return value, value.__code__
+    return type(value), id(value)
+
+
+def _function_seal(function, depth=0):
+    # contextmanager keeps executable code in both __wrapped__ and a closure;
+    # the public wrapper's __code__ alone cannot bind that implementation.
+    _require(depth <= 16, "PRODUCER_WRAPPER_DEPTH")
+    wrapped = getattr(function, "__wrapped__", None)
+    return (
+        function,
+        function.__code__,
+        _runtime_marker(function.__defaults__),
+        _runtime_marker(function.__kwdefaults__),
+        tuple(_runtime_marker(c.cell_contents) for c in function.__closure__ or ()),
+        _function_seal(wrapped, depth + 1)
+        if isinstance(wrapped, FunctionType)
+        else _runtime_marker(wrapped),
+    )
+
+
+def _live():
+    result = {}
+    for module in _modules():
+        for name, value in vars(module).items():
+            if isinstance(value, FunctionType):
+                result[(module.__name__, name)] = _function_seal(value)
+            elif isinstance(value, type) and value.__module__ == module.__name__:
+                result[(module.__name__, name)] = value
+                for method, function in vars(value).items():
+                    if isinstance(function, (staticmethod, classmethod)):
+                        function = function.__func__
+                    if isinstance(function, property):
+                        function = function.fget
+                    if isinstance(function, FunctionType):
+                        result[(module.__name__, name, method)] = _function_seal(
+                            function
+                        )
+    result["rng"] = (np.random.Generator, np.random.PCG64, np.random.SeedSequence)
+    result["csv"] = (csv.reader, _csv.reader)
+    # The bounded catalogue path uses JSONEncoder.encode and its C provider;
+    # frame cells also use the same encode_basestring provider as _chunks.
+    # Bind their actual live identities through this existing seal.
+    result["json_catalogue"] = (
+        json.JSONEncoder,
+        json.encoder,
+        tuple(
+            _function_seal(function)
+            if isinstance(function, FunctionType)
+            else _runtime_marker(function)
+            for function in (
+                getattr(json.JSONEncoder, name, None)
+                for name in ("__init__", "encode", "iterencode")
+            )
+        ),
+        getattr(json.encoder, "c_make_encoder", None),
+        getattr(json.encoder, "encode_basestring", None),
+    )
+    result["contract"] = (
+        PROTOCOL,
+        REQUEST_PROTOCOL,
+        SPM_REQUEST_PROTOCOL,
+        acs_native.housing._SPM_ASSEMBLER_SHA256,
+        acs_native.housing._SPM_EVIDENCE_MAX_BYTES,
+        SOURCE_CODEC,
+        MAX_REQUEST_BYTES,
+        MAX_PAYLOAD_BYTES,
+        MAX_SEGMENT_BYTES,
+        MAX_ROSTER_BYTES,
+        ROSTER_PROTOCOL,
+        LEGACY_HEAD_COLUMN,
+        LEGACY_HEAD_RULE,
+        _MAX_SCALAR_BYTES,
+        _FRAME_FAST_STRING_CHARS,
+        _SOURCE_ROSTER,
+        domains.DECLARATION,
+        domains.MAX_MEMBERS,
+        domains.MAX_HOUSEHOLDS,
+        domains.MAX_TOTAL_MEMBERS,
+        selection._BATCH_HOUSEHOLDS,
+        selection._BATCH_PEOPLE,
+        observed_age.RULE,
+        observed_age.AGE_CONVENTION,
+        observed_age.MAX_ROWS,
+        observed_age.MAX_EXACT_FLOAT64_INTEGER,
+    )
+    return result
+
+
+def _code_bytes():
+    return {
+        module.__name__: _sha(Path(module.__file__).read_bytes())
+        for module in _modules()
+    }
+
+
+def _producer():
+    _require(_live() == _LIVE and _code_bytes() == _BYTES, "PRODUCER_CHANGED")
+    return {
+        "implementation": _BYTES,
+        "acs": acs_catalogue._producer(),
+        "asec": _sha(_encode(asec_catalogue._implementation())),
+        "numpy": np.__version__,
+        "rng": "numpy.random.PCG64/SeedSequence",
+        "declaration": domains.DECLARATION,
+    }
+
+
+def _authority():
+    return _encode(
+        {
+            "asec": asec_catalogue._source_authority().hex(),
+            "acs": acs_native.housing._ARCHIVE_PINS,
+        }
+    )
+
+
+def _cell(value):
+    if (
+        value is None
+        or value is pd.NA
+        or (isinstance(value, (float, np.floating)) and math.isnan(value))
+    ):
+        return None
+    if isinstance(value, np.generic):
+        value = value.item()
+    _require(type(value) in (str, int, bool, float), "FRAME_CELL_TYPE")
+    if type(value) is float:
+        _require(math.isfinite(value), "FRAME_NONFINITE")
+        return ["float", value.hex()]
+    return value
+
+
+def _frame_cell_encode(value, maximum=MAX_PAYLOAD_BYTES):
+    """Encode one normalized cell with the exact _encode preimage and limits.
+
+    _cell admits only None, exact bool/int/str, or its own freshly constructed
+    ["float", finite_float.hex()] list. Keep normalization and the scalar walk
+    before encoding; large strings/integers retain the original slow path.
+    No Frame, Series, index, or normalized value is retained between calls.
+    """
+    value = _cell(value)
+    kind = type(value)
+    if not (
+        value is None
+        or kind is bool
+        or (kind is int and -(2**63) <= value < 2**64)
+        or (kind is str and len(value) <= _FRAME_FAST_STRING_CHARS)
+        or kind is list
+    ):
+        return _encode(value, maximum)
+
+    _check_scalars(value)
+    if value is None:
+        encoded = b"null"
+    elif kind is bool:
+        encoded = b"true" if value else b"false"
+    elif kind is int:
+        # Match JSON's exact-int formatter, including its decimal digit policy.
+        encoded = int.__repr__(value).encode("ascii")
+    elif kind is str:
+        # _chunks selects this very provider with ensure_ascii=False. UTF-8
+        # conversion still precedes the payload check, including surrogates.
+        # At most 6 * 4096 + 2 encoded bytes, even for all control characters.
+        encoded = json.encoder.encode_basestring(value).encode("utf-8")
+    else:
+        # Only _cell can construct this list: both strings are ASCII without
+        # JSON escapes. Keep hex spelling (especially -0.0), never decimalize.
+        encoded = b'["float","' + value[1].encode("ascii") + b'"]'
+    _require(len(encoded) <= maximum, "PAYLOAD_LIMIT")
+    return encoded
+
+
+_HEX_DIGITS = np.frombuffer(b"0123456789abcdef", dtype=np.uint8)
+# ``["float","`` -0x1. <13 mantissa nibbles> p +<=4 exponent digits> "]\n
+_FLOAT_WIDTH = 37
+_FLOAT_HEAD = np.frombuffer(b'["float","', dtype=np.uint8)
+_FLOAT_LEAD = np.stack(
+    (
+        np.frombuffer(b"0x1.", dtype=np.uint8),
+        np.frombuffer(b"0x0.", dtype=np.uint8),
+    )
+)
+_FLOAT_TAIL = np.frombuffer(b'"]\n', dtype=np.uint8)
+_FLOAT_NULL = np.frombuffer(b"null\n", dtype=np.uint8)
+_FLOAT_EXPONENT_DIGITS = 4
+_MANTISSA_SHIFTS = np.arange(48, -1, -4, dtype=np.uint64)
+_BOOL_CELLS = np.array([b"false\n", b"true\n", b"null\n"], dtype=object)
+_INTEGER_DTYPES = frozenset(
+    ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
+)
+_NULLABLE_INTEGER_DTYPES = frozenset(
+    ("Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64")
+)
+
+
+def _float_cells(values):
+    """``_frame_cell_encode`` + a newline for one float64 column, per column.
+
+    The record is laid out at fixed offsets with a per-position keep mask, so
+    the variable-length spellings ``float.hex()`` produces are cut out of one
+    padded matrix rather than assembled a cell at a time:
+
+        0..9   ``["float","``        always
+        10     ``-``                 iff the sign bit is set
+        11..14 ``0x1.`` / ``0x0.``   normal / subnormal-or-zero
+        15..27 13 mantissa nibbles   all 13, or only column 15 (``0``) for zero
+        28     ``p``                 always
+        29     ``+`` / ``-``         sign of the unbiased exponent
+        30..33 4 exponent digits     only the last significant ones
+        34..36 ``"]`` and newline    always
+
+    A NaN cell spells ``null`` instead, which is what ``_cell`` makes of it.
+    ``_cell`` refuses a non-finite cell, so an infinity refuses here too, with
+    the same code; it is raised for the column rather than at the first
+    offending cell, and the digest is discarded either way.
+    """
+    _require(not np.isinf(values).any(), "FRAME_NONFINITE")
+    count = values.shape[0]
+    if count == 0:
+        return b""
+    bits = values.view(np.uint64)
+    missing = np.isnan(values)
+    sign = (bits >> np.uint64(63)).astype(bool)
+    biased = ((bits >> np.uint64(52)) & np.uint64(0x7FF)).astype(np.int64)
+    mantissa = bits & np.uint64(0xFFFFFFFFFFFFF)
+    subnormal = biased == 0
+    zero = subnormal & (mantissa == 0)
+    exponent = np.where(subnormal, np.int64(-1022), biased - 1023)
+    exponent = np.where(zero, np.int64(0), exponent)
+
+    cells = np.zeros((count, _FLOAT_WIDTH), dtype=np.uint8)
+    keep = np.zeros((count, _FLOAT_WIDTH), dtype=bool)
+    cells[:, 0:10] = _FLOAT_HEAD
+    cells[:, 10] = np.uint8(0x2D)
+    keep[:, 10] = sign
+    cells[:, 11:15] = _FLOAT_LEAD[subnormal.astype(np.intp)]
+    cells[:, 15:28] = _HEX_DIGITS[
+        ((mantissa[:, None] >> _MANTISSA_SHIFTS[None, :]) & np.uint64(0xF)).astype(
+            np.uint8
+        )
+    ]
+    cells[zero, 15] = np.uint8(0x30)
+    cells[:, 28] = np.uint8(0x70)
+    cells[:, 29] = np.where(exponent < 0, np.uint8(0x2D), np.uint8(0x2B))
+    magnitude = np.abs(exponent)
+    for position in range(_FLOAT_EXPONENT_DIGITS):
+        power = 10 ** (_FLOAT_EXPONENT_DIGITS - 1 - position)
+        cells[:, 30 + position] = np.uint8(0x30) + (magnitude // power % 10).astype(
+            np.uint8
+        )
+    cells[:, 34:37] = _FLOAT_TAIL
+
+    keep[:, 0:10] = True
+    keep[:, 11:28] = True
+    keep[zero, 16:28] = False
+    keep[:, 28:30] = True
+    significant = np.where(
+        magnitude >= 1000,
+        4,
+        np.where(magnitude >= 100, 3, np.where(magnitude >= 10, 2, 1)),
+    )
+    keep[:, 30:34] = (
+        np.arange(_FLOAT_EXPONENT_DIGITS)[None, :]
+        >= (_FLOAT_EXPONENT_DIGITS - significant)[:, None]
+    )
+    keep[:, 34:37] = True
+    if missing.any():
+        cells[missing, 0:5] = _FLOAT_NULL
+        keep[missing, :] = False
+        keep[missing, 0:5] = True
+    return cells[keep].tobytes()
+
+
+def _integer_cells(values):
+    """One integer column's cells. ``str`` on a Python int is ``int.__repr__``.
+
+    Every value an integer dtype can hold lies inside the fast path's
+    ``-2**63 <= value < 2**64`` window and spells at most twenty ASCII bytes,
+    so neither ``_encode`` nor ``PAYLOAD_LIMIT`` is reachable from here.
+    """
+    if values.shape[0] == 0:
+        return b""
+    return ("\n".join(map(str, values.tolist())) + "\n").encode("ascii")
+
+
+def _nullable_integer_cells(series):
+    """One nullable-integer column's cells; ``pd.NA`` is ``_cell``'s ``None``.
+
+    The unsigned widths keep an unsigned carrier: ``UInt64`` holds values above
+    ``2**63 - 1`` that no signed carrier can spell, and the fast path admits
+    every integer below ``2**64``.
+    """
+    if len(series) == 0:
+        return b""
+    carrier = "uint64" if str(series.dtype).startswith("U") else "int64"
+    present = series.to_numpy(dtype=carrier, na_value=0)
+    spelled = list(map(str, present.tolist()))
+    for position in np.flatnonzero(np.asarray(series.isna())).tolist():
+        spelled[position] = "null"
+    return ("\n".join(spelled) + "\n").encode("ascii")
+
+
+def _boolean_cells(series):
+    """One boolean column's cells: three spellings, selected by index."""
+    if len(series) == 0:
+        return b""
+    missing = np.asarray(series.isna())
+    present = series.to_numpy(dtype=bool, na_value=False)
+    codes = np.where(missing, np.intp(2), present.astype(np.intp))
+    return b"".join(_BOOL_CELLS[codes].tolist())
+
+
+def _string_cells(series):
+    """One string column's cells, encoding each distinct value once.
+
+    ``StringDtype`` compares and hashes exactly, so grouping equal values
+    cannot merge two whose encodings differ. ``object`` and ``category``
+    deliberately do not qualify: ``1``, ``True`` and ``1.0`` are equal and hash
+    alike there while ``_frame_cell_encode`` spells them three different ways,
+    so those dtypes keep the cell-at-a-time walk.
+    """
+    if len(series) == 0:
+        return b""
+    codes, uniques = pd.factorize(series, use_na_sentinel=False)
+    encoded = np.empty(len(uniques), dtype=object)
+    for position, value in enumerate(uniques):
+        encoded[position] = _frame_cell_encode(value) + b"\n"
+    return b"".join(encoded[codes].tolist())
+
+
+def _cells_blob(series):
+    """The exact bytes a cell-at-a-time walk over ``series`` would digest.
+
+    Every branch below is proved equal to that walk, byte for byte, in
+    ``test_us_survey_population_frame_seal.py``; a dtype with no proved branch
+    takes the walk itself rather than a guess.
+    """
+    name = str(series.dtype)
+    if name == "float64":
+        return _float_cells(series.to_numpy(dtype=np.float64, copy=False))
+    if name in _INTEGER_DTYPES:
+        return _integer_cells(series.to_numpy(copy=False))
+    if name in _NULLABLE_INTEGER_DTYPES:
+        return _nullable_integer_cells(series)
+    if name in ("bool", "boolean"):
+        return _boolean_cells(series)
+    if name == "string":
+        return _string_cells(series)
+    return b"".join(_frame_cell_encode(value) + b"\n" for value in series)
+
+
+def _index_blob(index):
+    """The same, for an axis, which the walk reads exactly as it reads a column."""
+    name = str(index.dtype)
+    if name in _INTEGER_DTYPES:
+        return _integer_cells(index.to_numpy(copy=False))
+    if name == "float64":
+        return _float_cells(index.to_numpy(dtype=np.float64, copy=False))
+    return b"".join(_frame_cell_encode(value) + b"\n" for value in index)
+
+
+def _frame_identity(frame):
+    _require(
+        isinstance(frame, Frame) and frame.schema == US_SCHEMA and not frame.links,
+        "FRAME_TYPE",
+    )
+    digest = hashlib.sha256()
+
+    def update(value):
+        digest.update(_encode(value))
+        digest.update(b"\n")
+
+    update([list(frame.entities), list(frame.weighted_entities)])
+    for entity in frame.entities:
+        table = frame.table(entity)
+        _require(
+            type(table) is pd.DataFrame and not table.columns.has_duplicates,
+            "FRAME_TABLE",
+        )
+        update(
+            [
+                entity,
+                list(table.columns),
+                type(table.columns).__name__,
+                str(table.columns.dtype),
+                list(table.columns.names),
+                type(table.index).__name__,
+                str(table.index.dtype),
+                list(table.index.names),
+            ]
+        )
+        digest.update(_index_blob(table.index))
+        for column in table:
+            series = table[column]
+            dtype = series.dtype
+            update(
+                [
+                    column,
+                    str(dtype),
+                    getattr(dtype, "storage", None),
+                    str(getattr(dtype, "na_value", "")),
+                ]
+            )
+            digest.update(_cells_blob(series))
+    update(
+        [
+            str(frame.strata.dtype),
+            type(frame.strata.index).__name__,
+            str(frame.strata.index.dtype),
+            list(frame.strata.index.names),
+            getattr(frame.strata.dtype, "storage", None),
+            frame.strata.name,
+        ]
+    )
+    digest.update(_index_blob(frame.strata.index))
+    digest.update(_cells_blob(frame.strata))
+    for entity in frame.weighted_entities:
+        weights = frame.weights_for(entity)
+        update(
+            [
+                entity,
+                weights.kind.value,
+                str(weights.values.dtype),
+                list(weights.values.shape),
+            ]
+        )
+        digest.update(weights.values.tobytes())
+    digest.update(graph_context.encode_us_frame_context(frame))
+    return digest.hexdigest()
+
+
+def _copy_source(frame):
+    result = Frame(
+        {e: frame.table(e).copy(deep=True) for e in frame.entities},
+        frame.schema,
+        {
+            e: Weights(frame.weights_for(e).values.copy(), frame.weights_for(e).kind)
+            for e in frame.weighted_entities
+        },
+        frame.strata.copy(deep=True),
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    # Only physical string storage changes on owned copies, before the stack's
+    # exact shared-dtype check. Actual values and missing masks stay identical.
+    for entity in result.entities:
+        for column in result.table(entity):
+            original = result.table(entity)[column]
+            if isinstance(original.dtype, pd.StringDtype):
+                changed = original.astype(dtype_for_token("string"))
+                _same_values(original, changed)
+                result.table(entity)[column] = changed
+    return result
+
+
+def _same_values(left, right):
+    _require(len(left) == len(right), "ROW_COUNT")
+    _require(list(map(_cell, left)) == list(map(_cell, right)), "SOURCE_VALUE_CHANGED")
+
+
+def _normalized_source_copy(frame: Frame) -> Frame:
+    _require(
+        LEGACY_HEAD_COLUMN not in frame.person, "LEGACY_HEADSHIP_NAMESPACE_COLLISION"
+    )
+    result = _copy_source(frame)
+    # These prepared booleans are not the raw reference-person observations.
+    # Preserve every value under a diagnostic name; the role source operator
+    # will own the nullable canonical column from A_EXPRRP / RELSHIPP.
+    if "is_household_head" in result.person:
+        result.person.columns = _headship_namespace_axis(result.person.columns)
+    _require("A_AGE" in frame.person, "OBSERVED_AGE_REQUIRED")
+    result.person["age"] = observed_age.normalize_observed_age(
+        frame.person["A_AGE"], frame.person.get("age")
+    )
+    _verify_normalized_copy(frame, result)
+    return result
+
+
+def _headship_namespace_axis(columns):
+    return pd.Index(
+        [LEGACY_HEAD_COLUMN if c == "is_household_head" else c for c in columns],
+        dtype=columns.dtype,
+        name=columns.name,
+    )
+
+
+def _verify_normalized_copy(original: Frame, normalized: Frame):
+    """Only age normalization, the lossless headship name and string storage differ."""
+    _require(
+        original.schema == normalized.schema
+        and original.entities == normalized.entities
+        and original.links == normalized.links == ()
+        and original.metadata == normalized.metadata
+        and original.mass_log == normalized.mass_log
+        and original.weighted_entities == normalized.weighted_entities,
+        "NORMALIZED_FRAME_CONTEXT",
+    )
+    for entity in original.entities:
+        before, after = original.table(entity), normalized.table(entity)
+        expected_axis = before.columns
+        if entity == "person":
+            _require(
+                LEGACY_HEAD_COLUMN not in before, "LEGACY_HEADSHIP_NAMESPACE_COLLISION"
+            )
+            expected_axis = _headship_namespace_axis(before.columns)
+        expected_columns = list(expected_axis)
+        renamed_axis = after.columns
+        if entity == "person" and "age" not in before:
+            expected_columns.append("age")
+            renamed_axis = after.columns[:-1]
+        _require(
+            list(after) == expected_columns
+            and expected_axis.identical(renamed_axis)
+            and before.index.identical(after.index),
+            "NORMALIZED_ORDERED_COLUMNS",
+        )
+        for column in before:
+            if entity == "person" and column == "age":
+                continue  # Independently reconstructed from raw observations below.
+            target = (
+                LEGACY_HEAD_COLUMN
+                if entity == "person" and column == "is_household_head"
+                else column
+            )
+            left, right = before[column], after[target]
+            if isinstance(left.dtype, pd.StringDtype):
+                _require(
+                    right.dtype == dtype_for_token("string"),
+                    "NORMALIZED_STRING_DTYPE",
+                )
+                _same_values(left, right)
+            else:
+                _require(storage_equal(left, right), "NORMALIZED_SOURCE_STORAGE")
+    _require(
+        original.strata.index.identical(normalized.strata.index)
+        and original.strata.name == normalized.strata.name
+        and storage_equal(original.strata, normalized.strata),
+        "NORMALIZED_STRATA",
+    )
+    for entity in original.weighted_entities:
+        left, right = original.weights_for(entity), normalized.weights_for(entity)
+        _require(
+            left.kind is right.kind
+            and left.values.dtype == right.values.dtype
+            and left.values.tobytes() == right.values.tobytes(),
+            "NORMALIZED_WEIGHTS",
+        )
+    expected = observed_age.normalize_observed_age(
+        original.person["A_AGE"], original.person.get("age")
+    )
+    _require(
+        storage_equal(expected, normalized.person["age"]), "NORMALIZED_AGE_IDENTITY"
+    )
+
+
+def _bounded_append(rows, row, budget):
+    # A bound on the Python row list, not on a transport: one record per source
+    # household or per person, so a full-source roster is 1.02 GiB. The code and
+    # the per-row encode are unchanged; the ceiling is the explicit resource one.
+    size = len(_encode(row)) + 1
+    _require(budget[0] + size <= MAX_ROSTER_BYTES, "ORIGIN_LIMIT")
+    budget[0] += size
+    rows.append(row)
+
+
+def _origins(frame, sources, selected, native_receipts):
+    selected_by_key = {(r.key.source.value, r.key.native_id): r for r in selected}
+    native_hh, native_people = {}, {}
+    for row in native_receipts["asec"]["households"]:
+        native_hh[("asec", row["household_id"])] = row["source"]["H_SEQ"]
+    asec_rows = {row["person_id"]: row for row in native_receipts["asec"]["persons"]}
+    for channel, source in sources.items():
+        for row in source.table("household").itertuples(index=False):
+            if channel == "acs":
+                native_hh[(channel, int(row.household_id))] = row.SERIALNO
+        for row in source.person.itertuples(index=False):
+            if channel == "acs":
+                person_key, line = str(row.SPORDER), str(row.SPORDER)
+            else:
+                original = asec_rows[int(row.person_id)]
+                person_key, line = original["PERIDNUM"], str(original["A_LINENO"])
+            native_people[(channel, int(row.person_id))] = (
+                person_key,
+                line,
+                int(row.person_household_id),
+            )
+    maps, entities, households, people, budget = {}, {}, [], [], [0]
+    household_positions = {}
+    for channel, source in sources.items():
+        ids = source.table("household").household_id
+        positions = {int(value): index for index, value in enumerate(ids)}
+        _require(len(positions) == len(ids), "SOURCE_ID_COLLISION")
+        household_positions[channel] = positions
+    for entity in frame.entities:
+        table = frame.table(entity)
+        ids = US_SCHEMA.entity_id_column(entity)
+        channels, previous = (
+            support_channel_column(entity),
+            spine_source_id_column(entity),
+        )
+        provenance = set(spine_assembly._support_metadata_columns(entity))
+        expected_columns = provenance | {
+            column for source in sources.values() for column in source.table(entity)
+        }
+        _require(set(table) == expected_columns, "UNDECLARED_STACK_COLUMN")
+        records, mapping = [], {}
+        for new_id, channel, source_id in table[[ids, channels, previous]].itertuples(
+            index=False, name=None
+        ):
+            key = (channel, int(source_id))
+            _require(key not in mapping, "SOURCE_ID_COLLISION")
+            mapping[key] = int(new_id)
+            _bounded_append(records, [int(new_id), channel, int(source_id)], budget)
+        expected = {
+            (channel, int(i))
+            for channel, source in sources.items()
+            for i in source.table(entity)[ids]
+        }
+        _require(set(mapping) == expected, "COMPLETE_ENTITY_ORIGIN")
+        maps[entity], entities[entity] = mapping, records
+    for entity in frame.entities:
+        table = frame.table(entity)
+        id_column = US_SCHEMA.entity_id_column(entity)
+        for channel, source in sources.items():
+            arm = table.loc[table[support_channel_column(entity)].eq(channel)]
+            old_ids = arm[spine_source_id_column(entity)].to_numpy()
+            original = (
+                source.table(entity).set_index(id_column, drop=False).loc[old_ids]
+            )
+            for column in original:
+                if column == id_column:
+                    expected = [
+                        maps[entity][(channel, int(v))] for v in original[column]
+                    ]
+                elif entity == "person" and column in {
+                    US_SCHEMA.membership_column(e) for e in US_SCHEMA.group_entities
+                }:
+                    group = next(
+                        e
+                        for e in US_SCHEMA.group_entities
+                        if US_SCHEMA.membership_column(e) == column
+                    )
+                    expected = [
+                        maps[group][(channel, int(v))] for v in original[column]
+                    ]
+                else:
+                    expected = original[column]
+                _same_values(expected, arm[column])
+            for column in (
+                set(arm)
+                - set(original)
+                - set(spine_assembly._support_metadata_columns(entity))
+            ):
+                _require(arm[column].isna().all(), "ABSENT_SOURCE_VALUE_INVENTED")
+            if entity == "person":
+                source_positions = {
+                    int(value): index
+                    for index, value in enumerate(source.person.person_id)
+                }
+                expected_strata = source.strata.iloc[
+                    [source_positions[int(value)] for value in old_ids]
+                ]
+                receiving_positions = np.flatnonzero(
+                    table[support_channel_column(entity)].eq(channel).to_numpy()
+                )
+                _same_values(expected_strata, frame.strata.iloc[receiving_positions])
+    household_table = frame.table("household")
+    for position, (new_id, channel, source_id) in enumerate(entities["household"]):
+        raw = native_hh[(channel, source_id)]
+        chosen = selected_by_key.pop((channel, raw), None)
+        _require(chosen is not None, "SELECTED_SOURCE_IDENTITY")
+        original = chosen.original_design_weight
+        source = sources[channel]
+        source_position = household_positions[channel][source_id]
+        _require(
+            source.weights_for("household").kind is WeightKind.DESIGN
+            and frame.weights_for("household").kind is WeightKind.DESIGN,
+            "ORIGINAL_WEIGHT_KIND",
+        )
+        expected = np.array([float(original)], dtype=np.float64).tobytes()
+        _require(
+            source.weights_for("household")
+            .values[source_position : source_position + 1]
+            .tobytes()
+            == expected
+            == frame.weights_for("household").values[position : position + 1].tobytes(),
+            "ORIGINAL_ANCHOR_CHANGED",
+        )
+        _bounded_append(
+            households,
+            {
+                "household_id": new_id,
+                "source": channel,
+                "source_year": 2024,
+                "survey_year": 2024 if channel == "acs" else 2025,
+                "raw_native_id": raw,
+                "selected_receiving_household_id": source_id,
+                "original_anchor": _value(original),
+            },
+            budget,
+        )
+    _require(
+        not selected_by_key and len(households) == len(household_table),
+        "SELECTED_HOUSEHOLD_ROSTER",
+    )
+    for new_id, channel, source_id in entities["person"]:
+        person_key, line, household_id = native_people[(channel, source_id)]
+        _bounded_append(
+            people,
+            [
+                new_id,
+                channel,
+                2024,
+                2024 if channel == "acs" else 2025,
+                native_hh[(channel, household_id)],
+                person_key,
+                line,
+                source_id,
+                household_id,
+                maps["household"][(channel, household_id)],
+            ],
+            budget,
+        )
+    return {
+        "households": households,
+        "entities": entities,
+        "persons": {
+            "columns": [
+                "person_id",
+                "source",
+                "source_year",
+                "survey_year",
+                "raw_native_household_id",
+                "raw_native_person_id",
+                "native_line_numeric_original",
+                "selected_receiving_person_id",
+                "selected_receiving_household_id",
+                "household_id",
+            ],
+            "rows": people,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Verification epochs: validate once per run, and again in full at the end.
+#
+# Outside an epoch nothing below is reached and every capsule behaves exactly as
+# it did before: one complete validation per accessor use. Inside an epoch each
+# borrow still pays a cheap tier in full -- the live authority, the attached
+# owner payloads and the producer encoding -- and the expensive tier is skipped
+# only while a signature over every file those checks read, the whole source
+# roster's stat identities included, and every live buffer they digest, is
+# identical to the signature recorded when that tier last ran in full. The
+# roster's stat identities are read into that signature and are deliberately
+# not compared in the cheap tier: a signature that moved is a memo miss, not a
+# refusal, so the complete validation runs and raises whatever it would have
+# raised, with the same code, at the same borrow. Leaving the epoch re-validates
+# every capsule it memoised, in full, with the memo bypassed, and records no
+# memo answer for anything whose signature moved while that validation ran.
+# ---------------------------------------------------------------------------
+
+_EPOCHS = []
+_MEMO = {}
+_EPOCH_RECORD = None
+
+
+def _array_witness(values):
+    """A read-free identity of one column's live storage.
+
+    Buffer address, shape, strides, dtype and the writeable flag move whenever
+    a column is replaced, reindexed, retyped or rebound. An extension array
+    that exposes no numpy buffer contributes its object identity, which pandas
+    keeps stable for the arrays that have one.
+    """
+
+    data = getattr(values, "_data", None)
+    mask = getattr(values, "_mask", None)
+    if isinstance(data, np.ndarray) and isinstance(mask, np.ndarray):
+        return ("masked", _buffer_witness(data), _buffer_witness(mask))
+    array = getattr(values, "_ndarray", None)
+    if isinstance(array, np.ndarray):
+        return ("array", _buffer_witness(array))
+    if isinstance(values, np.ndarray):
+        return ("raw", _buffer_witness(values))
+    return ("opaque", type(values).__name__, id(values), len(values))
+
+
+def _buffer_witness(array):
+    return (
+        array.ctypes.data,
+        array.shape,
+        array.strides,
+        array.dtype.str,
+        array.flags.writeable,
+    )
+
+
+def _frame_witness(frame):
+    """A read-free structural identity of one Frame's live storage."""
+
+    if not isinstance(frame, Frame):
+        return ("not-a-frame", type(frame).__name__)
+    tables = []
+    for entity in sorted(frame._tables):
+        table = frame._tables[entity]
+        columns = tuple(str(column) for column in table.columns)
+        tables.append(
+            (
+                entity,
+                id(table),
+                len(table),
+                columns,
+                tuple(str(table[column].dtype) for column in table.columns),
+                tuple(_array_witness(table[column].array) for column in table.columns),
+                _array_witness(table.index),
+                id(table.index),
+            )
+        )
+    weights = tuple(
+        (
+            entity,
+            frame._weights[entity].kind.value,
+            _array_witness(frame._weights[entity].values),
+        )
+        for entity in sorted(frame._weights)
+    )
+    strata = frame.strata
+    return (
+        tuple(tables),
+        weights,
+        (
+            id(strata),
+            len(strata),
+            str(strata.dtype),
+            strata.name,
+            _array_witness(strata.array),
+            _array_witness(strata.index),
+        ),
+        tuple(sorted(frame._link_tables)),
+    )
+
+
+def _verified_source_stats(state):
+    """Stat identities of every path the memoised tier re-reads, per owner."""
+
+    return (
+        _file_stats(state.root),
+        acs_catalogue._verified_source_stats(state.catalogues[0]),
+        asec_catalogue._verified_source_stats(state.catalogues[1]),
+        acs_native._verified_source_stats(state.native[0]),
+        asec_native._verified_source_stats(state.native[1]),
+    )
+
+
+def _memo_signature(state):
+    """Everything cheap the memoised tier's answer can depend on."""
+
+    borrowed = (*state.catalogues, *state.native)
+    return (
+        state.files,
+        _verified_source_stats(state),
+        tuple((id(value.payload), len(value.payload)) for value in borrowed),
+        tuple(id(value) for value in borrowed),
+        _frame_witness(state.frame),
+        tuple(_frame_witness(frame) for frame in state.source_frames),
+        asec_native._parent_frame_witness(state.native[1]),
+        (
+            id(state.plan),
+            len(state.plan.selected),
+            len(state.plan.excluded),
+            len(state.plan.cells),
+        ),
+    )
+
+
+def _cheap_checks(state):
+    """The tier every borrow pays whether or not the expensive tier is skipped.
+
+    The source roster's stat identities are read on every borrow, but they are
+    read into the *signature* and are deliberately not compared here. A moved
+    stat field is a memo miss, and the complete validation the miss runs raises
+    the refusal it raises today, with the same code, at the same borrow --
+    which is exactly what this design promises. Comparing them here as well
+    would refuse first and put SOURCE_STAT_CHANGED in front of the code an
+    unmemoised borrow surfaces, so an appended archive would read as a moved
+    timestamp rather than as the ACS catalogue refusing its own bytes.
+    """
+
+    _require(
+        _live() == _LIVE and _authority() == state.authority, "FINAL_AUTHORITY_CHANGED"
+    )
+    _require(_attached(state) == state.attached, "ATTACHED_EVIDENCE_CHANGED")
+    _require(_encode(_producer()) == state.producer, "PRODUCER_CHANGED")
+
+
+def _memoized_validate(owner, state):
+    """Validate ``state`` unless this epoch already validated it unchanged."""
+
+    if not _EPOCHS:
+        _validate(state)
+        return
+    _cheap_checks(state)
+    try:
+        signature = _memo_signature(state)
+    except Exception:
+        # A signature that cannot even be taken -- a roster entry removed, or
+        # no longer a regular file -- is still a miss rather than a refusal of
+        # its own: the complete validation runs first, so the borrow raises
+        # today's code. `_validate` ends with the same `_file_stats` call and
+        # so cannot pass where this failed; re-raising is the fail-closed
+        # remainder, never the refusal a caller sees in practice. Only an
+        # error is handled here: an interrupt or a process exit landing in the
+        # signature is not a miss and must not buy a complete re-validation
+        # before it propagates.
+        _validate(state)
+        raise
+    entry = _MEMO.get(id(owner))
+    if entry is not None and entry[0]() is owner and entry[1] == signature:
+        _EPOCH_RECORD["hits"] += 1
+        return
+    _validate(state)
+    _MEMO[id(owner)] = (weakref.ref(owner), signature, state)
+    _EPOCH_RECORD["misses"] += 1
+
+
+def _signature_or_none(state):
+    """This state's signature, or ``None`` when one cannot be taken.
+
+    ``None`` never equals a signature, so a close that cannot take one records
+    no memo answer and the borrow that follows runs the complete validation --
+    which is what refuses, with today's code, for whatever made the signature
+    unavailable. At the outermost close no borrow follows, so ``_finalize_epoch``
+    pays that validation itself rather than leaving it to one.
+    """
+
+    try:
+        return _memo_signature(state)
+    except Exception:  # noqa: BLE001 - an absent signature is a miss, not a verdict
+        return None
+
+
+def _finalize_epoch():
+    """Re-validate every memoised capsule in full, with the memo bypassed.
+
+    The refusal class is the one a borrow would have raised: this is the borrow
+    the epoch deferred, so a foreign owner's error is translated exactly as
+    ``_checked`` translates it rather than escaping raw to the run.
+
+    An inner nested close keeps its memo -- ``_MEMO`` is cleared only when the
+    outermost epoch leaves -- so the signature recorded here is what the outer
+    epoch's next borrows are answered against, and it must not absorb anything
+    that moved while this close was validating. ``_validate`` compares the
+    roster stats and then runs a whole trailing ``_pure_final``; a stat that
+    moves in that window would become the new normal and be answered as a hit
+    until the outer close. The signature is therefore taken before validating
+    and again after, and when the two differ no memo answer is recorded at all,
+    so the next borrow is a miss and pays the complete validation -- which
+    raises the code it raises today, ``SOURCE_STAT_CHANGED`` for a touched
+    roster file. The entry itself stays: the outermost close re-validates every
+    capsule the memo still holds, and dropping it here would drop that pass for
+    a capsule nothing borrows again.
+
+    Recording nothing is the whole answer only while a borrow can still follow.
+    At the **outermost** close there is none -- ``_MEMO`` is cleared as this
+    returns -- so leaving the deferred validation to the next borrow would end
+    the run without refusing at all. The outermost close therefore pays that
+    validation here, inside the same translation block, whenever the signature
+    moved or could not be taken: ``_validate`` re-reads the same roster and so
+    raises the same refusal the next borrow's miss would have raised, with no
+    code of this function's own. When it passes, nothing moved that the
+    complete validation can see, which is exactly the verdict a miss would have
+    reached, and the close continues.
+    """
+
+    for key, entry in list(_MEMO.items()):
+        owner = entry[0]()
+        if owner is None:
+            del _MEMO[key]
+            continue
+        before = _signature_or_none(entry[2])
+        try:
+            _validate(entry[2])
+            _EPOCH_RECORD["final_validations"] += 1
+            after = _signature_or_none(entry[2])
+            moved = before is None or after is None or after != before
+            if moved and not _EPOCHS:
+                # The outermost close: the borrow that would have paid for this
+                # never comes. Pay it here, so the run refuses on the way out
+                # instead of ending clean. Not counted as a final validation --
+                # that count is of the unconditional pass above.
+                _validate(entry[2])
+        except SurveyPopulationPreparationError:
+            raise
+        except Exception as error:
+            raise SurveyPopulationPreparationError(
+                "PREPARATION_VERIFICATION_REFUSED"
+            ) from error
+        _MEMO[key] = (entry[0], None if moved else after, entry[2])
+
+
+@contextmanager
+def verification_epoch(*, join=False):
+    """Validate each native capsule once per run, and again in full at the end.
+
+    The memo is opt-in and scoped: nothing outside this context manager changes
+    behaviour, which is why every existing borrow, refusal and trace-based
+    mutation test keeps its exact meaning. Leaving the epoch re-validates every
+    capsule it memoised in full; a capsule whose source or live storage moved
+    while a memo was warm therefore still makes the run refuse, before the
+    caller receives anything.
+
+    The record it yields is this epoch's own receipt: how many borrows were
+    answered from the memo, how many re-ran the complete validation, and how
+    many unconditional final re-validations closed it.
+
+    ``join=True`` reuses the innermost open epoch without closing or clearing
+    it. The caller must retain that outer scope until its result can escape:
+    changes invisible to the memo signature are refused at the outer close.
+    With no open epoch, joining creates and closes a normal epoch. The default
+    retains independent nested finalization.
+    """
+
+    global _EPOCH_RECORD
+    _require(type(join) is bool, "VERIFICATION_EPOCH_JOIN")
+    if join and _EPOCHS:
+        yield _EPOCH_RECORD
+        return
+    record = {
+        "protocol": PROTOCOL + "/verification-epoch/1",
+        "hits": 0,
+        "misses": 0,
+        "final_validations": 0,
+        "capsules": 0,
+    }
+    outer = _EPOCH_RECORD
+    _EPOCH_RECORD = record
+    _EPOCHS.append(record)
+    asec_native._epoch_enter()
+    failed = False
+    try:
+        yield record
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        _EPOCHS.pop()
+        # The nested capsule's epoch closes first. At the outermost close its
+        # depth reaches zero and its memo is cleared, so this owner's own final
+        # validation reaches the nested population's complete file check; at an
+        # inner nested close the depth stays above zero and `_epoch_exit`
+        # refreshes the nested memo's signature instead -- or records none at
+        # all, if that signature moved while it was validating -- so this
+        # owner's validation is a memo hit there, or a miss that re-runs the
+        # nested capsule's complete check. Nothing is skipped in net either way,
+        # because the nested capsule's own exit has just re-validated it in
+        # full. Both refusals are collected and this owner's is preferred,
+        # because this owner's error class is the one every borrow through it
+        # raises; the other is chained onto it, never dropped.
+        nested = None
+        try:
+            asec_native._epoch_exit(failed)
+        except BaseException as error:  # noqa: BLE001 - re-raised below
+            nested = error
+        own = None
+        try:
+            if not failed:
+                record["capsules"] = len(_MEMO)
+                _finalize_epoch()
+        except BaseException as error:  # noqa: BLE001 - re-raised below
+            own = error
+        finally:
+            if not _EPOCHS:
+                _MEMO.clear()
+            _EPOCH_RECORD = outer
+        if not failed and (own is not None or nested is not None):
+            if own is not None and nested is not None:
+                raise own from nested
+            raise own if own is not None else nested
+
+
+def epoch_record():
+    """The innermost open epoch's record, or None outside an epoch."""
+
+    return _EPOCH_RECORD if _EPOCHS else None
+
+
+@dataclass(frozen=True)
+class _State:
+    root: Path
+    files: tuple
+    file_stats: tuple
+    producer: bytes
+    authority: bytes
+    catalogues: tuple
+    native: tuple
+    attached: tuple
+    source_frames: tuple
+    source_frame_seals: tuple
+    frame: Frame
+    identity: str
+    context: bytes
+    plan: selection.CatalogueSelectionPlan
+    plan_sha256: str
+    nested: tuple
+    acs_catalogue_memo: tuple | None = None
+
+
+def _attached(state):
+    return tuple(value.payload for value in (*state.catalogues, *state.native))
+
+
+def _nested_seals(
+    catalogues, native, *, catalogue_memo=None, expected_catalogue_digest=None
+):
+    """Pure final borrowed-object seals after all source/producer file checks.
+
+    These inspect the actual retained issued owners, never construct issuer
+    authority from decoded records. The ancestor Frames still impose their
+    existing full-parent verification cost.
+    """
+    acs = acs_native._owned(native[0])
+    acs_cat = acs_catalogue._lookup(catalogues[0])
+    values = [
+        id(acs),
+        id(acs.prepared),
+        id(acs.prepared.source),
+        id(acs.literal),
+        acs.prepared.receipt_json,
+        acs.prepared.source.receipt_json,
+        acs.prepared.source.projection_json,
+        acs.literal.payload,
+        _encode(
+            [
+                [str(path) for _, path in sorted(paths.items())]
+                for paths in acs.snapshots
+            ]
+        ),
+        _memoized_catalogue_digest(
+            (acs_cat.records, acs_cat.vacancies),
+            catalogue_memo,
+            expected_digest=expected_catalogue_digest,
+        ),
+        acs.prepared.construction_evidence_json,
+    ]
+    for module, value in ((asec_catalogue, catalogues[1]), (asec_native, native[1])):
+        entry = module._ISSUED.get(id(value))
+        _require(
+            entry is not None and entry[0]() is value and entry[1] == value.payload,
+            "ANCESTOR_ISSUANCE_CHANGED",
+        )
+        state = entry[2]
+        attached = asec_native._attached_evidence(
+            state.parent, state.coverage, state.anchors, state.fields
+        )
+        values.extend(
+            (
+                id(state),
+                id(state.parent),
+                id(attached[0]),
+                *attached[1:],
+                asec_native._frame_identity(state.parent.frame),
+            )
+        )
+        if module is asec_catalogue:
+            values.append(asec_catalogue._current_records_identity(state))
+    return tuple(values)
+
+
+def _pure_final(state):
+    _require(
+        _live() == _LIVE and _authority() == state.authority, "FINAL_AUTHORITY_CHANGED"
+    )
+    _require(_attached(state) == state.attached, "ATTACHED_EVIDENCE_CHANGED")
+    _require(
+        _nested_seals(
+            state.catalogues,
+            state.native,
+            catalogue_memo=state.acs_catalogue_memo,
+            expected_catalogue_digest=state.nested[9],
+        )
+        == state.nested,
+        "NESTED_EVIDENCE_CHANGED",
+    )
+    _require(_digest(_plan_document(state.plan)) == state.plan_sha256, "PLAN_CHANGED")
+    _require(
+        _frame_identity(state.frame) == state.identity
+        and graph_context.encode_us_frame_context(state.frame) == state.context,
+        "PREPARED_FRAME_CHANGED",
+    )
+    _require(
+        tuple(
+            (
+                acs_native._frame_sha256(frame)
+                if i == 0
+                else asec_native._frame_identity(frame)
+            )
+            for i, frame in enumerate(state.source_frames)
+        )
+        == state.source_frame_seals,
+        "SOURCE_FRAME_CHANGED",
+    )
+
+
+def _validate(state):
+    _pure_final(state)
+    acs_catalogue.verify_acs_source_catalogue(state.catalogues[0])
+    asec_catalogue.verify_asec_source_catalogue(state.catalogues[1])
+    acs_native.verify_acs_native_coverage(state.native[0], state.source_frames[0])
+    state.native[1].validate()
+    _require(_source_files(state.root) == state.files, "SOURCE_CHANGED")
+    _require(_encode(_producer()) == state.producer, "PRODUCER_CHANGED")
+    _require(_file_stats(state.root) == state.file_stats, "SOURCE_STAT_CHANGED")
+    _pure_final(state)
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True, eq=False)
+class AuthenticatedSurveyPopulationPreparation:
+    payload: bytes
+    _token: InitVar[object] = None
+
+    def __post_init__(self, _token):
+        _require(_token is _TOKEN, "ISSUANCE_CONSTRUCTOR")
+
+    def _checked(self):
+        try:
+            entry = _ISSUED.get(id(self))
+            _require(
+                type(self) is AuthenticatedSurveyPopulationPreparation
+                and entry is not None
+                and entry[0]() is self
+                and type(self.payload) is bytes
+                and self.payload == entry[1],
+                "UNISSUED_OR_CHANGED",
+            )
+            _memoized_validate(self, entry[2])
+            _require(
+                _ISSUED.get(id(self)) is entry
+                and type(self.payload) is bytes
+                and self.payload == entry[1],
+                "UNISSUED_OR_CHANGED",
+            )
+            return entry
+        except SurveyPopulationPreparationError:
+            raise
+        except Exception as error:
+            raise SurveyPopulationPreparationError(
+                "PREPARATION_VERIFICATION_REFUSED"
+            ) from error
+
+    def validate(self):
+        self._checked()
+
+    def checked_view(self):
+        """Borrow one checked bundle; the view itself grants no authority."""
+        _reference, payload, state = self._checked()
+        return CheckedSurveyPopulationView(
+            payload, state.context, state.frame, state.plan, json.loads(payload)
+        )
+
+    @property
+    def frame(self):
+        return self._checked()[2].frame
+
+    @property
+    def context(self):
+        return self._checked()[2].context
+
+    @property
+    def selection_plan(self):
+        return self._checked()[2].plan
+
+    @property
+    def receipt(self):
+        return json.loads(self._checked()[1])
+
+    @property
+    def acs_spm_construction_evidence(self):
+        """Defensive native evidence; use receipt origins for assembled IDs.
+
+        These records keep the selected native registry's IDs. The existing
+        per-entity origin map explicitly relates them to stacked Frame IDs.
+        A decoded copy is never a new source-authority capsule.
+        """
+        state = self._checked()[2]
+        return state.native[0].construction_evidence
+
+    def to_bytes(self):
+        return self._checked()[1]
+
+
+@dataclass(frozen=True, slots=True)
+class CheckedSurveyPopulationView:
+    """A checked borrow's values, not an issued source or reusable certificate."""
+
+    payload: bytes
+    context: bytes
+    frame: Frame
+    selection_plan: selection.CatalogueSelectionPlan
+    receipt: dict
+
+
+def verify_survey_population_preparation(value):
+    _require(
+        type(value) is AuthenticatedSurveyPopulationPreparation, "PREPARATION_TYPE"
+    )
+    value._checked()
+    return value
+
+
+def verify_materialized_survey_population(preparation, frame):
+    _require(
+        type(preparation) is AuthenticatedSurveyPopulationPreparation,
+        "PREPARATION_TYPE",
+    )
+    entry = preparation._checked()
+    _require(_frame_identity(frame) == entry[2].identity, "MATERIALIZED_FRAME_CHANGED")
+    _memoized_validate(preparation, entry[2])
+    _require(_frame_identity(frame) == entry[2].identity, "MATERIALIZED_FRAME_CHANGED")
+    _require(preparation.payload == entry[1], "UNISSUED_OR_CHANGED")
+
+
+def prepare_authenticated_survey_population(
+    source_dir, *, snapshot_root, fraction, seed, candidate=None
+):
+    """Reconstruct actual source authority before accepting candidate bytes."""
+    try:
+        _require(type(candidate) is bytes or candidate is None, "CANDIDATE_TYPE")
+        _require(
+            candidate is None or len(candidate) <= MAX_ROSTER_BYTES, "CANDIDATE_LIMIT"
+        )
+        root, request, request_bytes, requested_fraction, requested_seed = _request(
+            source_dir
+        )
+        spm_construction = _request_construction(request)
+        acs_native.housing._spm_implementation(spm_construction)
+        _require(
+            type(fraction) is Fraction
+            and fraction == requested_fraction
+            and type(seed) is int
+            and seed == requested_seed,
+            "REQUEST_ARGUMENTS",
+        )
+        snapshots = _root(snapshot_root, allow_missing=True)
+        _require(
+            not snapshots.is_relative_to(root) and not root.is_relative_to(snapshots),
+            "SNAPSHOT_LOCATION",
+        )
+        snapshots.mkdir(parents=True, exist_ok=True)
+        authority, files_before, producer = (
+            _authority(),
+            _source_files(root),
+            _encode(_producer()),
+        )
+        _require(
+            files_before[0]
+            == ("selection-request.json", len(request_bytes), _sha(request_bytes)),
+            "REQUEST_CHANGED",
+        )
+        file_stats = _file_stats(root)
+        kwargs = dict(
+            parent_path=root / "asec/parent.h5",
+            household_attachment_path=root / "asec/household-attachment.h5",
+            person_income_attachment_path=root / "asec/person-income-attachment.h5",
+            person_member_paths={
+                2022: root / "asec/pppub23.csv",
+                2023: root / "asec/pppub24.csv",
+                2024: root / "asec/pppub25.csv",
+            },
+            household_member_path=root / "asec/hhpub25.csv",
+        )
+        acs = acs_catalogue.issue_acs_source_catalogue(
+            root / "acs", snapshot_root=snapshots
+        )
+        asec = asec_catalogue.issue_asec_source_catalogue(**kwargs)
+        acs_rows, asec_rows = acs.households, asec.households
+        plan = selection.plan_catalogue_selection(
+            acs_households=acs_rows,
+            asec_households=asec_rows,
+            fraction=fraction,
+            seed=seed,
+        )
+        acs_keys = tuple(
+            r.key.native_id for r in plan.selected if r.key.source is domains.Source.ACS
+        )
+        asec_keys = tuple(
+            (2024, int(r.key.native_id))
+            for r in plan.selected
+            if r.key.source is domains.Source.ASEC
+        )
+        _require(
+            acs_keys and asec_keys and len(set(asec_keys)) == len(asec_keys),
+            "SELECTED_SOURCE_SUPPORT",
+        )
+        actual_acs = acs_native.issue_acs_native_coverage(
+            root / "acs",
+            snapshot_root=snapshots,
+            serialnos=acs_keys,
+            spm_construction=spm_construction,
+        )
+        actual_asec = asec_native.load_authenticated_asec_2024_native_population(
+            **kwargs, selected_households=asec_keys
+        )
+        native_frames = actual_acs.frame, actual_asec.frame
+        source_seals = (
+            acs_native._frame_sha256(native_frames[0]),
+            asec_native._frame_identity(native_frames[1]),
+        )
+        source_copies = {
+            channel: _normalized_source_copy(frame)
+            for channel, frame in zip(("acs", "asec"), native_frames, strict=True)
+        }
+        stacked = spine_assembly.stack_survey_spines(source_copies)
+        frame = stacked.frame
+        transitions = graph_sources._canonical_assembly(
+            frame, tuple(source_copies.values())
+        )
+        context = graph_context.encode_us_frame_context(frame)
+        native_receipts = {"acs": actual_acs.receipt, "asec": actual_asec.receipt}
+        for channel, original in zip(("acs", "asec"), native_frames, strict=True):
+            _verify_normalized_copy(original, source_copies[channel])
+        origins = _origins(frame, source_copies, plan.selected, native_receipts)
+        origins["storage_transitions"] = list(transitions)
+        origins["legacy_headship_namespace"] = {
+            "rule": LEGACY_HEAD_RULE,
+            "from": "is_household_head",
+            "to": LEGACY_HEAD_COLUMN,
+            "values_changed": False,
+            "canonical_authority": False,
+            "sources_present": {
+                channel: "is_household_head" in native_frames[i].person
+                for i, channel in enumerate(("acs", "asec"))
+            },
+        }
+        origins["observed_age_normalization"] = {
+            "rule": observed_age.rule_document(),
+            "sources": {
+                channel: {
+                    "native_frame_sha256": source_seals[i],
+                    "normalized_frame_sha256": _frame_identity(source_copies[channel]),
+                    "common_age_preexisting": "age" in native_frames[i].person,
+                }
+                for i, channel in enumerate(("acs", "asec"))
+            },
+        }
+        documents = {"acs": acs.receipt, "asec": asec.receipt}
+        catalogues = {
+            "acs": {
+                "receipt_sha256": _sha(acs.to_bytes()),
+                "records_sha256": documents["acs"]["counts"]["canonical_record_sha256"],
+                "counts": documents["acs"]["counts"],
+            },
+            "asec": {
+                "receipt_sha256": _sha(asec.to_bytes()),
+                "records_sha256": documents["asec"]["records"]["sha256"],
+                "counts": documents["asec"]["counts"],
+            },
+        }
+        identity = _frame_identity(frame)
+        payload, _ = _roster_payload(
+            {
+                "protocol": PROTOCOL,
+                "request": request,
+                "request_sha256": _sha(request_bytes),
+                "source_files": files_before,
+                "producer": json.loads(producer),
+                "catalogues": catalogues,
+                "native": {
+                    channel: {
+                        "receipt_sha256": _sha(value.payload),
+                        "frame_sha256": source_seals[i],
+                        "households": native_frames[i].n("household"),
+                        "persons": native_frames[i].n("person"),
+                    }
+                    for i, (channel, value) in enumerate(
+                        (("acs", actual_acs), ("asec", actual_asec))
+                    )
+                },
+                "selection": _plan_document(plan),
+                "origins": origins,
+                "frame_sha256": identity,
+                "context_sha256": _sha(context),
+                "release_eligible": False,
+            },
+            spill=snapshots,
+            name="preparation",
+        )
+        nested = _nested_seals((acs, asec), (actual_acs, actual_asec))
+        acs_owned = acs_catalogue._lookup(acs)
+        catalogue_memo = _catalogue_memo(
+            (acs_owned.records, acs_owned.vacancies), nested[9]
+        )
+        state = _State(
+            root,
+            files_before,
+            file_stats,
+            producer,
+            authority,
+            (acs, asec),
+            (actual_acs, actual_asec),
+            tuple(value.payload for value in (acs, asec, actual_acs, actual_asec)),
+            native_frames,
+            source_seals,
+            frame,
+            identity,
+            context,
+            plan,
+            _digest(_plan_document(plan)),
+            nested,
+            catalogue_memo,
+        )
+        _validate(state)
+        _require(candidate is None or candidate == payload, "CANDIDATE_MISMATCH")
+        result = AuthenticatedSurveyPopulationPreparation(payload, _token=_TOKEN)
+        key = id(result)
+
+        def cleanup(reference):
+            entry = _ISSUED.get(key)
+            if entry is not None and entry[0] is reference:
+                del _ISSUED[key]
+
+        _ISSUED[key] = (weakref.ref(result, cleanup), payload, state)
+        _pure_final(state)
+        _require(
+            type(result.payload) is bytes
+            and result.payload == payload
+            and _ISSUED[key][0]() is result,
+            "UNISSUED_OR_CHANGED",
+        )
+        return result
+    except SurveyPopulationPreparationError:
+        raise
+    except Exception as error:
+        # The code stays static; the cause is chained so a refused run names
+        # what refused instead of only that something did.
+        raise SurveyPopulationPreparationError(
+            "PREPARATION_ISSUANCE_REFUSED"
+        ) from error
+
+
+_BYTES = _code_bytes()
+
+
+def _current_survey_wage_projection(preparation, entry):
+    """Project one just-checked retained owner; bytes grant no source authority.
+
+    The caller must have obtained ``entry`` from ``preparation._checked()`` in
+    the current operation, and must seal its receiving Populations afterwards.
+    The one ready() call retains the existing all-field/full-parent admission.
+    No old reported-income contract or prior-wage column is manufactured.
+    """
+    _require(
+        type(preparation) is AuthenticatedSurveyPopulationPreparation
+        and _ISSUED.get(id(preparation)) is entry
+        and entry[0]() is preparation
+        and type(preparation.payload) is bytes
+        and preparation.payload == entry[1],
+        "WAGE_PREPARATION_ISSUANCE",
+    )
+    state = entry[2]
+    native_entry = asec_native._ISSUED.get(id(state.native[1]))
+    _require(
+        native_entry is not None
+        and native_entry[0]() is state.native[1]
+        and state.native[1].payload == native_entry[1],
+        "WAGE_NATIVE_ISSUANCE",
+    )
+    parent = native_entry[2].parent
+    ready = parent.ready()  # Exactly once, outside both row and feature loops.
+    field = ready.field("WSAL_VAL")
+    domain = next(d for d in parent.spec.fields if d.name == "WSAL_VAL")
+    scope = parent.scope
+    positions = {pid: i for i, pid in enumerate(scope.person_ids)}
+    _require(len(positions) == len(scope.person_ids), "WAGE_PARENT_ROSTER")
+    native_ids = set(state.source_frames[1].person.person_id)
+    rows, budget = [], [0]
+    people = state.frame.person
+    selected = people.loc[people[support_channel_column("person")].eq("asec")]
+    _require(
+        set(selected[spine_source_id_column("person")]) == native_ids,
+        "WAGE_SELECTED_ROSTER",
+    )
+    for stacked, native in selected[
+        ["person_id", spine_source_id_column("person")]
+    ].itertuples(index=False, name=None):
+        _require(int(native) in positions, "WAGE_PARENT_MEMBER")
+        i = positions[int(native)]
+        _require(scope.person_years[i] == 2024, "WAGE_CURRENT_COHORT")
+        amount = field.amount_bytes[8 * i : 8 * (i + 1)]
+        number = np.frombuffer(amount, dtype="<f8")[0]
+        _require(
+            field.validity_bytes[i] == 1 and np.isfinite(number) and number >= 0,
+            "WAGE_CURRENT_FEATURE",
+        )
+        _bounded_append(
+            rows,
+            [
+                int(stacked),
+                int(native),
+                2024,
+                amount.hex(),
+                field.status_bytes[i],
+                field.validity_bytes[i],
+                field.zero_origin_bytes[i],
+            ],
+            budget,
+        )
+    document = {
+        "preparation_sha256": _sha(entry[1]),
+        "asec_native_sha256": _sha(native_entry[1]),
+        "money_header": json.loads(ready.header),
+        "money_header_sha256": _sha(ready.header),
+        "domain": {f.name: getattr(domain, f.name) for f in fields(domain)},
+        "zero_origin_code": int(current_money._origin_code(parent.spec, "WSAL_VAL")),
+        "columns": [
+            "stacked_person_id",
+            "native_person_id",
+            "income_year",
+            "amount_f64le_hex",
+            "status",
+            "validity",
+            "zero_origin",
+        ],
+        "rows": rows,
+    }
+    # One row per selected wage earner, so this is a whole-roster receipt too.
+    payload, _ = _roster_payload(document)
+    # ready() may perform I/O. Recheck the actual retained entries and all pure
+    # owner seals after it; this does not reread the national catalogues.
+    _pure_final(state)
+    _require(
+        _ISSUED.get(id(preparation)) is entry
+        and preparation.payload == entry[1]
+        and asec_native._ISSUED.get(id(state.native[1])) is native_entry
+        and state.native[1].payload == native_entry[1]
+        and native_entry[2].parent is parent,
+        "WAGE_FINAL_ISSUANCE",
+    )
+    return payload
+
+
+_LIVE = _live()

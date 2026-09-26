@@ -96,6 +96,7 @@ from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
     exact_k_design_feasibility,
     select_exact_k,
 )
+from microcosm.calibrate.group_bounds import GroupedUpperBounds  # noqa: E402
 from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
     CalibrationHierarchy,
     CalibrationHierarchySeed,
@@ -152,6 +153,17 @@ from microcosm.calibrate.target import (  # noqa: E402 - after the compat gate
     Target,
     TargetSet,
 )
+from microcosm.calibrate.target_snapshots import (  # noqa: E402 - after compat gate
+    EVERY_EPOCH,
+    TARGET_SNAPSHOT_ITERATES,
+    TARGET_SNAPSHOT_SCHEMA,
+    TARGET_SNAPSHOT_SCHEMA_VERSION,
+    TargetSnapshotCadence,
+    TargetSnapshotError,
+    TargetSnapshotObserver,
+    TargetSnapshotWriter,
+    validate_target_snapshot,
+)
 from microcosm.calibrate.variable_labels import (  # noqa: E402 - after compat gate
     CALIBRATION_VARIABLE_LABELS_BY_COUNTRY,
     US_CALIBRATION_VARIABLE_LABELS,
@@ -172,11 +184,16 @@ __all__ = [
     "CALIBRATION_PROVIDER_LABELS_BY_COUNTRY",
     "CALIBRATION_VARIABLE_LABELS_BY_COUNTRY",
     "CONSERVE_MASS",
+    "EVERY_EPOCH",
     "FREE_MASS",
+    "GroupedUpperBounds",
     "TARGET_LOSS_ATTRIBUTION_ABS_TOLERANCE",
     "TARGET_LOSS_ATTRIBUTION_REL_TOLERANCE",
     "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",
     "TARGET_LOSS_BASIS_HASH_ALGORITHM",
+    "TARGET_SNAPSHOT_ITERATES",
+    "TARGET_SNAPSHOT_SCHEMA",
+    "TARGET_SNAPSHOT_SCHEMA_VERSION",
     "CalibrationProblem",
     "CalibrationHierarchy",
     "CalibrationHierarchySeed",
@@ -192,6 +209,10 @@ __all__ = [
     "TargetDiagnostic",
     "TargetRegistry",
     "TargetSet",
+    "TargetSnapshotCadence",
+    "TargetSnapshotError",
+    "TargetSnapshotObserver",
+    "TargetSnapshotWriter",
     "TargetSpec",
     "US_CALIBRATION_PROVIDER_LABELS",
     "US_CALIBRATION_VARIABLE_LABELS",
@@ -212,6 +233,7 @@ __all__ = [
     "score_targets",
     "select_exact_k",
     "specs_from_pe_surface",
+    "validate_target_snapshot",
     "write_calibration_diagnostics",
     "__version__",
 ]

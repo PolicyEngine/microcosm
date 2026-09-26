@@ -1,0 +1,1 @@
+Regenerate the typed ACS transfer declaration from its live v4 contract without country-engine metadata, retain immigration evidence and humanitarian reconciliation semantics, and match existing adult-care and Schedule D activation rules.

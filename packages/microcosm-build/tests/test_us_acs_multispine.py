@@ -356,15 +356,25 @@ def _test_puma_ladder() -> UsPumaLadder:
         tract_overlap_puma=puma.copy(),
         tract_overlap_tract=np.asarray([6_001_000_100, 36_001_000_100], dtype=np.int64),
         tract_overlap_population=population.copy(),
+        joint_overlap_puma=puma.copy(),
+        joint_overlap_tract=np.asarray([6_001_000_100, 36_001_000_100], dtype=np.int64),
+        joint_overlap_cd=np.asarray([601, 3_601], dtype=np.int64),
+        joint_overlap_population=np.asarray([100, 200], dtype=np.int64),
         metadata={
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "us_puma_ladder",
             "puma_vintage": "2020_puma",
             "sampling_basis": "population",
             "layers": {
-                "congressional_district": {"vintage": "119th_congress"},
-                "county": {"vintage": "2020_census"},
-                "tract": {"vintage": "2020_census"},
+                "congressional_district": {
+                    "vintage": "119th_congress",
+                    "source": "invented joint fixture",
+                },
+                "county": {
+                    "vintage": "2020_census",
+                    "source": "invented joint fixture",
+                },
+                "tract": {"vintage": "2020_census", "source": "invented joint fixture"},
             },
         },
     )

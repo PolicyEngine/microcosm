@@ -1,0 +1,1 @@
+Add optional graph-based completion of seven ACS health coverage categories from authenticated original ASEC donors, preserving source knownness and drawing once per original person before clone transport. Scientific and release qualification remain separate.

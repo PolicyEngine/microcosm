@@ -1,0 +1,1 @@
+Classify native development handoff and retained population witnesses in the runtime inventory, check hours/provenance checkpoint preservation, and recognize only the exact reviewed SPM receipt transfer from Frame metadata to its source owner.

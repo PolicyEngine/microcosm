@@ -1,0 +1,1 @@
+Add optional pinned fiscal input policies with strict producer defaults, complete-population collision checks and private-copy preparation. Literal assumptions remain non-executable pending checked parent integration; sampled traces cannot exempt inactive inputs.

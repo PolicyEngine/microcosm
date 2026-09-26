@@ -18,3 +18,6 @@ tools/release.env
 
 # Finder metadata — never payload
 .DS_Store
+
+# Lane-local before/after measurement staging (see docs/us-native-verification-once.md)
+.measure/

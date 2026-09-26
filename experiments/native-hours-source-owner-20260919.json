@@ -1,0 +1,28 @@
+{
+  "scope": "Real source owners/captures over invented archives only; no actual microdata or country runtime",
+  "base": "4f34495e53bbf1cd8d8fa24ad6a3de8d1aa5ddd5",
+  "source": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_hours_source.py": "953c61db93d1c5b85755dc84287a8d5535571ac265f968a1d5c451592eb06b74",
+    "packages/microcosm-build/tests/test_us_current_survey_hours_source.py": "17a44c6cf7dc473e9ecc4427f13b6224e15fc3d2813d702c428dd7fd9ee8f9a4"
+  },
+  "tests": {
+    "source_owner": 24,
+    "pure_recoder": 54,
+    "failed": 0,
+    "skipped": 0
+  },
+  "result_sha256": "d7b5e3145e60e52a15cf8e4ffcb6349ddf3b1a37bc81fad3a6d293565bc12446",
+  "xml_sha256": "f25f43bdce5794348a52f165d7c0c86f8851d37521b7b1f83fd07a4689220143",
+  "wall_seconds": 135.33684212504886,
+  "cpu_seconds": 114.235984,
+  "peak_rss_bytes": 494174208,
+  "review": "Root read original delegated draft and all capture/source/final-seal paths and authored tests; independent peer unavailable after account usage limits. No peer approval inferred.",
+  "remaining": [
+    "Actual full-source qualification",
+    "All-age ASEC own-arm semantics",
+    "Graph leaf and clone transport",
+    "No-worse/release gates"
+  ],
+  "delegated_draft_source_sha256": "59b5588b1bc7de9287b01e1a43098f38ec00bc1fd6b4b492905ed4743c62a3ff",
+  "source_ast_unchanged_by_formatting": true
+}

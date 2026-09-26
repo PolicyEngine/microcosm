@@ -1,0 +1,1 @@
+Add a qualified ASEC other-disability source adapter that reuses the retired two-slot, non-workers-compensation arithmetic over the existing retirement-detail owner, keeps NIU, missing, under-15 and contradictory slots unknown instead of zero, retains conditional allocation provenance, and copies each original row to its clones without a redraw.

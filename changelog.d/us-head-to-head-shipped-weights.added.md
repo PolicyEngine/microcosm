@@ -1,0 +1,1 @@
+Allow US head-to-head scorecards to compare each file's shipped weights unchanged. The explicit population-weight mode applies to both artifacts and appears in JSON and Markdown; the historical rescaling default and population-scale diagnostics remain available.

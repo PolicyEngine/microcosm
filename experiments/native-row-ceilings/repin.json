@@ -1,0 +1,118 @@
+{
+ "scope": "Pin re-derivation for the row-ceiling lane. Reads the working tree and rebuilds each pin through its own generator. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "edited_modules": {
+  "acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c",
+  "acs_person_coverage_columns.py": "ddcc0f009af6d0956d7ec8f116fa544da65b0ee31c111ee3991e72171d6e06c3",
+  "survey_observed_age.py": "675951305f1ddf5db86bd09045f0683f03103f2bfa2ced3ed502472f19272681",
+  "survey_origin_budget.py": "8da559ee32b469d96911b12158de9d95db4eb07992f7e0cc5396651fa2c968f7"
+ },
+ "inventory_contracts": {
+  "generator": "graph_graph_implementation._dependency_contract(payload, name, graph_graph_implementation._covered_imports(name, inventory))",
+  "checked": 124,
+  "moved": []
+ },
+ "acs_native_coverage_binding_accepted": {
+  "generator": "hashlib.sha256(<module>.read_bytes()).hexdigest()",
+  "entries": [
+   {
+    "module": "acs_pums.py",
+    "old": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c",
+    "new": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c",
+    "moved": false,
+    "edited_by_this_branch": true
+   },
+   {
+    "module": "acs_inputs.py",
+    "old": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
+    "new": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
+    "moved": false,
+    "edited_by_this_branch": false
+   },
+   {
+    "module": "acs_housing_universe_source.py",
+    "old": "beb46a4a05a13580a868be423809a77946441dcafc3a0f57160561157e93e9a3",
+    "new": "beb46a4a05a13580a868be423809a77946441dcafc3a0f57160561157e93e9a3",
+    "moved": false,
+    "edited_by_this_branch": false
+   },
+   {
+    "module": "acs_person_coverage_authentication.py",
+    "old": "9ec68721a4cf480ef412c51ab354db9000eb7a7989e35e6e09b1574d88e8e49f",
+    "new": "9ec68721a4cf480ef412c51ab354db9000eb7a7989e35e6e09b1574d88e8e49f",
+    "moved": false,
+    "edited_by_this_branch": false
+   }
+  ]
+ },
+ "stage_manifests": {
+  "generator": "graph_graph_implementation.implementation_manifest(stage)",
+  "built": 10,
+  "stages": {
+   "acs_codec_2024": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 53,
+    "edited_modules_in_stage": {
+     "microcosm.build/us_runtime/acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c"
+    }
+   },
+   "acs_housing_universe_2024": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 58,
+    "edited_modules_in_stage": {
+     "microcosm.build/us_runtime/acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c"
+    }
+   },
+   "asec_codec_v4": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 42,
+    "edited_modules_in_stage": {}
+   },
+   "asec_prepared_v3": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 83,
+    "edited_modules_in_stage": {}
+   },
+   "assembly_harmonize": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 43,
+    "edited_modules_in_stage": {}
+   },
+   "assembly_prepare": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 65,
+    "edited_modules_in_stage": {
+     "microcosm.build/us_runtime/acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c"
+    }
+   },
+   "authenticated_survey_population_v1": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 92,
+    "edited_modules_in_stage": {
+     "microcosm.build/us_runtime/acs_person_coverage_columns.py": "ddcc0f009af6d0956d7ec8f116fa544da65b0ee31c111ee3991e72171d6e06c3",
+     "microcosm.build/us_runtime/acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c",
+     "microcosm.build/us_runtime/survey_observed_age.py": "675951305f1ddf5db86bd09045f0683f03103f2bfa2ced3ed502472f19272681"
+    }
+   },
+   "composed_asec_binding_v1": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 99,
+    "edited_modules_in_stage": {
+     "microcosm.build/us_runtime/acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c"
+    }
+   },
+   "composed_population_v1": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 96,
+    "edited_modules_in_stage": {
+     "microcosm.build/us_runtime/acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c"
+    }
+   },
+   "geography": {
+    "inventory_sha256": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
+    "module_count": 41,
+    "edited_modules_in_stage": {}
+   }
+  }
+ }
+}

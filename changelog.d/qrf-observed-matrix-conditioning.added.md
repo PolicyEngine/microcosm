@@ -1,0 +1,1 @@
+Add an opt-in QRF matrix graph kernel that applies every fitted target, preserves raw draws, and uses identity-bound qualified values to condition later targets. A separate typed conditioning artifact and versioned state record draw, observation, matrix, and producer identities without changing the legacy application protocol.

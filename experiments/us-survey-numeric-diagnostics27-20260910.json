@@ -1,0 +1,38 @@
+{
+  "code": [
+    {
+      "maintained_sha256": "22ff28977582c3b903ecf5d52b791a9f864a6a3c3df3b64541571e9199876b81",
+      "path": "packages/microcosm-build/src/microcosm/build/us_runtime/survey_calibration_diagnostics.py"
+    },
+    {
+      "maintained_sha256": "4d72fa2260af1178c889819295f39f3c2a0b79c37152eaf14e83cb7483b907aa",
+      "path": "packages/microcosm-build/tests/test_us_survey_calibration.py"
+    }
+  ],
+  "evidence": {
+    "cpu_seconds": 3.194314,
+    "model_sources": 0,
+    "peak_rss_bytes": 414924800,
+    "physical_postcheck_sha256": "e8a6f475e8bb8564c919ccfcbfce28182abd5b57e61029d0dab40404bae45d31",
+    "receipt_sha256": "50c1a09d4e71cffb00a375a703cb04623521a612478c34b2ac558c907bd4188b",
+    "resources": 0,
+    "source_peer_review_sha256": "4bfde0c677cecde4f2912a0a524c937292d33ee40ba35c10d5d29d34fa4c7b71",
+    "source_plus_owned": 512,
+    "tests_failed": 0,
+    "tests_passed": 27,
+    "unexpected_refusals": {},
+    "wall_seconds": 3.6059712909627706,
+    "xml_sha256": "e8dc6d33a24fcf4c0a226216cb6be574b599c73f4b16cb666bb9db1724d35ba1"
+  },
+  "maintained_full_CI_accepted": false,
+  "native_build_accepted": false,
+  "release_eligible": false,
+  "scope": "Independently reconstruct four closed solver options when verifying calibration diagnostics: no supplied gate initialization, nonzero-count budget basis, no feasible-draw upper bound and no budget search. Real grouped Adam over five invented households and four altered-option refusals pass against maintained calibration source. Complete age graph and native calibration remain separate.",
+  "status": "scoped_controls_accepted",
+  "test_formatting": {
+    "accepted_sha256": "e8a5fd5eea56ac357c5e919de0206d7ea44ff77b5dbf3809bea214b5d0e01109",
+    "change": "Ruff parenthesized one import; no AST change.",
+    "complete_AST_equal": true,
+    "maintained_sha256": "4d72fa2260af1178c889819295f39f3c2a0b79c37152eaf14e83cb7483b907aa"
+  }
+}

@@ -1,0 +1,1 @@
+Add opt-in original-arm PUF55 application and conservative placement to the survey enrichment host, preserving the actual selected terminal and independent source, artifact, population, and storage checks. Keep the default path unchanged; full host and release qualification remain separate from bounded component verification.

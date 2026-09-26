@@ -1,0 +1,458 @@
+{
+  "scope": "diagnostic receipt of an adversarial verification pass; not a build, certification or release artifact",
+  "release_eligible": false,
+  "method": "Six independent review dimensions over the finished head -- accept-where-refuse, retention-roster completeness, executor invariants, document accuracy, battery completeness, refusal-code preservation -- each finding then put to TWO independent adversarial verifiers whose default answer is REFUTED, one judging mechanism and one judging consequence. A finding survives only if at least one verifier could not refute it.",
+  "agents": 68,
+  "agent_errors": 0,
+  "findings": 31,
+  "survived": 25,
+  "refuted": 6,
+  "dimensions": [
+    "accept-where-refuse",
+    "retention-roster",
+    "executor-invariants",
+    "doc-accuracy",
+    "battery-completeness",
+    "refusal-preservation"
+  ],
+  "surviving_findings": [
+    {
+      "dimension": "accept-where-refuse",
+      "title": "Seal ACCEPTS an object-axis pair the comparison REFUSES when a value's __eq__ refuses but its codec bytes match",
+      "file": "survey_population_replay.py",
+      "line": 405,
+      "severity_reported": "high",
+      "severity_after_verification": [
+        "medium",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "_axis's AXIS arm is Index.identical, whose equals() for an object axis is an element-wise PyObject_RichCompareBool(x, y, Py_EQ) (pandas' array_equivalent_object). The seal replaces that predicate with a digest of _encode_object_scalar bytes (_axis_values_fold lines 405-410) and the byte arm (_series_seal on pd.Series(index.array)) uses the same codec, so BOTH arms of the seal are codec-byte equality. Any pair of object values whose codec bytes agree but whose == is False is therefore refused by same_replayed_population and accepted by the seal. The docstring at lines 398-399 asserts the fold 'is never weaker than equals'; that is false as written, and the same claim is repeated at docs/us-native-retention-seal.md:312.",
+      "failure_scenario": "Put the two indexes above on the person table of the fixture frame (tests' _with_person_axis) and build Populations from them. same_replayed_population(expected, actual) raises SURVEY_POPULATION_REPLAY_AXIS today; same_replayed_population_seals(replayed_population_seal(expected), replayed_population_seal(actual)) returns cleanly. A node whose object axis carries any int/str/float subclass with a custom __eq__ (or, on a platform where np.longdouble is wider than float64, two distinct longdoubles that pack to the same double) is no longer discriminated: the run accepts a replay the comparison refuses. Note the lane already recognised this exact hazard for axis NAMES -- _same_axis_seal lines 458-465 deliberately applies bool(one == other) per comparable rather than a tuple compare, pinned by test_a_comparable_whose_equality_refuses_itself_still_refuses -- but the axis VALUES fold was left as a digest.",
+      "disposition_kind": "code",
+      "disposition": "Object-axis fold rewritten to reproduce pandas' own equality classes; a value not `==` to the plain builtin the codec encodes it as now refuses AXIS at seal construction. Pinned by test_an_object_axis_value_with_its_own_equality_refuses_on_both_paths (2 cases); reverting the fold turns it red."
+    },
+    {
+      "dimension": "accept-where-refuse",
+      "title": "Object-axis fold REFUSES a None-vs-NaN pair the comparison ACCEPTS, and the docs enumerate the added strictness as exactly two pairs",
+      "file": "survey_population_replay.py",
+      "line": 408,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "medium",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "pandas' array_equivalent_object holds None and float('nan') interchangeable (its clause is `(x is None or is_nan(x)) and (y is None or is_nan(y))`; only pd.NA is separated, by the `(x is C_NA) ^ (y is C_NA)` test), and the byte arm re-infers both object axes to the same `str` Series of ['r','s',nan], so _axis ACCEPTS the pair. The seal's fold spells them apart (_object_bytes -> TAG_NONE vs TAG_FLOAT64+nan) and refuses AXIS. This is an acceptance turning into a refusal, not a refusal changing code. The docstring at lines 399-401 says the fold 'is stricter on exactly the differences the codec spells and == does not -- True against 1, -0.0 against 0.0', docs:313 repeats 'stricter on exactly those pairs', and docs:320-322 concludes 'None of the four is a narrowing ... item 4 is a refusal moving from one code to another'. None-vs-NaN is a third, unnamed, unpinned pair and it is not a code move. The docstring at lines 388-390 discusses only the None-vs-pd.NA case, which identical does refuse.",
+      "failure_scenario": "A node whose object axis holds None on the observed side and float('nan') on the reconstructed side (or vice versa) is accepted by same_replayed_population today and refused by same_replayed_population_seals with SURVEY_POPULATION_REPLAY_AXIS -- a green run turns red, which is the failure mode test_exotic_index_dtypes_agree_on_both_paths was written to guard ('a seal that is stricter than the predicate it replaces turns a green run red'). Secondary effect, also reproduced (fuzz iter 183): when such an axis pair coexists with a column defect, the seal now reports AXIS where the comparison reported SERIES_DTYPE_OR_LENGTH.",
+      "disposition_kind": "code",
+      "disposition": "Same rewrite: {None, NaN} is one class, as measured. Pinned by the 121-case test_the_object_axis_fold_reproduces_pandas_own_equality_classes sweep."
+    },
+    {
+      "dimension": "accept-where-refuse",
+      "title": "np.asarray casts a masked-integer axis to float64, so the AXIS value fold is lossy above 2^53 and the refusal code moves to PRESENT_BITS",
+      "file": "survey_population_replay.py",
+      "line": 404,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "low",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "_axis_values_fold folds np.asarray(index.array). For a masked integer array carrying any null, numpy returns float64 (NA becomes NaN), so the fold of an Int64/UInt64 axis is a FLOAT fold: it then also takes the kind-'f' collapse branch at lines 413-416, and two distinct int64 labels that round to the same double fold identically. Index.equals compares the masked present values exactly, so identical refuses and the comparison reports AXIS while the seal falls through to the series arm and reports PRESENT_BITS. docs/us-native-retention-seal.md:314 states 'Every non-object axis kind is exact, including the three array_equivalent is byte-tolerant for' -- an Int64 axis with nulls is neither object nor exact, so that mechanism claim is wrong at this head, and docs:272 ('still refuses the same defect with the same code') does not hold for this pair.",
+      "failure_scenario": "Give the person table an Int64 (nullable) axis whose labels exceed 2^53 -- e.g. a hashed or concatenated source id -- and change one present label. Today the run refuses SURVEY_POPULATION_REPLAY_AXIS; with the seal it refuses SURVEY_POPULATION_REPLAY_PRESENT_BITS. Both refuse, so this is the lesser class, but the AXIS arm itself is silently non-exact for every masked-integer axis, and the design note asserts the opposite.",
+      "disposition_kind": "code",
+      "disposition": "Extension-dtype axes now fold through their exact object view. Pinned by test_a_masked_integer_axis_is_exact_above_two_to_the_fifty_three; dropping the view turns it red."
+    },
+    {
+      "dimension": "accept-where-refuse",
+      "title": "A non-finite axis name moves the refusal from AXIS to UNSUPPORTED_AXIS_NAME",
+      "file": "survey_population_replay.py",
+      "line": 442,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "none",
+        "low"
+      ],
+      "both_verifiers_kept": false,
+      "claim": "_axis evaluates identical() before _name_bytes(), so for an axis named float('nan') the name comparison inside identical fails first (nan != nan) and the pair refuses AXIS. _axis_seal calls _name_seal(index.name) while building each operand's seal, so the store grammar's refusal of a non-finite name fires first and the pair refuses UNSUPPORTED_AXIS_NAME. docs:293-295 (\u00a74 item 2) states that the unary assertions that now fire earlier do so 'with the same code'; this one does not, and the battery's parametrisation of test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths (np.int64(5), Decimal('1'), b'bytes') misses it because for those names identical passes and the comparison also reaches _name_bytes.",
+      "failure_scenario": "Rename any table axis to float('nan') on both operands (the store refuses such a name downstream either way, so the run fails in both worlds): same_replayed_frame raises SURVEY_POPULATION_REPLAY_AXIS, while replayed_frame_seal raises SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME when the observer seals the population. Refusal preserved, code changed, and \u00a74 item 2 says the code is preserved.",
+      "disposition_kind": "test+docs",
+      "disposition": "Pinned by test_a_non_finite_axis_name_refuses_on_both_paths_under_different_codes and recorded in the design note's residual risks as the one-sided-precedence class."
+    },
+    {
+      "dimension": "retention-roster",
+      "title": "The roster is documented as \"three\" consumers; the base 19-node run declares one, and the count is configuration-dependent",
+      "file": "us-native-retention-seal.md",
+      "line": 371,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "All three authority documents state that the base financial run declares three consumers and that \"those three are retained as objects\". The code's roster expression has at most three terms, and how many are present depends on `property_income` and `rebase_property_taxes`: one node for the plain 19-node base run, two with property income and no rebase, three only with the tax rebase. The change's own new test computes one. The doc also mis-maps the code's second term: `property_graph.ATTACH_NODE` is gated on `property_graph is not None`, not on the rebase, and in the no-rebase case it is the *final node* (the doc's first role), not \"the property population\" (its third role).",
+      "failure_scenario": "A reader auditing \"which nodes still hold Population objects\" for the measured 19-node base configuration reads docs/us-native-retention-seal.md:371-375 (or the runner docstring at graph_atomic_survey_financial.py:1318-1319, \"rather than the three below\", or experiments/native-retention-seal/out.md:208-212, \"Those three are detached with the executor's own `_observer_snapshot`\") and looks for three retained objects. Evaluating the code at :1688-1697 with `property_income=None, rebase_property_taxes=False` yields `frozenset({'survey_predictors.attach'})` \u2014 one \u2014 which is exactly what the change's own test asserts at test_us_graph_atomic_survey_financial.py:336 and what out.md:228 prints. The same reader auditing the property-income-without-rebase configuration finds two, with the second node playing the doc's first role rather than its third.",
+      "disposition_kind": "docs",
+      "disposition": "The report now states the roster is one, two or three nodes by configuration, and that the measured nineteen-node run declares one."
+    },
+    {
+      "dimension": "executor-invariants",
+      "title": "The new docstring withdraws only \"execution state\"; the store/cache guarantee is withdrawn too, and silently, durably, across runs",
+      "file": "executor.py",
+      "line": 2465,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "low",
+        "none"
+      ],
+      "both_verifiers_kept": false,
+      "claim": "The paragraph at 2458-2467 admits that in the new mode \"the executor no longer enforces that an observer cannot reach execution state, so a mutating observer in it would corrupt the run.\" The paragraph directly above it (2453-2454) promises two things, not one: \"changes to the snapshot cannot alter execution **or persistence**.\" The new admission names only the first. Measured, the second is gone as well, and its blast radius is not \"the run\": a mutating observer permanently poisons the content store under an unchanged address, and every later run that shares that store serves the poisoned bytes as a cache hit with an unchanged node key and an unchanged run key. No refusal fires, and the store's own payload digest is rewritten to match, so nothing can detect it afterwards.",
+      "failure_scenario": "A second caller adopts the mode with an observer that normalises in place before sealing (e.g. `population.frame.weights_for(\"household\").values` after `setflags(write=True)`, or an `.loc[:, col] +=` on a table it means to summarise). The observer runs at executor.py:2787-2791, i.e. before `_write_node` at 2793, so the poisoned population is what gets persisted. The run itself reports a key identical to a clean run's. Weeks later an unrelated, observer-free `run_graph` against the same store reports all-hits and the same run key and hands back the corrupted weights. The docstring the caller read told them the exposure ended with \"the run\".",
+      "disposition_kind": "code",
+      "disposition": "run_graph's docstring now withdraws BOTH guarantees by name -- execution and persistence -- and says the persistence damage outlives the run."
+    },
+    {
+      "dimension": "executor-invariants",
+      "title": "test_a_seal_only_observer_receives_the_live_population's default-mode arm is vacuous: it compares one run's snapshots to a different run's frames",
+      "file": "test_graph_executor.py",
+      "line": 4491,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "The `assert not any(...)` at 4491-4495 is meant to pin the other half of the contract \u2014 that the *default* mode does not hand out the executor's live tables. It cannot: `detached` is filled by the first run (4469-4475, store \"detached\") while `attached` is `manifest.populations[\"survey\"]` from the *second* run (4477-4485, store \"live\"). Two separate `run_graph` calls build their own DataFrames, so no object from run 1 can ever be `is`-identical to one from run 2, detached or not. The assertion is therefore true by construction, and the test's own docstring claim (4461, \"In the default mode the observer receives an independent copy\") and the report's claim are unsupported by it.",
+      "failure_scenario": "A future change makes `_observer_snapshot` return a shallow copy, or short-circuits it for some population shape, so the *default* observer starts receiving the executor's live tables \u2014 the exact regression this arm exists to catch, and the one the pre-existing test at 4182-4248 depends on not happening. `pytest packages/microcosm-graph/tests` stays green: the arm compares against a frame from a different run and passes regardless (demonstrated above by the strongest possible version of that regression, detachment as the identity function).",
+      "disposition_kind": "test",
+      "disposition": "Both arms of test_a_seal_only_observer_receives_the_live_population now compare within their own run; reducing _observer_snapshot to the identity turns it red."
+    },
+    {
+      "dimension": "executor-invariants",
+      "title": "Stale line citation in the design note: `:2773-2774` is the base commit's numbering, not this head's",
+      "file": "us-native-retention-seal.md",
+      "line": 418,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "\u00a77's sentence about `_observer_snapshot` costing \"one full independent copy per reached node, cache hits included\" cites `(:2773-2774)` for the observer call site. At this head, executor.py:2773-2774 is the mass-receipt block (`) from error` / `normalized_receipt[\"mass\"] = {**existing_mass, **authored_mass}`) and has nothing to do with the observer. 2773-2774 is exactly where the call site sat at the base commit a64f7b733, before this change moved it; at this head it is 2787-2791. The adjacent citation in the same paragraph (`executor.py:356-408` for `_observer_snapshot`) is correct, so the stale one reads as authoritative.",
+      "failure_scenario": "A reviewer auditing \u00a77 against the head opens executor.py:2773-2774, finds the mass-receipt lines, and either concludes the note is describing code that no longer exists or, worse, goes looking for a call site that was removed. The governing standard for this change requires doc line numbers to be correct at this head.",
+      "disposition_kind": "docs",
+      "disposition": "Re-derived: the detachment is executor.py:373 inside _observer_snapshot at :356, and the per-node call is :2787-2791."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "\u00a76 and \u00a77c conclude \"the US half of this change moves no key at all\" from a receipt revision that predates the lane's own inventory re-pin",
+      "file": "out.md",
+      "line": 414,
+      "severity_reported": "high",
+      "severity_after_verification": [
+        "medium",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "The report's bolded conclusion \u2014 and the `base \u2192 us_only` row it now cites as direct proof \u2014 rests on `us_only = 1b0b915b0`, a mid-lane revision that predates BOTH the inventory re-pin (43fb39270) and the entire runner change. The re-pin is a US-half commit and it moves `inventory_sha256`, which `implementation_manifest` puts in every one of the ten stage manifests, so the US half on its own moves every node key and every store address. The report says the opposite of its own \u00a77c cause 2 and \u00a711 question 2(c).",
+      "failure_scenario": "Max reads \u00a76/\u00a711 Q2, picks option 2(b) \u2014 \"decouple them; the US half lands with no key movement at all\" \u2014 and lands the US half expecting node keys and store addresses to be stable. Because 43fb39270 sits in that half, `inventory_sha256` moves from 58513b5b\u2026 to 2f98c788\u2026 in all ten stage manifests, every node key downstream moves, and every store address is invalidated \u2014 the exact outcome the option was chosen to avoid. The `base \u2192 us_only` row cannot detect this because 1b0b915b0 does not contain the re-pin, and because the row only compares roster-module digests, not `inventory_sha256`, which the receipt records in a separate block.",
+      "disposition_kind": "docs",
+      "disposition": "Section 6 now gives the two-commit attribution: 9bef866c5 moves executor.py in all ten rosters, 43fb39270 moves inventory_sha256 in all ten manifests. The seal moves no key; the US HALF DOES. The receipt revision is relabelled seal_and_battery."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "Eight line citations are the base branch's or point at unrelated code, in documents that promise head line numbers",
+      "file": "us-native-retention-seal.md",
+      "line": 83,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "medium",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "Both documents open with \"Every line number is at this branch's head unless it names another\", but eight citations are not. Four \u00a71 section headers and one out.md citation are verbatim a64f7b733 line numbers, shifted by the `import hashlib` this change itself adds at survey_population_replay.py:10; `executor.py:2773-2774` and out.md's `(:1897)` are base line numbers that land on unrelated code at this head; and `:1339-1357` matches neither revision.",
+      "failure_scenario": "A reviewer following the note's own instruction to \"re-derive the ones you rely on\" opens executor.py:2773-2774 to check the per-node detachment claim and finds a mass-receipt `raise ... from error`; opens graph_atomic_survey_financial.py:1339-1357 to check that the retention flag has exactly one caller and never sees `_retain_every_node_population=True`; opens survey_population_replay.py:79 expecting NONCANONICAL_NULL_BACKING and finds PRESENT_BITS. The claims are all true at the correct lines, so every one of these reads wastes time or, worse, reads as a fabricated citation.",
+      "disposition_kind": "docs",
+      "disposition": "Seven citations re-derived and corrected; the design note now states that the seal's `import hashlib` shifted every line from 10 onward in that file."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "\u00a74's table credits test_a_seal_only_observer_receives_the_live_population with a discrimination it cannot make",
+      "file": "out.md",
+      "line": 323,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "The table says that test pins \"the observer really does receive the executor's own table objects, **and the default mode really does not**\". The second half is not pinned: the negative assertion compares the *detaching* run's observations against the *other* run's manifest population, two separate runs with separate ContentStores, so no object identity is possible whichever mode the first run used. The assertion passes identically with detachment turned off.",
+      "failure_scenario": "A future change makes the default mode stop detaching \u2014 say `_observer_snapshot` is short-circuited, or the ternary at executor.py:2790 is inverted \u2014 and `test_a_seal_only_observer_receives_the_live_population` stays green, because its negative arm compares objects across two runs and can never fail. The report told the reviewer that this test guards the default mode's detachment, so nobody looks for another guard. (`test_observer_snapshot_detaches_complete_population_storage` at 4251 and `test_mutating_and_retained_observers_cannot_change_execution_or_cache` at 4183 are the real guards; neither is what \u00a74's row cites.)",
+      "disposition_kind": "docs",
+      "disposition": "Section 4's table now credits the test with the seal-only arm only, and points at question 8."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "Two internal cross-references survived the section renumber pointing at the wrong target",
+      "file": "out.md",
+      "line": 109,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "After the 4879fd5a2 renumber and the later insertion of \u00a72c and \u00a710 (the PR section), two pointers are still wrong: out.md:109 sends the reader for \u00a71's answer-(4) items 3 and 4 to \"\u00a711 question 1\", which is the inherited-contract-repair question; and out.md:977 calls round 2 of the diagnostic \"\u00a78a's third finding\", when \u00a78a numbers rounds and the round described is its second.",
+      "failure_scenario": "A reader following out.md:109 lands on \"Where should the inherited contract repair live?\" and concludes the report lost the adversarial-pass question, or answers the wrong one. A reader following out.md:977 lands on \u00a78a round 3 \u2014 the round that patches nothing \u2014 and reads it as the round that refused before it started, inverting the very attribution \u00a712 was rewritten to get right.",
+      "disposition_kind": "docs",
+      "disposition": "Section numbering fixed (tests 9, PR 10, questions 11, caveats 12) and five cross-references repointed."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "\u00a77a says no figure in it is transcribed by hand, but the generator produces neither the replay row nor the delta column",
+      "file": "out.md",
+      "line": 445,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "before_after_table.py emits six of the table's seven rows and no delta column. The `required replay CPU s` row and the whole \"vs after\" column are hand-entered, and the script's own `whole-process peak RSS GB` row is dropped from the table \u2014 so the reproducibility claim is stronger than what the script does.",
+      "failure_scenario": "Someone re-runs before_after_table.py after a later measurement to refresh \u00a77a, gets six rows and no deltas, and either drops the replay row that the CPU argument rests on or re-types it \u2014 which is the transcription the sentence promises does not happen. A reviewer checking the claim finds the replay row is not derivable from the cited generator and doubts the rest of the table.",
+      "disposition_kind": "code",
+      "disposition": "before_after_table.py now derives the replay row and the delta column, and the report pastes its output verbatim."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "\u00a711 question 3(b)'s index-retention cost mixes a full-source figure with a 1/10 figure",
+      "file": "out.md",
+      "line": 868,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "\"nineteen person indexes at 1/10 are about 0.5 GB against the 29 GB the populations were\" compares a full-source index cost with a 1/10 population cost. At 8 bytes a row, 0.5 GB is nineteen indexes over the full-source person count; at 1/10 the same arithmetic gives about 0.05 GB. The 29 GB is the 1/10 population figure. Neither the person count nor 0.5 GB is derivable from any artifact under experiments/native-retention-seal/.",
+      "failure_scenario": "Max weighs option 3(b) \u2014 retain the axes so every axis code stays exact \u2014 and reads the cost as 0.5 GB against a 29 GB saving, i.e. 1.7% of what the change recovers. At a consistent fraction it is 0.05 GB against 29 GB, about 0.2%: an order of magnitude cheaper than the option is presented as being, which is the difference between \"not free\" and \"negligible\".",
+      "disposition_kind": "docs",
+      "disposition": "Question 3(b) now gives the full-source and the 1/10 figures separately instead of one of each."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "The declared-consumer roster is described as three nodes; the shipped set has one, two or three, and the measured run has one",
+      "file": "out.md",
+      "line": 268,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "Both documents say the base financial run declares three consumers and that \"those three are detached with the executor's own `_observer_snapshot`\". The shipped `declared_consumers` is `{financial.ATTACH_NODE}` plus `property_graph.ATTACH_NODE` only when a property graph exists and `_tax_module().GATE_NODE` only when the rebase is on, so it holds one, two or three nodes \u2014 and the nineteen-node run the report measures holds exactly one, as the report's own receipt block four lines later shows.",
+      "failure_scenario": "A reader sizing the remaining retention takes three retained populations per run as the shipped behaviour \u2014 three detached snapshots and three `_population_stamp` calls \u2014 and then cannot reconcile it with \u00a77a's \"one `_observer_snapshot` instead of nineteen and one `_population_stamp` instead of nineteen\", which is the actual measured run. The two statements are three lines apart and describe different rosters.",
+      "disposition_kind": "docs",
+      "disposition": "Same as the roster finding above."
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "\"about 0.31 GiB\" is 0.31 GB (0.29 GiB), and neither it nor its inputs come from an artifact in this lane",
+      "file": "out.md",
+      "line": 539,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "The retention-size figure the report uses three times to dismiss the +6 GB replay-phase RSS difference is quoted in GiB but computed in GB, and both of its inputs (9.6-9.8 bytes per cell and 1.70e6 cells) come from the base lane's report prose rather than from any measurement JSON or receipt under experiments/native-retention-seal/.",
+      "failure_scenario": "A reader checking the one number that licenses \"this comparison is not evidence about retention in either direction\" recomputes 19 \u00d7 1.70e6 \u00d7 9.7 = 313 MB = 0.29 GiB, finds the report's own arithmetic off by 7%, and cannot re-derive either input from this lane's artifacts at all. The conclusion survives \u2014 0.29 GiB is still an order of magnitude below 6 GB \u2014 but a figure quoted three times as this lane's should be reproducible from this lane.",
+      "disposition_kind": "docs",
+      "disposition": "Corrected to 0.31 GB (0.29-0.30 GiB), with the arithmetic and the note that neither input is this lane's."
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "\u00a73(a)'s \"dtype token\" is not the code, and the battery test named for it never calls the seal",
+      "file": "us-native-retention-seal.md",
+      "line": 215,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "medium",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "\u00a73(a) states that for S2/S3 \"the seal folds a dtype token (type(dtype).__module__, type(dtype).__qualname__, str(dtype), getattr(dtype, \"storage\", None), getattr(dtype, \"na_value\", ...) is pd.NA)\" and that \"the battery proves it by sweeping a dtype census and asserting the equivalence both ways\". No such token exists at this head, and the census test proves nothing about the seal: it never calls a seal function, and its two expressions are the same expression.",
+      "failure_scenario": "Delete both dtype arms from `_same_series_seal` (`left[0] is right[0] and left[1] == right[1]` at :353-356) and `test_the_dtype_token_is_faithful_to_the_predicate_it_replaces` still passes \u2014 it exercises no line of the seal. The only cases that would go red are three unrelated driver cases (`test_a_native_dtype_change_at_equal_values_still_refuses`, `test_observed_values_masks_and_dtypes_are_exact[dtype]`, `test_string_storage_and_null_policy_are_part_of_the_comparison`), so a reader auditing \"is the dtype token faithful for every admitted dtype?\" is pointed at a test that answers a question about pandas, not about this change. Worse, the token as documented would accept `np.longlong` against `np.int64` (equal module, qualname, str, storage, na_value), i.e. the doc describes a seal that fails closed less than the shipped one.",
+      "disposition_kind": "test+docs",
+      "disposition": "The census test now drives the seal for every ordered pair and is renamed _dtype_head_; replacing the retained head with str(dtype) turns it red. The note's section 3(a) rewritten to describe the retained objects."
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "\u00a73(a)/\u00a76's `_comparables` digest and `repr()` fallback \u2014 and the whole \"residual risk\" paragraph \u2014 describe code that is not there",
+      "file": "us-native-retention-seal.md",
+      "line": 226,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "medium",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "\u00a73(a) says the axis seal folds \"the qualified class (__module__ + __qualname__ ...), the dtype token, and a digest over every name in type(index)._comparables\", with `name` through `_name_bytes` and \"any other comparable ... folded through `_name_bytes` when the store codec accepts it and through `repr()` otherwise\"; \u00a76 then spends its \"residual risk this note will not hide\" paragraph on that repr fallback. The seal does none of this: it retains the class object and the raw comparable values and compares them the way `identical` does, so the documented risk cannot occur and the documented mechanism does not exist.",
+      "failure_scenario": "A reader following \u00a76 looks for the repr fallback to bound the risk and finds nothing to read; a reader following \u00a73(a) expects `freq` to be digested and finds it retained as a live `DateOffset` compared with `==`. The battery contradicts the doc rather than the code: test_a_comparable_whose_equality_refuses_itself_still_refuses (test:1095-1112) passes only because comparables are compared with `==` \u2014 under the documented repr fold a `_Refusing(1.0)` name on both sides would repr-match and the pair would be accepted, so that test would go red.",
+      "disposition_kind": "docs",
+      "disposition": "The note's section 3(a) and section 6 rewritten: there is no _comparables digest and no repr() fallback. Section 6 now states the three real residual risks."
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "out.md's reconciliation of 122 tests to 116 comparisons is wrong in both halves",
+      "file": "out.md",
+      "line": 136,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "out.md:135-137 says \"The file is 122 tests against 116 comparisons because six of them drive no comparison: three pin the codes this change adds (\u00a72c) and three are the O(columns) and snapshot-preservation properties.\" Nine collected items drive no comparison, not six; the snapshot-preservation test it names drives two comparisons and is in the receipt; and the arithmetic only closes because three other tests drive two comparisons each.",
+      "failure_scenario": "A reviewer auditing coverage subtracts the six named exemptions and concludes that every other one of the 122 tests is a driver case with a receipt row \u2014 so the four items that are genuinely unaudited by the driver (the flags-structure test, the dtype-census test, and the two RangeIndex params) are read as covered. It is the same arithmetic that hides finding 1.",
+      "disposition_kind": "docs",
+      "disposition": "Recomputed: 246 items, 113 driving at least one comparison, three of those driving two, 133 driving none, with the nine property tests named."
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "out.md counts a pair among \"the 14 accepted pairs\" that the agreement driver never sees",
+      "file": "out.md",
+      "line": 172,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "out.md:166-174 says the 14 receipt-recorded acceptances \"include ... RangeIndex(0, 1, 1) against RangeIndex(0, 1, 7)\", and out.md:117-119 says the file \"now routes **every** mutation through an agreement driver\". The RangeIndex pairs are checked path-by-path, not through the driver, and contribute zero of the 116 rows.",
+      "failure_scenario": "The acceptance half is the half that catches a seal that has become stricter (a green run turned red). A reader reconciling the 14 against the prose looks for a RangeIndex row in the receipt and cannot find it, and the two exotic-axis and observer-snapshot acceptances that are actually in the 14 go unmentioned. Because the RangeIndex case is outside the driver, a future change that made `_axis_seal` fold start/stop/step would be caught by that test but would never appear as a receipt disagreement.",
+      "disposition_kind": "docs",
+      "disposition": "The report now says the RangeIndex pair is checked path by path, contributes none of the 116 rows, and is not one of the fourteen."
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "All four \u00a71 field-inventory line citations are off by one at this head",
+      "file": "us-native-retention-seal.md",
+      "line": 83,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "The \u00a71 sub-section headers cite `:179-208` (population), `:132-176` (frame), `:121-129` (axis) and `:48-111` (series). At this head the four functions are at 180-209, 133-177, 122-130 and 49-112: every cited range starts on the blank line above the `def` and stops one line short of the function's last line. The note's own rule is \"Every line number is at this branch's head\".",
+      "failure_scenario": "A reviewer opening `:121-129` to check the axis inventory reads a range whose first line is blank and which excludes line 130 \u2014 the `_series` call over the axis array, which is precisely the row A5 the table at docs:117-126 lists (\"A5 | `_series` over the axis array | the S codes\"). Same for \u00a71d: `:48-111` cuts the closing paren of the NATIVE_BITS `_require` that row S15 names.",
+      "disposition_kind": "docs",
+      "disposition": "Same as the citation finding above."
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "Nothing in the battery distinguishes the per-column NONCANONICAL_NULL_BACKING disjunction from a frame-wide flag, which \u00a73(c) says is the point",
+      "file": "us-native-retention-seal.md",
+      "line": 261,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "none"
+      ],
+      "both_verifiers_kept": false,
+      "claim": "\u00a73(c) argues \"A single population-wide flag would not reproduce it: today's disjunction is evaluated per column, and one non-canonical column must not force whole-frame byte equality on the others\", and the code repeats it at :363-367. No battery case can tell the two designs apart: every existing masked case has either all columns canonical on the actual side or a difference that both designs refuse.",
+      "failure_scenario": "Replace `canonical` in `_series_seal` (:309, :317) with a single population-wide flag and hoist the disjunction out of `_same_series_seal` (:367): all 122 tests still pass, while the mixed frame above \u2014 accepted today \u2014 would be refused NONCANONICAL_NULL_BACKING. That is the green-run-turns-red direction the note says it is guarding against, and it is unpinned.",
+      "disposition_kind": "test",
+      "disposition": "test_the_canonical_null_disjunction_is_per_column_and_not_frame_wide added; making the flag pessimistic turns it red."
+    },
+    {
+      "dimension": "refusal-preservation",
+      "title": "\u00a73(a) documents a \"dtype token\" the code does not implement, and \u00a74(1) says that token would be wrong",
+      "file": "us-native-retention-seal.md",
+      "line": 215,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "low",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "The design note's \u00a73(a) states that the seal replaces the S2/S3 dtype pair with a five-element token of strings and booleans. The implementation does no such thing: it retains the live dtype object and its class and applies the identical `is`/`==`. The note's own \u00a74(1) then argues that a spelling-based token would MISS a defect the code catches, so the two sections of the same authority describe mutually exclusive mechanisms and \u00a73(a) is the one that does not match the code read at this head.",
+      "failure_scenario": "A reader auditing fail-closedness for an `np.longlong` column follows \u00a73(a), computes the documented token for `np.longlong` and for `np.int64` \u2014 `('numpy', 'dtype[longlong]', 'int64', None, False)` vs `('numpy', 'dtype[int64]', 'int64', None, False)` \u2014 and reasons about a `__qualname__` string comparison that the shipped code never performs. Anyone porting the seal, or re-deriving the S2/S3 equivalence argument from the note rather than from `_same_series_seal`, reproduces the wrong predicate. The test that exists (`test_us_survey_population_replay.py:796-809`) asserts the real mechanism, `(type(left), left) == (type(right), right)`, not the documented five-tuple, so the note is stale against both the code and its own proof.",
+      "disposition_kind": "docs",
+      "disposition": "Same as the dtype-head finding above."
+    },
+    {
+      "dimension": "refusal-preservation",
+      "title": "\u00a76's stated residual risk is a `repr()` comparable fallback that does not exist in the code",
+      "file": "us-native-retention-seal.md",
+      "line": 419,
+      "severity_reported": "medium",
+      "severity_after_verification": [
+        "medium",
+        "medium"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "\u00a76 \u2014 the fail-closed section that this audit's standard is written against \u2014 declares one residual risk: that the `_comparables` fold encodes a comparable through `repr()` when the axis-name codec will not take it, so the seal could refuse where `identical()` accepts. `_axis_seal` has no such fallback. It retains the raw comparable values and `_same_axis_seal` compares each one with `bool(one == other)`, which is exactly the predicate `Index.identical` applies. The declared risk therefore cannot occur, and the note states no residual risk for the mechanism actually shipped.",
+      "failure_scenario": "Reproduce by constructing an index class whose `_comparables` carries a value the store codec rejects, e.g. a `DatetimeIndex` whose `freq` is a `DateOffset`: `_axis_seal` stores the `DateOffset` object itself and `_same_axis_seal` compares two of them with `==`, so a pair that `identical()` accepts is accepted by the seal and the documented refuse-where-accept divergence never materialises. The concrete harm is the inverse of a missed defect: an owner reading \u00a76 to decide whether the seal is safe to ship is told to worry about a divergence that cannot happen, and is told nothing about the real property \u2014 that the comparables arm is now an `==` over retained live objects, which inherits `identical()`'s behaviour exactly but also keeps those objects alive inside the seal record for the life of the run.",
+      "disposition_kind": "docs",
+      "disposition": "Same as the residual-risk rewrite above."
+    },
+    {
+      "dimension": "refusal-preservation",
+      "title": "The \u00a71 refusal-code tables cite base line numbers while claiming to be read off this head",
+      "file": "us-native-retention-seal.md",
+      "line": 83,
+      "severity_reported": "low",
+      "severity_after_verification": [
+        "low",
+        "low"
+      ],
+      "both_verifiers_kept": true,
+      "claim": "\u00a71 is the enumeration of the forty-four discriminations and their codes \u2014 the index every later fail-closed claim points back to. Its header says the table was read off `survey_population_replay.py` \"at this head\", but all four of its line citations are the base commit's numbers. This change added `import hashlib` at line 10 of the module, shifting every one of the four cited functions down by one, so each cited range is one line short at HEAD.",
+      "failure_scenario": "Open the note, go to \u00a71a and jump to `survey_population_replay.py:179` expecting the first line of `same_replayed_population`; you land on line 179, the blank line before it, and the cited range `:179-208` stops one line short of the `DESIGN_BYTES` require at :209 \u2014 i.e. the range omits the last predicate in the table it is indexing (P11's byte comparison). Same one-line truncation at the end of each of the other three ranges: `:48-111` excludes the `NATIVE_BITS` require's closing line at :112, `:132-176` excludes :177, `:121-129` excludes :130.",
+      "disposition_kind": "docs",
+      "disposition": "Same as the citation finding above."
+    }
+  ],
+  "refuted_findings": [
+    {
+      "dimension": "retention-roster",
+      "title": "The completion host's roster read depends on `_retain_every_node_population` with no check at the consumer; the existing parent guard does not imply it",
+      "severity_reported": "low",
+      "why_refuted": "I tried to refute the finding on facts first, and could not \u2014 every line citation is exact:\n\n- graph_survey_completion_host.py:311-314 is verbatim the `require(state.property_income is not None and not state.rebase_property_taxes, \"COMPLETION_ACTUAL_PROPERTY_PARENT\")` the finding quotes, and it is the only guard on the parent in `_CompletionHost.__init__`.\n- :814-816 is verbatim `base_expected = dict(zip(base.compiled.order, (p for p, _ in state.node_populations), strict=True))`, and :830 is verbatim `host.atomic.same_replayed_population(expected[node_id], observed[node_id])`.\n- The prose invariant is at graph_atomic_survey_financial.py:1318-1323, exactly as quoted.\n- I grepped for a guard at the consumer: `node_populations` appears in graph_survey_completion_host.py only at :815 (the read) and :907 (the child's own issue). Nothing validates the value types. I read `_CompletionHost.__init__` in full (307-487), `extend`/`_extend` (736-832), `_child_expected` (681-735) and `_check_observed_union` (185-190): no earlier refusal fires. `parent = base.financial_population` (:367) is a retained declared consumer, so it survives.\n- I computed the two mechanism claims rather than trusting t"
+    },
+    {
+      "dimension": "executor-invariants",
+      "title": "test 2's warm parametrization pins no cache hit, unlike the test it is modelled on, so its \"cold and warm\" coverage is unverified",
+      "severity_reported": "low",
+      "why_refuted": "Three independent grounds for refutation, in order of force.\n\n1. The failure scenario is empirically false \u2014 the regression it names is not silent. The finding's scenario is \"a later change to the restore path ... stops the warm arm from hitting the cache. Both parametrizations then execute cold, the test stays green.\" I simulated exactly that by monkeypatching `microcosm.graph.executor._load_record` (the sole restore entry point, executor.py:1848, reached at 2591, which sets `hit = True` at 2615) to always raise `StoreMiss`. Baseline: 92/92 pass. Under the simulation: 30 tests fail, including `test_mutating_and_retained_observers_cannot_change_execution_or_cache[True]` failing precisely at line 4228 (`assert all(receipt.hit for receipt in observed.nodes.values()) is warm` \u2192 `assert False is True`). That model test uses the identical fixture shape the seal-only test uses \u2014 same `compiled = compile_graph(_graph(leaf=False))`, same \"pre-run into `store` when warm\" pattern at 4194-4197 vs 4425-4428. So the warm arm cannot degrade into a duplicate of the cold arm without the suite going loudly red; a reader of \u00a74 is never left with a silently-cold warm arm.\n\n2. No regression specific t"
+    },
+    {
+      "dimension": "doc-accuracy",
+      "title": "\"The twenty-two refusal codes survey_population_replay.py raises (counted off the module)\" is 25 at this head",
+      "severity_reported": "low",
+      "why_refuted": "The reporter's number checks out (25 suffixes in the file at head, 22 at base) but the defect they build on it does not survive reading the surrounding document. The sentence at docs/us-native-retention-seal.md:155 sits under a heading that scopes it explicitly to what `same_replayed_population` compares *today*, and at this head that function still raises exactly 22 codes \u2014 the three extras live in the seal constructors and `seal_identity`, which \u00a71 is not about. So the \"22\" is not stale for its declared subject; only the parenthetical's shorthand (\"counted off the module\") is looser than the section it serves.\n\nThe failure scenario is also unreachable as described. A reader who greps the module and gets 25 finds all three extras named in \u00a76's added-codes table, each with the property it guards and the test that pins it, under a sentence that says the pre-change set is twenty-two and none of it is retired. And the \"right reading\" the finding says is never stated is stated twice in the note (\u00a71 heading, \u00a76:346-348) and a third time in out.md:18, whose wording \u2014 \"What `same_replayed_population` compares today. Forty-four rows under the twenty-two refusal codes...\" \u2014 is the very scop"
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "The `[weight_kind]` population case never reaches the predicate it is named for; it refuses at the frame level",
+      "severity_reported": "medium",
+      "why_refuted": "The finding has one true premise and a false conclusion, and its stated failure scenario is demonstrably wrong.\n\nTrue premise: the `[weight_kind]` case of the provenance test does mutate the Frame's `Weights` kind as well as the population mapping, and it therefore refuses `WEIGHT_BYTES` inside `same_replayed_frame` (computed WEIGHT_BYTES; the committed receipt agrees). Its ordering claim about survey_population_replay.py is accurate.\n\nFalse conclusion: \"P5's value arm is never evaluated by any case in the battery\" / \"the predicate it names is untested\". Row P5 is, in the doc's own words, `tuple(weight_kind.items())` equality that is order-SENSITIVE \u2014 a single conjunct that fires on either a value or an order difference. The change adds `test_mapping_order_is_part_of_the_comparison[weight_kind]` (:745), which builds ONE frame, derives `expected` from it, and produces `actual` by `replace(expected, weight_kind=reversed_mapping)` \u2014 same Frame object, so `same_replayed_frame` passes trivially and the refusal comes from exactly the P5 conjunct and its seal counterpart, element [4]. That is a test mutating exactly that property in one of two otherwise-equal populations, pinning `POPULAT"
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "The `[index_dtype]` case does not isolate the index dtype \u2014 it swaps the index class",
+      "severity_reported": "low",
+      "why_refuted": "The finding's observation about the test case is literally true and reproduces, but it fails three of the refutation grounds at once.\n\nFirst, it is pre-existing. The `[index_dtype]` id and the line that implements it (`pd.Index([0, 1], dtype=\"int32\")`) are byte-for-byte the same at base commit a64f7b733; a diff of the whole parametrize block base-vs-HEAD is empty. The change's only edit to that test swapped `with pytest.raises(ValueError, match=_ERROR): same_replayed_frame(...)` for `_refuses_frames(expected, actual)`, which now also requires the seal path to reach the identical refusal code. That is strictly more binding than what was there before, so the change did not introduce, widen, or weaken the conflation the finding describes.\n\nSecond, the coverage gap the finding infers does not exist. `_axis_seal` is a single function; `replayed_frame_seal` calls it at lines 495, 496 and 514 for each table's index, each table's columns axis, and the strata index. There is no separate \"index dtype\" branch to cover \u2014 element [3] is the same expression on every axis. The finding concedes that `test_the_columns_axis_dtype_is_part_of_the_comparison` holds the class constant and isolates the d"
+    },
+    {
+      "dimension": "battery-completeness",
+      "title": "The one divergence the note discloses is the one class the agreement driver cannot record, and no test pins it",
+      "severity_reported": "low",
+      "why_refuted": "The divergence the finding rests on is genuine \u2014 I reproduced both example pairs with the worktree interpreter and got exactly `direct='SURVEY_POPULATION_REPLAY_OBJECT_VALUE'`, `seal='SURVEY_POPULATION_REPLAY_AXIS'` \u2014 and the agreement driver does assert `direct == sealed` (test line 98), so the pair cannot ride through `_agree_frames`. It is also true that battery-receipt.json carries no divergence field. That is where the finding stops being right.\n\nFirst, \"such a pair cannot be added to the battery\" and \"the only test shape available for that axis kind is one the driver rejects\" are both refuted by the changed file itself. This change added the imports of `_axis`, `_axis_seal` and `_same_axis_seal` (lines 16-18) and a test that uses them directly, bypassing the driver: `test_range_index_parameters_that_no_label_shows_are_accepted` asserts `_verdict(_same_axis_seal, _axis_seal(one), _axis_seal(other)) is None` and `_verdict(_axis, one, other) is None` (lines 1091-1092). The divergent pair is pinnable in exactly that shape, in the same file, with no driver change. So the absence of a pin is not a structural consequence of the driver's design, as the finding argues.\n\nSecond, the fa"
+    }
+  ]
+}

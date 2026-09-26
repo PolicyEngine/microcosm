@@ -1,0 +1,13 @@
+........................................................................ [ 96%]
+...                                                                      [100%]
+=============================== warnings summary ===============================
+packages/microcosm-build/tests/test_us_survey_population_preparation.py::test_callable_configuration_drift_refuses_before_producer_io[wrapped_code]
+  /Users/maxghenis/PolicyEngine/_worktrees/microcosm-native-byte-transports/.venv/lib/python3.14/site-packages/_pytest/monkeypatch.py:251: DeprecationWarning: Assigning a code object of non-matching type is deprecated (e.g., from a generator to a plain function)
+    setattr(target, name, value)
+
+packages/microcosm-build/tests/test_us_survey_population_preparation.py::test_callable_configuration_drift_refuses_before_producer_io[wrapped_code]
+  /Users/maxghenis/PolicyEngine/_worktrees/microcosm-native-byte-transports/.venv/lib/python3.14/site-packages/_pytest/monkeypatch.py:394: DeprecationWarning: Assigning a code object of non-matching type is deprecated (e.g., from a generator to a plain function)
+    setattr(obj, name, value)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+75 passed, 2 warnings in 91.59s (0:01:31)

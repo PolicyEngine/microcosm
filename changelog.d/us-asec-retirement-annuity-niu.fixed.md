@@ -1,0 +1,1 @@
+Match published annuity NIU literals to the authenticated money owner's normalized zero and NIU status while preserving raw retirement source values. Reject mismatched dollar-zero and NIU encodings before qualification.
