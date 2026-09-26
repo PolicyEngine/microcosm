@@ -1082,3 +1082,35 @@ def test_row_level_signed_exclusion_over_every_row_marks_the_target_signed_exclu
     assert authored.membership_report["targets"]["ons.age.by_band"]["status"] == (
         "signed_excluded"
     )
+
+
+def test_native_groupby_pin_takes_the_lower_edge_of_a_two_edged_band() -> None:
+    """HMRC's Table 2.5 rows state both edges of a band; the fan-out pins on the
+    lower edge (the key the band-edge derivation reads), and the open top band,
+    which states the lower edge alone, pins the same way. Any other two-dimension
+    row stays unpinned, as before."""
+    from microcosm.build.target_reference_authoring import _native_groupby_pin
+
+    two_edged = {
+        "dimensions": {
+            "total_income_lower_bound": 30_000,
+            "total_income_upper_bound": 50_000,
+        }
+    }
+    open_top = {"dimensions": {"total_income_lower_bound": 2_000_000}}
+    unrelated = {"dimensions": {"age_lower_bound": 16, "sex": "female"}}
+
+    assert _native_groupby_pin(two_edged, "hmrc.total_income_band") == (
+        "total_income_lower_bound",
+        30_000,
+    )
+    assert _native_groupby_pin(open_top, "hmrc.total_income_band") == (
+        "total_income_lower_bound",
+        2_000_000,
+    )
+    assert _native_groupby_pin(unrelated, "hmrc.total_income_band") == ("", None)
+    assert _native_groupby_pin(
+        two_edged,
+        "hmrc.total_income_band",
+        pinned_dimension_names=frozenset({"total_income_lower_bound"}),
+    ) == ("total_income_upper_bound", 50_000)

@@ -1,0 +1,1 @@
+The UK rule-1 evaluator validates the candidate on the full comparison surface before pruning the incumbent's unresolvable measures, so an export missing a listed measure refuses (as the strict scorer does) instead of scoring on a surface reduced by the incumbent's gap; the receipt records `candidate_validated_on_full_surface`.

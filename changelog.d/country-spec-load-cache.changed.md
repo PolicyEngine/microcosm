@@ -1,0 +1,1 @@
+Load each packaged country spec once per process: `load_country_spec("<code>")` now returns a shared immutable spec instead of re-validating the whole bundle on every call (about 5 s per UK load, called several times per UK test), and `resource_hashes` is read-only. Path loads are unchanged. CI's `fast` and engine lanes also report their 25 slowest tests.

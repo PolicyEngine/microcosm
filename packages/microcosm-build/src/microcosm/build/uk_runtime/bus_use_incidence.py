@@ -101,10 +101,14 @@ def nts_band_shares(parameters: Mapping[str, Any]) -> tuple[BusUseBandShares, di
     share_geography = str(parameters["share_geography"])
     share_age_coverage = str(parameters["share_age_coverage"])
     applied_to = str(parameters["applied_to"])
-    if share_age_coverage != "all_ages" or applied_to != "fare_rake_regions":
+    if share_age_coverage != "all_ages" or applied_to not in (
+        "fare_rake_regions",
+        "every_person",
+    ):
         raise ValueError(
             "assign_bus_use_incidence supports share_age_coverage all_ages applied "
-            "to fare_rake_regions only."
+            "to fare_rake_regions (the lcfs override) or every_person (the "
+            "nts_bus_travel fallback) only."
         )
     mode_groupby = str(parameters.get("transport_mode_groupby_value_id") or "local_bus")
     older_age_band = str(parameters.get("older_age_band") or "60 and over")

@@ -428,3 +428,83 @@ def test_publish_cli_defaults_to_the_certified_tier(tmp_path, monkeypatch):
     rc = main([str(tmp_path)])
     assert rc == 0
     assert calls[0][2]["evidence"] is False
+
+
+def test_publish_cli_forwards_line_promotion_and_cut_tag(tmp_path, monkeypatch):
+    cut_tag = "microcosm-uk-2024-25-national-20260920T120000Z-deadbeef"
+    calls = _capture_publish(monkeypatch)
+
+    rc = main(
+        [
+            str(tmp_path),
+            "--promote-line",
+            "national",
+            "--tag-name",
+            cut_tag,
+        ]
+    )
+
+    assert rc == 0
+    assert len(calls) == 1
+    assert calls[0][2]["line"] == "national"
+    assert calls[0][2]["tag_name"] == cut_tag
+    assert calls[0][2]["update_latest"] is True
+
+
+@pytest.mark.parametrize(
+    ("arguments", "message"),
+    [
+        (
+            [
+                "--promote-line",
+                "national",
+                "--tag-name",
+                "cut-tag",
+                "--no-latest",
+            ],
+            "--promote-line cannot be combined with --no-latest",
+        ),
+        (
+            [
+                "--promote-line",
+                "national",
+                "--tag-name",
+                "cut-tag",
+                "--tag-only",
+            ],
+            "--promote-line cannot be combined with --tag-only",
+        ),
+        (
+            [
+                "--promote-line",
+                "national",
+                "--tag-name",
+                "cut-tag",
+                "--evidence",
+            ],
+            "--promote-line cannot be combined with --evidence",
+        ),
+        (
+            ["--promote-line", "national"],
+            "--promote-line requires --tag-name",
+        ),
+    ],
+)
+def test_publish_cli_refuses_incompatible_line_promotion_modes(
+    tmp_path, capsys, monkeypatch, arguments, message
+):
+    import microcosm.data.publish_cli as cli
+
+    called = False
+
+    def unexpected_publish(*args, **kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(cli, "publish_release", unexpected_publish)
+
+    with pytest.raises(SystemExit, match="2"):
+        cli.main([str(tmp_path), *arguments])
+
+    assert message in capsys.readouterr().err
+    assert called is False

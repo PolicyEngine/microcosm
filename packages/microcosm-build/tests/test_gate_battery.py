@@ -864,3 +864,56 @@ def test_population_fact_check_failures_do_not_block_a_synthetic_smoke(
     plain.run_phase("terminal", EvidenceContext())
     with pytest.raises(GateBatteryBlockedError):
         plain.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+
+
+def test_evidence_absent_blocks_a_synthetic_smoke_even_on_a_population_fact_check(
+    tmp_path, signing_env
+) -> None:
+    """The two flags sit on different status branches, by design.
+
+    ``synthetic_smoke`` excuses a *failed* population fact check (the fixture
+    is not the population); ``evidence_absent_blocks`` forces an *absent*
+    receipt to block in every posture, the synthetic smoke included. A stage
+    that runs on the fixture but leaves no receipt is a wiring fault, not a
+    population mismatch, so the smoke blocks on it.
+    """
+
+    manifest = _manifest(
+        [
+            _entry(
+                "fact",
+                gate="weights_audit",
+                population_fact_check=True,
+                evidence_absent_blocks=True,
+            )
+        ],
+        ["terminal"],
+    )
+    battery = GateBatteryRun(
+        manifest,
+        release_id="xx-test-build",
+        report_path=tmp_path / "smoke-absent.json",
+        release_candidate=False,
+        synthetic_smoke=True,
+    )
+    battery.run_phase("terminal", EvidenceContext())
+    with pytest.raises(GateBatteryBlockedError):
+        battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+    payload = battery.report_payload()
+    assert payload["synthetic_smoke"] is True
+    assert payload["gates"]["fact"]["status"] == "evidence_absent"
+    # The same entry without the evidence flag is excused on absence too:
+    # nothing then blocks the smoke, and the report still says absent.
+    lenient = GateBatteryRun(
+        _manifest(
+            [_entry("fact", gate="weights_audit", population_fact_check=True)],
+            ["terminal"],
+        ),
+        release_id="xx-test-build",
+        report_path=tmp_path / "smoke-absent-lenient.json",
+        release_candidate=False,
+        synthetic_smoke=True,
+    )
+    lenient.run_phase("terminal", EvidenceContext())
+    assert lenient.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT) is False
+    assert lenient.report_payload()["gates"]["fact"]["status"] == "evidence_absent"

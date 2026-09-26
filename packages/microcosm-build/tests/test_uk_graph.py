@@ -163,11 +163,12 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
-    # 30 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
-    # #791 frs_relationships and #725 hmrc_cgt_asset_type_spine stages; the
-    # two named exclusions are the certified-pair alternatives, not steps of
-    # this pipeline.
-    assert len(expected) == 30
+    # 31 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
+    # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
+    # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's (PolicyEngine/chronicle#280)
+    # spi_income_band_donors stages; the two named exclusions are the
+    # certified-pair alternatives, not steps of this pipeline.
+    assert len(expected) == 33
     assert UK_SPINE_EXCLUSIONS == {
         "frs_hmrc_retained_leaves",
         "hmrc_spi_income",
@@ -214,7 +215,8 @@ def test_uk_spine_compile_order_is_derived_from_declared_inputs() -> None:
     assert "frs_employment" in compiled.predecessors["frs_legacy_proxies"]
     assert "was_wealth" in compiled.predecessors["regional_property_uprating.boundary"]
     assert "regional_property_uprating" in compiled.predecessors["lcfs_consumption"]
-    assert "spi_support_channel" in compiled.predecessors["hmrc_spi_income_spine"]
+    assert "spi_support_channel" in compiled.predecessors["spi_income_band_donors"]
+    assert "spi_income_band_donors" in compiled.predecessors["hmrc_spi_income_spine"]
 
 
 def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> None:
@@ -227,6 +229,11 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     assert {source.name for source in graph.sources} == {
         "frs",
         "was",
+        "nts_household",
+        "nts_individual",
+        "nts_trip",
+        "nts_stage",
+        "nts_ticket",
         "lcfs_household",
         "lcfs_person",
         "etb",
@@ -303,6 +310,7 @@ def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
         "frs_education_grant_split",
         "frs_brma",
         "was_wealth",
+        "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",
         "etb_services",
@@ -477,6 +485,9 @@ def test_spi_support_channel_declares_its_mass_change_and_cgt_clones_conserve() 
     assert graph.node("spi_support_channel").mass == "declared"
     assert graph.node("cgt_incidence_clone").mass == "conserve"
     assert graph.node("cgt_band_donors").mass == "free"
+    assert graph.node("cgt_incidence_anchor").mass == "conserve"
+    assert graph.node("cgt_incidence_anchor").params["expand_cells"] == ()
+    assert "cgt_incidence_anchor.owned" not in {node.id for node in graph.nodes}
 
 
 @pytest.mark.requires_uk
@@ -579,3 +590,94 @@ def test_driver_projects_a_stage_record_for_every_graph_stage_on_the_fixture(
         "household_id",
     ):
         assert root_shares[column] == 1.0
+
+
+def _zero_row_expand_node(node_id: str = "anchor") -> Node:
+    return Node(
+        id=node_id,
+        kernel="uk.stage.expand.test@1",
+        structural=StructuralDelta.EXPAND,
+        base="root",
+        params={
+            "expand_cells": (),
+            "expand_weight_entity": "household",
+            "expand_weight_kind": "importance",
+        },
+        mass="conserve",
+    )
+
+
+def _zero_row_expand_result(weights: list[float], *, total: float) -> KernelResult:
+    def empty(id_column: str) -> pd.Series:
+        return pd.Series(
+            [],
+            index=pd.Index([], name=id_column, dtype="int64"),
+            dtype="int64",
+            name=id_column,
+        )
+
+    return KernelResult(
+        expand={
+            "person": empty("person_id"),
+            "benunit": empty("benunit_id"),
+            "household": empty("household_id"),
+        },
+        columns={},
+        weights=Weights(np.asarray(weights, dtype=np.float64), WeightKind.IMPORTANCE),
+        receipt={
+            "frame_mass_log_append": [
+                {
+                    "entity": "household",
+                    "old_total": total,
+                    "new_total": total,
+                    "declared_factor": 1.0,
+                    "reason": "test anchor moves mass between paired households",
+                }
+            ]
+        },
+    )
+
+
+def test_zero_row_expand_conserves_mass_through_the_executor() -> None:
+    """An EXPAND may add no rows and only move weight between incumbent rows.
+
+    The #970 incidence anchor is such a stage: empty lineage, no owned cells,
+    and importance weights rescaled between a clone household and its paired
+    original. The executor's ``conserve`` ledger is stratum person mass, so
+    the pair must share a stratum and a size, which paired clones do because
+    they copy the same persons.
+    """
+
+    expanded = patch(
+        _expand_population(),
+        _zero_row_expand_node(),
+        _zero_row_expand_result([0.25, 2.75], total=3.0),
+    )
+
+    assert expanded.version == "anchor"
+    assert expanded.frame.table("person")["person_id"].tolist() == [1, 2]
+    assert expanded.frame.table("household")["household_id"].tolist() == [10, 20]
+    weights = expanded.frame.weights_for("household")
+    assert weights.kind is WeightKind.IMPORTANCE
+    np.testing.assert_array_equal(weights.values, np.array([0.25, 2.75]))
+    assert weights.total == 3.0
+    record = expanded.mass_ledger[-1]
+    assert record.operation == "expand"
+    assert record.before_total == 3.0
+    assert record.after_total == 3.0
+    np.testing.assert_array_equal(
+        expanded.design_weights["household"], np.array([1.0, 2.0])
+    )
+    assert expanded.frame.mass_log[-1].declared_factor == 1.0
+
+
+def test_zero_row_expand_still_refuses_a_shift_across_household_sizes() -> None:
+    # Conservation stays on person mass: a zero-row EXPAND that moves weight
+    # between households of different size changes the stratum ledger and is
+    # rejected, so the anchor can only move mass within same-size pairs.
+    with pytest.raises(PopulationError, match="changed stratum"):
+        patch(
+            _mixed_size_population(),
+            _zero_row_expand_node(),
+            _zero_row_expand_result([0.5, 2.5], total=3.0),
+        )

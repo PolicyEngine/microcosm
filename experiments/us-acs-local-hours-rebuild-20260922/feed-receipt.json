@@ -1,0 +1,54 @@
+{
+ "scope": "The calibration feed the materialize stage consumed, by digest, and its value comparison against the feed PR #955 pins. Aggregates and digests only.",
+ "feed": {
+  "artifact": "chronicle_us_b571381",
+  "source_repo": "PolicyEngine/chronicle",
+  "source_commit": "b571381fcd875393ea0dabc326558cfa2ca8e8fa",
+  "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+  "consumer_fact_schema_versions": [
+   "chronicle.consumer_fact.v3"
+  ],
+  "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
+  "fact_row_count": 39158,
+  "facts_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+  "manifest_sha256": "38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac",
+  "scope_sha256": "ad2351be52312ec44b7e56bcd7a81fc3500094849f8a660e4e0932cc168e78ce",
+  "scope_pairs": 586
+ },
+ "materialize_arguments": {
+  "--feed": "chronicle_us_b571381/artifact/consumer_facts.jsonl",
+  "--feed-sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+  "--soi-mode": "totals",
+  "--hh-chunk": "20000",
+  "note": "the tool refuses a feed whose sha256 differs from --feed-sha256 before compiling targets"
+ },
+ "comparison_to_pr955_pin": {
+  "pinned_feed": "consumer_facts_us_c5e5bf8.jsonl",
+  "pinned_facts_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "pinned_manifest_sha256": null,
+  "fact_row_count_pinned": 39158,
+  "fact_row_count_used": 39158,
+  "acceptance": {
+   "all_prior_cells_preserved": true,
+   "all_values_unchanged": true,
+   "compiled_targets_identical": false,
+   "no_added_cells": true,
+   "scope_unchanged": true
+  },
+  "source_rows_with_metadata_only_changes": 994,
+  "source_changed_field_paths": {
+   "concept_alignment.authority": 994,
+   "concept_alignment.concept_alignment_key": 994,
+   "layout.record_set_spec_hash": 994,
+   "legacy_fact_key": 994
+  },
+  "compiled_target_specs_with_metadata_only_changes": 166,
+  "compiled_target_values_changed": 0,
+  "target_changed_field_paths": {
+   "metadata.ledger_concept_authority": 166,
+   "metadata.ledger_legacy_fact_key": 165
+  },
+  "difference": "the chronicle#277 concept-authority fix (Chronicle commit b571381): metadata fields on 994 source rows and 166 compiled specs; every value and every cell identical"
+ },
+ "evidence": "local qualification directory chronicle-us-artifact-b571381-20260919 (comparison.json, proposed-feed-pin.json, artifact-validation-v2.json); not bundled"
+}

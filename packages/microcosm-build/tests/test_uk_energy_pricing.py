@@ -235,6 +235,9 @@ def test_published_gas_connected_shares_are_meters_over_meters() -> None:
     }
     assert shares["NORTHERN_IRELAND"] is None
     assert receipt["by_region"]["NORTHERN_IRELAND"]["rule"] == "positive_gas_spend"
+    # The fallback is declared, not inferred: the stage names the regions the
+    # crosswalk maps to no subnational area, and the receipt echoes them.
+    assert receipt["fallback_regions"] == ["NORTHERN_IRELAND"]
 
     def meters(area: str, fuel: str) -> float:
         rows = vendored_rows(
@@ -266,6 +269,26 @@ def test_published_gas_connected_shares_are_meters_over_meters() -> None:
         (lambda p: p.update(connection_rule="census"), "connection_rule"),
         (lambda p: p.update(connection_fallback="none"), "connection_fallback"),
         (lambda p: p.update(connection_period_value=2019), "expected one vendored row"),
+        # A declared fallback list that names a region the crosswalk maps to an
+        # area, omits one it maps to none, or is absent altogether is refused.
+        (
+            lambda p: p.update(connection_fallback_regions=["WALES"]),
+            "connection_fallback_regions must be exactly",
+        ),
+        (
+            lambda p: p.update(
+                connection_fallback_regions=["NORTHERN_IRELAND", "WALES"]
+            ),
+            "connection_fallback_regions must be exactly",
+        ),
+        (
+            lambda p: p.pop("connection_fallback_regions"),
+            "connection_fallback_regions must name",
+        ),
+        (
+            lambda p: p.update(connection_fallback_regions=[]),
+            "connection_fallback_regions must name",
+        ),
     ):
         parameters = dict(_declared())
         mutation(parameters)
@@ -303,6 +326,48 @@ def test_impose_gas_connection_disconnects_the_smallest_draws_first() -> None:
         impose_gas_connection(
             gas, frs_region=region, weights=weights, shares={}, disconnect_rule="random"
         )
+
+
+def test_impose_gas_connection_skips_a_household_whose_weight_would_overshoot() -> None:
+    """The greedy walk with unequal weights: skip, then take the nearest skipped.
+
+    One region, every household gas-positive, weights 1, 1, 2.5, 1, 1 (total
+    6.5) and a published share of 0.2, so 5.2 of weight must go. Walking up
+    the drawn gas: the two lightest households go (remaining 3.2), the 2.5
+    household fits and goes (0.7), the last two would overshoot and are
+    skipped; after the walk the skipped household nearest the remainder
+    (weight 1, |1 - 0.7| = 0.3 < 0.7) is taken because it brings the share
+    nearer the published one, and the other stays connected and is counted
+    as skipped for weight.
+    """
+
+    gas = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    weights = np.array([1.0, 1.0, 2.5, 1.0, 1.0])
+    region = np.array(["LONDON"] * 5)
+    connected, receipt = impose_gas_connection(
+        gas, frs_region=region, weights=weights, shares={"LONDON": 0.2}
+    )
+    assert connected.tolist() == [False, False, False, False, True]
+    london = receipt["by_region"]["LONDON"]
+    assert london["share_before"] == pytest.approx(1.0)
+    assert london["share_after"] == pytest.approx(1.0 / 6.5)
+    assert london["rows_disconnected"] == 4
+    assert london["rows_skipped_for_weight"] == 1
+    assert london["weight_disconnected"] == pytest.approx(5.5)
+    assert london["shortfall"] == 0.0
+    # The same walk where taking the nearest skipped household would move the
+    # share further from the published one leaves it connected: weights
+    # 1, 1, 10, 1, 1 (total 14) and a share of 0.5 remove 7; the 10 household
+    # is skipped and, at |10 - 3| = 7, not nearer than the remainder of 3.
+    weights = np.array([1.0, 1.0, 10.0, 1.0, 1.0])
+    connected, receipt = impose_gas_connection(
+        gas, frs_region=region, weights=weights, shares={"LONDON": 0.5}
+    )
+    assert connected.tolist() == [False, False, True, False, False]
+    london = receipt["by_region"]["LONDON"]
+    assert london["share_after"] == pytest.approx(10.0 / 14.0)
+    assert london["rows_disconnected"] == 4
+    assert london["rows_skipped_for_weight"] == 1
 
 
 def test_published_level_is_the_fiscal_year_sum_of_energy_trends_quarters() -> None:
@@ -487,6 +552,28 @@ def _synthetic_rake_receipt(n: int = 1200):
     )
     receipt["gas_connection"] = {"rule": "published_meter_share", **connection}
     return margins, level, raked, weights, receipt
+
+
+def test_rake_receipt_records_one_cross_margin_residual_per_sweep() -> None:
+    """The IPF's terminal residual is shown to be converged, not truncated.
+
+    ``iterative_proportional_fit`` runs a fixed 50 sweeps; the receipt carries
+    the maximum absolute relative cell deviation after every sweep for each
+    fuel, and the last value is the residual the ``energy_rake`` gate holds
+    to its declared tolerance.
+    """
+
+    _, _, _, _, receipt = _synthetic_rake_receipt()
+    residuals = receipt["sweep_residuals"]
+    assert set(residuals) == {ELECTRICITY_KWH, GAS_KWH}
+    for fuel in (ELECTRICITY_KWH, GAS_KWH):
+        series = residuals[fuel]
+        assert len(series) == receipt["iterations"] == 50
+        assert all(np.isfinite(v) and v >= 0 for v in series)
+        # Converged: the last two sweeps agree to well inside the gate's
+        # tolerance, and the walk does not end higher than it started.
+        assert abs(series[-1] - series[-2]) < 1e-3
+        assert series[-1] <= series[0] + 1e-12
 
 
 def test_rake_fit_targets_lockstep_with_the_vendored_need_rows() -> None:

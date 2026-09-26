@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+from collections.abc import Callable
 from itertools import permutations
 
 import numpy as np
@@ -13,7 +15,9 @@ from microcosm.build.us_runtime.puf_support import (
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
+    PUF_TAX_DETAIL_CLONE_INDEX,
     SPINE_ASSEMBLY_MANIFEST_KEY,
+    spine_provenance_counts,
     spine_source_id_column,
     support_channel_column,
     support_clone_index_column,
@@ -262,6 +266,84 @@ def test_assembly_manifest_detects_cross_grain_channel_disagreement() -> None:
         validate_assembly_provenance(
             assembled,
             boundary="test assembly output",
+        )
+
+
+def _cloned_assembly() -> Frame:
+    return clone_us_frame_for_puf_support(
+        assemble_spines(
+            {"asec": _asec_frame(), "acs": _acs_frame()},
+            household_mass_shares={"asec": 0.5, "acs": 0.5},
+        )
+    )
+
+
+_ASSEMBLY_PROVENANCE_READERS = pytest.mark.parametrize(
+    "reader",
+    [validate_assembly_provenance, spine_provenance_counts],
+    ids=["validate", "counts"],
+)
+
+
+@_ASSEMBLY_PROVENANCE_READERS
+@pytest.mark.parametrize(
+    "bad_index",
+    [np.inf, -np.inf, np.nan, 1.5, -1.0, 2.0**63],
+    ids=[
+        "inf",
+        "negative_inf",
+        "nan",
+        "non_integer",
+        "negative_float",
+        "float_past_int64",
+    ],
+)
+def test_assembly_provenance_rejects_malformed_clone_indices_before_casting(
+    reader: Callable[..., object],
+    bad_index: float,
+) -> None:
+    # Corrupt a PUF-detail copy rather than a native row, so the frozen
+    # native-row counts still match: only clone-index validation can refuse.
+    # Before #992's gate fix, +inf here passed validation and the receipt
+    # counter then died in an opaque pandas cast.
+    cloned = _cloned_assembly()
+    person = cloned.table("person")
+    column = support_clone_index_column("person")
+    copy_row = person.index[person[column].eq(PUF_TAX_DETAIL_CLONE_INDEX)][0]
+    person[column] = person[column].astype(np.float64)
+    person.loc[copy_row, column] = bad_index
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"test assembly output: assembly manifest provenance column "
+                r"'person_support_clone_index' must contain nonnegative integers "
+                r"\(finite and representable as int64\)"
+            ),
+        ):
+            reader(cloned, boundary="test assembly output")
+
+
+def test_assembly_provenance_readers_accept_integral_float_clone_indices() -> None:
+    cloned = _cloned_assembly()
+    baseline = spine_provenance_counts(cloned, boundary="test assembly output")
+    person_counts = baseline["person"]["by_clone_index"]
+    assert person_counts == {"0": 3, "1": 3}
+
+    for entity in cloned.entities:
+        table = cloned.table(entity)
+        column = support_clone_index_column(entity)
+        table[column] = table[column].astype(np.float64)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        assert validate_assembly_provenance(
+            cloned,
+            boundary="test assembly output",
+        )
+        assert (
+            spine_provenance_counts(cloned, boundary="test assembly output") == baseline
         )
 
 

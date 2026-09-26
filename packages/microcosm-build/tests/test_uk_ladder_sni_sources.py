@@ -28,6 +28,7 @@ from microcosm.build.uk_runtime import (
     load_ni_dz_ward_lookup,
     load_scotland_oa_households,
     load_scotland_oa_ward_lookup,
+    local_authority_engine_key_by_code,
 )
 
 
@@ -290,6 +291,16 @@ def test_ward_pattern_accepts_split_ward_part_codes() -> None:
         _gss_code_array(np.array(["E05R14284"]), label="constituency_code")
 
 
+#: One April 2023 roster authority per nation for the synthetic gate table, so
+#: the ladder gate's local_authority consistency check resolves every row.
+_ROSTER_CODE_BY_NATION = {
+    "E": "E06000001",  # Hartlepool
+    "W": "W06000001",  # Isle of Anglesey
+    "S": "S12000033",  # Aberdeen City
+    "N": "N09000001",  # Antrim and Newtownabbey
+}
+
+
 def _uk_gate_household() -> pd.DataFrame:
     rows = [
         ("E00000001", "LONDON", "E12000007", "E05014284", "E14000001", "TLI31"),
@@ -311,9 +322,10 @@ def _uk_gate_household() -> pd.DataFrame:
                 "oa_code": oa,
                 "lsoa_code": oa,
                 "msoa_code": oa,
-                "local_authority_code": "E06000001"
-                if oa.startswith("E")
-                else oa[:1] + "09000001",
+                "local_authority_code": _ROSTER_CODE_BY_NATION[oa[:1]],
+                "local_authority": local_authority_engine_key_by_code()[
+                    _ROSTER_CODE_BY_NATION[oa[:1]]
+                ],
                 "ward_code": ward,
                 "constituency_code": constituency,
                 "region_code": region_code,

@@ -10,6 +10,7 @@ from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.source_runtime import SourceRuntimeError
 from microcosm.build.us_runtime import (
     US_HOURS_WORKED_OUTPUT_COLUMNS,
+    US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
     US_HOURS_WORKED_REQUIRED_SOURCE_COLUMNS,
     US_HOURS_WORKED_STAGE_NAME,
     US_SOURCE_MANIFEST,
@@ -300,3 +301,43 @@ class TestGate:
         gate = us_hours_worked_signal_gate(frame)
         assert not gate.passed
         assert any("mean weekly hours" in failure for failure in gate.failures)
+
+    def test_pool_scoped_gate_passes_without_weeks_worked(self) -> None:
+        # The ACS local-area / pool surface drops weeks_worked (microcosm#765).
+        # Scoping required_columns to the two carried leaves must pass on a
+        # plausible surface and never demand the absent third column.
+        pairs = [(40, 40), (38, 35), (20, 22), (45, 40), (0, 0), (0, 0), (0, 0), (0, 5)]
+        rows = [
+            _worker(
+                0,
+                0,
+                0,
+                weekly_hours_worked_before_lsr=float(weekly),
+                hours_worked_last_week=float(last_week),
+            )
+            for weekly, last_week in pairs
+        ]
+        frame = _us_frame(rows)
+        assert "weeks_worked" not in frame.table("person").columns
+        gate = us_hours_worked_signal_gate(
+            frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+        )
+        assert gate.passed, gate.failures
+
+    def test_pool_scoped_gate_still_catches_constant_forty(self) -> None:
+        # The build-o/p ACS-spine failure: weekly hours constant at the
+        # engine's 40 default. The scoped gate must still fail closed.
+        rows = [
+            _worker(
+                0,
+                0,
+                0,
+                weekly_hours_worked_before_lsr=40.0,
+                hours_worked_last_week=40.0,
+            )
+            for _ in range(4)
+        ]
+        gate = us_hours_worked_signal_gate(
+            _us_frame(rows), required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+        )
+        assert not gate.passed

@@ -684,6 +684,19 @@ def _capped_weighted_total(
 US_RELEASE_SPM_SELECTION: dict[str, object] = {"geography_kind": "county"}
 
 
+def _released_engine_state(simulation: Any) -> bool:
+    """Release a finished simulation; True if it held engine state to sweep.
+
+    Callers run a full collection after releasing an object with a populations
+    dict (microcosm#456). The release tool's household-batched adapter releases
+    and collects its own batch engines; it and the engine-free recorder expose
+    no populations dict requiring another collection here.
+    """
+    holds_engine_state = isinstance(getattr(simulation, "populations", None), dict)
+    release_engine_simulation(simulation)
+    return holds_engine_state
+
+
 def default_simulate_factory(dataset_path: Path) -> SimulateFn:
     """Build a simulate() that runs a Microsimulation over the release H5."""
 
@@ -768,8 +781,8 @@ def reform_validation_payload(
         try:
             return _weighted_total(transient_simulation, measure, at_period)
         finally:
-            release_engine_simulation(transient_simulation)
-            gc.collect()
+            if _released_engine_state(transient_simulation):
+                gc.collect()
 
     def stacked_obbba_effects() -> dict[str, tuple[float, float, float]]:
         """Score the OBBBA provisions *stacked* in their JCX-35-25 order.
@@ -1023,9 +1036,10 @@ def reform_validation_payload(
     # microcosm#456: the shared baseline simulation has served every reform row
     # and baseline-level row by now; release it before assembling the payload.
     if baseline is not None:
-        release_engine_simulation(baseline)
+        sweep = _released_engine_state(baseline)
         baseline = None
-        gc.collect()
+        if sweep:
+            gc.collect()
 
     has_out_of_sample = any(not spec.in_sample for spec in specs) or bool(
         baseline_levels

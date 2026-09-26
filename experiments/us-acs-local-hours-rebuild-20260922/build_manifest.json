@@ -1,0 +1,234 @@
+{
+ "build_id": "populace-us-2024-buildo-acs-local-cadaf4180-20260922T074911Z",
+ "build_sha": "cadaf4180",
+ "build_dirty": false,
+ "created_at": "2026-09-22T07:49:57.400866+00:00",
+ "code": {
+  "branch": "local-acs-hours-rebuild-20260921",
+  "repo": "microcosm"
+ },
+ "runtime": {
+  "policyengine_core": "3.32.5",
+  "policyengine_us": "2.2.1",
+  "python": "3.14.4"
+ },
+ "dataset": {
+  "kind": "acs_local_area_multispine",
+  "staging_h5_sha256": "f335f5737537b7efbf05840bfadcf84c74caeef15a3b27a0539e3df42cca1637",
+  "households": 1588854,
+  "period": 2024,
+  "spines": [
+   "acs_2024_1yr",
+   "asec_puf"
+  ],
+  "donor_release": null
+ },
+ "calibration": {
+  "families": "snap,medicaid,soi",
+  "geographies": "state,cd",
+  "n_targets": 1247,
+  "epochs": 800,
+  "max_weight_ratio": 5.0,
+  "l2_lambda": 0.0,
+  "seed": 0,
+  "final_loss": 0.152988,
+  "fraction_within_10pct": 0.8292,
+  "effective_sample_size": 24010.0,
+  "ess_fraction": 0.0151,
+  "realized_max_weight_ratio": 5.0,
+  "mass_conserved_ratio": 1.0
+ },
+ "materialize": {
+  "peak_rss_gb": 75.647,
+  "hh_chunk": 20000,
+  "engine_pass": "input-schema projection (fed==input) + reviewed-null fill",
+  "held_back_formula_owned": 3,
+  "reviewed_null_columns_filled": 79
+ },
+ "gates": {
+  "acs_local_hours_signal": {
+   "passed": true,
+   "failures": [],
+   "detail": {
+    "per_spine": {
+     "asec_puf": {
+      "rows": 166321,
+      "columns": {
+       "weekly_hours_worked_before_lsr": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 94,
+        "zero_rows": 80800,
+        "forty_rows": 43870
+       },
+       "hours_worked_last_week": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 99,
+        "zero_rows": 90967,
+        "forty_rows": 33302
+       }
+      }
+     },
+     "acs_2024_1yr": {
+      "rows": 3422888,
+      "columns": {
+       "weekly_hours_worked_before_lsr": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 106,
+        "zero_rows": 1655676,
+        "forty_rows": 825899
+       },
+       "hours_worked_last_week": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 81781,
+        "zero_rows": 1846576,
+        "forty_rows": 1003420
+       }
+      }
+     }
+    }
+   },
+   "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae"
+  },
+  "us_puma_ladder_gate": {
+   "passed": true,
+   "failures": [],
+   "detail": {
+    "nyc_weighted_household_share": 0.027343132562271808,
+    "nyc_weighted_share_of_new_york": 0.4392429065310492
+   }
+  },
+  "hours_worked_signal": {
+   "passed": true,
+   "failures": [],
+   "detail": {
+    "worked_share": 0.5417849354692763,
+    "mean_weekly_hours_workers": 37.353193598308835,
+    "worked_share_band": [
+     0.35,
+     0.62
+    ],
+    "mean_weekly_hours_band": [
+     30.0,
+     45.0
+    ],
+    "unique_counts": {
+     "weekly_hours_worked_before_lsr": 106,
+     "hours_worked_last_week": 81785
+    }
+   },
+   "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae"
+  },
+  "calibration": {
+   "passed": true,
+   "initial_loss": 0.157324,
+   "final_loss": 0.152988,
+   "fraction_within_10pct": 0.8292,
+   "effective_sample_size": 24010.0,
+   "ess_fraction": 0.0151,
+   "realized_max_weight_ratio": 5.0,
+   "mass_conserved_ratio": 1.0,
+   "n_targets": 1247,
+   "calibrated_surface": {
+    "soi_mode": "totals",
+    "n_targets": 1247,
+    "n_admin": 760,
+    "n_population": 487,
+    "breakdown": {
+     "snap_caseloads": 51,
+     "snap_benefits": 51,
+     "medicaid_enrollment": 51,
+     "soi": 607,
+     "population_state": 51,
+     "population_cd": 436
+    }
+   }
+  },
+  "input_coverage": {
+   "passed": true,
+   "binds": "donor_certified_release",
+   "note": "Input coverage is enforced on the certified donor release before transfer; the ACS spine inherits required inputs via QRF transfer. ACS native GQ-housing / source-universe nulls are reviewed_limitations (calibration_blocker: false) and are NOT re-imposed on the ACS spine."
+  },
+  "spine_composition": {
+   "passed": true,
+   "note": "Recorded evidence for the microcosm#403 weight-composition signature; not a pass/fail bound.",
+   "detail": {
+    "acs_2024_1yr": {
+     "households": 1531614,
+     "household_weight": 49604556.87829697,
+     "household_weight_share": 0.4048125846219185,
+     "person_weight": 129205456.17777304,
+     "implied_persons_per_household": 2.604709411975478
+    },
+    "asec_puf": {
+     "households": 57240,
+     "household_weight": 72932535.00738633,
+     "household_weight_share": 0.5951874153780815,
+     "person_weight": 202228414.911753,
+     "implied_persons_per_household": 2.772814833479627
+    },
+    "_all": {
+     "households": 1588854,
+     "household_weight": 122537091.8856833,
+     "effective_sample_size": 24009.95997710067,
+     "ess_fraction": 0.015111495440802408
+    }
+   }
+  },
+  "spine_ssi_qa": {
+   "passed": true,
+   "note": "microcosm#403 re-measure: per-spine SSI incidence and intensity, computed by loading the packaged artifact bytes PLAIN (no private projection or fill) \u2014 the probe doubles as the consumer-loadability proof. Recorded as evidence, not gated.",
+   "detail": {
+    "asec_puf": {
+     "person_weight": 202228414.911753,
+     "ssi_recipient_weight": 3773696.434769074,
+     "ssi_dollars": 32295479771.008865,
+     "ssi_incidence": 0.018660564769870807
+    },
+    "acs_2024_1yr": {
+     "person_weight": 129205456.17777306,
+     "ssi_recipient_weight": 3047583.1255069994,
+     "ssi_dollars": 21327713072.249527,
+     "ssi_incidence": 0.023587108591713396
+    }
+   }
+  },
+  "consumer_ready": {
+   "passed": true,
+   "consumer_export": {
+    "held_back_total": 3,
+    "filled_columns": 79,
+    "total_values_filled": 210127767,
+    "staging_sha256": "f335f5737537b7efbf05840bfadcf84c74caeef15a3b27a0539e3df42cca1637"
+   },
+   "plain_load_proven_by": "spine_ssi_qa",
+   "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae"
+  }
+ },
+ "run_identity": {
+  "staging_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/local-hours-rebuild-20260921/full-staging-a3/acs_multispine_staging.h5",
+  "staging_sha256": "f335f5737537b7efbf05840bfadcf84c74caeef15a3b27a0539e3df42cca1637",
+  "ladder_sha256": "39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8",
+  "households": 1588854,
+  "n_targets": 1247,
+  "targets_sha256": "0f447ce92b4279881382fdd4006be47cfbdd6972be438f967a7cca97c29a4f81",
+  "declared_admin_specs": 760,
+  "compiled_admin_specs": 760,
+  "population_cells_dropped": []
+ },
+ "staging_orchestration": {
+  "max_households": null,
+  "n_estimators": 32,
+  "max_targets_per_fit": 8,
+  "acs_share": 0.5,
+  "chunksize": 100000,
+  "seed": 0,
+  "geography_seed": 0,
+  "donor_channel": "auto"
+ },
+ "refresh_recipe": {
+  "note": "When the next certified default publishes (e.g. the microcosm#508 SSI fix -> O-2), refresh this artifact by re-running the chain against the new certified release H5; everything else is unchanged.",
+  "staging": "uv run tools/build_us_acs_multispine_base.py --base-h5 <next-certified-release>.h5 --donor-release-manifest <release_manifest.json> --out-h5 <run>/acs_multispine_staging.h5 --inputs-dir <acs-archive-cache> --puma-ladder build/us/us_puma_ladder_2020.npz",
+  "release": "uv run tools/build_us_acs_local_release.py --stage all --staging-h5 <run>/acs_multispine_staging.h5 --feed <ledger facts.jsonl> --feed-sha256 <sha> --ladder build/us/us_puma_ladder_2020.npz --checkpoint-dir <run>/checkpoints --out-h5 <run>/populace_us_2024_acs_local.h5 --out <run>/release",
+  "publish": "tools/publish_release.sh <release_dir> --no-latest --artifact-root <run> --repo-id policyengine/populace-us"
+ }
+}

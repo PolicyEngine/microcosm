@@ -42,7 +42,9 @@ def _ladder_metadata() -> dict[str, object]:
             "constituency": layer("2024_pcon"),
             "lsoa": layer("synthetic"),
             "msoa": layer("synthetic"),
-            "local_authority": layer("synthetic"),
+            # Real April 2023 codes, so the engine input resolves through the
+            # names resource (the ladder refuses any other vintage here).
+            "local_authority": layer("2023_april_lad"),
             "ward": layer("synthetic"),
             "itl": layer("2021_itl"),
             "region": layer("synthetic"),
@@ -185,6 +187,7 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
         "lsoa_code",
         "msoa_code",
         "local_authority_code",
+        "local_authority",
         "ward_code",
         "constituency_code",
         "region_code",
@@ -274,6 +277,95 @@ def test_ladder_clone_refuses_preassigned_geography(toy_ladder) -> None:
         clone_uk_dataset_with_ladder_geography(preassigned, ladder, n_clones=1)
 
 
+def test_ladder_clone_refuses_preassigned_local_authority(toy_ladder) -> None:
+    ladder, _ = toy_ladder
+    preassigned = _seam_frame(
+        household=_household_frame().assign(local_authority="MAIDSTONE"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="pre-assigned geography cannot be silently overwritten",
+    ):
+        clone_uk_dataset_with_ladder_geography(preassigned, ladder, n_clones=1)
+
+
+def test_ladder_clone_writes_the_engine_local_authority_from_its_code(
+    toy_ladder,
+) -> None:
+    from microcosm.build.uk_runtime import local_authority_engine_key_by_code
+
+    ladder, _ = toy_ladder
+    result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=2)
+
+    household = result.frame.table("household")
+    table = local_authority_engine_key_by_code()
+    assert household["local_authority"].tolist() == [
+        table[code] for code in household["local_authority_code"]
+    ]
+    assert set(household["local_authority"]) <= {
+        "CITY_OF_LONDON",
+        "BARKING_AND_DAGENHAM",
+        "ISLE_OF_ANGLESEY",
+        "ABERDEEN_CITY",
+        "ANTRIM_AND_NEWTOWNABBEY",
+    }
+
+
+@pytest.mark.requires_uk
+def test_cloned_local_authority_survives_the_engine_loader(
+    toy_ladder, tmp_path
+) -> None:
+    """The engine decodes the written member names, never its MAIDSTONE default.
+
+    Through the written H5, not only the in-memory tables: the artifact is
+    read back with pandas and loaded through the multi-year dataset path,
+    which is the loader's ``set_input`` surface without the single-year
+    economic-assumption uprating (that path reads council tax and rent
+    columns a toy frame does not carry).
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    from policyengine_uk import Microsimulation
+    from policyengine_uk.data import UKMultiYearDataset, UKSingleYearDataset
+
+    ladder, _ = toy_ladder
+    result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=1)
+    written = result.frame.table("household")["local_authority"].tolist()
+    # Household order is the seam order (London, Wales, Scotland, Northern
+    # Ireland); the London row draws one of the two London OAs.
+    assert written[0] in {"CITY_OF_LONDON", "BARKING_AND_DAGENHAM"}
+    assert written[1:] == [
+        "ISLE_OF_ANGLESEY",
+        "ABERDEEN_CITY",
+        "ANTRIM_AND_NEWTOWNABBEY",
+    ]
+
+    path = write_uk_rowwise_dataset(result, tmp_path / "rowwise.h5")
+    with pd.HDFStore(path, mode="r") as store:
+        tables = {
+            entity: store[entity] for entity in ("person", "benunit", "household")
+        }
+    assert tables["household"]["local_authority"].tolist() == written
+
+    single_year = UKSingleYearDataset(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        fiscal_year=2023,
+    )
+    simulation = Microsimulation(dataset=UKMultiYearDataset(datasets=[single_year]))
+
+    decoded = [
+        str(value)
+        for value in simulation.calculate("local_authority", 2023, decode_enums=True)
+    ]
+
+    assert decoded == written
+    assert "MAIDSTONE" not in decoded
+
+
 def test_ladder_clone_refuses_uncovered_region(tmp_path) -> None:
     frame = _ladder_frame()
     england_only = frame[frame["region_code"].str.startswith("E")]
@@ -357,6 +449,7 @@ def test_write_round_trip_preserves_ladder_columns(toy_ladder, tmp_path) -> None
         household = store["household"]
     assert "ward_code" in household.columns
     assert "itl1_code" in household.columns
+    assert "local_authority" in household.columns
 
 
 def _load_builder_module():

@@ -1,0 +1,78 @@
+{
+  "purpose": "Receipts for the microcosm#968 BHC poverty diagnosis (memo in README.md): the files measured, their digests, the engine, the feed pin and the DWP sources. Outputs are aggregates only; no household rows.",
+  "date": "2026-09-21",
+  "engine": {
+    "package": "policyengine-uk",
+    "version": "2.99.1",
+    "environment": "policyengine-uk-data .venv (the evaluation legs' engine); microcosm builds stay locked at 2.98.0"
+  },
+  "feed": {
+    "chronicle_artifact": "chronicle-uk-artifact-c5e5bf8",
+    "note": "the spine-s build and the v20 calibration consumed this feed; the poverty measurements do not read the feed"
+  },
+  "files": {
+    "v20_national": {
+      "path": "/Users/mariajuaristi/Desktop/PolicyEngine/runs/uk-623-first-calibrated/spine-assessment-v20/microcosm_uk_2024.h5",
+      "sha256": "8883e59256792525afcff2fe17af7f659ba3982cd0ac7a95a4005bac5ee7b389",
+      "bytes": 176040337,
+      "time_period": 2024
+    },
+    "spine_s_design": {
+      "path": "/Users/mariajuaristi/Desktop/PolicyEngine/data/ukds/acceptance/spine-s-main-rebuild/spine-s.h5",
+      "sha256": "4d9752fdcd92c0dc9fc682c15257788e771ced260da5d5b012ac23edfa048997",
+      "bytes": 175920391,
+      "time_period": 2024
+    },
+    "efrs_1_57_3": {
+      "path": "/Users/mariajuaristi/.cache/huggingface/hub/models--policyengine--policyengine-uk-data-private/snapshots/25af520a6651b8812fef56964a42a79a3f9f515a/enhanced_frs_2024_25.h5",
+      "sha256": "ef34c1ae28219367981fbc3c1144f58ea1f8a77554165fe02ff395b04c5ffea5",
+      "bytes": 127549424,
+      "time_period": 2024
+    },
+    "x50_55k_local": {
+      "path": "/Users/mariajuaristi/Desktop/PolicyEngine/data/ukds/acceptance/spine-s-main-rebuild/l0-k20-h55000-e2000-p50-f001-s42/microcosm_uk_2025_local.h5",
+      "sha256": "9dddfcb297184cc382c51402d8f178797e7e02dbe9cb87e0417c2d8c201dc89b",
+      "bytes": 243477508,
+      "time_period": 2025
+    },
+    "june_populace_uk_2023": {
+      "path": "/Users/mariajuaristi/.cache/huggingface/hub/datasets--policyengine--populace-uk-private/snapshots/a75a9a831d6b07aaffbd09713f2a1124f5c0f08f/populace_uk_2023.h5",
+      "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+      "bytes": 1315880118,
+      "time_period": 2023
+    }
+  },
+  "identity": "spine-s.h5 and the v20 microcosm_uk_2024.h5 hold the same 52,846 households in the same order (asserted in measure_968_poverty_audit.py); only household_weight differs, which is what makes the design-versus-calibrated decomposition exact",
+  "hbai_sources": [
+    {
+      "title": "DWP, Households Below Average Income FYE 1995 to FYE 2024, summary tables (HBAI_summary_results.ods): 1.2b quintile medians, 1.3a-1.6a low-income shares",
+      "url": "https://www.gov.uk/government/statistics/households-below-average-income-for-financial-years-ending-1995-to-2024",
+      "published": "2025-03-27"
+    },
+    {
+      "title": "DWP HBAI FYE 2024 table pack (HBAI_2324_ods_table_pack.zip): chart 2.4 income bands, tables 2.1db, 2.2db, 3.5db, 3.6db, 4.5db, 4.6db",
+      "url": "https://assets.publishing.service.gov.uk/media/6836dae29411f0341f323689/HBAI_2324_ods_table_pack.zip"
+    },
+    {
+      "title": "DWP, HBAI series quality and methodology information report FYE 2024 (income definition, individual unit of analysis, absolute line uprating)",
+      "url": "https://www.gov.uk/government/statistics/households-below-average-income-for-financial-years-ending-1995-to-2024/households-below-average-income-series-quality-and-methodology-information-report-fye-2024"
+    },
+    {
+      "title": "DWP, Family Resources Survey 2023/24 methodology tables (ch1-methodology-and-standard-errors.ods): M.6a, M.6b, M.8 benefit receipt against administrative data",
+      "url": "https://assets.publishing.service.gov.uk/media/681c890de26cd2f713d8709b/ch1-methodology-and-standard-errors.ods"
+    },
+    {
+      "title": "ONS, Household disposable income and inequality, FYE 2024 (median \u00a336,700 a year)",
+      "url": "https://www.ons.gov.uk/peoplepopulationandcommunity/personalandhouseholdfinances/incomeandwealth/bulletins/householddisposableincomeandinequality/financialyearending2024"
+    }
+  ],
+  "outputs": {
+    "poverty_audit.json": "measure_968_poverty_audit.py: concept pair, medians, shape, groups, decile composition, and the spine-s design-versus-v20 decomposition (2024/2025/2026)",
+    "basis_swap.json": "measure_968_basis_swap.py: simulated means-tested benefits replaced by FRS-reported amounts, same records, year 2024",
+    "tail_profile.json": "measure_968_tail_profile.py: bottom-tail bands and family-type, family-size, work and tenure breakdowns, year 2024",
+    "takeup_probe.json": "measure_968_takeup_probe.py: who receives the drawn UC residual at a fixed claimant count (random redraws, poorest-first, richest-first, reporters only, full take-up)",
+    "takeup_direction.json": "measure_968_takeup_direction.py: the residual ranked by entitlement size (largest first = DWP's non-take-up pattern) and its opposite",
+    "scorecard_*.json": "scorecard_731.py at 2026 with the HBAI-basis block at 2024, one file each"
+  },
+  "scripts_note": "The scripts are copies of the evaluation stack's (uk-candidate-eval, not a public repository); paths inside them are the author's local run trees and HF cache. They run under the policyengine-uk-data .venv with policyengine-uk 2.99.1."
+}

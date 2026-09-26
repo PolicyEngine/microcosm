@@ -491,9 +491,12 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
     ]
     full_registry = TargetRegistry(specs, country="uk")
     active = [spec for spec in specs if spec.name not in excluded]
+    # 83 active / 17 excluded since the 2026-09-21 A16 retirements: the
+    # LONE_PARENT 10,800-12,000 payment-band row measured inside the fence on
+    # the v20 national build and left the exclusion register.
     assert len(specs) == 100
-    assert len(active) == 82
-    assert len({s.name for s in specs} & excluded) == 18
+    assert len(active) == 83
+    assert len({s.name for s in specs} & excluded) == 17
     registry = TargetRegistry(active, country="uk")
     result = materialize_uk_ledger_targets(
         adapter, registry, period=2025, band_edge_registry=full_registry
@@ -503,7 +506,7 @@ def test_full_uc_payment_registry_matches_independent_relationship_and_band_case
         adapter.to_frame(), registry.to_target_set(), weight_entity="household"
     )
     assert not problem.skipped
-    assert len(problem.names) == 82
+    assert len(problem.names) == 83
     assert not {f"{name}@2025" for name in excluded}.intersection(problem.names)
     expected_family = np.asarray(expected_families)[bu.benunit_id.to_numpy()]
     uc = bu.universal_credit.to_numpy()

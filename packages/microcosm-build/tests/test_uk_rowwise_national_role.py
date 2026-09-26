@@ -676,7 +676,7 @@ def _fake_evaluator(receipt_of, calls: list[dict]):
             return receipt_of(kwargs)
 
         @staticmethod
-        def _default_measure_resolver_factory(scratch_dir, year):
+        def uk_default_measure_resolver_factory(scratch_dir, year):
             return lambda path, frame: None
 
         @staticmethod
@@ -1001,3 +1001,67 @@ def test_uk_national_dry_run_records_the_incumbent(monkeypatch, tmp_path, capsys
     assert plan["incumbent"]["label"] == "efrs_fixture"
     assert plan["incumbent"]["sha256"] == _sha(tmp_path / "incumbent.h5")
     assert not (tmp_path / "plan").exists()
+
+
+def test_uk_national_role_loads_the_real_scorer_by_its_public_name() -> None:
+    """The driver calls the scorer's public factory name; loading the real
+    module (no stand-in) proves the name exists (Vahid's #965 note 1)."""
+    builder = _CANDIDATE._load_builder_module()
+    module = builder._load_candidate_evaluator()
+    assert module.__name__ == "microcosm.build.uk_runtime.candidate_score"
+    assert callable(module.uk_default_measure_resolver_factory)
+    assert callable(module.evaluate_uk_candidate_against_incumbent)
+
+
+def test_uk_score_receipt_telemetry_summary_keeps_the_pruned_block() -> None:
+    """The staged copy drops the three per-target arrays and keeps the
+    pruned block whole, including a populated pruned_targets mapping (the
+    block a real run fills with 120 rows; Vahid's #965 note 2)."""
+    builder = _CANDIDATE._load_builder_module()
+    pruned_targets = {
+        f"dwp/uc/family_{i}": {
+            "name": f"dwp/uc/family_{i}",
+            "family": "dwp_universal_credit",
+            "unresolvable_measure": "benunit.uc_calibration_child_count",
+            "reason": "provider failed computing benunit.uc_calibration_child_count",
+            "adjudication": "microcosm#823",
+        }
+        for i in range(3)
+    }
+    score = {
+        "artifacts": {"candidate": {"sha256": "1" * 64}},
+        "target_drift": [{"target": "a@0", "error": 0.1}],
+        "signed_asymmetries": [{"id": "x"}],
+        "measure_resolution": {"candidate": {"rounds": []}},
+        "incumbent_unresolvable_pruned": {
+            "n_pruned": 3,
+            "n_scored": 1,
+            "n_surface": 4,
+            "pruned_targets": pruned_targets,
+            "measures": ["benunit.uc_calibration_child_count"],
+            "families": {"dwp_universal_credit": 3},
+            "reviewed_register": {"resource": "r.json", "sha256": "2" * 64},
+            "note": "pruned",
+        },
+        "evaluation": {"verdict": "passed"},
+    }
+    summary = builder._score_receipt_telemetry_summary(score)
+    assert set(summary) == {
+        "artifacts",
+        "incumbent_unresolvable_pruned",
+        "evaluation",
+    }
+    assert summary["incumbent_unresolvable_pruned"]["pruned_targets"] == pruned_targets
+
+    # No list of mappings survives (the staging content policy's record
+    # array refusal); the pruned rows are a mapping keyed by target name.
+    def _record_arrays(value):
+        if isinstance(value, list):
+            return any(isinstance(item, dict) for item in value) or any(
+                _record_arrays(item) for item in value
+            )
+        if isinstance(value, dict):
+            return any(_record_arrays(item) for item in value.values())
+        return False
+
+    assert not _record_arrays(summary)

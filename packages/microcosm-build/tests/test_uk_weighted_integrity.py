@@ -659,10 +659,10 @@ def test_committed_exclusion_registers_load() -> None:
     )
 
     assert set(input_mass) == {"efrs-post-calibration"}
-    assert set(input_mass["efrs-post-calibration"]) == {
-        "charitable_investment_gifts",
-        "owned_land",
-    }
+    # Both former entries retired 2026-09-21: the first national candidate
+    # measured charitable_investment_gifts and owned_land inside the fence,
+    # and the gate fails a stale exclusion by design.
+    assert input_mass["efrs-post-calibration"] == {}
     assert qrf_tail == {}
     assert uk_default_input_mass_reviewed_exclusions() is (
         uk_default_input_mass_reviewed_exclusions()

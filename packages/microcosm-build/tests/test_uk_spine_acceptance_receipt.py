@@ -74,6 +74,19 @@ def _apply_pending_roster_transformations(
     # gains right after the amounts stage.
     assert "hmrc_cgt_asset_type_spine" not in roster
     roster.insert(roster.index("hmrc_cgt_gains_spine") + 1, "hmrc_cgt_asset_type_spine")
+
+    # #970 re-mint pending: the incidence anchor moves non-liable clone mass
+    # back to the originals right after the asset-type stage.
+    assert "cgt_incidence_anchor" not in roster
+    roster.insert(roster.index("hmrc_cgt_asset_type_spine") + 1, "cgt_incidence_anchor")
+    # #930 re-mint pending: the NTS bus-travel stage imputes the journeys the
+    # consumption stage prices, so it runs right before lcfs_consumption.
+    assert "nts_bus_travel" not in roster
+    roster.insert(roster.index("lcfs_consumption"), "nts_bus_travel")
+    # PolicyEngine/chronicle#280 lane re-mint pending: the reserved income band donors run
+    # right after the support channel and before the income draw.
+    assert "spi_income_band_donors" not in roster
+    roster.insert(roster.index("spi_support_channel") + 1, "spi_income_band_donors")
     return tuple(roster)
 
 

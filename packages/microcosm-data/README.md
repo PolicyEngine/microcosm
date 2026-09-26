@@ -23,8 +23,9 @@ sim.calculate("household_net_income", 2024).sum()
 `latest.json`, reads the selected release manifest at the immutable release
 tag, verifies the artifact SHA-256, and refuses model or Core versions outside
 the release's certified compatibility specifiers. `available()` lists
-published `(country, year)` pairs; `available_variants()` lists every published
-`(country, year, variant)`.
+the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
+resolves); `available_variants()` lists every published
+`(country, year, variant)`, non-default lines included.
 
 The old mutable-root behavior is available only as an unsafe escape hatch:
 `load("us", 2024, unverified_root=True)`. It emits a runtime warning because it

@@ -2041,6 +2041,18 @@ def test_refuses_sha_mismatch(tmp_path: Path) -> None:
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
+def test_read_pinned_tab_refuses_a_zero_placeholder_pin(tmp_path) -> None:
+    """A 64-zero digest with size 0 (the pre-landing NTS placeholder) never reads."""
+
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    tab = tmp_path / "trip_eul_2002-2024.tab"
+    tab.write_text("TripID\tW5\n1\t1.0\n", encoding="utf-8")
+    placeholder = {"sha256": "0" * 64, "size_bytes": 0}
+    with pytest.raises(ValueError, match="not the pinned"):
+        read_pinned_tab(tab, placeholder)
+
+
 def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
     tables = _fixture_tables()
     tables["househol"][0]["GROSS4"] = ""
@@ -2063,18 +2075,28 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
+        "nts_household_tab",
+        "nts_individual_tab",
+        "nts_trip_tab",
+        "nts_stage_tab",
+        "nts_ticket_tab",
         "published_fact_surface",
         "qrf_donor",
         "was_qrf_donor",
     }
+    # Every private input, the three NTS tabs included since the SN 5340
+    # 19th-edition extract was pinned (#930), carries a real size and digest.
     for pin in pins.values():
         assert len(str(pin["sha256"])) == 64
-        assert int(pin["size_bytes"]) > 0
+        assert str(pin["sha256"]) != "0" * 64
         assert str(pin["filename"])
+        assert int(pin["size_bytes"]) > 0
+    assert pins["nts_trip_tab"]["filename"] == "trip_eul_2002-2024.tab"
     declared = {
         str(artifact["role"]): str(artifact["sha256"])
         for stage_name in (
             "was_wealth",
+            "nts_bus_travel",
             "lcfs_consumption",
             "etb_vat",
             "etb_services",
@@ -2100,9 +2122,9 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     )
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["nts_bus_travel"] == {"local_bus_use_band": 0}
     assert declared["lcfs_consumption"] == {
         "has_fuel_consumption": 0,
-        "uses_local_bus": 0,
         "lcfs_consumption": 0,
     }
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}
@@ -2111,11 +2133,16 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "uc_deduction_type_random_draw": 0,
     }
     assert declared["cgt_band_donors"] == {"stack_band_donor_households": 1}
+    assert declared["spi_income_band_donors"] == {
+        "stack_income_band_donor_households": 3
+    }
     assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
     assert declared["hmrc_cgt_asset_type_spine"] == {
         "assign_residential_property_flag": 553,
         "assign_main_asset_type": 554,
     }
+    # The #970 incidence anchor is deterministic and consumes no seed.
+    assert "cgt_incidence_anchor" not in declared
     assert declared["salary_sacrifice"] == {
         "salary_sacrifice": 42,
         "salary_sacrifice_conversion": 2024,
@@ -2416,3 +2443,55 @@ def test_care_hours_map_the_hourtot_band_codes_and_refuse_unknown_codes() -> Non
         frs_care_hours(pd.DataFrame({"hourtot": [11]}))
     with pytest.raises(ValueError, match="must be integral"):
         frs_care_hours(pd.DataFrame({"hourtot": [2.5]}))
+
+
+def test_collect_fit_weight_records_sees_through_the_run_proxies():
+    """A staged run wraps every stage in ObservedTransform, and the graph
+    driver in a source transform that proxies attribute reads; the collector
+    must find the hook through both, or every telemetry-enabled spine loses
+    its weights-audit evidence (as every one since 2026-09-01 did)."""
+
+    from microcosm.build.observation import ObservedTransform
+
+    tool = _load_tool()
+    record = SimpleNamespace(
+        fit_name="uk_was_2018_20_wealth:savings", weight_kind="design"
+    )
+
+    class _Fit:
+        fit_weight_records = (record,)
+
+        def __call__(self, frame):
+            return frame
+
+    class _GraphLike:
+        """The graph source transform after run_with_sources: the hook
+        copied into its own __dict__, reads proxied to the inner stage."""
+
+        def __init__(self, inner):
+            self.transform = inner
+            self.fit_weight_records = inner.fit_weight_records
+
+        def run_with_sources(self, frame, sources):
+            return frame
+
+        def __getattr__(self, name):
+            return getattr(self.__dict__["transform"], name)
+
+    def observed(transform, stage_id):
+        return ObservedTransform(
+            transform, stage_id=stage_id, produced_column_count=1, observer=None
+        )
+
+    implementations = {
+        "frs_spine": observed(lambda frame: frame, "frs_spine"),
+        "was_wealth": observed(_Fit(), "was_wealth"),
+        "etb_vat": observed(_GraphLike(_Fit()), "etb_vat"),
+    }
+    records = tool._collect_fit_weight_records(
+        stage_names=("frs_spine", "was_wealth", "etb_vat"),
+        implementations=implementations,
+    )
+    expected = [{"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}]
+    assert records == {"was_wealth": expected, "etb_vat": expected}
+    assert "frs_spine" not in records

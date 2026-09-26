@@ -16,6 +16,14 @@ to schema 6 or assert that they measured a new model's results. Ordinary
 calibration releases still require schema 6. A different parent requires a
 separately reviewed contract; there is no caller-supplied legacy-schema waiver.
 
+The release type has one other reviewed operation: the reported-receipt child
+of the national default (`add_reported_receipt_inputs`, pinned to
+`populace-us-2024-spm-20260915`). It shares every gate below. It has its own
+pinned parent, evidence and native inputs, and it never moves `latest.json`.
+`source_enrichment.json`'s `operation` selects the lineage, and any other
+value is judged, and refused, as this lane. See
+[the reported-receipt runbook](us-reported-receipt-source-enrichment.md).
+
 ## Source reconstruction and exact preservation
 
 `spm_role_source.py` reuses Microcosm's existing Census ASEC archive/member
@@ -119,6 +127,15 @@ Installed Python sources must match all four supplied wheels and their versions.
 The country registers the native role class supplied by
 `spm_calculator/policyengine_adapter.py`; its source is bound to the calculator
 wheel, while country and wrapper loader sources bind to their respective wheels.
+
+Before either loader runs, certification also applies the stored-input
+contract (`microcosm.data.stored_inputs`, microcosm#1026): the candidate may
+store no lowercase snake_case column that the tested country does not define,
+unless the reviewed register lists it. The pinned BuildP parent stores
+`would_claim_wic` and `medicare_part_b_premiums`, two retired engine inputs
+(policyengine-us 2.2.1 names them `takes_up_wic_if_eligible` and
+`medicare_part_b_premiums_reported`), and a candidate preserves its parent's
+bytes, so a new role candidate from that parent is refused under 2.2.1.
 
 ```bash
 python -m microcosm.data.source_enrichment --certify \

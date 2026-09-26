@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -937,6 +938,135 @@ def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
             row["weighted_loss_contribution"]
             == attribution_row["final_loss_contribution"]
         )
+
+
+def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> None:
+    """A shorter tail changes counts without changing the compiled contract."""
+
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    stub_materialize = module.release._materialize_target_frame
+    guard_receipt = {
+        "armed": True,
+        "population_aggregate_variables_checked": list(
+            module.release.US_POPULATION_AGGREGATE_VARIABLES
+        ),
+    }
+
+    def _materialize_with_receipt(frame, specs, **kwargs):
+        assert kwargs["refuse_population_aggregates"] is True
+        target_frame, registry, compilation = stub_materialize(frame, specs, **kwargs)
+        return (
+            target_frame,
+            registry,
+            {
+                **compilation,
+                "target_materialization_batching": {
+                    "households": frame.n("household"),
+                    "batches": 1,
+                },
+                "target_materialization_population_aggregate_guard": guard_receipt,
+            },
+        )
+
+    monkeypatch.setattr(
+        module.release, "_materialize_target_frame", _materialize_with_receipt
+    )
+
+    artifact = _fixture_artifact(module, sha256="e" * 64, measure_values=(1.0, 2.0))
+    tables = {}
+    for entity in artifact.frame.entities:
+        table = artifact.frame.table(entity)
+        third_row = table.iloc[[-1]].copy()
+        for column in table.columns:
+            if column.endswith("_id"):
+                third_row[column] = 3
+        tables[entity] = pd.concat([table, third_row], ignore_index=True)
+    artifact = replace(
+        artifact,
+        frame=Frame(
+            tables,
+            US_SCHEMA,
+            {
+                "household": Weights(
+                    np.asarray([10.0, 20.0, 30.0]),
+                    WeightKind.CALIBRATED,
+                )
+            },
+        ),
+    )
+    payload, _ = module.score_loaded_artifact(
+        artifact=artifact,
+        artifact_name="incumbent",
+        yardstick=_fixture_yardstick(module),
+        maximum_microsim_batch_size=2,
+    )
+
+    chunks = payload["normalization_receipts"]["materialize_score_chunking"]["chunks"]
+    assert chunks
+    for chunk in chunks:
+        compilation = chunk["target_compilation"]
+        assert compilation["household_slices"] == 2
+        assert compilation["household_slice_row_counts"] == [2, 1]
+        assert "target_materialization_batching" not in compilation
+        assert (
+            compilation["target_materialization_population_aggregate_guard"]
+            == guard_receipt
+        )
+        assert len(compilation["slice_compilation_sha256s"]) == 2
+        assert len(set(compilation["slice_compilation_sha256s"])) == 1
+        digested_compilation = {
+            key: value
+            for key, value in compilation.items()
+            if key
+            not in {
+                "household_slices",
+                "household_slice_size",
+                "household_slice_row_counts",
+                "slice_compilation_sha256s",
+            }
+        }
+        assert compilation["slice_compilation_sha256s"][0] == module._canonical_sha256(
+            digested_compilation
+        )
+        del digested_compilation["target_materialization_population_aggregate_guard"]
+        assert compilation["slice_compilation_sha256s"][0] != module._canonical_sha256(
+            digested_compilation
+        )
+
+
+def test_household_slices_refuse_population_aggregates(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    fixture_spec = importlib.util.spec_from_file_location(
+        "batched_materialization_fixtures",
+        Path(__file__).with_name("test_us_batched_target_materialization.py"),
+    )
+    fixtures = importlib.util.module_from_spec(fixture_spec)
+    assert fixture_spec.loader is not None
+    fixture_spec.loader.exec_module(fixtures)
+    aggregate = "medicaid_slcsp_state_denominator"
+    ledger = fixtures._install_fake_engine(
+        module.release,
+        monkeypatch,
+        reform_specs=(),
+        aggregate_reads={"aggregate_probe": (aggregate,)},
+    )
+    specs = (fixtures._variable("aggregate_total", base_variable="aggregate_probe"),)
+
+    with pytest.raises(
+        ValueError,
+        match=rf"household batch 1/1 computed .*{aggregate}@2024",
+    ):
+        module._score_chunk_household_sliced(
+            fixtures._nested_frame(),
+            specs,
+            chunk_loss_weights=np.ones(len(specs)),
+            artifact_name="fixture",
+            chunk_label="aggregate probe",
+            maximum_microsim_batch_size=2,
+        )
+    assert len(ledger.simulations) == 1
+    assert ledger.simulations[0].dataset is None
 
 
 def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:

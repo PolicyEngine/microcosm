@@ -37,6 +37,7 @@ import math
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import cache
 from importlib import resources as importlib_resources
 from pathlib import Path, PurePosixPath
 from types import MappingProxyType
@@ -114,6 +115,7 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "aggregate_admin",
         "area_support",
         "calibration_reference_coverage",
+        "cgt_projection_entrants",
         "column_implication",
         "degenerate_release_surface",
         "enum_domain",
@@ -2099,7 +2101,9 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
 
     Returns:
         The validated :class:`ResolvedCountrySpec` (also exported through the
-        exact compatibility alias :class:`CountrySpec`).
+        exact compatibility alias :class:`CountrySpec`). A country code is
+        loaded once per process and the same immutable object is returned to
+        every caller; a path is re-read on every call.
 
     Raises:
         FileNotFoundError: If the package or a declared resource is missing.
@@ -2108,9 +2112,21 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
             declared), or a country mismatch.
     """
     if isinstance(country, Path):
-        root = country
-    else:
-        root = Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+        return _load_country_spec(country)
+    return _load_packaged_country_spec(country)
+
+
+@cache
+def _load_packaged_country_spec(country: str) -> ResolvedCountrySpec:
+    # Packaged resources cannot change while the process runs, and a full load
+    # re-validates every bundle schema and tens of megabytes of target
+    # references (seconds for the UK), so callers share one validated load.
+    return _load_country_spec(
+        Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+    )
+
+
+def _load_country_spec(root: Path) -> ResolvedCountrySpec:
     package_path = root / "country_package.json"
     if not package_path.exists():
         raise FileNotFoundError(f"No country package at {package_path}.")
@@ -2300,7 +2316,8 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         gates=gates,
         release_contract=release_contract,
         take_up_contract=take_up_contract,
-        resource_hashes=hashes,
+        # Read-only: a cached spec is shared by every caller in the process.
+        resource_hashes=MappingProxyType(hashes),
         resolved_spec=resolved_spec,
     )
 

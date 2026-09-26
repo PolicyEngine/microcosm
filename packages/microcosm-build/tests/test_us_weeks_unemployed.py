@@ -266,6 +266,10 @@ def _stacked_gate_frame() -> Frame:
             np.arange(10_000, 10_000 + acs_native_rows, dtype=np.int64),
         ]
     )
+    # Spine assembly writes the assembly-unique source ID beside the raw one
+    # (the ACS offset above keeps it unique); a support clone keeps its
+    # source's ID.
+    person["person_source_id"] = person["person_spine_source_id"]
     weeks = np.zeros(len(person), dtype=np.float64)
     weeks[:18] = 17.0
     weeks[asec_native_rows : asec_native_rows + 12] = 17.0

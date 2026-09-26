@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime.release_certification import (
 )
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.data.contract import validate_release_dir
+from microcosm.data.registry import REGISTRY
 from microcosm.frame import WeightKind
 
 
@@ -69,6 +70,14 @@ def test_uk_release_publisher_labels_come_from_target_contract() -> None:
     assert driver._uk_publisher_labels() == expected
 
 
+def test_national_dataset_filename_mirrors_registry() -> None:
+    driver = _load_driver_module()
+
+    assert driver._DATASET_KEY == "microcosm_uk_2024_25"
+    assert driver._DATASET_FILENAME == f"{driver._DATASET_KEY}.h5"
+    assert REGISTRY[("uk", 2025, "national")].filename == driver._DATASET_FILENAME
+
+
 def _frame(weights: list[float], *, weight_kind: WeightKind):
     ids = np.arange(len(weights), dtype="int64")
     return uk_national_frame(
@@ -91,7 +100,7 @@ def _frame(weights: list[float], *, weight_kind: WeightKind):
     )
 
 
-def _diagnostics(spine_sha256: str) -> dict:
+def _diagnostics(spine_sha256: str, *, runtime: dict | None = None) -> dict:
     return {
         "schema_version": 6,
         "weight_entity": "household",
@@ -178,7 +187,7 @@ def _diagnostics(spine_sha256: str) -> dict:
             "code_pin": _CODE_PIN,
             "build_id": _ATTEMPT_ID,
             "input_posture": {"tier": "staging_candidate", "sha256": spine_sha256},
-            "runtime": dict(_SIGNED_RUNTIME),
+            "runtime": dict(_SIGNED_RUNTIME if runtime is None else runtime),
         },
     }
 
@@ -203,6 +212,7 @@ def _build_assembler_inputs(
     tmp_path: Path,
     *,
     spine_frame=None,
+    runtime=None,
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     pytest.importorskip("h5py")
@@ -217,7 +227,7 @@ def _build_assembler_inputs(
 
     diagnostics_path = tmp_path / "calibration_diagnostics.json"
     diagnostics_path.write_text(
-        json.dumps(_diagnostics(sha256(spine))), encoding="utf-8"
+        json.dumps(_diagnostics(sha256(spine), runtime=runtime)), encoding="utf-8"
     )
     diagnostics_sha = sha256(diagnostics_path)
     for report_name in ("seam_report_path", "release_cut_report_path"):
@@ -242,7 +252,13 @@ def _build_assembler_inputs(
     build_record = green_certification_inputs["build_record"]
     build_record.update(
         build_id=_ATTEMPT_ID,
+        # The calibration's recorded parent is the spine this fixture writes,
+        # in both places the seam records it; the certifier binds the
+        # supplied spine to it.
         input_posture={"sha256": sha256(spine)},
+        source_pins={
+            "input_h5": {"sha256": sha256(spine), "size_bytes": spine.stat().st_size}
+        },
         gate_summary={"uk_target_fit": "passed"},
     )
     build_record["spine_provenance"]["rules_engine"] = {
@@ -275,6 +291,7 @@ def _build_assembler_inputs(
         "release_id": UK_NATIONAL_RELEASE_ID,
         "candidate_name": candidate.stem,
         "candidate_sha256": candidate_sha,
+        "spine_sha256": sha256(spine),
         "certification_path": certification_path,
     }
     compose_uk_release_certification(**compose_inputs)
@@ -322,7 +339,7 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
 
     validate_release_dir(release_dir)
     calibration_path = assembler_inputs["candidate"].with_name(
-        "microcosm_uk_2024_calibration.npz"
+        "microcosm_uk_2024_25_calibration.npz"
     )
     with np.load(calibration_path) as calibration:
         np.testing.assert_array_equal(
@@ -340,6 +357,7 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
 
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["dataset"]["filename"] == driver._DATASET_FILENAME
     assert build_manifest["staging"] == {
         "contract_version": 2,
         "enabled": False,
@@ -354,6 +372,14 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
     }
     assert build_manifest["attempt_id"] == _ATTEMPT_ID
     assert build_manifest["cut_tag"] == _CUT_TAG
+    assert release_manifest["default_datasets"] == {"national": driver._DATASET_KEY}
+    assert release_manifest["artifacts"][driver._DATASET_KEY]["path"] == (
+        driver._DATASET_FILENAME
+    )
+    assert (
+        release_manifest["artifacts"][f"{driver._DATASET_KEY}_calibration"]["path"]
+        == f"{driver._DATASET_KEY}_calibration.npz"
+    )
     assert {entry["revision"] for entry in release_manifest["artifacts"].values()} == {
         _CUT_TAG
     }
@@ -383,6 +409,24 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         "--tag-name",
         _CUT_TAG,
     ]
+    promote_command = shlex.split(summary["promote_command"])
+    assert promote_command == [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "microcosm.data.publish_cli",
+        str(release_dir),
+        "--repo-id",
+        "policyengine/populace-uk-private",
+        "--artifact-root",
+        str(assembler_inputs["candidate"].parent),
+        "--promote-line",
+        "national",
+        "--tag-name",
+        _CUT_TAG,
+    ]
+    assert "--no-latest" not in promote_command
 
 
 def test_assemble_preserves_successful_version_2_delivery(
@@ -409,9 +453,7 @@ def test_assemble_preserves_successful_version_2_delivery(
     capsys.readouterr()
     manifest = json.loads(
         (
-            assembler_inputs["out_dir"]
-            / UK_NATIONAL_RELEASE_ID
-            / "build_manifest.json"
+            assembler_inputs["out_dir"] / UK_NATIONAL_RELEASE_ID / "build_manifest.json"
         ).read_text()
     )
 
@@ -424,6 +466,23 @@ def test_assemble_refuses_candidate_sha_mismatch(assembler_inputs) -> None:
     )
     with pytest.raises(SystemExit, match="candidate bytes"):
         _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_refuses_candidate_with_wrong_filename(assembler_inputs) -> None:
+    candidate = assembler_inputs["candidate"]
+    wrongly_named_candidate = candidate.with_name("microcosm_uk_2024.h5")
+    wrongly_named_candidate.write_bytes(candidate.read_bytes())
+    argv = list(assembler_inputs["argv"])
+    argv[argv.index("--candidate-h5") + 1] = str(wrongly_named_candidate)
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"national line's candidate is microcosm_uk_2024_25\.h5 as written by "
+            r"tools/build_uk_rowwise_candidate\.py --release-role national"
+        ),
+    ):
+        _load_driver_module().main(argv)
 
 
 def test_assemble_refuses_unshippable_certification(assembler_inputs) -> None:
@@ -581,6 +640,23 @@ def test_assemble_refuses_runtime_override_contradicting_provenance(
                 "policyengine-uk=9.99.0",
             ]
         )
+
+
+def test_assemble_refuses_unresolved_runtime_provenance(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    """A seam that could not resolve the engine's version signs
+    ``unavailable``; the assembler refuses to pin a runtime it cannot
+    authenticate, the packaging backstop behind the certifier's own refusal
+    of a fence projected without an engine."""
+
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        runtime={**_SIGNED_RUNTIME, "policyengine-uk": "unavailable"},
+    )
+    with pytest.raises(SystemExit, match="missing or unresolved"):
+        _load_driver_module().main(inputs["argv"])
 
 
 def test_assemble_refuses_existing_destination(assembler_inputs, capsys) -> None:

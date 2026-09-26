@@ -21,6 +21,7 @@ assignment:
   - lsoa_code
   - msoa_code
   - local_authority_code
+  - local_authority
   - ward_code
   - constituency_code
   - region_code

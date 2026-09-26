@@ -782,7 +782,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "openpyxl", marker = "extra == 'uk'", specifier = ">=3.1" },
     { name = "pandas", specifier = ">=2" },
-    { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.98.0" },
+    { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.100.0" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=2.2.1,<3" },
     { name = "pyarrow", specifier = ">=15" },
     { name = "pyyaml", specifier = ">=6" },
@@ -1496,7 +1496,7 @@ wheels = [
 
 [[package]]
 name = "policyengine-uk"
-version = "2.98.0"
+version = "2.100.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "microdf-python" },
@@ -1504,9 +1504,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "tables" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/9c/bbd8c875fae959a4bab3061b1d72ca84d9b94cc9515bed3f631345b6b20e/policyengine_uk-2.98.0.tar.gz", hash = "sha256:fdbe9c197b2186e94a7122748ec1b34ce84451b46b4bd1558020e69c6d700005", size = 1270118, upload-time = "2026-09-16T13:42:03.677Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/6b/a84c78706f2f0c4be25a65034e624a1b1dc4e6e99e21291078b039bba30e/policyengine_uk-2.100.0.tar.gz", hash = "sha256:a7666023cc406eca0d2399dbe159d7712e61ff4bccedf841143ef3e85643e644", size = 1283060, upload-time = "2026-09-22T16:03:21.998Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/27/6a6a88c82537a0227101f11536fff362c2373091415d46bbe8f0f411bde7/policyengine_uk-2.98.0-py3-none-any.whl", hash = "sha256:ceeff3ff907992108ccd037f61e8d08306074331fee71c507ce653d1645012b4", size = 2084619, upload-time = "2026-09-16T13:42:01.587Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/54/f24bcee4879cda9920e1a837eca087502b73fa43e531940f86295baa1d67/policyengine_uk-2.100.0-py3-none-any.whl", hash = "sha256:ec1be1e181d26a57446292aa188b3cc1ad96b3951bf4ff0436580bfc9cd40b1a", size = 2106162, upload-time = "2026-09-22T16:03:20.37Z" },
 ]
 
 [[package]]

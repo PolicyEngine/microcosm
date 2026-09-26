@@ -86,29 +86,7 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
     "SPI-channel-exclusive columns are comparable only through per-reference "
     "reviewed exclusions."
 )
-UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
-    "charitable_investment_gifts": {
-        "reason": (
-            "SPI-channel-exclusive column on a channel-blind reference: the "
-            "efrs-post-calibration incumbent structurally lacks the SPI clone "
-            "channel, so its reference mass is survey-side scraps while the "
-            "staged candidate's mass is the admin-captured SPI channel "
-            "functioning as designed (microcosm#630 case 2). Compared "
-            "normally against any future channel-aware reference."
-        ),
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#630",
-        "approved_on": "2026-08-20",
-        "expires_on": "2027-02-20",
-    },
-    "owned_land": {
-        "reason": "Sparse heavy-tailed WAS donor column (0.7 percent weighted nonzero share) whose weighted total is dominated by a handful of large farm/estate records: the spine-e stability receipt (data/ukds/acceptance/757-swap/owned_land_stability_receipt_spine_e.json) measures a 53.8 percent national and 96.7 percent West Midlands swing between adjacent seeds on the 25-stage candidate \u2014 the realization-variance class the archived incumbent data repo records at uk-data#448 (4.6x Wales swing across releases), reproduced from the E5 instrument's method. Register parity at this grain stays not meaningful; the one-month expiry keeps the end-of-workstream revisit registered on microcosm#145 live (winsorised donor or separate land imputation are the candidate remedies).",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#714",
-        "approved_on": "2026-08-26",
-        "expires_on": "2026-09-26",
-    },
-}
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -138,19 +116,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
+    "77c39b24d445a1c71ae4a2eee370442dff00d03154041fa97941343f846c8d8c"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "462271cdc72631e4b6780be52b53d7ea7572ad97e9b91a00a1f3da199f56858c"
+    "a9f73615aa7fe6c9e7a9b0edca82933d766ff3eaa20b39995426e6958b2ca800"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "8baa7f5c0db3f64c5e00859ff7fd2bd4cf2daf611367ec36f519d1e428af1ebd"
+    "150e7a8f0100cd1127cde8f1d79396a2dbf2acf7be440a058e4860bf36e7cb0e"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
+    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -178,8 +156,12 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_services_support_pricing": ("stage_health", "transferred", None),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -205,6 +187,11 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_spi_income_band_donors_support": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_hmrc_cgt_gains_spine_summary": (
         "stage_health",
         "transferred",
@@ -221,6 +208,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_incidence_anchor_composition": (
         "stage_health",
         "transferred",
         None,
@@ -289,6 +281,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
+    "uk_cgt_projection_entrants": ("cgt_projection_entrants", "terminal", None),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
     "uk_qrf_tail_concentration": (
         "tail_concentration",
@@ -1194,15 +1187,21 @@ def _gate_battery_payload(
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_bus_pricing": "lcfs_consumption",
+        "uk_stage_nts_bus_travel_support": "nts_bus_travel",
+        "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
+        "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
+        "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
         "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
+        "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",
@@ -1248,6 +1247,12 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif entry_id == "uk_cgt_projection_entrants":
+            details = {
+                "max_entrants": 41_000.0,
+                "worst_year": 2030,
+                "bound": 73_000.0,
+            }
         elif entry_id.startswith("uk_local_"):
             # Local candidate gates are explicitly excluded from national
             # certification; this full-report fixture needs only their
@@ -1316,6 +1321,9 @@ def _gate_battery_payload(
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
+        "uk_cgt_projection_entrants": _canonical_sha256(
+            {"cgt_projection": {"base_year": 2023, "horizon_year": 2030}}
+        ),
     }
     for entry_id, stage in stage_health_stages.items():
         evidence[entry_id] = _canonical_sha256({stage: {"stage": stage}})
@@ -2167,6 +2175,19 @@ def test_real_june_release_validates_with_legacy_schema_and_selector_shapes(
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE not in required_release_files(
         UK_RELEASE_ID
     )
+
+
+@pytest.mark.parametrize(
+    ("release_id", "line"),
+    [
+        (UK_NATIONAL_RELEASE_ID, "national"),
+        ("microcosm-uk-2024-25-local-k55000", "local-k55000"),
+        ("microcosm-uk-2024-25-dense", None),
+        (UK_RELEASE_ID, None),
+    ],
+)
+def test_line_for_release_id(release_id: str, line: str | None) -> None:
+    assert contract.line_for_release_id(release_id) == line
 
 
 def test_uk_national_release_dir_validates(tmp_path: Path) -> None:
@@ -3521,6 +3542,138 @@ def test_release_manifest_local_us_source_coverage_hash_must_match(
     failures = "\n".join(excinfo.value.failures)
     assert "artifact 'us_source_coverage' declares sha256" in failures
     assert US_SOURCE_COVERAGE_DIAGNOSTICS_FILE in failures
+
+
+#: The terminal gate verdicts the US release tool binds as release artifacts
+#: (route A remediation PR-3), with the tool's key -> file name mapping.
+US_GATE_EVIDENCE_FILES = {
+    "input_coverage": "input_coverage.json",
+    "input_mass_parity": "input_mass_parity.json",
+    "qrf_tail_concentration": "qrf_tail_concentration.json",
+    "reform_coverage_smoke": "reform_coverage_smoke.json",
+}
+
+
+def _gate_evidence_payloads() -> dict[str, dict]:
+    """Minimal verdicts in the shapes the US release tool writes."""
+    register = {"farm_income": "donor tail over the line before calibration"}
+    return {
+        "input_coverage": {
+            "schema_version": 1,
+            "enforced": True,
+            "input_coverage": {"passed": True, "failures": [], "details": {}},
+        },
+        "input_mass_parity": {
+            "schema_version": 1,
+            "enforced": True,
+            "base_frame_vs_reference": None,
+            "export_vs_base_frame": {
+                "passed": True,
+                "failures": [],
+                "details": {"reference_name": "populace_us_2024.h5"},
+            },
+        },
+        "qrf_tail_concentration": {
+            "schema_version": 1,
+            "enforced": True,
+            "surface": {
+                "reviewed_exclusions_file": "/runtime/qrf_tail_exclusions.json",
+                "reviewed_exclusions_sha256": _canonical_sha256(register),
+                "reviewed_exclusions": register,
+                "register_mismatch": {"stale": [], "unused": []},
+            },
+            "tail_concentration": {
+                "passed": True,
+                "failures": [],
+                "details": {"reviewed_exclusions": register},
+            },
+        },
+        "reform_coverage_smoke": {
+            "schema_version": 1,
+            "enforced": True,
+            "reform_coverage_smoke": {"passed": True, "failures": [], "details": {}},
+        },
+    }
+
+
+def _bind_gate_evidence(release_dir: Path) -> dict[str, str]:
+    """Write the gate verdicts and bind them as the release tool does: one
+    diagnostics artifact per file, plus the evidence blocks in both
+    manifests. Returns the artifact key -> file name mapping."""
+    payloads = _gate_evidence_payloads()
+    release_path = release_dir / "release_manifest.json"
+    release_manifest = json.loads(release_path.read_text())
+    revision = release_manifest["artifacts"]["calibration_diagnostics"]["revision"]
+    for key, filename in US_GATE_EVIDENCE_FILES.items():
+        path = release_dir / filename
+        path.write_text(json.dumps(payloads[key], indent=2, sort_keys=True) + "\n")
+        release_manifest["artifacts"][key] = {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": "policyengine/populace-us",
+            "revision": revision,
+            "sha256": _sha256(path),
+        }
+    surface = payloads["qrf_tail_concentration"]["surface"]
+    blocks = {
+        "qrf_tail_register": {
+            "path": surface["reviewed_exclusions_file"],
+            "sha256": surface["reviewed_exclusions_sha256"],
+            "entries": surface["reviewed_exclusions"],
+            "mismatch": surface["register_mismatch"],
+            "enforced": True,
+        },
+        "export_input_mass_reference": {
+            "path": "/runtime/forensics/populace_us_2024.h5",
+            "sha256": "c" * 64,
+            "reference_name": "populace_us_2024.h5",
+        },
+        "calibration_runtime": {
+            "torch": "2.12.0",
+            "torch_num_threads": 16,
+            "omp_num_threads": "16",
+        },
+        "fiscal_target_exclusion_receipt": {
+            "artifact": "us_source_coverage",
+            "path": US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+            "sha256": _sha256(release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE),
+            "key": "fiscal_target_exclusion_receipt",
+            "present": False,
+            "receipt_sha256": None,
+        },
+    }
+    release_manifest["build"].update(blocks)
+    release_path.write_text(json.dumps(release_manifest))
+    build_path = release_dir / "build_manifest.json"
+    build_manifest = json.loads(build_path.read_text())
+    build_manifest.update(blocks)
+    build_path.write_text(json.dumps(build_manifest))
+    return dict(US_GATE_EVIDENCE_FILES)
+
+
+def test_us_release_binding_gate_evidence_validates(release_dir: Path) -> None:
+    """Route A remediation PR-3: a US release carrying its terminal gate
+    verdicts as diagnostics artifacts, with the evidence blocks in both
+    manifests, still passes the full release contract."""
+    _bind_gate_evidence(release_dir)
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize("artifact_key", sorted(US_GATE_EVIDENCE_FILES))
+def test_us_release_gate_evidence_hash_must_match(
+    release_dir: Path, artifact_key: str
+) -> None:
+    """The local artifact hash check covers every bound verdict: editing one
+    after the manifest was written refuses the release by name."""
+    filename = _bind_gate_evidence(release_dir)[artifact_key]
+    path = release_dir / filename
+    path.write_text(path.read_text().replace('"passed": true', '"passed": false'))
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert f"artifact {artifact_key!r} declares sha256" in failures
+    assert filename in failures
+    assert len(excinfo.value.failures) == 1
 
 
 def test_build_manifest_requires_clean_git_commit(release_dir: Path) -> None:
@@ -5076,6 +5229,23 @@ def test_a_complete_evidence_release_passes(evidence_release_dir: Path) -> None:
     validate_evidence_release_dir(evidence_release_dir)
 
 
+def test_evidence_release_binding_gate_evidence_validates(
+    evidence_release_dir: Path,
+) -> None:
+    """An evidence-tier release is where a waived or failed verdict matters
+    most: it binds the same gate evidence and still passes its contract, and
+    the hash check covers each file there too."""
+    filenames = _bind_gate_evidence(evidence_release_dir)
+    validate_evidence_release_dir(evidence_release_dir)
+    path = evidence_release_dir / filenames["qrf_tail_concentration"]
+    path.write_text(path.read_text() + "\n")
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    assert "artifact 'qrf_tail_concentration' declares sha256" in "\n".join(
+        excinfo.value.failures
+    )
+
+
 def test_evidence_release_fails_the_certified_contract(
     evidence_release_dir: Path,
 ) -> None:
@@ -5590,6 +5760,7 @@ def _green_uk_certification(
             "sha256": "b" * 64,
             "size_bytes": 1,
         },
+        "parent_spine": {"sha256": "a" * 64},
         "parts": parts,
         "spec": {
             "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
@@ -5680,6 +5851,20 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
     certification["diagnostics_sha256"] = "f" * 64
     assert any(
         "diagnostics_sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    # The parent spine the release cut measured is named by digest.
+    certification = _green_uk_certification(key)
+    certification["parent_spine"] = {"sha256": "not-a-digest"}
+    assert any(
+        "parent_spine.sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+    certification = _green_uk_certification(key)
+    del certification["parent_spine"]
+    assert any(
+        "must carry exactly the certification fields" in line
         for line in _certification_failures(certification, monkeypatch, key)
     )
 

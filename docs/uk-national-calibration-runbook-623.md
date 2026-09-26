@@ -86,6 +86,25 @@ uv run --no-sync python tools/score_uk_national_candidate.py \
 Both artifacts are verified against the supplied digests before they are read,
 and both sides are scored on the same frozen register.
 
+A target whose measure the incumbent cannot materialize (the admin-basis UC
+family measures, the CGT asset type, the ONS household type: inputs the
+enhanced FRS never carried) is pruned from **both** arms and reported, never
+refused: the scorer warns on stderr naming every absent measure and the rows
+it removed, and the receipt carries them under
+`incumbent_unresolvable_pruned` (`n_pruned`, `n_scored`, `n_surface`,
+`pruned_targets` with each one's family and measure, `measures`, `families`). The score stands on the common surface
+with band edges from the full register (#803). A measure the *candidate*
+cannot materialize still refuses: that is a defect.
+`--no-prune-incumbent-unresolvable` restores the refusal on the incumbent A measure may be pruned only under a signed, in-force entry of the reviewed incumbent-unresolvable register (`packages/microcosm-build/src/microcosm/build/uk/incumbent_unresolvable_measures.json`, keyed `entity.variable`, reviewed-exclusion schema); an unlisted measure refuses the evaluation, the receipt records the register digest and the entries used, and the certifier re-checks every pruned measure against the committed register, including each entry's window at the certification's own evaluation date. The candidate is validated on the full surface before any pruning, so an export missing a listed measure refuses rather than scoring on a reduced surface.
+side too. The receipt's `evaluation` block decides rule 1 (#578) on that
+surface: `verdict` is `passed` when the candidate's full loss is below the
+incumbent's, `failed` otherwise, and the release-cut certifier refuses any
+receipt whose verdict is not `passed` or whose surface does not close, so
+publication never runs on an unpassed evaluation. The rowwise driver's
+national role runs this evaluation at the end of every build it is given an
+incumbent for (microcosm#965) and writes the same receipt as
+`score_vs_incumbent.json`.
+
 ## Evidence directory
 
 `data/ukds/acceptance/623-first-calibrated-candidate/` should contain:

@@ -1,0 +1,1101 @@
+{
+ "gates": {
+  "acs_local_hours_signal": {
+   "passed": true,
+   "failures": [],
+   "detail": {
+    "per_spine": {
+     "asec_puf": {
+      "rows": 166321,
+      "columns": {
+       "weekly_hours_worked_before_lsr": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 94,
+        "zero_rows": 80800,
+        "forty_rows": 43870
+       },
+       "hours_worked_last_week": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 99,
+        "zero_rows": 90967,
+        "forty_rows": 33302
+       }
+      }
+     },
+     "acs_2024_1yr": {
+      "rows": 3422888,
+      "columns": {
+       "weekly_hours_worked_before_lsr": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 106,
+        "zero_rows": 1655676,
+        "forty_rows": 825899
+       },
+       "hours_worked_last_week": {
+        "missing_or_invalid_rows": 0,
+        "unique_values": 81781,
+        "zero_rows": 1846576,
+        "forty_rows": 1003420
+       }
+      }
+     }
+    }
+   },
+   "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae"
+  },
+  "us_puma_ladder_gate": {
+   "passed": true,
+   "failures": [],
+   "detail": {
+    "nyc_weighted_household_share": 0.027343132562271808,
+    "nyc_weighted_share_of_new_york": 0.4392429065310492
+   }
+  },
+  "hours_worked_signal": {
+   "passed": true,
+   "failures": [],
+   "detail": {
+    "worked_share": 0.5417849354692763,
+    "mean_weekly_hours_workers": 37.353193598308835,
+    "worked_share_band": [
+     0.35,
+     0.62
+    ],
+    "mean_weekly_hours_band": [
+     30.0,
+     45.0
+    ],
+    "unique_counts": {
+     "weekly_hours_worked_before_lsr": 106,
+     "hours_worked_last_week": 81785
+    }
+   },
+   "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae"
+  },
+  "calibration": {
+   "passed": true,
+   "initial_loss": 0.157324,
+   "final_loss": 0.152988,
+   "fraction_within_10pct": 0.8292,
+   "effective_sample_size": 24010.0,
+   "ess_fraction": 0.0151,
+   "realized_max_weight_ratio": 5.0,
+   "mass_conserved_ratio": 1.0,
+   "n_targets": 1247,
+   "calibrated_surface": {
+    "soi_mode": "totals",
+    "n_targets": 1247,
+    "n_admin": 760,
+    "n_population": 487,
+    "breakdown": {
+     "snap_caseloads": 51,
+     "snap_benefits": 51,
+     "medicaid_enrollment": 51,
+     "soi": 607,
+     "population_state": 51,
+     "population_cd": 436
+    }
+   }
+  },
+  "input_coverage": {
+   "passed": true,
+   "binds": "donor_certified_release",
+   "note": "Input coverage is enforced on the certified donor release before transfer; the ACS spine inherits required inputs via QRF transfer. ACS native GQ-housing / source-universe nulls are reviewed_limitations (calibration_blocker: false) and are NOT re-imposed on the ACS spine."
+  },
+  "spine_composition": {
+   "passed": true,
+   "note": "Recorded evidence for the microcosm#403 weight-composition signature; not a pass/fail bound.",
+   "detail": {
+    "acs_2024_1yr": {
+     "households": 1531614,
+     "household_weight": 49604556.87829697,
+     "household_weight_share": 0.4048125846219185,
+     "person_weight": 129205456.17777304,
+     "implied_persons_per_household": 2.604709411975478
+    },
+    "asec_puf": {
+     "households": 57240,
+     "household_weight": 72932535.00738633,
+     "household_weight_share": 0.5951874153780815,
+     "person_weight": 202228414.911753,
+     "implied_persons_per_household": 2.772814833479627
+    },
+    "_all": {
+     "households": 1588854,
+     "household_weight": 122537091.8856833,
+     "effective_sample_size": 24009.95997710067,
+     "ess_fraction": 0.015111495440802408
+    }
+   }
+  },
+  "spine_ssi_qa": {
+   "passed": true,
+   "note": "microcosm#403 re-measure: per-spine SSI incidence and intensity, computed by loading the packaged artifact bytes PLAIN (no private projection or fill) \u2014 the probe doubles as the consumer-loadability proof. Recorded as evidence, not gated.",
+   "detail": {
+    "asec_puf": {
+     "person_weight": 202228414.911753,
+     "ssi_recipient_weight": 3773696.434769074,
+     "ssi_dollars": 32295479771.008865,
+     "ssi_incidence": 0.018660564769870807
+    },
+    "acs_2024_1yr": {
+     "person_weight": 129205456.17777306,
+     "ssi_recipient_weight": 3047583.1255069994,
+     "ssi_dollars": 21327713072.249527,
+     "ssi_incidence": 0.023587108591713396
+    }
+   }
+  },
+  "consumer_ready": {
+   "passed": true,
+   "consumer_export": {
+    "held_back_total": 3,
+    "filled_columns": 79,
+    "total_values_filled": 210127767,
+    "staging_sha256": "f335f5737537b7efbf05840bfadcf84c74caeef15a3b27a0539e3df42cca1637"
+   },
+   "plain_load_proven_by": "spine_ssi_qa",
+   "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae"
+  }
+ },
+ "reviewed_limitations": [
+  {
+   "affected_columns": {
+    "household": [
+     "tenure_type",
+     "acs_monthly_contract_rent",
+     "acs_monthly_gross_rent",
+     "acs_annual_property_tax"
+    ],
+    "person": [
+     "pre_subsidy_rent",
+     "real_estate_taxes"
+    ],
+    "spm_unit": [
+     "spm_unit_tenure_type"
+    ]
+   },
+   "affected_rows": {
+    "household": 183206,
+    "person": 183206,
+    "spm_unit": 183206
+   },
+   "affected_spine": "acs_2024_1yr",
+   "calibration_blocker": false,
+   "engine_input_nulls": [
+    {
+     "column": "pre_subsidy_rent",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 183206,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 183206
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "tenure_type",
+     "dtype": "str",
+     "entity": "household",
+     "missing_rows": 183206,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 183206
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "spm_unit_tenure_type",
+     "dtype": "str",
+     "entity": "spm_unit",
+     "missing_rows": 183206,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 183206
+     },
+     "rows": 1591514
+    }
+   ],
+   "id": "acs_group_quarters_housing_universe",
+   "reason": "ACS PUMS housing-unit tenure, rent, and property-tax fields are outside the TYPEHUGQ 2/3 group-quarters universe.",
+   "status": "reviewed_structural_absence",
+   "transfer_evidence": [
+    {
+     "column": "pre_subsidy_rent",
+     "entity": "person",
+     "reason": "ACS group-quarters rows are outside the housing-tenure universe",
+     "rows": 183206
+    }
+   ],
+   "treatment": "Preserve those values as structural nulls; filling them with zero or donor housing values would synthesize an unobserved housing unit."
+  },
+  {
+   "affected_spine": "acs_2024_1yr",
+   "calibration_blocker": false,
+   "engine_input_nulls_excluding_group_quarters_housing": [
+    {
+     "column": "attends_eligible_educational_institution_for_american_opportunity_credit",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "child_support_expense",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "child_support_received",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "cps_race",
+     "dtype": "int",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "detailed_occupation_recode",
+     "dtype": "int",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "disability_benefits",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "educational_assistance",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "employment_income_before_lsr",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 510098,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 510098
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "fsla_overtime_premium",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "has_american_opportunity_credit_1098_t_or_exception",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "has_american_opportunity_credit_institution_ein",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "has_never_worked",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "health_insurance_premiums",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "hourly_wage",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "immigration_status_str",
+     "dtype": "str",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_computer_scientist",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_executive_administrative_professional",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_farmer_fisher",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_hispanic",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_military",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_paid_hourly",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_pursuing_credential_for_american_opportunity_credit",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_self_employed",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_separated",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_snap_abawd_discretionary_exempt",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_surviving_spouse",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "is_union_member_or_covered",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "keogh_distributions",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "meets_ssi_disability_criteria",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "other_health_insurance_premiums",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "previous_year_income_available",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "real_estate_taxes",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 969983,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 969983
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "roth_401k_contributions_desired",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "roth_ira_contributions_desired",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "s_corp_income",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "self_employment_income_before_lsr",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 510098,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 510098
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "self_employment_income_last_year",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "ssi_reported",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 676419,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 510098,
+      "asec_puf": 166321
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "ssn_card_type",
+     "dtype": "str",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "takes_up_head_start_if_eligible",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "takes_up_medicaid_if_eligible",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "takes_up_medicare_if_eligible",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "takes_up_ssi_if_eligible",
+     "dtype": "bool",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "tax_exempt_ira_distributions",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "taxable_401k_distributions",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "taxable_403b_distributions",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "taxable_sep_distributions",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "tip_income",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "traditional_401k_contributions_desired",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "treasury_tipped_occupation_code",
+     "dtype": "int",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "weeks_unemployed",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "workers_compensation",
+     "dtype": "float",
+     "entity": "person",
+     "missing_rows": 3422888,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 3422888
+     },
+     "rows": 3589209
+    },
+    {
+     "column": "auto_loan_balance",
+     "dtype": "float",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "auto_loan_interest",
+     "dtype": "float",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "block_geoid",
+     "dtype": "str",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "cbsa_code",
+     "dtype": "str",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "household_vehicles_owned",
+     "dtype": "int",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "household_vehicles_value",
+     "dtype": "float",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "net_worth",
+     "dtype": "float",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "place_fips",
+     "dtype": "str",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "qualified_passenger_vehicle_loan_interest",
+     "dtype": "float",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "sldl",
+     "dtype": "str",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "sldu",
+     "dtype": "str",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "tract_geoid",
+     "dtype": "str",
+     "entity": "household",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1588854
+    },
+    {
+     "column": "second_home_mortgage_balance",
+     "dtype": "float",
+     "entity": "tax_unit",
+     "missing_rows": 2097745,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 2097745
+     },
+     "rows": 2177474
+    },
+    {
+     "column": "second_home_mortgage_interest",
+     "dtype": "float",
+     "entity": "tax_unit",
+     "missing_rows": 2097745,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 2097745
+     },
+     "rows": 2177474
+    },
+    {
+     "column": "second_home_mortgage_origination_year",
+     "dtype": "int",
+     "entity": "tax_unit",
+     "missing_rows": 2097745,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 2097745
+     },
+     "rows": 2177474
+    },
+    {
+     "column": "selected_marketplace_plan_benchmark_ratio",
+     "dtype": "float",
+     "entity": "tax_unit",
+     "missing_rows": 2097745,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 2097745
+     },
+     "rows": 2177474
+    },
+    {
+     "column": "takes_up_aca_if_eligible",
+     "dtype": "bool",
+     "entity": "tax_unit",
+     "missing_rows": 2097745,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 2097745
+     },
+     "rows": 2177474
+    },
+    {
+     "column": "takes_up_eitc",
+     "dtype": "bool",
+     "entity": "tax_unit",
+     "missing_rows": 2097745,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 2097745
+     },
+     "rows": 2177474
+    },
+    {
+     "column": "would_file_taxes_voluntarily",
+     "dtype": "bool",
+     "entity": "tax_unit",
+     "missing_rows": 2097745,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 2097745
+     },
+     "rows": 2177474
+    },
+    {
+     "column": "receives_housing_assistance",
+     "dtype": "bool",
+     "entity": "spm_unit",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1591514
+    },
+    {
+     "column": "spm_unit_energy_subsidy",
+     "dtype": "float",
+     "entity": "spm_unit",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1591514
+    },
+    {
+     "column": "takes_up_snap_if_eligible",
+     "dtype": "bool",
+     "entity": "spm_unit",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1591514
+    },
+    {
+     "column": "takes_up_tanf_if_eligible",
+     "dtype": "bool",
+     "entity": "spm_unit",
+     "missing_rows": 1531614,
+     "missing_rows_by_spine": {
+      "acs_2024_1yr": 1531614
+     },
+     "rows": 1591514
+    }
+   ],
+   "id": "native_acs_source_universe_blanks",
+   "reason": "Native ACS inputs retain official blank universes; the ACS mapping contract forbids inventing zeros or component splits.",
+   "status": "reviewed_source_missingness",
+   "treatment": "Preserve nullable source semantics after transferring every donor-observed model-required input with an eligible fit."
+  },
+  {
+   "assigned_geography": [
+    "puma",
+    "congressional_district_geoid",
+    "county_fips"
+   ],
+   "assignment_seed": 0,
+   "calibration_blocker": false,
+   "donor_geography": "preserved_assigned",
+   "id": "sub_puma_geographic_precision",
+   "layer_vintages": {
+    "congressional_district": "119th_congress",
+    "county": "2020_census",
+    "puma": "2020_puma",
+    "tract": "2020_census"
+   },
+   "observed_geography": {
+    "acs_2024_1yr": [
+     "state_fips",
+     "puma"
+    ],
+    "asec_puf": [
+     "state_fips",
+     "tract_geoid",
+     "congressional_district_geoid",
+     "county_fips"
+    ]
+   },
+   "reason": "ACS PUMS identifies residence only through state and 2020 PUMA; exact block, tract, county, and congressional district cannot be recovered for a source microrecord.",
+   "status": "reviewed_probabilistic_assignment",
+   "treatment": "Retain each ACS record's observed PUMA and assign its 119th-CD/county from official population-weighted PUMA overlaps using the recorded seed. Donor records keep their certified block-ladder district/county, with PUMA derived exactly from the assigned 2020 tract. Do not synthesize ACS block or tract.",
+   "unavailable_exact_geography": [
+    "block_geoid",
+    "tract_geoid"
+   ],
+   "unavailable_exact_geography_scope": "acs_2024_1yr"
+  },
+  {
+   "id": "ssi_aged_band_collapse_inherited",
+   "status": "reviewed_inherited_defect",
+   "reason": "The donor lineage (base-O via the certified Build O sparse release) carries the microcosm#507 SSI aged-band take-up collapse: the 65+ one-shot Bernoulli seed at 8.4% collapses the aged SSI baseline to roughly 0.94M against SSA's 2.42M. The QRF transfer replicates donor SSI participation onto the ACS spine, so both spines of this artifact inherit the defect by construction.",
+   "treatment": "microcosm#508 owns the fix; when the corrected base certifies, this artifact's refresh_recipe re-runs the chain against the new certified release in one command.",
+   "measured_spine_ssi": {
+    "asec_puf": 0.01866,
+    "acs_2024_1yr": 0.02359
+   },
+   "calibration_blocker": false
+  },
+  {
+   "id": "miscellaneous_income_loss_side_donor_defect",
+   "status": "reviewed_inherited_distortion",
+   "column": "miscellaneous_income",
+   "affected_spines": [
+    "asec_puf",
+    "acs_2024_1yr"
+   ],
+   "reason": "The donor pool's miscellaneous_income loss side remains distorted (microcosm#393, open at build time; roughly 4.6x SOI's loss-return prevalence measured in the Build J dense remedy experiments). The QRF transfer replicates the donor distribution onto the ACS spine.",
+   "treatment": "Tracked via microcosm#393; propagates on re-transfer.",
+   "calibration_blocker": false
+  },
+  {
+   "id": "tips_return_count_carrier_deficit_inherited",
+   "status": "reviewed_inherited_defect",
+   "reason": "The certified Build O sparse donor under-carries tip-return counts (-50.25% against its ledger target, recorded in its own release evidence). Tip columns transfer from that donor, so the deficit rides this artifact too.",
+   "calibration_blocker": false
+  },
+  {
+   "id": "cd_population_marginal_vintage_2020",
+   "status": "reviewed_vintage",
+   "reason": "Congressional-district population marginals use 119th-boundary / 2020-apportionment Census populations from the PUMA ladder; the build period is 2024. Boundaries are 2020-census-drawn (honest v1).",
+   "calibration_blocker": false
+  },
+  {
+   "id": "low_effective_sample_size_lambda_zero",
+   "status": "reviewed_concentration",
+   "reason": "Kish ESS is 24010.0 = 1.51% of 1588854 households under the hard 5x weight cap with l2_lambda=0 (kept for consistency with the certified default and the Build L doctrine; no new calibration knobs per microcosm#492).",
+   "calibration_blocker": false
+  },
+  {
+   "id": "donor_sparse_selection_training_set",
+   "status": "reviewed_construction",
+   "reason": "The QRF transfer donor is the certified Build O sparse release (unknown donor id): the 57,240-household certified selection rather than a dense full-row donor (buildl trained on the June dense artifact). The conditioning set is thinner; per-fit donor row counts are recorded in the staging provenance.",
+   "calibration_blocker": false
+  },
+  {
+   "id": "mixed_sub_puma_column_coverage",
+   "status": "reviewed_construction",
+   "columns": [
+    "block_geoid",
+    "tract_geoid",
+    "cbsa_code",
+    "place_fips",
+    "sldl",
+    "sldu"
+   ],
+   "reason": "Donor rows keep their certified block-ladder geography columns; ACS rows carry no sub-PUMA geography, so these columns are donor-spine-only. Consumers filtering on them must scope to the asec_puf spine.",
+   "calibration_blocker": false
+  }
+ ],
+ "generated_at": "2026-09-22T07:47:03.319896+00:00"
+}

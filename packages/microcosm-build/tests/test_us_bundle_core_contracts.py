@@ -129,7 +129,7 @@ def test_source_surface_classification_is_complete() -> None:
     }
     assert normative["stage_asset"] == {
         "id": "source_stages",
-        "sha256": "b3ad16b1adb77a2cac6deae6c4d0f1779e4cf36a3f18820d9887a5434daaff1a",
+        "sha256": "f22f56e32373c6de49a5d3923d6dd0fa916762e3aee637f57c6e024886343ef3",
     }
     assert operational["stage_asset"] == {
         "path": "microcosm.build.us/source_stages.json"
@@ -180,12 +180,15 @@ def test_cd_vintage_crosswalk_source_and_geography_authority_are_pinned() -> Non
     crosswalk_source = next(
         row
         for row in build_sources()["sources"]
-        if row["id"] == "us_congressional_district_vintage_crosswalk_117_to_119"
+        if row["id"]
+        == "us_congressional_district_vintage_crosswalk_117_to_119"
     )
     assert crosswalk_source == {
         "id": "us_congressional_district_vintage_crosswalk_117_to_119",
         "role": "congressional_district_vintage_crosswalk",
-        "sha256": ("c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"),
+        "sha256": (
+            "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+        ),
         "byte_size": 77_935,
         "loader": "kernel:load_congressional_district_vintage_crosswalk",
         "vintages": ["vintage:cd_117", "vintage:cd_119"],
@@ -201,7 +204,9 @@ def test_cd_vintage_crosswalk_source_and_geography_authority_are_pinned() -> Non
     assignment = build_geography()["assignment"]
     assert assignment["order"] == "before_gap_fill"
     assert assignment["congressional_district_vintage_crosswalk"] == {
-        "source_ref": ("source:us_congressional_district_vintage_crosswalk_117_to_119"),
+        "source_ref": (
+            "source:us_congressional_district_vintage_crosswalk_117_to_119"
+        ),
         "source_vintage": "vintage:cd_117",
         "target_vintage": "vintage:cd_119",
     }
@@ -212,9 +217,9 @@ def test_cd_vintage_crosswalk_source_reference_is_resolved() -> None:
     resources = {**_vintage_resources(), "geography": build_geography()}
     _resolve_vintages(resources)
 
-    resources["geography"]["assignment"]["congressional_district_vintage_crosswalk"][
-        "source_ref"
-    ] = "source:missing_crosswalk"
+    resources["geography"]["assignment"][
+        "congressional_district_vintage_crosswalk"
+    ]["source_ref"] = "source:missing_crosswalk"
     with pytest.raises(SpecResolutionError, match="dangling source reference"):
         _resolve_vintages(resources)
 

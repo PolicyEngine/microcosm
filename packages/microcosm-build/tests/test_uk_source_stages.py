@@ -44,6 +44,7 @@ E5_STAGE_NAMES = [
     "regional_property_uprating",
 ]
 E6_STAGE_NAMES = [
+    "nts_bus_travel",
     "lcfs_consumption",
     "etb_vat",
     "etb_services",
@@ -51,6 +52,7 @@ E6_STAGE_NAMES = [
 E7_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
+    "spi_income_band_donors",
     "hmrc_spi_income_spine",
 ]
 UC_REPORTER_REDRAW_STAGE_NAMES = [
@@ -67,6 +69,7 @@ E8_STAGE_NAMES = [
     "cgt_band_donors",
     "hmrc_cgt_gains_spine",
     "hmrc_cgt_asset_type_spine",
+    "cgt_incidence_anchor",
     "salary_sacrifice",
     "student_loans",
 ]
@@ -310,12 +313,14 @@ class TestUKSourceStagesManifest:
                     "frs_household_draws": _identity,
                     "frs_brma": _identity,
                     "was_wealth": _identity,
+                    "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
                     "lcfs_consumption": _identity,
                     "etb_vat": _identity,
                     "etb_services": _identity,
                     "frs_hmrc_spine_leaves": _identity,
                     "spi_support_channel": _identity,
+                    "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
@@ -324,6 +329,7 @@ class TestUKSourceStagesManifest:
                     "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
                     "hmrc_cgt_asset_type_spine": _identity,
+                    "cgt_incidence_anchor": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,
@@ -630,30 +636,42 @@ class TestE3ManifestLockstep:
             "fold_into",
             "support_clip",
             "allocate_within_group_waterfall",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["regional_property_uprating"].operations] == [
             "uprate_to_regional_reference",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["nts_bus_travel"].operations] == [
+            "clean_nts_travel_tables",
+            "materialize_rules_engine_predictors",
+            "impute_bus_use_band",
+            "assign_trips_from_band_means",
+            "assign_bus_pass_eligibility",
+            "support_clip",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["lcfs_consumption"].operations] == [
             "derive",
             "uprate_donor_columns",
             "iterative_proportional_fit",
             "assign_binary_from_rate",
-            "assign_bus_use_incidence",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
             "iterative_proportional_fit",
             "price_domestic_energy",
-            "rake_to_vendored_facts",
+            "price_bus_journeys",
             "fold_into",
             "zero_when_false",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
             "derive",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf",
             "support_clip",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_services"].operations] == [
             "derive",
@@ -661,9 +679,10 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
-            "rake_to_vendored_facts",
+            "price_bus_support",
             "compute_ratio",
             "allocate_per_capita_from_cell_table",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
             "retain_adjudicated_frs_hmrc_leaves",
@@ -678,6 +697,7 @@ class TestE3ManifestLockstep:
             "verify_pinned_hmrc_source_pair",
             "strict_read_private_table",
             "fit_weighted_qrf_stage1",
+            "resample_band_donor_leaves",
             "fit_weighted_qrf_stage2",
             "redraw_columns_from_fitted_qrf",
             "materialize_hmrc_income_bands_fail_closed",
@@ -708,6 +728,28 @@ class TestE3ManifestLockstep:
         assert [op.kind for op in stages["cgt_band_donors"].operations] == [
             "stack_band_donor_households"
         ]
+        assert [op.kind for op in stages["spi_income_band_donors"].operations] == [
+            "stack_income_band_donor_households"
+        ]
+        assert stages["spi_income_band_donors"].outputs == (
+            "household_is_spi_income_band_donor",
+            "spi_income_band_donor_lower_bound",
+            "person_is_spi_income_band_carrier",
+        )
+        # The reserved copies join the synthetic channel, so the stage
+        # rewrites the support channel's lineage cells on its new rows.
+        assert stages["spi_income_band_donors"].rewrites == (
+            "household_is_spi_synthetic",
+            "person_support_channel",
+            "person_support_clone_index",
+            "person_source_id",
+            "benunit_support_channel",
+            "benunit_support_clone_index",
+            "benunit_source_id",
+            "household_support_channel",
+            "household_support_clone_index",
+            "household_source_id",
+        )
         assert [op.kind for op in stages["hmrc_cgt_gains_spine"].operations] == [
             "verify_vendored_fact_resource",
             "taxable_income_proxy",
@@ -930,7 +972,6 @@ class TestE3ManifestLockstep:
         }
         assert lcfs_seeded == {
             "assign_binary_from_rate": 0,
-            "assign_bus_use_incidence": 0,
             "fit_weighted_qrf_chain": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
@@ -942,7 +983,10 @@ class TestE3ManifestLockstep:
 
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
-        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
+        # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
+        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 44
+        assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 43
+        assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
         assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
 
@@ -1032,3 +1076,45 @@ class TestE3ManifestLockstep:
             "concept instead of a persisted column, or the runtime constant "
             "moved without the manifest following."
         )
+
+
+def test_every_column_writing_stage_declares_the_receipt_its_module_records() -> None:
+    """One source of truth per stage: the manifest's receipt reason is the
+    module constant the transform appends (the gate matches on the string)."""
+    from microcosm.build.uk_runtime.etb_services import (
+        UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_MASS_CONSERVATION_REASON
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.regional_uprating import (
+        UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+    )
+
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stages = spec.sources.stage_map()
+    expected = {
+        "was_wealth": UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+        "regional_property_uprating": (
+            UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
+        ),
+        "lcfs_consumption": UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+        "etb_vat": UK_ETB_VAT_MASS_CONSERVATION_REASON,
+        "etb_services": UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
+    }
+    for stage_name, reason in expected.items():
+        receipts = [
+            op
+            for op in stages[stage_name].operations
+            if op.kind == "record_mass_conservation_receipt"
+        ]
+        assert len(receipts) == 1, stage_name
+        assert receipts[0].parameters["reason"] == reason, stage_name
+        assert receipts[0].parameters["entity"] == "household", stage_name
+        assert receipts[0].parameters["declared_factor"] == 1.0, stage_name
+    assert len(set(expected.values())) == len(expected)

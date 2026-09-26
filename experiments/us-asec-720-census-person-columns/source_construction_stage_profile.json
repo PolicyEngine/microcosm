@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "stages": {
+    "source_construction": {
+      "entry_rss_bytes": 2057764864,
+      "error": null,
+      "exit_rss_bytes": 10696212480,
+      "peak_rss_bytes": 11240964096,
+      "rss_sample_count": 138,
+      "sampling_error": null,
+      "stage": "source_construction",
+      "status": "succeeded",
+      "wall_seconds": 43.59271766699385
+    }
+  }
+}

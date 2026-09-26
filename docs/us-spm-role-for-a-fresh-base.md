@@ -4,6 +4,33 @@ Every claim here was read at `spm-composition-preflight`'s head, which is
 `origin/main` `d1196af10` plus this branch. The installed engine is
 policyengine-us 2.2.1 / spm-calculator 1.0.0 / policyengine-core 3.32.5.
 
+> Dated note (2026-09-23): this note records the state before PR #959, which
+> implements its recommendation, Option 1, shape (b). The current design is in
+> [`docs/us-spm-role-stage.md`](us-spm-role-stage.md). With #959 merged:
+>
+> - The `spm_independence_role` build stage derives the role for a base built
+>   from raw sources. It runs before support cloning, and the release tool
+>   re-derives and reconciles it for an older base.
+> - The adapter classifies the role as an input leaf, by the engine's
+>   `DATASET_SOURCE_INPUTS`. The table in §4 that marks the role not
+>   exportable, and the generated audit's `formula_owned=True`, describe the
+>   adapter before #959.
+> - The release requires the role. It is in the release input-coverage
+>   manifest with no reviewed exclusion, it is a required non-constant person
+>   source column in the export, and the role's signal gate must pass. No
+>   release ships on the head-only fallback. A frame without a sourced role is
+>   refused; for example, a prepared stacked pool fails the role's signal gate
+>   before calibration.
+> - "A requirement that is missing today" (§1) was already wrong when
+>   written: `_reconcile_units` has refused an unresolved zero-adult SPM unit
+>   since `43171405d`.
+> - "The existing Build P enrichment lane is untouched and stays
+>   byte-identical" (§5) no longer holds for one producer file.
+>   `spm_role_source.py` gained an archive reader in `47976be6c`. The rule,
+>   the join, the refusals and the extracted-CSV path are unchanged, but the
+>   file's hash is one the lane's producer-identity check compares. See
+>   `docs/us-spm-role-stage.md` §2, "The archive reader".
+
 ## The problem in one paragraph
 
 `spm-calculator` 1.0.0 refuses the **whole population's** SPM measurement if

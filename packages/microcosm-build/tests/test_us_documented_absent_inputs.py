@@ -71,3 +71,35 @@ def test_register_is_disjoint_from_the_degenerate_exclusions() -> None:
     assert not set(builder.US_DOCUMENTED_ABSENT_INPUTS) & set(
         builder.US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS
     )
+
+
+def test_strike_benefits_exclusion_rests_on_zero_code_12_reporters() -> None:
+    """The ``strike_benefits`` reviewed exclusion says no pinned ASEC person
+    file carries OI_OFF code 12 (strike benefits). Check that against the
+    official archives when ``MICROCOSM_ASEC_ARCHIVE_DIR`` holds them
+    (asecpub23csv.zip, asecpub24csv.zip, asecpub25csv.zip); the archives are
+    public but large, so no CI lane carries them."""
+
+    import csv
+    import io
+    import os
+    import zipfile
+    from pathlib import Path
+
+    import pytest
+
+    builder = _load_builder_module()
+    assert "strike_benefits" in builder.US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS
+    root = os.environ.get("MICROCOSM_ASEC_ARCHIVE_DIR", "")
+    archives = [Path(root) / f"asecpub{year}csv.zip" for year in (23, 24, 25)]
+    if not root or not all(path.exists() for path in archives):
+        pytest.skip("set MICROCOSM_ASEC_ARCHIVE_DIR to the pinned ASEC archives")
+    for archive in archives:
+        member = f"pppub{archive.name[7:9]}.csv"
+        with zipfile.ZipFile(archive) as bundle, bundle.open(member) as raw:
+            reader = csv.reader(io.TextIOWrapper(raw, encoding="utf-8"))
+            header = next(reader)
+            column = header.index("OI_OFF")
+            codes = {row[column] for row in reader}
+        assert "12" not in codes, f"{member} has an OI_OFF == 12 reporter"
+        assert "20" in codes, f"{member} lost the alimony code; check the layout"

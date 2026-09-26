@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+import microcosm.data.loader as loader_module
 import microcosm.data.registry as registry_module
 from microcosm.data import (
     DEFAULT_VARIANT,
@@ -13,6 +14,7 @@ from microcosm.data import (
     available_variants,
     register,
 )
+from microcosm.data.release import LATEST_POINTER_PATH
 
 
 def test_us_2024_is_registered_with_a_complete_spec() -> None:
@@ -41,9 +43,35 @@ def test_uk_2023_compact_is_registered_with_a_complete_spec() -> None:
     assert spec.engine_package == "policyengine-uk"
 
 
-def test_available_lists_registered_keys_sorted() -> None:
+def test_dataset_spec_default_pointer_path_matches_release_default() -> None:
+    assert (
+        DatasetSpec.__dataclass_fields__["pointer_path"].default == LATEST_POINTER_PATH
+    )
+
+
+def test_available_lists_default_variant_keys_only_sorted(monkeypatch) -> None:
+    dense_only = DatasetSpec(
+        country="zz",
+        year=2099,
+        variant="dense",
+        hf_repo="policyengine/populace-zz",
+        filename="populace_zz_2099_dense.h5",
+        engine_module="policyengine_zz.data",
+        engine_class="ZZSingleYearDataset",
+        engine_package="policyengine-zz",
+    )
+    monkeypatch.setattr(
+        loader_module,
+        "REGISTRY",
+        {**REGISTRY, dense_only.key: dense_only},
+    )
+
     keys = available()
     assert ("us", 2024) in keys
+    assert ("uk", 2023) in keys
+    # The national line is off the default variant until promoted.
+    assert ("uk", 2025) not in keys
+    assert ("zz", 2099) not in keys
     assert keys == sorted(keys)
 
 
@@ -118,4 +146,16 @@ def test_uk_2025_dense_is_registered_off_the_default_variant() -> None:
     assert spec.filename == "microcosm_uk_2024_25_dense.h5"
     assert spec.engine_class == "UKSingleYearDataset"
     assert spec.engine_package == "policyengine-uk"
+    assert ("uk", 2025, "national") in REGISTRY
+
+
+def test_uk_2025_national_is_registered_off_the_default_variant_until_promoted():
+    """resolve("uk") must not reach a pointer that does not exist yet: the
+    line's pointer appears on the Hub at its first promotion, and only the
+    follow-up flip to the default variant moves the default (review of
+    #966; Max's #823 ruling keys the line as a variant)."""
+    spec = REGISTRY[("uk", 2025, "national")]
+    assert spec.variant == "national" != DEFAULT_VARIANT
+    assert spec.pointer_path == "latest-national.json"
+    assert spec.filename == "microcosm_uk_2024_25.h5"
     assert ("uk", 2025, DEFAULT_VARIANT) not in REGISTRY

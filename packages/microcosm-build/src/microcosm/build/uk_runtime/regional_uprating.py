@@ -13,6 +13,7 @@ import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.national_frame import (
+    uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -21,6 +22,12 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.frame import Frame
 
 UK_REGIONAL_PROPERTY_REWRITES = ("main_residence_value", "property_wealth")
+
+
+#: The household-mass receipt this stage records (the manifest's
+#: ``record_mass_conservation_receipt`` operation repeats it): the terminal
+#: family gate requires exactly this reason on a valid mass-conserving record.
+UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON = "Regional property uprating on the source spine: household weights pass through unchanged and total household mass is conserved."
 
 
 @dataclass(frozen=True)
@@ -47,7 +54,12 @@ class UKRegionalPropertyUpratingStageTransform:
             time_period=uk_time_period(frame),
             weight_kind=uk_household_weight_kind(frame),
             household_weights=frame.weights_for("household").values,
-            mass_log=frame.mass_log,
+            mass_log=(
+                *frame.mass_log,
+                uk_household_mass_conservation_receipt(
+                    frame, UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
+                ),
+            ),
         )
         validate_uk_national_frame(result)
         return result

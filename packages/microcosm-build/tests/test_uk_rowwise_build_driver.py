@@ -406,6 +406,7 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
                 "lsoa_code": ["E0101", "W0101"],
                 "msoa_code": ["E0201", "W0201"],
                 "local_authority_code": ["E06000063", "W06000001"],
+                "local_authority": ["CUMBERLAND", "ISLE_OF_ANGLESEY"],
                 "ward_code": ["E05000001", "W05000001"],
                 "constituency_code": ["E14000001", "W07000041"],
                 "region_code": ["E12000007", "W99999999"],

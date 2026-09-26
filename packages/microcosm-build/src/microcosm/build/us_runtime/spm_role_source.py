@@ -9,6 +9,7 @@ weight, calibration, or period-aging operation is performed here.
 from __future__ import annotations
 
 import hashlib
+import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -152,6 +153,92 @@ def _reconcile_units(persons: pd.DataFrame, key: str, label: str) -> pd.DataFram
     return units
 
 
+#: Census identifiers read as exact text, never as numbers (a numeric parse
+#: would silently drop PERIDNUM's leading zeros).
+_TEXT_SOURCE_COLUMNS = ("PERIDNUM", "SPM_ID")
+
+
+def _read_source_columns(
+    source: Path | Any, columns: tuple[str, ...] = _SOURCE_COLUMNS
+) -> pd.DataFrame:
+    return pd.read_csv(
+        source,
+        usecols=list(columns),
+        dtype={column: str for column in _TEXT_SOURCE_COLUMNS if column in columns},
+        low_memory=False,
+    )
+
+
+def _read_archive_member(
+    path: Path,
+    pin: AsecSpmRoleSource,
+    label: str,
+    columns: tuple[str, ...] = _SOURCE_COLUMNS,
+) -> pd.DataFrame:
+    """Read the pinned person CSV from inside the official Census archive.
+
+    ``--asec-education-source`` names either that archive or its extracted
+    person CSV (``education_assistance_source._load_one_source`` accepts both),
+    so the role stage accepts both too. The archive must be the pinned one and
+    hold exactly one pinned member whose size and SHA-256 equal the CSV pins;
+    the archive is re-hashed after reading. ``columns`` defaults to the role
+    stage's own; the #720 Census person-column restoration
+    (:mod:`.asec_census_person_columns`) reads its reviewed set through the
+    same verified path.
+    """
+
+    _require(_sha256(path) == pin.archive_sha256, f"{label} archive SHA-256 mismatch.")
+    with zipfile.ZipFile(path) as archive:
+        members = [info for info in archive.infolist() if info.filename == pin.member]
+        _require(
+            len(members) == 1,
+            f"{label} archive must contain exactly one {pin.member!r} member.",
+        )
+        info = members[0]
+        _require(
+            info.file_size == pin.csv_size_bytes, f"{label} CSV byte length mismatch."
+        )
+        digest = hashlib.sha256()
+        with archive.open(info) as member:
+            for chunk in iter(lambda: member.read(8 * 1024 * 1024), b""):
+                digest.update(chunk)
+        _require(digest.hexdigest() == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
+        with archive.open(info) as member:
+            source = _read_source_columns(member, columns)
+    _require(
+        _sha256(path) == pin.archive_sha256, f"{label} archive changed while reading."
+    )
+    return source
+
+
+def read_pinned_asec_person_columns(
+    path: Path,
+    pin: AsecSpmRoleSource,
+    label: str,
+    columns: tuple[str, ...] = _SOURCE_COLUMNS,
+) -> tuple[pd.DataFrame, str]:
+    """Read ``columns`` of one pinned complete Census ASEC person CSV.
+
+    ``path`` is the official archive (verified by :func:`_read_archive_member`)
+    or its extracted person CSV, whose byte length and SHA-256 must equal the
+    pins before reading and whose SHA-256 is re-checked after. Returns the
+    columns and the path form read (``"archive"`` or ``"csv"``). The row count
+    is the caller's check. This is the one reader the SPM role derivation and
+    the #720 Census person-column restoration share.
+    """
+
+    if zipfile.is_zipfile(path):
+        return _read_archive_member(path, pin, label, columns), "archive"
+    _require(
+        path.stat().st_size == pin.csv_size_bytes,
+        f"{label} CSV byte length mismatch.",
+    )
+    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
+    source = _read_source_columns(path, columns)
+    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV changed while reading.")
+    return source, "csv"
+
+
 def _load_source(
     path: Path, pin: AsecSpmRoleSource
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
@@ -159,17 +246,7 @@ def _load_source(
     _require(
         pin.survey_year == pin.income_year + 1, f"{label} income/survey year mismatch."
     )
-    _require(
-        path.stat().st_size == pin.csv_size_bytes, f"{label} CSV byte length mismatch."
-    )
-    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
-    source = pd.read_csv(
-        path,
-        usecols=list(_SOURCE_COLUMNS),
-        dtype={"PERIDNUM": str, "SPM_ID": str},
-        low_memory=False,
-    )
-    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV changed while reading.")
+    source, _form = read_pinned_asec_person_columns(path, pin, label)
     _require(len(source) == pin.persons, f"{label} CSV person count mismatch.")
     source["PERIDNUM"] = _exact_person_keys(source.PERIDNUM, label)
     _require(bool(source.PERIDNUM.is_unique), f"{label} has duplicate PERIDNUM keys.")
@@ -225,12 +302,16 @@ def derive_spm_role_source(
     expected_parent_sha256: str,
     source_pins: Mapping[int, AsecSpmRoleSource] | None = None,
 ) -> SpmRoleSourceResult:
-    """Derive and reconcile from complete pinned CSVs; never trust a sidecar.
+    """Derive and reconcile from complete pinned sources; never trust a sidecar.
 
-    Local CSV paths are mandatory; the existing education-assistance Census
-    fetcher can obtain their pinned archives separately. The default pins cover
-    all three certified BuildP source years. Alternate pins support explicit
-    review of other populations and small synthetic tests.
+    Local source paths are mandatory. Each is either the pinned official
+    Census survey archive or the complete person CSV extracted from it (the
+    ``--asec-education-source`` vocabulary); the archive must be the pinned
+    one and hold exactly one pinned member that matches the CSV pins. The
+    existing education-assistance Census fetcher can obtain the pinned
+    archives, and extract their person CSVs, separately. The default pins
+    cover all three certified BuildP source years. Alternate pins support
+    explicit review of other populations and small synthetic tests.
 
     Support clones may repeat a source person across native units. Within every
     native unit, the source members must be unique and exhaust one complete
