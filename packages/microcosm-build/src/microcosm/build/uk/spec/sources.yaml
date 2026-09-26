@@ -2550,7 +2550,7 @@ stages:
     - accommodation
     - region
     margins_resource: need_energy_facts.json
-    iterations: 50
+    iterations: 200
     weighted: true
   - kind: price_domestic_energy
     resource: qep_energy_prices.json

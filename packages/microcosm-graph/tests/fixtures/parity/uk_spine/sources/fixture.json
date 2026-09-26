@@ -3377,7 +3377,7 @@
             "electricity_consumption",
             "gas_consumption"
           ],
-          "iterations": 50,
+          "iterations": 200,
           "kind": "iterative_proportional_fit",
           "margins": [
             "income",
