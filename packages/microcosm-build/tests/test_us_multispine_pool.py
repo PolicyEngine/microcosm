@@ -2075,10 +2075,11 @@ def _assert_pool_transfer_produced_encodings(
     assert isinstance(chain_inputs, puf_support_module.PufTaxDetailChainInputs)
     primary_predictors = tuple(chain_inputs.predictors)
     primary_targets = tuple(chain_inputs.target_order)
-    # Filing status, person count, four demographics and the income rank; no
-    # survey income level is a predictor (microcosm#982).
+    # Filing status, person count, four demographics, the income rank and
+    # earnings participation; no survey income level is a predictor
+    # (microcosm#982).
     assert primary_predictors == puf_support_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS
-    assert len(primary_predictors) == 7
+    assert len(primary_predictors) == 8
     assert len(primary_targets) == 65
 
     primary_qrf_observations = [
@@ -2184,8 +2185,8 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         (target, (*base_predictors, *primary_targets[:position]))
         for position, target in enumerate(primary_targets)
     )
-    assert len(primary_predictor_sets[0][1]) == 7
-    assert len(primary_predictor_sets[-1][1]) == 71
+    assert len(primary_predictor_sets[0][1]) == 8
+    assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
     assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 121
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)

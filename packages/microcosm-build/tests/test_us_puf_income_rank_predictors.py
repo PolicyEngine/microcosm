@@ -28,12 +28,15 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES,
+    PUF_TAX_DETAIL_EARNINGS_COMPONENTS,
+    PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE,
     PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS,
     PUF_TAX_DETAIL_INCOME_RANK_SOURCE,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _RANK = "puf_predictor_income_rank_share"
+_EARNS = "puf_predictor_has_earnings"
 
 
 def _output_leaves(source: str) -> set[str]:
@@ -55,14 +58,28 @@ def test_default_predictors_never_resolve_to_an_imputed_output() -> None:
         PUF_TAX_DETAIL_DEFAULT_PREDICTORS, sources, strict=True
     ):
         assert not _output_leaves(source) & outputs, predictor
-    # Survey income enters only through the bounded rank, never as a level.
-    assert not set(sources) & set(PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS)
+    # Survey income enters only through the bounded rank and the earnings
+    # participation flag, never as a level.
+    components = set(PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS) | set(
+        PUF_TAX_DETAIL_EARNINGS_COMPONENTS
+    )
+    assert not set(sources) & components
     assert PUF_TAX_DETAIL_INCOME_RANK_SOURCE in sources
+    assert PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE in sources
     assert set(PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES) <= set(sources)
-    # Every rank component is a donor output, so the donor's rank is taken
-    # over exactly the income the imputation hands the recipient.
-    for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
+    # Every component is a donor output, so the donor's rank and flag are
+    # taken over exactly the income the imputation hands the recipient.
+    for component in components:
         assert _output_leaves(component) & outputs, component
+
+
+def test_earnings_indicator_flags_any_nonzero_earnings_and_keeps_missing() -> None:
+    wages = [0.0, 5.0, 0.0, np.nan, 0.0]
+    self_employment = [0.0, 0.0, -3.0, 0.0, 0.0]
+    flag = puf_support._earnings_indicator([wages, self_employment])
+    # A self-employment loss is earnings participation; a missing amount is
+    # not "does not work".
+    np.testing.assert_array_equal(flag, [0.0, 1.0, 1.0, np.nan, 0.0])
 
 
 @pytest.mark.parametrize(
@@ -199,6 +216,8 @@ def test_donor_carries_demographics_and_its_rank_in_the_puf_population() -> None
     assert donor["puf_predictor_dependent_count"].tolist() == [1.0, 0.0, 1.0]
     # Totals 1000, 400, 50 with weights 1, 2, 1 out of 4.
     np.testing.assert_allclose(donor[_RANK], [0.125, 0.5, 0.875])
+    # Units 1 and 2 have wages, unit 3 self-employment income only.
+    assert donor[_EARNS].tolist() == [1.0, 1.0, 1.0]
     for column in ("puf_predictor_employment_income", "employment_income"):
         assert column not in donor
 
@@ -308,6 +327,7 @@ def test_recipient_rank_covers_only_the_puf_detail_rows() -> None:
     ).sort_index()
     np.testing.assert_allclose(detail_rank, [0.125, 0.75, 0.375, 0.75])
     assert features.loc[detail, "puf_predictor_head_age"].eq(45.0).all()
+    assert features.loc[detail, _EARNS].eq(1.0).all()
     assert features.loc[detail, "puf_predictor_spouse_age"].eq(0.0).all()
 
 
@@ -335,7 +355,7 @@ def test_strict_recipient_surface_names_a_tax_unit_without_a_head() -> None:
     demographic_predictors = tuple(
         predictor
         for predictor in PUF_TAX_DETAIL_DEFAULT_PREDICTORS
-        if predictor != _RANK
+        if predictor not in (_RANK, _EARNS)
     )
     with pytest.raises(ValueError, match="puf_predictor_head_age"):
         impute_us_puf_tax_detail_support(
@@ -377,10 +397,15 @@ def _heavy_tail_donor() -> pd.DataFrame:
     )
 
 
-def _imputed_puf_wages(frame: Frame, predictors: tuple[str, ...]) -> pd.Series:
+def _imputed_puf_wages(
+    frame: Frame,
+    predictors: tuple[str, ...],
+    *,
+    donor: pd.DataFrame | None = None,
+) -> pd.Series:
     imputed = impute_us_puf_tax_detail_support(
         frame,
-        _heavy_tail_donor(),
+        _heavy_tail_donor() if donor is None else donor,
         predictors=predictors,
         person_outputs=("employment_income_before_lsr",),
         tax_unit_outputs=(),
@@ -427,3 +452,56 @@ def test_topcoded_survey_units_receive_puf_income_above_the_topcode(
         "employment_income_before_lsr"
     ].sort_index()
     assert new.corr(survey_wages, method="spearman") > 0.8
+
+
+def _mixed_participation_donor() -> pd.DataFrame:
+    """300 PUF units: workers with wages, non-workers with equal interest.
+
+    Workers and non-workers interleave across the whole income range, as they
+    do in the PUF, so income rank alone cannot tell them apart.
+    """
+
+    donor = _heavy_tail_donor()
+    works = np.arange(len(donor)) % 2 == 0
+    income = donor["employment_income_before_lsr"].to_numpy()
+    donor["employment_income_before_lsr"] = np.where(works, income, 0.0)
+    donor["taxable_interest_income"] = np.where(works, 0.0, income)
+    return donor
+
+
+def test_survey_non_workers_receive_no_puf_wages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    # Ten survey retirees live on interest; twenty workers on wages. Their
+    # income totals interleave, as the donors' do.
+    levels = [8_000.0 * (i + 1) for i in range(30)]
+    frame = _recipient_frame(
+        [0.0 if i % 3 == 0 else level for i, level in enumerate(levels)],
+        topcode=None,
+    )
+    person = frame.table("person")
+    retiree_rows = person["employment_income_before_lsr"].eq(0.0)
+    source_ids = person[support_source_id_column("person")]
+    person.loc[retiree_rows, "taxable_interest_income"] = source_ids[retiree_rows].map(
+        lambda source_id: levels[source_id - 1]
+    )
+    retirees = pd.Index(
+        person.loc[retiree_rows, support_source_id_column("person")].unique()
+    )
+    donor = _mixed_participation_donor()
+
+    # The fixture discriminates: without the participation flag, retirees
+    # draw from the rank-matched donors, half of whom work.
+    no_flag = tuple(
+        predictor
+        for predictor in PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+        if predictor != _EARNS
+    )
+    without_flag = _imputed_puf_wages(frame, no_flag, donor=donor)
+    assert without_flag.loc[retirees].gt(0.0).any()
+
+    wages = _imputed_puf_wages(frame, PUF_TAX_DETAIL_DEFAULT_PREDICTORS, donor=donor)
+    assert wages.loc[retirees].eq(0.0).all()
+    assert wages.drop(retirees).gt(0.0).all()

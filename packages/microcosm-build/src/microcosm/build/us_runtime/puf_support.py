@@ -60,6 +60,8 @@ __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
     "PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES",
     "PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS",
+    "PUF_TAX_DETAIL_EARNINGS_COMPONENTS",
+    "PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE",
     "PUF_TAX_DETAIL_INCOME_RANK_SOURCE",
     "PufTaxDetailChainInputs",
     "PUF_ABSENT_CELLS_LEGACY_ZERO_FILL",
@@ -223,13 +225,27 @@ PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS = (
     "long_term_capital_gains",
 )
 PUF_TAX_DETAIL_INCOME_RANK_SOURCE = "income_rank_share"
+#: Earnings participation (microcosm#982): 1.0 when the unit has nonzero wages
+#: or self-employment income, else 0.0. The PUF covers filers only, so without
+#: it the rank maps the survey's large zero-income group onto low but positive
+#: PUF incomes and hands wages to survey non-workers (measured before this
+#: predictor: 51% of survey zero-wage units). Surveys observe whether anyone in
+#: the unit works well; the PUF still supplies how much. The donor's value
+#: comes from its own wage and self-employment outputs, so it fixes only
+#: participation, never an income level.
+PUF_TAX_DETAIL_EARNINGS_COMPONENTS = ("employment_income", "self_employment_income")
+PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE = "has_earnings"
+_PUF_COMPOSITE_INCOME_SOURCES: Mapping[str, tuple[str, ...]] = {
+    PUF_TAX_DETAIL_INCOME_RANK_SOURCE: PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS,
+    PUF_TAX_DETAIL_EARNINGS_INDICATOR_SOURCE: PUF_TAX_DETAIL_EARNINGS_COMPONENTS,
+}
 
 #: Predictors for the PUF tax-detail imputation (microcosm#982).
 #:
 #: The survey's income amounts are deliberately NOT predictors. Conditioning an
 #: income target on the recipient's own survey value of that item teaches the
 #: forest "output ~ input": measured on the 2026-09-12 base build, PUF-clone
-#: wages had rank correlation 1.000 with the survey value and every one landed
+#: wages had rank correlation 1.000 with the survey value and 99.98% landed
 #: within 10% of it, so no clone passed the survey topcodes and survey
 #: underreporting carried into the PUF half. Demographics (as in the archived
 #: eCPS, ``calibration/puf_impute.py``) plus the unit's weighted income rank in
@@ -243,6 +259,7 @@ PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_head_is_female",
     "puf_predictor_dependent_count",
     "puf_predictor_income_rank_share",
+    "puf_predictor_has_earnings",
 )
 
 PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
@@ -2893,11 +2910,11 @@ def _predictor_person_source_columns(
         return ("is_female", _TAX_UNIT_ROLE_COLUMN)
     if source == "dependent_count":
         return (_TAX_UNIT_ROLE_COLUMN,)
-    if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+    if source in _PUF_COMPOSITE_INCOME_SOURCES:
         return tuple(
             dict.fromkeys(
                 column
-                for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS
+                for component in _PUF_COMPOSITE_INCOME_SOURCES[source]
                 for column in _predictor_person_source_columns(component, person)
             )
         )
@@ -2930,17 +2947,17 @@ def _strict_predictor_source_plan(
         return _PredictorSourcePlan(
             source, "person", _predictor_person_source_columns(source, person)
         )
-    if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+    if source in _PUF_COMPOSITE_INCOME_SOURCES:
         # Every component must resolve at person grain, exactly as the
         # retired income predictors did, so the ACS earnings-universe receipt
         # and the null checks keep covering the same survey cells.
-        for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
+        for component in _PUF_COMPOSITE_INCOME_SOURCES[source]:
             component_plan = _strict_predictor_source_plan(
                 _PUF_PREDICTOR_PREFIX + component, tax_unit=tax_unit, person=person
             )
             if component_plan.entity != "person":
                 raise ValueError(
-                    "PUF income-rank component "
+                    f"PUF {source} component "
                     f"{component!r} resolves at {component_plan.entity} grain; "
                     "every component must be a person-grain survey amount."
                 )
@@ -3066,32 +3083,41 @@ def _tax_unit_feature_frame(
                     frame, preserve_nulls=preserve_nulls
                 )
             result[column] = demographics[source_column].to_numpy(dtype=np.float64)
-        elif source_column == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
-            # The unit's weighted rank within the PUF-detail recipient rows
-            # (microcosm#982). Those rows hold each survey unit exactly once,
-            # so this is its rank in the survey population, independent of any
-            # other spine or clone channel the frame carries. The donor is
-            # ranked in the PUF population the same way; other rows get NaN.
-            recipient_rows = puf_tax_detail_clone_mask(tax_unit, entity="tax_unit")
-            total = np.zeros(len(tax_unit), dtype=np.float64)
-            for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
-                component_plan = (
-                    None
-                    if source_plans is None
-                    else _strict_predictor_source_plan(
-                        _PUF_PREDICTOR_PREFIX + component,
-                        tax_unit=tax_unit,
-                        person=person,
-                    )
+        elif source_column in _PUF_COMPOSITE_INCOME_SOURCES:
+            components = [
+                np.asarray(
+                    resolve(
+                        component,
+                        None
+                        if source_plans is None
+                        else _strict_predictor_source_plan(
+                            _PUF_PREDICTOR_PREFIX + component,
+                            tax_unit=tax_unit,
+                            person=person,
+                        ),
+                    ),
+                    dtype=np.float64,
                 )
-                total += np.asarray(
-                    resolve(component, component_plan), dtype=np.float64
+                for component in _PUF_COMPOSITE_INCOME_SOURCES[source_column]
+            ]
+            if source_column == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+                # The unit's weighted rank within the PUF-detail recipient
+                # rows (microcosm#982). Those rows hold each survey unit
+                # exactly once, so this is its rank in the survey population,
+                # independent of any other spine or clone channel the frame
+                # carries. The donor is ranked in the PUF population the same
+                # way; other rows get NaN.
+                recipient_rows = puf_tax_detail_clone_mask(tax_unit, entity="tax_unit")
+                total = np.zeros(len(tax_unit), dtype=np.float64)
+                for values in components:
+                    total += values
+                total[~recipient_rows] = np.nan
+                result[column] = _weighted_top_rank_share(
+                    total,
+                    frame.resolve_weights("tax_unit").values,
                 )
-            total[~recipient_rows] = np.nan
-            result[column] = _weighted_top_rank_share(
-                total,
-                frame.resolve_weights("tax_unit").values,
-            )
+            else:
+                result[column] = _earnings_indicator(components)
         else:
             result[column] = resolve(source_column, plan)
     return result
@@ -4239,6 +4265,20 @@ def _weighted_top_rank_share(values: Any, weights: Any) -> np.ndarray:
     return result
 
 
+def _earnings_indicator(components: Sequence[Any]) -> np.ndarray:
+    """Return 1.0 where any earnings component is nonzero, else 0.0 (#982).
+
+    One definition serves both sides of the PUF imputation. A row with a
+    non-finite component gets NaN, so strict recipient validation names it
+    instead of reading a missing amount as "does not work".
+    """
+
+    stacked = np.vstack([np.asarray(values, dtype=np.float64) for values in components])
+    indicator = (stacked != 0).any(axis=0).astype(np.float64)
+    indicator[~np.isfinite(stacked).all(axis=0)] = np.nan
+    return indicator
+
+
 def _tax_unit_demographics(
     tax_unit_ids: Any,
     person_tax_unit_ids: Any,
@@ -4385,22 +4425,26 @@ def _add_predictor_aliases(
         if predictor in table.columns:
             continue
         source = _predictor_source_column(predictor)
-        if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
-            # The donor's rank in the PUF population, on the same six income
-            # concepts the survey recipient is ranked on (microcosm#982).
+        if source in _PUF_COMPOSITE_INCOME_SOURCES:
+            # Built from the donor's own outputs on the same component
+            # concepts the survey recipient uses (microcosm#982): the rank in
+            # the PUF population, or earnings participation.
             components = [
                 _donor_rank_component_values(table, component)
-                for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS
+                for component in _PUF_COMPOSITE_INCOME_SOURCES[source]
             ]
-            if "weight" not in table.columns or any(
-                values is None for values in components
-            ):
+            if any(values is None for values in components):
                 continue
-            total = np.sum(components, axis=0, dtype=np.float64)
-            table[predictor] = _weighted_top_rank_share(
-                total,
-                pd.to_numeric(table["weight"], errors="coerce").fillna(0.0),
-            )
+            if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+                if "weight" not in table.columns:
+                    continue
+                total = np.sum(components, axis=0, dtype=np.float64)
+                table[predictor] = _weighted_top_rank_share(
+                    total,
+                    pd.to_numeric(table["weight"], errors="coerce").fillna(0.0),
+                )
+            else:
+                table[predictor] = _earnings_indicator(components)
             continue
         if source in table.columns:
             table[predictor] = table[source]

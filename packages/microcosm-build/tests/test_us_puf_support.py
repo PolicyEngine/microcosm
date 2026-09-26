@@ -1389,6 +1389,7 @@ def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
             "puf_predictor_head_is_female": [0.0, 1.0, 0.0, 1.0],
             "puf_predictor_dependent_count": [0.0, 1.0, 0.0, 0.0],
             "puf_predictor_income_rank_share": [0.875, 0.625, 0.375, 0.125],
+            "puf_predictor_has_earnings": [1.0, 1.0, 0.0, 1.0],
             "taxable_interest_income": [100.0, 200.0, 300.0, 400.0],
             "qualified_dividend_income": [10.0, 20.0, 30.0, 40.0],
             "non_qualified_dividend_income": [50.0, 60.0, 70.0, 80.0],
