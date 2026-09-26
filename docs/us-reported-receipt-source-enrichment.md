@@ -138,10 +138,11 @@ store no lowercase snake_case column that the tested country does not define,
 unless the reviewed register lists it. The receipt's `stored_inputs` block
 records the register's digest. The pinned parent,
 `populace-us-2024-spm-20260915`, stores `would_claim_wic` and
-`medicare_part_b_premiums`, which policyengine-us 2.2.1 does not define, and a
-child preserves its parent's bytes. So this lane cannot certify a new child
-until the parent is re-cut with the live WIC name
-(`takes_up_wic_if_eligible`) and without the stale Part B column.
+`medicare_part_b_premiums`, two retired engine inputs that policyengine-us
+2.2.1 does not define, and a child preserves its parent's bytes. So this lane
+cannot certify a new child until the parent is re-cut with the live WIC name
+(`takes_up_wic_if_eligible`) and without the retired Part B column, which the
+build no longer produces (#590).
 
 Measured in this change: the three receipt variables are registered in
 policyengine-us 2.2.1 as Boolean inputs with no formula, on `person`,

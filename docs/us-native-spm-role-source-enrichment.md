@@ -132,9 +132,10 @@ Before either loader runs, certification also applies the stored-input
 contract (`microcosm.data.stored_inputs`, microcosm#1026): the candidate may
 store no lowercase snake_case column that the tested country does not define,
 unless the reviewed register lists it. The pinned BuildP parent stores
-`would_claim_wic` and `medicare_part_b_premiums`, which policyengine-us 2.2.1
-does not define, and a candidate preserves its parent's bytes, so a new role
-candidate from that parent is refused under 2.2.1.
+`would_claim_wic` and `medicare_part_b_premiums`, two retired engine inputs
+(policyengine-us 2.2.1 names them `takes_up_wic_if_eligible` and
+`medicare_part_b_premiums_reported`), and a candidate preserves its parent's
+bytes, so a new role candidate from that parent is refused under 2.2.1.
 
 ```bash
 python -m microcosm.data.source_enrichment --certify \

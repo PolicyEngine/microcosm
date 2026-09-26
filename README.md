@@ -206,16 +206,19 @@ ignores such a column, which is how a renamed WIC take-up input shipped
 unread). Three release seams refuse one, each against the engine the release
 records as built-with:
 
-- the fiscal-refresh tool, in its batched pre-export gates, and it checks the
-  written H5 earns the same verdict (the exact-k ladder lane runs this tool);
+- the fiscal-refresh tool, in its batched pre-export gates, and it grades the
+  written H5, which must earn the same verdict (the exact-k ladder lane runs
+  this tool);
 - the source-enrichment probe, at certification, validation and publication;
 - the ACS local-area chain's package stage, before it assembles the release
   directory.
 
 A refusal names each column: rename it to its live input, or add a reviewed
 register entry. The published default, its reported-receipt child and the
-2026-09-23 ACS local-area release built on that child all store
-`would_claim_wic` and `medicare_part_b_premiums`, so each would now be refused.
+2026-09-23 ACS local-area release built on that child all store two retired
+engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
+`takes_up_wic_if_eligible` and `medicare_part_b_premiums_reported`), so each
+would now be refused.
 Check local files from HDF metadata alone with
 `uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
 
