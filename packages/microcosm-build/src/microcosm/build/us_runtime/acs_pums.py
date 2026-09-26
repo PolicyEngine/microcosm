@@ -106,7 +106,12 @@ _PERSON_REQUIRED = (
 )
 # Preserve source hours and their universe/allocation evidence when supplied.
 # Older/minimal source fixtures remain loadable; absence is not a zero.
-_PERSON_OPTIONAL: tuple[str, ...] = ("WKHP", "WKL", "FWKHP")
+# CIT/POBP/YOEP are the raw citizenship, place-of-birth and entry-year evidence
+# the paired immigration transfer reads on every ACS row (the #779 evidence
+# triplet). Every ACS PUMS person file carries them. A spine loaded without them
+# stays loadable, and a paired immigration transfer onto it refuses; nothing is
+# defaulted.
+_PERSON_OPTIONAL: tuple[str, ...] = ("WKHP", "WKL", "FWKHP", "CIT", "POBP", "YOEP")
 
 # Temporary aliases consumed only by microunit's dependent gross-income test.
 # ACS combined sources stay combined: INTP is placed on one gross-income

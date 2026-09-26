@@ -41,9 +41,11 @@ MAX_EVIDENCE_BYTES = 2 * 1024**2
 # Exact accepted direct AGEP -> A_AGE and AGEP -> age implementation, and owners.
 # Includes reviewed optional WKHP/WKL/FWKHP preservation and annual-hours mapping;
 # absent hours stay absent, and the direct age transformations are unchanged.
+# Also reviewed: optional CIT/POBP/YOEP carriage for the paired immigration
+# transfer. It reads three more columns when present and changes no mapping.
 # A new transform/owner version requires explicit review of this successor.
 _ACCEPTED = {
-    "acs_pums.py": "3bc556fff5da8b8887dcef6c21ae00a996ed951e884130146554a47cbdd5999a",
+    "acs_pums.py": "1527fc61502bc8328497aadc9adb28a5e3e1f189ef9c5384352e182e85bc322c",
     "acs_inputs.py": "1fb4f911f9e80cc77d946e201491c5633046e6b3be5d61afa3986861f2247240",
     "acs_housing_universe_source.py": "7c060f4ab40f7b0722a3e9a2e51b3a2c84253b0d1a5614de5d6e56bea66857e7",
     "acs_person_coverage_authentication.py": "b8400706d44fd76f6d9495dafde984c37d261041c38efd5803286a67ca124977",

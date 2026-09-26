@@ -1893,6 +1893,11 @@ def _producer_dtype_acs_source_frame() -> Frame:
     person["acs_social_security_income"] = [0.0, 12_000.0]
     person["acs_retirement_income"] = [0.0, 8_000.0]
     person["acs_interest_dividend_rental_income"] = [100.0, 2_000.0]
+    # The ACS spine's raw citizenship, place-of-birth and entry-year evidence,
+    # which the paired immigration transfer reads on every ACS row.
+    person["CIT"] = [1, 5]
+    person["POBP"] = [6, 373]
+    person["YOEP"] = [np.nan, 2022]
     household = tables["household"]
     household["state_fips"] = [6, 36]
     household["tenure_type"] = ["RENTED", "OWNED_WITH_MORTGAGE"]
@@ -2222,7 +2227,9 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     )
 
     assert len(targets) == 118
-    assert len(predictors) == 32
+    # The paired immigration transfer adds three evidence predictors (the
+    # #779 citizenship, birth-country and arrival-year features).
+    assert len(predictors) == 35
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
         (

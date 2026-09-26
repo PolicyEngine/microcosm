@@ -156,6 +156,33 @@ def test_acs_loader_preserves_hours_and_allocation_without_filling_blanks(tmp_pa
     assert "weekly_hours_worked_before_lsr" not in tables["person"]
 
 
+def test_acs_loader_carries_immigration_evidence_only_when_supplied(tmp_path):
+    household_zip = tmp_path / "evidence-hh.zip"
+    person_zip = tmp_path / "evidence-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("evid", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("evid", 1, 20, CIT=1, POBP=6, YOEP=None),
+                _person("evid", 2, 25, AGEP=12, CIT=5, POBP=373, YOEP=2022),
+            ]
+        },
+    )
+    tables, _ = load_acs_pums_tables(AcsPumsSource(household_zip, person_zip))
+    person = tables["person"]
+    assert person["CIT"].tolist() == [1, 5]
+    assert person["POBP"].tolist() == [6, 373]
+    # A native-born person has no entry year; the blank stays missing.
+    assert pd.isna(person["YOEP"].iloc[0]) and person["YOEP"].iloc[1] == 2022
+
+    bare = tmp_path / "bare-person.zip"
+    _write_csv_zip(bare, {"psam_pusa.csv": [_person("evid", 1, 20)]})
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("evid", NP=1)]})
+    tables, _ = load_acs_pums_tables(AcsPumsSource(household_zip, bare))
+    assert not {"CIT", "POBP", "YOEP"} & set(tables["person"])
+
+
 def _graph_hours_source(tmp_path, **hours):
     observed = {"WKHP": 40, "WKL": 1, "FWKHP": 1, **hours}
     _write_csv_zip(
