@@ -322,7 +322,17 @@ The walk now takes gas-positive households in an identity-keyed uniform order
 (seed 0, salt `lcfs_consumption:gas_disconnection`) with the same
 weight-fitting skip, so every group of households loses the same expected
 share of its drawn connected mass and only the level of the drawn connection
-moves to the published share.
+moves to the published share. Its converged residual is 1.05 % (Scotland
+gas by property type), with the income margins at zero.
+
+The recipient rake also runs 200 sweeps instead of 50. With the SPI
+households' energy drawn from their own incomes, the income margins start
+further from NEED's gradient, and at 50 sweeps they were still falling
+(electricity 3.14 %, gas 2.76 %). The per-sweep receipt shows both under
+2.5 % from sweep 59 and flat by 200 (1.16 % and 1.36 % at 100, 0.91 % and
+1.12 % at 200, 0.82 % and 1.05 % at 300), so the gate reads a converged
+residual rather than a truncated one, as its governance note asks. The 2.5 %
+tolerance is unchanged.
 
 ## Not done here
 
