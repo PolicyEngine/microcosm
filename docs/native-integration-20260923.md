@@ -173,6 +173,72 @@ cleanup and is not inferred from these small reproductions. No reviewed source
 pin, F0 seed hash or implementation inventory contract required adjustment;
 enrichment's normal runtime source hash binds the changed implementation.
 
+## Enrichment fixture member pins and default amount groups
+
+The survey-enrichment module fixture refused before geography with
+`DEMOGRAPHIC_SOURCE_CONTRACT`. The wrapped refusal was `STUDENT_SOURCE_SIZE`
+from the demographic owner's member snapshot. The fixture pins the coverage,
+restoration and demographic owners to its rewritten 2022-2024 ASEC person
+members. `add_hours_source_fields` then rewrites those members again but
+re-pins only the coverage and restoration owners. This did not come from main
+or #991. The same refusal reproduces on the pre-merge native tree `c15661e5a`.
+It also reproduces at `ac15e9fb9`, the native commit that added the hours
+helper to this fixture. That commit's parent reconstructs the demographic
+source successfully. After the hours helper, the fixture now re-pins the
+demographic owner to the final roster, as the immigration enrichment fixture
+already does. A new fixture test fails without that line; it checks the
+coverage pins against the final member bytes and that the restoration and
+demographic owners match them. The other owners that pin these members
+(for example `asec_student_controls`) are not covered by that test.
+
+Clearing that refusal exposed two assertions that the native line's
+20 September opt-in amount routes had made stale. Those routes are workers
+compensation, child support and veterans benefits. The assertions enumerated
+every declared `values.GROUPS` entry, but the default call runs only
+`unemployment` and `health_costs`, as `us-current-survey-amount-successor.md`
+documents. A diagnostic run of the unchanged assertions found that only the
+three opt-in outputs were absent from the population. They also remained
+missing inputs. The node count (281) and input inventory (161) matched their
+existing assertions. The tests now read the executed groups from the run
+receipt and assert that default. They also require the unselected opt-in
+outputs to stay absent and missing. No production module, source pin,
+implementation inventory or F0 identity changed. The complete file passed
+12 tests from a cold store in 1,054 seconds with an 0.87 GB maximum resident
+set.
+
+## Immigration pair producer-key control
+
+The immigration enrichment file's
+`test_genuine_pair_artifact_and_producer_controls` expected
+`ARTIFACT_PRODUCER_KEY` after replacing only the retained pair artifact's
+`producer_key`. The enrichment host's `context` passes each typed input through
+the shared `graph_puf_detail_transfer.artifact` check before comparing
+producers. That check requires `key == opaque_artifact_key(producer_key,
+artifact)`. `ArtifactValue` stores `key` and `producer_key` as separate fields,
+so the mutation always refused there with `DETAIL_ARTIFACT_IDENTITY`.
+
+The merge did not change the check order, and producer detection still works.
+The test, the host's `context`, the shared check, `ArtifactValue` and
+`opaque_artifact_key` are byte-identical on the native parent `c15661e5a` and
+the merge. The assertion arrived with native commit `d33d71bee`, which is on
+neither main nor poverty-comparison-only. Its check order was already the
+current one. The survey-enrichment host test has re-derived the store key for
+its producer-key case since `091261c0e`.
+
+The test now covers both refusals separately. The unmodified retained inputs
+must pass first. A producer-key-only mutation must then refuse with exactly
+`DETAIL_ARTIFACT_IDENTITY`. A foreign producer key whose store key is re-derived
+from it passes that identity check and must refuse with exactly
+`CURRENT_SURVEY_AMOUNTS_ARTIFACT_PRODUCER_KEY`. The two codes differ in form
+because the two checks use different `require` helpers. The host module binds
+`require = values.require`, which is `current_survey_amounts.require` and
+prefixes every host refusal with `CURRENT_SURVEY_AMOUNTS_`. The shared check
+binds `puf_detail_transfer.require`, which raises the bare reason. Both helpers
+were already bound this way at `d33d71bee`. The sibling survey-enrichment test
+matches the unanchored substring `ARTIFACT_PRODUCER_KEY`; this test anchors both
+codes so that neither refusal can satisfy the other's assertion. No production
+module, source pin, implementation inventory or F0 identity changed.
+
 ## Local Git recovery and validation record
 
 The sandbox could read the original linked-worktree Git administration but could

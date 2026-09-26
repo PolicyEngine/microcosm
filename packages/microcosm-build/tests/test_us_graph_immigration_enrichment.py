@@ -604,6 +604,7 @@ def test_genuine_clone_attachment_required_replay_and_nonowned_parity(genuine):
 
 def test_genuine_pair_artifact_and_producer_controls(genuine):
     from microcosm.graph import artifact_edges
+    from microcosm.graph.keys import opaque_artifact_key
 
     run = genuine.enabled
     node = run.compiled.graph.node(fragment.ATTACH_NODE)
@@ -622,15 +623,45 @@ def test_genuine_pair_artifact_and_producer_controls(genuine):
         fragment.immigration_result(
             genuine.transfer, node, detached, genuine.disabled.population.frame.person
         )
+    boundary = graph._ISSUED[id(run)][1]
+
+    def context(artifacts):
+        return boundary.context(
+            SimpleNamespace(node=node, sources={}, artifacts=artifacts)
+        )
+
+    # Control: the retained typed inputs pass, so each refusal below comes
+    # only from its own single mutation.
+    assert context(artifacts) is boundary.qualified
+    (pair_edge,) = (e for e in node.artifact_inputs if e.name == "immigration_pairs")
+    foreign = "f" * 64
+    assert foreign != artifacts["immigration_pairs"].producer_key
+    # A producer key whose store key was not derived from it is refused by the
+    # shared typed-edge identity check before any producer comparison.
     detached = {
         **artifacts,
         "immigration_pairs": replace(
-            artifacts["immigration_pairs"], producer_key="f" * 64
+            artifacts["immigration_pairs"], producer_key=foreign
         ),
     }
-    boundary = graph._ISSUED[id(run)][1]
-    with pytest.raises(ValueError, match="ARTIFACT_PRODUCER_KEY"):
-        boundary.context(SimpleNamespace(node=node, sources={}, artifacts=detached))
+    with pytest.raises(ValueError, match="^DETAIL_ARTIFACT_IDENTITY$"):
+        context(detached)
+    # A self-consistent identity from any producer other than the host's own
+    # retained pair node passes that check and must still be refused. The
+    # host's own refusals go through current_survey_amounts.require, which
+    # prefixes CURRENT_SURVEY_AMOUNTS_; the shared check above does not.
+    detached = {
+        **artifacts,
+        "immigration_pairs": replace(
+            artifacts["immigration_pairs"],
+            producer_key=foreign,
+            key=opaque_artifact_key(foreign, pair_edge.artifact),
+        ),
+    }
+    with pytest.raises(
+        ValueError, match="^CURRENT_SURVEY_AMOUNTS_ARTIFACT_PRODUCER_KEY$"
+    ):
+        context(detached)
 
 
 def test_genuine_host_refuses_copied_transfer_before_attachment(genuine):

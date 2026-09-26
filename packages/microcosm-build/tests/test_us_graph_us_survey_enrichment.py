@@ -5,6 +5,7 @@ No production issuer, qualification method, donor model or engine is replaced.
 """
 
 import hashlib
+import json
 import os
 import shutil
 import sys
@@ -136,7 +137,31 @@ def enrichment_source_arguments(root, patch):
         output / restoration.CHECKPOINT_FILENAME, source / "person-income-attachment.h5"
     )
     add_hours_source_fields(arguments, patch)
+    # The hours helper rewrites every person member and re-pins only the
+    # coverage and restoration owners. The demographic owner reads the same
+    # members, so it must retain the final invented roster too; its earlier
+    # pins would otherwise refuse the rewritten bytes before geography.
+    patch.setattr(demographics.demographic, "_MEMBER_PINS", uc.coverage._MEMBER_PINS)
     return add_housing_source_fields(arguments, patch)
+
+
+def test_enrichment_fixture_pins_enrichment_member_owners_to_final_bytes(
+    tmp_path, monkeypatch
+):
+    arguments = enrichment_source_arguments(tmp_path, monkeypatch)
+    folder = arguments["source_dir"] / "asec"
+    final = uc.coverage._MEMBER_PINS
+    assert [pin[0] for pin in final] == [2022, 2023, 2024]
+    for _year, member, _, digest, rows, size in final:
+        payload = (folder / member).read_bytes()
+        assert len(payload) == size
+        assert hashlib.sha256(payload).hexdigest() == digest
+        table = pd.read_csv(folder / member, dtype=str, keep_default_na=False)
+        assert len(table) == rows
+        # The hours literals are present, so these pins postdate the helper.
+        assert {"HRSWK", "MARSUPWT"} <= set(table)
+    for owner in (restoration, demographics.demographic):
+        assert owner._MEMBER_PINS == final
 
 
 def test_enrichment_fixture_age_change_keeps_ss_reporting_universe_consistent(
@@ -211,6 +236,24 @@ def test_actual_current_uc_projection_preserves_ambiguous_and_contradictory_sour
         & receipt.housing_receipt.isna()
     ).any()
     prepared.checked_view()
+
+
+#: The documented default of ``run_us_survey_enrichment``'s ``groups`` argument.
+DEFAULT_AMOUNT_GROUPS = ("unemployment", "health_costs")
+
+
+def _amount_groups(run):
+    """The amount groups a run executed, from its receipt, and the unexecuted rest.
+
+    ``values.GROUPS`` also declares opt-in routes (workers compensation, child
+    support, veterans benefits) that the default host call does not execute.
+    """
+    names = tuple(json.loads(run.receipt)["groups"])
+    assert names == DEFAULT_AMOUNT_GROUPS
+    executed = graph.values.selected_groups(names)
+    unexecuted = tuple(g for g in graph.values.GROUPS if g.key not in names)
+    assert unexecuted
+    return executed, unexecuted
 
 
 @pytest.fixture(scope="module")
@@ -314,11 +357,14 @@ def test_actual_enrichment_cold_required_and_complete_parent_preservation(enrich
         assert cold.population.owners[owner] == value
     assert cold.population.mass_ledger == parent.mass_ledger
     people = cold.population.frame.person
+    executed, unexecuted = _amount_groups(cold)
+    outputs = [out for g in executed for _, out in g.fields]
+    # Opt-in amount routes add no column unless the caller selects them.
+    assert not {out for g in unexecuted for _, out in g.fields} & set(people)
     for _, rows in people.groupby(
         graph.values.provenance.support_source_id_column("person")
     ):
         assert len(rows) == 2
-        outputs = [out for g in graph.values.GROUPS for _, out in g.fields]
         np.testing.assert_array_equal(
             rows[outputs].iloc[0].to_numpy(), rows[outputs].iloc[1].to_numpy()
         )
@@ -466,13 +512,17 @@ def test_complete_frame_store_readback_and_input_coverage(enriched):
     after = diagnose_us_input_coverage(
         run.population, compiled=run.compiled, manifest=run.manifest
     )
+    executed, unexecuted = _amount_groups(run)
     outputs = (
-        {out for g in graph.values.GROUPS for _, out in g.fields}
+        {out for g in executed for _, out in g.fields}
         | {f.output for f in graph.health_graph.health.FIELDS}
         | set(graph.housing_graph.housing.SPM_OUTPUTS)
     )
     assert outputs <= set(before.missing_inputs)
     assert not outputs & set(after.missing_inputs)
+    # The default call leaves every unselected opt-in amount input missing.
+    opt_in = {out for g in unexecuted for _, out in g.fields}
+    assert opt_in <= set(before.missing_inputs) & set(after.missing_inputs)
     assert len(after.inputs) == 161
     assert not after.ambiguous_grains and not after.block_storage_issues
     key = hashlib.sha256(b"invented-survey-enrichment-export" + run.receipt).hexdigest()
