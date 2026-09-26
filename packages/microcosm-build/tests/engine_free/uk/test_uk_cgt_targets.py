@@ -421,6 +421,18 @@ BADR_BAND_VALUE_IDS = (
     "gain_500000_to_999999",
     "gain_1000000_plus",
 )
+TAXABLE_INCOME_TARGETS = (
+    "hmrc.cgt.taxpayers_by_taxable_income_band",
+    "hmrc.cgt.gains_by_taxable_income_band",
+)
+TAXABLE_INCOME_BAND_VALUE_IDS = (
+    "income_0_to_37699",
+    "income_37700_to_49999",
+    "income_50000_to_99999",
+    "income_100000_to_125139",
+    "income_125140_to_199999",
+    "income_200000_plus",
+)
 GAIN_BAND_METRICS = {
     "hmrc.cgt.taxpayers_by_gain_band": "hmrc/cgt_taxpayers_band",
     "hmrc.cgt.gains_by_gain_band": "hmrc/capital_gains_band",
@@ -612,6 +624,50 @@ def test_badr_rows_fan_out_over_the_eight_qualifying_gain_bands():
         assert target_id in contract["registry_parity"]["scope_target_ids"]
 
 
+def test_taxable_income_rows_bind_table3_margins_on_the_engine_income():
+    """Table 3's all-gains income columns, banded on the engine's CGT income."""
+    contract = json.loads(
+        (
+            _TEST_PATHS.package
+            / "src"
+            / "microcosm"
+            / "build"
+            / "uk"
+            / "uk_population_targets.json"
+        ).read_text(encoding="utf-8")
+    )
+    targets = {t["target_id"]: t for t in contract["targets"]}
+    for target_id in TAXABLE_INCOME_TARGETS:
+        rows = _references_for(target_id)
+        assert {r.name for r in rows} == {
+            f"{target_id}.{value_id}" for value_id in TAXABLE_INCOME_BAND_VALUE_IDS
+        }
+        assert len(rows) == len(TAXABLE_INCOME_BAND_VALUE_IDS)
+        for reference in rows:
+            assert reference.family == "hmrc_cgt"
+            assert reference.entity == "person"
+            selector = reference.ledger_selector
+            assert selector["period_value"] == 2024
+            assert selector["layout_groupby_value_id"] == "all_gains"
+            assert selector["source_table"].startswith(
+                "Capital Gains Tax statistics Table 3"
+            )
+            assert reference.metadata["measurement_period"] == "2024"
+        target = targets[target_id]
+        assert target["fanout_row_naming"] == "dimension_value"
+        # The exact name-set match keeps the all-gains, all-incomes total
+        # (Table 1's restatement) out of the fan-out.
+        assert target["ledger_selector"]["dimensions"] == ["cgt_taxable_income_band"]
+        binding = target["bindings"]["policyengine"]
+        assert binding["kind"] == "parameter_gated_threshold"
+        assert binding["gated_variable"] == "cgt_2024_gains"
+        assert binding["groupby_variable"] == "cgt_2024_taxable_income"
+        assert binding["band_filter_dimension"] == "taxable_income"
+        assert "filters" not in binding
+        assert target_id in contract["registry_parity"]["unmapped_declarations"]
+        assert target_id in contract["registry_parity"]["scope_target_ids"]
+
+
 def test_signed_out_rows_are_recorded_not_dropped():
     membership = json.loads(
         (
@@ -638,6 +694,7 @@ def test_signed_out_rows_are_recorded_not_dropped():
             *GAIN_BAND_TARGETS,
             *REGION_TARGETS,
             *BADR_TARGETS,
+            *TAXABLE_INCOME_TARGETS,
         )
     )
 
@@ -658,6 +715,7 @@ def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
         *GAIN_BAND_TARGETS,
         *RESIDENTIAL_TARGETS,
         *BADR_TARGETS,
+        *TAXABLE_INCOME_TARGETS,
     }
     references = [
         r
@@ -733,3 +791,24 @@ def test_banded_rows_partition_the_national_observations_on_the_pinned_feed():
     top_count = top["hmrc.cgt.badr_ir_taxpayers_by_band.gain_1000000_plus"]
     top_gains = top["hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_1000000_plus"]
     assert top_count - 500 <= top_gains / 1_000_000 < top_count
+    # Table 3's all-gains margin partitions Table 1's individuals within
+    # rounding, and about 55 percent of gains sit above the GBP 125,140
+    # higher-rate threshold, the share the calibrated candidate lost
+    # (microcosm#1014).
+    for target_id, national in (
+        ("hmrc.cgt.taxpayers_by_taxable_income_band", 551_000),
+        ("hmrc.cgt.gains_by_taxable_income_band", 119_258e6),
+    ):
+        rows = by_target[target_id]
+        assert len(rows) == len(TAXABLE_INCOME_BAND_VALUE_IDS)
+        assert sum(s.value for s in rows) == pytest.approx(national, rel=1e-3)
+    gains_by_band = {
+        reference.name.rsplit(".", 1)[1]: compiled.value
+        for reference, compiled in zip(references, registry.specs, strict=True)
+        if reference.metadata["contract_target_id"]
+        == "hmrc.cgt.gains_by_taxable_income_band"
+    }
+    above = (
+        gains_by_band["income_125140_to_199999"] + gains_by_band["income_200000_plus"]
+    )
+    assert 0.54 < above / sum(gains_by_band.values()) < 0.56

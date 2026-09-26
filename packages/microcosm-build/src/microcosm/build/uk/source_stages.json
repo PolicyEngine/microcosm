@@ -4527,12 +4527,12 @@
      "kind": "classify_cgt_band_facts_with_reviewed_fence",
      "calibration_permitted": false,
      "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
-     "fenced_fact_count": 76,
-     "fenced_fact_composition": "60 joint cells, 10 gain-band row totals, 6 income-column totals (Table 3 2024-25, 2026 release)",
+     "fenced_fact_count": 70,
+     "fenced_fact_composition": "60 joint cells and 10 gain-band row totals (Table 3 2024-25, 2026 release); the 6 all-gains income-column totals are promoted (microcosm#1014)",
      "classification_rationale": "The taxpayer count is endogenous to policy, the income conditioning is an arithmetic proxy, and the published surface needs rounding and suppression reconciliation before any per-band fact is exact.",
-     "calibrated_facts_unchanged": "The calibrated CGT facts are the FY2024-25 individual Table 1 references (hmrc.cgt.taxpayers_total, hmrc.cgt.gains_total, hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS) and the Table 2.1a size-of-gain, Table 6 age-band and Table 5 region rows declared in uk_population_targets.json (microcosm#467, #725); the 76 Table 3 2024-25 joint and marginal cells stay fenced and condition the imputation only, and Table 3's all-gains, all-incomes pair restates the Table 1 individual observations already bound.",
-     "promotion_path": "A separately reviewed target profile may lift specific band facts after the reconciliation and proxy adequacy are adjudicated; the Table 2.1a, 6 and 5 rows were promoted under microcosm#467 and #725 on the FY2024-25 individual observations, while the Table 3 joint cells remain fenced because the taxable-income proxy is still an arithmetic approximation.",
-     "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552"
+     "calibrated_facts_unchanged": "The calibrated CGT facts are the FY2024-25 individual Table 1 references (hmrc.cgt.taxpayers_total, hmrc.cgt.gains_total, hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS), the Table 2.1a size-of-gain, Table 6 age-band and Table 5 region rows declared in uk_population_targets.json (microcosm#467, #725), and the Table 3 2024-25 all-gains income-column totals measured on the engine's CGT taxable income (hmrc.cgt.taxpayers_by_taxable_income_band, hmrc.cgt.gains_by_taxable_income_band; microcosm#1014); the 70 Table 3 2024-25 joint cells and gain-band row totals stay fenced and condition the imputation only, and Table 3's all-gains, all-incomes pair restates the Table 1 individual observations already bound.",
+     "promotion_path": "A separately reviewed target profile may lift specific band facts after the reconciliation and proxy adequacy are adjudicated; the Table 2.1a, 6 and 5 rows were promoted under microcosm#467 and #725 on the FY2024-25 individual observations, and the six Table 3 all-gains income-column totals under microcosm#1014: they are unsuppressed and reconcile to the published totals (taxpayer bands sum to 551,000, gains bands to GBP 119,257m of 119,258m), and they are measured on the taxable income policyengine-uk's CGT formula sets the rate bands on rather than the redraw's arithmetic proxy. The joint cells remain fenced because they carry suppressed cells and the redraw's taxable-income proxy is still an arithmetic approximation.",
+     "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1014"
     }
    ],
    "outputs": [

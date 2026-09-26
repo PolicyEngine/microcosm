@@ -281,6 +281,7 @@
       "hmrc.cgt.gains_by_age_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_by_gain_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_by_region": "hmrc.capital_gains_tax",
+      "hmrc.cgt.gains_by_taxable_income_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_total": "hmrc.capital_gains_tax",
       "hmrc.cgt.liability_total": "hmrc.capital_gains_tax",
       "hmrc.cgt.residential_property_gains": "hmrc.capital_gains_tax",
@@ -289,6 +290,7 @@
       "hmrc.cgt.taxpayers_by_age_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_gain_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_region": "hmrc.capital_gains_tax",
+      "hmrc.cgt.taxpayers_by_taxable_income_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_total": "hmrc.capital_gains_tax",
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
@@ -561,6 +563,7 @@
       "hmrc.cgt.gains_by_age_band": "Capital Gains Tax gains by age band",
       "hmrc.cgt.gains_by_gain_band": "Capital Gains Tax gains by size of gain",
       "hmrc.cgt.gains_by_region": "Capital Gains Tax gains by region",
+      "hmrc.cgt.gains_by_taxable_income_band": "Capital Gains Tax gains by taxable income",
       "hmrc.cgt.gains_total": "Capital Gains Tax gains",
       "hmrc.cgt.liability_total": "Capital Gains Tax liability",
       "hmrc.cgt.residential_property_gains": "Capital Gains Tax residential property gains",
@@ -569,6 +572,7 @@
       "hmrc.cgt.taxpayers_by_age_band": "Capital Gains Tax taxpayers by age band",
       "hmrc.cgt.taxpayers_by_gain_band": "Capital Gains Tax taxpayers by size of gain",
       "hmrc.cgt.taxpayers_by_region": "Capital Gains Tax taxpayers by region",
+      "hmrc.cgt.taxpayers_by_taxable_income_band": "Capital Gains Tax taxpayers by taxable income",
       "hmrc.cgt.taxpayers_total": "Capital Gains Tax taxpayers",
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
@@ -27818,6 +27822,414 @@
         "contract_target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
         "measure_kind": "prepared_column",
         "observation_basis": "individuals_claiming_badr_or_investors_relief_disposal_year_2024_by_band_of_qualifying_gain",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_0_to_37699",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_0_to_37699"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.taxpayers_by_taxable_income_band.income_0_to_37699",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_100000_to_125139",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_100000_to_125139"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.taxpayers_by_taxable_income_band.income_100000_to_125139",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_125140_to_199999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_125140_to_199999"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.taxpayers_by_taxable_income_band.income_125140_to_199999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_200000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_200000_plus"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.taxpayers_by_taxable_income_band.income_200000_plus",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_37700_to_49999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_37700_to_49999"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.taxpayers_by_taxable_income_band.income_37700_to_49999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.taxpayers_by_taxable_income_band.income_50000_to_99999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_taxpayers_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_50000_to_99999"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.taxpayers_by_taxable_income_band.income_50000_to_99999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.gains_by_taxable_income_band.income_0_to_37699",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_0_to_37699"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.gains_by_taxable_income_band.income_0_to_37699",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.gains_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.gains_by_taxable_income_band.income_100000_to_125139",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_100000_to_125139"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.gains_by_taxable_income_band.income_100000_to_125139",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.gains_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.gains_by_taxable_income_band.income_125140_to_199999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_125140_to_199999"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.gains_by_taxable_income_band.income_125140_to_199999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.gains_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.gains_by_taxable_income_band.income_200000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_200000_plus"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.gains_by_taxable_income_band.income_200000_plus",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.gains_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.gains_by_taxable_income_band.income_37700_to_49999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_37700_to_49999"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.gains_by_taxable_income_band.income_37700_to_49999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.gains_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
+        "measurement_period": "2024",
+        "source_period_policy": "exact_observation"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.cgt.gains_by_taxable_income_band.income_50000_to_99999",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+        "source_concept": "hmrc.cgt_gains_individuals",
+        "groupby_dimension": "cgt_gain_band",
+        "layout_groupby_value_id": "all_gains",
+        "dimensions": [
+          "cgt_taxable_income_band"
+        ],
+        "entity_name": "person",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "cgt_taxable_income_band": "income_50000_to_99999"
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.cgt.gains_by_taxable_income_band.income_50000_to_99999",
+      "family": "hmrc_cgt",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.cgt.gains_by_taxable_income_band",
+        "measure_kind": "prepared_column",
+        "observation_basis": "individuals_observed_disposal_year_2024_net_gains_and_aea_by_taxable_income",
         "measurement_period": "2024",
         "source_period_policy": "exact_observation"
       },

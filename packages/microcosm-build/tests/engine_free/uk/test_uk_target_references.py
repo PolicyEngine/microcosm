@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1140
+ACTIVE_REFERENCE_COUNT = 1152
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -749,7 +749,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1140,
+        "active": 1152,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 15,
     }
@@ -758,9 +758,10 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     outcomes = membership["fanout_family_outcomes"]
     (cgt_outcome,) = [entry for entry in outcomes if entry["family"] == "hmrc_cgt"]
     # 24 age-band rows, 24 region-tier cells, 24 size-of-gain rows
-    # (microcosm#725, #467) and 16 Table 4.1 BADR/IR band rows (microcosm#1014).
+    # (microcosm#725, #467), 16 Table 4.1 BADR/IR band rows and 12 Table 3
+    # taxable-income margin rows (microcosm#1014).
     assert cgt_outcome["status"] == "active_with_row_level_signed_exclusions"
-    assert cgt_outcome["active_reference_count"] == 90
+    assert cgt_outcome["active_reference_count"] == 102
     assert "scaled_by_ratio" in cgt_outcome["signed_rationale"]
     assert [entry for entry in outcomes if entry["family"] != "hmrc_cgt"] == [
         {
@@ -1629,6 +1630,36 @@ def test_cgt_band_fanout_row_without_incumbent_name_takes_the_declared_form() ->
     )
     # With no incumbent names at all the same form applies.
     assert _fanout_name(declared, fact, {}) == "hmrc/capital_gains_band_3000"
+
+
+def test_dimension_value_fanout_naming_names_rows_by_their_sole_dimension() -> None:
+    # HMRC CGT Table 3's all-gains margin: every row sits at layout value
+    # all_gains and differs only in its taxable-income band (microcosm#1014).
+    target = {
+        "target_id": "hmrc.cgt.taxpayers_by_taxable_income_band",
+        "fanout_row_naming": "dimension_value",
+        "bindings": {
+            "policyengine": {"metric_name": "hmrc/cgt_taxpayers_by_taxable_income_band"}
+        },
+    }
+
+    def fact(dimensions):
+        return {"dimensions": dimensions, "layout": {"groupby_value_id": "all_gains"}}
+
+    assert _fanout_name(
+        target, fact({"cgt_taxable_income_band": "income_125140_to_199999"}), {}
+    ) == ("hmrc.cgt.taxpayers_by_taxable_income_band.income_125140_to_199999")
+    # Without the rule every margin row would take the shared layout value.
+    undeclared = {k: v for k, v in target.items() if k != "fanout_row_naming"}
+    assert _fanout_name(
+        undeclared, fact({"cgt_taxable_income_band": "income_0_to_37699"}), {}
+    ) == ("hmrc.cgt.taxpayers_by_taxable_income_band.all_gains")
+    for dimensions in (
+        {},
+        {"cgt_taxable_income_band": "income_0_to_37699", "taxpayer_type": "all"},
+    ):
+        with pytest.raises(ValueError, match="by their dimension value"):
+            _fanout_name(target, fact(dimensions), {})
 
 
 def test_cgt_band_fanout_naming_refuses_unrecognised_bands_and_rules() -> None:

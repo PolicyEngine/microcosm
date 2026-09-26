@@ -639,6 +639,11 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
 #: the same form as the incumbent banded names, so a published band the
 #: incumbent never carried is authored rather than silently dropped.
 FANOUT_ROW_NAMING_METRIC_BAND_LOWER = "metric_name_band_lower"
+#: Naming rule for a fan-out whose facts share one layout value but differ in
+#: their single dimension (HMRC CGT Table 3's all-gains margin: every row sits
+#: at layout value ``all_gains`` and differs only in its taxable-income band):
+#: the row takes ``<target_id>.<dimension value>`` (microcosm#1014).
+FANOUT_ROW_NAMING_DIMENSION_VALUE = "dimension_value"
 
 _CGT_GAIN_BAND_VALUE = re.compile(r"^gain_(\d+)_(?:to_\d+|plus)$")
 
@@ -687,7 +692,21 @@ def _fanout_name(
                 f"Unsupported fanout_row_naming {naming!r} on {target_id!r}."
             )
         return None if candidates else f"{target_id}.{value_id or 'detail'}"
-    if target.get("fanout_row_naming") is not None:
+    naming = target.get("fanout_row_naming")
+    if naming == FANOUT_ROW_NAMING_DIMENSION_VALUE:
+        dimensions = fact.get("dimensions") or {}
+        values = (
+            [str(value) for value in dimensions.values()]
+            if isinstance(dimensions, Mapping)
+            else []
+        )
+        if len(values) != 1:
+            raise ValueError(
+                f"{target_id!r} names fan-out rows by their dimension value, but "
+                f"a fact carries {len(values)} dimensions."
+            )
+        return f"{target_id}.{values[0]}"
+    if naming is not None:
         raise ValueError(
             f"{target_id!r} declares fanout_row_naming but its fact carries no "
             "recognised band dimension; the row would otherwise be dropped."
@@ -858,7 +877,7 @@ def _add_uk_membership_accounting(
             "status": "active_with_row_level_signed_exclusions",
             "active_reference_count": fanout_counts.get("hmrc_cgt", 0),
             "signed_rationale": (
-                "The FY2024-25 individual CGT observations fan out four ways "
+                "The FY2024-25 individual CGT observations fan out five ways "
                 "(microcosm#725, #467, #1014): Table 6 age bands as dimension "
                 "rows (the 0-15 band and the all-ages total are signed out row "
                 "by row), Table 5 country/region cells over the twelve-area "
@@ -866,10 +885,13 @@ def _add_uk_membership_accounting(
                 "share through the scaled_by_ratio operation, Table 2.1a "
                 "size-of-gain bands under the incumbent banded names (the "
                 "0-2,999 band below the 2024 annual exempt amount is signed "
-                "out), and Table 4.1 Business Asset Disposal Relief and "
+                "out), Table 4.1 Business Asset Disposal Relief and "
                 "Investors' Relief claimants and qualifying gains by band of "
                 "qualifying gain (the individuals total row, which restates "
-                "the eight bands, is signed out). Chronicle's Table 2.1a package emits taxpayers and gains "
+                "the eight bands, is signed out), and Table 3's all-gains "
+                "taxpayers and gains by taxable-income band, measured on the "
+                "taxable income the engine's CGT formula stacks gains on and "
+                "named by that band (the joint cells stay fenced). Chronicle's Table 2.1a package emits taxpayers and gains "
                 "only, although the published sheet also carries an amounts-of-"
                 "tax column, so liability binds nationally and by age band; a "
                 "liability-by-size-of-gain family becomes possible once Chronicle "

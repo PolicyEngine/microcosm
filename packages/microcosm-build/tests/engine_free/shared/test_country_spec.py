@@ -1123,7 +1123,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1140
+            len(references) == 1152
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1133,6 +1133,7 @@ class TestExistingPackagesGeneralize:
         # cells and Wales gains ten country rows (bands A-I + total);
         # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
         # 24 size-of-gain rows; microcosm#1014: 16 Table 4.1 BADR/IR band rows
+        # and 12 Table 3 taxable-income margin rows
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
