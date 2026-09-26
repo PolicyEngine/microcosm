@@ -165,8 +165,22 @@ def count_calls(targets):
             try:
                 for code in installed_codes:
                     sys.monitoring.set_local_events(TOOL, code, 0)
+                # clear_tool_id exists only from Python 3.14 (the floor is
+                # 3.13). Unregister this observer's one callback explicitly;
+                # with every local mask zeroed and no global events, that is
+                # the complete release on both versions.
+                sys.monitoring.register_callback(
+                    TOOL, sys.monitoring.events.PY_START, None
+                )
+                require(sys.monitoring.get_events(TOOL) == 0, "EVENTS_REMAIN")
+                require(
+                    all(
+                        sys.monitoring.get_local_events(TOOL, code) == 0
+                        for code in installed_codes
+                    ),
+                    "LOCAL_EVENTS_REMAIN",
+                )
             finally:
-                sys.monitoring.clear_tool_id(TOOL)
                 sys.monitoring.free_tool_id(TOOL)
 
 

@@ -70,8 +70,12 @@ def normal_return_observer(target, *, ordinal, callback):
         assert monitor.get_tool(tool) == name, "RETURN_OBSERVER_OWNERSHIP_CHANGED"
         monitor.set_local_events(tool, code, 0)
         previous = monitor.register_callback(tool, monitor.events.PY_RETURN, None)
-        monitor.clear_tool_id(tool)
+        # clear_tool_id exists only from Python 3.14 (the floor is 3.13). The
+        # zeroed local mask and the unregistered callback above release
+        # everything this observer installed on both versions.
+        events_left = (monitor.get_events(tool), monitor.get_local_events(tool, code))
         monitor.free_tool_id(tool)
+        assert events_left == (0, 0)
         assert previous is returned
         assert monitor.get_tool(tool) is None
         assert (sys.getprofile(), threading.getprofile()) == profiles
