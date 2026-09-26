@@ -85,6 +85,7 @@ _STAGE_MODULES = {
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
+    "spi_housing_shell": "spi_housing_shell",
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
     "uc_deduction_attributes": "uc_deduction_attributes",
@@ -376,6 +377,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
+    from .spi_housing_shell import UKSPIHousingShellStageTransform
     from .spi_spine import (
         UKFRSHMRCSpineLeavesStageTransform,
         UKSPIIncomeSpineStageTransform,
@@ -528,6 +530,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 sampled_rung=True,
                 donor_table=spi_donor,
                 source_targets=income_targets,
+            ),
+            "spi_housing_shell": UKSPIHousingShellStageTransform(
+                stage=stages["spi_housing_shell"], n_estimators=qrf_estimators
             ),
             "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
                 stage=stages["uc_reporter_redraw"], engine=engine

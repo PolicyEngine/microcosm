@@ -258,21 +258,12 @@ def e5_identity_receipt(
             )
         return {"household": household_out, "person": person}
 
+    # The caller scopes the frame to the population the wealth and uprating
+    # stages saw (``_frame_as_stage_saw``): the SPI support rows run before
+    # them and are imputed there, while the CGT layers are stacked later.
     person = frame.table("person")
     benunit = frame.table("benunit")
     household = frame.table("household")
-    # Scope to the FRS spine rows: the SPI channel stages stack synthetic
-    # households AFTER the E5 stages ran (with their own channel-imputed
-    # property values), so the deterministic-layer identity claims apply
-    # only to the population the wealth and uprating stages actually saw.
-    # The stacked rows are E7's receipt surface, not E5's.
-    if "household_is_spi_synthetic" in household.columns:
-        spine_mask = ~household["household_is_spi_synthetic"].astype(bool)
-        household = household.loc[spine_mask].reset_index(drop=True)
-        spine_household_ids = set(household["household_id"].tolist())
-        person = person.loc[
-            person["person_household_id"].isin(spine_household_ids)
-        ].reset_index(drop=True)
     original = recompute(person, benunit, household)
     rng = np.random.default_rng(permutation_seed)
     permuted = recompute(
@@ -420,26 +411,28 @@ def e6_identity_receipt(
     household = frame.table("household").copy()
     household["household_weight"] = frame.weights_for("household").values
     # Scope to the rows the E6 stages actually saw, and restore the grossing
-    # scale they saw them at. Every later stacking stage copies its source
-    # row's consumption/services values onto the new rows, so those rows are
-    # the later stage's receipt surface, not E6's; and every later stage that
-    # redistributes mass leaves these rows carrying a fraction of the weight
-    # E6 normalized against. Three layers stack today (SPI support channel,
-    # capital-gains clone, CGT band donors) and two of them move mass: the
-    # SPI share is divided back out, the clone's mass (equal halves before
-    # the #970 anchor, pair-conserving afterwards) is folded back by pair.
-    spine_mask = _unstacked_mask(household)
-    if spine_mask is not None:
+    # scale they saw them at. Every stacking stage that runs after E6 copies
+    # its source row's consumption/services values onto the new rows, so those
+    # rows are the later stage's receipt surface, not E6's; and every later
+    # stage that redistributes mass leaves these rows carrying a fraction of
+    # the weight E6 normalized against. The SPI support rows (and their band
+    # donors) are stacked before E6 and imputed there, so they stay in scope at
+    # their allocated mass. The CGT clone and band donors are stacked after:
+    # their rows are dropped and the clone's mass (equal halves before the #970
+    # anchor, pair-conserving afterwards) is folded back by pair.
+    later_flags = _flags_stacked_after(_E6_FIRST_STAGE, household)
+    if later_flags:
         household["household_weight"] = _pre_clone_household_weights(frame)
+        spine_mask = ~household[later_flags].astype(bool).any(axis=1)
         household = household.loc[spine_mask].reset_index(drop=True)
         spine_household_ids = set(household["household_id"].tolist())
         person = person.loc[
             person["person_household_id"].isin(spine_household_ids)
         ].reset_index(drop=True)
         applied = tuple(
-            stage
-            for flag, stage in _MASS_STAGE_BY_FLAG.items()
-            if flag in frame.table("household").columns
+            _MASS_STAGE_BY_FLAG[flag]
+            for flag in later_flags
+            if flag in _MASS_STAGE_BY_FLAG
         )
         household["household_weight"] = household["household_weight"].to_numpy(
             dtype=float
@@ -1185,13 +1178,13 @@ def main() -> int:
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
         )
     elif args.check == "e5":
-        # E5's wealth stages ran before every stacking layer, and its regional
-        # property uprating scales to a per-region mean over the owner
-        # households in the frame — so a frame carrying stacked rows shifts
-        # the denominator and the recomputation stops matching what the stage
-        # stored. Scope to the population the stage saw.
+        # E5's wealth stages run after the SPI support rows are stacked and
+        # before the CGT layers. The regional property uprating's mean is over
+        # FRS-base owners, so a frame still carrying the later CGT copies
+        # shifts that denominator and the recomputation stops matching what
+        # the stage stored. Scope to the population the stage saw.
         receipt = e5_identity_receipt(
-            _frs_only_frame(frame),
+            _frame_as_stage_saw(frame, _E5_FIRST_STAGE),
             permutation_seed=args.permutation_seed,
         )
         ok = bool(
@@ -1251,11 +1244,18 @@ def main() -> int:
 #: A new stacking stage MUST add its flag here, or these receipts silently
 #: start comparing inherited values against fresh draws and report a spine
 #: defect that is really an instrument defect.
-_STACKED_ROW_FLAGS = (
-    "household_is_spi_synthetic",  # #717 SPI support channel
-    "household_is_capital_gains_clone",  # E8 capital-gains incidence clone
-    "household_is_cgt_band_donor",  # E8 CGT band donors
-)
+_STACKING_STAGE_BY_FLAG = {
+    # #717 SPI support channel; the #1006 income band donors carry the same flag.
+    "household_is_spi_synthetic": "spi_support_channel",
+    "household_is_capital_gains_clone": "cgt_incidence_clone",  # E8 clone
+    "household_is_cgt_band_donor": "cgt_band_donors",  # E8 CGT band donors
+}
+_STACKED_ROW_FLAGS = tuple(_STACKING_STAGE_BY_FLAG)
+
+#: The first stage of each receipted block. A layer stacked before it was part
+#: of the population the block imputed onto; one stacked after it was not.
+_E5_FIRST_STAGE = "was_wealth"
+_E6_FIRST_STAGE = "nts_bus_travel"
 
 #: The stage that stacks each flag, for artifacts that carry it. The weight
 #: restoration is driven by what the *artifact* actually contains rather than
@@ -1298,13 +1298,32 @@ def _pre_clone_household_weights(frame) -> np.ndarray:
     return weights
 
 
-def _unstacked_mask(household: pd.DataFrame):
-    """Rows that were present when the pre-stacking stages ran, or None."""
+def _roster_positions() -> dict[str, int]:
+    """Stage positions in the committed source-stage roster."""
 
-    flags = [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
-    if not flags:
-        return None
-    return ~household[flags].astype(bool).any(axis=1)
+    from importlib.resources import files as _files
+
+    spec = json.loads(
+        _files("microcosm.build.uk")
+        .joinpath("source_stages.json")
+        .read_text(encoding="utf-8")
+    )
+    return {stage["stage"]: index for index, stage in enumerate(spec["stages"])}
+
+
+def _flags_stacked_after(stage: str, household: pd.DataFrame) -> list[str]:
+    """Stacking flags present in the artifact whose layer runs after ``stage``.
+
+    Presence is read from the artifact, order from the committed roster, so
+    receipt an artifact with the tool at the commit that built it.
+    """
+
+    positions = _roster_positions()
+    return [
+        flag
+        for flag, stacker in _STACKING_STAGE_BY_FLAG.items()
+        if flag in household.columns and positions[stacker] > positions[stage]
+    ]
 
 
 def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
@@ -1365,18 +1384,39 @@ def _frs_only_frame(frame):
     anchor.
     """
 
+    household = frame.table("household")
+    return _drop_stacked_layers(
+        frame, [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
+    )
+
+
+def _frame_as_stage_saw(frame, stage: str):
+    """Scope the artifact to the rows present when ``stage`` ran."""
+
+    return _drop_stacked_layers(
+        frame, _flags_stacked_after(stage, frame.table("household"))
+    )
+
+
+def _drop_stacked_layers(frame, flags: Sequence[str]):
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
         uk_national_frame,
     )
 
     household = frame.table("household")
-    flags = [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
+    flags = list(flags)
     if not flags:
         return frame
     stacked = household[flags].astype(bool).any(axis=1)
     keep = ~stacked
-    weights = _pre_clone_household_weights(frame)[keep.to_numpy()]
+    # Fold clone mass back only when the clone layer is the one being dropped.
+    all_weights = (
+        _pre_clone_household_weights(frame)
+        if "household_is_capital_gains_clone" in flags
+        else np.asarray(frame.weights_for("household").values, dtype=float)
+    )
+    weights = all_weights[keep.to_numpy()]
     household = household.loc[keep].reset_index(drop=True)
     ids = set(household["household_id"].tolist())
     person = (

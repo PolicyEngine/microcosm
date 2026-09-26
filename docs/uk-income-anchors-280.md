@@ -212,19 +212,11 @@ microcosm#1006, comments 5812328880 and 5814299594):
   on everything upstream, the band donors included. The limit stays at 1.0 in
   this tree; the fix belongs in the gate (a tolerance for a top-up of a couple
   of rows) and needs a ruling. Assessment builds raised it to 2.0 locally only.
-- **The SPI copies, band donors included, inherit their FRS parent's wealth,
-  spending and VAT.** The support channel and the band donors copy whole
-  households after `was_wealth`, `regional_property_uprating`,
-  `nts_bus_travel`, `lcfs_consumption`, `etb_vat` and `etb_services` have run,
-  and only incomes, pension contributions and reported benefits are replaced
-  afterwards. On spine-u all 45 WAS, LCFS and ETB columns on the SPI rows equal
-  the parent's; the rank correlation of investment income with gross financial
-  wealth is 0.14 on the SPI half against 0.54 on the FRS half; and the band
-  donors' median gross financial wealth is flat across the bands (£48k, £67k,
-  £50k and £44k from the 200k band to the 2m-and-over band, where median income
-  is £3.57m). The order is inherited from the enhanced FRS. The reorder that
-  runs the SPI block right after `frs_brma` is microcosm#1012, stacked on this
-  branch; it is deferred there, not folded in here.
+- **The SPI copies, band donors included, inherited their FRS parent's wealth,
+  spending and VAT** while this lane was open: on spine-u all 45 WAS, LCFS and
+  ETB columns on the SPI rows equalled the parent's, and the band donors' median
+  gross financial wealth was flat across the bands (£48k, £67k, £50k and £44k).
+  The next section runs the SPI block before those stages (microcosm#1012).
 - **The national calibration at this head blocks on the CGT projection
   fence.** With the spine rebuilt from the rebased head, the terminal gate
   `uk_cgt_projection_entrants` (introduced by #979) refuses: 146,920 weighted
@@ -240,6 +232,107 @@ microcosm#1006, comments 5812328880 and 5814299594):
   a certified cut until the fence is settled on the #970/#979 side (bind the
   count, spread the band-donor mass over lighter rows, or cap their weight
   ratio).
+
+## SPI rows before the donor imputations
+
+The SPI block (`frs_hmrc_spine_leaves`, `spi_support_channel`,
+`spi_income_band_donors`, `hmrc_spi_income_spine`) runs right after
+`frs_brma`, ahead of `was_wealth`, `regional_property_uprating`,
+`nts_bus_travel`, `lcfs_consumption`, `etb_vat` and `etb_services`. Those six
+stages condition on income, and the support stages copy whole FRS households.
+In the enhanced FRS order, which the spine used to follow, each SPI copy kept
+the wealth, spending, VAT rate, public-service use and bus travel drawn for its
+FRS parent's income, while its adults' incomes were replaced by SPI draws. A
+£2m band donor then carried the financial wealth of the median FRS household it
+was copied from.
+
+With the SPI block first, every row, the FRS base rows included, is imputed
+from its final incomes. On the base rows this includes the SPI stage-1
+dividend redraw.
+
+Three details follow from the order:
+
+- `uc_reporter_redraw` stays after the six stages. Its award screen runs the
+  engine, and for benefit units without an FRS capital answer, UC capital falls
+  back to the household's WAS `savings`, property and `corporate_wealth`. The
+  graph opens a reader-isolation version before it, as it does for
+  `uc_capital_coherence`.
+- `regional_property_uprating` takes each region's factor over FRS-base owners
+  only, the population the factor was defined on, and applies it to every
+  owner, the SPI rows included.
+- The six stages now see the SPI support mass allocation, so their
+  weight-dependent steps run at the frame's prior (importance) weights: the
+  gas-connection walk, the NEED rake and DESNZ level, the ETB NHS
+  normalisation and the NTS receipts.
+
+## The SPI households' housing
+
+The support copies and band donors are whole FRS households, so after the
+reorder their wealth and spending followed their SPI incomes while their
+housing was still the parent's. On the reordered spine the SPI half's detached
+share sat at 27-29 % in every income band (the FRS half rises from 19 % to 47 %
+by £200k-1m), social renting stayed at 11-16 % above £50k and 16 % above £1m,
+and 402k of the SPI channel's 506k prior-weighted Housing Benefit households
+were owner-occupiers.
+
+`spi_housing_shell` runs right after the SPI income chain and imputes the
+housing of every SPI-channel household, the household counterpart of the SPI
+stage-2 FRS-only fill. It trains on the FRS base households and conditions on
+region, household type, adults, children, single-adult status, the reference
+person's age and the household's income components; no engine run, so housing
+benefits do not become circular. Tenure, dwelling type, bedrooms and council
+tax band are drawn in that order by weighted multiclass classifiers with an
+inverse-CDF draw; council tax, rent, both mortgage repayments, insurance,
+service charges, water, Northern Ireland rates, subletting and the head benefit
+unit's Housing Benefit and the reference person's council tax benefit by one
+chained regime-gated QRF conditioned on those categories. Every draw reads
+uniforms keyed on household id. Structural zeros are learned from the training
+households (an amount is zero wherever the FRS has no positive value for that
+tenure or region); mortgage payments need a mortgaged tenure, Housing Benefit
+a rented one, and council tax benefit is capped at council tax and carried by
+the reference person, as the FRS holds it. Region, single-adult status, BRMA
+and composition stay the recipient's; FRS rows are unchanged.
+
+Imputation was chosen over whole-record donor matching on a holdout of FRS
+households (`tools/validate_uk_housing_imputation.py`). Within FRS support the
+two, and a forest-weighted whole-record draw, sit near the sampling noise; on
+the top 5 % of incomes held out and filled from the rest, which is the
+extrapolation the SPI copies need, imputation came closest on ownership (0.818
+against 0.855 observed; matching 0.787), detached share (0.396 against 0.446;
+matching 0.328) and four or more bedrooms (0.456 against 0.557; matching
+0.355), with the most distinct bundles. All three under-draw council tax band
+F and above at the top (about 0.19 against 0.35).
+
+## The gas connection
+
+`lcfs_consumption` imposes each region's published gas-connected share (DESNZ
+gas meters over electricity meters) on the drawn gas before the NEED rake.
+It used to disconnect the households with the smallest drawn gas first. Once
+the SPI support households drew gas from their own, higher incomes, that walk
+piled the disconnections onto low-draw FRS flats: Scottish flats' connected
+share fell from 76 % to 71 % while terraced and semi-detached houses rose. NEED
+publishes Scotland's gas means by property type and for all dwellings; on the
+tilted mix the property-type means implied a Scottish level 2.6 % above the
+all-dwellings mean, and the rake could not close it. At 300 sweeps the income
+margins converge to zero and Scotland's property-type cells all settle 2.54 %
+(reorder alone) or 2.56 % (with the housing stage) below target, against the
+gate's 2.5 %. The housing stage is not the cause.
+
+The walk now takes gas-positive households in an identity-keyed uniform order
+(seed 0, salt `lcfs_consumption:gas_disconnection`) with the same
+weight-fitting skip, so every group of households loses the same expected
+share of its drawn connected mass and only the level of the drawn connection
+moves to the published share. Its converged residual is 1.05 % (Scotland
+gas by property type), with the income margins at zero.
+
+The recipient rake also runs 200 sweeps instead of 50. With the SPI
+households' energy drawn from their own incomes, the income margins start
+further from NEED's gradient, and at 50 sweeps they were still falling
+(electricity 3.14 %, gas 2.76 %). The per-sweep receipt shows both under
+2.5 % from sweep 59 and flat by 200 (1.16 % and 1.36 % at 100, 0.91 % and
+1.12 % at 200, 0.82 % and 1.05 % at 300), so the gate reads a converged
+residual rather than a truncated one, as its governance note asks. The 2.5 %
+tolerance is unchanged.
 
 ## Not done here
 

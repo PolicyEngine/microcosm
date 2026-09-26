@@ -3159,7 +3159,7 @@
         "gas_consumption",
         "has_fuel_consumption"
       ],
-      "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the pricing step (Mar\u00eda's rulings 2026-09-15 and 2026-09-17), which bounds the region no area prices (Wales keeps the chain's raw draw) while the priced regions move beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household's QEP price region through the committed crosswalk using the FY2024-25 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting the households with the smallest drawn gas first, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and after the four-margin NEED rake one factor per fuel scales the kWh so the design-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four FY2024-25 quarters; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. Bus fares are priced from journeys (microcosm#930), where the nts_bus_travel stage imputes each person's annual bus-in-London and other-local-bus trips and their concessionary eligibility, and the declared price_bus_journeys step sets bus_fare_spending as the sum over the household's non-eligible persons of trips times boardings per resident trip (the published BUS01 journeys over the published NTS0705a trips per resident times the ONS population) times the yield per fare-paying boarding (BUS05ai receipts over journeys less concessionary journeys), per area; bus-in-London trips take the London area's price for every resident, other-local-bus trips the price of the residence area (England outside London; Scotland and Northern Ireland from their own receipts and journeys with England's trip rate as the declared proxy); Wales is unpriced and keeps the raw draw. The chain still draws bus_fare_spending so later targets condition on the same raw draw; the emitted column is the priced value. The receipt records every factor, the frame-implied boardings beside the published ones and the frame's eligible trip share beside the publisher's concessionary boarding share, so the design-weight fit of the bound receipts targets is read as a composition check, never a level the stage set; the",
+      "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the pricing step (Mar\u00eda's rulings 2026-09-15 and 2026-09-17), which bounds the region no area prices (Wales keeps the chain's raw draw) while the priced regions move beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household's QEP price region through the committed crosswalk using the FY2024-25 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting gas-positive households in an identity-keyed uniform order, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and after the four-margin NEED rake one factor per fuel scales the kWh so the prior-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four FY2024-25 quarters; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. The disconnection walk's seed-0 uniform order makes every group of households (dwelling type, income band, support channel) lose the same expected share of its drawn connected mass, so only the level of the drawn connection moves; the smallest-drawn-gas-first order it replaces piled the disconnections onto low-draw flats once the SPI support households drew gas from their own incomes, and NEED's Scottish property-type means then implied a level 2.6 % above the Scottish all-dwellings mean, a margin conflict the rake could not close. Bus fares are priced from journeys (microcosm#930), where the nts_bus_travel stage imputes each person's annual bus-in-London and other-local-bus trips and their concessionary eligibility, and the declared price_bus_journeys step sets bus_fare_spending as the sum over the household's non-eligible persons of trips times boardings per resident trip (the published BUS01 journeys over the published NTS0705a trips per resident times the ONS population) times the yield per fare-paying boarding (BUS05ai receipts over journeys less concessionary journeys), per area; bus-in-London trips take the London area's price for every resident, other-local-bus trips the price of the residence area (England outside London; Scotland and Northern Ireland from their own receipts and journeys with England's trip rate as the declared proxy); Wales is unpriced and keeps the raw draw. The chain still draws bus_fare_spending so later targets condition on the same raw draw; the emitted column is the priced value. The receipt records every factor, the frame-implied boardings beside the published ones and the frame's eligible trip share beside the publisher's concessionary boarding share, so the prior-weight fit of the bound receipts targets is read as a composition check, never a level the stage set; the",
       "operations": [
         {
           "annualization_weeks": 52.17857142857143,
@@ -3377,7 +3377,7 @@
             "electricity_consumption",
             "gas_consumption"
           ],
-          "iterations": 50,
+          "iterations": 200,
           "kind": "iterative_proportional_fit",
           "margins": [
             "income",
@@ -3401,7 +3401,7 @@
           "connection_resource": "desnz_domestic_energy_facts.json",
           "connection_rule": "gas_meters_over_electricity_meters",
           "crosswalk_resource": "ofgem_region_crosswalk.json",
-          "disconnect_rule": "lowest_drawn_gas_first",
+          "disconnect_rule": "identity_uniform_order",
           "gas_connected": "published_meter_share",
           "kind": "price_domestic_energy",
           "level_fiscal_start": "2024-04-01",
@@ -3414,6 +3414,7 @@
           "period_type": "fiscal_year",
           "period_value": 2024,
           "resource": "qep_energy_prices.json",
+          "seed": 0,
           "vat_treatment": "including_vat"
         },
         {
@@ -4146,6 +4147,98 @@
       "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
       "stage": "salary_sacrifice",
       "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis"
+    },
+    "spi_housing_shell": {
+      "artifacts": [],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Runs after the SPI income chain and before the income-conditioned donor stages, the household counterpart of the SPI stage-2 FRS-only fill. The support copies and income band donors are whole FRS households, so without this stage each kept its FRS parent's housing, drawn for the parent's income. Trained on the FRS base households (positive household weight) and drawn for every SPI-channel household from engine-free predictors (region, household type, adults, children, single-adult status, reference-person age and household income components). Tenure, dwelling type, bedrooms and council-tax band are drawn in that order by weighted multiclass classifiers with an inverse-CDF draw; the housing amounts and the head benefit unit's Housing Benefit and the reference person's council tax benefit by one chained regime-gated QRF conditioned on the drawn categories, clipped to the training range. Every draw reads uniforms keyed on household_id. An amount is zero wherever the training households have no positive value for its tenure or region; mortgage payments need a mortgaged tenure (true of every FRS household); Housing Benefit needs a rented tenure (the engine pays it to renting reporters only); council tax benefit is capped at council tax and the household council_tax_rebate equals it, both on the reference person as the FRS holds them. Region, single-adult status, BRMA (region and the recipient's own LHA category), the flat-rate household draws and composition are kept; FRS base rows are byte-unchanged.",
+      "operations": [
+        {
+          "amount_fit": "regime_gated_qrf",
+          "amount_targets": [
+            "council_tax",
+            "council_tax_reported",
+            "rent",
+            "mortgage_interest_repayment",
+            "mortgage_capital_repayment",
+            "structural_insurance_payments",
+            "housing_service_charges",
+            "water_and_sewerage_charges",
+            "domestic_rates",
+            "subrent"
+          ],
+          "benefit_targets": [
+            "housing_benefit_reported",
+            "council_tax_benefit_reported"
+          ],
+          "categorical_fit": "weighted_hist_gradient_boosting_classifier",
+          "categorical_predictors": [
+            "region",
+            "ons_household_type"
+          ],
+          "categorical_targets": [
+            "tenure_type",
+            "accommodation_type",
+            "num_bedrooms",
+            "council_tax_band"
+          ],
+          "identity": "household_id",
+          "kind": "impute_spi_housing_shell",
+          "landing": "household_reference_person",
+          "n_estimators": 100,
+          "predictors": [
+            "region",
+            "ons_household_type",
+            "num_adults",
+            "num_children",
+            "single_adult",
+            "hrp_age",
+            "employment_income",
+            "self_employment_income",
+            "private_pension_income",
+            "investment_income",
+            "state_pension_reported"
+          ],
+          "rows": "spi_channel",
+          "rules": [
+            "mortgage_requires_mortgaged_tenure",
+            "housing_benefit_requires_rented_tenure",
+            "council_tax_benefit_capped_at_council_tax",
+            "council_tax_rebate_equals_hrp_council_tax_benefit"
+          ],
+          "seed": 0,
+          "structural_zero_keys": [
+            "tenure_type",
+            "region"
+          ],
+          "support_clip": "donor_range",
+          "training_rows": "base_frs_channel_positive_weight"
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "tenure_type",
+        "accommodation_type",
+        "num_bedrooms",
+        "council_tax_band",
+        "council_tax",
+        "council_tax_reported",
+        "rent",
+        "mortgage_interest_repayment",
+        "mortgage_capital_repayment",
+        "structural_insurance_payments",
+        "housing_service_charges",
+        "water_and_sewerage_charges",
+        "domestic_rates",
+        "subrent",
+        "council_tax_rebate",
+        "housing_benefit_reported",
+        "council_tax_benefit_reported"
+      ],
+      "source": "Family Resources Survey 2024-25 base households' housing (tenure, dwelling type, bedrooms, council tax, housing costs and the housing-linked benefit reports), imputed onto the SPI support households from their own region, composition and post-SPI incomes.",
+      "stage": "spi_housing_shell",
+      "survey": "Family Resources Survey 2024-25"
     },
     "spi_income_band_donors": {
       "artifacts": [

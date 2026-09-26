@@ -2,8 +2,8 @@
 
 microcosm#771: the previous acceptance evidence quietly described a 24-stage
 build after the plan had grown to 25. This binder makes that class of drift a
-CI failure. The #828/#832/#685 insertions and #785 reorder are deliberately pending
-their licensed re-mints, so the historical receipt stays truthful while the
+CI failure. The #828/#832/#685 insertions and the #785 and SPI-first reorders are
+deliberately pending their licensed re-mints, so the historical receipt stays truthful while the
 test composes only those reviewed transformations. Each transformation pins
 the receipt state it expects and must be deleted when that re-mint lands.
 """
@@ -87,6 +87,24 @@ def _apply_pending_roster_transformations(
     # right after the support channel and before the income draw.
     assert "spi_income_band_donors" not in roster
     roster.insert(roster.index("spi_support_channel") + 1, "spi_income_band_donors")
+    # SPI-first re-mint pending: the SPI block moves from after etb_services to
+    # right after frs_brma, so the donor imputations see the SPI rows.
+    spi_block = [
+        "frs_hmrc_spine_leaves",
+        "spi_support_channel",
+        "spi_income_band_donors",
+        "hmrc_spi_income_spine",
+    ]
+    start = roster.index("frs_hmrc_spine_leaves")
+    assert roster[start : start + len(spi_block)] == spi_block
+    assert roster[start - 1] == "etb_services"
+    del roster[start : start + len(spi_block)]
+    brma = roster.index("frs_brma")
+    roster[brma + 1 : brma + 1] = spi_block
+    # SPI housing shell re-mint pending: the SPI households' housing is imputed
+    # from their own incomes right after the SPI income chain.
+    assert "spi_housing_shell" not in roster
+    roster.insert(roster.index("hmrc_spi_income_spine") + 1, "spi_housing_shell")
     return tuple(roster)
 
 

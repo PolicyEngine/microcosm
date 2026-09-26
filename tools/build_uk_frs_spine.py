@@ -121,6 +121,9 @@ from microcosm.build.uk_runtime.salary_sacrifice import UKSalarySacrificeStageTr
 from microcosm.build.uk_runtime.spi_band_donors import (
     UKSPIIncomeBandDonorStageTransform,
 )
+from microcosm.build.uk_runtime.spi_housing_shell import (
+    UKSPIHousingShellStageTransform,
+)
 from microcosm.build.uk_runtime.spi_spine import (
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
@@ -674,6 +677,10 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["stack_income_band_donor_households"] = seed
                 elif operation.kind == "resample_band_donor_leaves":
                     stage_seeds["band_donor_resample"] = seed
+                elif operation.kind == "impute_spi_housing_shell":
+                    stage_seeds[stage.stage] = seed
+                elif operation.kind == "price_domestic_energy":
+                    stage_seeds["gas_disconnection"] = seed
                 elif operation.kind == "within_band_draws":
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind in (
@@ -1603,6 +1610,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
+        if "spi_housing_shell" in stage_names:
+            implementations["spi_housing_shell"] = UKSPIHousingShellStageTransform(
+                stage=stages_by_name["spi_housing_shell"]
+            )
         if "uc_reporter_redraw" in stage_names:
             implementations["uc_reporter_redraw"] = UKUCReporterRedrawStageTransform(
                 stage=stages_by_name["uc_reporter_redraw"],

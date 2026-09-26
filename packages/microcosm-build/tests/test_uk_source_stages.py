@@ -55,6 +55,9 @@ E7_STAGE_NAMES = [
     "spi_income_band_donors",
     "hmrc_spi_income_spine",
 ]
+HOUSING_SHELL_STAGE_NAMES = [
+    "spi_housing_shell",
+]
 UC_REPORTER_REDRAW_STAGE_NAMES = [
     "uc_reporter_redraw",
 ]
@@ -78,9 +81,12 @@ UK_SOURCE_STAGE_NAMES = [
     *POST_FRS_SPINE_STAGE_NAMES,
     *E3_STAGE_NAMES,
     *E4_STAGE_NAMES,
+    # The SPI block runs before the income-conditioned donor imputations, so
+    # E5 and E6 impute onto the SPI rows from their SPI incomes.
+    *E7_STAGE_NAMES,
+    *HOUSING_SHELL_STAGE_NAMES,
     *E5_STAGE_NAMES,
     *E6_STAGE_NAMES,
-    *E7_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *E9_STAGE_NAMES,
@@ -148,27 +154,31 @@ class TestUKSourceStagesManifest:
         assert spec.sources is not None
         assert [stage.stage for stage in spec.sources.stages] == UK_SOURCE_STAGE_NAMES
 
-    def test_e6_block_sits_between_e5_and_e7(self) -> None:
+    def test_e7_block_sits_between_e4_and_e5(self) -> None:
+        # The SPI support rows must exist before the income-conditioned donor
+        # imputations run, or they inherit their FRS parent's draws.
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
-        assert (
-            names[
-                names.index("regional_property_uprating") + 1 : names.index(
-                    "frs_hmrc_spine_leaves"
-                )
-            ]
-            == E6_STAGE_NAMES
-        )
+        assert names[names.index("frs_brma") + 1 : names.index("was_wealth")] == [
+            *E7_STAGE_NAMES,
+            *HOUSING_SHELL_STAGE_NAMES,
+        ]
 
-    def test_e7_block_sits_between_e6_and_e8(self) -> None:
+    def test_e5_and_e6_follow_e7_and_precede_the_uc_rewrites(self) -> None:
+        # uc_reporter_redraw stays after the donor stages: its engine screen
+        # reads the WAS capital proxy where the FRS capital answer is missing.
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
         assert names[
-            names.index("etb_services") + 1 : names.index("cgt_incidence_clone")
+            names.index("hmrc_spi_income_spine") + 1 : names.index(
+                "cgt_incidence_clone"
+            )
         ] == [
-            *E7_STAGE_NAMES,
+            *HOUSING_SHELL_STAGE_NAMES,
+            *E5_STAGE_NAMES,
+            *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
             *E9_STAGE_NAMES,
@@ -322,6 +332,7 @@ class TestUKSourceStagesManifest:
                     "spi_support_channel": _identity,
                     "spi_income_band_donors": _identity,
                     "hmrc_spi_income_spine": _identity,
+                    "spi_housing_shell": _identity,
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
                     "uc_deduction_attributes": _identity,
@@ -973,6 +984,7 @@ class TestE3ManifestLockstep:
         assert lcfs_seeded == {
             "assign_binary_from_rate": 0,
             "fit_weighted_qrf_chain": 0,
+            "price_domestic_energy": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
         assert stages["etb_services"].operations[3].parameters["seed"] == 0
