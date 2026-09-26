@@ -1,0 +1,172 @@
+# #1014 receipts: BADR-qualifying gains, the Table 3 income margins and wealth-conditioned gain carriers
+
+Plan: `repos/microcosm-1014-implementation-plan.md` (approved 2026-09-26). María's rulings: BADR is drawn
+inside the asset-type stage and the claimant's main type follows the claim; Table 4.1 is bound as eight
+bands by claimants and qualifying gains; Table 3's margins are measured on the engine's taxable income;
+every new row sits in `hmrc_cgt`; one PR carries all three work packages, with wealth conditioning in its
+last commits so its effect is measured on its own. Worktree `repos/populace-1014`, branch
+`uk-cgt-badr-table3-1014`. The commits were built and measured on main `2bce66156`, rebased onto main
+`9e5b0cee2` (#998's test layout and CI, no UK source change), then onto main `937aca4ec`, which merges
+#1012 (the SPI-first order and the SPI housing shell). The commit hashes below are the pre-rebase ones.
+Parts A to D measure c1 to c4 against main before #1012; Part E records how they carry over onto
+#1012's base. Licensed evidence lives under `data/ukds/acceptance/1014-cgt-badr/` (aggregates only).
+
+## Part A: the Chronicle landing and the re-pin (c1)
+
+PolicyEngine/chronicle#287 asked for HMRC CGT statistics 2026 Table 4; Chronicle PR #288 landed it at
+`505e0e72aa7c82b96dc06941d84fa797a629161c` as package `hmrc-cgt-badr-ir-2026` (126 facts: claimants,
+qualifying gains and tax by band of qualifying gain, individuals, trusts and all taxpayers, 2021-22 to
+2024-25). The feed was rebuilt from that commit with `chronicle build-bundle --suite uk` then
+`build-consumer-artifact`:
+
+- `consumer_facts.jsonl` sha256 `4a45c543553617d606ebf8ea11254b48c1e6e115c97840dd8757beafbac035d9`
+- `manifest.json` sha256 `3dc9ed05ba00d30609c295cb7d34ebcd98476778bebf1da9a1e7f2e64b97caf7`
+- 287,150 rows, `policyengine_ledger.consumer_artifact.v2`, consumer-fact schema `chronicle.consumer_fact.v4`
+  (`cc9efb90…`, unchanged); 158 source packages
+- a strict superset of the `5324aa2` artifact: every one of its 287,024 rows is present byte for byte,
+  and the 126 new rows are all Table 4 (31, 31, 32 and 32 for 2021-22 to 2024-25)
+
+The re-pin moves no compiled value on either surface: the national (1,124) and local (20,885) reference
+files are byte-identical, the three compile-parity receipts are unchanged, and the vendored resources,
+census, validation-level register and membership reports restate the feed identity; the coverage
+manifest records the conditioning resource's new digest.
+
+## Part B: BADR claims on the licensed spine (c2)
+
+Spine `spine-badr` built at c2 `1ffa11762` with the PLAN_5 assessment relaxation in the measurement tree
+only (never committed); every spine gate passes, including the extended `cgt_asset_type_summary` check.
+The draw runs over liable gainers not flagged residential. The residential flag is drawn first on its
+own seed and is byte-identical to the control spine's (202,669 people and GBP 12.82bn flagged, against
+targets of 202,630 and GBP 12.24bn).
+
+Per band, the logistic solves each published band exactly in expectation and the weighted systematic
+walk lands within one pool weight of the count:
+
+- GBP 0 to 9,999: 5,096 claimants against 5,000, GBP 33.1m against 32.0m
+- GBP 10,000 to 24,999: 7,741 against 8,000, GBP 125.7m against 129.0m
+- GBP 25,000 to 49,999: 6,235 against 6,000, GBP 233.1m against 224.0m
+- GBP 50,000 to 99,999: 7,778 against 8,000, GBP 564.8m against 575.0m
+- GBP 100,000 to 249,999: 10,933 against 11,000, GBP 1,886.7m against 1,866.0m
+- GBP 250,000 to 499,999: 8,009 against 8,000, GBP 2,776.7m against 2,901.0m
+- GBP 500,000 to 999,999: 8,028 against 8,000, GBP 5,941.7m against 5,929.0m
+- GBP 1m and over (claims at the lifetime limit): 6,793 against 6,787, GBP 6,793.1m against 6,787.0m
+
+In total 60,613 claimants and GBP 18.355bn of qualifying gains (published 61,000 and GBP 18.443bn; the
+count target is 60,787 because the open band holds 6,787 claims at the limit against a rounded 7,000),
+and the closed-form tax at the relief rate is GBP 1.819bn against the published GBP 1.821bn. All six
+invariants are zero. Claimants' main types: unlisted shares 56.3k people (GBP 16.1bn qualifying), other
+non-financial assets 2.3k, business land and buildings 2.0k. The restricted type fit converges in 31
+iterations; claimants hold 32.5 percent of the non-residential gains against the eligible types' 63.5
+percent Table 7 share.
+
+The realized Table 7 composition, which is fenced and diagnostic, drifts further from its targets than
+the control's: unlisted shares 66.6 percent against 55.3 (control 62.1), other financial assets 20.5
+against 26.7 (control 26.9). The fit matches expected shares; the categorical draw over heavy-tailed rows
+does not reproduce them, and confining claimants to the eligible types concentrates large gains in
+unlisted shares.
+
+## Part C: calibrations (c2 to c4)
+
+All four arms ran pass 1 of `repos/uk-candidate-eval/scripts/run_uk_national_calibration.sh` (the
+national release role: 1,500 epochs, `family_equal`), through a wrapper that never re-freezes the shared
+scoring register. The control is `spine-ctl` calibrated as `spine-assessment-spifirst-ctl-main` (main
+`8f628b1e7`; main has no UK change between it and `2bce66156`). The candidate spine `spine-badr` serves
+c2, c3 and c4, since c3 and c4 change only targets and measures. Every arm stops at the terminal gate
+on the CGT entrants fence (#970, out of scope here): 146,920, 146,507, 146,635 and 146,680 weighted
+sub-exempt gainers against the bound of 73,000. The comparisons use `calibration_diagnostics.json`, the
+run's design and final weights and the engine at the 2024 disposal year
+(`scripts/cgt_phase_a.py`, output `phase-a/cgt-phase-a.json`).
+
+Headline at final weights (control, c2, c3, c4):
+
+- targets 1,062, 1,062, 1,078, 1,090; loss 0.0091, 0.0087, 0.0086, 0.0086; within 10 percent 97.4,
+  97.8, 98.0, 98.0 percent; rows beyond 25 percent 2 in every arm (the same two non-CGT rows)
+- effective sample size 4,529, 4,557, 4,526, 4,517; top 1 percent weight share 27.0, 26.9, 27.0, 27.0
+- CGT liability GBP 25.38bn, 22.53bn, 23.31bn, 23.35bn against the published 22.503bn (+12.8, +0.1,
+  +3.6, +3.8 percent); gains and taxpayers within 0.2 percent in every arm
+- BADR claimants and qualifying gains: none; 82.6k and GBP 26.01bn; 61.0k and GBP 18.61bn; 60.9k and
+  GBP 18.64bn (published 61.0k and GBP 18.443bn); relief-rate tax GBP 2.58bn at c2, 1.85bn at c3 and c4
+- share of gains above GBP 125,140 of the engine's taxable income: 46.5, 44.1, 44.8, 55.4 percent
+  (published 55.4; 56.6 at prior weights)
+- OBR income tax -0.5 percent in every arm; the 33 SPI, ITL and regional rows above GBP 200,000 average
+  0.82, 0.93, 0.83 and 0.75 percent absolute error
+
+**c2 (BADR on the spine, no new rows).** Liability falls from +12.8 to +0.1 percent and every tax-by-age
+row fits (the control's 35 to 84 rows sat 9 to 19 percent over). Unbound, calibration inflates the
+claims to 82.6k and GBP 26.0bn: taxing more gains at the relief rate is the cheapest way to meet the
+liability row.
+
+**c3 (Table 4.1 bound).** Fifteen of the 16 rows land within 0.6 percent. The open band's pair cannot
+both hold, because every claim there is exactly the limit (count 6,787 on the gains row against a
+rounded 7,000): the solver leaves the count at -0.6 percent and the gains at +2.6 percent. With the
+claims back at their published size, liability rises to +3.6 percent and the 45 to 74 tax-by-age rows
+to +3.3, +4.0 and +7.7 percent.
+
+**c4 (Table 3's margins bound on the engine's taxable income).** All 12 rows land within 0.4 percent and
+the share above GBP 125,140 matches HMRC. At prior weights the spine matches the published taxpayer
+counts by income band on the redraw's own proxy but not the gains: the GBP 125,140 to 199,999 band
+holds GBP 21.0bn on the proxy (24.0bn on the engine's income) against 10.9bn published, and the 50,000
+to 99,999 band 22.0bn against 17.2bn. The excess is not in the redraw's plan, which holds the joint's
+cell means (GBP 119.05bn): the realized draw carries GBP 135.3bn of liable gains, almost all of the
+difference in the GBP 5m-and-over band (GBP 62.7bn from 3,559 people against 48.5bn from 3,000
+published). The control spine is identical here, so this predates #1014. Calibration removes the
+excess by down-weighting the largest rows, and the Table 3 rows now decide which income columns give
+it up. Liability ends at +3.8 percent and the 55 to 74 tax-by-age rows at +5.5
+and +7.6 percent. The costs sit on the gain rows: the effective sample size of weighted gains falls
+from 43 (control) to 35, the share of gain households whose weight more than doubles rises from 8.0
+to 8.9 percent, and the heaviest row (a GBP 15.1m gain) carries 5.1 times its prior weight against 2.5
+in the control.
+
+Against the plan's acceptance: c2 meets the liability and tax-by-age bar; c3 holds Table 4.1 within
+rounding except the open band's structural pair; c4 holds the Table 3 margins and the share above
+GBP 125,140; the effective sample size and the entrants fence do not move beyond noise, and no other
+family degrades. Two items remain open: liability at +3.8 percent with the older-age tax rows 5 to 8
+percent over once the claims are pinned, and the concentration of the calibration's gain corrections
+on a few large rows. Correcting the redraw's GBP 5m-and-over overshoot at the stage would take most of
+that correction out of calibration; it is a follow-up, not part of this PR.
+
+## Part D: tests
+
+Each commit ran its targeted suites before landing (c1: 251 passed, and the national compile parity
+regenerates on the pinned feed; c2: 814; c3: 517; c4: 560, including the engine-inversion lockstep for
+the derived taxable income). The whole shard at c4 `a2bd0be23` (the `spine-uk`, `uk:build`, `uk:frame`
+and `shared-spec` groups plus microcosm-data and microcosm-graph, 270 files, with the pinned feed
+configured) ran 6,482 tests: no failures or errors, and 41 skips, all for optional or licensed local
+inputs (the axiom rules engine, rulespec checkouts, licensed tabs, unmounted ladder artifacts).
+`tools/ci_test_groups.py --verify` is clean.
+
+After the rebases the moved tests sit in #998's layout (the observation-period tests split between
+the engine-free and UK engine directories, their shared helpers in `test_support/`) and the layout
+check is clean. On #1012's base each commit's generated surfaces (coverage manifest, H2 fixture, gate
+digests) are regenerated from the merged tree, and the references and parity receipts regenerate
+unchanged. PR CI runs every group on the rebased head.
+
+## Part E: wealth conditioning (WP3)
+
+Not in this branch yet. It needs #1012's household wealth, so the investigation ran on a local tree of
+#1012 (its head before the final review round) and c1 to c4 (c4′), comparing seven arms of the plan's
+three candidates with c4′. c1 to c4 carry over onto that base: against #1012's own control, liability
+moves from +12.8 to +3.7 percent, the Table 3 and Table 4.1 rows fit, and the effective sample size is
+5,173 against 5,200. The recommendation, awaiting María's pick: a wealth-blended ranking in the
+amounts redraw and stock-conditioned odds in the asset-type stage, as two commits on this branch; hold
+wealth-coupled incidence until the redraw can place heavy records in the open top bands without
+overshooting them.
+
+On c4′, gains are close to wealth-blind: within Table 3's income columns their Spearman correlation
+with household investable wealth is 0.08, and 40 percent of GBP 1m-and-over gainers hold under GBP
+250,000 of it. The ranking at weight 0.75 raises the correlation to 0.46 and leaves no such gainer.
+With the ranking at 0.5, the stock-conditioned odds take the BADR claimants and unlisted-shares
+gainers with neither corporate wealth nor self-employment income from about half to about 5 percent.
+Each arm calibrates about as well as c4′ (loss and effective sample size within noise), though the
+worst tax-by-age row rises from +7.7 percent to +9.1 with the pair at 0.5 and to +10.6 with the
+ranking alone at 0.75.
+
+The pair as committed (the ranking at 0.75 and the odds as declared, business land without a signal)
+was then built and calibrated on c4′: the correlation holds at 0.46, no GBP 1m-and-over gainer holds
+under GBP 250,000 of investable wealth, and BADR claimants and unlisted-shares gainers without corporate
+wealth or self-employment income fall to 3.9 and 4.4 percent (listed-shares gainers without an ISA or
+dividends 14.8, residential gainers without another residential property or property income 51.7, from
+62.0 and 82.6). Calibration: effective sample size 5,176 against 5,173, liability +3.5 percent, Table 3
+within 0.4 and Table 4.1 within 2.8 percent; the worst tax-by-age row is +9.6 percent against +7.7, and
+the redraw realizes GBP 138.8bn against its GBP 119.05bn plan (c4′ 135.3bn). When the commits land they
+are re-measured against a c4 rebuilt on #1012's merged base.
