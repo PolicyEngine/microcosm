@@ -9,9 +9,15 @@ as ``build.built_with_model_package``. 2.2.1 defines
 ``True``; ``wic`` is ``defined_for`` it) and not ``would_claim_wic``, yet both
 releases store the seeded draw under the old name. policyengine-core's
 ``Simulation.build_from_dataset`` sets a stored column as an input only when
-the tax-benefit system has a variable of that name; it collects every other
-column, logs one warning and ignores it. So the draw was ignored, every
-WIC-eligible person took WIC up, and no release gate refused either release.
+the tax-benefit system has a variable of that name. Before that loop it reads
+the structural columns that build the entities: ``person_id``, each
+``{group}_id`` and ``person_{group}_id`` (all of them variables of 2.2.1),
+and, when stored, the role column ``person_{group}_role`` or ``role`` (not
+variables). The loop then collects every column that is not a variable, logs
+one warning and otherwise ignores it (a stored role column is named in that
+warning too, although core has already read it). So the draw was ignored,
+every WIC-eligible person took WIC up, and no release gate refused either
+release.
 
 This module is the recurrence guard (decision d271). A US release is refused
 when one of its stored tables carries a column that
@@ -22,6 +28,14 @@ when one of its stored tables carries a column that
 - is not in :data:`US_STORED_NON_VARIABLE_COLUMNS`, the reviewed register of
   columns a build stores on purpose although the engine defines no variable
   for them. Each entry carries the reason the engine may ignore it.
+
+Core's role columns are model-named non-variable columns that core does read,
+and the rule does not exempt them: a file storing ``person_{group}_role`` or
+``role`` would be refused by name although core reads it. That errs closed,
+never open. No file examined for microcosm#1026 stores one (a test pins that
+against their inventories; ``is_spm_independent_minor_role`` is an engine
+variable, not a role column). A writer that starts storing one gets a refusal
+naming it, and the column then needs a register entry saying core reads it.
 
 The rule itself is pure. :func:`undefined_stored_inputs` and
 :func:`stored_input_failures` take the stored column names, the engine's
@@ -248,16 +262,22 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #:
 #: Two model-named non-variable columns that the published default, its
 #: receipt child and the ACS local-area release store are deliberately absent,
-#: because each is a stale model input rather than metadata:
+#: because each is a retired engine input rather than metadata:
 #:
 #: - ``would_claim_wic``: the WIC take-up draw under its retired name. The live
 #:   input is ``takes_up_wic_if_eligible`` (#746 moved the builder).
-#: - ``medicare_part_b_premiums``: an ASEC ``PEMCPREM`` transfer target under a
-#:   name no engine version defines. #590 dropped it from the build, and the
-#:   rehearsal export no longer stores it. Neither policyengine-us 1.764.6 nor
-#:   2.2.1 defines or reads it. The reported leaf both define,
-#:   ``medicare_part_b_premiums_reported``, has no consumer in either, and the
-#:   engine computes ``medicare_part_b_premium`` itself.
+#: - ``medicare_part_b_premiums``: the ASEC ``PEMCPREM`` transfer target under
+#:   a retired engine input name, the same defect class as ``would_claim_wic``.
+#:   policyengine-us 1.452.0 through at least 1.670.2 define it as a Person,
+#:   YEAR, float input with no formula, and 1.670.2 adds it into
+#:   ``health_insurance_premiums`` and
+#:   ``spm_unit_medical_out_of_pocket_expenses``. By 1.690.7 it was replaced
+#:   by ``medicare_part_b_premiums_reported``, the same Person, YEAR, float
+#:   input under a new name. 1.690.7 and later (read through 2.15.1), 1.764.6
+#:   and 2.2.1 included, define only the new name, and nothing in 1.690.7,
+#:   1.764.6 or 2.2.1 reads it; the engine computes ``medicare_part_b_premium``
+#:   itself. #590 dropped the transfer from the build, and the rehearsal
+#:   export no longer stores it, so the remedy is to stop storing it.
 #:
 #: An entry must never be a variable of the certified engine. The engine reads
 #: such a column as an input, so the entry would be dead, and its reason (that
@@ -543,9 +563,20 @@ def h5_stored_tables(path: Path | str) -> dict[str, tuple[str, ...]]:
     field is not a stored column. The metadata series in
     :data:`_METADATA_SERIES_KEYS` (``_time_period``, and the
     ``_populace_staging_metadata`` series Microcosm's nullable writer adds)
-    are not tables, and each must be a pandas series. Every other pandas frame
-    is listed, whatever its key, so a column cannot hide in an unexpected
-    table.
+    are not tables, and each must be a pandas series. Every other top-level
+    object must be a pandas frame, and each is listed whatever its key, so a
+    column cannot hide in an unexpected top-level table.
+
+    Only top-level objects are read. A pandas frame stored under a nested key,
+    such as ``person/extra`` inside the ``person`` frame's group, is not
+    listed. That suffices because nothing reads it as an input:
+    policyengine-us (2.2.1) loads an entity-level H5 path through
+    ``USSingleYearDataset``, which reads only the top-level ``person``,
+    ``household``, ``tax_unit``, ``spm_unit``, ``family`` and ``marital_unit``
+    frames and ``_time_period``. ``USMultiYearDataset`` does read year-keyed
+    frames (``person/2024``), but only when a caller builds it from a file
+    explicitly; a file in that layout has untyped top-level entity groups,
+    which this refuses.
 
     Raises:
         StoredTableLayoutError: A top-level object is neither a pandas frame

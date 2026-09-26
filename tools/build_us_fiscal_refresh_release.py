@@ -313,6 +313,7 @@ from microcosm.data.contract import (
 )
 from microcosm.data.stored_inputs import (
     US_STORED_NON_VARIABLE_COLUMNS,
+    StoredTableLayoutError,
     h5_stored_tables,
     installed_us_engine,
     is_model_named,
@@ -7043,27 +7044,55 @@ def _stored_input_gate_failures(
 def _written_stored_input_verdict_mismatch(
     dataset_path: Path, pre_export: Mapping[str, object]
 ) -> str | None:
-    """Why the written H5's stored-input verdict is not the gate's, or None.
+    """Why the written H5's stored-input verdict is not the allowed one, or None.
 
     The pre-export gate (:func:`_stored_input_gate_failures`) grades
     :func:`_export_stored_tables`, a model of what the writer stores, so that a
     refusal joins the batched raise before any H5 exists. This grades the
-    written file's HDF metadata against the same engine and register and
-    requires the same refused columns, so the verdict the gate reached is the
-    verdict on the bytes the release ships. A gate that could not evaluate has
-    nothing to compare: its failure line is already on record. Column names
-    only; no row is read.
+    written file's HDF metadata against the same engine and register. Grading
+    the written file needs neither the model nor the gate's result, so it runs
+    whatever the gate reached:
+
+    - The gate evaluated. The written file must refuse exactly the columns the
+      gate refused, so the gate's verdict is the verdict on the bytes the
+      release ships. A refusal reaches this point only when evidence mode owns
+      it.
+    - The gate could not evaluate. Its failure line is on record, and it
+      reaches this point only when evidence mode owns that line. No refusal of
+      a column was reviewed, so the written file must refuse none: owning
+      "could not evaluate" does not own a stale input the bytes store.
+
+    A written file that cannot be graded (its tables cannot be listed, or the
+    engine cannot be imported) is reported too, so no H5 goes on ungraded.
+    Column names only; no row is read.
     """
 
-    if not pre_export.get("evaluated"):
-        return None
-    engine = installed_us_engine()
-    written = h5_stored_tables(dataset_path)
+    evaluated = bool(pre_export.get("evaluated"))
+    expected = list(pre_export.get("refused", ())) if evaluated else []
+    try:
+        engine = installed_us_engine()
+        written = h5_stored_tables(dataset_path)
+    except (ImportError, OSError, StoredTableLayoutError) as error:
+        return (
+            "Stored-input gate premise failed: the written H5 "
+            f"({dataset_path.name}) cannot be graded against the installed "
+            f"engine ({type(error).__name__}: {error}), so this H5 cannot be "
+            "certified."
+        )
     columns = {column for names in written.values() for column in names}
     refused = list(undefined_stored_inputs(columns, engine_variables=engine.variables))
-    expected = list(pre_export.get("refused", ()))
     if refused == expected:
         return None
+    if not evaluated:
+        return (
+            "Stored-input gate premise failed: the written H5 "
+            f"({dataset_path.name}) stores model-named columns that "
+            f"{engine.label} does not define {refused}, and the pre-export "
+            "gate never graded them because it could not evaluate the export "
+            f"frame ({pre_export.get('error', 'no reason recorded')}). Rename "
+            "each to its live input or add a reviewed register entry before "
+            "this H5 is certified."
+        )
     return (
         "Stored-input gate premise failed: the written H5 "
         f"({dataset_path.name}) stores model-named columns that "
@@ -14480,7 +14509,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
     # microcosm#1026: the stored-input gate above graded a model of the
-    # writer's output; the written bytes must earn the same verdict.
+    # writer's output; the written bytes are graded whatever the gate reached
+    # and must earn the same verdict (no refusal, if the gate could not
+    # evaluate).
     stored_input_premise_failure = _written_stored_input_verdict_mismatch(
         dataset_path, export_frame_stored_inputs
     )

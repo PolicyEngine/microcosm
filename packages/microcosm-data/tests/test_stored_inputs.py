@@ -285,6 +285,38 @@ def test_the_examined_files_store_no_state_code_column():
     assert two_letter == {"ST", "NP"}
 
 
+#: The role columns policyengine-core's ``build_from_dataset`` reads to build
+#: the group entities, for policyengine-us's five group entities. They are not
+#: engine variables (pinned against the engine below).
+_CORE_ROLE_COLUMNS = frozenset(
+    {"role"}
+    | {
+        f"person_{group}_role"
+        for group in ("household", "tax_unit", "spm_unit", "family", "marital_unit")
+    }
+)
+
+
+def test_the_check_refuses_core_role_columns_and_no_examined_file_stores_one():
+    """Core reads its role columns although no engine variable names them.
+    The check does not exempt them, so it errs closed: a file storing one is
+    refused by name. No examined file stores one; the only examined column
+    ending in _role is the engine variable is_spm_independent_minor_role."""
+
+    assert set(
+        undefined_stored_inputs(
+            _CORE_ROLE_COLUMNS,
+            engine_variables={"is_spm_independent_minor_role"},
+        )
+    ) == set(_CORE_ROLE_COLUMNS)
+    role_like = set()
+    for inventory in _inventories().values():
+        for columns in inventory["tables"].values():
+            assert not set(columns) & _CORE_ROLE_COLUMNS
+            role_like |= {c for c in columns if c == "role" or c.endswith("_role")}
+    assert role_like == {"is_spm_independent_minor_role"}
+
+
 def test_register_sha256_is_canonical_and_moves_with_the_register():
     register = {"b_entry": "reason b", "a_entry": "reason a"}
     reordered = dict(reversed(list(register.items())))
@@ -431,6 +463,45 @@ def test_pandas_written_tables_round_trip(tmp_path):
     }
 
 
+def test_frames_nested_under_an_entity_frame_are_not_listed(tmp_path):
+    """The reader lists top-level frames only, as ``USSingleYearDataset``
+    reads them: a frame pandas nests inside the ``person`` frame's group
+    (``person/extra``) is never an input, so its columns are not listed."""
+
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("tables")
+    path = tmp_path / "release.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        for key, frame in (
+            ("person", pd.DataFrame({"person_id": [1]})),
+            ("person/extra", pd.DataFrame({"hidden_col": [1.0]})),
+        ):
+            store.put(key, frame, format="table", data_columns=True)
+        store.put("_time_period", pd.Series([2024]), format="table")
+
+    assert h5_stored_tables(path) == {"person": ("person_id",)}
+
+
+@pytest.mark.filterwarnings("ignore:object name is not a valid Python identifier")
+def test_year_keyed_entity_frames_are_refused(tmp_path):
+    """``USMultiYearDataset``'s ``person/2024`` layout leaves each top-level
+    entity group untyped, so the reader refuses it rather than skip it."""
+
+    pd = pytest.importorskip("pandas")
+    pytest.importorskip("tables")
+    path = tmp_path / "release.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put(
+            "person/2024",
+            pd.DataFrame({"person_id": [1], "would_claim_wic": [True]}),
+            format="table",
+            data_columns=True,
+        )
+
+    with pytest.raises(StoredTableLayoutError, match="'person' is not a pandas"):
+        h5_stored_tables(path)
+
+
 def test_the_cli_prints_one_verdict_per_file_and_exits_by_the_worst(
     tmp_path, monkeypatch, capsys
 ):
@@ -520,19 +591,39 @@ def test_property_refusal_if_and_only_if_and_the_error_names_exactly_those():
 def test_property_adding_a_variable_or_register_entry_never_refuses_more():
     """Monotonicity: the refused set can only shrink when the engine gains a
     variable or the register gains an entry (so a pass stays a pass), and can
-    only grow when the release stores one more column."""
+    only grow when the release stores one more column.
+
+    The engine and the register are drawn from the stored columns (plus a few
+    other model-named names), as in the refusal property, so they overlap the
+    stored columns and a rule whose verdict on a registered or defined column
+    depends on the rest of the register or engine is caught here too."""
 
     hypothesis, st = _hypothesis()
     model_named, column = _column_strategies(st)
 
+    @st.composite
+    def cases(draw):
+        columns = draw(st.sets(column, max_size=10))
+        extra = draw(column)
+        pool = sorted(
+            {c for c in columns | {extra} if isinstance(c, str)}
+            | set(draw(st.lists(model_named, max_size=4)))
+        )
+        engine = (
+            draw(st.frozensets(st.sampled_from(pool), max_size=len(pool)))
+            if pool
+            else frozenset()
+        )
+        registered = (
+            draw(st.sets(st.sampled_from(pool), max_size=len(pool))) if pool else set()
+        )
+        return columns, engine, dict.fromkeys(registered, "reason"), extra, pool
+
     @hypothesis.settings(max_examples=300, deadline=None)
-    @hypothesis.given(
-        columns=st.sets(column, max_size=10),
-        engine=st.frozensets(model_named, max_size=6),
-        register=st.dictionaries(model_named, st.just("reason"), max_size=4),
-        extra=column,
-    )
-    def check(columns, engine, register, extra):
+    @hypothesis.given(cases())
+    def check(case):
+        columns, engine, register, extra, pool = case
+
         def refused(cs, variables, entries):
             return set(
                 undefined_stored_inputs(
@@ -541,7 +632,6 @@ def test_property_adding_a_variable_or_register_entry_never_refuses_more():
             )
 
         before = refused(columns, engine, register)
-        pool = sorted(c for c in columns | {extra} if isinstance(c, str))
         for name in pool:
             more_variables = refused(columns, engine | {name}, register)
             more_register = refused(columns, engine, {**register, name: "reason"})
@@ -998,8 +1088,8 @@ def test_the_register_is_consistent_with_the_installed_engine():
 
 @pytest.mark.requires_us
 def test_the_1026_premises_hold_for_the_installed_engine():
-    """The renamed WIC input and the stale and construction columns the
-    register treats, as the installed engine defines them."""
+    """The two retired inputs, the construction columns the register treats
+    and core's role columns, as the installed engine defines them."""
 
     from policyengine_us.system import system
 
@@ -1008,13 +1098,30 @@ def test_the_1026_premises_hold_for_the_installed_engine():
     wic = variables["takes_up_wic_if_eligible"]
     assert (wic.entity.key, wic.value_type, wic.default_value) == ("person", bool, True)
     assert not wic.formulas
-    for stale_or_construction in (
+    for retired_or_construction in (
         "medicare_part_b_premiums",
         "tax_unit_role_input",
         "filing_status_input",
     ):
-        assert stale_or_construction not in variables
-    assert "medicare_part_b_premiums_reported" in variables
+        assert retired_or_construction not in variables
+    # medicare_part_b_premiums was a Person, YEAR, float input with no formula
+    # through at least policyengine-us 1.670.2; its replacement has that shape.
+    part_b = variables["medicare_part_b_premiums_reported"]
+    assert (part_b.entity.key, part_b.definition_period, part_b.value_type) == (
+        "person",
+        "year",
+        float,
+    )
+    assert not part_b.formulas
+    # Core reads these to build the group entities; none is a variable.
+    assert {entity.key for entity in system.group_entities} == {
+        "household",
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    }
+    assert not _CORE_ROLE_COLUMNS & set(variables)
     # puma_geoid is registered as an alias of the puma input.
     assert "puma_geoid" not in variables
     puma = variables["puma"]
@@ -1030,9 +1137,11 @@ def test_the_1026_premises_hold_for_the_installed_engine():
 
 #: Each examined file's expected verdict: the refused columns, and how many
 #: register entries it stores. The published default, its receipt child and
-#: the ACS local-area release store the #1026 WIC draw under its retired name
-#: and the dropped Medicare Part B target, so each is refused naming exactly
-#: those two. The files built from main's tools pass.
+#: the ACS local-area release store two retired engine inputs: the #1026 WIC
+#: draw as would_claim_wic, and the Medicare Part B target as
+#: medicare_part_b_premiums (an input through at least policyengine-us
+#: 1.670.2, replaced by medicare_part_b_premiums_reported by 1.690.7). So each
+#: is refused naming exactly those two. The files built from main's tools pass.
 _EXPECTED_VERDICTS = {
     _PUBLISHED_DEFAULT: (["medicare_part_b_premiums", "would_claim_wic"], 24),
     _RECEIPT_CHILD: (["medicare_part_b_premiums", "would_claim_wic"], 24),
@@ -1082,16 +1191,35 @@ def test_each_examined_file_gets_its_expected_verdict(name):
     assert not uppercase & engine.variables
 
 
-def test_no_register_entry_rests_only_on_the_stale_releases():
-    """The rehearsal export, the stacked pool and the ACS local-area release
-    between them store every register entry, so no entry is there only
-    because the published default or its receipt child stores it."""
+def test_only_the_acs_lane_spine_tags_rest_on_refused_files_alone():
+    """Every register entry is stored by one of the two files that pass (the
+    rehearsal export and the stacked pool), except the six *_spine tags. Those
+    are stored only by the ACS local-area release, which is itself refused
+    for the same two retired inputs as its donor. They stay registered on the
+    strength of their live producer, base_pool.spine_column, which
+    test_us_stored_input_register.py binds, not on a passing file."""
 
     inventories = _inventories()
-    stored = {
-        column
-        for name in (_REHEARSAL_EXPORT, _STACKED_POOL, _ACS_LOCAL_RELEASE)
-        for columns in inventories[name]["tables"].values()
-        for column in columns
+
+    def stored_by(*names):
+        return {
+            column
+            for name in names
+            for columns in inventories[name]["tables"].values()
+            for column in columns
+        }
+
+    spine_tags = {
+        "person_spine",
+        "household_spine",
+        "tax_unit_spine",
+        "spm_unit_spine",
+        "family_spine",
+        "marital_unit_spine",
     }
-    assert set(US_STORED_NON_VARIABLE_COLUMNS) <= stored
+    unbacked = set(US_STORED_NON_VARIABLE_COLUMNS) - stored_by(
+        _REHEARSAL_EXPORT, _STACKED_POOL
+    )
+    assert unbacked == spine_tags
+    assert unbacked <= stored_by(_ACS_LOCAL_RELEASE)
+    assert not unbacked & stored_by(_PUBLISHED_DEFAULT, _RECEIPT_CHILD)

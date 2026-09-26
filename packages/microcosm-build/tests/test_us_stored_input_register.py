@@ -367,34 +367,117 @@ def test_the_gate_fails_closed_without_an_engine(builder, monkeypatch):
     assert details["evaluated"] is False
 
 
-def test_the_post_write_check_compares_refused_sets(builder, monkeypatch, tmp_path):
-    engine = _engine(*_STRUCTURAL)
-    monkeypatch.setattr(builder, "installed_us_engine", lambda: engine)
-    written = {"person": ("person_id", "would_claim_wic")}
-    monkeypatch.setattr(builder, "h5_stored_tables", lambda path: written)
-    path = tmp_path / "populace_us_2024.h5"
+def _post_write_check(builder, monkeypatch, tmp_path, written, pre_export):
+    """The post-write check on an H5 whose stored tables are ``written``."""
 
-    assert (
-        builder._written_stored_input_verdict_mismatch(
-            path, {"evaluated": True, "refused": ["would_claim_wic"]}
-        )
-        is None
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: _engine(*_STRUCTURAL))
+    monkeypatch.setattr(builder, "h5_stored_tables", lambda path: written)
+    return builder._written_stored_input_verdict_mismatch(
+        tmp_path / "populace_us_2024.h5", pre_export
     )
-    mismatch = builder._written_stored_input_verdict_mismatch(
-        path, {"evaluated": True, "refused": []}
+
+
+_STALE = {"person": ("person_id", "would_claim_wic")}
+_CLEAN = {"person": ("person_id", "takes_up_wic_if_eligible")}
+
+
+def test_the_post_write_check_passes_the_verdict_the_gate_reached(
+    builder, monkeypatch, tmp_path
+):
+    """Equal refused sets pass: a stale column the gate refused (and evidence
+    mode then owned) or a clean file the gate passed."""
+
+    refused = {"evaluated": True, "refused": ["would_claim_wic"]}
+    passed = {"evaluated": True, "refused": []}
+
+    assert _post_write_check(builder, monkeypatch, tmp_path, _STALE, refused) is None
+    assert _post_write_check(builder, monkeypatch, tmp_path, _CLEAN, passed) is None
+
+
+@pytest.mark.parametrize(
+    ("written", "gate_refused", "named"),
+    [
+        # The written file refuses a column the gate never refused.
+        (_STALE, [], "would_claim_wic"),
+        # The gate refused a column the written file does not store, so the
+        # written file refuses less: the model no longer matches the writer.
+        (_CLEAN, ["would_claim_wic"], "would_claim_wic"),
+        # The two refuse different columns.
+        (_STALE, ["medicare_part_b_premiums"], "medicare_part_b_premiums"),
+    ],
+)
+def test_the_post_write_check_reports_a_verdict_the_gate_did_not_reach(
+    builder, monkeypatch, tmp_path, written, gate_refused, named
+):
+    mismatch = _post_write_check(
+        builder,
+        monkeypatch,
+        tmp_path,
+        written,
+        {"evaluated": True, "refused": gate_refused},
     )
+
     assert mismatch is not None
-    assert "would_claim_wic" in mismatch
     assert mismatch.startswith("Stored-input gate premise failed")
+    assert named in mismatch
+    assert "_export_stored_tables no longer matches" in mismatch
     # A premise failure is not a gate verdict: evidence mode cannot convert it
     # (test_evidence_mode_conversion_is_pinned_structurally keys on this text).
     assert "Release gates failed" not in mismatch
+
+
+def test_the_post_write_check_grades_the_file_when_the_gate_could_not(
+    builder, monkeypatch, tmp_path
+):
+    """In evidence mode an owned "could not evaluate" line lets the write
+    happen. The written file is graded anyway: it must refuse nothing, since
+    no refusal of any column was reviewed."""
+
+    unevaluated = {"evaluated": False, "error": "KeyError: 'household'"}
+
     assert (
-        builder._written_stored_input_verdict_mismatch(
-            path, {"evaluated": False, "error": "no engine"}
-        )
-        is None
+        _post_write_check(builder, monkeypatch, tmp_path, _CLEAN, unevaluated) is None
     )
+    mismatch = _post_write_check(builder, monkeypatch, tmp_path, _STALE, unevaluated)
+    assert mismatch is not None
+    assert mismatch.startswith("Stored-input gate premise failed")
+    assert "['would_claim_wic']" in mismatch
+    assert "never graded them" in mismatch
+    assert "KeyError: 'household'" in mismatch
+    assert "Release gates failed" not in mismatch
+
+
+@pytest.mark.parametrize("evaluated", [True, False])
+def test_the_post_write_check_reports_a_file_it_cannot_grade(
+    builder, monkeypatch, tmp_path, evaluated
+):
+    """An H5 the check cannot list, or an engine it cannot import, is reported
+    rather than passed, whatever the gate reached."""
+
+    from microcosm.data.stored_inputs import StoredTableLayoutError
+
+    def unreadable(path):
+        raise StoredTableLayoutError("table 'person' stores ['values_block_0']")
+
+    def missing():
+        raise ImportError("No module named 'policyengine_us'")
+
+    pre_export = {"evaluated": evaluated, "refused": [], "error": "no engine"}
+    path = tmp_path / "populace_us_2024.h5"
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: _engine(*_STRUCTURAL))
+    monkeypatch.setattr(builder, "h5_stored_tables", unreadable)
+    layout = builder._written_stored_input_verdict_mismatch(path, pre_export)
+    monkeypatch.setattr(builder, "installed_us_engine", missing)
+    engine = builder._written_stored_input_verdict_mismatch(path, pre_export)
+
+    for mismatch, reason in (
+        (layout, "StoredTableLayoutError"),
+        (engine, "ImportError"),
+    ):
+        assert mismatch is not None
+        assert mismatch.startswith("Stored-input gate premise failed")
+        assert "cannot be graded" in mismatch
+        assert reason in mismatch
 
 
 def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
