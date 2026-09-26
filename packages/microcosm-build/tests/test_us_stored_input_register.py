@@ -398,9 +398,15 @@ def test_the_post_write_check_compares_refused_sets(builder, monkeypatch, tmp_pa
 
 
 def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
-    """In ``_main``, the gate's failures join the batched pre-export raise
-    before the H5 is written, and the written H5 is checked before any
-    post-export stage scores it."""
+    """The wiring in ``_main``, by AST structure: the gate runs once, and its
+    failures join ``terminal_gate_failures`` unconditionally (statements of
+    ``_main``'s own body, under no ``if``, loop or ``try``), before the
+    batched raise's ``if terminal_gate_failures:`` block. The H5 write comes
+    after that block; the post-write check and its unconditional
+    ``raise RuntimeError`` come right after the write and before the
+    post-export scorer opens. The behaviour of both aborts is pinned through
+    ``_main`` itself by the ``stored_input_*`` modes of
+    ``test_main_writes_diagnostics_before_post_calibration_gate_failure``."""
 
     source = Path(builder.__file__).read_text()
     tree = ast.parse(source)
@@ -409,19 +415,87 @@ def test_main_runs_the_gate_in_the_batch_and_checks_the_written_h5(builder):
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name == "_main"
     )
-    body = ast.get_source_segment(source, main)
-    assert body is not None
+    body = main.body
 
-    gate = body.index("_stored_input_gate_failures(")
-    joined = body.index("terminal_gate_failures.extend(stored_input_failures_)")
-    batched_raise = body.index('"Release gates failed: " + "; ".join(terminal_gate')
-    write = body.index("release_engine.write_dataset(export_frame, dataset_path")
-    premise = body.index("_written_stored_input_verdict_mismatch(")
-    scorer = body.index("_open_post_export_scorer(")
+    def position(predicate, description):
+        matches = [index for index, node in enumerate(body) if predicate(node)]
+        assert len(matches) == 1, f"{description}: {matches}"
+        return matches[0]
 
-    assert body.count("_stored_input_gate_failures(") == 1
-    assert body.count("_written_stored_input_verdict_mismatch(") == 1
-    assert gate < joined < batched_raise < write < premise < scorer
+    def calls(node, name):
+        return any(
+            isinstance(inner, ast.Call)
+            and (
+                (isinstance(inner.func, ast.Name) and inner.func.id == name)
+                or (isinstance(inner.func, ast.Attribute) and inner.func.attr == name)
+            )
+            for inner in ast.walk(node)
+        )
+
+    def assigned_from(node, name):
+        return isinstance(node, ast.Assign) and calls(node.value, name)
+
+    gate = position(
+        lambda node: assigned_from(node, "_stored_input_gate_failures"),
+        "stored-input gate assignment",
+    )
+    (target,) = body[gate].targets
+    assert isinstance(target, ast.Tuple)
+    failures_name = target.elts[0].id
+    details_name = target.elts[1].id
+
+    joined = position(
+        lambda node: (
+            isinstance(node, ast.Expr)
+            and ast.unparse(node) == f"terminal_gate_failures.extend({failures_name})"
+        ),
+        "unconditional join of the gate's failures",
+    )
+    batched = position(
+        lambda node: (
+            isinstance(node, ast.If)
+            and ast.unparse(node.test) == "terminal_gate_failures"
+            and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+        ),
+        "batched pre-export raise",
+    )
+    write = position(
+        lambda node: (
+            isinstance(node, ast.Expr)
+            and ast.unparse(node)
+            == "release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)"
+        ),
+        "H5 write",
+    )
+    premise = position(
+        lambda node: assigned_from(node, "_written_stored_input_verdict_mismatch"),
+        "post-write check",
+    )
+    (premise_name,) = (target.id for target in body[premise].targets)
+    check_call = next(
+        inner for inner in ast.walk(body[premise].value) if isinstance(inner, ast.Call)
+    )
+    assert [ast.unparse(arg) for arg in check_call.args] == [
+        "dataset_path",
+        details_name,
+    ]
+    abort = position(
+        lambda node: (
+            isinstance(node, ast.If)
+            and ast.unparse(node.test) == f"{premise_name} is not None"
+        ),
+        "post-write abort",
+    )
+    assert len(body[abort].body) == 1 and not body[abort].orelse
+    assert ast.unparse(body[abort].body[0]) == (f"raise RuntimeError({premise_name})")
+    scorer = position(
+        lambda node: assigned_from(node, "_open_post_export_scorer"),
+        "post-export scorer",
+    )
+
+    assert gate < joined < batched < write < premise < abort < scorer
+    assert premise == write + 1 and abort == premise + 1
+    assert sum(calls(node, "_stored_input_gate_failures") for node in body) == 1
 
 
 # ---------------------------------------------------------------------------

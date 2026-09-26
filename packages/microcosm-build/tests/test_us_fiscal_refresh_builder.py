@@ -5914,6 +5914,52 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
 
+#: What the stubbed stored-input gate refuses in the ``stored_input_refused``
+#: harness mode, in the gate's own line format.
+STORED_INPUT_REFUSAL_FIXTURE = (
+    "Stored model inputs failed (export frame): stored column "
+    "'would_claim_wic' (person table) looks like a model input but is not a "
+    "variable in policyengine-us 2.2.1, so the engine ignores it."
+)
+#: What the stubbed post-write check reports in ``stored_input_premise``.
+STORED_INPUT_PREMISE_FIXTURE = (
+    "Stored-input gate premise failed: the written H5 stores model-named "
+    "columns that policyengine-us 2.2.1 does not define ['would_claim_wic'], "
+    "but the pre-export gate graded the export frame's modeled stored tables "
+    "as refusing []."
+)
+
+
+def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
+    """How ``_main`` acts on each stored-input verdict (microcosm#1026).
+
+    A refusal is a batched pre-export gate failure: in an otherwise green run
+    it is the raise's only line, the gate ran once on the export frame and no
+    H5 is written. A premise failure aborts after the write and before any
+    post-export scorer opens the file, with no manifest minted.
+    """
+
+    with pytest.raises(RuntimeError) as abort:
+        builder.main()
+
+    assert captured["stored_input_gate_stages"] == ["export frame"]
+    assert not (release_dir / "release_manifest.json").exists()
+    assert not (release_dir / "build_manifest.json").exists()
+    assert "scorer_opened_on" not in captured
+    if mode == "stored_input_refused":
+        assert str(abort.value) == (
+            f"Release gates failed: {STORED_INPUT_REFUSAL_FIXTURE}"
+        )
+        assert "written_dataset" not in captured
+        assert "stored_input_post_write_check" not in captured
+    else:
+        assert str(abort.value) == STORED_INPUT_PREMISE_FIXTURE
+        assert captured["stored_input_post_write_check"] == (
+            captured["written_dataset"],
+            captured["written_dataset"],
+        )
+
+
 def _run_green_register_release(
     builder,
     monkeypatch,
@@ -5924,9 +5970,13 @@ def _run_green_register_release(
     tail_register: Path,
     export_mass_reference: Path,
     skipped_smoke: bool,
+    stored_input_mode: str | None = None,
 ) -> None:
     """Drive the harness's green register run through main() and check that
     both manifests bind the run's gate evidence (route A remediation PR-3).
+
+    ``stored_input_mode`` injects one stored-input failure (microcosm#1026)
+    into that otherwise green run; see :func:`_assert_stored_input_abort`.
     """
     from microcosm.data.contract import (
         _check_build_manifest,
@@ -6034,6 +6084,12 @@ def _run_green_register_release(
     release_dir.mkdir(parents=True, exist_ok=True)
     for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values():
         (release_dir / filename).write_text('{"stale": true}')
+
+    if stored_input_mode is not None:
+        _assert_stored_input_abort(
+            builder, captured=captured, release_dir=release_dir, mode=stored_input_mode
+        )
+        return
 
     builder.main()
 
@@ -6204,6 +6260,8 @@ def _run_green_register_release(
         "target_frame_checkpoint",
         "qrf_tail_register_green",
         "qrf_tail_register_green_skipped_smoke",
+        "stored_input_refused",
+        "stored_input_premise",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -6260,18 +6318,29 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     reform-coverage smoke skipped, over a release directory a superseded
     attempt left a smoke verdict in. That stale verdict must not be bound as
     this run's.
+    ``stored_input_refused``: the green run, except that the stored-input gate
+    (microcosm#1026) refuses ``would_claim_wic``. Its line must be the batched
+    pre-export raise's only failure, and no H5 may be written.
+    ``stored_input_premise``: the green run, except that the written H5 does
+    not earn the gate's verdict. The run must abort with the premise failure
+    after the write and before any post-export scorer opens the file.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
+    # The two stored-input modes (microcosm#1026) are green register runs in
+    # every other respect, so their only failure is the one they inject.
+    stored_input_modes = {"stored_input_refused", "stored_input_premise"}
     green_run = terminal_mode in {
         "qrf_tail_register_green",
         "qrf_tail_register_green_skipped_smoke",
+        *stored_input_modes,
     }
     qrf_tail_register_modes = {
         "qrf_tail_register",
         "qrf_tail_register_clean",
         "qrf_tail_register_green",
         "qrf_tail_register_green_skipped_smoke",
+        *stored_input_modes,
     }
     clean_run = terminal_mode == "qrf_tail_register_clean" or green_run
     checkpoint_run = terminal_mode == "target_frame_checkpoint"
@@ -6586,6 +6655,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "qrf_tail_register_clean",
         "qrf_tail_register_green",
         "qrf_tail_register_green_skipped_smoke",
+        *stored_input_modes,
     }:
 
         def fake_write_dataset(frame, path, *, period):
@@ -6698,22 +6768,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_spm_composition_gate_failures",
             lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
         )
+
     # The stored-input gate (microcosm#1026) and its post-write check read the
     # installed policyengine-us, absent in the fast lane, and the fake writer
-    # writes placeholder bytes, not an H5. Every mode passes both here;
-    # test_us_stored_input_register.py pins the gate, the check and their
-    # wiring around the batched pre-export raise and the H5 write.
-    monkeypatch.setattr(
-        builder,
-        "_stored_input_gate_failures",
-        lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
-    )
+    # writes placeholder bytes, not an H5. So both are stubbed. They pass
+    # except in the two stored-input modes, which pin how _main acts on each
+    # verdict; test_us_stored_input_register.py pins the gate and the check.
+    def fake_stored_input_gate(frame, *, stage):
+        captured.setdefault("stored_input_gate_stages", []).append(stage)
+        if terminal_mode == "stored_input_refused":
+            return (
+                [STORED_INPUT_REFUSAL_FIXTURE],
+                {"evaluated": True, "refused": ["would_claim_wic"], "fixture": stage},
+            )
+        return ([], {"evaluated": True, "refused": [], "fixture": stage})
+
+    monkeypatch.setattr(builder, "_stored_input_gate_failures", fake_stored_input_gate)
 
     def fake_written_stored_input_check(path, pre_export):
         captured["stored_input_post_write_check"] = (
             Path(path),
             captured.get("written_dataset"),
         )
+        if terminal_mode == "stored_input_premise":
+            return STORED_INPUT_PREMISE_FIXTURE
         return None
 
     monkeypatch.setattr(
@@ -8187,6 +8265,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "qrf_tail_register_clean",
             "qrf_tail_register_green",
             "qrf_tail_register_green_skipped_smoke",
+            *stored_input_modes,
         }
         return builder.GateResult(
             name="ssi_take_up_delivery",
@@ -8289,6 +8368,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             tail_register=tail_register,
             export_mass_reference=export_mass_reference,
             skipped_smoke=terminal_mode == "qrf_tail_register_green_skipped_smoke",
+            stored_input_mode=(
+                terminal_mode if terminal_mode in stored_input_modes else None
+            ),
         )
         return
 
