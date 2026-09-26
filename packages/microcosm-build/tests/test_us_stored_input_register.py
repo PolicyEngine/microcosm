@@ -128,7 +128,8 @@ def test_the_register_spells_the_us_entities_in_schema_order():
 
 
 #: The ACS-native amounts microcosm.build.us_runtime.acs_inputs maps under an
-#: acs_ name: every key of its contract that no engine version defines.
+#: acs_ name: the acs_ keys of its contract. None is a variable of the
+#: installed engine (test_the_inputs_the_acs_native_reasons_name_are_engine_inputs).
 _ACS_NATIVE_AMOUNTS = frozenset(
     column for column in _ACS_NATIVE_INPUT_CONTRACTS if column.startswith("acs_")
 )
