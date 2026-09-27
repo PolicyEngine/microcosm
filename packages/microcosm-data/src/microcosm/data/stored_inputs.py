@@ -265,6 +265,12 @@ _US_ENTITIES = ("person", "household", "tax_unit", "spm_unit", "family", "marita
 #: - the ACS local-area release ``populace-us-2024-buildo-acs-local-
 #:   767312d60-20260923T074941Z`` (the ``*_spine`` tags as well).
 #:
+#: One pair postdates those files: ``parent_1_id`` and ``parent_2_id``
+#: (microcosm#884). No examined file stores them yet, so they rest on their
+#: live producer, ``eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS``,
+#: which ``test_us_stored_input_register.py`` binds, and leave the register
+#: once the pinned engine defines them.
+#:
 #: Two model-named non-variable columns that the published default, its
 #: receipt child and the ACS local-area release store are deliberately absent,
 #: because each is a retired engine input rather than metadata:

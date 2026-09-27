@@ -625,10 +625,12 @@ class TestGate:
         assert person["parent_1_id"].iloc[1] == 0
         summary = us_eligibility_inputs_summary(frame)
         assert summary["pointers_unnameable_at_person_id_zero"] == 1
+        # The person holding id 0 has a child no pointer can name; the count
+        # bound (pointers naming a person <= their count) still holds.
         failures = [
             failure
             for failure in us_eligibility_inputs_signal_gate(frame).failures
-            if "parent pointers" in failure
+            if "parent" in failure
         ]
         assert failures == []
 
