@@ -181,6 +181,17 @@ chosen by concept and period alone
 ([us-soi-capital-gains-concepts.md](us-soi-capital-gains-concepts.md)). The
 counts are unchanged and `national_state` is `65e4dde11c83`.
 
+**Follow-up (27 September 2026, microcosm#1038).** On the `full` surface,
+the congressional-district file's capital-gains rows are now shares of its US
+row scaled to the same control, and the US row retires. The package's four
+mislabeled columns are dropped: N18425/A18425 (state and local income taxes),
+read as the limited SALT deduction, and N85530/A85530 (additional Medicare
+tax), read as the premium tax credit. That leaves 31,376 compiled targets, all of them on
+`full` (`059dc56d78db`). `national_state` keeps its 5,694 targets and values.
+It moves to `47dce807b412` only because its 102 Historic Table 2
+capital-gains rows now name their share denominator in
+`soi_share_total_source_record_id`.
+
 The labelled feed exposed one latent defect in microcosm, fixed in this
 change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
 substituted spec by cloning a neighbouring state's spec and kept that state's

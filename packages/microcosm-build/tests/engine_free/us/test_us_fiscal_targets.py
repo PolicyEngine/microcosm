@@ -107,10 +107,14 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
             groupby_value_id="hi_01",
             geography_id="5001700US1501",
         ),
-        _soi_congressional_district_fact(
+        # The pinned feed reads the CD PTC measures from A85530, additional
+        # Medicare tax, so they never compile (source-column exclusion).
+        _cd_column_fact(
             "premium_tax_credit_amount",
-            90_000_000,
+            "A85530",
+            value=90_000_000,
             groupby_value_id="hi_01",
+            geography_level="congressional_district",
             geography_id="5001700US1501",
         ),
         _soi_congressional_district_fact(
@@ -164,9 +168,10 @@ def test_soi_congressional_district_targets_are_always_compiled() -> None:
             geography_level="state",
             geography_id="0400000US15",
         ),
-        _soi_congressional_district_fact(
+        _cd_column_fact(
             "premium_tax_credit_amount",
-            180_000_000,
+            "A85530",
+            value=180_000_000,
             groupby_value_id="hi_total",
             geography_level="state",
             geography_id="0400000US15",
@@ -734,12 +739,14 @@ def test_exclusion_vintage_scope_registers_are_consistent() -> None:
 
 
 def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
-    """One synthetic feed exercises all four rules. The M-CHIP and all-vintage
+    """One synthetic feed exercises all five rules. The M-CHIP and all-vintage
     rules list every vintage the feed carries (both CMS months even though a
     2024 build selects only 2024-12), exact-key hits land under
-    reviewed_exclusion, and the allowlisted bypass is the fact selection
-    activates. The receipt is plain JSON."""
-    synthetic, expected = _four_rule_synthetic_feed(monkeypatch)
+    reviewed_exclusion, the source-column rule lists the facts read from a
+    listed column and not the one read from the right column, and the
+    allowlisted bypass is the fact selection activates. The receipt is plain
+    JSON."""
+    synthetic, expected = _exclusion_rule_synthetic_feed(monkeypatch)
     facts = [*packaged_reference_facts(), *synthetic]
 
     receipt = us_fiscal_target_exclusion_receipt(facts, target_period=2024)
@@ -750,6 +757,7 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
     assert {name: rule["action"] for name, rule in rules.items()} == {
         "reviewed_exclusion": "dropped",
         "all_vintage_reviewed_exclusion": "dropped",
+        "source_column_concept_exclusion": "dropped",
         "m_chip_state_chip_enrollment": "dropped",
         "allowlisted_vintage_bypass": "allowed",
     }
@@ -761,11 +769,92 @@ def test_exclusion_receipt_lists_the_ids_each_rule_acts_on(monkeypatch) -> None:
     assert rules["m_chip_state_chip_enrollment"]["state_fips"] == sorted(
         _M_CHIP_STATE_FIPS
     )
+    assert [
+        (entry["measure_id"], entry["source_column_id"])
+        for entry in rules["source_column_concept_exclusion"]["entries"]
+    ] == sorted(US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS)
+
+
+def test_source_column_exclusion_drops_only_the_mislabeled_column() -> None:
+    """A congressional-district fact labelled limited_state_local_taxes but read
+    from N18425/A18425 (state and local income taxes, Schedule A line 5a), or
+    labelled premium_tax_credit but read from N85530 (additional Medicare
+    tax), never compiles, at any geography; the same measures read from
+    A18460 and N85770, the columns a corrected package would read, compile
+    (microcosm#1038)."""
+    mislabeled = [
+        _cd_column_fact("limited_state_local_taxes_returns", "N18425"),
+        _cd_column_fact("limited_state_local_taxes_amount", "A18425"),
+        _cd_column_fact(
+            "limited_state_local_taxes_returns",
+            "N18425",
+            groupby_value_id="hi_total",
+            geography_level="state",
+            geography_id="0400000US15",
+        ),
+    ]
+    corrected = _cd_column_fact(
+        "limited_state_local_taxes_amount",
+        "A18460",
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    medicare = _cd_column_fact("premium_tax_credit_returns", "N85530")
+    ptc = _cd_column_fact(
+        "premium_tax_credit_returns",
+        "N85770",
+        groupby_value_id="hi_total",
+        geography_level="state",
+        geography_id="0400000US15",
+    )
+    mislabeled = [*mislabeled, medicare]
+    facts = [*packaged_reference_facts(), *mislabeled, corrected, ptc]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+
+    compiled = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
+    assert not compiled & {fact["lineage"]["source_record_id"] for fact in mislabeled}
+    assert corrected["lineage"]["source_record_id"] in compiled
+    assert ptc["lineage"]["source_record_id"] in compiled
+    rule = us_fiscal_target_exclusion_receipt(facts)["rules"][
+        "source_column_concept_exclusion"
+    ]
+    assert rule["source_record_ids"] == sorted(
+        fact["lineage"]["source_record_id"] for fact in mislabeled
+    )
+
+
+def test_source_column_exclusions_name_the_columns_their_guides_define() -> None:
+    """Each entry's reason names its own column and the column its measure id
+    means, as 22incddocguide.docx defines them: N18425/A18425 (state and local
+    income taxes, Schedule A line 5a) stand in for the limited deduction
+    N18460/A18460 (line 5e), and N85530/A85530 (additional Medicare tax) for
+    the premium tax credit N85770/A85770."""
+    right_columns = {
+        ("limited_state_local_taxes_returns", "N18425"): "N18460",
+        ("limited_state_local_taxes_amount", "A18425"): "A18460",
+        ("premium_tax_credit_returns", "N85530"): "N85770",
+        ("premium_tax_credit_amount", "A85530"): "A85770",
+    }
+    assert set(US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS) == set(right_columns)
+    for key, reason in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS.items():
+        measure_id, column = key
+        assert column in reason
+        assert right_columns[key] in reason
+        # Counts read N columns and amounts read A columns.
+        assert (
+            column[0]
+            == right_columns[key][0]
+            == ("N" if measure_id.endswith("_returns") else "A")
+        )
 
 
 def test_exclusion_receipt_is_complete_for_any_subfeed(monkeypatch) -> None:
     """Invariant (receipt completeness): each rule lists exactly the facts it
-    drops or allows. For any subset of the four-rule synthetic feed, each rule
+    drops or allows. For any subset of the five-rule synthetic feed, each rule
     lists exactly the full feed's ids for that rule that the subset carries.
     Hypothesis is a workspace dependency; the wheels job installs no test
     extras, so it skips there."""
@@ -773,7 +862,7 @@ def test_exclusion_receipt_is_complete_for_any_subfeed(monkeypatch) -> None:
     from hypothesis import given, settings
     from hypothesis import strategies as st
 
-    synthetic, expected = _four_rule_synthetic_feed(monkeypatch)
+    synthetic, expected = _exclusion_rule_synthetic_feed(monkeypatch)
     ids = [fiscal_targets._source_record_id(fact) for fact in synthetic]
     reference = packaged_reference_facts()
 
@@ -859,9 +948,11 @@ def test_exclusion_vintage_scope_fails_closed_for_any_vintage_pair(
 
 def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> None:
     """On the pinned feed the receipt names the 40 M-CHIP CHIP ids (20 states
-    x 2 CMS months), the 16 other-income ids (ty2020-ty2023) and the ty2020
-    and ty2023 tips return counts, and allows no vintage bypass (decision
-    d179)."""
+    x 2 CMS months), the 16 other-income ids (ty2020-ty2023), the ty2020 and
+    ty2023 tips return counts, and the 1,952 congressional-district SALT and
+    premium-tax-credit facts read from the wrong IRS column (488 per measure
+    after the district crosswalk: the US row, 51 states, 436 districts), and
+    allows no vintage bypass (decision d179, microcosm#1038)."""
     _, _, receipt = pinned_feed_national_state_surface
     rules = receipt["rules"]
     m_chip_ids = rules["m_chip_state_chip_enrollment"]["source_record_ids"]
@@ -886,23 +977,44 @@ def test_pinned_feed_exclusion_receipt(pinned_feed_national_state_surface) -> No
         ]
     )
     assert rules["allowlisted_vintage_bypass"]["source_record_ids"] == []
+    column_ids = rules["source_column_concept_exclusion"]["source_record_ids"]
+    assert all(".congressional_district_2022." in i for i in column_ids)
+    assert {
+        measure: sum(
+            f".{measure}" in source_record_id for source_record_id in column_ids
+        )
+        for measure, _ in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS
+    } == {measure: 488 for measure, _ in US_FISCAL_TARGET_SOURCE_COLUMN_EXCLUSIONS}
+    assert len(column_ids) == 4 * 488
 
 
 def test_pinned_feed_national_state_surface_restores_the_fences(
     pinned_feed_national_state_surface,
 ) -> None:
-    """The release surface on the pinned feed: 32,842 compiled targets after
-    Medicaid substitution, 5,694 national_state targets at registry
-    65e4dde11c83, 32 CHIP rows none of them for an M-CHIP state, no
-    other-income row and no tips return count. Before microcosm#956 it was
-    32,867 / 5,719 at d5f9d854fe11, before decision d179 dropped the ty2020
-    tips return count it was 32,843 / 5,695 at 386fac439e77, and before
-    microcosm#1035 moved the capital-gains control back to Table 1.4 it was
-    d315c75804ef at the same counts (docs/us-chronicle-feed-repin.md)."""
+    """The release surface on the pinned feed: 31,376 compiled targets after
+    Medicaid substitution (the full surface, at 059dc56d78db), 5,694
+    national_state targets at registry 47dce807b412, 32 CHIP rows none of them
+    for an M-CHIP state, no other-income row and no tips return count. Before
+    microcosm#956 it was 32,867 / 5,719 at d5f9d854fe11, before decision d179
+    dropped the ty2020 tips return count it was 32,843 / 5,695 at
+    386fac439e77, before microcosm#1035 moved the capital-gains control back
+    to Table 1.4 it was d315c75804ef at the same counts, and before
+    microcosm#1038 it was 32,842 compiled at 65e4dde11c83 (full e02123644d42):
+    that change drops 1,466 congressional-district specs (the two
+    capital-gains US rows and the SALT and premium-tax-credit rows read from
+    the wrong column) and moves national_state only by one provenance key,
+    soi_share_total_source_record_id, on the 102 Historic Table 2
+    capital-gains rows (docs/us-chronicle-feed-repin.md,
+    docs/us-soi-capital-gains-concepts.md)."""
+    from microcosm.calibrate import TargetRegistry
+
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 32_842
+    assert len(registry.specs) == 31_376
+    builder = _load_repo_tool("build_us_fiscal_refresh_release")
+    full, _ = builder._select_target_surface(registry.specs, "full")
+    assert TargetRegistry(full, country="us").version == "059dc56d78db"
     assert len(surface.specs) == 5_694
-    assert surface.version == "65e4dde11c83"
+    assert surface.version == "47dce807b412"
     chip = [
         spec
         for spec in surface.specs
@@ -962,6 +1074,9 @@ def test_pinned_feed_capital_gains_rows_take_the_table_1_4_level(
         national = next(spec for spec in surface.specs if spec.name == control_id)
         for spec in rows:
             assert spec.metadata["uprating_index_source_record_id"] == control_id
+            assert spec.metadata["soi_share_total_source_record_id"] == (
+                f"irs_soi.ty2022.historic_table_2.us.all.{measure}"
+            )
             assert spec.metadata["uprating_factor"] == factor
             assert spec.metadata["soi_source_concept"] == (
                 "form_1040_line_7_net_gain_or_loss"
@@ -986,25 +1101,7 @@ def test_pinned_feed_no_soi_state_family_sums_past_its_national_target(
     both a stale HT2 US row and a newer Table 1.x row, a few percent apart, so
     the bound is the larger of them."""
     _, surface, _ = pinned_feed_national_state_surface
-
-    def quantity(spec) -> tuple[object, ...]:
-        metadata = spec.metadata
-        return (
-            metadata.get("variable"),
-            metadata.get("measure_mode"),
-            metadata.get("agi_lower_bound"),
-            metadata.get("agi_upper_bound"),
-            metadata.get("filing_status"),
-            metadata.get("soi_return_universe", "all_returns"),
-            metadata.get("itemized_only"),
-            tuple(
-                sorted(
-                    (key, value)
-                    for key, value in metadata.items()
-                    if key.startswith("ledger_filter_")
-                )
-            ),
-        )
+    quantity = _soi_quantity
 
     national: dict[tuple[object, ...], list[float]] = {}
     states: dict[tuple[object, ...], float] = {}
@@ -1021,6 +1118,133 @@ def test_pinned_feed_no_soi_state_family_sums_past_its_national_target(
         key[:2]: total / max(national[key])
         for key, total in compared.items()
         if total > max(national[key])
+    } == {}
+
+
+def _soi_quantity(spec) -> tuple[object, ...]:
+    """The model quantity and filters an SOI target constrains."""
+    metadata = spec.metadata
+    return (
+        metadata.get("variable"),
+        metadata.get("measure_mode"),
+        metadata.get("agi_lower_bound"),
+        metadata.get("agi_upper_bound"),
+        metadata.get("filing_status"),
+        metadata.get("soi_return_universe", "all_returns"),
+        metadata.get("itemized_only"),
+        tuple(
+            sorted(
+                (key, value)
+                for key, value in metadata.items()
+                if key.startswith("ledger_filter_")
+            )
+        ),
+    )
+
+
+def _is_congressional_district_file_spec(spec) -> bool:
+    return (
+        fiscal_targets._soi_record_set_family(
+            spec.metadata.get("ledger_layout_record_set_id", "")
+        )
+        == "congressional_district"
+    )
+
+
+def test_pinned_feed_congressional_district_capital_gains_take_the_table_1_4_level(
+    pinned_feed_national_state_surface,
+) -> None:
+    """On the full surface the congressional-district file's 51 state and 436
+    district capital-gains rows per measure are shares of that file's US row
+    times the Table 1.4 ty2023 level, and the US row retires
+    (microcosm#1038). The states, and the districts, each sum to the national
+    target: 12,392,020 returns, where the line-7 levels summed to 29,845,710
+    (2.41x), and the aged Table 1.4 amount, where they summed to $1,522.2B
+    (1.198x)."""
+    registry, _, _ = pinned_feed_national_state_surface
+    specs = {spec.name: spec for spec in registry.specs}
+    for measure, control_id, cd_us_id, total in (
+        (
+            "net_capital_gains_returns",
+            "irs_soi.ty2023.table_1_4.all.net_capital_gains_returns",
+            f"{_CG_CD_RECORD_SET}.us.net_capital_gains_returns",
+            12_392_020.0,
+        ),
+        (
+            "net_capital_gains_amount",
+            "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            f"{_CG_CD_RECORD_SET}.us.net_capital_gains_amount",
+            None,
+        ),
+    ):
+        rows = [
+            spec
+            for spec in registry.specs
+            if spec.metadata.get("source_measure_id") == measure
+            and _is_congressional_district_file_spec(spec)
+        ]
+        levels: dict[str, list] = {}
+        for spec in rows:
+            levels.setdefault(spec.metadata["ledger_geography_level"], []).append(spec)
+        assert {level: len(group) for level, group in levels.items()} == {
+            "state": 51,
+            "congressional_district": 436,
+        }
+        assert cd_us_id not in specs
+        national = specs[control_id]
+        factors = {spec.metadata["uprating_factor"] for spec in rows}
+        assert len(factors) == 1
+        for spec in rows:
+            assert spec.metadata["uprating_index_source_record_id"] == control_id
+            assert spec.metadata["soi_share_total_source_record_id"] == cd_us_id
+            assert spec.metadata["soi_source_concept"] == (
+                "form_1040_line_7_net_gain_or_loss"
+            )
+            assert spec.metadata["soi_control_concept"] == (
+                "schedule_d_taxable_net_gain"
+            )
+        for level in ("state", "congressional_district"):
+            level_total = sum(spec.value for spec in levels[level])
+            assert math.isclose(level_total, national.value, rel_tol=1e-12)
+            if total is not None:
+                assert math.isclose(level_total, total, rel_tol=1e-12)
+
+
+def test_pinned_feed_no_congressional_district_family_sums_past_its_national_target(
+    pinned_feed_national_state_surface,
+) -> None:
+    """Invariant: the congressional-district file covers a subset of returns
+    (no Puerto Rico or other areas, ZIP-unmatched returns dropped), so on the
+    full surface none of its families (its US row, its states, or its
+    districts) may sum past every national non-district target of the same
+    model quantity and filters. Before microcosm#1038 three of 38 compared
+    families did: capital-gains returns at 2.41x, the SALT amount at 1.98x
+    (read from the uncapped income-tax column A18425) and the capital-gains
+    amount at 1.198x. 35 of today's 52 families have a national comparator;
+    the rest (EITC by children, charitable, interest paid, QBI, taxable
+    interest, filer individuals) have none on this surface."""
+    registry, _, _ = pinned_feed_national_state_surface
+    builder = _load_repo_tool("build_us_fiscal_refresh_release")
+    full, _ = builder._select_target_surface(registry.specs, "full")
+
+    national: dict[tuple[object, ...], list[float]] = {}
+    district_file: dict[tuple[object, ...], dict[str, float]] = {}
+    for spec in full:
+        if spec.family != "irs_soi":
+            continue
+        level = spec.metadata.get("ledger_geography_level")
+        if _is_congressional_district_file_spec(spec):
+            sums = district_file.setdefault(_soi_quantity(spec), {})
+            sums[level] = sums.get(level, 0.0) + spec.value
+        elif level == "country":
+            national.setdefault(_soi_quantity(spec), []).append(spec.value)
+    compared = {key: sums for key, sums in district_file.items() if key in national}
+    assert (len(district_file), len(compared)) == (52, 35)
+    assert {
+        (key[:2], level): total / max(national[key])
+        for key, sums in compared.items()
+        for level, total in sums.items()
+        if total > max(national[key]) * (1 + 1e-9)
     } == {}
 
 
@@ -4552,6 +4776,440 @@ def test_rebased_capital_gains_states_never_outgrow_their_control() -> None:
             total, control_value * sum(state_values) / national, rel_tol=1e-12
         )
         assert total <= control_value * (1 + 1e-12)
+
+    check()
+
+
+def _capital_gains_cd_package_facts(
+    *,
+    us: tuple[float, float] = (98.0, 925.0),
+    hawaii: tuple[float, float] = (4.0, 40.0),
+    districts: tuple[tuple[float, float], ...] = ((1.5, 10.0), (2.5, 30.0)),
+) -> list[dict[str, object]]:
+    """A congressional-district package's line-7 rows, stamped ty2023 like the
+    pinned feed: the US row, Hawaii, and Hawaii's two districts, each as
+    (returns, amount)."""
+    facts = []
+    for index, measure in enumerate(
+        ("net_capital_gains_returns", "net_capital_gains_amount")
+    ):
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                us[index],
+                groupby_value_id="us",
+                geography_level="country",
+                geography_id="0100000US",
+            )
+        )
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                hawaii[index],
+                groupby_value_id="hi_total",
+                geography_level="state",
+                geography_id="0400000US15",
+            )
+        )
+        for number, values in enumerate(districts, start=1):
+            facts.append(
+                _soi_congressional_district_fact(
+                    measure,
+                    values[index],
+                    groupby_value_id=f"hi_0{number}",
+                    geography_id=f"5001700US150{number}",
+                )
+            )
+    return facts
+
+
+def _congressional_district_capital_gains_specs(registry) -> dict[str, object]:
+    return {
+        spec.name: spec
+        for spec in registry.specs
+        if spec.metadata.get("source_measure_id")
+        in {"net_capital_gains_returns", "net_capital_gains_amount"}
+        and ".congressional_district_" in spec.metadata["ledger_layout_record_set_id"]
+    }
+
+
+def test_congressional_district_capital_gains_rows_are_shares_of_table_1_4() -> None:
+    """The congressional-district file's N01000/A01000 count Form 1040 line 7,
+    like Historic Table 2, so its state and district rows ship as shares of
+    that file's own US row times the Table 1.4 level; the US row retires
+    (microcosm#1038). On the pinned feed they shipped as line-7 levels, and
+    the US returns row was 2.41x the Table 1.4 target of the same model
+    quantity on the full surface."""
+    facts = [
+        *packaged_reference_facts(),
+        *_capital_gains_ht2_facts(),
+        *_capital_gains_cd_package_facts(),
+        *_capital_gains_t14_facts(),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+
+    cd = _congressional_district_capital_gains_specs(registry)
+    assert not [
+        name
+        for name, spec in cd.items()
+        if spec.metadata["ledger_geography_level"] == "country"
+    ]
+    for measure, control_id, control, cd_us, hawaii, districts in (
+        ("net_capital_gains_returns", _CG_T14_RETURNS, 40.0, 98.0, 4.0, (1.5, 2.5)),
+        ("net_capital_gains_amount", _CG_T14_AMOUNT, 800.0, 925.0, 40.0, (10.0, 30.0)),
+    ):
+        factor = control / cd_us
+        state = cd[f"{_CG_CD_RECORD_SET}.hi_total.{measure}"]
+        children = [cd[f"{_CG_CD_RECORD_SET}.hi_0{n}.{measure}"] for n in (1, 2)]
+        assert math.isclose(state.value, hawaii * factor, rel_tol=1e-12)
+        for child, raw in zip(children, districts, strict=True):
+            assert math.isclose(child.value, raw * factor, rel_tol=1e-12)
+            # One factor scales the state and its districts, so the hierarchy
+            # reconciliation that follows leaves the proportions alone.
+            assert child.metadata["hierarchy_reconciliation_factor"] == "1"
+        for spec in (state, *children):
+            assert spec.metadata["uprating_factor"] == fiscal_targets._format_float(
+                factor
+            )
+            assert spec.metadata["uprating_index_source_record_id"] == control_id
+            assert spec.metadata["soi_source_concept"] == (
+                "form_1040_line_7_net_gain_or_loss"
+            )
+            assert spec.metadata["soi_control_concept"] == (
+                "schedule_d_taxable_net_gain"
+            )
+
+    # Historic Table 2 rows keep dividing by the HT2 US row (100 / 1,000), not
+    # by the congressional-district US row.
+    specs = {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}
+    assert specs[_CG_HT2_CA_RETURNS].value == 10.0
+    assert specs[_CG_HT2_CA_AMOUNT].value == 200.0
+
+
+#: The pinned feed's 22incd.csv: TY2022 data that Chronicle stamps ty2023
+#: (PolicyEngine/chronicle#117). A source-vintage correction keys on these.
+_CD_2022_SOURCE_SHA256 = (
+    "137522878af78d624cfddc0e17cd36ae76a21b7bed166c7bb96ad3243a18a668"
+)
+
+
+def _capital_gains_cd_package_at(stamp: int) -> list[dict[str, object]]:
+    """The congressional-district capital-gains rows of
+    ``_capital_gains_cd_package_facts``, stamped ``stamp``, carrying the
+    pinned 22incd.csv's digest and raw key."""
+    record_set_id = f"irs_soi.ty{stamp}.congressional_district_2022.all_returns"
+    facts = []
+    for fact in _capital_gains_cd_package_facts():
+        row = fact["layout"]["groupby_value_id"]
+        measure = fact["layout"]["measure_id"]
+        restamped = _dynamic_ledger_fact(
+            source_record_id=f"{record_set_id}.{row}.{measure}",
+            source_name="irs_soi",
+            measure_id=measure,
+            value=fact["value"],
+            period_value=stamp,
+            geography_level=fact["geography"]["level"],
+            geography_id=fact["geography"]["id"],
+            dimensions={"income_range": "all", "filing_status": "all"},
+            layout_record_set_id=record_set_id,
+            groupby_dimension="irs_soi.congressional_district",
+            groupby_value_id=row,
+        )
+        restamped["source"].update(
+            {
+                "source_file": "22incd.csv",
+                "source_sha256": _CD_2022_SOURCE_SHA256,
+                "raw_r2_key": (
+                    "raw/irs_soi/soi-congressional-district-2022/2022/"
+                    f"{_CD_2022_SOURCE_SHA256}/22incd.csv"
+                ),
+                "vintage": f"tax_year_{stamp}",
+            }
+        )
+        facts.append(restamped)
+    return facts
+
+
+def test_congressional_district_capital_gains_ignore_the_package_stamp() -> None:
+    """Differential: a congressional-district capital-gains row is its share of
+    the same package's US row times the Table 1.4 level, so the package's
+    period stamp cancels. Compiled and aged to 2024, the package stamped
+    ty2023, as on the pinned feed, gives exactly the values of the same package
+    stamped truthfully at 2022, and its amounts age from the control's 2023
+    period on the CBO net-capital-gain ratio, not from 2022. The facts carry
+    the pinned file's digest and raw key, so a source-vintage correction that
+    recognises the restamp sees them: it must leave these values alone
+    (microcosm#1030, microcosm#1038)."""
+    cbo = [
+        _cbo_income_source_projection_fact(2023, "net_capital_gain", value=981.4e9),
+        _cbo_income_source_projection_fact(2024, "net_capital_gain", value=1290.9e9),
+    ]
+    compiled = {}
+    for stamp in (2023, 2022):
+        registry = compile_us_fiscal_target_registry(
+            [
+                *packaged_reference_facts(),
+                *_capital_gains_cd_package_at(stamp),
+                *_capital_gains_t14_facts(),
+                *cbo,
+            ],
+            target_period=2024,
+            age_targets=True,
+            allow_unaged_dollar_targets=True,
+        )
+        compiled[stamp] = {
+            (
+                spec.metadata["source_measure_id"],
+                spec.metadata["ledger_geography_id"],
+            ): (spec)
+            for spec in _congressional_district_capital_gains_specs(registry).values()
+        }
+
+    assert set(compiled[2023]) == set(compiled[2022])
+    assert len(compiled[2023]) == 6
+    ratio = 1290.9e9 / 981.4e9
+    for key, spec in compiled[2023].items():
+        truthful = compiled[2022][key]
+        assert math.isclose(spec.value, truthful.value, rel_tol=1e-12), key
+        assert spec.metadata["uprating_to_period"] == "2023"
+        if key[0] == "net_capital_gains_amount":
+            for aged in (spec, truthful):
+                assert math.isclose(
+                    float(aged.metadata["aging_factor"]), ratio, rel_tol=1e-12
+                )
+            share = {"0400000US15": 40.0, "5001700US1501": 10.0}.get(key[1], 30.0)
+            assert math.isclose(
+                spec.value, share / 925.0 * 800.0 * ratio, rel_tol=1e-12
+            )
+
+
+def test_congressional_district_capital_gains_rows_without_a_control_are_dropped() -> (
+    None
+):
+    """Without a Schedule D control no congressional-district capital-gains row
+    compiles: the file's line-7 counts are never a capital_gains_gross level."""
+    facts = [*packaged_reference_facts(), *_capital_gains_cd_package_facts()]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+
+    assert _congressional_district_capital_gains_specs(registry) == {}
+
+
+def test_capital_gains_share_family_refuses_two_national_totals() -> None:
+    """Two different national totals for one share family, quantity and period
+    refuse the compile: feed order must not pick a share denominator."""
+    rival = _soi_congressional_district_fact(
+        "net_capital_gains_returns",
+        99.0,
+        groupby_value_id="us_rival",
+        geography_level="country",
+        geography_id="0100000US",
+    )
+    facts = [
+        *packaged_reference_facts(),
+        *_capital_gains_cd_package_facts(),
+        *_capital_gains_t14_facts(),
+        rival,
+    ]
+
+    with pytest.raises(fiscal_targets.AmbiguousSoiCapitalGainsShareTotalError):
+        fiscal_targets._soi_capital_gains_share_national_totals(tuple(facts))
+    with pytest.raises(fiscal_targets.AmbiguousSoiCapitalGainsShareTotalError):
+        compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
+
+
+@pytest.mark.parametrize("twin_first", [True, False], ids=["twin-first", "us-first"])
+def test_capital_gains_share_denominator_is_order_free(twin_first: bool) -> None:
+    """Two records carrying the same national total for one share family are
+    not ambiguous, and the denominator a share row names is the smaller
+    record id whichever comes first in the feed."""
+    twin = _soi_congressional_district_fact(
+        "net_capital_gains_returns",
+        98.0,
+        groupby_value_id="us_twin",
+        geography_level="country",
+        geography_id="0100000US",
+    )
+    package = _capital_gains_cd_package_facts()
+    facts = [
+        *packaged_reference_facts(),
+        *((twin, *package) if twin_first else (*package, twin)),
+        *_capital_gains_t14_facts(),
+    ]
+
+    registry = compile_us_fiscal_target_registry(
+        facts, allow_unaged_dollar_targets=True
+    )
+
+    hawaii = _congressional_district_capital_gains_specs(registry)[
+        f"{_CG_CD_RECORD_SET}.hi_total.net_capital_gains_returns"
+    ]
+    assert hawaii.metadata["soi_share_total_source_record_id"] == min(
+        f"{_CG_CD_RECORD_SET}.us.net_capital_gains_returns",
+        f"{_CG_CD_RECORD_SET}.us_twin.net_capital_gains_returns",
+    )
+    assert math.isclose(hawaii.value, 4.0 * 40.0 / 98.0, rel_tol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("record_set_id", "family"),
+    [
+        ("irs_soi.ty2022.historic_table_2.state_broad.ca", "historic_table_2"),
+        (
+            "irs_soi.ty2023.congressional_district_2022.all_returns",
+            "congressional_district",
+        ),
+        (
+            "irs_soi.ty2024.congressional_district_2024.all_returns",
+            "congressional_district",
+        ),
+        ("irs_soi.ty2023.table_1_4", None),
+        ("irs_soi.ty2023.itemized_all_returns", None),
+        ("bea.cy2023.regional", None),
+    ],
+)
+def test_capital_gains_share_families_are_the_line_7_families(
+    record_set_id: str, family: str | None
+) -> None:
+    """Only a registered family whose concept is not the model's supplies
+    shares: Table 1.4 is the model's own concept and an unregistered family
+    has no reviewed concept."""
+    assert fiscal_targets._soi_capital_gains_share_family(record_set_id) == family
+
+
+def test_congressional_district_capital_gains_shares_conserve_the_control() -> None:
+    """Property: whatever the congressional-district package, the Table 1.4
+    level and the feed order, no congressional-district capital-gains row
+    ships at the country level or without the Schedule D bridge; each state
+    row is its share of the file's US row times the control; each state's
+    districts sum to that state row; and the states, and the districts, sum
+    to the control times the states' share of the US row, so never past the
+    control. The order is part of the draw, so the result is order-free."""
+    pytest.importorskip("hypothesis")
+    from hypothesis import given, settings
+    from hypothesis import strategies as st
+
+    # Two-district states and one single-district state, whose source row is
+    # the state total only (22incd.csv carries no district row for them).
+    two_district_states = (("hi", "15"), ("id", "16"), ("me", "23"))
+    at_large = ("vt", "50")
+    measure = "net_capital_gains_returns"
+    values = st.integers(min_value=1, max_value=10_000_000)
+
+    @settings(max_examples=25, deadline=None)
+    @given(
+        districts=st.lists(
+            st.tuples(values, values),
+            min_size=len(two_district_states),
+            max_size=len(two_district_states),
+        ),
+        state_excess=st.lists(
+            st.integers(min_value=0, max_value=1_000_000),
+            min_size=len(two_district_states),
+            max_size=len(two_district_states),
+        ),
+        at_large_value=values,
+        other_areas=st.integers(min_value=0, max_value=50_000_000),
+        control=values,
+        order=st.randoms(use_true_random=False),
+    )
+    def check(districts, state_excess, at_large_value, other_areas, control, order):
+        facts = []
+        state_values = {}
+        for (postal, fips), pair, excess in zip(
+            two_district_states, districts, state_excess, strict=True
+        ):
+            state_values[fips] = float(sum(pair) + excess)
+            facts.append(
+                _soi_congressional_district_fact(
+                    measure,
+                    state_values[fips],
+                    groupby_value_id=f"{postal}_total",
+                    geography_level="state",
+                    geography_id=f"0400000US{fips}",
+                )
+            )
+            for number, value in enumerate(pair, start=1):
+                facts.append(
+                    _soi_congressional_district_fact(
+                        measure,
+                        float(value),
+                        groupby_value_id=f"{postal}_0{number}",
+                        geography_id=f"5001700US{fips}0{number}",
+                    )
+                )
+        state_values[at_large[1]] = float(at_large_value)
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                float(at_large_value),
+                groupby_value_id=f"{at_large[0]}_total",
+                geography_level="state",
+                geography_id=f"0400000US{at_large[1]}",
+            )
+        )
+        cd_us = sum(state_values.values()) + other_areas
+        facts.append(
+            _soi_congressional_district_fact(
+                measure,
+                cd_us,
+                groupby_value_id="us",
+                geography_level="country",
+                geography_id="0100000US",
+            )
+        )
+        facts.append(
+            _soi_capital_gains_fact(
+                2023,
+                source_record_id=_CG_T14_RETURNS,
+                measure_id=measure,
+                layout_record_set_id="irs_soi.ty2023.table_1_4",
+                value=float(control),
+            )
+        )
+        order.shuffle(facts)
+        registry = compile_us_fiscal_target_registry(
+            [*packaged_reference_facts(), *facts], allow_unaged_dollar_targets=True
+        )
+
+        cd = _congressional_district_capital_gains_specs(registry).values()
+        by_level: dict[str, list] = {}
+        for spec in cd:
+            by_level.setdefault(spec.metadata["ledger_geography_level"], []).append(
+                spec
+            )
+            assert spec.metadata["soi_control_concept"] == (
+                "schedule_d_taxable_net_gain"
+            )
+            assert spec.metadata["uprating_index_source_record_id"] == _CG_T14_RETURNS
+        assert set(by_level) == {"state", "congressional_district"}
+        assert len(by_level["state"]) == len(state_values)
+        assert len(by_level["congressional_district"]) == 2 * len(two_district_states)
+
+        factor = control / cd_us
+        for spec in by_level["state"]:
+            raw = state_values[spec.metadata["state_fips"]]
+            assert math.isclose(spec.value, raw * factor, rel_tol=1e-12)
+        state_by_fips = {
+            spec.metadata["state_fips"]: spec.value for spec in by_level["state"]
+        }
+        district_totals: dict[str, float] = {}
+        for spec in by_level["congressional_district"]:
+            fips = spec.metadata["state_fips"]
+            district_totals[fips] = district_totals.get(fips, 0.0) + spec.value
+        for fips, total in district_totals.items():
+            assert math.isclose(total, state_by_fips[fips], rel_tol=1e-12)
+
+        expected = control * sum(state_values.values()) / cd_us
+        states_total = sum(state_by_fips.values())
+        assert math.isclose(states_total, expected, rel_tol=1e-12)
+        assert states_total <= control * (1 + 1e-12)
+        assert sum(district_totals.values()) <= control * (1 + 1e-12)
 
     check()
 
