@@ -86,8 +86,8 @@ ranks level with low but positive PUF incomes; rank alone handed positive wages
 to 47.9% (weighted) of survey units with no wages or self-employment income. Why pooled rather than within-group ranks: ranking
 earners only among earners matched survey earners to a PUF earner distribution
 that includes many small separate returns (for example dependents filing their
-own), cutting imputed wages to $7.93T; the pooled rank keeps $9.68T with the
-same participation fidelity.
+own), cutting imputed wages to $7.93T (×2); the pooled rank keeps $9.68T (×2)
+with the same participation fidelity.
 
 ## Real pool at frame weight
 
@@ -118,13 +118,13 @@ income are absent (`clone0_items_used`).
 "Largest record" is the share of the state's income above $1M carried by its
 single largest contributor.
 
-#1033 roughly quadruples the pool's proxy AGI at $5M+ ($174B to $675B) and
-lifts its $5M+ returns from 15.9k to 41.3k. On its own, though, it reaches
-about half of SOI there (52% of the 79.6k returns and 54% of the $1,244B), not
+#1033 nearly quadruples (3.9×) the pool's proxy AGI at $5M+ ($174B to $675B)
+and lifts its $5M+ returns from 15.9k to 41.3k. On its own, though, it
+reaches about half of SOI there (52% of the 79.6k returns and 54% of the $1,244B), not
 SOI. At $5M+ the real-pool figures are exactly half of the ×2 ones (for
 example 48,629 to 24,315 returns at $5M–10M), because only the PUF-clone half
 has units there. The bands in between ($1.5M–5M) sit at 0.59–0.84× SOI in
-both designs. At $1M–1.5M the survey half alone holds 284k returns, 77% of
+returns and 0.52–0.83× in AGI, in both designs. At $1M–1.5M the survey half alone holds 284k returns, 77% of
 SOI's count, in both designs. All five bands, with AGI and record counts, are
 in `results/actual_pool_bands.json`.
 
