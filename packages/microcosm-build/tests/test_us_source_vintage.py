@@ -1,31 +1,42 @@
 """Restamped Chronicle facts are read at their data year (chronicle#117).
 
 The compile-level cases (a restamped W-2 tips amount ageing from TY2020, the
-refusal of an unreviewed restamp) and the pinned-feed register check live in
-``test_us_fiscal_targets.py`` beside the other W-2 aging tests.
+refusals of an unreviewed or shadowing restamp) and the pinned-feed register
+check live in ``test_us_fiscal_targets.py`` beside the other W-2 aging tests.
 """
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from microcosm.build.us_runtime.source_vintage import (
+    US_LATER_PERIOD_OBSERVATION_EXEMPTIONS,
     US_RESTAMPED_SOURCE_PACKAGES,
+    LaterPeriodObservationExemption,
+    RestampedAgingIndexError,
     RestampedSourcePackage,
     SourceVintageCorrection,
     UnreviewedRestampError,
     apply_source_vintage_corrections,
+    check_restamps_stay_out_of_aging_indexes,
     detect_restamped_facts,
     fact_artifact_year,
     source_vintage_corrections,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
-_SHA = "1178d77618cc1d2f873506909eeec660f36e3599854f31337f9dcaec6cfc442f"
+_W2 = "soi-w2-statistics-2020"
+_W2_SHA = US_RESTAMPED_SOURCE_PACKAGES[_W2].source_sha256
+_OTHER_SHA = "0" * 64
+_TIPS_2023 = (
+    "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
+)
 
 
 def _raw_key(package_id: str, artifact_year: int | str, file: str = "f.xlsx") -> str:
-    return f"raw/irs_soi/{package_id}/{artifact_year}/{_SHA}/{file}"
+    return f"raw/irs_soi/{package_id}/{artifact_year}/{_OTHER_SHA}/{file}"
 
 
 def _fact(
@@ -34,11 +45,18 @@ def _fact(
     period: int | str,
     raw_r2_key: str | None,
     assertion: str | None = "observation",
+    sha: str | None = None,
 ) -> dict[str, object]:
+    source: dict[str, object] = {}
+    if raw_r2_key is not None:
+        source["raw_r2_key"] = raw_r2_key
+    if sha is not None:
+        source["source_sha256"] = sha
     fact: dict[str, object] = {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_record_id}@{period}",
         "lineage": {"source_record_id": source_record_id},
         "period": {"type": "tax_year", "value": period},
-        "source": {} if raw_r2_key is None else {"raw_r2_key": raw_r2_key},
+        "source": source,
     }
     if assertion is not None:
         fact["assertion"] = assertion
@@ -58,10 +76,10 @@ def _spec(name: str, value: float = 1.0, **metadata: str) -> TargetSpec:
     )
 
 
-_W2 = "soi-w2-statistics-2020"
-_TIPS_2023 = (
-    "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.amount"
-)
+def _entry(package_id: str, data_year: int, *stamps: int, sha: str = "s"):
+    return RestampedSourcePackage(
+        package_id, data_year, frozenset(stamps), "f.xlsx", sha, "reason"
+    )
 
 
 def test_fact_artifact_year_reads_the_raw_key_package_and_year() -> None:
@@ -72,10 +90,10 @@ def test_fact_artifact_year_reads_the_raw_key_package_and_year() -> None:
         None,
         "",
         "raw/irs_soi",
-        f"raw/irs_soi/{_W2}/source_capture/{_SHA}/f.xlsx",
-        f"raw/irs_soi/{_W2}/20/{_SHA}/f.xlsx",
-        f"staged/irs_soi/{_W2}/2020/{_SHA}/f.xlsx",
-        f"raw/irs_soi//2020/{_SHA}/f.xlsx",
+        f"raw/irs_soi/{_W2}/source_capture/{_OTHER_SHA}/f.xlsx",
+        f"raw/irs_soi/{_W2}/20/{_OTHER_SHA}/f.xlsx",
+        f"staged/irs_soi/{_W2}/2020/{_OTHER_SHA}/f.xlsx",
+        f"raw/irs_soi//2020/{_OTHER_SHA}/f.xlsx",
     ):
         assert fact_artifact_year(_fact("x", period=2023, raw_r2_key=key)) is None
 
@@ -107,6 +125,42 @@ def test_detect_restamped_facts_flags_only_observations_stamped_after_their_data
     assert {row[1:] for row in detected} == {(_W2, 2020, 2023)}
 
 
+def test_the_content_rule_detects_a_registered_file_under_any_key_shape() -> None:
+    # A Chronicle key-layout change (for example a country segment) must not
+    # hide a registered restamp: the pinned file's digest still names it.
+    moved_key = f"raw/us/irs_soi/{_W2}/2020/{_W2_SHA}/20in04w2all.xlsx"
+    detected = detect_restamped_facts(
+        [
+            _fact(_TIPS_2023, period=2023, raw_r2_key=moved_key, sha=_W2_SHA),
+            _fact("no_key", period=2023, raw_r2_key=None, sha=_W2_SHA),
+            # At its data year the registered file is stamped truthfully.
+            _fact("honest", period=2020, raw_r2_key=None, sha=_W2_SHA),
+        ]
+    )
+    assert [(row[0]["lineage"]["source_record_id"], *row[1:]) for row in detected] == [
+        (_TIPS_2023, _W2, 2020, 2023),
+        ("no_key", _W2, 2020, 2023),
+    ]
+    assert len(source_vintage_corrections([row[0] for row in detected])) == 2
+
+
+def test_a_reviewed_exemption_admits_a_truthful_later_observation() -> None:
+    # BEA's 2024-keyed SAINC.zip carries a 2025 column; once Chronicle builds
+    # it truthfully, the structural rule alone would flag it.
+    fact = _fact(
+        "bea_regional.cy2025.x", period=2025, raw_r2_key=_raw_key("bea-sainc", 2024)
+    )
+    assert detect_restamped_facts([fact])
+    exemptions = {
+        "bea-sainc": LaterPeriodObservationExemption(
+            "bea-sainc", frozenset({2025}), "multi-year release"
+        )
+    }
+    assert not detect_restamped_facts([fact], exemptions=exemptions)
+    assert not source_vintage_corrections([fact], exemptions=exemptions)
+    assert US_LATER_PERIOD_OBSERVATION_EXEMPTIONS == {}
+
+
 def test_register_entries_describe_one_earlier_year_each() -> None:
     assert set(US_RESTAMPED_SOURCE_PACKAGES) == {
         "soi-w2-statistics-2020",
@@ -115,6 +169,8 @@ def test_register_entries_describe_one_earlier_year_each() -> None:
         "soi-ira-roth-contributions-2022",
         "soi-ira-traditional-contributions-2022",
     }
+    digests = [entry.source_sha256 for entry in US_RESTAMPED_SOURCE_PACKAGES.values()]
+    assert len(set(digests)) == len(digests)
     for package_id, entry in US_RESTAMPED_SOURCE_PACKAGES.items():
         assert entry.package_id == package_id
         assert entry.stamped_periods
@@ -122,6 +178,7 @@ def test_register_entries_describe_one_earlier_year_each() -> None:
         # IRS SOI file names lead with the two-digit tax year (20in04w2all).
         assert int(entry.source_file[:2]) == entry.data_year % 100
         assert package_id.endswith(str(entry.data_year))
+        assert len(entry.source_sha256) == 64
         assert entry.reason
 
 
@@ -142,6 +199,7 @@ def test_corrections_map_each_registered_restamp_to_its_data_year() -> None:
             package_id=_W2,
             stamped_year=2023,
             data_year=2020,
+            fact_key=f"ledger.aggregate_fact.v2:{_TIPS_2023}@2023",
         )
     }
 
@@ -164,10 +222,14 @@ def test_an_unreviewed_restamp_is_refused(
     assert len(raised.value.problems) == 1
 
 
+def test_a_registered_file_under_a_key_naming_another_year_is_refused() -> None:
+    fact = _fact(_TIPS_2023, period=2023, raw_r2_key=_raw_key(_W2, 2021), sha=_W2_SHA)
+    with pytest.raises(UnreviewedRestampError, match="register data year 2020"):
+        source_vintage_corrections([fact])
+
+
 def test_one_record_with_two_different_corrections_is_refused() -> None:
-    register = {
-        "a": RestampedSourcePackage("a", 2020, frozenset({2023, 2024}), "20a", "r"),
-    }
+    register = {"a": _entry("a", 2020, 2023, 2024)}
     with pytest.raises(ValueError, match="two corrections"):
         source_vintage_corrections(
             [
@@ -178,7 +240,40 @@ def test_one_record_with_two_different_corrections_is_refused() -> None:
         )
 
 
-_CORRECTION = SourceVintageCorrection(_TIPS_2023, _W2, 2023, 2020)
+def _chain_fact(year: int) -> dict[str, object]:
+    return {
+        "lineage": {
+            "source_record_id": f"irs_soi.ty{year}.table_1_4.all.wages_salaries_amount"
+        },
+        "period": {"type": "tax_year", "value": year},
+        "value": 1e13,
+        "geography": {"level": "country"},
+        "layout": {
+            "record_set_id": f"irs_soi.ty{year}.table_1_4",
+            "groupby_value_id": "all",
+        },
+        "observed_measure": {
+            "source_name": "irs_soi",
+            "source_measure_id": "wages_salaries_amount",
+        },
+    }
+
+
+def test_a_restamped_fact_in_an_aging_chain_index_is_refused() -> None:
+    # A pinned TY2022 Table 1.4 stamped 2023 would stand in for the TY2023
+    # wages level in every chained factor that pivots on 2023.
+    chain = [_chain_fact(2020), _chain_fact(2023)]
+    restamped_id = "irs_soi.ty2023.table_1_4.all.wages_salaries_amount"
+    correction = SourceVintageCorrection(restamped_id, "soi-t14-2022", 2023, 2022)
+    with pytest.raises(RestampedAgingIndexError, match=restamped_id):
+        check_restamps_stay_out_of_aging_indexes(chain, {restamped_id: correction})
+    check_restamps_stay_out_of_aging_indexes(chain, {_TIPS_2023: _CORRECTION})
+    check_restamps_stay_out_of_aging_indexes(chain, {})
+
+
+_CORRECTION = SourceVintageCorrection(
+    _TIPS_2023, _W2, 2023, 2020, fact_key="ledger.aggregate_fact.v2:tips"
+)
 
 
 def test_apply_moves_only_the_backing_facts_source_period() -> None:
@@ -198,14 +293,6 @@ def test_apply_moves_only_the_backing_facts_source_period() -> None:
                 ledger_fact_period="2023",
                 source_period="2023",
             ),
-            # Same id at another stamp is not the corrected fact.
-            _spec(
-                "other_stamp",
-                7.0,
-                ledger_source_record_id=_TIPS_2023,
-                ledger_fact_period="2024",
-                source_period="2024",
-            ),
         ],
         country="us",
     )
@@ -223,8 +310,22 @@ def test_apply_moves_only_the_backing_facts_source_period() -> None:
     assert restamped.metadata["source_vintage_correction"] == (
         "soi-w2-statistics-2020: stamped 2023, data year 2020"
     )
-    for name in ("other", "other_stamp"):
-        assert corrected[name] == {spec.name: spec for spec in registry.specs}[name]
+    assert corrected["other"] == registry.specs[1]
+
+
+def test_apply_refuses_a_backed_spec_compared_at_another_period() -> None:
+    # A fiscal-year fact is compared at its coverage start year, which can
+    # differ from the stamp the correction was made for; fail closed.
+    spec = _spec(
+        "fiscal",
+        ledger_source_record_id=_TIPS_2023,
+        ledger_fact_period="2022",
+        source_period="2023",
+    )
+    with pytest.raises(ValueError, match="not its stamp"):
+        apply_source_vintage_corrections(
+            TargetRegistry([spec], country="us"), {_TIPS_2023: _CORRECTION}
+        )
 
 
 def test_apply_moves_a_rebased_specs_control_period_to_the_controls_data_year() -> None:
@@ -289,6 +390,23 @@ def test_apply_refuses_a_pooled_uprating_index_with_a_restamped_member() -> None
         )
 
 
+def test_apply_refuses_a_multi_fact_spec_with_a_restamped_member() -> None:
+    # The spec's source period is its representative's; a restamped member
+    # that is not the representative would go uncorrected.
+    spec = _spec(
+        "summed",
+        ledger_source_record_id="irs_soi.ty2023.representative",
+        ledger_fact_period="2023",
+        ledger_member_fact_keys=json.dumps(
+            ["ledger.aggregate_fact.v2:representative", _CORRECTION.fact_key]
+        ),
+    )
+    with pytest.raises(ValueError, match="aggregates several facts"):
+        apply_source_vintage_corrections(
+            TargetRegistry([spec], country="us"), {_TIPS_2023: _CORRECTION}
+        )
+
+
 def test_correction_invariants_hold_for_generated_registries() -> None:
     """For any registry and any corrections: values, names, periods and order
     never move; the correction is idempotent; a spec changes if and only if
@@ -314,9 +432,17 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
             )
         specs = []
         for index in range(draw(st.integers(0, 8))):
+            record_id = draw(st.sampled_from(record_ids))
+            # A backed spec is always compared at its fact's stamp; the
+            # mismatch case is refused (tested above).
+            fact_period = (
+                corrections[record_id].stamped_year
+                if record_id in corrections
+                else draw(years)
+            )
             metadata = {
-                "ledger_source_record_id": draw(st.sampled_from(record_ids)),
-                "ledger_fact_period": str(draw(years)),
+                "ledger_source_record_id": record_id,
+                "ledger_fact_period": str(fact_period),
                 "source_period": str(draw(years)),
             }
             if draw(st.booleans()):
@@ -337,11 +463,7 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
         return specs, corrections
 
     def backed(spec, corrections):
-        correction = corrections.get(spec.metadata["ledger_source_record_id"])
-        return (
-            correction is not None
-            and str(correction.stamped_year) == (spec.metadata["ledger_fact_period"])
-        )
+        return spec.metadata["ledger_source_record_id"] in corrections
 
     def rebased(spec, corrections):
         correction = corrections.get(
@@ -355,8 +477,6 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
     @given(cases())
     def check(case):
         specs, corrections = case
-        # A backed spec that is also rebased is refused by design; the
-        # generator does not set uprating_factor, so none is refused here.
         registry = TargetRegistry(specs, country="us")
         once = apply_source_vintage_corrections(registry, corrections)
         twice = apply_source_vintage_corrections(once, corrections)
@@ -389,15 +509,15 @@ def test_correction_invariants_hold_for_generated_registries() -> None:
     check()
 
 
-def test_detection_matches_the_artifact_year_rule_for_generated_facts() -> None:
+def test_detection_matches_its_two_rules_for_generated_facts() -> None:
     """A fact is detected exactly when it is an observation (or carries no
-    assertion), its raw key parses, and its artifact year precedes its
-    period year."""
+    assertion) and either its digest is a registered file stamped after that
+    file's data year, or its raw key parses to a year before its period."""
     pytest.importorskip("hypothesis")
     from hypothesis import given, settings
     from hypothesis import strategies as st
 
-    @settings(max_examples=300, deadline=None)
+    @settings(max_examples=400, deadline=None)
     @given(
         artifact_year=st.integers(2000, 2030),
         period=st.one_of(
@@ -407,18 +527,22 @@ def test_detection_matches_the_artifact_year_rule_for_generated_facts() -> None:
         ),
         assertion=st.sampled_from([None, "observation", "source_projection"]),
         keyed=st.booleans(),
+        registered_file=st.booleans(),
     )
-    def check(artifact_year, period, assertion, keyed):
+    def check(artifact_year, period, assertion, keyed, registered_file):
         fact = _fact(
             "x",
             period=period,
-            raw_r2_key=_raw_key(_W2, artifact_year) if keyed else None,
+            raw_r2_key=_raw_key("some-package", artifact_year) if keyed else None,
             assertion=assertion,
+            sha=_W2_SHA if registered_file else None,
         )
         period_year = int(str(period).removeprefix("ty")[:4])
-        expected = (
-            keyed and assertion != "source_projection" and artifact_year < period_year
+        observation = assertion != "source_projection"
+        by_content = registered_file and period_year > 2020
+        by_key = keyed and artifact_year < period_year
+        assert bool(detect_restamped_facts([fact])) == (
+            observation and (by_content or by_key)
         )
-        assert bool(detect_restamped_facts([fact])) == expected
 
     check()

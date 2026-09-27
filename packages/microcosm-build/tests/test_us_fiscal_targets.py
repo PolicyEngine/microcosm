@@ -1186,7 +1186,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
 ) -> None:
     """The release surface on the pinned feed: 32,842 compiled targets after
     Medicaid substitution, 5,694 national_state targets at registry
-    REGISTRY_VERSION, 32 CHIP rows none of them for an M-CHIP state, no
+    884bc45ef335, 32 CHIP rows none of them for an M-CHIP state, no
     other-income row and no tips return count. Before microcosm#956 it was
     32,867 / 5,719 at d5f9d854fe11; before decision d179 dropped the ty2020
     tips return count it was 32,843 / 5,695 at 386fac439e77; and before the
@@ -1195,7 +1195,7 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     registry, surface, _ = pinned_feed_national_state_surface
     assert len(registry.specs) == 32_842
     assert len(surface.specs) == 5_694
-    assert surface.version == "REGISTRY_VERSION"
+    assert surface.version == "884bc45ef335"
     chip = [
         spec
         for spec in surface.specs
@@ -1252,10 +1252,17 @@ def test_pinned_feed_restamp_register_matches_the_feed(pinned_feed_facts) -> Non
     assert set(US_RESTAMPED_SOURCE_PACKAGES) == {
         package_id for _, package_id, _, _ in detected
     }
-    for _, package_id, artifact_year, stamped_year in detected:
+    for fact, package_id, artifact_year, stamped_year in detected:
         entry = US_RESTAMPED_SOURCE_PACKAGES[package_id]
         assert artifact_year == entry.data_year
         assert stamped_year in entry.stamped_periods
+        # Both detection rules agree on every row: the key names the file's
+        # year and the digest is the registered file.
+        assert fact["source"]["raw_r2_key"].split("/")[2:4] == [
+            package_id,
+            str(entry.data_year),
+        ]
+        assert fact["source"]["source_sha256"] == entry.source_sha256
     assert len(source_vintage_corrections(pinned_feed_facts)) == 26_893
 
 
@@ -5252,6 +5259,46 @@ def test_age_targets_reads_a_restamped_w2_tips_amount_at_its_data_year() -> None
     assert direct.metadata["source_period"] == "2023"
     assert direct.value == pytest.approx(
         26_786_522_000 * 10_700_000_000_000 / 10_200_000_000_000
+    )
+
+
+def test_compile_refuses_a_restamp_that_would_outrank_newer_data() -> None:
+    # A truthful TY2021 tips fact would lose latest-vintage selection to the
+    # TY2020 cell stamped 2023; the compile refuses rather than drop it.
+    from microcosm.build.us_runtime.source_vintage import (
+        RestampShadowsNewerVintageError,
+    )
+
+    newer = _dynamic_ledger_fact(
+        source_record_id=_W2_TIPS_AMOUNT.format(year=2021),
+        source_name="irs_soi",
+        measure_id="amount",
+        value=30_000_000_000,
+        period_value=2021,
+        layout_record_set_id="irs_soi.ty2021.form_w2_social_security_tips",
+        groupby_dimension="irs_soi.form_w2_item",
+        groupby_value_id="box_7_social_security_tips",
+    )
+    facts = [
+        *_w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY),
+        newer,
+    ]
+    with pytest.raises(RestampShadowsNewerVintageError, match="ty2021"):
+        compile_us_fiscal_target_registry(facts, target_period=2024, age_targets=True)
+
+    # The honest twin at the data year is not newer data: no refusal.
+    twin = dict(newer, value=26_786_522_000)
+    twin["lineage"] = {"source_record_id": _W2_TIPS_AMOUNT.format(year=2020)}
+    twin["period"] = {"type": "calendar_year", "value": 2020}
+    twin["layout"] = dict(
+        newer["layout"], record_set_id="irs_soi.ty2020.form_w2_social_security_tips"
+    )
+    for key in ("aggregate_fact_key", "semantic_fact_key", "legacy_fact_key"):
+        twin[key] = str(newer[key]).replace("2021", "2020twin")
+    compile_us_fiscal_target_registry(
+        [*_w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY), twin],
+        target_period=2024,
+        age_targets=True,
     )
 
 
