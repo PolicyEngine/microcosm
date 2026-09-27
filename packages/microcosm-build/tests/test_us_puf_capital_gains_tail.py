@@ -1090,3 +1090,35 @@ def test_donor_key_bijection_is_asserted(monkeypatch) -> None:
     monkeypatch.setattr(mod, "_assign_tail_donors", dropping_assign)
     with pytest.raises(ValueError, match="bijection"):
         mod.transfer_puf_capital_gains_tail(frame, donor, seed=7)
+
+
+def test_shift_person_references_moves_ids_and_keeps_the_zero_sentinel() -> None:
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([11, 12, 13], dtype=np.int64),
+            "parent_1_id": np.asarray([0, 11, 11], dtype=np.int64),
+            "parent_2_id": np.asarray([0, 0, 12], dtype=np.int64),
+        }
+    )
+    tail_module._shift_person_references(person, 10)
+
+    assert person["parent_1_id"].tolist() == [0, 21, 21]
+    assert person["parent_2_id"].tolist() == [0, 0, 22]
+    assert person["parent_1_id"].dtype == np.int64
+
+
+def test_tail_clone_shifts_person_references_on_the_cloned_people(monkeypatch) -> None:
+    """microcosm#884: the clone path must route cloned people through the shift."""
+
+    calls: list[tuple[int, int]] = []
+    real = tail_module._shift_person_references
+
+    def spy(person: pd.DataFrame, id_multiplier: int) -> None:
+        calls.append((len(person), int(id_multiplier)))
+        real(person, id_multiplier)
+
+    monkeypatch.setattr(tail_module, "_shift_person_references", spy)
+    _pre_652_all_adequate_reference_frame()
+
+    assert len(calls) == 1
+    assert calls[0][0] > 0 and calls[0][1] > 0

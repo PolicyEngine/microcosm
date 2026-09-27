@@ -257,9 +257,17 @@ def test_the_shipped_register_is_model_named_and_every_entry_has_a_reason():
     assert "medicare_part_b_premiums" not in US_STORED_NON_VARIABLE_COLUMNS
 
 
+#: Register entries that postdate the files examined for #1026 and rest on a
+#: live producer instead: the parent ids (microcosm#884), bound to
+#: eligibility_inputs.US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS by
+#: test_us_stored_input_register.py (microcosm-data cannot import the build).
+_PRODUCER_BOUND_ENTRIES = frozenset({"parent_1_id", "parent_2_id"})
+
+
 def test_every_register_entry_is_stored_by_a_file_examined_for_1026():
     """The register holds evidence, not guesses: each entry is a column one of
-    the examined H5 files actually stores."""
+    the examined H5 files actually stores, except the producer-bound entries
+    that postdate those files."""
 
     stored = {
         column
@@ -268,7 +276,9 @@ def test_every_register_entry_is_stored_by_a_file_examined_for_1026():
         for column in columns
     }
 
-    assert set(US_STORED_NON_VARIABLE_COLUMNS) <= stored
+    assert _PRODUCER_BOUND_ENTRIES <= set(US_STORED_NON_VARIABLE_COLUMNS)
+    assert set(US_STORED_NON_VARIABLE_COLUMNS) - _PRODUCER_BOUND_ENTRIES <= stored
+    assert not _PRODUCER_BOUND_ENTRIES & stored
 
 
 def test_the_examined_files_store_no_state_code_column():
@@ -1219,8 +1229,10 @@ def test_only_the_acs_lane_spine_tags_rest_on_refused_files_alone():
         "family_spine",
         "marital_unit_spine",
     }
-    unbacked = set(US_STORED_NON_VARIABLE_COLUMNS) - stored_by(
-        _REHEARSAL_EXPORT, _STACKED_POOL
+    unbacked = (
+        set(US_STORED_NON_VARIABLE_COLUMNS)
+        - _PRODUCER_BOUND_ENTRIES
+        - stored_by(_REHEARSAL_EXPORT, _STACKED_POOL)
     )
     assert unbacked == spine_tags
     assert unbacked <= stored_by(_ACS_LOCAL_RELEASE)

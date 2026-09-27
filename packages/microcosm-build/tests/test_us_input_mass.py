@@ -94,3 +94,23 @@ def test_column_restriction_filters_raw_source_columns() -> None:
     )
 
     assert set(totals) == {"student_loan_interest"}
+
+
+def test_person_reference_columns_are_not_a_mass() -> None:
+    frame = _frame()
+    person = frame.table("person").copy()
+    person["parent_1_id"] = np.arange(len(person), dtype="int64") + 7
+    person["parent_2_id"] = 0
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = person
+    with_ids = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    totals = us_input_mass_totals(with_ids)
+
+    assert "parent_1_id" not in totals
+    assert "parent_2_id" not in totals
+    assert totals == us_input_mass_totals(frame)
