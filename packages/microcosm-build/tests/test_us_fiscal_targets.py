@@ -1185,9 +1185,20 @@ def test_pinned_feed_national_state_surface_restores_the_fences(
     ty2020 tips return count it was 32,843 / 5,695 at 386fac439e77
     (docs/us-chronicle-feed-repin.md)."""
     registry, surface, _ = pinned_feed_national_state_surface
-    assert len(registry.specs) == 32_842
-    assert len(surface.specs) == 5_694
-    assert surface.version == "d315c75804ef"
+    # The native integration line also admits the 16 SOI Table 1.1
+    # size-of-AGI rows (eight national classes from $100k up, AGI and return
+    # count; microcosm#958). Without them the surface is main's 32,842 / 5,694.
+    size_classes = {
+        spec.name
+        for spec in registry.specs
+        if spec.metadata.get("requires_agi_size_distribution_rebase") == "true"
+    }
+    assert len(size_classes) == 16
+    assert all(".table_1_1." in name for name in size_classes)
+    assert size_classes <= {spec.name for spec in surface.specs}
+    assert len(registry.specs) == 32_842 + 16
+    assert len(surface.specs) == 5_694 + 16
+    assert surface.version == "f4f8d30c1b8c"
     chip = [
         spec
         for spec in surface.specs

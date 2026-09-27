@@ -12465,15 +12465,41 @@ def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
         and isinstance(node.func, ast.Name)
         and node.func.id == "_calibration_runtime"
     ]
+    # On the native integration line the dense and L0 solves live in the
+    # shared _calibrate_fiscal_support, which _main calls once; the exact-k
+    # ladder stays in _main. The runtime is still recorded before any solve.
+    def solve_calls(scope, names):
+        return [
+            node
+            for node in ast.walk(scope)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in names
+        ]
+
     solves = [
         node.lineno
-        for node in ast.walk(main_fn)
-        if isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id
-        in {"calibrate", "calibrate_l0_refit", "calibrate_exact_k_ladder"}
+        for node in solve_calls(
+            main_fn,
+            {
+                "calibrate",
+                "calibrate_l0_refit",
+                "calibrate_exact_k_ladder",
+                "_calibrate_fiscal_support",
+            },
+        )
     ]
-    assert len(solves) == 3
+    assert len(solves) == 2
+    shared = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_calibrate_fiscal_support"
+    )
+    assert sorted(
+        call.func.id
+        for call in solve_calls(shared, {"calibrate", "calibrate_l0_refit"})
+    ) == ["calibrate", "calibrate_l0_refit"]
     assert runtime_call.lineno < min(solves)
     [manifest_call] = [
         node
