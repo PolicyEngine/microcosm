@@ -4,9 +4,9 @@
     "version": 1
   },
   "country": "us",
-  "documentation_sha256": "911b21d13cc214601cfb537c538fed2851e5166e8f72de5ebfce5f2918af43d3",
+  "documentation_sha256": "4d8abb7d30a87d75e2c0b8ddeeba5b192299e5c26446ae0f5971aae0a5146fed",
   "field_usage": {
-    "authored_normative_field_count": 32400,
+    "authored_normative_field_count": 32411,
     "claim_count": 49,
     "claims": [
       {
@@ -108,8 +108,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 312,
-        "pointer_sha256": "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
+        "pointer_count": 315,
+        "pointer_sha256": "13227bf16227b7027c6ccd1220bf2b451b6c8be2b17dbe63b0c5500dc32433a2",
         "rationale": null,
         "relative_sink_prefix": "/calibration_contract",
         "source_prefix": "/authored/spec~1calibration.yaml",
@@ -514,8 +514,8 @@
         ],
         "mode": "legacy_behavior",
         "pointer_class": "all",
-        "pointer_count": 1712,
-        "pointer_sha256": "a46d5e657d919db23ee7752d844bd8bbe59c15321dec07102837452d7994d8dd",
+        "pointer_count": 1720,
+        "pointer_sha256": "7e187b42fb027a57d156f93992d455d6e28cc387d792be94058c08e796fb56a1",
         "rationale": null,
         "relative_sink_prefix": "/source_manifest/stages",
         "source_prefix": "/authored/spec~1sources.yaml/stages",
@@ -772,20 +772,20 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42180,
-    "consumed_field_count": 42180,
+    "configuration_field_count": 42191,
+    "consumed_field_count": 42191,
     "generation0_effect_counts": {
-      "legacy_behavior": 38494,
+      "legacy_behavior": 38505,
       "no_generation0_effect": 3686
     },
     "mode_counts": {
       "compiler_semantic": 27717,
       "front_end_validation": 354,
       "identity_only": 103,
-      "legacy_behavior": 14006
+      "legacy_behavior": 14017
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "21b6fe2f6b96307f8ec7d20d4162ee2e0702f363bb28ebd3fa47a4cf7fc12ed4",
+    "pointer_inventory_sha256": "b2ac963388957209c6d644d40a86d0f60f5d8592afb7f31e983ed76bf95df98c",
     "resolved_binding_field_count": 9780,
     "unused_field_count": 0
   },
@@ -824,7 +824,7 @@
       "stacked_checkpoint_full_components": 13,
       "stacked_checkpoint_pool_code_components": 19,
       "stacked_checkpoint_static_components": 10,
-      "tail_control_fields": 934,
+      "tail_control_fields": 937,
       "take_up_pipeline_steps": 28,
       "take_up_programs": 17,
       "typed_artifacts": 84,
@@ -917,13 +917,13 @@
           "legacy_adapter.stacked_checkpoint_static_components"
         ],
         "expected": {
-          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
-          "terminal_fields": 934
+          "sha256": "256947cd7c1bbd85f5d1fa3911a07a170ae87830f098110a40ed25d93f78347c",
+          "terminal_fields": 937
         },
         "failures": [],
         "observed": {
-          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
-          "terminal_fields": 934
+          "sha256": "256947cd7c1bbd85f5d1fa3911a07a170ae87830f098110a40ed25d93f78347c",
+          "terminal_fields": 937
         },
         "status": "covered"
       },
@@ -1361,12 +1361,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "6abbfad73014ce3bac9fbd549f16e4a5e645a3b0fbd450b56e186876f3f0dd95"
+          "sha256": "397adfd4f4efb4450c17bec74155e0f56b55f2729198b0e1f792bfbeb1010cd7"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "6abbfad73014ce3bac9fbd549f16e4a5e645a3b0fbd450b56e186876f3f0dd95"
+          "sha256": "397adfd4f4efb4450c17bec74155e0f56b55f2729198b0e1f792bfbeb1010cd7"
         },
         "status": "covered"
       },
@@ -1775,12 +1775,12 @@
           "legacy_adapter.imputation.late_producer_resource_semantics"
         ],
         "expected": {
-          "sha256": "a87278445d928ea20e15935a8cc07312d6e819e34409b04e8c814f17910d828f",
+          "sha256": "ee7b7541a6925351d4acbfa0064f9586dd14c095e9208c38f492a83bb8a1afa1",
           "stages": 37
         },
         "failures": [],
         "observed": {
-          "sha256": "a87278445d928ea20e15935a8cc07312d6e819e34409b04e8c814f17910d828f",
+          "sha256": "ee7b7541a6925351d4acbfa0064f9586dd14c095e9208c38f492a83bb8a1afa1",
           "stages": 38
         },
         "status": "covered"
@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b1d5c65254b51897b27f0f5e44e344781ce9e01e305aaf1bfc042cc32bc417dc"
+          "sha256": "3bf611d9efdba2a2edd813f0d4a39739d397c4769e9d47767996fea941f05a42"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b1d5c65254b51897b27f0f5e44e344781ce9e01e305aaf1bfc042cc32bc417dc"
+          "sha256": "3bf611d9efdba2a2edd813f0d4a39739d397c4769e9d47767996fea941f05a42"
         },
         "status": "covered"
       },
@@ -1975,7 +1975,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "5b65545ed6f351b30e94ab1405e13d2c7f692ae0c8d4959badcfe9bb9d52d455"
+          "sha256": "56d2b08be5b745c04d43610c340da08406aa17c7aa49f09dfc6207c70d9b0cf3"
         },
         "status": "covered"
       },
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "f830589331dad583398485de5724dace0714d8526fb63b37f81cd783b1cb8f30"
+      "spec_sha256": "bbe92884034547e0cd9eb9be502fc539c33633e7552908406d3dabcfbcb96e3a"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "f830589331dad583398485de5724dace0714d8526fb63b37f81cd783b1cb8f30"
+    "spec_sha256": "bbe92884034547e0cd9eb9be502fc539c33633e7552908406d3dabcfbcb96e3a"
   },
   "status": "pass"
 }
