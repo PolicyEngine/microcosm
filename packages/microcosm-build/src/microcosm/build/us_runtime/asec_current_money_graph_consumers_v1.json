@@ -1,0 +1,127 @@
+{
+  "all_current_money_consumers_wired": false,
+  "artifact_kind": "microcosm.us.asec_current_money_graph_consumers.v1",
+  "blocked_engine_outputs": {
+    "interest_income": [
+      "tax_exempt_interest_income"
+    ],
+    "pension_income": [
+      "tax_exempt_public_pension_income",
+      "taxable_public_pension_income"
+    ],
+    "self_employment_income": [
+      "sstb_self_employment_income_before_lsr"
+    ]
+  },
+  "engine_defaults_allowlist": [],
+  "implementation_status": "prepared_current_money_graph_and_microunit_wired_other_nominal_routes_pending",
+  "pending_nominal_consumer_routes": [
+    "acs_release_predictors_reported_ssi_anchor",
+    "asec_household_observations",
+    "asec_other_income_split",
+    "child_support",
+    "childcare",
+    "cps_carried",
+    "disability_benefits",
+    "education_inputs",
+    "eligibility_inputs",
+    "energy_subsidy",
+    "immigration",
+    "retirement_contributions",
+    "retirement_distributions",
+    "voluntary_filing_current_leaf",
+    "workers_compensation"
+  ],
+  "release_eligible": false,
+  "schema_version": 1,
+  "scope": "current_money_only_no_prior_wages",
+  "source_declarations": {
+    "binding": "unchanged historical source recipe; this additive record supersedes implementation status only for the explicitly wired routes below; source address roster and T1/money identities are unchanged",
+    "resource": "asec_current_money_consumers_v1.json",
+    "sha256": "c56058eaf08b68b2add4a5d2b366559ea6cc5238b039031be7094ef1f6457ff7"
+  },
+  "wired_routes": {
+    "asec_prepared_current_money_graph": {
+      "engine_output_storage": "evaluation_artifact_only",
+      "engine_outputs": [
+        "capital_gains",
+        "dividend_income",
+        "employment_income",
+        "social_security"
+      ],
+      "module": "microcosm.build.us_runtime.graph_asec_prepared",
+      "money_fields": [
+        "ANN_VAL",
+        "CAP_VAL",
+        "DIV_VAL",
+        "DST_VAL1",
+        "DST_VAL1_YNG",
+        "DST_VAL2",
+        "DST_VAL2_YNG",
+        "FRSE_VAL",
+        "INT_VAL",
+        "OI_VAL",
+        "PHIP_VAL",
+        "PMED_VAL",
+        "PNSN_VAL",
+        "POTC_VAL",
+        "RNT_VAL",
+        "SEMP_VAL",
+        "SPM_CHILDCAREXPNS",
+        "SS_VAL",
+        "UC_VAL",
+        "WSAL_VAL"
+      ],
+      "money_input": "typed selected current-money body; never standalone ReadyCurrentMoney",
+      "person_leaves": [
+        "age",
+        "alimony_income",
+        "employment_income_before_lsr",
+        "farm_operations_income",
+        "health_insurance_premiums_without_medicare_part_b",
+        "long_term_capital_gains_before_response",
+        "miscellaneous_income",
+        "non_qualified_dividend_income",
+        "other_medical_expenses",
+        "over_the_counter_health_expenses",
+        "qualified_dividend_income",
+        "rental_income",
+        "self_employment_income_before_lsr",
+        "short_term_capital_gains",
+        "social_security_dependents",
+        "social_security_disability",
+        "social_security_retirement",
+        "social_security_survivors",
+        "strike_benefits",
+        "tax_exempt_private_pension_income",
+        "taxable_interest_income",
+        "taxable_ira_distributions",
+        "taxable_private_pension_income",
+        "unemployment_compensation"
+      ],
+      "spm_unit_leaves": [
+        "spm_unit_pre_subsidy_childcare_expenses"
+      ]
+    },
+    "microunit": {
+      "module": "microcosm.build.us_runtime.asec_current_money_units",
+      "money_fields": [
+        "ANN_VAL",
+        "CAP_VAL",
+        "DIV_VAL",
+        "FRSE_VAL",
+        "INT_VAL",
+        "OI_VAL",
+        "PNSN_VAL",
+        "PTOTVAL",
+        "RNT_VAL",
+        "SEMP_VAL",
+        "SS_VAL",
+        "UC_VAL",
+        "WSAL_VAL"
+      ],
+      "money_input": "authenticated full-source ReadyCurrentMoney",
+      "student_controls": "separately authenticated S attached before tax construction; interview-week proxy only"
+    }
+  }
+}

@@ -251,9 +251,8 @@ def _load_legacy_pe_flat_frame(
     surface before replacing them.
     """
 
-    variable_entity_by_name = (
-        variable_entity_by_name or _policyengine_variable_entity_map()
-    )
+    if variable_entity_by_name is None:
+        variable_entity_by_name = _policyengine_variable_entity_map()
     arrays: dict[str, np.ndarray] = {}
     skipped: list[dict[str, str]] = []
     with h5py.File(path, "r") as h5:

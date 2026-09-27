@@ -1,0 +1,90 @@
+{
+  "lane": "grouped-target-snapshot-integration-20260912",
+  "date": "2026-09-12",
+  "scope": "shared calibration solver seam only; no host wiring, no native build, no release action, nothing pushed",
+  "base": {
+    "origin_main": "116d46ee9dc2aafdc68259b7c06e4c3462522e8b",
+    "moved_since_pin": false,
+    "note": "origin/main was fetched and is byte-identical to the shared base both reviewed heads were cut from, so no main drift had to be preserved"
+  },
+  "integrated_heads": {
+    "grouped_us_solver": "536f1ceefcdafda3cc619c14b4da18e012a7be57",
+    "target_snapshots_pr914": "b43369dc49e175803f62020cc1e72fa53926aed8",
+    "merge_base_of_the_two": "116d46ee9dc2aafdc68259b7c06e4c3462522e8b"
+  },
+  "pinned_source_hashes_verified_before_merge": {
+    "grouped/solve.py": "925a1b6bae1c714de93df3ee44e26afeed7f3912377b93942f3a5173281d851a",
+    "grouped/calibrate__init__.py": "69ac527f4732cdb67c4807bcb8ee9faec56174621f663ec491140dfc324a705f",
+    "snapshots/solve.py": "f43be0efecdd21b3f5caa9789edc8463a127423c665523ac7f0c8bc48f4b4eed",
+    "snapshots/calibrate__init__.py": "6b66552827852dd16a36512bdef76c28e47842d9a6b0b59d176a4a18a71f48ae",
+    "all_four_matched_the_pin_file": true
+  },
+  "commits": [
+    {"sha": "fff20fca56f41060db55742b884a6df2693e139f", "what": "merge of the two reviewed heads; neither solver replaced"},
+    {"sha": "e64d5a8850ab301b7e819a6b972f235c51688568", "what": "grouped Adam snapshot emission and retain-best separation"},
+    {"sha": "7ac2b864a93977ffa98fa86674c09e04ea6b20b5", "what": "source-derived identity recomputation"},
+    {"sha": "2f62bb8448010bcc9b9e1419ea24aafcb85917d1", "what": "grouped x snapshot cross-product controls"}
+  ],
+  "final_source_hashes": {
+    "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py": "e031ab5823d0f7bff43642e6ebb160ad867ec387e88658534ccd1e6ef62b273d",
+    "packages/microcosm-calibrate/src/microcosm/calibrate/__init__.py": "1841264fe0c09a96ccf6aacf467cfa201de92ee67185b00cd378456fc7631a78",
+    "packages/microcosm-calibrate/src/microcosm/calibrate/target_snapshots.py": "a86958e3e94ca2454d997567883e2223e832f7edb5d994f689f0a64ddad1a88a",
+    "packages/microcosm-calibrate/src/microcosm/calibrate/group_bounds.py": "19a440a31d164832f61c84b2c1277a7a8798681f6830700bf03511dce7524557"
+  },
+  "identity_recomputation": {
+    "rule": "recomputed against the merged checkout and the isolated interpreter; no value equals either branch's, so none is an ours/theirs choice",
+    "values": [
+      {"artifact": "spec_engine/inventory_coverage.py EXPECTED_HASHES.seed_protocol", "grouped": "7c67a5a315a615b152d7de106ae10b1828c166bb11c67a713c8a52d65ae9db47", "snapshots": "d052fd875d014f6fa28d6f5b052735912f464d4efb2c98ecf373346b8cc454d3", "recomputed": "57e21b6522cfccc9b2d5e725503d9d39255abe5d5c9b391563d08ee664dea988"},
+      {"artifact": "spec_engine/inventory_coverage.py EXPECTED_HASHES.seed_map", "grouped": "be2d24ad74bdc6339dfa073d01469074baee4e3a691eaa350451d36fa17d13dc", "snapshots": "d5a9694aac3e351f987b4f08ef8add0c25fcd3390d6bb2a851246da03adde516", "recomputed": "4ae2a0634e3a92061beba5bf5059db7c30b4ff6f1898e639697d246cb7e73878"},
+      {"artifact": "us resolved spec_sha256 (us-f0-coverage.json and test_us_multispine_pool_tool.py)", "grouped": "f03e4d08d0ba4e15da53aab86bd2fbf50286e19e248657ac859b760103af2405", "snapshots": "ff2c97039853e18bfc0eb5388eb08c688cae33068b742f232d4c06a18b8efd88", "recomputed": "15e61194b4077de58272b14d83af95f7f54427aeab251429ada3cda01d93cbc8"},
+      {"artifact": "test_spec_engine_loader.py minimal-loader golden", "grouped": "77f043a13853bbc109b6aa8cb42635ab1b2ebea69a1997b5bdb4c78a3726aeb3", "snapshots": "8a24089831b3a8f0cfe1be094769af7a30b7b74dbc7d4009e26e9f56444cba4c", "recomputed": "3868d14d5df04b5ab10ed4f0a56c2d9652c15c219840ed88d437f847fa481de7"},
+      {"artifact": "parity kernels/calibrate/pins.json implementation_hash", "grouped": "59ca046b7c26bd872e56bd4cf3dd6170748fbe04e5a5da7b711e94aea8d3cc74", "snapshots": "46b52a20a7a5fac27d354c735a09ae5ba171d62bd9010fbc3079b06614cc2a32", "recomputed": "f2dd92eaaebba782e100cb92d90524d3ae6e2bab9ffedbacbe8df0257d5cae3d"},
+      {"artifact": "parity kernels/calibrate/pins.json node_key", "grouped": "faaccb273d0aedeb1cca2e1b52c3e27678867512493f3c0379f596890c258cd1", "snapshots": "970720b71cb2579a5e2f714ca47deabc28c9249a83007ebfda83e2e7446d9311", "recomputed": "ae92142a3bf0934ac6b6751aca904c1847cdff3ca8533af83141d2cbf1ccf102"},
+      {"artifact": "test_spec_engine_country_bundles.py am", "grouped": "c15bd12508731eb11fe061df810d9047b4c62c2887645cb19d3c54c7a104aa1c", "snapshots": "untouched-by-S", "recomputed": "258b940476e9f611d5e12d471dead7427479f36267eb40ed459fcd2f3dbd18ae"},
+      {"artifact": "test_spec_engine_country_bundles.py be", "grouped": "5285b530974a9b8f7c21497fb140fdbd6060c3f1cc983987f35e9f244e71ee62", "snapshots": "untouched-by-S", "recomputed": "a61b65f7a1424c090081632fb1ddacdb85dae1b85920faff5dd7cb144cb1b5a1"},
+      {"artifact": "test_spec_engine_country_bundles.py uk", "grouped": "1ac642230eb3166dd9ea2a113536985e35bf2898f914e289f5564ac8fde6e0b4", "snapshots": "untouched-by-S", "recomputed": "66837fd0fad4956566655f558d10f8d39e83523ad873b17e9f37ce0cb5012724"}
+    ],
+    "deliberately_not_repinned": [
+      "packages/microcosm-graph/tests/fixtures/parity/kernels/simulate/pins.json (G's value preserved; it hashes microcosm/frame/bundle.py, not calibrate.solve)",
+      "packages/microcosm-graph/tests/fixtures/parity/kernels/fit.qrf/ (neither head changed microcosm/fit/qrf.py)",
+      "parity direct.csv outputs (the calibrate kernel's outputs did not move, only its implementation hash)"
+    ],
+    "tooling": {
+      "us-f0-coverage.json": "tools/spec_engine_coverage.py (then --check exits 0)",
+      "calibrate parity pin": "tools/graph_parity_repin.py calibrate",
+      "loader golden and bundle digests": "taken from the observed value the failing identity assertion reports"
+    }
+  },
+  "diff_summary": {
+    "vs_grouped_head": {"files": 25, "insertions": 4287, "deletions": 20, "note": "every deletion is an identity pin line, an extended import, an extended docstring, or a line S replaced; nothing from the grouped head was lost"},
+    "vs_snapshot_head": {"files": 432, "insertions": 148099, "deletions": 3251, "note": "the grouped branch's whole delta"}
+  },
+  "controls": {
+    "microcosm-calibrate shard": {"passed": 443, "failed": 0},
+    "microcosm-graph shard + test_us_multispine_pool_tool + 4 spec-engine identity files": {"passed": 775, "failed": 0},
+    "per_file": {
+      "test_target_snapshots.py": {"cases": 52, "added": 0},
+      "test_grouped_fixed_support.py": {"cases": 42, "added": 18},
+      "test_group_bounds.py": {"cases": 82, "added": 3},
+      "test_solve_us_launch_integration.py": {"cases": 12, "added": 4}
+    },
+    "tools/spec_engine_coverage.py --check": "exit 0",
+    "tools/ci_test_groups.py --verify": "verification=ok; no test file changed lane and none is [defaulted]",
+    "ruff": "format clean, check clean on packages/microcosm-calibrate"
+  },
+  "environment": {
+    "interpreter": "borrowed root .venv/bin/python 3.14.4 run with -I -B -S and an explicit sys.path",
+    "sys_path_order": "this worktree's packages/*/src first, then the repo root, then the borrowed site-packages",
+    "imports_asserted_in_worktree": ["microcosm.frame", "microcosm.calibrate", "microcosm.build", "microcosm.fit", "microcosm.graph"],
+    "threads": "OMP/OPENBLAS/MKL/NUMEXPR/VECLIB all 1",
+    "pytest": "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1, -p no:randomly",
+    "locked_versions": {"numpy": "2.4.6", "pandas": "3.0.3", "scipy": "1.17.1", "torch": "2.12.0", "platform": "arm64/darwin/py3.14"},
+    "nothing_installed": true
+  },
+  "not_done_on_purpose": [
+    "host observer wiring in us_runtime/graph_fiscal_dense_calibration.py",
+    "any global observer registry, Node.params callback or filesystem path in graph params",
+    "any claim that a required replay reruns the optimizer",
+    "native build, PUF fixture, country build, dependency install, push, PR, publication or merge"
+  ]
+}

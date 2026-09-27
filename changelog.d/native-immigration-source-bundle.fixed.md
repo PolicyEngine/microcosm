@@ -1,0 +1,1 @@
+Regenerate the typed immigration source bundle from the reviewed source manifest, declare its closed humanitarian-stock schema, and check source projection and renderer equality without requiring the optional country engine.

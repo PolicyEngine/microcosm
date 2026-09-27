@@ -1,0 +1,9 @@
+{
+ "scope": "Seeded agreement sweep over the segmented, digested and matched byte transports this lane introduced, against their whole-bytes oracles. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "seed": 20260918,
+ "documents": 2000,
+ "comparisons": 34000,
+ "refusals": 12000,
+ "disagreements": []
+}

@@ -1,0 +1,1 @@
+Shared microcosm-calibrate can emit aggregate-only per-target estimate snapshots from real solver iterations at a configurable bounded or every-epoch cadence, with a versioned schema, stable ordered target identity digest, honest current/best-retained/selected iterate labelling, and an atomic latest-snapshot plus immutable bounded history store (opt-in; off by default).

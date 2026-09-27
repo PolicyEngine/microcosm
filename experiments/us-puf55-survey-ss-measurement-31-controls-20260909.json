@@ -1,0 +1,28 @@
+{
+  "code_resources": 12,
+  "control_accepted": true,
+  "cpu_seconds": 38.894051,
+  "frozen_before_after_current_equal": true,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 517455872,
+  "publisher_provenance_established": false,
+  "receipt_sha256": "ac932822b7693129e3be97923bbc6798f8883f9fad0365b76b671117f7770f8e",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "31 invented filer/joint-spouse Social Security report-sum measurement, missingness/refusal, authenticated retained-source callback controls, and isolated55-output/eight-predictor declarations. No native source reads, route-aware graph fitting, donor transport acceptance, beneficiary allocation, source admission or release acceptance.",
+  "source_and_owned_files": 498,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 31
+  },
+  "tested_source_changes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/full_puf_enrichment.py": "f76bdc251811286e93f03d3aa9f5caac8548b60595739b5b17efce18d38e715e",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/puf55_survey_ss_measurement.py": "06c4441f6397a69154f39ae905986a0a7928859cd38d7896fd1d8910ed5504cd",
+    "packages/microcosm-build/tests/test_us_puf55_survey_ss_measurement.py": "6e7b63e2ac1f7bc2cd0cd6902a89facb91685f2c1f5c8b0d184a7e89143b3dce"
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 41.406911208992824
+}

@@ -1,0 +1,22 @@
+{
+  "approved_lock_sha256": "751d5ef5d25406bbae1798667f0e29890d4aad933d323c12912c7d45d8809bb9",
+  "before_lock_sha256": "4ef1ef6eb39b65ebc47c2c00bafa44e7c872544b1b0146dd8493bcfe45b2da1b",
+  "ci_job": "https://github.com/PolicyEngine/microcosm/actions/runs/34506624007/job/102970618835",
+  "data_or_release_acceptance": false,
+  "diagnostic_rerun": "pending CI on corrected source",
+  "diagnostic_sha256": "18468f5319324169896942230ca3584188c9840fff03e913aaf16e8360adf4ef",
+  "local_subject_execution": false,
+  "matches_existing_worker_approval": true,
+  "observed_refusal": {
+    "code": "LOCK",
+    "completed": false,
+    "coverage_pass": false,
+    "phase": "environment"
+  },
+  "only_lock_delta": "Declare existing openpyxl package in microcosm-build[uk] dependency and requires-dist; no new resolved package or version change",
+  "package_count_before_after": 125,
+  "resolved_package_versions_unchanged": true,
+  "scope": "Source-only audit of current-lock diagnostic correction",
+  "source_change": "One literal, retaining exact lock equality; no allowance for arbitrary locks",
+  "upstream_worker_approval_commit": "0d978f20bf4d1d899b707fe7d33ab084c153ee4f"
+}

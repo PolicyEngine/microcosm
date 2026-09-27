@@ -1,0 +1,52 @@
+{
+  "code_adopted_on_top_of": "1cebe3547543bf2917a7af7362bfbb22a05bf964",
+  "code_changes": [
+    {
+      "after_sha256": "4010b6518b295ec7ad18d65e8a4af0e5d0eaa09fddce60e46f70a197e4d79706",
+      "before_sha256": "b3a5596f3862c998a079e5d5368418df8169d3ddd262921632f587dbaab9c3fd",
+      "path": "packages/microcosm-build/src/microcosm/build/us_runtime/survey_origin_budget.py"
+    },
+    {
+      "after_sha256": "281be16a58d8d72e7ee00a3eb4e62632b7a210f9c3b914b3187e48c775927d16",
+      "before_sha256": "91b3719210ca11e342b1bb0798ca615457b890fbe26f6be4b69c6c6aacff843f",
+      "path": "packages/microcosm-build/tests/test_us_survey_origin_budget_atomic_geography.py"
+    },
+    {
+      "after_sha256": "0f79edc1ab92e16998b41baf9f1735501ef875fddc92a049237699d982ed70a1",
+      "before_sha256": null,
+      "path": "packages/microcosm-build/tests/test_us_survey_origin_budget_replay_producer.py"
+    }
+  ],
+  "description": "Include the actual geography replay dependency in the budget producer fence and strengthen the preclone block counterexample while retaining valid postclone owners.",
+  "earlier_70_control_evidence_unchanged": true,
+  "guard_sha256": "7424ca92c6aca7e3ad2e76cbb24232c65e2bda6af6af23c8542a5c28c5b8f0ea",
+  "native_dataset_accepted": false,
+  "physical_postcheck_counts": {
+    "models": 0,
+    "resources": 12,
+    "source_and_owned": 513
+  },
+  "physical_postcheck_sha256": "301c7b2812f030fbd329641ae4ec90c32e91f7117fec2eb2b9387e17a6b3ddc9",
+  "receipt_sha256": "24d783cac659a3a76a166259d61ecdf83a4bfb95ee85da0101f5415ba9412fa2",
+  "release_eligible": false,
+  "resource_use": {
+    "cpu_seconds": 156.80812,
+    "peak_rss_bytes": 431046656,
+    "wall_seconds": 161.48273254197557
+  },
+  "source_map_sha256": "315a018c3a3521a172b3de48bfffd6abaa38a72d37a02e246ef0009b17809fbe",
+  "source_review_sha256": "60e949960540f69e234ab132789993d95dfa2451ba5a755cb39af4bb0bcab245",
+  "status": "four_scoped_controls_accepted",
+  "tests": {
+    "errors": 0,
+    "failed": 0,
+    "passed": 4,
+    "selectors": [
+      "test_budget_producer_refuses_replaced_replay_dependency (3 parametrizations)",
+      "test_atomic_budget_refuses_preclone_assignment_candidate"
+    ],
+    "skipped": 0
+  },
+  "unexpected_refusals": {},
+  "xml_sha256": "41334743e72be57619c50839304d10e48d67ade99e7c74710baa4a5d8335679e"
+}

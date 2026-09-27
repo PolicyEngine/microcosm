@@ -26,6 +26,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Survey HDF inputs can be prepared without installing a country rules engine.
+source-io = ["h5py>=3", "tables>=3"]
 # The US extra adds the rules engine for formula-owned export checks. Source
 # content is declared in packaged manifests and interpreted by shared Microcosm
 # runtimes; country source loaders must not depend on incumbent data packages.

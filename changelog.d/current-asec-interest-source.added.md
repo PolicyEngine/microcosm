@@ -1,0 +1,1 @@
+Qualify ordinary and retirement-account ASEC interest from retained source owners, preserving published components, combined totals, knownness and allocation metadata without assigning tax treatment or balancing observations.

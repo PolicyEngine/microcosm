@@ -252,6 +252,31 @@ def test_f0_legacy_protocol_contains_no_block_first_draw_site() -> None:
     assert all("block" not in site.id for site in LEGACY_V1_PROTOCOL.sites)
 
 
+def test_prior_year_constants_remain_in_the_direct_kernel_source_identity(
+    monkeypatch,
+) -> None:
+    from microcosm.build.us_runtime import prior_year_income_constants
+
+    kernel = next(
+        row for row in LEGACY_V1_PROTOCOL.kernels if row.id == "legacy_v1_direct_draws"
+    )
+    assert prior_year_income_constants.__name__ in kernel.source_modules
+    assert source_inventory_sha256(kernel.source_modules) == kernel.source_sha256
+    constant_path = Path(prior_year_income_constants.__file__).resolve()
+    read_bytes = Path.read_bytes
+
+    def changed_constant_source(path):
+        data = read_bytes(path)
+        if path.resolve() == constant_path:
+            return data.replace(b'"previous_year_income_available"', b'"changed_input"')
+        return data
+
+    # No source file is changed: the exact canonical module must be among the
+    # bytes consumed by the real source-identity function, not just imported.
+    monkeypatch.setattr(Path, "read_bytes", changed_constant_source)
+    assert source_inventory_sha256(kernel.source_modules) != kernel.source_sha256
+
+
 def test_audited_source_manifest_is_independent_and_total() -> None:
     assert set(AUDITED_SOURCE_BY_SITE) == EXPECTED_LEGACY_V1_SITES
     assert set(AUDITED_SOURCE_BY_SITE) == {site.id for site in LEGACY_V1_PROTOCOL.sites}

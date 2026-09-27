@@ -1,0 +1,22 @@
+{
+  "automatic_retry": false,
+  "cpu_limit_seconds": 7200,
+  "exact_exit_signal_available": false,
+  "final_guard_receipt_present": false,
+  "guard_sha256": "f46e5dc061cbb50f7941891e2db8f7159ebe034f736280279b330605a40ad07b",
+  "interpretation": "The process is absent and its last sampled CPU exceeded the reviewed limit. Final verification did not complete; stored intermediate artifacts are not an accepted output. Retained progress samples identify repeated source/catalogue checks, but do not measure an isolated performance cause.",
+  "last_observed_cpu_seconds": 7216.063893,
+  "last_observed_wall_seconds": 7315.9110773339635,
+  "native_acceptance": false,
+  "next_step": "Review and test a semantics-preserving verification optimization before proposing another native run.",
+  "peak_rss_bytes": 11515363328,
+  "postcheck_native_payloads_reopened": false,
+  "published_financial_manifest_present": false,
+  "release_acceptance": false,
+  "resource_progress_sha256": "eaa7f4dc175f055d7b3e6997f9c47b2a9a3573e041412338a487ccba06fc7d7c",
+  "root_incomplete_observation_sha256": "b4c704e61cec4f00cc4ce0340cb8504eb592e4773a10b473c5e9cbcf497eb2b7",
+  "schema_version": "microcosm.scoped-native-control.v1",
+  "scope": "One cold 1/1000 native postclone nineteen-node financial pilot",
+  "status": "incomplete_without_final_guard_receipt",
+  "wall_limit_seconds": 10800
+}

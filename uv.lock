@@ -748,6 +748,10 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+source-io = [
+    { name = "h5py" },
+    { name = "tables" },
+]
 uk = [
     { name = "h5py" },
     { name = "openpyxl" },
@@ -769,6 +773,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "h5py", marker = "extra == 'source-io'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
     { name = "huggingface-hub", specifier = ">=0.20" },
@@ -788,10 +793,11 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6" },
     { name = "referencing", specifier = ">=0.35,<1" },
     { name = "scipy", specifier = ">=1.13" },
+    { name = "tables", marker = "extra == 'source-io'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'us'", specifier = ">=3" },
 ]
-provides-extras = ["us", "uk"]
+provides-extras = ["source-io", "us", "uk"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=8" }]

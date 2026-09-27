@@ -26,7 +26,7 @@ import hashlib
 import heapq
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zipfile import ZipFile
 
 import numpy as np
@@ -35,6 +35,9 @@ import pandas as pd
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.units import assign_us_unit_structure
+
+if TYPE_CHECKING:
+    from microcosm.build.acs_spm_source_assembly import AcsSpmSourceAssemblyOptions
 
 __all__ = [
     "ACS_2024_1YR_SPINE",
@@ -46,6 +49,14 @@ __all__ = [
 ACS_2024_1YR_SPINE = "acs_2024_1yr"
 ACS_2024_1YR_VINTAGE = 2024
 DEFAULT_CHUNKSIZE = 100_000
+# Explicit resource ceilings, four times the measured full-source count of
+# exactly what each bounds, rounded up to the next whole million. A
+# full-source ACS selection is the 1,531,614 selectable households of the
+# 2024 catalogue, carrying 3,422,888 person rows. Neither is a statement
+# about the source file, which MAX_ROWS in acs_person_coverage_columns
+# still makes at 6,000,000. See docs/us-native-row-ceilings.md.
+MAX_EXACT_HOUSEHOLDS = 7_000_000
+MAX_EXACT_PERSON_ROWS = 14_000_000
 
 _HOUSEHOLD_REQUIRED = (
     "SERIALNO",
@@ -69,6 +80,14 @@ _HOUSEHOLD_FRAME_COLUMNS = (
     "TAXAMT",
     "TYPEHUGQ",
 )
+# 2024 ACS PUMS dictionary p.3: TYPEHUGQ 1 is a housing-unit record, 2 an
+# institutional and 3 a noninstitutional group-quarters person record. Only
+# occupied code-1 rows survive the vacancy drop in _occupied_households.
+_HOUSEHOLD_AXIS_KINDS = {
+    1: "occupied_housing_unit",
+    2: "institutional_gq_person",
+    3: "noninstitutional_gq_person",
+}
 _PERSON_REQUIRED = (
     "SERIALNO",
     "SPORDER",
@@ -87,7 +106,12 @@ _PERSON_REQUIRED = (
 )
 # Preserve source hours and their universe/allocation evidence when supplied.
 # Older/minimal source fixtures remain loadable; absence is not a zero.
-_PERSON_OPTIONAL: tuple[str, ...] = ("WKHP", "WKL", "FWKHP")
+# CIT/POBP/YOEP are the raw citizenship, place-of-birth and entry-year evidence
+# the paired immigration transfer reads on every ACS row (the #779 evidence
+# triplet). Every ACS PUMS person file carries them. A spine loaded without them
+# stays loadable, and a paired immigration transfer onto it refuses; nothing is
+# defaulted.
+_PERSON_OPTIONAL: tuple[str, ...] = ("WKHP", "WKL", "FWKHP", "CIT", "POBP", "YOEP")
 
 # Temporary aliases consumed only by microunit's dependent gross-income test.
 # ACS combined sources stay combined: INTP is placed on one gross-income
@@ -170,11 +194,36 @@ class AcsPumsSource:
         if self.max_households is not None and self.max_households <= 0:
             raise ValueError("max_households must be positive when provided.")
 
+    @staticmethod
+    def snapshot_serialnos(serialnos):
+        """Freeze exact raw native keys; no sampling probability is implied."""
+        if serialnos is None:
+            return None
+        if (
+            type(serialnos) is not tuple
+            or not 0 < len(serialnos) <= MAX_EXACT_HOUSEHOLDS
+            or any(
+                type(key) is not str
+                or len(key) != 13
+                or key[:6] not in {"2024HU", "2024GQ"}
+                or not key[6:].isascii()
+                or not key[6:].isdigit()
+                or int(key[6:]) == 0
+                for key in serialnos
+            )
+            or len(set(serialnos)) != len(serialnos)
+        ):
+            raise ValueError(
+                "ACS exact selection requires bounded unique raw native keys."
+            )
+        return serialnos
+
 
 def load_acs_pums_tables(
     source: AcsPumsSource,
     *,
     chunksize: int = DEFAULT_CHUNKSIZE,
+    serialnos: tuple[str, ...] | None = None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
     """Read and key-align the household and person PUMS tables.
 
@@ -182,6 +231,11 @@ def load_acs_pums_tables(
     missing; this stage never converts an out-of-universe blank to zero.
     """
 
+    serialnos = AcsPumsSource.snapshot_serialnos(serialnos)
+    if serialnos is not None and source.max_households is not None:
+        raise ValueError(
+            "ACS exact serialnos and max_households are ambiguous together."
+        )
     if chunksize <= 0:
         raise ValueError("chunksize must be positive.")
     household, household_members = _read_archive(
@@ -209,7 +263,24 @@ def load_acs_pums_tables(
         raise ValueError(f"ACS duplicate household SERIALNO value(s): {examples}.")
     household = household.sort_values("SERIALNO", kind="stable").reset_index(drop=True)
     all_household_serials = frozenset(household["SERIALNO"].tolist())
+    full_household = household
     household, vacant_count = _occupied_households(household)
+    if serialnos is not None:
+        if not set(serialnos) <= all_household_serials:
+            raise ValueError("ACS exact selection contains absent household keys.")
+        weights = pd.to_numeric(household.WGTP, errors="coerce").to_numpy(dtype=float)
+        if not np.isfinite(weights).all() or (weights < 0).any():
+            raise ValueError("ACS WGTP must be finite and nonnegative.")
+        _validate_amount_columns(
+            (household.RNTP, household.GRNTP, household.TAXAMT), household.ADJHSG
+        )
+        household = household.loc[household.SERIALNO.isin(serialnos)].reset_index(
+            drop=True
+        )
+        if household.NP.sum() > MAX_EXACT_PERSON_ROWS:
+            raise ValueError(
+                "ACS selected complete roster exceeds native person budget."
+            )
     if source.max_households is not None and len(household) > source.max_households:
         household = _smoke_household_selection(household, source.max_households)
     selected_serials = frozenset(household["SERIALNO"].tolist())
@@ -222,6 +293,7 @@ def load_acs_pums_tables(
         chunksize=chunksize,
         valid_serials=all_household_serials,
         retained_serials=selected_serials,
+        validate_households=full_household if serialnos is not None else None,
     )
     duplicate_people = person.duplicated(["SERIALNO", "SPORDER"], keep=False)
     if duplicate_people.any():
@@ -249,6 +321,14 @@ def load_acs_pums_tables(
         "vacant_household_rows_dropped": vacant_count,
         "max_households": source.max_households,
     }
+    if serialnos is not None:
+        metadata["exact_selection"] = {
+            "requested_serialnos": serialnos,
+            "populated_serialnos": tuple(household.SERIALNO),
+            "vacant_serialnos": tuple(sorted(set(serialnos) - selected_serials)),
+            "selection_kind": "engineering_exact_keys",
+            "full_source_inclusion_probability": None,
+        }
     return {"household": household, "person": person}, metadata
 
 
@@ -256,10 +336,44 @@ def build_acs_pums_unit_frame(
     source: AcsPumsSource,
     *,
     chunksize: int = DEFAULT_CHUNKSIZE,
+    serialnos: tuple[str, ...] | None = None,
+    spm_construction: AcsSpmSourceAssemblyOptions | None = None,
 ) -> tuple[Frame, dict[str, Any]]:
-    """Construct the ACS 2024 1-year US entity frame."""
+    """Construct the ACS 2024 1-year US entity frame.
 
-    tables, metadata = load_acs_pums_tables(source, chunksize=chunksize)
+    ``spm_construction`` explicitly selects development SPM structure before
+    native amounts are mapped. It never supplies engine roles or annual scope.
+    ``None`` retains the existing source partition and import path.
+    """
+    frame, metadata, _construction = _build_acs_pums_unit_frame_with_evidence(
+        source,
+        chunksize=chunksize,
+        serialnos=serialnos,
+        spm_construction=spm_construction,
+    )
+    return frame, metadata
+
+
+def _build_acs_pums_unit_frame_with_evidence(
+    source: AcsPumsSource,
+    *,
+    chunksize: int = DEFAULT_CHUNKSIZE,
+    serialnos: tuple[str, ...] | None = None,
+    spm_construction: AcsSpmSourceAssemblyOptions | None = None,
+):
+    """Retain the actual optional construction for the captured source owner."""
+
+    constructed = None
+    if spm_construction is not None:
+        from microcosm.build.acs_spm_source_assembly import (
+            require_acs_spm_source_capability,
+        )
+
+        require_acs_spm_source_capability(spm_construction)
+
+    tables, metadata = load_acs_pums_tables(
+        source, chunksize=chunksize, serialnos=serialnos
+    )
     household = tables["household"].copy()
     person = tables["person"].copy()
 
@@ -298,9 +412,29 @@ def build_acs_pums_unit_frame(
         strata=strata,
     )
     frame = _attach_household_source_columns(frame, household)
+    if spm_construction is not None:
+        from microcosm.build.acs_spm_source_assembly import (
+            RECEIPT_KEY,
+            assemble_acs_spm_source,
+        )
+
+        from .operator_column_contracts import PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID
+
+        constructed = assemble_acs_spm_source(
+            frame,
+            options=spm_construction,
+            id_ceiling=PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+        )
+        frame = constructed.frame
+        metadata[RECEIPT_KEY] = dict(constructed.receipt)
     metadata.update(
         {
             "weighted_household_population": frame.weights_for("household").total,
+            # That total mixes housing-unit and GQ-person design mass.
+            "household_axis_composition": _household_axis_composition(
+                household,
+                household_weights,
+            ),
             "relationship_pointer_policy": (
                 "RELSHIPP reference/spouse pairing; own/adopted/stepchildren "
                 "point to reference person and present spouse; all other "
@@ -320,7 +454,32 @@ def build_acs_pums_unit_frame(
         boundary="ACS PUMS source parse",
         in_place=True,
     )
-    return frame, metadata
+    return frame, metadata, constructed
+
+
+def _serial_lookup(serials: frozenset[str] | None) -> pd.Index | None:
+    """Prepare one local lookup for the exact string-key profile.
+
+    Arrow-backed Series.isin rebuilds its value set on every chunk. An object
+    Index keeps a reusable exact-string hash table, without caching any source
+    rows or validation verdict. Other key types retain pandas' original rules.
+    """
+    if type(serials) is frozenset and all(type(key) is str for key in serials):
+        return pd.Index(tuple(serials), dtype=object)
+    return None
+
+
+def _serial_isin(
+    values: pd.Series, serials: frozenset[str], lookup: pd.Index | None
+) -> pd.Series:
+    if lookup is None or type(values.dtype) is not pd.StringDtype:
+        return values.isin(serials)
+    # The prepared keys are all strings, so every missing-value policy maps to
+    # an absent None key. Explicit object dtype avoids re-inferring Arrow strings.
+    targets = pd.Index(values.to_numpy(dtype=object, na_value=None), dtype=object)
+    return pd.Series(
+        lookup.get_indexer(targets) >= 0, index=values.index, name=values.name
+    )
 
 
 def _read_archive(
@@ -332,10 +491,14 @@ def _read_archive(
     chunksize: int,
     valid_serials: frozenset[str] | None = None,
     retained_serials: frozenset[str] | None = None,
+    validate_households: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
     if not path.is_file():
         raise FileNotFoundError(f"ACS PUMS archive not found: {path}")
     pieces: list[pd.DataFrame] = []
+    source_roster = {}
+    valid_lookup = _serial_lookup(valid_serials)
+    retained_lookup = _serial_lookup(retained_serials)
     with ZipFile(path) as archive:
         members = sorted(
             name
@@ -359,7 +522,7 @@ def _read_archive(
             usecols = [column for column in (*required, *optional) if column in columns]
             string_columns = {
                 column: "string"
-                for column in ("SERIALNO", "ST", "STATE", "PUMA")
+                for column in ("SERIALNO", "ST", "STATE", "PUMA", "AGEP")
                 if column in usecols
             }
             with archive.open(member_name) as member:
@@ -371,8 +534,15 @@ def _read_archive(
                     low_memory=False,
                 )
                 for chunk in reader:
+                    if "AGEP" in chunk:
+                        # Validate original literals before numeric inference or
+                        # selection can hide an unresolved source age. The native
+                        # coverage contract accepts only one/two ASCII digits.
+                        chunk["AGEP"] = _original_source_ages(chunk["AGEP"])
                     if valid_serials is not None:
-                        orphan = ~chunk["SERIALNO"].isin(valid_serials)
+                        orphan = ~_serial_isin(
+                            chunk["SERIALNO"], valid_serials, valid_lookup
+                        )
                         if orphan.any():
                             examples = (
                                 chunk.loc[orphan, "SERIALNO"]
@@ -384,13 +554,90 @@ def _read_archive(
                                 "ACS person SERIALNO value(s) missing from the "
                                 f"household archive: {examples}."
                             )
+                    if validate_households is not None:
+                        _validate_source_chunk(chunk, source_roster)
                     if retained_serials is not None:
-                        chunk = chunk.loc[chunk["SERIALNO"].isin(retained_serials)]
+                        chunk = chunk.loc[
+                            _serial_isin(
+                                chunk["SERIALNO"], retained_serials, retained_lookup
+                            )
+                        ]
                     if not chunk.empty:
                         pieces.append(chunk)
+    if validate_households is not None:
+        _validate_source_roster(validate_households, source_roster)
     if not pieces:
         return pd.DataFrame(columns=[*required, *optional]), members
     return pd.concat(pieces, ignore_index=True), members
+
+
+def _original_source_ages(ages: pd.Series) -> np.ndarray:
+    """Preserve the native coverage owner's literal 0–99 age identity contract."""
+    if not ages.str.fullmatch(r"[0-9]{1,2}", na=False).all():
+        raise ValueError("ACS original AGEP must contain one or two ASCII digits.")
+    return ages.to_numpy(dtype=np.int64)
+
+
+def _validate_amount_columns(amounts, factor):
+    """Keep the native mapper's finite observed-amount/factor gates before filtering."""
+    adjustment = pd.to_numeric(factor, errors="coerce").to_numpy(dtype=float)
+    for values in amounts:
+        amount = pd.to_numeric(values, errors="coerce").to_numpy(dtype=float)
+        observed = ~np.isnan(amount)
+        if (observed & ~np.isfinite(amount)).any():
+            raise ValueError("ACS source amount must be finite.")
+        if (observed & (~np.isfinite(adjustment) | (adjustment <= 0))).any():
+            raise ValueError("ACS source adjustment must be finite and positive.")
+
+
+def _validate_source_chunk(person, roster):
+    # Only global key sets and small household structural summaries survive a
+    # chunk. Unselected observation rows never enter the accumulated person table.
+    lines = _required_integer(person, "SPORDER")
+    marital = _required_integer(person, "MAR")
+    relations = _required_integer(person, "RELSHIPP")
+    sexes = _required_integer(person, "SEX")
+    if not set(marital) <= set(_ACS_TO_CPS_MARITAL_STATUS):
+        raise ValueError("ACS source MAR contains unsupported codes.")
+    if not set(relations) <= {20, *_ACS_SPOUSE_CODES, *_ACS_TO_CPS_RELATIONSHIP}:
+        raise ValueError("ACS source RELSHIPP contains unsupported codes.")
+    if not set(sexes) <= {1, 2}:
+        raise ValueError("ACS source SEX contains unsupported codes.")
+    _validate_amount_columns(
+        (person.WAGP, person.SEMP, person.INTP, person.RETP, person.SSP, person.SSIP),
+        person.ADJINC,
+    )
+    weights = pd.to_numeric(person.PWGTP, errors="coerce").to_numpy(dtype=float)
+    for serial, line, relation, mar, weight in zip(
+        person.SERIALNO, lines, relations, marital, weights, strict=True
+    ):
+        state = roster.setdefault(serial, [set(), 0, 0, True, True, True])
+        if line in state[0]:
+            raise ValueError("ACS duplicate person key in complete source.")
+        state[0].add(int(line))
+        state[1] += int(relation == 20)
+        state[2] += int(relation in _ACS_SPOUSE_CODES)
+        state[3] &= relation not in {20, *_ACS_SPOUSE_CODES} or mar == 1
+        state[4] &= relation in {37, 38}
+        state[5] &= bool(np.isfinite(weight) and weight > 0)
+
+
+def _validate_source_roster(household, roster):
+    for serial, count, kind in household[["SERIALNO", "NP", "TYPEHUGQ"]].itertuples(
+        index=False, name=None
+    ):
+        state = dict.get(roster, serial)
+        if (len(state[0]) if state else 0) != int(count):
+            raise ValueError("ACS NP/person row-count mismatch in complete source.")
+        if not state:
+            continue
+        if int(kind) != 1 and not state[5]:
+            raise ValueError("ACS GQ PWGTP must be finite and positive.")
+        if not state[4]:
+            if state[1] != 1 or state[2] > 1:
+                raise ValueError("ACS source reference/spouse roster is invalid.")
+            if state[2] and not state[3]:
+                raise ValueError("ACS source spouse pair must have MAR=1.")
 
 
 def _occupied_households(household: pd.DataFrame) -> tuple[pd.DataFrame, int]:
@@ -616,6 +863,52 @@ def _household_weights(household: pd.DataFrame, person: pd.DataFrame) -> Weights
             raise ValueError("ACS GQ PWGTP must be finite and positive.")
         raw[gq] = person_weight
     return Weights(raw, WeightKind.DESIGN)
+
+
+def _household_axis_composition(
+    household: pd.DataFrame,
+    household_weights: Weights,
+) -> dict[str, int | float]:
+    """Split the loaded household-axis rows and DESIGN mass by TYPEHUGQ.
+
+    The axis mixes occupied physical housing units with one-person group-
+    quarters person placeholders. Each part retains its own statistical unit;
+    their mixed sum is not a housing-unit count or a person count. These are
+    source design weights, with no common-survey or calibrated-population
+    claim. The rows described are the ones this build
+    loaded, after the vacancy drop and any ``max_households`` selection.
+
+    Admissibility of the codes and their weights is decided upstream by
+    ``_occupied_households``; this only partitions what that check accepted,
+    and refuses if the accepted rows do not partition.
+    """
+
+    if "TYPEHUGQ" not in household.columns:
+        raise ValueError("ACS household-axis composition requires the TYPEHUGQ column.")
+    design = np.asarray(household_weights.values, dtype=np.float64)
+    if design.shape[0] != len(household):
+        raise ValueError(
+            "ACS household-axis composition needs one DESIGN weight per loaded "
+            f"household row; got {design.shape[0]} for {len(household)} row(s)."
+        )
+    kind = pd.to_numeric(household["TYPEHUGQ"], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    composition: dict[str, int | float] = {}
+    partitioned = 0
+    for code, label in _HOUSEHOLD_AXIS_KINDS.items():
+        selected = kind == code
+        rows = int(selected.sum())
+        composition[f"{label}_rows"] = rows
+        composition[f"{label}_design_weight_total"] = float(design[selected].sum())
+        partitioned += rows
+    if partitioned != len(household):
+        raise ValueError(
+            "ACS household-axis composition does not partition the loaded rows: "
+            f"{partitioned} of {len(household)} carry a described TYPEHUGQ code."
+        )
+    return composition
 
 
 def _attach_household_source_columns(

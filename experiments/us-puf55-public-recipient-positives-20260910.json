@@ -1,0 +1,48 @@
+{
+  "accepted_compilation_cache_overlay_sha256": "534042fdd4f2af5a238b556882d3b75c5495d9909e240bb07201ec48bd2bb4da",
+  "actual_issued_recipient_positive": true,
+  "actual_twenty_two_node_cold_required_replay": true,
+  "cpu_seconds": 331.268576,
+  "fable_strengthened_issuer_comparisons_included": false,
+  "frozen_budget_owner_sha256": "80418528db45266e7322a8984cc63f9414f6fa3c084119cd9d0f558f4a0e0260",
+  "guard_sha256": "45e7faf460d74210613e2898c4471d226a2b8d2e9f241d4c6945fcb7ec7cdb09",
+  "head": "640c1db49e6a70d47d58cea194e44df26c0762e5",
+  "junit_case_seconds": {
+    "test_actual_issued_financial_run_retains_source_reports_and_current_money": "104.759",
+    "test_actual_twenty_two_node_cold_required_replay_keeps_complete_population": "223.518"
+  },
+  "junit_sha256": "de2befa8fe7f3878a681f4de9e4c81ad467d51fa7d75c33494258b0fc8c46d60",
+  "junit_timing_scope": "pytest per-case durations include assigned fixture setup/teardown; not isolated issuer or graph compute timings",
+  "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+  "native_acceptance": false,
+  "original_fixture_teardowns_passed": true,
+  "original_twenty_node_cold_hit_assertion_present": false,
+  "peak_rss_bytes": 541048832,
+  "receipt_sha256": "ae02970da176ad92efacd831de8cf78e18ea1d96a811c124f2d268e6c5da71e4",
+  "release_acceptance": false,
+  "remaining_public_cases_executed": 0,
+  "remaining_public_controls": 24,
+  "resource_map_sha256": "c7e4193c952bd0d28d81db4371b51b51462870326fe59d5d26c13e4617f3e5b7",
+  "root_postcheck_sha256": "465b347efcc12e5f717a846207f2db1703b3c31648abefbe355d4274c0c61eab",
+  "scope": "2_invented_actual_public_puf55_recipient_issuer_and_graph_controls",
+  "scope_note": "Actual issuers and graph over invented survey originals; no native donor fitting, whole-cohort PUF finalization or enriched calibration.",
+  "selected_test_cases": [
+    "test_us_puf55_recipients_public_positive.py::test_actual_issued_financial_run_retains_source_reports_and_current_money",
+    "test_us_puf55_recipients_public_positive.py::test_actual_twenty_two_node_cold_required_replay_keeps_complete_population"
+  ],
+  "source_count": 498,
+  "source_map_sha256": "504e045e6551895fabf8bc377fdfce1c69da9e70aa17989d2b771d5b66176c4b",
+  "status": "two_original_public_positives_accepted",
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 2
+  },
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 506
+  },
+  "wall_seconds": 333.96333820803557
+}

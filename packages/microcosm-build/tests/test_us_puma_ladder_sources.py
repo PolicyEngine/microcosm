@@ -1,6 +1,9 @@
 """Tests for the pure PUMA-ladder source parsers and assembler."""
 
+import hashlib
+import importlib.util
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -33,7 +36,7 @@ _TRACT_TO_PUMA = {
     2013000100: 200100,
 }
 _METADATA = {
-    "schema_version": 1,
+    "schema_version": 2,
     "kind": "us_puma_ladder",
     "puma_vintage": "2020_puma",
     "sampling_basis": "population",
@@ -189,3 +192,200 @@ def test_assemble_ignores_zero_population_blocks() -> None:
     # change any PUMA's conserved total.
     assert payload["puma_population"].tolist() == [1000, 500, 400]
     assert np.asarray(payload["cd_overlap_population"]).sum() == 1900
+
+
+def test_assembly_retains_joint_cells_without_crossing_marginals() -> None:
+    payload = assemble_us_puma_ladder(
+        block_population=_BLOCK_POPULATION,
+        cd_by_block=_CD_BY_BLOCK,
+        tract_to_puma=_TRACT_TO_PUMA,
+        metadata=_METADATA,
+    )
+    assert list(
+        zip(
+            payload["joint_overlap_puma"].tolist(),
+            payload["joint_overlap_tract"].tolist(),
+            payload["joint_overlap_cd"].tolist(),
+            payload["joint_overlap_population"].tolist(),
+            strict=True,
+        )
+    ) == [
+        (100100, 1001000100, 101, 900),
+        (100100, 1003000100, 102, 100),
+        (100200, 1003000200, 102, 500),
+        (200100, 2013000100, 200, 400),
+    ]
+
+
+def test_assembly_preserves_a_tract_split_between_districts() -> None:
+    block_population = {**_BLOCK_POPULATION, 10010001001001: 80}
+    cd_by_block = {**_CD_BY_BLOCK, 10010001001001: 102}
+    payload = assemble_us_puma_ladder(
+        block_population=block_population,
+        cd_by_block=cd_by_block,
+        tract_to_puma=_TRACT_TO_PUMA,
+        metadata=_METADATA,
+    )
+    assert payload["joint_overlap_tract"][:2].tolist() == [1001000100, 1001000100]
+    assert payload["joint_overlap_cd"][:2].tolist() == [101, 102]
+    assert payload["joint_overlap_population"][:2].tolist() == [900, 80]
+    assert payload["puma_population"].tolist() == [1080, 500, 400]
+
+
+def test_assembly_refuses_legacy_schema_label_for_joint_payload() -> None:
+    with pytest.raises(ValueError, match="requires schema_version 2"):
+        assemble_us_puma_ladder(
+            block_population=_BLOCK_POPULATION,
+            cd_by_block=_CD_BY_BLOCK,
+            tract_to_puma=_TRACT_TO_PUMA,
+            metadata={**_METADATA, "schema_version": 1},
+        )
+
+
+@pytest.fixture(scope="module")
+def ladder_tool():
+    import microcosm.build
+
+    # Resolve the actual source checkout even when ordinary tests are copied
+    # to isolated scratch. Wheel tests retain the repository-side tool fixture.
+    path = (
+        Path(microcosm.build.__file__).resolve().parents[5]
+        / "tools/build_us_puma_ladder_artifact.py"
+    )
+    if not path.is_file():
+        path = (
+            Path(__file__).resolve().parents[3]
+            / "tools/build_us_puma_ladder_artifact.py"
+        )
+    spec = importlib.util.spec_from_file_location("puma_ladder_tool_fixture", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _invented_pinned_sources(tmp_path, tool):
+    import zipfile
+
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    tract = inputs / "tract.txt"
+    tract.write_text("STATEFP,COUNTYFP,TRACTCE,PUMA5CE\n01,001,000100,00100\n")
+    cd = inputs / "cd119.zip"
+    with zipfile.ZipFile(cd, "w") as archive:
+        archive.writestr(
+            "NationalCD119.txt",
+            "GEOID,CDFP\n010010001001000,01\n010010001001001,02\n",
+        )
+    pl = inputs / "al2020.pl.zip"
+
+    def line(level, geocode, population):
+        fields = [""] * 97
+        fields[2], fields[9], fields[90] = level, geocode, str(population)
+        return "|".join(fields) + "\n"
+
+    with zipfile.ZipFile(pl, "w") as archive:
+        archive.writestr(
+            "algeo2020.pl",
+            line("040", "01", 100)
+            + line("750", "010010001001000", 90)
+            + line("750", "010010001001001", 10),
+        )
+    locators = {
+        "tract_to_puma": (tract, tool.TRACT_TO_PUMA_URL),
+        "cd119_bef": (cd, tool.CD119_BEF_URL),
+        "pl94171_al": (
+            pl,
+            tool.PL94171_URL_TEMPLATE.format(dirname="Alabama", usps_lower="al"),
+        ),
+    }
+    manifest = tmp_path / "sources.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "sources": {
+                    name: {
+                        "path": str(path),
+                        "url": url,
+                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                        "bytes": path.stat().st_size,
+                    }
+                    for name, (path, url) in locators.items()
+                },
+            }
+        )
+    )
+    return manifest, tract
+
+
+def _pinned_cli_args(tmp_path, manifest):
+    return [
+        "--out",
+        str(tmp_path / "ladder.npz"),
+        "--states",
+        "01",
+        "--source-manifest",
+        str(manifest),
+        "--cache-dir",
+        str(tmp_path / "unused-cache"),
+    ]
+
+
+def test_pinned_offline_tool_builds_actual_joint_npz(tmp_path, ladder_tool) -> None:
+    from microcosm.build.us_runtime import load_us_puma_ladder
+
+    manifest, _ = _invented_pinned_sources(tmp_path, ladder_tool)
+    ladder_tool.main(_pinned_cli_args(tmp_path, manifest))
+    ladder = load_us_puma_ladder(tmp_path / "ladder.npz")
+    # One observed source tract can cross two districts within the same PUMA.
+    assert ladder.joint_overlap_tract.tolist() == [1001000100, 1001000100]
+    assert ladder.joint_overlap_cd.tolist() == [101, 102]
+    assert ladder.joint_overlap_population.tolist() == [90, 10]
+    assert (
+        ladder.metadata["source_manifest_sha256"]
+        == hashlib.sha256(manifest.read_bytes()).hexdigest()
+    )
+    assert not (tmp_path / "unused-cache").exists()
+
+
+@pytest.mark.parametrize("defect", ["sha256", "bytes", "url", "missing", "extra"])
+def test_pinned_offline_tool_refuses_bad_envelope(
+    tmp_path, ladder_tool, defect
+) -> None:
+    manifest, _ = _invented_pinned_sources(tmp_path, ladder_tool)
+    document = json.loads(manifest.read_text())
+    row = document["sources"]["tract_to_puma"]
+    if defect == "sha256":
+        row["sha256"] = "0" * 64
+    elif defect == "bytes":
+        row["bytes"] += 1
+    elif defect == "url":
+        row["url"] = "https://example.invalid/wrong-source"
+    elif defect == "missing":
+        del document["sources"]["pl94171_al"]
+    else:
+        document["sources"]["unselected_state"] = dict(row)
+    manifest.write_text(json.dumps(document))
+    with pytest.raises(ValueError, match="[Pp]inned source"):
+        ladder_tool.main(_pinned_cli_args(tmp_path, manifest))
+    assert not (tmp_path / "ladder.npz").exists()
+    assert not (tmp_path / "unused-cache").exists()
+
+
+@pytest.mark.parametrize("mutation", ["payload", "manifest"])
+def test_pinned_offline_tool_rechecks_after_parsing(
+    tmp_path, ladder_tool, monkeypatch, mutation
+) -> None:
+    manifest, tract = _invented_pinned_sources(tmp_path, ladder_tool)
+    original = ladder_tool._text_lines
+
+    def mutate_after_read(path):
+        yield from original(path)
+        target = tract if mutation == "payload" else manifest
+        target.write_bytes(target.read_bytes() + b"\n")
+
+    monkeypatch.setattr(ladder_tool, "_text_lines", mutate_after_read)
+    with pytest.raises(ValueError, match="Pinned source"):
+        ladder_tool.main(_pinned_cli_args(tmp_path, manifest))
+    assert not (tmp_path / "ladder.npz").exists()

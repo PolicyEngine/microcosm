@@ -30,9 +30,11 @@ Rationale: microcosm replaces the survey's tax-benefit measurement with
 imputed, computed, and admin-calibrated values — that is the product.
 Fitting a survey-derived tax-benefit quantity launders the
 measured-with-error version back in and destroys the held-out validation
-signal (the scorecard's win column is held-out-only for the same reason).
-Release gates may *fail* a certification on a held-out poverty regression;
-*fitting* the statistic is categorically different and prohibited.
+signal. Poverty comparisons must also stay outside candidate-selection scores
+and release gates based on agreement with a survey estimate. Holding a measure
+out of the calibration objective does not justify tuning toward it afterward.
+Do not choose weights, imputations, take-up assignments, target deferrals or
+hyperparameters because they bring poverty closer to the published rate.
 
 For raw survey margins, prefer an administrative source when one covers the
 same cell and concept — e.g. congressional-district income binds from
@@ -46,12 +48,12 @@ because all of its facts are state-grain, while the compiler admits ACS only at
 congressional-district geography
 (`tools/build_us_target_parity_manifest.py::_FAMILY_EXCLUSIONS`).
 
-**Corollary: deviations from official poverty metrics are never inherently
-problematic.** A model that corrects benefit underreporting should, all
-else equal, sit below survey-based poverty rates; divergence from Census
-numbers is expected by construction. Treat official statistics as
-comparators — direction and composition anomalies are investigation flags,
-not "misses".
+**Poverty remains a comparison diagnostic.** Report differences using comparable
+definitions, populations and periods. A gap can prompt investigation, but does
+not establish a defect or require a change. Correct measurement and
+implementation errors on independent evidence, even if the correction moves
+the poverty rate farther from the survey estimate. Correctness checks remain
+release requirements; closeness to a survey poverty rate does not.
 
 ## 0. Mint the fact (ledger repo)
 
@@ -110,6 +112,21 @@ exclusion register instead.
 - An unmapped fact is **inert by design** — shipping facts ahead of their
   wiring is safe and normal (the keogh ALD facts rode the feed unmapped for
   weeks).
+
+### Table 1.1 size-of-AGI shares
+
+Cross-period national Table 1.1 return counts and AGI from the $100,000 lower
+edge can bind through `_rebase_stale_soi_agi_size_distributions`. Each class
+uses its own vintage's national denominator and the latest eligible national
+control of the same measure. Missing denominators or controls drop the class.
+The amount ager completes only the interval after the control year; counts do
+not receive a CBO dollar factor. Other tables and cross-period lower-income,
+filing-status and state slices remain excluded by this rescue.
+
+The [native integration note](us-native-soi-agi-targets.md) documents exact
+source lineage, the distinction between source and alignment years, preserved
+same-period behavior, and the separate support and release qualifications.
+No tail support or held-out improvement follows from compiling these rows.
 
 ## 4. Keep the exclusion register honest
 

@@ -1,0 +1,125 @@
+{
+  "api": {
+    "assigned_block_diagnostic_retained": "census_block_geoid",
+    "diagnostic_module": "packages/microcosm-build/src/microcosm/build/us_runtime/population_input_coverage.py",
+    "employment_income_last_year_in_required_profiles": false,
+    "existing_release_gate_or_manifest_modified": false,
+    "historical_required_us_inputs_default_count": 163,
+    "national_cd_engine_omissions": [
+      "block_geoid",
+      "tract_geoid"
+    ],
+    "national_congressional_district_diagnostic_default_count": 161,
+    "profile_module": "packages/microcosm-build/src/microcosm/build/us_runtime/input_coverage_profile.py",
+    "report_protocol": "microcosm.us.input_coverage_diagnostic.v1",
+    "signature": "diagnose_us_input_coverage(population: Population, *, compiled: CompiledGraph, manifest: RunManifest, profile: USInputProfile = USInputProfile.NATIONAL_CD) -> PopulationInputCoverage"
+  },
+  "code": [
+    {
+      "after_sha256": "88a8456ad02846d8f41af7ead743c86caa8d82b9b2c18d196feee663acb02a33",
+      "before_sha256": null,
+      "path": "packages/microcosm-build/src/microcosm/build/us_runtime/input_coverage_profile.py"
+    },
+    {
+      "after_sha256": "34455450437b5e4b7ce0377522d2bf2d815ac0a9d6e554b25c25d690e196e318",
+      "before_sha256": null,
+      "path": "packages/microcosm-build/src/microcosm/build/us_runtime/population_input_coverage.py"
+    },
+    {
+      "after_sha256": "7271ca0197d1396dc42656f3220207b0ba96927c1cd11233543f72fcf57ce94d",
+      "before_sha256": null,
+      "path": "packages/microcosm-build/tests/test_us_population_input_coverage.py"
+    }
+  ],
+  "description": "Descriptive input coverage on a supplied actual graph Population and attached RunManifest; complete ownership, storage, origin/clone and writer-mask checks.",
+  "frozen_evidence": {
+    "cpu_seconds": 6.143905999999999,
+    "guard_sha256": "0fb8e3f9f25ec47d89d6a3f61c8483caa86ccdee83958f7e801a8be579c4a559",
+    "models": 0,
+    "peak_rss_bytes": 332939264,
+    "physical_postcheck_sha256": "017ccd3d1d97819c1d6332436449e0ba961a1873ce6962547be07743fe097fc7",
+    "receipt_sha256": "8fed087e9f44d87d47a2c3071653255c959cbfee53ca1166fd22994025ca8d43",
+    "resources": 0,
+    "selectors": {
+      "test_actual_masked_coverage_separates_origin_clone_grain_and_unknownness": 1,
+      "test_closed_profiles_match_manifest_without_changing_historical_default": 1,
+      "test_complete_current_ownership_refuses_wrong_carrier_or_writer": 5,
+      "test_declared_absence_is_not_an_applicability_exemption": 1,
+      "test_duplicate_grains_are_rejected_by_the_actual_frame_contract": 1,
+      "test_inconsistent_population_manifest_or_compiler_refuses": 5,
+      "test_last_manifest_borrow_mutation_refuses": 1,
+      "test_nonfinite_values_and_missing_grains_remain_unresolved": 1,
+      "test_population_version_must_be_an_actual_structural_version": 2,
+      "test_profile_omissions_do_not_omit_assigned_block_diagnostic": 1,
+      "test_required_replay_preserves_coverage_and_manifest_identity": 1,
+      "test_source_role_and_membership_are_checked_on_actual_rows": 3,
+      "test_unclaimed_physical_column_is_not_accepted_as_a_structural_carrier": 1,
+      "test_zero_weight_origin_and_zero_observations_remain_known": 1
+    },
+    "source_and_owned_physical_checks": 515,
+    "source_count": 507,
+    "source_map_sha256": "55af74ead417eeab1b0e977da24e91ed5de61e52cf5953cd060797f58bc40038",
+    "source_peer_proof_sha256": "e1b8ae0cadd118ca7d4cfd85af2f4fd707462d87ace779c94277a0ee87fbc4a3",
+    "source_peer_review_sha256": "5a3177a15b478da0a8dcda6030397483892b60ae4cfd7481aa10a4c889ad59e9",
+    "tests": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 25
+    },
+    "unexpected_refusals": {},
+    "wall_seconds": 6.524979708017781,
+    "xml_sha256": "e5ea4cc97ceddbd3ad9153b35ab14dd2e7eb3ff13e0d878972f85e9a3e72ade8"
+  },
+  "limitations": {
+    "actual_source_ancestry_verified": false,
+    "applicability_complete": false,
+    "calibration_modules_rolled_back": false,
+    "complete_population_input_coverage_proven": false,
+    "host_integration_added": false,
+    "native_build_or_model_evaluation_verified": false,
+    "release_eligible": false,
+    "statistical_signal_verified": false,
+    "supplied_graph_consistency_only": true
+  },
+  "maintained_integration_execution_verified": false,
+  "maintained_source_comparison": {
+    "baseline_eager_modules_compared": 59,
+    "comparison_is_not_recomputed_current_import_closure": true,
+    "different_calibration_imports_preserved": [
+      {
+        "comparison": "different_preserve_maintained",
+        "frozen_sha256": "397f02916de1535de3bd0c34fdd71a2e685fe37f1a61ff4d389a8343f9642d4b",
+        "maintained_sha256": "716018cfbb136c631ce56724e58048c94202d6d41b64a56c9ba901cc586fd253",
+        "module": "microcosm.calibrate",
+        "path": "packages/microcosm-calibrate/src/microcosm/calibrate/__init__.py"
+      },
+      {
+        "comparison": "different_preserve_maintained",
+        "frozen_sha256": "c5084a0dd45617922f8efca08560f243195eb4456430c1d87258e6240f379ab4",
+        "maintained_sha256": "8a400c46e4c94773dc0d83122f173c8c3bd405694d411989b10f792597b94196",
+        "module": "microcosm.calibrate.exact_k",
+        "path": "packages/microcosm-calibrate/src/microcosm/calibrate/exact_k.py"
+      },
+      {
+        "comparison": "different_preserve_maintained",
+        "frozen_sha256": "379e4adbb3ed7cdd13f7c7c548da45163f2a50330c874ee51095d38243d392e6",
+        "maintained_sha256": "14608a5ee02132f06eaad4a59de3b051c8b8e1d07bd1768f4eb57f237173cef7",
+        "module": "microcosm.calibrate.gates",
+        "path": "packages/microcosm-calibrate/src/microcosm/calibrate/gates.py"
+      },
+      {
+        "comparison": "different_preserve_maintained",
+        "frozen_sha256": "c04df2f61544d4ba83ad467365333a69528ccf9b78913d449539603cd848b6cc",
+        "maintained_sha256": "925a1b6bae1c714de93df3ee44e26afeed7f3912377b93942f3a5173281d851a",
+        "module": "microcosm.calibrate.solve",
+        "path": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py"
+      }
+    ],
+    "identical": 53,
+    "maintained_CI_pending": true,
+    "new_owners": 2
+  },
+  "proposed_adoption_base": "151166377036a6f4703ed8effdcb328c7699e416",
+  "status": "25_frozen_scoped_controls_accepted"
+}

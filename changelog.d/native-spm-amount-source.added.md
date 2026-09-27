@@ -1,0 +1,1 @@
+Add a source-only SPM amount projection that borrows existing current ASEC money and original membership owners, preserves repeated unit values and unresolved zeros, and leaves missing observations explicit.

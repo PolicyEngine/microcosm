@@ -1,0 +1,1 @@
+Exclude positive survivor receipts from the initial property donor bridge because its two qualified source slots do not cover the additional sources included in the published aggregate. Preserve visible route diagnostics and report the excluded design-weight mass.

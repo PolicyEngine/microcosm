@@ -1,0 +1,1 @@
+Pack an exact Python float straight into the graph executor's scalar digest framing with `struct.pack("=d", ...)` instead of a one-element float64 array, preserving the payload bytes, the length prefix and every other scalar's behaviour.

@@ -1,0 +1,75 @@
+{
+  "control_postcheck_sha256": "58f10a538ad6db8efa30a4029a6eefaa4b0451c1bbb325e21d13a4bd2cc39cd7",
+  "control_receipt_sha256": "53b578332356b5e5700e2d1a6c40b2b1ccab47440aa886e53db9f19746c8c074",
+  "control_tests": 25,
+  "date": "2026-09-10",
+  "decision": "Adopt bounded process-local reuse of compiled bytecode keyed by complete compilation inputs. Retain every fresh source read, AST check, and loaded function, alias, global and closure check.",
+  "limitations": [
+    "One paired cProfile observation, not a generalized benchmark or a native-data speedup.",
+    "Cache bounds retained source keys, not total process memory.",
+    "Compiler warning and audit events occur on cache misses; fresh AST parsing still occurs on every loaded-code check.",
+    "Cache shares the existing trusted-process boundary; it does not authenticate coherent forgery of private process state.",
+    "The already running native pilot retains its frozen original implementation."
+  ],
+  "native_acceptance": false,
+  "paired_fixture": {
+    "comparison": {
+      "baseline_cpu_seconds": 303.897467,
+      "baseline_postcheck_sha256": "146aea7545077b933f921fc53a15340b5818f478408199c12d101c0c920477de",
+      "baseline_profile_sha256": "badec8594bb1421483e0090f273f79f7560adc0b13b68434f089442c7c8d4bbb",
+      "baseline_wall_seconds": 308.2577062920318,
+      "cpu_reduction_fraction": 0.2935343617062791,
+      "same_original_fixture_scope": true,
+      "scope": "one_paired_profile_observation_not_generalized_benchmark",
+      "sole_production_delta_owner_sha256": "534042fdd4f2af5a238b556882d3b75c5495d9909e240bb07201ec48bd2bb4da",
+      "wall_reduction_fraction": 0.2966248653600234
+    },
+    "cpu_seconds": 214.693118,
+    "declared_invented_dimensions": {
+      "atomic_support_blocks": 4,
+      "clone_households": 12,
+      "clone_persons": 18,
+      "counts_are_declared_from_frozen_source_not_native_measurements": true,
+      "demographic_predictor_count": 5,
+      "financial_output_count": 7,
+      "fixture_function": "known_financial_run",
+      "fixture_source": "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py",
+      "graph_nodes_per_run": 20,
+      "n_estimators": 2,
+      "origin": "invented_original_source_fixture",
+      "runs": [
+        "cold_auto",
+        "required_replay"
+      ],
+      "source_households": 6,
+      "source_persons": 9,
+      "state_fips_count": 2
+    },
+    "guard_sha256": "a665ab886e7feeebadffc630175734434a0667cd6b5a0fe812c4cd2cb4f42ca2",
+    "junit_sha256": "3b17eabe18fb9d8e6d87cb7f84b5eae00cc331086ab4d90239456c00263f2639",
+    "peak_rss_bytes": 581271552,
+    "profile_sha256": "0348d21a7ed9edc1dd2152595b13fcc91d51e6347619d80b78b76b4c1a96e5a9",
+    "receipt_sha256": "ed856c409f4923e49379044a003f652ec3fcdfa29789be52dd8fee33802f01d2",
+    "test_counts": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 1
+    },
+    "verified_current": {
+      "code_resources": 12,
+      "model_source": 5983,
+      "source_and_owned": 500
+    },
+    "wall_seconds": 216.82080566696823
+  },
+  "paired_postcheck_sha256": "fc2c232eee9904077e578ead9ea6e68f4d9d44c7ac9930d44cb1f08c6b67eba8",
+  "postcheck_correction": "The first checker incorrectly excluded the inherited root pyproject.toml source entry. The preserved original refused before physical verification; the corrected checker accepts that exact entry and passed. No fixture rerun was needed.",
+  "protocol": "microcosm.acs-source-compilation-cache-adoption.v1",
+  "release_acceptance": false,
+  "source_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py": "534042fdd4f2af5a238b556882d3b75c5495d9909e240bb07201ec48bd2bb4da",
+    "packages/microcosm-build/tests/test_us_acs_source_compile_cache.py": "3ee1adffa8a1420d6b95f0f6b8cc966f5193c6221420aed9b8dbf83b543d9dd6"
+  },
+  "source_peer_review_sha256": "e5de7a750a3e33a985009a7e330f182a97c7c833bbc0a09e204125028203c244"
+}

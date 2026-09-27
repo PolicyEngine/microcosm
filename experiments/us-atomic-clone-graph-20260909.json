@@ -1,0 +1,33 @@
+{
+  "all_location_columns_inherited": "passed",
+  "before_after_current_frozen_and_maintained_source_equal": true,
+  "before_after_current_model_and_code_resources_equal": true,
+  "code_resources": 12,
+  "cpu_seconds": 4.555835,
+  "household_weight_halves": "passed",
+  "households_after": 8,
+  "households_before": 4,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 364150784,
+  "persons_after": 12,
+  "persons_before": 6,
+  "preclone_gate_order": "passed",
+  "production_source_sha256": "ef9b562b355abc450f3d2934ab9be04e49387d03de4b39e37fa09b1c0c1905c8",
+  "receipt_sha256": "1bb75a5ee53edcbdd199a6d0163cbe75c32e54c80513cb3eb8d13021c3c2b1c3",
+  "release_eligible": false,
+  "required_replay": "passed",
+  "result": 0,
+  "scope": "Invented combined-survey actual graph: atomic assignment and derivation before support clone, inherited mapping gate and required replay. Native source and runner integration remain pending.",
+  "source_and_owned_files": 481,
+  "source_only_peer_review": "Codex peer found no actionable findings in adapter, composition and tests; no independent runtime or native verification.",
+  "subset_mapping_check": "passed",
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 6.214872374985134
+}

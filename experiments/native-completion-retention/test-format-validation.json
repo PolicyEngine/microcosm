@@ -1,0 +1,70 @@
+{
+  "scope": "format-only test change after the frozen V3 matrix; no production changes",
+  "file": "packages/microcosm-build/tests/test_us_graph_compact_retention.py",
+  "collection_command": [
+    "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-verify-once/.venv-noengine/bin/python",
+    "-B",
+    "-m",
+    "pytest",
+    "-o",
+    "addopts=--import-mode=importlib",
+    "--collect-only",
+    "-q",
+    "packages/microcosm-build/tests/test_us_graph_compact_retention.py"
+  ],
+  "before": {
+    "sha256": "2e0cc11682f765d7791eef55cefc9711c365eec79ceda8a7724f0790f902780f",
+    "ast_sha256_excluding_locations": "c3958974aaf5b3300229bfebace8084d9bc9ba5f32857247988b74db1f7bf46c",
+    "collected_ids": [
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_financial_compact_cold_required_parity_and_nonretention",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_completion_cold_required_parity_and_live_custody[False-False-45]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_completion_cold_required_parity_and_live_custody[True-False-49]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_completion_cold_required_parity_and_live_custody[True-True-51]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_unknown_retention_profile_refuses_before_source_work[True]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_unknown_retention_profile_refuses_before_source_work[None]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_unknown_retention_profile_refuses_before_source_work[unknown]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[source]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[implementation]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[typed_contract]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[capabilities]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[writers]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_refuse_different_compiled_scope[node]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_refuse_different_compiled_scope[version]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_refuse_different_compiled_scope[mass_partition]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[duplicate-ATOMIC_OBSERVER_DUPLICATE]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[missing-ATOMIC_OBSERVER_ROSTER]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[reordered-ATOMIC_OBSERVER_ROSTER]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[changed-SURVEY_POPULATION_REPLAY_]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_expected_population_still_sealed_between_checkpoints"
+    ]
+  },
+  "after": {
+    "sha256": "798eeb87a8dc2f5c00ced113f4cc9533efd75c726fde57a666aeeb1058403088",
+    "ast_sha256_excluding_locations": "c3958974aaf5b3300229bfebace8084d9bc9ba5f32857247988b74db1f7bf46c",
+    "collected_ids": [
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_financial_compact_cold_required_parity_and_nonretention",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_completion_cold_required_parity_and_live_custody[False-False-45]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_completion_cold_required_parity_and_live_custody[True-False-49]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_completion_cold_required_parity_and_live_custody[True-True-51]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_unknown_retention_profile_refuses_before_source_work[True]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_unknown_retention_profile_refuses_before_source_work[None]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_unknown_retention_profile_refuses_before_source_work[unknown]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[source]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[implementation]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[typed_contract]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[capabilities]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_rederive_current_union_obligations[writers]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_refuse_different_compiled_scope[node]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_refuse_different_compiled_scope[version]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_frozen_population_inputs_refuse_different_compiled_scope[mass_partition]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[duplicate-ATOMIC_OBSERVER_DUPLICATE]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[missing-ATOMIC_OBSERVER_ROSTER]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[reordered-ATOMIC_OBSERVER_ROSTER]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_discarded_observation_refusals[changed-SURVEY_POPULATION_REPLAY_]",
+      "packages/microcosm-build/tests/test_us_graph_compact_retention.py::test_compact_expected_population_still_sealed_between_checkpoints"
+    ],
+    "collection_log_sha256": "5277acd4fcc0c8df8eaee957eb2198dcdf39a76c265890f8f5d8b2305732a417"
+  },
+  "ast_equal": true,
+  "collection_equal": true
+}

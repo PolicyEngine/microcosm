@@ -1,0 +1,27 @@
+{
+  "code_resources": 12,
+  "cpu_seconds": 93.988173,
+  "frozen_before_after_current_equal": true,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 526712832,
+  "publisher_provenance_established": false,
+  "receipt_sha256": "d2775bd9e1c1e14dabaa9b7162070310fdd00adc8ea996084932692bce8f9dc9",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "Two existing default financial predictor cold/required replay cases, with the accepted optional demographic implementation left disabled. Invented original sources only; no native/quality/release acceptance.",
+  "source_and_owned_files": 495,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 2
+  },
+  "tested_source_changes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_predictors.py": "91c1a167dc6f188721e226623f3f92d3b0c57a4bf55af5f880f146cbe7c0596a",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_current_survey_predictors.py": "1c49e18612176337ab95170bb862578262aa702926148647db34e88154b24e15",
+    "packages/microcosm-build/tests/test_us_current_survey_predictor_demographics.py": "99d8062331165a72ee3dbad4812676cb240080de066102ccde7a2512f570e302"
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 98.86093041597633
+}

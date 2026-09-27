@@ -1,0 +1,1 @@
+Add an independent graph fragment that binds canonical household state FIPS from existing block-derived geography and checks observed survey state equality. Explicit rewrites replace carried canonical values while preserving other inputs, rows, memberships, and weights. Enrichment-host integration and tenure-source completion remain separate.

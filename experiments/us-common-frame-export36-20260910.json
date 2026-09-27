@@ -1,0 +1,67 @@
+{
+  "adoption_formatting": {
+    "full_ast_unchanged": true,
+    "test_source_after_sha256": "d6502d76a36796081e8c937c9b80caf74806558ed89f5466c6699f89e7b46c3c",
+    "test_source_before_sha256": "7d5184303390508ff745f3d6f4f7d8bdd4cbb10f2e50a574adda38e5bf71c9c0",
+    "tool": "ruff format"
+  },
+  "component": "US supplied-parent full/pruned/local export comparison",
+  "fable_source_review": {
+    "blocking_findings": 0,
+    "model": "Fable 5.1",
+    "record_note": "files identifies adopted bytes; tested_files identifies exact executed bytes. Full AST equality after Ruff formatting is recorded above.",
+    "reviewed_commit": "b591280674db6d606c7ab356cabffbb6ef582e2d",
+    "scope": "Six-file source review; no runtime or independent hash recomputation by the peer",
+    "sha256": "361eb8abccc7b227c7c2aef2e1704e807076b6481ce73e501839adf358143416",
+    "verdict": "clean"
+  },
+  "files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/common_frame_export_contract.py": "206159abfad714563fa3434209092a05f8e847d9ffef99a913373331f2ecbb8c",
+    "packages/microcosm-build/tests/test_us_common_frame_export_contract.py": "d6502d76a36796081e8c937c9b80caf74806558ed89f5466c6699f89e7b46c3c"
+  },
+  "guard_sha256": "f8d8184e582a443ccae781342df2b8c0accf4c87c552ccaed843f1bad0586bd1",
+  "independent_review": {
+    "correctness_defects": 0,
+    "coverage_note": "Both new prune-flag cases select the same retained rows; existing full/pruned/local cases exercise differing selections.",
+    "sha256": "8ef45f1d1fd5b3790e9d15d42d4dcb98651c1f66e5badb059134df623c91d17b"
+  },
+  "limits": {
+    "cpu_seconds": 600,
+    "numeric_threads": 1,
+    "wall_seconds": 900
+  },
+  "physical_postcheck_sha256": "486eb981a71ca13806ed2524cc7a7b9469751ff47d2496e85b566044b7afc0a8",
+  "prior_attempts": "Preserved original all-zero fixture failure, unexecuted34 packet, and two36 wrapper failures. Final36v3 corrected invocation serialization and passed all checks.",
+  "scope": "Invented frames and real frame-checkpoint write/readback. No native candidate, actual calibration ancestry or release is certified.",
+  "source_closure_parity": {
+    "new_files": 2,
+    "pyproject_difference": "Comment describing UK NISRA openpyxl use; dependency configuration unchanged",
+    "pyproject_toml_semantics_equal": true,
+    "unchanged_python_files": 57
+  },
+  "source_map_sha256": "d6bb7e1404569ec27c5231b37d92397399fca7f63b85744ff393dc630454215e",
+  "source_revision_before_adoption": "162869d4d350b06c263b2fbdbeea93b7f1b05050",
+  "tested_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/common_frame_export_contract.py": "206159abfad714563fa3434209092a05f8e847d9ffef99a913373331f2ecbb8c",
+    "packages/microcosm-build/tests/test_us_common_frame_export_contract.py": "7d5184303390508ff745f3d6f4f7d8bdd4cbb10f2e50a574adda38e5bf71c9c0"
+  },
+  "validation": {
+    "actual_graph_calibration_ancestry_verified": false,
+    "cpu_seconds": 1.769343,
+    "model_sources": 0,
+    "owned_files": 11,
+    "peak_rss_bytes": 324517888,
+    "physical_postcheck": "pass",
+    "receipt_sha256": "2b6de385041b6bb5d59ff34a2672d215de85bf0d058e6853f05a7afaf05b84f9",
+    "release_eligible": false,
+    "resources": 0,
+    "reviewer": "root",
+    "source_files": 60,
+    "suite_accepted": true,
+    "tests_failed": 0,
+    "tests_passed": 36,
+    "unexpected_refusals": {},
+    "wall_seconds": 2.5767143329721875,
+    "xml_sha256": "3ab7cc10509aad988dd767ce39425138e9c8a67b171fcb433387057c2c1d28cb"
+  }
+}

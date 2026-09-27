@@ -1,0 +1,1 @@
+Add a native immigration source qualifier that retains the complete current ASEC readset and selected ACS literals, with exact source custody and clone evidence transport. Status assignment, stock alignment and release qualification remain separate reviewed steps.

@@ -1,0 +1,845 @@
+{
+ "count": 208,
+ "tail": [
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.ValueError",
+   "message": "list.remove(x): x not in list",
+   "file": "_py_warnings.py",
+   "function": "_add_filter",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.ValueError",
+   "message": "list.remove(x): x not in list",
+   "file": "_py_warnings.py",
+   "function": "_add_filter",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.ValueError",
+   "message": "list.remove(x): x not in list",
+   "file": "_py_warnings.py",
+   "function": "_add_filter",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.ValueError",
+   "message": "list.remove(x): x not in list",
+   "file": "_py_warnings.py",
+   "function": "_add_filter",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.ValueError",
+   "message": "list.remove(x): x not in list",
+   "file": "_py_warnings.py",
+   "function": "_add_filter",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.ValueError",
+   "message": "list.remove(x): x not in list",
+   "file": "_py_warnings.py",
+   "function": "_add_filter",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.TypeError",
+   "message": "issubclass() arg 1 must be a class",
+   "file": "numerictypes.py",
+   "function": "issubclass_",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.IndexError",
+   "message": "string index out of range",
+   "file": "_parser.py",
+   "function": "Tokenizer.__next",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.IndexError",
+   "message": "list index out of range",
+   "file": "_parser.py",
+   "function": "SubPattern.__getitem__",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation/header.json'",
+   "file": "<frozen genericpath>",
+   "function": "exists",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/graph-store/objects'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation/header.json'",
+   "file": "<frozen genericpath>",
+   "function": "exists",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/graph-store/objects'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.IndexError",
+   "message": "string index out of range",
+   "file": "_parser.py",
+   "function": "Tokenizer.__next",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.IndexError",
+   "message": "list index out of range",
+   "file": "_parser.py",
+   "function": "SubPattern.__getitem__",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation/header.json'",
+   "file": "<frozen genericpath>",
+   "function": "exists",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/graph-store/objects'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_person_coverage_authentication.ACSCoverageAuthenticationError",
+   "message": "CANONICAL_SIZE",
+   "file": "acs_person_coverage_authentication.py",
+   "function": "_require",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_person_coverage_authentication.ACSCoverageAuthenticationError",
+   "message": "CANONICAL_SIZE",
+   "file": "acs_person_coverage_authentication.py",
+   "function": "_json.<locals>.charge",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_person_coverage_authentication.ACSCoverageAuthenticationError",
+   "message": "CANONICAL_SIZE",
+   "file": "acs_person_coverage_authentication.py",
+   "function": "_json.<locals>.visit",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_person_coverage_authentication.ACSCoverageAuthenticationError",
+   "message": "CANONICAL_SIZE",
+   "file": "acs_person_coverage_authentication.py",
+   "function": "_json.<locals>.visit",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_person_coverage_authentication.ACSCoverageAuthenticationError",
+   "message": "CANONICAL_SIZE",
+   "file": "acs_person_coverage_authentication.py",
+   "function": "_json",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_person_coverage_authentication.ACSCoverageAuthenticationError",
+   "message": "CANONICAL_SIZE",
+   "file": "acs_native_coverage_binding.py",
+   "function": "issue_acs_native_coverage",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError",
+   "message": "NATIVE_ISSUANCE_REFUSED",
+   "file": "acs_native_coverage_binding.py",
+   "function": "issue_acs_native_coverage",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError",
+   "message": "NATIVE_ISSUANCE_REFUSED",
+   "file": "survey_population_preparation.py",
+   "function": "prepare_authenticated_survey_population",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "survey_population_preparation.py",
+   "function": "prepare_authenticated_survey_population",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "graph_survey_population.py",
+   "function": "run_authenticated_survey_population",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "graph_atomic_survey_population.py",
+   "function": "run_atomic_survey_population",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "survey_population_preparation.py",
+   "function": "verification_epoch",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "contextlib.py",
+   "function": "_GeneratorContextManager.__exit__",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "graph_atomic_survey_financial.py",
+   "function": "run_atomic_survey_financial",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "survey_population_preparation.py",
+   "function": "verification_epoch",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "contextlib.py",
+   "function": "_GeneratorContextManager.__exit__",
+   "wrapper": true
+  },
+  {
+   "type": "microcosm.build.us_runtime.survey_population_preparation.SurveyPopulationPreparationError",
+   "message": "PREPARATION_ISSUANCE_REFUSED: microcosm.build.us_runtime.acs_native_coverage_binding.ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED",
+   "file": "harness19_diag.py",
+   "function": "<module>",
+   "wrapper": true
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation/header.json'",
+   "file": "<frozen genericpath>",
+   "function": "exists",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/snapshots/preparation'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  },
+  {
+   "type": "builtins.FileNotFoundError",
+   "message": "[Errno 2] No such file or directory: '/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic/.measure/diagnostic3/graph-store/objects'",
+   "file": "<frozen genericpath>",
+   "function": "isdir",
+   "wrapper": false
+  }
+ ]
+}

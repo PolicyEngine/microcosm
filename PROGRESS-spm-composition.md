@@ -1,5 +1,13 @@
 # SPM composition preflight + role for a fresh base (#893 lane)
 
+> **Historical integration note (2026-09-23).** This journal arrived through
+> main's merge into `native-integration-20260923`. Every branch, PR/CI, "Next",
+> "Remaining", and "Verified at this head" statement below describes its
+> original lane snapshot, including later continuations. Recorded measurements
+> are not validation of the merged integration tree. See
+> [the integration record](docs/native-integration-20260923.md) and git/GitHub
+> for current integration status.
+
 Branch `spm-composition-preflight`, cut from `origin/main` at `d1196af10`.
 
 ## State

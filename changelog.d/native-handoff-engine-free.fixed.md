@@ -1,0 +1,1 @@
+Keep native development checkpoint inspection free of implicit country-engine loading. Its report now identifies the historical and release-source rosters checked and explicitly leaves the legacy pool surface and live take-up ABI inventory unqualified; explicit export-contract diagnostics and release gates remain unchanged.

@@ -1,0 +1,1 @@
+Add opt-in property completion diagnostics to the existing source projection, with a private typed row artifact, allowlisted aggregate graph receipts and independent replay checks. Preserve default options and numerical property behavior.

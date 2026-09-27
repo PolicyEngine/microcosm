@@ -1,0 +1,1 @@
+Allow the US head-to-head scorer to use one explicit model consumer for historical H5 variable ownership, formula normalization, batched target calculations and the ephemeral by-origin battery. The existing default path remains available; explicit dependencies do not attest runtime qualification or authorize publication.

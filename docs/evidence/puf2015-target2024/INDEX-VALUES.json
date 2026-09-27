@@ -1,0 +1,8 @@
+{
+  "schema": "microcosm.public_index_value_transcript/1",
+  "retrieved_date": "2026-09-09",
+  "retrieval": "Official URLs successfully read with web retrieval; exact values transcribed and independently checkable. These are not hashes of original publisher HTML/PDF bytes. Direct SSA urllib acquisition returned HTTP403 before writing any document.",
+  "awi": {"url": "https://www.ssa.gov/oact/cola/AWI.html", "series": "National Average Wage Index", "2015": "48098.63", "2024": "69846.57", "measurement": "Wages subject to federal income tax and deferred compensation; average-worker index, used as an explicit proxy for PUF wage amount growth."},
+  "cola": {"url": "https://www.ssa.gov/oact/cola/colaseries.html", "cash_timing_url": "https://www.ssa.gov/cola/", "december_payable_percent": {"2015": "0.0", "2016": "0.3", "2017": "2.0", "2018": "2.8", "2019": "1.6", "2020": "1.3", "2021": "5.9", "2022": "8.7", "2023": "3.2"}, "timing": "December benefits are received in January of the following year. Product covers January2016 through January2024 cash increases relative to calendar2015 cash benefits. This transports a fixed entitlement; it does not forecast the recipient mix or new awards."},
+  "cpi": {"url": "https://www.bls.gov/cpi/tables/supplemental-files/historical-cpi-u-202412.pdf", "series": "CPI-U, US city average, all items, annual average, 1982-84=100", "table": "Historical CPI-U index averages, annual average column", "2015": "237.017", "2023": "304.702", "2024": "313.689", "pages_one_based": [4,5], "monthly_2024_check": ["308.417","310.326","312.332","313.548","314.069","314.175","314.540","314.796","315.301","315.664","315.493","315.605"]}
+}

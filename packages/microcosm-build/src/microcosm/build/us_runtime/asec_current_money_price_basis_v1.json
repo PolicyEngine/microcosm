@@ -1,0 +1,21 @@
+{
+  "algorithm": "parse_float64_target_divide_source_then_multiply_nonzero_v1",
+  "cells": {
+    "2022": "163.6",
+    "2023": "170.0",
+    "2024": "174.4"
+  },
+  "currency": "USD",
+  "identity_year": "copy_normalized_bytes",
+  "numeric_scope": "platform_bitwise",
+  "price_basis": "census_ccpiu_annual_2024",
+  "schema_version": 1,
+  "source_finality": "not_stated_in_source",
+  "target_year": 2024,
+  "workbook": {
+    "sha256": "8a5ef078b02c48c9e6414f3ca0cbdfe4a013ce6acf1a3fda42e6bd9c7da49e48",
+    "size_bytes": 41472,
+    "url": "https://www2.census.gov/programs-surveys/demo/tables/p60/286/annual-index-value_annual-percent-change.xls"
+  },
+  "zero": "positive_zero_no_arithmetic"
+}

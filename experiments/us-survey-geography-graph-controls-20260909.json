@@ -1,0 +1,21 @@
+{
+  "before_after_current_frozen_and_maintained_source_equal": true,
+  "before_after_current_model_and_code_resources_equal": true,
+  "code_resources": 12,
+  "cpu_seconds": 313.767356,
+  "model_source_files": 5983,
+  "peak_rss_bytes": 439091200,
+  "receipt_sha256": "28a6b5c58a258c7b3129a48054a3360647c788f8b76d781cc3bc8fc35a73f997",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "Observed-geography graph node over actual invented original-source issuers: cold/replay/unknownness/binding/mutation controls. No native atomic assignment or release acceptance.",
+  "source_and_owned_files": 486,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 14
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 319.43621275003534
+}

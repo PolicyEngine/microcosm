@@ -1,0 +1,1 @@
+Preserve complete Frame metadata in graph content-store format v2, including nested source evidence, and refuse older frame caches that cannot restore it or reuse of one frame key with different metadata.

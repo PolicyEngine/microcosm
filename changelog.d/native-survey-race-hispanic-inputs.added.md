@@ -1,0 +1,1 @@
+Add optional source-qualified race and Hispanic-origin graph inputs on original survey persons and existing clones, preserving source literals, allocation histories and unsupported ACS race categories as explicit unknowns.

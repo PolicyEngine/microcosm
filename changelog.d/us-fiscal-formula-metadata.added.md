@@ -1,0 +1,1 @@
+Allow fiscal materialization, reform and weight-attachment helpers to use explicitly supplied period-specific formula metadata while preserving the cached static metadata default. Explicit metadata is checked before target checkpoint reuse and does not establish consumer or release qualification.

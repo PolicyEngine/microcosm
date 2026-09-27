@@ -1,0 +1,1 @@
+Add an optional source-qualified Social Security report fragment with full-original ASEC DESIGN donors, real categorical fit/probability artifacts, reason-constrained report completion, and a no-fit empty-recipient path. It preserves source unknowns and does not write canonical beneficiary inputs or qualify a release.

@@ -1,0 +1,1 @@
+Add optional source-qualified sex and state predictors to survey financial imputation. Preserve observed-year distinctions and default behavior, refuse unresolved source demographics, and verify complete population preservation through fitting, attachment and required replay.

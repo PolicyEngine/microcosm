@@ -1,0 +1,1 @@
+Add a focused invented-source regression confirming that joint property-donor exclusions preserve independently qualified ASEC interest and dividends on both initial clones and through the existing tax split. Production behavior is unchanged.

@@ -9,6 +9,7 @@
    "state": "NY",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 4200000000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 New York total EITC; IRS rounds large states to 2-3 significant figures",
@@ -24,6 +25,7 @@
    "state": "NJ",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 1600000000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 New Jersey total EITC; IRS rounds large states to 2-3 significant figures",
@@ -39,6 +41,7 @@
    "state": "IL",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 2400000000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Illinois total EITC; IRS rounds large states to 2-3 significant figures",
@@ -54,6 +57,7 @@
    "state": "MI",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 2100000000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Michigan total EITC; IRS rounds large states to 2-3 significant figures",
@@ -69,6 +73,7 @@
    "state": "CO",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 786400000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Colorado total EITC; IRS rounds large states to 2-3 significant figures",
@@ -84,6 +89,7 @@
    "state": "CT",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 531800000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Connecticut total EITC; IRS rounds large states to 2-3 significant figures",
@@ -99,6 +105,7 @@
    "state": "NM",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 501000000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 New Mexico total EITC; IRS rounds large states to 2-3 significant figures",
@@ -114,6 +121,7 @@
    "state": "KS",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 493400000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Kansas total EITC; IRS rounds large states to 2-3 significant figures",
@@ -129,6 +137,7 @@
    "state": "LA",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 1600000000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Louisiana total EITC; IRS rounds large states to 2-3 significant figures",
@@ -144,6 +153,7 @@
    "state": "IA",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 494100000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Iowa total EITC; IRS rounds large states to 2-3 significant figures",
@@ -159,6 +169,7 @@
    "state": "VT",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 72800000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Vermont total EITC; IRS rounds large states to 2-3 significant figures",
@@ -174,6 +185,7 @@
    "state": "OK",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 963300000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Oklahoma total EITC; IRS rounds large states to 2-3 significant figures",
@@ -189,6 +201,7 @@
    "state": "NE",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 321700000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Nebraska total EITC; IRS rounds large states to 2-3 significant figures",
@@ -204,6 +217,7 @@
    "state": "RI",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 181900000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Rhode Island total EITC; IRS rounds large states to 2-3 significant figures",
@@ -219,6 +233,7 @@
    "state": "MT",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 156100000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Montana total EITC; IRS rounds large states to 2-3 significant figures",
@@ -234,6 +249,7 @@
    "state": "IN",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 1400000000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Indiana total EITC; IRS rounds large states to 2-3 significant figures",
@@ -249,6 +265,7 @@
    "state": "HI",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 206200000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Hawaii total EITC; IRS rounds large states to 2-3 significant figures",
@@ -264,6 +281,7 @@
    "state": "ME",
    "period": 2024,
    "benchmark": {
+    "publisher": "irs",
     "value": 186600000.0,
     "year": "TY2024",
     "source": "IRS EITC Central, Statistics for tax returns with EITC, TY2024 (as of Dec 2025) \u2014 Maine total EITC; IRS rounds large states to 2-3 significant figures",

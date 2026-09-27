@@ -1,0 +1,89 @@
+{
+  "base_stages": [
+    "composed_asec_binding_v1",
+    "acs_housing_universe_2024"
+  ],
+  "contracts": {
+    "microcosm.build/cd_benchmark/canonical.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/cd_benchmark/origin.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.canonical"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.build/us_runtime/graph_native_household_origin.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.graph_native_origin_implementation",
+        "microcosm.frame",
+        "microcosm.graph",
+        "microcosm.graph.artifact_edges",
+        "microcosm.graph.canonical",
+        "microcosm.graph.keys"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "6420544565b4a2b11dc7238e06eef099a429982afa3dfbcec3dbdfbba7a27bd1"
+    },
+    "microcosm.build/us_runtime/graph_native_origin_implementation.py": {
+      "imports": [
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.graph_implementation"
+      ],
+      "resource_accesses_sha256": "ecc7b6bd345950216623b7de94c9aeb392504af36e398094481f04ad203914f9",
+      "unbound_uses_sha256": "51778c9d32f80dfeba9741570ff5fa19ef83b464d7b207bf2f438cb008ae3ae5"
+    },
+    "microcosm.build/us_runtime/native_household_origin.py": {
+      "imports": [
+        "microcosm.build.cd_benchmark.origin",
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.asec_student_controls",
+        "microcosm.build.us_runtime.education_assistance_source",
+        "microcosm.build.us_runtime.support_provenance",
+        "microcosm.frame",
+        "microcosm.graph.canonical",
+        "numpy"
+      ],
+      "resource_accesses_sha256": "740699f0e8648d061a7057844a4aabf04bb5ce2df7118fa4256dc2d215820c93",
+      "unbound_uses_sha256": "d4cc434fc5fa5a17c6fa46592dbeb8019d061927ff218c618036288221e76503"
+    }
+  },
+  "dependencies": [
+    "numpy",
+    "pandas",
+    "microunit",
+    "tables",
+    "h5py",
+    "PyYAML",
+    "pyarrow"
+  ],
+  "extra_modules": [
+    "microcosm.build/cd_benchmark/canonical.py",
+    "microcosm.build/cd_benchmark/origin.py",
+    "microcosm.build/us_runtime/native_household_origin.py",
+    "microcosm.build/us_runtime/graph_native_household_origin.py",
+    "microcosm.build/us_runtime/graph_native_origin_implementation.py"
+  ],
+  "import_classifications": {
+    "microcosm.build.cd_benchmark.canonical": "Frozen v4 canonical origin encoding helpers; extra module bytes attested.",
+    "microcosm.build.cd_benchmark.origin": "Frozen v4 typed original-household keys; extra module bytes attested, protocol unchanged.",
+    "microcosm.build.us_runtime": "Relative native source/ACS reader imports; exact imported-symbol use fences plus declared module closures.",
+    "microcosm.build.us_runtime.asec_student_controls": "Existing bounded immutable member snapshot helper, attested by the composition closure.",
+    "microcosm.build.us_runtime.education_assistance_source": "Existing original ASEC archive and cohort pins, attested by the composition closure.",
+    "microcosm.build.us_runtime.graph_implementation": "Unchanged upstream identity service and AST/resource dependency classifier.",
+    "microcosm.build.us_runtime.graph_native_origin_implementation": "This isolated extension identity; its own module bytes and inventory are attested.",
+    "microcosm.build.us_runtime.support_provenance": "Existing descendant source-ID, channel and role column names; no population treatment.",
+    "microcosm.frame": "Frame schema, linkage, effective typed weights and population content; existing complete Frame closure.",
+    "microcosm.graph": "Graph declarations, typed artifact outputs and kernel contracts; existing complete graph closure.",
+    "microcosm.graph.artifact_edges": "Actual graph typed-descriptor validation at full materialization boundary; existing graph closure.",
+    "microcosm.graph.canonical": "Graph canonical JSON encoding; existing complete graph closure.",
+    "microcosm.graph.keys": "Actual opaque producer/output artifact-key derivation; existing complete graph closure.",
+    "numpy": "Installed NumPy distribution version plus platform numeric scope; strict native integer handling."
+  },
+  "schema": "microcosm.us.native-origin-extension-inventory.v1",
+  "stage": "native_household_origin_v1"
+}

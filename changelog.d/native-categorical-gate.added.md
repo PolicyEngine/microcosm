@@ -1,0 +1,1 @@
+Add a separate DESIGN-weighted categorical classifier artifact and typed probability graph adapter with explicit class support, source/model/matrix bindings and no changes to QRF or canonical survey outputs.

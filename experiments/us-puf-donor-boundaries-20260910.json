@@ -1,0 +1,120 @@
+{
+  "calibration_acceptance": false,
+  "cold_and_required_replay_checked": true,
+  "controls": [
+    {
+      "cpu_seconds": 3.567905,
+      "guard_sha256": "348bc2816d499e592fcf90515ff79175fdabf535bb51bd23a47a15f355265f3a",
+      "junit_sha256": "29cc6d7aac55b4f6a64cf4940ef2613c5880fa42a2e9c4eb1f5b113ea02d9219",
+      "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+      "name": "donor_validation",
+      "peak_rss_bytes": 439549952,
+      "receipt_sha256": "99a0efcb676ba96f5e485f204428120ce75e0f43b50f685c0eeace9d972c36ff",
+      "resource_map_sha256": "d58f2bc53f56cd36305f8c6f2855c9fa001153b2f51cd41c2cf430c0ea3d2683",
+      "root_postcheck_sha256": "e8c4a24705541e82b3fe834496a0bd32afd53627507bd75a055090f76d95b518",
+      "selected_test_cases": [
+        "test_existing_profiles_share_exact_selected_donor_check[PufOutputProfile.FULL65]",
+        "test_existing_profiles_share_exact_selected_donor_check[PufOutputProfile.PUF59]",
+        "test_existing_profiles_share_exact_selected_donor_check[PufOutputProfile.PUF55_SURVEY_SS]",
+        "test_existing_profiles_share_exact_selected_donor_check[PufOutputProfile.PUF55_SURVEY_SS_NO_TOTAL]",
+        "test_complete_historical_donor_domains_are_retained[missing]",
+        "test_complete_historical_donor_domains_are_retained[numeric_string]",
+        "test_complete_historical_donor_domains_are_retained[unknown]",
+        "test_complete_historical_donor_domains_are_retained[nonfinite]",
+        "test_complete_historical_donor_domains_are_retained[integer_range]",
+        "test_complete_historical_donor_domains_are_retained[incidence_capacity]",
+        "test_complete_historical_donor_domains_are_retained[boolean_count]",
+        "test_complete_historical_donor_domains_are_retained[year]",
+        "test_donor_rejection_still_precedes_recipient_access",
+        "test_selected_values_are_detached_from_auxiliary_source_table",
+        "test_excluded_ss_outputs_are_not_accepted_as_extra_donor_columns",
+        "test_eight_route_selection_keeps_targets_recids_weights_and_six_money_values"
+      ],
+      "source_count": 498,
+      "source_map_sha256": "e2f500ab2055e34899d663f9792a2f97b1157ab087409072567f985d3874b853",
+      "test_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 16
+      },
+      "verified_current": {
+        "code_resources": 12,
+        "model_source": 5983,
+        "source_and_owned": 506
+      },
+      "wall_seconds": 5.826573541969992
+    },
+    {
+      "cpu_seconds": 15.144223,
+      "guard_sha256": "b91941ff88c7dd446d650a68ee1ac015e9e39450f51e179f181b2cd75277a8a7",
+      "junit_sha256": "5cca9cf41e93c7b01bdc0beb5a42dc48b5ebd58e5cacde92e0f2b0435c4c5cce",
+      "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+      "name": "full65_chain",
+      "peak_rss_bytes": 625786880,
+      "receipt_sha256": "29d3799c065ccc5277bca30a643dd615bf9f425835bf552abd63300d13a65525",
+      "resource_map_sha256": "9fadfa1d4f77bf1510d04895bada88d7558a5652b09b6d9c22b9b2739ca9370f",
+      "root_postcheck_sha256": "8c5654c6bdceb7fd91624644a06808202fa1b2dc6ad94e925d11a1bf4519871b",
+      "selected_test_cases": [
+        "test_real_full_65_target_graph_draw_chain_finalization_and_replay"
+      ],
+      "source_count": 498,
+      "source_map_sha256": "e2f500ab2055e34899d663f9792a2f97b1157ab087409072567f985d3874b853",
+      "test_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "verified_current": {
+        "code_resources": 12,
+        "model_source": 5983,
+        "source_and_owned": 506
+      },
+      "wall_seconds": 16.31964554201113
+    },
+    {
+      "cpu_seconds": 13.678566,
+      "guard_sha256": "09e9e78fba275090101d569a037bc15b2ac9f6ed13bd656fe3b42f949909e5fc",
+      "junit_sha256": "eea60075e8c7a64720d52b9afc63f1779184072c5b41623b7ce41f2cfee741bd",
+      "model_source_map_sha256": "018d739504f5919c65104ad44a46c1df045d0bf71002622e66e8b68c3192b035",
+      "name": "survey_ss_puf55_chain",
+      "peak_rss_bytes": 628178944,
+      "receipt_sha256": "2546a4531c7c4099066cc346cd42115175972f35a8699614e1670ec4a8bcfb29",
+      "resource_map_sha256": "d8aef904d7ceb5067c0d4f39ccab0837ad241bd96eac34f7c0aecaa6fde54848",
+      "root_postcheck_sha256": "3a0180f061f10d873ae38de5e583bc7d8f1ef3c6262fea4665d2194b1d947f04",
+      "selected_test_cases": [
+        "test_real_puf55_chain_preserves_survey_ss_and_replays"
+      ],
+      "source_count": 498,
+      "source_map_sha256": "e2f500ab2055e34899d663f9792a2f97b1157ab087409072567f985d3874b853",
+      "test_counts": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 1
+      },
+      "verified_current": {
+        "code_resources": 12,
+        "model_source": 5983,
+        "source_and_owned": 506
+      },
+      "wall_seconds": 14.389938707987312
+    }
+  ],
+  "current_checkout_runtime_certification": false,
+  "full65_nodes": 133,
+  "native_execution": false,
+  "owner_sha256": "e0c9d34cd1815d323495e01ec5f94133c1b7da8da37d3fc714041ea38be677cc",
+  "release_acceptance": false,
+  "same_complete_fitted_model_donor_check_preserved": true,
+  "same_ordinary_donor_validation_preserved": true,
+  "scope": "invented_donor_validation_and_actual_full65_puf55_chain_regressions",
+  "scope_note": "Validation is on the pinned 498-file snapshot. Source adoption does not certify the later combined checkout or the prospective two-route host. The checks exercise actual graph fitting, raw draws, finalization, and required cache replay over invented donors; no native PUF or survey transfer is claimed.",
+  "selected_tests": 18,
+  "source_authority_issued": false,
+  "status": "frozen_donor_helper_extraction_accepted",
+  "survey_ss_puf55_nodes": 113,
+  "test_sha256": "8d84c4d379cfd75ad36ca232fcadcdf0e0bf899ad8c9b8f242319d0f3c8a8db0",
+  "two_route_host_execution": false
+}

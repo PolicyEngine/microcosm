@@ -320,15 +320,28 @@ def _fixture_puma_ladder(pool_tool: ModuleType):
         tract_overlap_puma=puma.copy(),
         tract_overlap_tract=np.asarray([6_001_000_100], dtype=np.int64),
         tract_overlap_population=population.copy(),
+        joint_overlap_puma=puma.copy(),
+        joint_overlap_tract=np.asarray([6_001_000_100], dtype=np.int64),
+        joint_overlap_cd=np.asarray([601], dtype=np.int64),
+        joint_overlap_population=np.asarray([100], dtype=np.int64),
         metadata={
-            "schema_version": 1,
+            "schema_version": 2,
             "kind": "us_puma_ladder",
             "puma_vintage": "2020_puma",
             "sampling_basis": "population",
             "layers": {
-                "congressional_district": {"vintage": "119th_congress"},
-                "county": {"vintage": "2020_census"},
-                "tract": {"vintage": "2020_census"},
+                "congressional_district": {
+                    "vintage": "119th_congress",
+                    "source": "invented joint PUMA/tract/CD fixture",
+                },
+                "county": {
+                    "vintage": "2020_census",
+                    "source": "invented joint PUMA/tract/CD fixture",
+                },
+                "tract": {
+                    "vintage": "2020_census",
+                    "source": "invented joint PUMA/tract/CD fixture",
+                },
             },
         },
     )
@@ -2506,7 +2519,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "f830589331dad583398485de5724dace0714d8526fb63b37f81cd783b1cb8f30",
+            "spec_sha256": "2dfa51b89e740c742437168cb07f3084a2ecd7f90ad61eb13d3b12b69f315e15",
         },
     }
 

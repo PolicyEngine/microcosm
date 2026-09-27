@@ -1,0 +1,1 @@
+Select whole series with `slice(None)` instead of an all-True mask when folding physical storage parts, and skip the null recomputation that masked storage never uses, preserving the emitted value bytes, null bytes and subset-selection behaviour exactly.

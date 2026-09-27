@@ -1,0 +1,1 @@
+Add optional full-original ASEC DESIGN donor support for native current survey amount fitting, independent of selected receiving support and preserving observed amounts, recipient applicability and existing clones.

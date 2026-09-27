@@ -1,0 +1,1 @@
+Add a checked US survey enrichment host that preserves the PUF population while attaching source-qualified unemployment, medical costs and current health coverage. Keep reporting unknowns, original observations and source-to-clone provenance explicit.

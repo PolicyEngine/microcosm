@@ -1,0 +1,39 @@
+{
+  "adopted": true,
+  "behavior": "Move detached checked-view construction after last borrowed I/O; seal fresh document and complete maintained GroupedUpperBounds state, including stable-ID buckets, canonical digest and immutable storage, against issued payload and pure owner state.",
+  "budget_owner_sha256": "e1faffa1b133878b3607e888fe0c1fe0503f23d46be52eeddc054cf6c28a1c2c",
+  "callback_branches": {
+    "new_detached_values": 7,
+    "old_population_mutations": 2
+  },
+  "cpu_seconds": 540.759706,
+  "guard_sha256": "8c0b29efd7dc6c272b94463c996a9a6d35bb81c16857046bc75f95d11fb69087",
+  "historical_original_eight": {
+    "budget_owner_sha256": "80418528db45266e7322a8984cc63f9414f6fa3c084119cd9d0f558f4a0e0260",
+    "positive_postcheck_sha256": "8698b43174b17faa1bcc4123ae1b7c7c1ea65bba94f5d41f207c259dc3c951e8",
+    "remaining_postcheck_sha256": "423a6cd3ae1537bfe372b7d735ad3a907e6fcc6837257e6c65d538db18e13486"
+  },
+  "native_acceptance": false,
+  "new_test_sha256": "4a8078e93d95cd6c807218fe021128614ce0567490ef216b7c83555a25b65a0e",
+  "peak_rss_bytes": 452624384,
+  "performance_claim": false,
+  "public_recipient_pilot_uses_original_frozen_budget": true,
+  "release_acceptance": false,
+  "root_postcheck_sha256": "2f94929c903c86633c199d3570625dbfda29fe57a84dab9b52502b25fe1236ed",
+  "scope": "Original eight financial-successor controls and four corrected budget-view controls are separate versioned runs; this is not whole-tree or native certification.",
+  "source_candidate_peer_sha256": "5f4ef9c2ecb9b19803b3439ec26b0bfdd92b19acc09e1579a6cc216240d35801",
+  "source_map_sha256": "9f5858b3bd7aceb9e9ee5ca0a2b5b4033ab9356a845364e9b07a11373de75b5f",
+  "status": "adopted_after_exact_component_verification",
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 4
+  },
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 501
+  },
+  "wall_seconds": 543.4429369170102
+}

@@ -1,0 +1,1 @@
+Honor PolicyEngine-US's declared dataset source inputs in the live adapter and import-free metadata index, including SPM independence roles and annual universe status despite household fallback formulas. Reject malformed or conflicting declarations, retain formula-owned output guards, and omit source observations from generated defaults.

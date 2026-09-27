@@ -17,6 +17,7 @@ import pytest
 from microcosm.build.us_runtime.asec_census_person_columns import (
     ASEC_CENSUS_PERSON_COLUMN_NAMES,
     ASEC_CENSUS_PERSON_COLUMNS,
+    ASEC_CENSUS_PERSON_COLUMNS_BEYOND_720,
     ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED,
     ASEC_CENSUS_PERSON_IDENTITY_COLUMNS,
     AsecCensusPersonColumnsError,
@@ -364,9 +365,13 @@ def test_default_pins_are_the_shared_census_person_pins(sources):
 def test_the_review_places_every_offline_fix_column_exactly_once():
     restored = set(ASEC_CENSUS_PERSON_COLUMN_NAMES)
     not_restored = set(ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED)
+    beyond = set(ASEC_CENSUS_PERSON_COLUMNS_BEYOND_720)
     assert len(restored) == len(ASEC_CENSUS_PERSON_COLUMN_NAMES)
     assert restored.isdisjoint(not_restored)
-    assert restored | not_restored == _RECEIPT_720_ADDED
+    # Later restorations are declared separately and never hide a #720 column.
+    assert beyond <= restored
+    assert beyond.isdisjoint(_RECEIPT_720_ADDED)
+    assert (restored - beyond) | not_restored == _RECEIPT_720_ADDED
     assert not restored & set(ASEC_CENSUS_PERSON_IDENTITY_COLUMNS)
 
 
@@ -418,7 +423,6 @@ def test_columns_left_unrestored_for_want_of_a_reader_still_have_none():
         if reason.startswith("No build reader")
     )
     assert unread == [
-        "NOW_CAID",
         "NOW_COV",
         "NOW_DIR",
         "NOW_MCARE",
@@ -438,6 +442,39 @@ def test_columns_left_unrestored_for_want_of_a_reader_still_have_none():
         and pattern.search(text := path.read_text(encoding="utf-8"))
     }
     assert readers == {}
+
+
+def test_native_member_reader_columns_are_read_only_from_the_native_member():
+    """NOW_CAID's reader captures its own pinned member, never the pooled frame."""
+
+    from microcosm.build.us_runtime import current_survey_health_coverage as health
+    from microcosm.build.us_runtime import current_survey_health_source as source
+
+    native = sorted(
+        column
+        for column, reason in ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED.items()
+        if reason.startswith("Read only by the native current-survey")
+    )
+    assert native == ["NOW_CAID"]
+    for column in native:
+        assert column in health.ASEC_VALUE_COLUMNS
+        assert column in source.ASEC_COLUMNS
+    # Any other module that names the column would be a frame reader, which
+    # must join the reviewed restoration set instead.
+    allowed = {
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "current_survey_health_coverage.py",
+    }
+    pattern = re.compile(rf"\b({'|'.join(native)})\b")
+    roots = [*(_REPOSITORY_ROOT / "packages").glob("*/src"), _REPOSITORY_ROOT / "tools"]
+    readers = {
+        str(path.relative_to(_REPOSITORY_ROOT))
+        for root in roots
+        for path in root.rglob("*.py")
+        if path.resolve() != _MODULE.resolve()
+        and pattern.search(path.read_text(encoding="utf-8"))
+    }
+    assert readers == allowed
 
 
 def test_other_unrestored_columns_keep_their_recorded_reasons():

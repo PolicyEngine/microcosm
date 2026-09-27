@@ -1,0 +1,20 @@
+{
+  "scope": "diagnostic agreement sweep; not a build, certification or release artifact",
+  "release_eligible": false,
+  "seed": 20260918,
+  "rounds_requested": 4000,
+  "pairs_compared": 3852,
+  "disagreements": [],
+  "verdicts_reached": {
+    "SURVEY_POPULATION_REPLAY_AXIS": 2842,
+    "None": 466,
+    "SURVEY_POPULATION_REPLAY_MASKED_STORAGE": 130,
+    "SURVEY_POPULATION_REPLAY_OBJECT_VALUE": 112,
+    "SURVEY_POPULATION_REPLAY_PRESENT_BITS": 99,
+    "SURVEY_POPULATION_REPLAY_STRING_MASK": 91,
+    "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH": 49,
+    "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING": 46,
+    "SURVEY_POPULATION_REPLAY_STRING_VALUE": 16,
+    "SURVEY_POPULATION_REPLAY_NATIVE_BITS": 1
+  }
+}

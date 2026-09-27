@@ -1,0 +1,1 @@
+Add a source-qualified household reference-person fragment for the combined ACS/ASEC graph, preserving group-quarters unknownness and refusing unsupported or conflicting canonical incumbents. Include exact-clone binding, private provenance, full-population replay verification and bounded source/graph test proposals; country-host and native execution remain separate.

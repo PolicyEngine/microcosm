@@ -1,0 +1,1 @@
+Execute authenticated ACS and ASEC usual-hours recoding as native graph operations and attach original-person hours and provenance to exact clones after survey enrichment, with independent replay checks.

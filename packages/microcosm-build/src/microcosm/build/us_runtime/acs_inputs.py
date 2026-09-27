@@ -58,9 +58,17 @@ class AcsNativeInputResult:
     native_inputs: Mapping[str, Mapping[str, Any]]
 
 
-def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
-    """Map measured ACS values without filling blanks or splitting totals."""
+def map_acs_native_inputs(
+    frame: Frame, *, include_usual_hours: bool = True
+) -> AcsNativeInputResult:
+    """Map measured ACS values without filling blanks or splitting totals.
 
+    Authenticated native preparation defers the canonical hours column to its
+    completion graph. That mode still validates and retains the raw observations.
+    """
+
+    if type(include_usual_hours) is not bool:
+        raise TypeError("include_usual_hours must be a bool.")
     if frame.schema != US_SCHEMA:
         raise ValueError("ACS native input mapping requires the US schema.")
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
@@ -112,7 +120,7 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
             register=native,
         )
 
-    _map_usual_hours(person, register=native)
+    _map_usual_hours(person, register=native, include_usual_hours=include_usual_hours)
 
     _map_adjusted_person_amount(
         person,
@@ -177,7 +185,10 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
 
 
 def _map_usual_hours(
-    person: pd.DataFrame, *, register: dict[str, Mapping[str, Any]]
+    person: pd.DataFrame,
+    *,
+    register: dict[str, Mapping[str, Any]],
+    include_usual_hours: bool,
 ) -> None:
     """Use annual usual hours, retaining unresolved blanks for transfer.
 
@@ -212,6 +223,8 @@ def _map_usual_hours(
         if "FWKHP" in person
         else pd.Series(np.nan, index=person.index)
     )
+    if not include_usual_hours:
+        return
     output = "weekly_hours_worked_before_lsr"
     _add_native(
         person,
@@ -331,6 +344,14 @@ def _map_tenure(
         source_columns=("TEN",),
         transformation="ACS TEN enum recode through SPM membership",
         register=register,
+    )
+    # These enum outputs are strings even when the selected source households
+    # all have unreported tenure. Declare that type without inventing a value;
+    # generic serialization cannot infer a type from an all-missing object axis.
+    string_dtype = pd.StringDtype(storage="python", na_value=np.nan)
+    household["tenure_type"] = household["tenure_type"].astype(string_dtype)
+    spm_unit["spm_unit_tenure_type"] = spm_unit["spm_unit_tenure_type"].astype(
+        string_dtype
     )
 
 

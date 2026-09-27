@@ -1,0 +1,86 @@
+{
+  "artifact": "/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native19-required-20260912/run/financial-artifacts/preparation.json",
+  "artifact_bytes": 1136063,
+  "artifact_sha256": "34b362d85d2f06acd255390976d76343aff45114958ba382edb10ffa3789a8a0",
+  "canonical_bytes": 1136063,
+  "canonical_equals_file": true,
+  "selected_households": 1584,
+  "supplied_households": 1587376,
+  "source_households_assumed": 1587376,
+  "scales": [
+    {
+      "fraction": [
+        1,
+        1000
+      ],
+      "target_households": 1587,
+      "replication_factor": 1,
+      "households": 1584,
+      "single_encode_bytes": 1136063,
+      "single_encode": "accepted",
+      "single_encode_cpu_seconds": 0.058,
+      "roster_bytes": 1136063,
+      "roster_segments": 1,
+      "roster_digest": "34b362d85d2f06acd255390976d76343aff45114958ba382edb10ffa3789a8a0",
+      "roster_digest_equals_stream_digest": true,
+      "roster": "accepted",
+      "roster_cpu_seconds": 0.127,
+      "bytes_identical": true
+    },
+    {
+      "fraction": [
+        1,
+        100
+      ],
+      "target_households": 15873,
+      "replication_factor": 10,
+      "households": 15840,
+      "single_encode_bytes": 11014994,
+      "single_encode": "accepted",
+      "single_encode_cpu_seconds": 0.533,
+      "roster_bytes": 11014994,
+      "roster_segments": 1,
+      "roster_digest": "6ec85f654a49da693aec7cafd83a7243d7ccd998410f5defa33bbb21e4c51b9a",
+      "roster_digest_equals_stream_digest": true,
+      "roster": "accepted",
+      "roster_cpu_seconds": 1.144,
+      "bytes_identical": true
+    },
+    {
+      "fraction": [
+        1,
+        10
+      ],
+      "target_households": 158737,
+      "replication_factor": 100,
+      "households": 158400,
+      "single_encode": "REFUSED: SurveyPopulationPreparationError PAYLOAD_LIMIT",
+      "single_encode_cpu_seconds": 3.785,
+      "roster_bytes": 109804304,
+      "roster_segments": 2,
+      "roster_digest": "9ef005ffa9142770257cecb85d9ff76e01d28c6ad9c64ebc9f356f003cbfbc37",
+      "roster_digest_equals_stream_digest": true,
+      "roster": "accepted",
+      "roster_cpu_seconds": 11.475
+    },
+    {
+      "fraction": [
+        1,
+        1
+      ],
+      "target_households": 1587376,
+      "replication_factor": 1002,
+      "households": 1587168,
+      "single_encode": "REFUSED: SurveyPopulationPreparationError PAYLOAD_LIMIT",
+      "single_encode_cpu_seconds": 14.604,
+      "roster_bytes": 1099892722,
+      "roster_segments": 17,
+      "roster_digest": "16363071ae7045a29481159f572fe96eb11be4efaf3ce5f15dd09ad9c567fb67",
+      "roster_digest_equals_stream_digest": true,
+      "roster": "accepted",
+      "roster_cpu_seconds": 112.333
+    }
+  ],
+  "release_eligible": false,
+  "scope": "Transport comparison over a replicated copy of one recovered preparation receipt. Not a build, not a certification, not release eligible."
+}

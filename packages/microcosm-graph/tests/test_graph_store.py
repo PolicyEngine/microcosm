@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from hashlib import sha256
 from pathlib import Path
 
 import numpy as np
@@ -294,6 +295,152 @@ def test_json_receipt_and_opaque_bytes_are_content_validated(tmp_path: Path) -> 
         "ok": True,
     }
     assert store.load_bytes(_key("e")) == b"model bytes"
+
+
+def test_load_bytes_returns_verified_buffer_after_same_size_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("a")
+    path = store.put_bytes(key, b"original")
+    original_verify = store_module._verified_meta
+
+    def replace_after_verification(*args, **kwargs):
+        metadata = original_verify(*args, **kwargs)
+        (path / "payload.bin").write_bytes(b"replaced")
+        return metadata
+
+    monkeypatch.setattr(store_module, "_verified_meta", replace_after_verification)
+    assert store.load_bytes(key) == b"original"
+    assert (path / "payload.bin").read_bytes() == b"replaced"
+
+
+def test_load_bytes_checks_hash_of_exact_returned_buffer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("b")
+    path = store.put_bytes(key, b"original") / "payload.bin"
+    original_read = Path.read_bytes
+
+    def replace_before_read(candidate):
+        if candidate == path:
+            candidate.write_bytes(b"replaced")
+        return original_read(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", replace_before_read)
+    with pytest.raises(StoreCorrupt, match="size/SHA-256"):
+        store.load_bytes(key)
+
+
+def test_load_bytes_checks_roster_after_capturing_buffer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("c")
+    path = store.put_bytes(key, b"original")
+    original_read = Path.read_bytes
+
+    def add_file_after_read(candidate):
+        payload = original_read(candidate)
+        if candidate == path / "payload.bin":
+            (path / "unlisted.bin").write_bytes(b"unexpected")
+        return payload
+
+    monkeypatch.setattr(Path, "read_bytes", add_file_after_read)
+    with pytest.raises(StoreCorrupt, match="payload table differs"):
+        store.load_bytes(key)
+
+
+@pytest.mark.parametrize("payload", [b"", b"\x00\xffbinary\x00"])
+def test_load_bytes_preserves_exact_binary_payload(
+    tmp_path: Path, payload: bytes
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    store.put_bytes(_key("d"), payload)
+    assert store.load_bytes(_key("d")) == payload
+
+
+@pytest.mark.parametrize("damage", ["hash", "size", "missing", "roster", "symlink"])
+def test_load_bytes_preserves_payload_refusals(tmp_path: Path, damage: str) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("e")
+    path = store.put_bytes(key, b"original")
+    payload = path / "payload.bin"
+    if damage == "hash":
+        payload.write_bytes(b"replaced")
+    elif damage == "size":
+        payload.write_bytes(b"short")
+    elif damage == "missing":
+        payload.unlink()
+    elif damage == "roster":
+        (path / "unlisted.bin").write_bytes(b"unexpected")
+    else:
+        target = tmp_path / "other.bin"
+        target.write_bytes(b"original")
+        payload.unlink()
+        payload.symlink_to(target)
+    with pytest.raises(StoreCorrupt):
+        store.load_bytes(key)
+
+
+@pytest.mark.parametrize("field", ["kind", "key"])
+def test_load_bytes_preserves_metadata_refusals(tmp_path: Path, field: str) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("f")
+    path = store.put_bytes(key, b"original")
+    metadata = json.loads((path / "meta.json").read_text())
+    metadata[field] = "json" if field == "kind" else _key("0")
+    (path / "meta.json").write_text(json.dumps(metadata))
+    with pytest.raises(StoreCorrupt):
+        store.load_bytes(key)
+
+
+def test_load_bytes_missing_object_is_still_a_miss(tmp_path: Path) -> None:
+    with pytest.raises(StoreMiss):
+        ContentStore(tmp_path / "store").load_bytes(_key("1"))
+
+
+def test_load_bytes_missing_undeclared_payload_is_still_corrupt(tmp_path: Path) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("2")
+    path = store.put_bytes(key, b"original")
+    metadata = json.loads((path / "meta.json").read_text())
+    metadata["payloads"] = {}
+    (path / "meta.json").write_text(json.dumps(metadata))
+    (path / "payload.bin").unlink()
+    with pytest.raises(StoreCorrupt, match="disappeared"):
+        store.load_bytes(key)
+
+
+def test_load_bytes_keeps_other_payloads_and_metadata_calls_streaming(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ContentStore(tmp_path / "store")
+    key = _key("3")
+    path = store.put_bytes(key, b"original")
+    extra = b"other declared bytes"
+    (path / "extra.bin").write_bytes(extra)
+    metadata = json.loads((path / "meta.json").read_text())
+    metadata["payloads"]["extra.bin"] = {
+        "size": len(extra),
+        "sha256": sha256(extra).hexdigest(),
+    }
+    (path / "meta.json").write_text(json.dumps(metadata))
+    original_read = Path.read_bytes
+    captured = []
+
+    def record_read(candidate):
+        assert candidate != path / "extra.bin", "Extra payload must remain streaming"
+        if candidate == path / "payload.bin":
+            captured.append(candidate)
+        return original_read(candidate)
+
+    monkeypatch.setattr(Path, "read_bytes", record_read)
+    assert store.metadata(key) == metadata
+    assert captured == []
+    assert store.load_bytes(key) == b"original"
+    assert captured == [path / "payload.bin"]
 
 
 # --------------------------------------------------------------------------

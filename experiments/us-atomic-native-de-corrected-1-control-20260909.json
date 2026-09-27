@@ -1,0 +1,175 @@
+{
+  "code_resources_rechecked": 12,
+  "cpu_seconds": 9.85925,
+  "frozen_before_after_equal": true,
+  "frozen_code_current_equal": true,
+  "model_source_files": 5983,
+  "national_coverage": false,
+  "native_inputs_reopened_in_postcheck": false,
+  "native_resource_pins_receipt_only": 4,
+  "normalization": {
+    "exact_support_readback": true,
+    "national_coverage": false,
+    "protocol": "microcosm.us.native-de-atomic-api-control.v1",
+    "release_eligible": false,
+    "source_admission_issued": false,
+    "source_receipt": {
+      "exact_input_hashes_verified": true,
+      "limits": {
+        "max_line_bytes": 65536,
+        "max_member_bytes": 536870912,
+        "max_response_rows": 250000,
+        "max_source_bytes": 67108864,
+        "max_total_geography_bytes": 805306368,
+        "max_zip_members": 6
+      },
+      "protocol": "microcosm.us.atomic-block-api-sources.v1",
+      "publisher_provenance_established": false,
+      "reconciliation": {
+        "output_state_population": {
+          "10": 989948
+        },
+        "populated_blocks": 15317,
+        "population_total": 989948,
+        "selected_geography_bytes": 165910870,
+        "state_population": {
+          "10": 989948
+        }
+      },
+      "release_eligible": false,
+      "request_origin_verified": false,
+      "source_admission_issued": false,
+      "source_ids": {
+        "district": "census-2025-cd119-NationalCD119.txt",
+        "population": "census-2020-dec-pl-api-P1_001N",
+        "puma": "census-2020-Census-Tract-to-2020-PUMA"
+      },
+      "sources": {
+        "district": {
+          "assigned_blocks": 8174799,
+          "crc_checked_members": [
+            "NationalCD119.txt"
+          ],
+          "delegate_normalization": "98_to_00",
+          "delegate_records": 47999,
+          "district_relation": "official_tabulation",
+          "selected_member": "NationalCD119.txt",
+          "selected_member_sha256": "3c5afab5b61e2d7151206f977981702815692df6f3680e7624a6c3f93808fddf",
+          "selected_member_size_bytes": 163499110,
+          "sha256": "1433feb5178dc7b4188ee30f5f7f715851f4400740b8fe1ce606a876c6294bd6",
+          "size_bytes": 22959130,
+          "source_id": "census-2025-cd119-NationalCD119.txt",
+          "source_records": 8174955,
+          "unassigned_blocks": 156,
+          "unselected_member_contents_read": false,
+          "zip_members": [
+            "01_AL_CD119.txt",
+            "13_GA_CD119.txt",
+            "22_LA_CD119.txt",
+            "36_NY_CD119.txt",
+            "37_NC_CD119.txt",
+            "NationalCD119.txt"
+          ]
+        },
+        "population": [
+          {
+            "block_rows": 20198,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:10"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "1a7a314a84aa0049adb0865d0bfd7466d808b36460f67eef6f3143a331fe6408",
+              "size_bytes": 702646
+            },
+            "populated_blocks": 15317,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "10",
+            "state_population": 989948,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:10"
+                  ]
+                ]
+              },
+              "sha256": "ac40e616243c2ea14060dd460009e0a7f15755324a17387adf8768e35787fb79",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 4881
+          }
+        ],
+        "puma": {
+          "selected_state_tract_mappings": 262,
+          "sha256": "5262f460b2c8dbe86b00549e916317b1791fdc595c9af72ab18f6f6a67040531",
+          "size_bytes": 1709076,
+          "source_id": "census-2020-Census-Tract-to-2020-PUMA"
+        }
+      },
+      "state_fips": [
+        "10"
+      ],
+      "support_sha256": "a0ef3f86be7c76306527ec2cecc70455a9d5b51af0a1c441d30fc532057db84d"
+    },
+    "source_receipt_sha256": "b0783c16860e1333b271876a48f0b82d16c543813c93904c3eb460aecfc1111b",
+    "state_fips": [
+      "10"
+    ],
+    "status": "source_control_passed",
+    "support_filename": "de-atomic-support.npz",
+    "support_sha256": "a0ef3f86be7c76306527ec2cecc70455a9d5b51af0a1c441d30fc532057db84d",
+    "support_size_bytes": 79769,
+    "survey_frame_created": false
+  },
+  "normalization_metadata_sha256": "6fd38afe7e3b33995b13e14bc112827936a7871fd58b66a61e5b9b825350bb5d",
+  "peak_rss_bytes": 1734787072,
+  "receipt_sha256": "ea260a22f8701839aa0ac9beab98d82e17738cf9359570a0317e26338697d26e",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "Correct only the native DE test archive roster to the six metadata-observed names; selected decompression/CRC remains solely NationalCD119.txt. No adapter, input, other source or guard behavior change. Failed original run preserved.",
+  "source_and_owned_files": 497,
+  "source_control_accepted": true,
+  "status": "DE_source_control_passed",
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  },
+  "tested_source_changes": {
+    "packages/microcosm-build/tests/test_us_atomic_block_api_sources_native_de.py": {
+      "after": "4b918e4d28044045faad6618dd931077b3b07086929c34aa31cff049fdf096a2",
+      "before": "e22a550f4e95592a6bd596f32ffd772d6f43117f284ce0eebe992b0de42ed7ab"
+    }
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 10.939260708983056
+}

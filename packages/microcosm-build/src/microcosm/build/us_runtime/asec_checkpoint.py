@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -24,8 +25,14 @@ from microcosm.build.outer_stage_runtime import (
     frame_identity,
 )
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.us_runtime.education_assistance_source import (
+    ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
+)
 from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
+)
+from microcosm.build.us_runtime.reported_coverage_source import (
+    ASEC_REPORTED_COVERAGE_RAW_COLUMNS,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -34,9 +41,11 @@ __all__ = [
     "ASEC_RAW_STAGE_CHECKPOINT_FILENAME",
     "ASEC_RAW_STAGE_OPERATOR_STATUS",
     "ASEC_RAW_STAGE_SCHEMA_VERSION",
+    "ASEC_RAW_STAGE_COVERAGE_SCHEMA_VERSION",
     "ASEC_RAW_STAGE_STAGE",
     "load_asec_pre_clone_checkpoint",
     "load_asec_raw_stage_checkpoint",
+    "load_asec_raw_stage_checkpoint_v4",
 ]
 
 _OUTER_STAGE_ARTIFACT_KIND = "populace_outer_stage_frame"
@@ -61,6 +70,9 @@ ASEC_RAW_STAGE_OPERATOR_STATUS = "operator_untouched"
 # artifacts lack the gate column and must fail loudly rather than let
 # PAW_VAL-only conflation back in (microcosm#591).
 ASEC_RAW_STAGE_SCHEMA_VERSION = 3
+# V4 is a distinct measured-coverage contract. Never reinterpret a v3 file
+# under this schema merely because its columns happen to look compatible.
+ASEC_RAW_STAGE_COVERAGE_SCHEMA_VERSION = 4
 ASEC_RAW_STAGE_STAGE = "raw_source_mapping"
 _RAW_STAGE_BINDING_KEYS = frozenset(
     {
@@ -97,6 +109,23 @@ _RAW_SOURCE_PIN_KEYS = frozenset(
         "member_sha256",
         "sha256",
     }
+)
+
+
+@dataclass(frozen=True)
+class _RawStagePolicy:
+    version: int
+    coverage_columns: frozenset[str] = frozenset()
+
+    @property
+    def mapping_columns(self) -> frozenset[str]:
+        return _RAW_SOURCE_MAPPING_COLUMNS | self.coverage_columns
+
+
+_RAW_STAGE_V3 = _RawStagePolicy(ASEC_RAW_STAGE_SCHEMA_VERSION)
+_RAW_STAGE_V4 = _RawStagePolicy(
+    ASEC_RAW_STAGE_COVERAGE_SCHEMA_VERSION,
+    frozenset(ASEC_REPORTED_COVERAGE_RAW_COLUMNS),
 )
 
 
@@ -152,11 +181,33 @@ def load_asec_raw_stage_checkpoint(
     contract even if it happens to carry a structurally valid US ``Frame``.
     """
 
+    return _load_asec_raw_stage_checkpoint(path, policy=_RAW_STAGE_V3)
+
+
+def load_asec_raw_stage_checkpoint_v4(
+    path: str | Path,
+) -> tuple[Frame, dict[str, object]]:
+    """Load only v4 measured-coverage sources with registered per-year pins.
+
+    This validates a declared source artifact, not model accuracy or release
+    eligibility. The caller must independently authenticate the whole file's
+    digest; shape and registered source pins alone do not authenticate values.
+    """
+    return _load_asec_raw_stage_checkpoint(path, policy=_RAW_STAGE_V4)
+
+
+def _load_asec_raw_stage_checkpoint(
+    path: str | Path,
+    *,
+    policy: _RawStagePolicy,
+) -> tuple[Frame, dict[str, object]]:
+
     checkpoint_path = Path(path)
     loaded = load_frame_checkpoint(checkpoint_path)
     metadata = _validate_raw_stage_binding(
         loaded.metadata,
         path=checkpoint_path,
+        policy=policy,
     )
     stored_identity = FrameIdentity.from_payload(
         metadata["identity"],
@@ -176,7 +227,11 @@ def load_asec_raw_stage_checkpoint(
         loaded.frame,
         label=f"ASEC raw-stage checkpoint {checkpoint_path}",
     )
-    _validate_raw_stage_source_columns(loaded.frame, path=checkpoint_path)
+    _validate_raw_stage_source_columns(
+        loaded.frame, path=checkpoint_path, policy=policy
+    )
+    if policy.coverage_columns:
+        _validate_coverage_v4_binding(loaded.frame, metadata, path=checkpoint_path)
     source_construction_identity = FrameIdentity.from_payload(
         metadata["source_construction_identity"],
         label="ASEC raw-stage source-construction identity",
@@ -250,6 +305,7 @@ def _validate_raw_stage_binding(
     metadata: dict[str, object],
     *,
     path: Path,
+    policy: _RawStagePolicy = _RAW_STAGE_V3,
 ) -> dict[str, object]:
     actual_keys = frozenset(metadata)
     if actual_keys != _RAW_STAGE_BINDING_KEYS:
@@ -265,8 +321,10 @@ def _validate_raw_stage_binding(
             "ASEC artifact."
         )
     schema_version = metadata["schema_version"]
-    if schema_version != ASEC_RAW_STAGE_SCHEMA_VERSION or isinstance(
-        schema_version, bool
+    if (
+        schema_version != policy.version
+        or isinstance(schema_version, bool)
+        or (policy.coverage_columns and type(schema_version) is not int)
     ):
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} has an unsupported raw-stage "
@@ -292,7 +350,9 @@ def _validate_raw_stage_binding(
             "lowercase SHA-256 digest."
         )
     _validate_source_receipt(metadata["source_receipt"], path=path)
-    _validate_raw_source_mappings(metadata["raw_source_mappings"], path=path)
+    _validate_raw_source_mappings(
+        metadata["raw_source_mappings"], path=path, policy=policy
+    )
     return dict(metadata)
 
 
@@ -338,17 +398,19 @@ def _validate_source_receipt(receipt: object, *, path: Path) -> None:
         years.add(year)
 
 
-def _validate_raw_source_mappings(mappings: object, *, path: Path) -> None:
+def _validate_raw_source_mappings(
+    mappings: object, *, path: Path, policy: _RawStagePolicy = _RAW_STAGE_V3
+) -> None:
     if not isinstance(mappings, Mapping):
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} raw_source_mappings must be an object."
         )
-    if frozenset(mappings) != _RAW_SOURCE_MAPPING_COLUMNS:
+    if frozenset(mappings) != policy.mapping_columns:
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} raw_source_mappings must bind "
-            f"exactly {sorted(_RAW_SOURCE_MAPPING_COLUMNS)}."
+            f"exactly {sorted(policy.mapping_columns)}."
         )
-    for column in sorted(_RAW_SOURCE_MAPPING_COLUMNS):
+    for column in sorted(policy.mapping_columns):
         mapping = mappings[column]
         if not isinstance(mapping, Mapping) or frozenset(mapping) != (
             _RAW_SOURCE_MAPPING_KEYS
@@ -400,9 +462,13 @@ def _validate_raw_source_mappings(mappings: object, *, path: Path) -> None:
                 )
 
 
-def _validate_raw_stage_source_columns(frame: Frame, *, path: Path) -> None:
+def _validate_raw_stage_source_columns(
+    frame: Frame, *, path: Path, policy: _RawStagePolicy = _RAW_STAGE_V3
+) -> None:
     person = frame.table("person")
-    missing = sorted(_RAW_STAGE_REQUIRED_PERSON_COLUMNS - set(person))
+    missing = sorted(
+        (_RAW_STAGE_REQUIRED_PERSON_COLUMNS | policy.coverage_columns) - set(person)
+    )
     if missing:
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} is not input-complete; missing "
@@ -457,6 +523,99 @@ def _validate_raw_stage_source_columns(frame: Frame, *, path: Path) -> None:
             f"ASEC raw-stage checkpoint {path} PAW_TYP must be complete integers "
             "in {0, 1, 2, 3}."
         )
+
+    for column in sorted(policy.coverage_columns):
+        values = pd.to_numeric(person[column], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        boolean = (
+            person[column]
+            .map(lambda value: isinstance(value, (bool, np.bool_)))
+            .to_numpy()
+        )
+        if not (np.isfinite(values) & np.isin(values, (1.0, 2.0)) & ~boolean).all():
+            raise ValueError(
+                f"ASEC v4 raw-stage checkpoint {path} {column} must be complete "
+                "integer recodes in {1, 2}, not booleans."
+            )
+
+
+def _validate_coverage_v4_binding(
+    frame: Frame, metadata: Mapping, *, path: Path
+) -> None:
+    """Cross-check source vintages and actual registered coverage source pins."""
+    person = frame.table("person")
+    normalized_years = pd.to_numeric(person["source_year"]).astype(np.int64)
+    frame_years = set(normalized_years)
+    source_years = {source["year"] for source in metadata["source_receipt"]["sources"]}
+    if frame_years != source_years:
+        raise ValueError(
+            f"ASEC v4 checkpoint {path} frame/source receipt year coverage differs."
+        )
+    if frame.weights_for("household").kind is not WeightKind.DESIGN:
+        raise ValueError(
+            f"ASEC v4 checkpoint {path} requires household design weights."
+        )
+    peridnum = person["PERIDNUM"].map(
+        lambda value: value.decode() if isinstance(value, bytes) else value
+    )
+    if not peridnum.map(
+        lambda value: (
+            isinstance(value, str) and re.fullmatch(r"[0-9]{22}", value) is not None
+        )
+    ).all():
+        raise ValueError(
+            f"ASEC v4 checkpoint {path} PERIDNUM must be exact 22-digit strings."
+        )
+    keys = pd.DataFrame({"source_year": normalized_years, "PERIDNUM": peridnum})
+    if keys.duplicated().any():
+        raise ValueError(
+            f"ASEC v4 checkpoint {path} repeats a source-year/PERIDNUM identity."
+        )
+    for column in ASEC_REPORTED_COVERAGE_RAW_COLUMNS:
+        mapping = metadata["raw_source_mappings"][column]
+        pins = mapping["source_pins"]
+        years = [pin["income_year"] for pin in pins]
+        if len(years) != len(set(years)) or set(years) != source_years:
+            raise ValueError(
+                f"ASEC v4 {column} source pin year coverage differs or repeats."
+            )
+        for pin in pins:
+            registered = ASEC_EDUCATION_ASSISTANCE_ARCHIVES.get(pin["income_year"])
+            if registered is None or pin != {
+                "income_year": registered.income_year,
+                "locator": registered.zip_url,
+                "member": registered.member,
+                "member_sha256": registered.member_sha256,
+                "sha256": registered.zip_sha256,
+            }:
+                raise ValueError(
+                    f"ASEC v4 {column} source pin differs from the registered archive."
+                )
+        audit = mapping["audit"]
+        if set(audit) != {str(year) for year in source_years}:
+            raise ValueError(f"ASEC v4 {column} audit year coverage differs.")
+        for year in source_years:
+            row = audit[str(year)]
+            if not isinstance(row, Mapping) or set(row) != {
+                "rows",
+                "yes_rows",
+                "no_rows",
+                "weighted_yes_share",
+            }:
+                raise ValueError(f"ASEC v4 {column} audit is malformed.")
+            counts = [row[key] for key in ("rows", "yes_rows", "no_rows")]
+            share = row["weighted_yes_share"]
+            if (
+                any(type(count) is not int or count < 0 for count in counts)
+                or counts[0] != ASEC_EDUCATION_ASSISTANCE_ARCHIVES[year].rows
+                or counts[1] + counts[2] != counts[0]
+                or isinstance(share, bool)
+                or not isinstance(share, (int, float))
+                or not np.isfinite(share)
+                or not 0 <= share <= 1
+            ):
+                raise ValueError(f"ASEC v4 {column} audit counts/share are invalid.")
 
 
 def _validate_asec_frame(

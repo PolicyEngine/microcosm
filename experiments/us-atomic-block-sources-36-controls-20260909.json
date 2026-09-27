@@ -1,0 +1,26 @@
+{
+  "code_resources": 12,
+  "cpu_seconds": 2.88845,
+  "frozen_before_after_current_equal": true,
+  "model_source_files": 5983,
+  "native_payloads_read": 0,
+  "peak_rss_bytes": 350126080,
+  "publisher_provenance_established": false,
+  "receipt_sha256": "a64003994a3f3823d06a22cbf7376ae8bcb3714d1a25110782cc72e83bfcf1cd",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "36 invented source-byte adapter controls through actual PL/CD/PUMA parsers and atomic normalization: exact source/ZIP/CRC/bounds/roster/population/mapping checks, retained byte snapshots, output codec cap. Whole native PL acquisition remains excluded; no native/publisher/release acceptance.",
+  "source_and_owned_files": 494,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 36
+  },
+  "tested_source_changes": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/atomic_block_sources.py": "b5be0b06085f0037206836a16625bb4be5dfe6dc6a12659f207e871aea53340b",
+    "packages/microcosm-build/tests/test_us_atomic_block_sources.py": "5b9a9fc74b14e354ec63b237b33736434a7b66f89135e798d222c32cc7ad788c"
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 3.594141000008676
+}

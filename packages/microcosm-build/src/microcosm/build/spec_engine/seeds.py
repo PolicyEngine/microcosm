@@ -322,6 +322,7 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.other_health_insurance",
     "microcosm.build.us_runtime.pregnancy",
     "microcosm.build.us_runtime.prior_year_income",
+    "microcosm.build.us_runtime.prior_year_income_constants",
     "microcosm.build.us_runtime.puf_aggregate_records",
     "microcosm.build.us_runtime.puf_capital_gains_tail",
     "microcosm.build.us_runtime.puf_qrf_chain",

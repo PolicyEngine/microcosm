@@ -1,0 +1,1 @@
+Compose source-qualified original ASEC property donor and ACS adult-anchor recipient branches, preserving DESIGN weights, full origin axes, knownness diagnostics and final source-lifetime checks without fitting or attaching tax leaves.

@@ -1,0 +1,3434 @@
+{
+  "code_resources_rechecked": 12,
+  "cpu_seconds": 81.174622,
+  "frozen_before_after_equal": true,
+  "frozen_code_current_equal": true,
+  "model_source_files": 5983,
+  "native_inputs_reopened_in_postcheck": false,
+  "native_resource_pins_receipt_only": 104,
+  "normalization": {
+    "exact_support_readback": true,
+    "mapping_oracle": "separate maintained-parser pass; complete selected joins",
+    "national_coverage": true,
+    "population_oracle": {
+      "01": {
+        "block_rows": 185976,
+        "ordered_positive_block_population_sha256": "db629f189d2658bec941146c499464bec1d7278d83da0b07ac8ed338d5d993ab",
+        "populated_blocks": 128366,
+        "state_population": 5024279,
+        "zero_population_blocks": 57610
+      },
+      "02": {
+        "block_rows": 28568,
+        "ordered_positive_block_population_sha256": "c82ab4e84dfee99b16fc0397e3bf57d0ef5c87e1e37e5fc766879c690d0f4caf",
+        "populated_blocks": 11765,
+        "state_population": 733391,
+        "zero_population_blocks": 16803
+      },
+      "04": {
+        "block_rows": 155444,
+        "ordered_positive_block_population_sha256": "57059741545abff19005434c387543790c8cb047bd8453c17aada74bda370c46",
+        "populated_blocks": 107938,
+        "state_population": 7151502,
+        "zero_population_blocks": 47506
+      },
+      "05": {
+        "block_rows": 136422,
+        "ordered_positive_block_population_sha256": "af7158b0ab1d4e4baf46766a0953bfe74f52036272af13c4cfe6b65ef572c5ed",
+        "populated_blocks": 88121,
+        "state_population": 3011524,
+        "zero_population_blocks": 48301
+      },
+      "06": {
+        "block_rows": 519723,
+        "ordered_positive_block_population_sha256": "fc244613d2faab0aa55e0064fff67ee2df2cda32d8e1cfef0f934a6e80e41a68",
+        "populated_blocks": 377591,
+        "state_population": 39538223,
+        "zero_population_blocks": 142132
+      },
+      "08": {
+        "block_rows": 140345,
+        "ordered_positive_block_population_sha256": "d69d69546b402b60bd4eb98fbb4003417ddc3d26c442e6051437628dff7708a1",
+        "populated_blocks": 99899,
+        "state_population": 5773714,
+        "zero_population_blocks": 40446
+      },
+      "09": {
+        "block_rows": 49926,
+        "ordered_positive_block_population_sha256": "5be4f0b5fba158152132db2671dbb607f0c8233c1dfc532d5beb99d51965ee0d",
+        "populated_blocks": 42008,
+        "state_population": 3605944,
+        "zero_population_blocks": 7918
+      },
+      "10": {
+        "block_rows": 20198,
+        "ordered_positive_block_population_sha256": "f32d84817caa2c3f3ea776da426dbee30f049c82b9335af41699ec4bee00e235",
+        "populated_blocks": 15317,
+        "state_population": 989948,
+        "zero_population_blocks": 4881
+      },
+      "11": {
+        "block_rows": 6012,
+        "ordered_positive_block_population_sha256": "c0d37648dff6f3ba16d524e2e375417669565acab25027d64ec03b05c89c603d",
+        "populated_blocks": 4500,
+        "state_population": 689545,
+        "zero_population_blocks": 1512
+      },
+      "12": {
+        "block_rows": 390066,
+        "ordered_positive_block_population_sha256": "683fb2c4854b4c7ede8815bfc5620c3cf26a5d9149eab4bbd25fd4eedb5eb00e",
+        "populated_blocks": 289652,
+        "state_population": 21538187,
+        "zero_population_blocks": 100414
+      },
+      "13": {
+        "block_rows": 232717,
+        "ordered_positive_block_population_sha256": "dbc9e610217cd9e5de12fb3825addb9508ae368c1dc4a88b98801960ff91cdb0",
+        "populated_blocks": 165333,
+        "state_population": 10711908,
+        "zero_population_blocks": 67384
+      },
+      "15": {
+        "block_rows": 14732,
+        "ordered_positive_block_population_sha256": "245ccc4831fdcb75b1d2d5202f0d38c2ac9c1fab91e4916a61191729d4fbc88f",
+        "populated_blocks": 10169,
+        "state_population": 1455271,
+        "zero_population_blocks": 4563
+      },
+      "16": {
+        "block_rows": 81879,
+        "ordered_positive_block_population_sha256": "47cc73fe9b89c0db1c66621484f12b2a426f7332c289c28a0c30915ab7135dc8",
+        "populated_blocks": 46134,
+        "state_population": 1839106,
+        "zero_population_blocks": 35745
+      },
+      "17": {
+        "block_rows": 369978,
+        "ordered_positive_block_population_sha256": "bf7e305eae384c4338298d4b2dad71cfa48a5a0dc2858dda558b92bc26cbceaa",
+        "populated_blocks": 278166,
+        "state_population": 12812508,
+        "zero_population_blocks": 91812
+      },
+      "18": {
+        "block_rows": 204568,
+        "ordered_positive_block_population_sha256": "a85fae03b48ad4703a5ed7f39bb81eca4974df835d7c9e99590486fbaf11e163",
+        "populated_blocks": 162739,
+        "state_population": 6785528,
+        "zero_population_blocks": 41829
+      },
+      "19": {
+        "block_rows": 175199,
+        "ordered_positive_block_population_sha256": "f89589b4fd957d0643af40784431bd793d8ebfa05ceed97b3921689f424ee938",
+        "populated_blocks": 124175,
+        "state_population": 3190369,
+        "zero_population_blocks": 51024
+      },
+      "20": {
+        "block_rows": 172529,
+        "ordered_positive_block_population_sha256": "75877b15ff41b689be4774c7ddd9294701b97b1762fd4a935d10fce1cfb9c2e4",
+        "populated_blocks": 109149,
+        "state_population": 2937880,
+        "zero_population_blocks": 63380
+      },
+      "21": {
+        "block_rows": 132662,
+        "ordered_positive_block_population_sha256": "c7b86e0bef4455178c4da1b99b16e615454602062db58de9b9e8bf5a389c9954",
+        "populated_blocks": 91572,
+        "state_population": 4505836,
+        "zero_population_blocks": 41090
+      },
+      "22": {
+        "block_rows": 142874,
+        "ordered_positive_block_population_sha256": "fa3122a5aee3bfb4f78dba6ad64d582c1515ee045298e8f2359870ec8d884457",
+        "populated_blocks": 92180,
+        "state_population": 4657757,
+        "zero_population_blocks": 50694
+      },
+      "23": {
+        "block_rows": 47138,
+        "ordered_positive_block_population_sha256": "c870139aa6e05735c7f1ff1e05399995dc54a722dc2df99198059e7f89324f85",
+        "populated_blocks": 30548,
+        "state_population": 1362359,
+        "zero_population_blocks": 16590
+      },
+      "24": {
+        "block_rows": 83827,
+        "ordered_positive_block_population_sha256": "519b855f8fa876aed559a5c4b57458301e9aa1323bd7ae5575b916055abe00f4",
+        "populated_blocks": 65274,
+        "state_population": 6177224,
+        "zero_population_blocks": 18553
+      },
+      "25": {
+        "block_rows": 107278,
+        "ordered_positive_block_population_sha256": "aa920cf2bee71bf21a2ef68d76b04eb417c2c72fbcf468523fd032956917ac41",
+        "populated_blocks": 88207,
+        "state_population": 7029917,
+        "zero_population_blocks": 19071
+      },
+      "26": {
+        "block_rows": 254730,
+        "ordered_positive_block_population_sha256": "8e57ac1ca0ab6cafc9385f23b658a0eafd4f4e01f55468d42da327355d95a445",
+        "populated_blocks": 198244,
+        "state_population": 10077331,
+        "zero_population_blocks": 56486
+      },
+      "27": {
+        "block_rows": 198705,
+        "ordered_positive_block_population_sha256": "e616047478baea1a265c120762ebc1ad234531a1c1459e8a97263dfa5645b225",
+        "populated_blocks": 137689,
+        "state_population": 5706494,
+        "zero_population_blocks": 61016
+      },
+      "28": {
+        "block_rows": 112241,
+        "ordered_positive_block_population_sha256": "ab34034369ef3795f7a2a8112de09a48789c5921102f64681e8f772fe5f24fe8",
+        "populated_blocks": 77426,
+        "state_population": 2961279,
+        "zero_population_blocks": 34815
+      },
+      "29": {
+        "block_rows": 253632,
+        "ordered_positive_block_population_sha256": "ec441928aa5f5ef297b96c37db8f81132a0ac50399eada71edff432e0d922b03",
+        "populated_blocks": 169004,
+        "state_population": 6154913,
+        "zero_population_blocks": 84628
+      },
+      "30": {
+        "block_rows": 88417,
+        "ordered_positive_block_population_sha256": "b09a76edbea2619f38d2ad70a31108726f24abd23b17099a0ff010f07b48b43d",
+        "populated_blocks": 43717,
+        "state_population": 1084225,
+        "zero_population_blocks": 44700
+      },
+      "31": {
+        "block_rows": 119103,
+        "ordered_positive_block_population_sha256": "ab1afedaab5dd2392593270ce5fd7536d54bfe4cf99b34d53ce7a66aad96830f",
+        "populated_blocks": 79779,
+        "state_population": 1961504,
+        "zero_population_blocks": 39324
+      },
+      "32": {
+        "block_rows": 57409,
+        "ordered_positive_block_population_sha256": "760c7b9e590052d373316c9800545a20a71495b42f0d4b7a20b55b2fbf6f12f9",
+        "populated_blocks": 35249,
+        "state_population": 3104614,
+        "zero_population_blocks": 22160
+      },
+      "33": {
+        "block_rows": 31948,
+        "ordered_positive_block_population_sha256": "d88a28f2f35cf1b8ef64fd5d42600e416aad959de76e06de9ac76dd4e86a21a8",
+        "populated_blocks": 25317,
+        "state_population": 1377529,
+        "zero_population_blocks": 6631
+      },
+      "34": {
+        "block_rows": 137972,
+        "ordered_positive_block_population_sha256": "d924c85d9ae80d624ed2902e925a9c7dabb4a996680a081fbe237fcd9a1746d3",
+        "populated_blocks": 113212,
+        "state_population": 9288994,
+        "zero_population_blocks": 24760
+      },
+      "35": {
+        "block_rows": 107215,
+        "ordered_positive_block_population_sha256": "3905ad0b0d16d2c86502cfa4797024fd6d2f895efe0280379bb7963836ccab82",
+        "populated_blocks": 56605,
+        "state_population": 2117522,
+        "zero_population_blocks": 50610
+      },
+      "36": {
+        "block_rows": 288819,
+        "ordered_positive_block_population_sha256": "65a2be271d6a207e1f3e7cabedd6778d19d909ba0e37f5232bb010ad8a30b2f7",
+        "populated_blocks": 230339,
+        "state_population": 20201249,
+        "zero_population_blocks": 58480
+      },
+      "37": {
+        "block_rows": 236638,
+        "ordered_positive_block_population_sha256": "0c135c4919f7b904a298fbb183620e452e02ba9fca6644e27c2e8cf65e40ed50",
+        "populated_blocks": 174988,
+        "state_population": 10439388,
+        "zero_population_blocks": 61650
+      },
+      "38": {
+        "block_rows": 84566,
+        "ordered_positive_block_population_sha256": "fb4b3241fa5f1d81ed332353f90b0130b2383dd17e840a11badc1c911d155597",
+        "populated_blocks": 40198,
+        "state_population": 779094,
+        "zero_population_blocks": 44368
+      },
+      "39": {
+        "block_rows": 276428,
+        "ordered_positive_block_population_sha256": "a3e40aaf54aaaa347573881c39a06eed40a1e7d02b1e57a4a70fdfdaafb6b7fb",
+        "populated_blocks": 219669,
+        "state_population": 11799448,
+        "zero_population_blocks": 56759
+      },
+      "40": {
+        "block_rows": 180154,
+        "ordered_positive_block_population_sha256": "10240ff44682b047e63e5da0e4e8a5c9f6750d80b9a7f176ad397500f06492c1",
+        "populated_blocks": 121826,
+        "state_population": 3959353,
+        "zero_population_blocks": 58328
+      },
+      "41": {
+        "block_rows": 130807,
+        "ordered_positive_block_population_sha256": "01b6c50dbc1320f96741aa159354a3e42b318ee7e3bda21dac3d5f122e6799b0",
+        "populated_blocks": 79081,
+        "state_population": 4237256,
+        "zero_population_blocks": 51726
+      },
+      "42": {
+        "block_rows": 336985,
+        "ordered_positive_block_population_sha256": "70bb990a03502d1c2359e19a5f469727933661dcabfdcb9082c7c9f5ba34ee07",
+        "populated_blocks": 275023,
+        "state_population": 13002700,
+        "zero_population_blocks": 61962
+      },
+      "44": {
+        "block_rows": 25649,
+        "ordered_positive_block_population_sha256": "2777acda8ed305d3fcad00ec03bcc9d5b16d295a82fc8250caa73a0acf4184cd",
+        "populated_blocks": 21382,
+        "state_population": 1097379,
+        "zero_population_blocks": 4267
+      },
+      "45": {
+        "block_rows": 146844,
+        "ordered_positive_block_population_sha256": "d1a102de62516378b036f30c3642a17d3f2a4040b8a76e380b2f01f8b33d8a4f",
+        "populated_blocks": 105469,
+        "state_population": 5118425,
+        "zero_population_blocks": 41375
+      },
+      "46": {
+        "block_rows": 71383,
+        "ordered_positive_block_population_sha256": "8c372d4e82aff59d8701ecd211e24224885561645bedb7de74db55ca0c60205c",
+        "populated_blocks": 40766,
+        "state_population": 886667,
+        "zero_population_blocks": 30617
+      },
+      "47": {
+        "block_rows": 179717,
+        "ordered_positive_block_population_sha256": "f3804b33c433afd24a7b433c6524b0d124754d289cc2d589798fde5987794357",
+        "populated_blocks": 133846,
+        "state_population": 6910840,
+        "zero_population_blocks": 45871
+      },
+      "48": {
+        "block_rows": 668757,
+        "ordered_positive_block_population_sha256": "83903c280fd7fb16e9cc5a5ce7266753a0445118c8a3151bfadc86e27b891b3d",
+        "populated_blocks": 449085,
+        "state_population": 29145505,
+        "zero_population_blocks": 219672
+      },
+      "49": {
+        "block_rows": 71207,
+        "ordered_positive_block_population_sha256": "d1ea8f0e3bfa6225218b0f3bd0c022453fa3038a196ebef8a17dadb1be0ca575",
+        "populated_blocks": 46792,
+        "state_population": 3271616,
+        "zero_population_blocks": 24415
+      },
+      "50": {
+        "block_rows": 24611,
+        "ordered_positive_block_population_sha256": "3df326b12b20dbf6af14229fae0dc2e5733b4eabbe7a142515bebf0455881a93",
+        "populated_blocks": 17976,
+        "state_population": 643077,
+        "zero_population_blocks": 6635
+      },
+      "51": {
+        "block_rows": 163491,
+        "ordered_positive_block_population_sha256": "756a961291abef27225b26548e1fc67a58725285de9bbf4d93b04a618d7731bb",
+        "populated_blocks": 117361,
+        "state_population": 8631393,
+        "zero_population_blocks": 46130
+      },
+      "53": {
+        "block_rows": 158093,
+        "ordered_positive_block_population_sha256": "11bbff165b4c5004c526e0420dff07601a637a2d9b145288c86ffc476dcd6f5c",
+        "populated_blocks": 111441,
+        "state_population": 7705281,
+        "zero_population_blocks": 46652
+      },
+      "54": {
+        "block_rows": 72558,
+        "ordered_positive_block_population_sha256": "3fac3d7a2c520bcfb0e3ddf04776e2e147d157d58b8b8dd04cebb91ec89a8a6e",
+        "populated_blocks": 51850,
+        "state_population": 1793716,
+        "zero_population_blocks": 20708
+      },
+      "55": {
+        "block_rows": 203059,
+        "ordered_positive_block_population_sha256": "16f7d47ca52eced522acd712209a41215fd99ddb43f5a2232974b5ef6bc510de",
+        "populated_blocks": 144948,
+        "state_population": 5893718,
+        "zero_population_blocks": 58111
+      },
+      "56": {
+        "block_rows": 53769,
+        "ordered_positive_block_population_sha256": "33eac054e9aaf0d266460d4c4df67192a5ac7c993658ece720b398f868f45648",
+        "populated_blocks": 22857,
+        "state_population": 576851,
+        "zero_population_blocks": 30912
+      }
+    },
+    "protocol": "microcosm.us.native-national-atomic-api-control.v1",
+    "release_eligible": false,
+    "source_admission_issued": false,
+    "source_count": 104,
+    "source_read_limits": {
+      "mapping_verification_passes": 1,
+      "selected_cd_member_bytes_per_pass": 163499110,
+      "selected_geography_bytes_per_adapter_pass": 1237240934,
+      "unique_acquired_bytes": 1073741824
+    },
+    "source_receipt": {
+      "exact_input_hashes_verified": true,
+      "limits": {
+        "max_line_bytes": 65536,
+        "max_member_bytes": 163499110,
+        "max_response_rows": 2000000,
+        "max_source_bytes": 67108864,
+        "max_total_geography_bytes": 1237240934,
+        "max_zip_members": 6
+      },
+      "protocol": "microcosm.us.atomic-block-api-sources.v1",
+      "publisher_provenance_established": false,
+      "reconciliation": {
+        "output_state_population": {
+          "01": 5024279,
+          "02": 733391,
+          "04": 7151502,
+          "05": 3011524,
+          "06": 39538223,
+          "08": 5773714,
+          "09": 3605944,
+          "10": 989948,
+          "11": 689545,
+          "12": 21538187,
+          "13": 10711908,
+          "15": 1455271,
+          "16": 1839106,
+          "17": 12812508,
+          "18": 6785528,
+          "19": 3190369,
+          "20": 2937880,
+          "21": 4505836,
+          "22": 4657757,
+          "23": 1362359,
+          "24": 6177224,
+          "25": 7029917,
+          "26": 10077331,
+          "27": 5706494,
+          "28": 2961279,
+          "29": 6154913,
+          "30": 1084225,
+          "31": 1961504,
+          "32": 3104614,
+          "33": 1377529,
+          "34": 9288994,
+          "35": 2117522,
+          "36": 20201249,
+          "37": 10439388,
+          "38": 779094,
+          "39": 11799448,
+          "40": 3959353,
+          "41": 4237256,
+          "42": 13002700,
+          "44": 1097379,
+          "45": 5118425,
+          "46": 886667,
+          "47": 6910840,
+          "48": 29145505,
+          "49": 3271616,
+          "50": 643077,
+          "51": 8631393,
+          "53": 7705281,
+          "54": 1793716,
+          "55": 5893718,
+          "56": 576851
+        },
+        "populated_blocks": 5769942,
+        "population_total": 331449281,
+        "selected_geography_bytes": 447092359,
+        "state_population": {
+          "01": 5024279,
+          "02": 733391,
+          "04": 7151502,
+          "05": 3011524,
+          "06": 39538223,
+          "08": 5773714,
+          "09": 3605944,
+          "10": 989948,
+          "11": 689545,
+          "12": 21538187,
+          "13": 10711908,
+          "15": 1455271,
+          "16": 1839106,
+          "17": 12812508,
+          "18": 6785528,
+          "19": 3190369,
+          "20": 2937880,
+          "21": 4505836,
+          "22": 4657757,
+          "23": 1362359,
+          "24": 6177224,
+          "25": 7029917,
+          "26": 10077331,
+          "27": 5706494,
+          "28": 2961279,
+          "29": 6154913,
+          "30": 1084225,
+          "31": 1961504,
+          "32": 3104614,
+          "33": 1377529,
+          "34": 9288994,
+          "35": 2117522,
+          "36": 20201249,
+          "37": 10439388,
+          "38": 779094,
+          "39": 11799448,
+          "40": 3959353,
+          "41": 4237256,
+          "42": 13002700,
+          "44": 1097379,
+          "45": 5118425,
+          "46": 886667,
+          "47": 6910840,
+          "48": 29145505,
+          "49": 3271616,
+          "50": 643077,
+          "51": 8631393,
+          "53": 7705281,
+          "54": 1793716,
+          "55": 5893718,
+          "56": 576851
+        }
+      },
+      "release_eligible": false,
+      "request_origin_verified": false,
+      "source_admission_issued": false,
+      "source_ids": {
+        "district": "census-2025-cd119-NationalCD119.txt",
+        "population": "census-2020-dec-pl-api-P1_001N",
+        "puma": "census-2020-Census-Tract-to-2020-PUMA"
+      },
+      "sources": {
+        "district": {
+          "assigned_blocks": 8174799,
+          "crc_checked_members": [
+            "NationalCD119.txt"
+          ],
+          "delegate_normalization": "98_to_00",
+          "delegate_records": 47999,
+          "district_relation": "official_tabulation",
+          "selected_member": "NationalCD119.txt",
+          "selected_member_sha256": "3c5afab5b61e2d7151206f977981702815692df6f3680e7624a6c3f93808fddf",
+          "selected_member_size_bytes": 163499110,
+          "sha256": "1433feb5178dc7b4188ee30f5f7f715851f4400740b8fe1ce606a876c6294bd6",
+          "size_bytes": 22959130,
+          "source_id": "census-2025-cd119-NationalCD119.txt",
+          "source_records": 8174955,
+          "unassigned_blocks": 156,
+          "unselected_member_contents_read": false,
+          "zip_members": [
+            "01_AL_CD119.txt",
+            "13_GA_CD119.txt",
+            "22_LA_CD119.txt",
+            "36_NY_CD119.txt",
+            "37_NC_CD119.txt",
+            "NationalCD119.txt"
+          ]
+        },
+        "population": [
+          {
+            "block_rows": 185976,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:01"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "2abb5d0be868baaa5d0b6c05490d832941084da51f1457090a10d9ff9657606d",
+              "size_bytes": 6427012
+            },
+            "populated_blocks": 128366,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "01",
+            "state_population": 5024279,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:01"
+                  ]
+                ]
+              },
+              "sha256": "3a6d19e9e904b80afffb901a71bdda9cb5101bca1889dfc8efc50c8c39688ef5",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 57610
+          },
+          {
+            "block_rows": 28568,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:02"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "8534edc8dd05f33c878f33b7eb50ec359a3aff95198dbb91f95dc854fac10574",
+              "size_bytes": 982680
+            },
+            "populated_blocks": 11765,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "02",
+            "state_population": 733391,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:02"
+                  ]
+                ]
+              },
+              "sha256": "ba9387573141f95e32d1440192e5a14efe431ab1e54ae7bbf0fe2433adf61d43",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 16803
+          },
+          {
+            "block_rows": 155444,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:04"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "81ea2d71faef8aaebb95bf986a87c905b09bfd30036ca5d096da67e91fd7c8cf",
+              "size_bytes": 5395609
+            },
+            "populated_blocks": 107938,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "04",
+            "state_population": 7151502,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:04"
+                  ]
+                ]
+              },
+              "sha256": "b7ba8c426c875025aa324794719d978c3167e3a49e332e4af9b8fdf83b7a231c",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 47506
+          },
+          {
+            "block_rows": 136422,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:05"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "627457173db87dd14a2cfdb5464ac69941c306229423431962f5e2a23b4e522e",
+              "size_bytes": 4704516
+            },
+            "populated_blocks": 88121,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "05",
+            "state_population": 3011524,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:05"
+                  ]
+                ]
+              },
+              "sha256": "b67fed8d924bca67ea48d091b4677828288b5d4b76cf57e1ce5777e7b55af6d4",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 48301
+          },
+          {
+            "block_rows": 519723,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:06"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "af233c9cf00396a0e61735430268f09df3301695d4790ec577c58b3df2e30957",
+              "size_bytes": 18139193
+            },
+            "populated_blocks": 377591,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "06",
+            "state_population": 39538223,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:06"
+                  ]
+                ]
+              },
+              "sha256": "6bcb55b367bdde18380c87a526c18ebc7bd929c6100951942c7df517ddba02c2",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 142132
+          },
+          {
+            "block_rows": 140345,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:08"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "148ad5135f22c8410ee3baadc40c9f22cef8960423a05d4a4d9f940e44969ae9",
+              "size_bytes": 4866694
+            },
+            "populated_blocks": 99899,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "08",
+            "state_population": 5773714,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:08"
+                  ]
+                ]
+              },
+              "sha256": "d730fcb0310c63c7ab6d6cd8c59474790be28953a3e791e1086f5d77feca9764",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 40446
+          },
+          {
+            "block_rows": 49926,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:09"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "ef40acb552ad9447cba791ccc0a24aed8f572891eb81ae4561ee0d61de836c54",
+              "size_bytes": 1747484
+            },
+            "populated_blocks": 42008,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "09",
+            "state_population": 3605944,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:09"
+                  ]
+                ]
+              },
+              "sha256": "96a3d6fd5abfd6b32b44653adbcce8f1fe1e133a5cd474718d0d7aad7ec305fd",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 7918
+          },
+          {
+            "block_rows": 20198,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:10"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "1a7a314a84aa0049adb0865d0bfd7466d808b36460f67eef6f3143a331fe6408",
+              "size_bytes": 702646
+            },
+            "populated_blocks": 15317,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "10",
+            "state_population": 989948,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:10"
+                  ]
+                ]
+              },
+              "sha256": "ac40e616243c2ea14060dd460009e0a7f15755324a17387adf8768e35787fb79",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 4881
+          },
+          {
+            "block_rows": 6012,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:11"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "d23c7ae418bc35270dc6eec54c014c92cd370aab7ff92de8168ff5c182db84a1",
+              "size_bytes": 210965
+            },
+            "populated_blocks": 4500,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "11",
+            "state_population": 689545,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:11"
+                  ]
+                ]
+              },
+              "sha256": "fd791728a6b47cb82daf1fdaa156cf3a166815510f8057341e44bc8b9c36f61b",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 1512
+          },
+          {
+            "block_rows": 390066,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:12"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "b8c5633d903a040396c7f4d386aacb72e7c698253851fde6a115720bc90ed5e0",
+              "size_bytes": 13566697
+            },
+            "populated_blocks": 289652,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "12",
+            "state_population": 21538187,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:12"
+                  ]
+                ]
+              },
+              "sha256": "41b9bcced940cfe83c8d27aea2c3ff69e0c48b3e7dbd88ded2fb6c1cd5b8bff2",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 100414
+          },
+          {
+            "block_rows": 232717,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:13"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "d2ee481c091a4c316fbef61bc62d069a884fbd52d658cd8a43de8fd4a1c2a90f",
+              "size_bytes": 8068936
+            },
+            "populated_blocks": 165333,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "13",
+            "state_population": 10711908,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:13"
+                  ]
+                ]
+              },
+              "sha256": "a6bf2b3f49f8393f3ff7d1762b99d927d949d4c18e65c2995488ee88e4b7b8f5",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 67384
+          },
+          {
+            "block_rows": 14732,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:15"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "12360bccbca022409819393314c4f22d960d5d7f8edc302f3b9feefc73a011b4",
+              "size_bytes": 514556
+            },
+            "populated_blocks": 10169,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "15",
+            "state_population": 1455271,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:15"
+                  ]
+                ]
+              },
+              "sha256": "7ed5585fbe97d5dab88b0ab10de66f30e90fa4a14b0e8989c02d32c2c4d631fd",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 4563
+          },
+          {
+            "block_rows": 81879,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:16"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "74ee9f18bddd2d67b90d93d808944edac3d410cc95a761a34980e3ce55f151a9",
+              "size_bytes": 2821287
+            },
+            "populated_blocks": 46134,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "16",
+            "state_population": 1839106,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:16"
+                  ]
+                ]
+              },
+              "sha256": "8f1db7ed1b345ba86cdce141ab9d645c2cff91b88e0191fe557089fe0ceb4fbe",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 35745
+          },
+          {
+            "block_rows": 369978,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:17"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "6b0eed0c5ec1bcc326cffecc00c98d77a389fd3aa01b2163a99ca174088861ca",
+              "size_bytes": 12820271
+            },
+            "populated_blocks": 278166,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "17",
+            "state_population": 12812508,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:17"
+                  ]
+                ]
+              },
+              "sha256": "c02690f4ec95f7f8a9f3bd3a994d5dee9877ad3c2d2e07de9eeb2ebcb9bd0757",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 91812
+          },
+          {
+            "block_rows": 204568,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:18"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "3c91aeb1afc98189affebfd1a5d6884cc03755e413e46b906a4b0d47240c9255",
+              "size_bytes": 7095958
+            },
+            "populated_blocks": 162739,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "18",
+            "state_population": 6785528,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:18"
+                  ]
+                ]
+              },
+              "sha256": "572d8013dcc0fb51697478648a8c1e9ddf0c8ef0c2aa583a4eb44e5c81c2ddcc",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 41829
+          },
+          {
+            "block_rows": 175199,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:19"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "98f4efd90409774596b5bc623078d75f579d781ca3bc392b586a24fa67e638a1",
+              "size_bytes": 6033554
+            },
+            "populated_blocks": 124175,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "19",
+            "state_population": 3190369,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:19"
+                  ]
+                ]
+              },
+              "sha256": "5cd722954a80d81e07f29fe65056cd0f40967c163935eb450320d4e73a5d4169",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 51024
+          },
+          {
+            "block_rows": 172529,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:20"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "35e21c30e14e0c4bfdb3645076cdc7a89ef4708c17373047526875be9cb0ab41",
+              "size_bytes": 5931398
+            },
+            "populated_blocks": 109149,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "20",
+            "state_population": 2937880,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:20"
+                  ]
+                ]
+              },
+              "sha256": "aaaa97cb26fbc4db8318b32549da0a4f64a3fc4ca316ef9fcc5b2da6bb3b1c77",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 63380
+          },
+          {
+            "block_rows": 132662,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:21"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "975c9821955f9472f2222f85e089ce6ce9caff44a18bed9edd797ca13bda49c8",
+              "size_bytes": 4591236
+            },
+            "populated_blocks": 91572,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "21",
+            "state_population": 4505836,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:21"
+                  ]
+                ]
+              },
+              "sha256": "c65f5deb2c5dacbcd8c1e84e4caf7a41458399f3a388425fbc5a7af69dba0bb9",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 41090
+          },
+          {
+            "block_rows": 142874,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:22"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "9bdacd2c2ccfa5bac93f5df47ec1e63fe39643c15633e7d33f464ad7a171d869",
+              "size_bytes": 4942488
+            },
+            "populated_blocks": 92180,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "22",
+            "state_population": 4657757,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:22"
+                  ]
+                ]
+              },
+              "sha256": "db924ac57fd4177be3508d795ce912f3b55454f8eb6331fcc297252c2bb20a19",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 50694
+          },
+          {
+            "block_rows": 47138,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:23"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "eb26cdc0e114b07154096f592447df295d7fcda6dd890ebfe6e012d7d7bb40ca",
+              "size_bytes": 1629179
+            },
+            "populated_blocks": 30548,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "23",
+            "state_population": 1362359,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:23"
+                  ]
+                ]
+              },
+              "sha256": "2a6bc352f6304d0ceb8850333a47378fa2a324a1163850d56931b424b8281089",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 16590
+          },
+          {
+            "block_rows": 83827,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:24"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "2d181f3e6bf3c96c8c2f458024a699be8e4c8b2bb80b6433ee95c69efe655b29",
+              "size_bytes": 2925422
+            },
+            "populated_blocks": 65274,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "24",
+            "state_population": 6177224,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:24"
+                  ]
+                ]
+              },
+              "sha256": "b9de28b8819798a841c36ac13d35cdc75573c8e47ec232d195817239ab0bff55",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 18553
+          },
+          {
+            "block_rows": 107278,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:25"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "ca73c4d84aaf50e22ca9b25c4fdc54ca314167473a5ba1c9ee31fac1881396e3",
+              "size_bytes": 3749394
+            },
+            "populated_blocks": 88207,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "25",
+            "state_population": 7029917,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:25"
+                  ]
+                ]
+              },
+              "sha256": "db5b65758be7c88e4bcafd4413f2813fa32de96307aa50a450f28bdc14e3bb39",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 19071
+          },
+          {
+            "block_rows": 254730,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:26"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "732595037f8d58aee0d01a3b68e71a18bc8a7144c81433d1dfc805a1a83cfe8d",
+              "size_bytes": 8845352
+            },
+            "populated_blocks": 198244,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "26",
+            "state_population": 10077331,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:26"
+                  ]
+                ]
+              },
+              "sha256": "29a349d67a3c6219b9675e6cc5e5bd9a0bf3511e4b48005a6c9a9215be033069",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 56486
+          },
+          {
+            "block_rows": 198705,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:27"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "8910dd3e06035629bbef028441acb5d29f29ea555381df98076a05289bf29803",
+              "size_bytes": 6863252
+            },
+            "populated_blocks": 137689,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "27",
+            "state_population": 5706494,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:27"
+                  ]
+                ]
+              },
+              "sha256": "13b45f3487425184637b01256644d5f86599d6a445b1a4f1d9fb86ef3790cef9",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 61016
+          },
+          {
+            "block_rows": 112241,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:28"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "33350d9a37d539dd4724dc7f4b969de0fd1dbfcb5207cae093b8ed73e0a67d68",
+              "size_bytes": 3878667
+            },
+            "populated_blocks": 77426,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "28",
+            "state_population": 2961279,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:28"
+                  ]
+                ]
+              },
+              "sha256": "5cabdefebb5363751a244a9b12720ff43e9ac3a6fef7ba8c1ee7f79e7adaf745",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 34815
+          },
+          {
+            "block_rows": 253632,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:29"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "0e9b1a932c3cfb283a80a0e831192482ee9db6f01d7aad83de67a16e5c4075d5",
+              "size_bytes": 8749056
+            },
+            "populated_blocks": 169004,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "29",
+            "state_population": 6154913,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:29"
+                  ]
+                ]
+              },
+              "sha256": "b75c227a323978f36e25e2efab8ec11b20579b06d6393da203cb36d533743a6d",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 84628
+          },
+          {
+            "block_rows": 88417,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:30"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "b9a81e34cc8c228fef203728f4134f96b7a8acfc1b14395e2de251d7ab0e3964",
+              "size_bytes": 3033388
+            },
+            "populated_blocks": 43717,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "30",
+            "state_population": 1084225,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:30"
+                  ]
+                ]
+              },
+              "sha256": "caa4444d14b67700b3db4a5653412bd633c995df0d279473441b885a40102968",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 44700
+          },
+          {
+            "block_rows": 119103,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:31"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "bebe7ca15c979b170cfc3e6f49e27cdc50f5639de2f9a1955e60187849404e56",
+              "size_bytes": 4095921
+            },
+            "populated_blocks": 79779,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "31",
+            "state_population": 1961504,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:31"
+                  ]
+                ]
+              },
+              "sha256": "30c8aae0e54d78eeb7857f0954be04c95c3a2278a030e78317f2a361fe40c683",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 39324
+          },
+          {
+            "block_rows": 57409,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:32"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "f34926bc3ada9c07a7ace640a787495814b9893c8351b34a9a0fe9bcf91acd75",
+              "size_bytes": 1991100
+            },
+            "populated_blocks": 35249,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "32",
+            "state_population": 3104614,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:32"
+                  ]
+                ]
+              },
+              "sha256": "3f3957d218a7eb94ae360e03f6b5924d95ab0e8cb80b685d0fc74ff3de3349a7",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 22160
+          },
+          {
+            "block_rows": 31948,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:33"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "11e83119f4924fdbc1c0dcf6f96113c84ba4173c507290578835dfd2c7f97dfa",
+              "size_bytes": 1110353
+            },
+            "populated_blocks": 25317,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "33",
+            "state_population": 1377529,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:33"
+                  ]
+                ]
+              },
+              "sha256": "b2c3dae17fcbdccaa8eddf6f3e5fdb742d4b0ec017084610958d5182c0f70ce7",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 6631
+          },
+          {
+            "block_rows": 137972,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:34"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "280a8f28f13545bbff7d432e2356cdaeaedd9e0ea026f7f05f4d9e83dd28886e",
+              "size_bytes": 4823492
+            },
+            "populated_blocks": 113212,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "34",
+            "state_population": 9288994,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:34"
+                  ]
+                ]
+              },
+              "sha256": "517cdd27711beea019fa1efc18c6017690cd1d44617aa446a52677e94281d0cc",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 24760
+          },
+          {
+            "block_rows": 107215,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:35"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "a012da889bc274fb518c2a258c9b1394f43c24e6d58fb3661151565cc5ce8757",
+              "size_bytes": 3690294
+            },
+            "populated_blocks": 56605,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "35",
+            "state_population": 2117522,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:35"
+                  ]
+                ]
+              },
+              "sha256": "9632c8400a3052e17d23dd71427ccf66e8c062b15cb58df2cb949ecb7a287e9e",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 50610
+          },
+          {
+            "block_rows": 288819,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:36"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "7a47a92501f986ebca42a27a180fe897b4afb2c37cd463360179a0b32500ab2d",
+              "size_bytes": 10067666
+            },
+            "populated_blocks": 230339,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "36",
+            "state_population": 20201249,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:36"
+                  ]
+                ]
+              },
+              "sha256": "e34eac8cee690ba81ef7ad607cee5e06697834056165979faf2148627d5aeb5f",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 58480
+          },
+          {
+            "block_rows": 236638,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:37"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "3a721726b3ee7a8426411e5ba5267b0c0f88d4123916e8ed40d71e0a601eb797",
+              "size_bytes": 8216489
+            },
+            "populated_blocks": 174988,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "37",
+            "state_population": 10439388,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:37"
+                  ]
+                ]
+              },
+              "sha256": "bf0b0c6a90da12c51a71942982ec8a10b8e1dece22601462dd0391c2dc758ba2",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 61650
+          },
+          {
+            "block_rows": 84566,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:38"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "6f8985d46a8d8e97fce2f563f20442f7c6e73a0503cddf58ff59746e829e2b68",
+              "size_bytes": 2892476
+            },
+            "populated_blocks": 40198,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "38",
+            "state_population": 779094,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:38"
+                  ]
+                ]
+              },
+              "sha256": "3616ffbe27406d4e881587912b59c4494d2a0aa71132a25a6f8108bae23ccbb5",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 44368
+          },
+          {
+            "block_rows": 276428,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:39"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "aeb3eff352866ece982d0a31cfaf3ad63877bd8e2598bede9d883a0a168b450c",
+              "size_bytes": 9606700
+            },
+            "populated_blocks": 219669,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "39",
+            "state_population": 11799448,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:39"
+                  ]
+                ]
+              },
+              "sha256": "3a93ca174df19c6f3377abf023177def2d8ff585b2182d56a9abd75b2e3454e3",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 56759
+          },
+          {
+            "block_rows": 180154,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:40"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "2078a38b5338f474099f7e1fe2ba0dba3cab95b1644db5abd6c52ca4a8a57703",
+              "size_bytes": 6212394
+            },
+            "populated_blocks": 121826,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "40",
+            "state_population": 3959353,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:40"
+                  ]
+                ]
+              },
+              "sha256": "bd8b724c531ca5d6605aa1752c70c00a2666755070a18ef73ac0a3423d2812a5",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 58328
+          },
+          {
+            "block_rows": 130807,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:41"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "3cafb0c96a666767ea005ac1f08ca3171379934352c4d2ef285fd6ce44196ccd",
+              "size_bytes": 4521307
+            },
+            "populated_blocks": 79081,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "41",
+            "state_population": 4237256,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:41"
+                  ]
+                ]
+              },
+              "sha256": "fb8d53cee89c2a14485cf42cf49b4723576407db7d550897609c1f5038b20e67",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 51726
+          },
+          {
+            "block_rows": 336985,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:42"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "34840439707bedac6bf76a35863287aa24263000ff2e1dca21ecdf0030b262f6",
+              "size_bytes": 11713716
+            },
+            "populated_blocks": 275023,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "42",
+            "state_population": 13002700,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:42"
+                  ]
+                ]
+              },
+              "sha256": "b07244d4d81570c0c8bf49dc3653c382e8e3e74a2d798fb32c85e5808fd789a7",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 61962
+          },
+          {
+            "block_rows": 25649,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:44"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "8f8eb7ee08020dd7e3a49dab4d95f461acd5d29572fe8bf5b55f200ff84e7231",
+              "size_bytes": 894186
+            },
+            "populated_blocks": 21382,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "44",
+            "state_population": 1097379,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:44"
+                  ]
+                ]
+              },
+              "sha256": "ec6f0565a6ebceccf1bf1a665f46a8105852b352762416b350f9630f802a8223",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 4267
+          },
+          {
+            "block_rows": 146844,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:45"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "a3daf2da71c547c02d8c260b009be331cd218c84896d602fafcdbc12acd59c3f",
+              "size_bytes": 5086274
+            },
+            "populated_blocks": 105469,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "45",
+            "state_population": 5118425,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:45"
+                  ]
+                ]
+              },
+              "sha256": "3d15445808b86c1f785d6a1668f69eae773fbc75a462d3ead77c99bcc769ba9c",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 41375
+          },
+          {
+            "block_rows": 71383,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:46"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "1700e07604a6fb79d5cfb34fcb6bfe3d810429ecbca4e88d3012b8b2070a516d",
+              "size_bytes": 2447858
+            },
+            "populated_blocks": 40766,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "46",
+            "state_population": 886667,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:46"
+                  ]
+                ]
+              },
+              "sha256": "e5b885739fae3a34f28cc11f739435e8cd39926ebeb0a2ef1a18ae3ff035becd",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 30617
+          },
+          {
+            "block_rows": 179717,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:47"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "d8522733ea6f5971d5f340d86f71f7174b54f502ddd84a79d703fbd72d343eb2",
+              "size_bytes": 6232909
+            },
+            "populated_blocks": 133846,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "47",
+            "state_population": 6910840,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:47"
+                  ]
+                ]
+              },
+              "sha256": "32de25caad8e71a6bb74f5639f5e9eae1c95836f61743275c60b76f716d0c790",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 45871
+          },
+          {
+            "block_rows": 668757,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:48"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "2e997c530f51c17b595226374c50eb1ed249d2d6945e37dde9a1ceed8a161c6d",
+              "size_bytes": 23175159
+            },
+            "populated_blocks": 449085,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "48",
+            "state_population": 29145505,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:48"
+                  ]
+                ]
+              },
+              "sha256": "469d7f5efd70e8918a3c9744d7c7742e190e54b52d5b331faf648907f5882b0b",
+              "size_bytes": 40
+            },
+            "zero_population_blocks": 219672
+          },
+          {
+            "block_rows": 71207,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:49"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "73207e9605fda4b336c404455c9a369ed64e39e7ecebd623b633835a9664e495",
+              "size_bytes": 2471351
+            },
+            "populated_blocks": 46792,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "49",
+            "state_population": 3271616,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:49"
+                  ]
+                ]
+              },
+              "sha256": "825dab7318dcc582b32eb2723473be42d111a00d32f47d88ae93beade83e2fae",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 24415
+          },
+          {
+            "block_rows": 24611,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:50"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "7e34e58509cec16138d786dda2e34a45370fc1386108591182313f306b252daa",
+              "size_bytes": 850760
+            },
+            "populated_blocks": 17976,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "50",
+            "state_population": 643077,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:50"
+                  ]
+                ]
+              },
+              "sha256": "c5ccb3d18ec85abae8ca3958cd4cca738812021cee35dd34be09150c07aa3c3d",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 6635
+          },
+          {
+            "block_rows": 163491,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:51"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "0d979951968f230cd5b7235f703e9acfabcafbeed99c4c018e34c0f88ba0ca52",
+              "size_bytes": 5678471
+            },
+            "populated_blocks": 117361,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "51",
+            "state_population": 8631393,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:51"
+                  ]
+                ]
+              },
+              "sha256": "87ce18c978a4361494de558f74c03ce956079f6cfa8fb0401c8e77e5bf234c97",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 46130
+          },
+          {
+            "block_rows": 158093,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:53"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "0e3ec5282f8d894a504625cc9a366ada08430b60317fb5d529a982b0e2787a64",
+              "size_bytes": 5490219
+            },
+            "populated_blocks": 111441,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "53",
+            "state_population": 7705281,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:53"
+                  ]
+                ]
+              },
+              "sha256": "ef5ad0f000c5505f923e4c91a5516b02138669c8b08b7a26c547cc856a7891e4",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 46652
+          },
+          {
+            "block_rows": 72558,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:54"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "28f1b09668784b1d8a064bd1433a1446e9697d8da2988c611bbc267ebee4456f",
+              "size_bytes": 2507211
+            },
+            "populated_blocks": 51850,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "54",
+            "state_population": 1793716,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:54"
+                  ]
+                ]
+              },
+              "sha256": "b1cefc08915ac5c9bd05f47636d5ce6307b8ecb43c3c32502de2ec6d8b144c13",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 20708
+          },
+          {
+            "block_rows": 203059,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:55"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "fc491abf3fcd1a1fd3807ecde1d95b68bc2cab4e0a235a1b51f095ab5a2afcfa",
+              "size_bytes": 7025682
+            },
+            "populated_blocks": 144948,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "55",
+            "state_population": 5893718,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:55"
+                  ]
+                ]
+              },
+              "sha256": "1c7bbd06d50dfe00b2e4461d2b92e98fac585f4b7b8c2425782bc822984fc5e9",
+              "size_bytes": 39
+            },
+            "zero_population_blocks": 58111
+          },
+          {
+            "block_rows": 53769,
+            "blocks": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "block:*"
+                  ],
+                  [
+                    "in",
+                    "state:56"
+                  ],
+                  [
+                    "in",
+                    "county:*"
+                  ],
+                  [
+                    "in",
+                    "tract:*"
+                  ]
+                ]
+              },
+              "sha256": "55aef5b66c91b47bda087b490e44a12067eabe7634b444351172e59ae126e66a",
+              "size_bytes": 1843303
+            },
+            "populated_blocks": 22857,
+            "source_id": "census-2020-dec-pl-api-P1_001N",
+            "state_fips": "56",
+            "state_population": 576851,
+            "state_total": {
+              "request": {
+                "endpoint": "https://api.census.gov/data/2020/dec/pl",
+                "parameters": [
+                  [
+                    "get",
+                    "P1_001N"
+                  ],
+                  [
+                    "for",
+                    "state:56"
+                  ]
+                ]
+              },
+              "sha256": "0684454d90b7e6430f6f55991791113091593c8dab5577ff8d6dcc2d1fa2e10d",
+              "size_bytes": 38
+            },
+            "zero_population_blocks": 30912
+          }
+        ],
+        "puma": {
+          "selected_state_tract_mappings": 84414,
+          "sha256": "5262f460b2c8dbe86b00549e916317b1791fdc595c9af72ab18f6f6a67040531",
+          "size_bytes": 1709076,
+          "source_id": "census-2020-Census-Tract-to-2020-PUMA"
+        }
+      },
+      "state_fips": [
+        "01",
+        "02",
+        "04",
+        "05",
+        "06",
+        "08",
+        "09",
+        "10",
+        "11",
+        "12",
+        "13",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+        "32",
+        "33",
+        "34",
+        "35",
+        "36",
+        "37",
+        "38",
+        "39",
+        "40",
+        "41",
+        "42",
+        "44",
+        "45",
+        "46",
+        "47",
+        "48",
+        "49",
+        "50",
+        "51",
+        "53",
+        "54",
+        "55",
+        "56"
+      ],
+      "support_sha256": "5edc0e77471ba31d550a1eed416d5b46ada0a35425718eb87cfabe4d66fe4960"
+    },
+    "source_receipt_sha256": "9adaa4365fc4624dfcb80d456783d5a54806e672384e17b4e84ad08d10bde74b",
+    "state_fips": [
+      "01",
+      "02",
+      "04",
+      "05",
+      "06",
+      "08",
+      "09",
+      "10",
+      "11",
+      "12",
+      "13",
+      "15",
+      "16",
+      "17",
+      "18",
+      "19",
+      "20",
+      "21",
+      "22",
+      "23",
+      "24",
+      "25",
+      "26",
+      "27",
+      "28",
+      "29",
+      "30",
+      "31",
+      "32",
+      "33",
+      "34",
+      "35",
+      "36",
+      "37",
+      "38",
+      "39",
+      "40",
+      "41",
+      "42",
+      "44",
+      "45",
+      "46",
+      "47",
+      "48",
+      "49",
+      "50",
+      "51",
+      "53",
+      "54",
+      "55",
+      "56"
+    ],
+    "status": "source_control_passed",
+    "support_filename": "national-atomic-support.npz",
+    "support_sha256": "5edc0e77471ba31d550a1eed416d5b46ada0a35425718eb87cfabe4d66fe4960",
+    "support_size_bytes": 28862508,
+    "survey_frame_created": false
+  },
+  "normalization_report_sha256": "1da2a391b58956de6541ac8e541d1b67f5d560b601da86caca3baca1859b8c45",
+  "peak_rss_bytes": 6813728768,
+  "receipt_sha256": "6c65dee6d9317e522a2076f690341889f867a28652ba18ddd6120bc6c2a80ad0",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "One ordinary-acceptance national source-normalization case after separate root review and approval;104 population-only/geography pins, exact51 states, no survey Frame/source admission/release eligibility. Existing failed and accepted DE runs preserved.",
+  "source_and_owned_files": 498,
+  "source_control_accepted": true,
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 1
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 82.97476216696668
+}

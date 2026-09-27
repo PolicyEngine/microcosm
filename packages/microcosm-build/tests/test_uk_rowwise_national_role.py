@@ -43,6 +43,10 @@ def _load_test_module(name: str, filename: str):
 
 
 _SEAM = _load_test_module("uk_calibration_run_fixtures", "test_uk_calibration_run.py")
+# The real seam pins the executing checkout's git commit. The wheel lane runs
+# from an installed venv, which is not a checkout, so every test that drives
+# the real seam supplies the calibration tests' invented pin.
+invented_code_pin = _SEAM.invented_code_pin
 _CANDIDATE = _load_test_module(
     "uk_rowwise_candidate_fixtures", "test_uk_rowwise_candidate.py"
 )
@@ -325,7 +329,7 @@ def _sums_verify(directory: Path) -> None:
 
 
 def test_uk_national_role_builds_the_seam_evidence_and_stages_locally(
-    monkeypatch, tmp_path, capsys
+    monkeypatch, tmp_path, capsys, invented_code_pin
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
@@ -402,7 +406,7 @@ def test_uk_national_role_builds_the_seam_evidence_and_stages_locally(
 
 
 def test_uk_national_role_publishes_telemetry_and_the_bundle_to_the_hub(
-    monkeypatch, tmp_path
+    monkeypatch, tmp_path, invented_code_pin
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()
@@ -901,7 +905,7 @@ def test_uk_national_role_records_an_evaluation_error_without_failing(
 
 
 def test_uk_national_role_evaluates_after_staging_the_bundle(
-    monkeypatch, tmp_path, capsys
+    monkeypatch, tmp_path, capsys, invented_code_pin
 ):
     pytest.importorskip("tables")
     builder = _CANDIDATE._load_builder_module()

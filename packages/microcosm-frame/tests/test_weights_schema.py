@@ -1,5 +1,9 @@
 """Weights and schema primitives."""
 
+import copy
+import pickle
+from functools import partial
+
 import numpy as np
 import pytest
 
@@ -60,6 +64,149 @@ class TestWeights:
         assert_kind_transition(WeightKind.IMPORTANCE, WeightKind.CALIBRATED)
         with pytest.raises(ValueError, match="backward"):
             assert_kind_transition(WeightKind.CALIBRATED, WeightKind.IMPORTANCE)
+
+
+def _trusted_pickle_roundtrip(value, *, protocol=pickle.DEFAULT_PROTOCOL):
+    # Only bytes constructed from this test's invented value are loaded.
+    return pickle.loads(pickle.dumps(value, protocol=protocol))
+
+
+_COPY_OPERATIONS = (
+    pytest.param(copy.copy, id="shallow"),
+    pytest.param(copy.deepcopy, id="deep"),
+    pytest.param(_trusted_pickle_roundtrip, id="trusted-pickle"),
+)
+_ROUNDTRIP_OPERATIONS = (
+    *_COPY_OPERATIONS[:2],
+    *(
+        pytest.param(
+            partial(_trusted_pickle_roundtrip, protocol=protocol),
+            id=f"trusted-pickle-{protocol}",
+        )
+        for protocol in range(pickle.HIGHEST_PROTOCOL + 1)
+    ),
+)
+
+
+@pytest.fixture
+def cold_weights_namespace():
+    # copyreg lazily caches slot names even on a dataclass without slots. Reset
+    # only that cache to exercise a first copy, and restore its original state.
+    missing = object()
+    previous = vars(Weights).get("__slotnames__", missing)
+    if previous is not missing:
+        delattr(Weights, "__slotnames__")
+    try:
+        yield
+    finally:
+        if "__slotnames__" in vars(Weights):
+            delattr(Weights, "__slotnames__")
+        if previous is not missing:
+            Weights.__slotnames__ = previous
+
+
+class _PlainWeights(Weights):
+    pass
+
+
+class _StatefulWeights(Weights):
+    def __init__(self, values, kind, *, label):
+        super().__init__(values, kind)
+        object.__setattr__(self, "label", label)
+
+
+class _SlottedWeights(Weights):
+    __slots__ = ("label",)
+
+    def __init__(self, values, kind, *, label):
+        super().__init__(values, kind)
+        object.__setattr__(self, "label", label)
+
+
+class _CustomReducedWeights(_StatefulWeights):
+    def __reduce__(self):
+        return _restore_custom_weights, (self.values, self.kind, self.label)
+
+
+def _restore_custom_weights(values, kind, label):
+    return _CustomReducedWeights(values, kind, label=label)
+
+
+class TestWeightsCopy:
+    @pytest.mark.parametrize("operation", _ROUNDTRIP_OPERATIONS)
+    @pytest.mark.parametrize("kind", tuple(WeightKind))
+    def test_preserves_exact_values_and_constructor_invariants(self, operation, kind):
+        original = Weights(
+            np.array([0.0, -0.0, np.nextafter(0.0, 1.0), 1.25, 2.0**53 + 2.0]),
+            kind,
+        )
+        copied = operation(original)
+        assert type(copied) is Weights
+        assert copied is not original
+        assert copied.kind is kind
+        assert copied.values.dtype == np.float64
+        np.testing.assert_array_equal(
+            copied.values.view(np.uint64), original.values.view(np.uint64)
+        )
+        assert not copied.values.flags.writeable
+        assert not np.shares_memory(copied.values, original.values)
+        with pytest.raises(ValueError, match="read-only"):
+            copied.values[0] = 4.0
+        assert not original.values.flags.writeable
+
+    @pytest.mark.parametrize("operation", _ROUNDTRIP_OPERATIONS)
+    def test_copy_does_not_mutate_class_namespace(
+        self, operation, cold_weights_namespace
+    ):
+        original = Weights(np.array([1.0]), WeightKind.DESIGN)
+        before = {name: id(value) for name, value in vars(Weights).items()}
+        operation(original)
+        # On Python 3.14 this namespace is also captured by the deferred
+        # annotation function, so a new __slotnames__ entry changes live seals.
+        assert {name: id(value) for name, value in vars(Weights).items()} == before
+        assert "__slotnames__" not in vars(Weights)
+
+    @pytest.mark.parametrize("operation", _COPY_OPERATIONS)
+    @pytest.mark.parametrize(
+        ("field", "value", "error", "match"),
+        [
+            ("values", np.array([-1.0]), ValueError, "non-negative"),
+            ("kind", "design", TypeError, "WeightKind"),
+        ],
+    )
+    def test_reconstruction_revalidates_corrupted_objects(
+        self, operation, field, value, error, match
+    ):
+        original = Weights(np.array([1.0]), WeightKind.DESIGN)
+        object.__setattr__(original, field, value)
+        with pytest.raises(error, match=match):
+            operation(original)
+
+    @pytest.mark.parametrize("operation", _COPY_OPERATIONS)
+    @pytest.mark.parametrize(
+        "subclass",
+        [_PlainWeights, _StatefulWeights, _SlottedWeights, _CustomReducedWeights],
+    )
+    def test_existing_subclass_state_and_protocol_are_preserved(
+        self, operation, subclass
+    ):
+        kwargs = {} if subclass is _PlainWeights else {"label": ["source"]}
+        original = subclass(np.array([0.0, 2.5]), WeightKind.IMPORTANCE, **kwargs)
+        copied = operation(original)
+        assert type(copied) is subclass
+        assert copied is not original
+        assert copied.kind is original.kind
+        np.testing.assert_array_equal(copied.values, original.values)
+        if kwargs:
+            assert copied.label == original.label
+            if operation is copy.copy:
+                assert copied.label is original.label
+            else:
+                assert copied.label is not original.label
+        # Subclasses retain their own/default protocol, including extra state
+        # and constructors that do not accept the base class's two arguments.
+        if subclass is _CustomReducedWeights:
+            assert not copied.values.flags.writeable
 
 
 class TestMassChange:

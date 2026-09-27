@@ -1,0 +1,1 @@
+Restore three pinned ASEC resource files omitted during integration so prepared and composed source stages can compute their implementation manifests. Preserve the existing empty engine-default allowlist, source declarations, and reported-income contract.

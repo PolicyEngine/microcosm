@@ -1,0 +1,70 @@
+......................................................FF..............   [100%]
+=================================== FAILURES ===================================
+_ test_segmented_json_is_the_bounded_encoding_at_every_segment_size[document0] _
+
+document = {'a': [0, 1], 'n': None, 't': [True, False], 'z': 'é'}
+
+    @pytest.mark.parametrize("document", _roster_documents())
+    def test_segmented_json_is_the_bounded_encoding_at_every_segment_size(document):
+        """_segmented_json and _json_sha256 carry _bounded_json's exact byte stream."""
+        whole = graph._bounded_json(document, 64 * 1024**2)
+        longest = max(map(len, graph._canonical_pieces(document, 64 * 1024**2)))
+        assert longest < len(whole)
+        for segment in sorted({longest, longest + 1, 17, 4096, len(whole)}):
+            if segment >= longest:
+                assert (
+>                   graph._segmented_json(document, segment=segment, maximum=len(whole))
+                    == whole
+                )
+
+packages/microcosm-build/tests/test_us_graph_survey_population.py:376: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_population.py:325: in _segmented_json
+    _require(type(maximum) is int and segment <= maximum, "TRANSPORT_ROSTER_LIMIT")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, code = 'TRANSPORT_ROSTER_LIMIT'
+
+    def _require(condition, code):
+        if not condition:
+>           raise SurveyPopulationGraphError(code)
+E           microcosm.build.us_runtime.graph_survey_population.SurveyPopulationGraphError: TRANSPORT_ROSTER_LIMIT
+
+packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_population.py:122: SurveyPopulationGraphError
+_ test_segmented_json_is_the_bounded_encoding_at_every_segment_size[document1] _
+
+document = {'households': [{'hex': '0x1.1200000000000p+7', 'id': 3174752}, {'hex': '0x1.3924924924924p+7', 'id': 3174751}, {'hex'....d5b6db6db6db7p+7', 'id': 3174747}, ...], 'ids': [1586976, 1586977, 1586978, 1586979, 1586980, 1586981, ...], 'k': '😀'}
+
+    @pytest.mark.parametrize("document", _roster_documents())
+    def test_segmented_json_is_the_bounded_encoding_at_every_segment_size(document):
+        """_segmented_json and _json_sha256 carry _bounded_json's exact byte stream."""
+        whole = graph._bounded_json(document, 64 * 1024**2)
+        longest = max(map(len, graph._canonical_pieces(document, 64 * 1024**2)))
+        assert longest < len(whole)
+        for segment in sorted({longest, longest + 1, 17, 4096, len(whole)}):
+            if segment >= longest:
+                assert (
+                    graph._segmented_json(document, segment=segment, maximum=len(whole))
+                    == whole
+                )
+>       assert graph._json_sha256(document, maximum=len(whole)) == graph._sha(whole)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+packages/microcosm-build/tests/test_us_graph_survey_population.py:379: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_population.py:343: in _json_sha256
+    _require(type(maximum) is int and segment <= maximum, "TRANSPORT_ROSTER_LIMIT")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, code = 'TRANSPORT_ROSTER_LIMIT'
+
+    def _require(condition, code):
+        if not condition:
+>           raise SurveyPopulationGraphError(code)
+E           microcosm.build.us_runtime.graph_survey_population.SurveyPopulationGraphError: TRANSPORT_ROSTER_LIMIT
+
+packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_population.py:122: SurveyPopulationGraphError
+=========================== short test summary info ============================
+FAILED packages/microcosm-build/tests/test_us_graph_survey_population.py::test_segmented_json_is_the_bounded_encoding_at_every_segment_size[document0]
+FAILED packages/microcosm-build/tests/test_us_graph_survey_population.py::test_segmented_json_is_the_bounded_encoding_at_every_segment_size[document1]
+2 failed, 68 passed in 194.70s (0:03:14)
