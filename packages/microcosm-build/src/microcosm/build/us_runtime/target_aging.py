@@ -133,7 +133,9 @@ _TARGET_ROLE_TO_CBO_INCOME_SOURCE: dict[str, str] = {
     "nipa_proprietors_income": "net_business_income",
     # W-2 Box 7 social security tips (microcosm#451 item 3): tips are a wage
     # component, and the fact's TY2020 vintage predates the CBO projection
-    # span, so the wages series' SOI actuals provide the chained bridge.
+    # span, so the wages series' SOI actuals provide the chained bridge. The
+    # feed's ty2023 tips row is the same TY2020 cell restamped; source_vintage
+    # sets its source_period back to 2020 so it takes this chain too.
     "w2_social_security_tips_total": "wages_and_salaries",
 }
 

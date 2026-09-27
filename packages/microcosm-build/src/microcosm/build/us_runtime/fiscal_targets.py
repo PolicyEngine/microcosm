@@ -28,6 +28,13 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
 )
+from microcosm.build.us_runtime.source_vintage import (
+    RestampShadowsNewerVintageError,
+    SourceVintageCorrection,
+    apply_source_vintage_corrections,
+    check_restamps_stay_out_of_aging_indexes,
+    source_vintage_corrections,
+)
 from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
@@ -1015,10 +1022,17 @@ def compile_us_fiscal_target_registry(
             materialized_facts,
             congressional_district_vintage_crosswalk,
         )
+    # Restamped Chronicle facts (a pinned artifact labelled with a later
+    # build year, PolicyEngine/chronicle#117). Refuses a restamp that is not
+    # in the reviewed register, or one an aging index would read at its stamp.
+    restamps = source_vintage_corrections(materialized_facts)
+    if age_targets:
+        check_restamps_stay_out_of_aging_indexes(materialized_facts, restamps)
     references = (
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
             target_period=target_period,
+            restamps=restamps,
         ),
         *_references_for_target_period(
             US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
@@ -1051,6 +1065,10 @@ def compile_us_fiscal_target_registry(
             "target_period": target_period,
         },
     )
+    # From here on restamped facts are read at their data year: aging starts
+    # from it and the period contract checks it. Selection and the rebase
+    # controls above still saw the stamp.
+    registry = apply_source_vintage_corrections(registry, restamps)
     if age_targets:
         # Final nominal transform: age dollar amounts from their source period
         # to the build period on the fully within-surface-aligned registry
@@ -2290,8 +2308,13 @@ def _dynamic_us_fiscal_target_references(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
+    restamps: Mapping[str, SourceVintageCorrection] | None = None,
 ) -> tuple[LedgerTargetReference, ...]:
-    selected = _latest_dynamic_target_references(facts, target_period=target_period)
+    selected = _latest_dynamic_target_references(
+        facts,
+        target_period=target_period,
+        restamps=restamps,
+    )
     _check_exclusion_vintage_scope(source_record_id for source_record_id, _ in selected)
     return tuple(reference for _, reference in selected)
 
@@ -2300,11 +2323,17 @@ def _latest_dynamic_target_references(
     facts: Iterable[object],
     *,
     target_period: int | str,
+    restamps: Mapping[str, SourceVintageCorrection] | None = None,
 ) -> tuple[tuple[str, LedgerTargetReference], ...]:
     """Select one fact per model target shape: the latest eligible period.
 
     Returns ``(source_record_id, reference)`` pairs so the exclusion vintage
     guard and receipt can see which fact won each key.
+
+    Selection compares stamped periods. With ``restamps`` (the compile's
+    :func:`source_vintage_corrections`), it refuses a key where a restamped
+    fact competes with a truthful fact dated after the restamp's data year:
+    the stamp would pick the older data (microcosm#1030 review).
     """
 
     candidates: list[
@@ -2331,6 +2360,12 @@ def _latest_dynamic_target_references(
                     reference,
                 )
             )
+    if restamps:
+        _refuse_restamps_that_shadow_newer_vintages(
+            candidates,
+            restamps,
+            target_period_key=_period_key_from_value(target_period),
+        )
     keys_with_positive_observations = {
         key for key, _, value, _, _ in candidates if value > 0
     }
@@ -2362,6 +2397,51 @@ def _latest_dynamic_target_references(
         (source_record_id, reference)
         for _, source_record_id, reference in latest.values()
     )
+
+
+def _refuse_restamps_that_shadow_newer_vintages(
+    candidates: Iterable[
+        tuple[tuple[str, ...], tuple[int, int, str], float, str, object]
+    ],
+    restamps: Mapping[str, SourceVintageCorrection],
+    *,
+    target_period_key: tuple[int, int, str],
+) -> None:
+    """Refuse a restamped candidate that would outrank newer truthful data.
+
+    A TY2020 cell stamped 2023 beats a truthful TY2021 fact of the same
+    target shape on the stamp alone, and the newer data would drop silently.
+    A truthful fact dated from the year after the restamp's data year up to
+    its stamp is shadowed; only candidates eligible at the target period
+    count. None exists on the pinned feed: the ty2020 W-2 twins sit at the
+    data year, not after it.
+    """
+
+    eligible = [
+        candidate
+        for candidate in candidates
+        if _not_after_target_period(candidate[1], target_period_key)
+    ]
+    restamped_keys: dict[tuple[str, ...], list[SourceVintageCorrection]] = {}
+    for key, _, _, source_record_id, _ in eligible:
+        restamp = restamps.get(source_record_id)
+        if restamp is not None:
+            restamped_keys.setdefault(key, []).append(restamp)
+    if not restamped_keys:
+        return
+    conflicts: list[str] = []
+    for key, period_key, _, source_record_id, _ in eligible:
+        if source_record_id in restamps or not period_key[0]:
+            continue
+        year = period_key[1] // 100
+        for restamp in restamped_keys.get(key, ()):
+            if restamp.data_year < year <= restamp.stamped_year:
+                conflicts.append(
+                    f"{restamp.source_record_id} ({restamp.label}) would outrank "
+                    f"{source_record_id} ({year})"
+                )
+    if conflicts:
+        raise RestampShadowsNewerVintageError(tuple(sorted(conflicts)))
 
 
 def _exclusion_vintage_bypasses(
@@ -3410,9 +3490,11 @@ def _references_for_target_period(
 def _soi_target_role(fact: object, measure_id: str) -> str:
     # W-2 item facts (generic "amount" measure id, layout-routed via the
     # form_w2_item override) get a named role so target aging can pin them
-    # to the wages series: tips are a W-2 wage component, and the feed's
-    # TY2020 vintage needs the SOI wages actuals as its chain bridge into
-    # the CBO projection years (microcosm#451 item 3).
+    # to the wages series: tips are a W-2 wage component, and the data are
+    # TY2020 (the newest IRS W-2 table), so the SOI wages actuals are the
+    # chain bridge into the CBO projection years (microcosm#451 item 3).
+    # The feed's ty2023 rows restamp the same TY2020 cells; source_vintage
+    # reads them at 2020 before aging.
     if (
         measure_id == "amount"
         and _str_at(fact, "layout", "groupby_dimension")
