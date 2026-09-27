@@ -7244,3 +7244,11 @@ def test_post_operator_checkpoint_without_parent_ids_is_stale(
         pool_tool._checkpoint_missing_person_outputs(manifest(after), stage="simulated")
         == []
     )
+    # A checkpoint with no eligibility outputs at all (a synthetic fixture) is
+    # left to the identity and schema checks.
+    assert (
+        pool_tool._checkpoint_missing_person_outputs(
+            manifest(["person_id"]), stage="simulated"
+        )
+        == []
+    )

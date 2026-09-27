@@ -118,6 +118,7 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
 )
 from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
 )
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
@@ -2944,7 +2945,14 @@ _POST_SOURCE_OPERATOR_CHECKPOINT_STAGES = frozenset({"transferred", "simulated"}
 def _checkpoint_missing_person_outputs(
     manifest: Mapping[str, object], *, stage: str
 ) -> list[str]:
-    """Eligibility outputs a post-operator checkpoint's recorded schema lacks."""
+    """Parent-id columns a pre-#884 post-operator checkpoint lacks.
+
+    A checkpoint written before microcosm#884 carries the other eligibility
+    outputs but not the parent ids; resuming from it would build without
+    them where a fresh run would build with them. Only that shape is stale:
+    a checkpoint with no eligibility outputs at all is left to the existing
+    identity and schema checks.
+    """
 
     if stage not in _POST_SOURCE_OPERATOR_CHECKPOINT_STAGES:
         return []
@@ -2956,9 +2964,16 @@ def _checkpoint_missing_person_outputs(
     present = {
         str(column.get("name")) for column in person if isinstance(column, Mapping)
     }
-    return [
+    legacy = [
         column
         for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+        if column not in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+    ]
+    if not all(column in present for column in legacy):
+        return []
+    return [
+        column
+        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
         if column not in present
     ]
 
