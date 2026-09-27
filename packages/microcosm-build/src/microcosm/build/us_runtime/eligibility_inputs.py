@@ -87,9 +87,9 @@ count bound, and int32 safety on whatever frame it is handed, so a missed
 remap fails closed instead of exporting a stale pointer.
 
 Existing-frame note: a frame that already carries the pre-#884 outputs
-with signal (a ``--base-h5`` release input) gets only the two id columns
-appended — resolved from the raw pointers if it still has them, ``0``
-otherwise — and no other column is recomputed.
+with signal (a ``--base-h5`` release input, an existing pool) passes through
+untouched, without parent ids; the gate asserts the parent-id identities only
+on frames that carry them.
 """
 
 from __future__ import annotations
@@ -184,13 +184,6 @@ _DISABILITY_DIFFICULTY_COLUMNS: tuple[str, ...] = (
 #: order. Positional correspondence with
 #: :data:`US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS` is load-bearing.
 _PARENT_POINTER_COLUMNS: tuple[str, ...] = ("PEPAR1", "PEPAR2")
-
-#: Raw columns the parent-id resolution needs on top of ``person_id``.
-_PARENT_ID_SOURCE_COLUMNS: tuple[str, ...] = (
-    *_PARENT_POINTER_COLUMNS,
-    "PH_SEQ",
-    "A_LINENO",
-)
 
 #: The frame's person identifier. Not an ASEC source column: it is the
 #: structural id the stage aligns its output on, so it is already present.
@@ -469,17 +462,16 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
     have_legacy = all(
         column in person.columns for column in _LEGACY_OUTPUT_COLUMNS
     ) and _disabled_carries_signal(person)
-    have_parent_ids = all(
-        column in person.columns for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
-    )
-    if have_legacy and have_parent_ids:
-        return frame
     if have_legacy:
-        # A frame built before the parent ids existed (e.g. a --base-h5
-        # release input) already carries trusted eligibility inputs. Add the
-        # two id columns and touch nothing else: recomputing the whole stage
-        # here would overwrite carried values with raw-column re-derivations.
-        return _with_parent_ids_appended(frame)
+        # A frame that already carries trusted eligibility inputs passes
+        # through untouched, with or without the parent ids. A frame built
+        # before they existed (a --base-h5 input, an existing pool) keeps
+        # exactly what it had: recomputing here would overwrite carried values
+        # with raw-column re-derivations, and resolving raw pointers on a
+        # cloned or pooled frame would key on (PH_SEQ, A_LINENO) pairs that
+        # are no longer unique there. Without the ids, PolicyEngine-US uses
+        # its count-based proxy, as before microcosm#884.
+        return frame
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
@@ -523,37 +515,6 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
             ).to_numpy(dtype=np.int64)
         else:
             tables["person"][column] = aligned[column].to_numpy(dtype=np.float64)
-    return Frame(
-        tables,
-        frame.schema,
-        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata=frame.metadata,
-    )
-
-
-def _with_parent_ids_appended(frame: Frame) -> Frame:
-    """Add ``parent_1_id``/``parent_2_id`` without touching any other column.
-
-    The ids are resolved from the raw ASEC pointers when the person table
-    still carries them (``PEPAR1``/``PEPAR2``, ``PH_SEQ``, ``A_LINENO``) and
-    are ``0`` ("unknown") otherwise, which PolicyEngine-US reads as "use the
-    count-based proxy" — the behavior such a frame had before this column
-    existed.
-    """
-
-    person = frame.table("person")
-    if all(column in person.columns for column in _PARENT_ID_SOURCE_COLUMNS):
-        resolved = _parent_person_ids(person)
-    else:
-        resolved = {
-            column: np.zeros(len(person), dtype=np.int64)
-            for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
-        }
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    for column, values in resolved.items():
-        tables["person"][column] = np.asarray(values, dtype=np.int64)
     return Frame(
         tables,
         frame.schema,
@@ -825,10 +786,11 @@ def us_eligibility_inputs_signal_gate(frame: Frame) -> GateResult:
 
     person = frame.table("person")
     failures: list[str] = []
+    # The parent ids are optional: a frame built before them (or without raw
+    # pointers) carries none, and PolicyEngine-US then uses its count-based
+    # proxy. When present, their identities are asserted below.
     missing = [
-        column
-        for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
-        if column not in person.columns
+        column for column in _LEGACY_OUTPUT_COLUMNS if column not in person.columns
     ]
     if missing:
         return GateResult(
@@ -867,7 +829,21 @@ def us_eligibility_inputs_signal_gate(frame: Frame) -> GateResult:
             failures.append(
                 f"{label} {share:.3f} outside plausibility band [{low}, {high}]."
             )
-    failures.extend(_parent_id_invariant_failures(person))
+    parent_columns = [
+        column
+        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+        if column in person.columns
+    ]
+    if parent_columns and len(parent_columns) != len(
+        US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+    ):
+        failures.append(
+            f"person columns {parent_columns} are present without their pair; "
+            f"the parent ids {list(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)} are "
+            "written together."
+        )
+    elif parent_columns:
+        failures.extend(_parent_id_invariant_failures(person))
     return GateResult(
         name="eligibility_inputs_signal",
         passed=not failures,

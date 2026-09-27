@@ -590,7 +590,7 @@ class TestGate:
         person = frame.table("person").copy()
         person.loc[person.index[_PARENT_INDEX], "own_children_in_household"] = 7.0
         gate = us_eligibility_inputs_signal_gate(_replace_person(frame, person))
-        assert not any("named as a parent" in failure for failure in gate.failures)
+        assert gate.passed, gate.failures
 
     def test_null_parent_id_fails(self) -> None:
         frame = with_us_eligibility_inputs(
@@ -645,9 +645,11 @@ class TestGate:
 class TestParentIdReworkRegressions:
     """Review of microcosm#1032: existing frames, exact ids, int32 consumers."""
 
-    def test_legacy_frame_gets_only_the_parent_ids_appended(self) -> None:
-        # A --base-h5 input carries trusted eligibility values that differ from
-        # a raw re-derivation; adding the new columns must not rewrite them.
+    def test_legacy_frame_passes_through_untouched(self) -> None:
+        # A --base-h5 input or an existing pool carries trusted eligibility
+        # values that differ from a raw re-derivation, and its raw
+        # (PH_SEQ, A_LINENO) keys may repeat after cloning; it must come out
+        # exactly as it went in, without parent ids.
         frame = with_us_eligibility_inputs(
             _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
         )
@@ -657,33 +659,29 @@ class TestParentIdReworkRegressions:
         legacy = _replace_person(frame, person)
 
         result = with_us_eligibility_inputs(legacy, seed=0, time_period=TIME_PERIOD)
-        out = result.table("person")
 
-        assert out["veterans_benefits"].iloc[_VETERAN_INDEX] == 24_000.0
-        for column in person.columns:
-            pd.testing.assert_series_equal(out[column], person[column])
-        # The raw pointers are still present, so the ids resolve.
-        assert int(out["parent_1_id"].iloc[_CHILD_INDEX]) == int(
-            out["person_id"].iloc[_PARENT_INDEX]
+        assert result is legacy
+        assert result.table("person")["veterans_benefits"].iloc[_VETERAN_INDEX] == (
+            24_000.0
         )
 
-    def test_legacy_frame_without_raw_pointers_gets_unknown_ids(self) -> None:
+    def test_gate_accepts_a_frame_without_parent_ids(self) -> None:
         frame = with_us_eligibility_inputs(
             _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
         )
         person = frame.table("person").drop(
-            columns=[*US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS, "PEPAR1", "PEPAR2"]
+            columns=list(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
         )
-        result = with_us_eligibility_inputs(
-            _replace_person(frame, person), seed=0, time_period=TIME_PERIOD
-        )
-        out = result.table("person")
+        assert us_eligibility_inputs_signal_gate(_replace_person(frame, person)).passed
 
-        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS:
-            assert out[column].dtype == np.int64
-            assert (out[column] == 0).all()
-        # All-zero ids mean "unknown", which the gate accepts.
-        assert us_eligibility_inputs_signal_gate(result).passed
+    def test_gate_refuses_one_parent_id_without_its_pair(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        person = frame.table("person").drop(columns=["parent_2_id"])
+        gate = us_eligibility_inputs_signal_gate(_replace_person(frame, person))
+        assert not gate.passed
+        assert any("without their pair" in failure for failure in gate.failures)
 
     def test_household_ids_past_2_53_are_compared_exactly(self) -> None:
         big = 10**16

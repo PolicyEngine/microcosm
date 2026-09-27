@@ -26,6 +26,9 @@ from microcosm.build.outer_stage_runtime import _POOLED_SOURCE_PROVENANCE_COLUMN
 from microcosm.build.us_runtime import acs_pums, acs_transfer
 from microcosm.build.us_runtime import puf_capital_gains_tail as puf_tail
 from microcosm.build.us_runtime.base_pool import spine_column
+from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
+)
 from microcosm.build.us_runtime.operator_boundary import _ACS_NATIVE_INPUT_CONTRACTS
 from microcosm.build.us_runtime.support_provenance import (
     spine_source_id_column,
@@ -170,9 +173,10 @@ def test_every_register_entry_is_a_named_producer_column():
         | tail
         | _ACS_NATIVE_AMOUNTS
         | {"puma_geoid"}
+        | set(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS)
     )
     assert len(_ACS_NATIVE_AMOUNTS) == 6
-    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1
+    assert len(US_STORED_NON_VARIABLE_COLUMNS) == 30 + 6 + 6 + 6 + 1 + 2
 
 
 def test_every_register_reason_names_where_its_column_comes_from():
@@ -201,6 +205,10 @@ def test_every_register_reason_names_where_its_column_comes_from():
         TAX_UNIT_FILING_STATUS_COLUMN: (
             "microcosm.frame.units.TAX_UNIT_FILING_STATUS_COLUMN"
         ),
+        **{
+            column: "US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS"
+            for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+        },
     }
     for column, owner in expected_owner.items():
         assert owner in US_STORED_NON_VARIABLE_COLUMNS[column], column

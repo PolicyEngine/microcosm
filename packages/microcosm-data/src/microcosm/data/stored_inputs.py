@@ -407,6 +407,21 @@ US_STORED_NON_VARIABLE_COLUMNS: Mapping[str, str] = MappingProxyType(
         "puf_capital_gains_tail_transfer_weight": _PUF_TAIL.format(
             detail="the donor weight carried by the transfer"
         ),
+        **{
+            column: (
+                f"The person_id of the co-resident parent the person's CPS "
+                f"ASEC {pointer} pointer names, or 0 when unknown, written by "
+                "microcosm.build.us_runtime.eligibility_inputs "
+                "(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS; microcosm#884). The "
+                "certified engine does not define it yet, so it is ignored "
+                "there; policyengine-us#9406 adds it as an input. Remove this "
+                "entry when the pinned engine defines the variable."
+            )
+            for column, pointer in (
+                ("parent_1_id", "PEPAR1"),
+                ("parent_2_id", "PEPAR2"),
+            )
+        },
     }
 )
 
