@@ -1,4 +1,5 @@
 # ruff: noqa: F401
+
 import importlib.util
 import inspect
 import json
@@ -157,6 +158,86 @@ def _w2_tips_return_count_fact(tax_year: int) -> dict[str, object]:
         groupby_dimension="irs_soi.form_w2_item",
         groupby_value_id="box_7_social_security_tips",
     )
+
+
+def _four_rule_synthetic_feed(monkeypatch):
+    """Synthetic facts that exercise every receipt rule, and each rule's ids.
+
+    The register holds no bypass since d179, so this reviews a synthetic one:
+    a taxable-interest cell excluded at ty2023 with its ty2020 vintage
+    allowlisted.
+    """
+    tanf = (
+        "hhs_acf_tanf.fy2024.cash_assistance.ar."
+        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
+        "all_funds"
+    )
+    interest_excluded = "irs_soi.ty2023.table_1_4.all.taxable_interest_amount"
+    interest_bypass = "irs_soi.ty2020.table_1_4.all.taxable_interest_amount"
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
+        interest_excluded,
+        "test: synthetic exclusion",
+    )
+    monkeypatch.setitem(
+        US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
+        interest_bypass,
+        "test: reviewed bypass",
+    )
+    facts = [
+        *_other_income_table_1_4_facts((2020, 2021, 2022, 2023)),
+        *(
+            _cms_state_enrollment_fact(
+                month, state=state, state_fips=state_fips, value=100_000
+            )
+            for state, state_fips in (("ca", "06"), ("oh", "39"), ("tx", "48"))
+            for month in ("2024-12", "2025-12")
+        ),
+        _dynamic_ledger_fact(
+            source_record_id=tanf,
+            source_name="hhs_acf_tanf",
+            measure_id="all_funds",
+            value=123_000_000,
+            geography_level="state",
+            geography_id="0400000US05",
+            groupby_value_id="ar",
+        ),
+        _w2_tips_return_count_fact(2023),
+        _w2_tips_return_count_fact(2020),
+        *(
+            _soi_taxable_interest_fact(
+                tax_year,
+                source_record_id=source_record_id,
+                value=240_000_000_000,
+                layout_record_set_id=f"irs_soi.ty{tax_year}.table_1_4",
+            )
+            for tax_year, source_record_id in (
+                (2023, interest_excluded),
+                (2020, interest_bypass),
+            )
+        ),
+    ]
+    expected = {
+        "reviewed_exclusion": sorted([tanf, interest_excluded]),
+        "all_vintage_reviewed_exclusion": sorted(
+            [
+                *(
+                    f"irs_soi.ty{tax_year}.table_1_4.all.{measure}"
+                    for tax_year in (2020, 2021, 2022, 2023)
+                    for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+                ),
+                _W2_TIPS_RETURN_COUNT.format(year=2020),
+                _W2_TIPS_RETURN_COUNT.format(year=2023),
+            ]
+        ),
+        "m_chip_state_chip_enrollment": sorted(
+            f"cms_medicaid.month{month}.state_enrollment.{state}.total_chip_enrollment"
+            for state in ("ca", "oh")
+            for month in ("2024_12", "2025_12")
+        ),
+        "allowlisted_vintage_bypass": [interest_bypass],
+    }
+    return facts, expected
 
 
 # The pinned-feed checks below run only where the pinned Chronicle feed sits at

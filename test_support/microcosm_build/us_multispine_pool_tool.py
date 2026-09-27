@@ -1,9 +1,8 @@
 """Small-fixture tests for the terminal US multispine pool build tool."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
 
+# ruff: noqa: F401
 import ast
 import copy
 import hashlib
@@ -64,7 +63,6 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, read_frame_ta
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
-
 _FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
 

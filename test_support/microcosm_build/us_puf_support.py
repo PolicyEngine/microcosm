@@ -1,6 +1,6 @@
-"""US PUF support-channel expansion tests."""
-
 # ruff: noqa: F401
+
+"""US PUF support-channel expansion tests."""
 
 import importlib
 from collections.abc import Sequence
@@ -115,7 +115,13 @@ def _minimal_us_frame() -> Frame:
     return Frame(tables, US_SCHEMA, weights, strata)
 
 
-def _raw_asec_predictor_frame() -> Frame:
+def _raw_asec_predictor_frame(*, with_tax_unit_roles: bool = False) -> Frame:
+    """Raw ASEC person fields, optionally with the constructed tax-unit roles.
+
+    The roles, age and sex are what the tax-unit construction stage hands the
+    PUF imputation; the PUF demographic predictors read them (microcosm#982).
+    """
+
     tables = {
         "person": pd.DataFrame(
             {
@@ -184,6 +190,12 @@ def _raw_asec_predictor_frame() -> Frame:
         "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
         "marital_unit": pd.DataFrame({"marital_unit_id": np.asarray([10000, 20000])}),
     }
+    if with_tax_unit_roles:
+        tables["person"] = tables["person"].assign(
+            age=[65, 40, 61],
+            is_female=[False, True, True],
+            tax_unit_role_input=["HEAD", "SPOUSE", "HEAD"],
+        )
     return Frame(
         tables,
         US_SCHEMA,
@@ -229,6 +241,140 @@ def _tanf_gate_person(
     if types is not None:
         person["PAW_TYP"] = np.asarray(types, dtype=np.int64)
     return person
+
+
+class TestPufSupportWeightsAuditWiring:
+    """The PUF-support production fit emits a weights-audit record.
+
+    This is what makes the build-level weights audit (microcosm #300) real rather
+    than dead code: the actual production imputation records the weight kind it
+    resolved, so a release manifest carries it and a ``"none"`` fit fails the
+    release. The fit runs on a synthetic frame with no ``policyengine_us``, so
+    this proves the wiring end to end in CI's engine-less environment.
+    """
+
+    def _donor(self) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+                "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+                "employment_income_before_lsr": [1_000.0, 1_000.0, 1_000.0, 1_000.0],
+                "weight": [1.0, 1.0, 1.0, 1.0],
+            }
+        )
+
+    def _impute(self, fit_records):
+        return impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            self._donor(),
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=("employment_income_before_lsr",),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+            fit_records=fit_records,
+        )
+
+    def test_production_fit_records_design_weight_kind(self) -> None:
+        from microcosm.build import FitWeightRecord
+        from microcosm.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        fit_records: list[FitWeightRecord] = []
+        self._impute(fit_records)
+
+        assert fit_records == [FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "design")]
+
+    def test_recorded_fit_passes_the_weights_audit_gate(self) -> None:
+        from microcosm.build import weights_audit_gate
+
+        fit_records = []
+        self._impute(fit_records)
+
+        result = weights_audit_gate(fit_records)
+        assert result.passed
+        from microcosm.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        assert result.details["resolved_weight_kinds"] == {
+            US_PUF_SUPPORT_FIT_NAME: "design"
+        }
+
+    def test_wired_gate_would_fail_a_none_fit(self) -> None:
+        # Prove the wired gate can actually find something: swap the resolved
+        # kind to "none" and the release-blocking gate fails, naming the fit.
+        from microcosm.build import FitWeightRecord, weights_audit_gate
+        from microcosm.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        result = weights_audit_gate([FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "none")])
+        assert not result.passed
+        assert US_PUF_SUPPORT_FIT_NAME in result.failures[0]
+        assert "unweighted" in result.failures[0]
+
+    def test_records_are_only_emitted_when_a_sink_is_provided(self) -> None:
+        # The out-parameter is opt-in: existing callers that pass nothing get
+        # the same Frame return and are unaffected.
+        imputed = impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            self._donor(),
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=("employment_income_before_lsr",),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+        )
+        assert imputed.table("person") is not None
+
+    def test_production_fit_records_design_kind_under_installed_metadata(self) -> None:
+        # The engine-less tests above run the imputation with a trivial output
+        # that never trips the formula-owned guard. This gated test runs the same
+        # audited seam with the installed PolicyEngine-US source guard active
+        # (assert_formula_owned_blocklist_current + resolve_formula_owned_outputs
+        # both read pinned engine metadata), over real leaf-input outputs, so the
+        # seam is proven end to end on the production code path an actual build
+        # takes: the guard passes on genuine leaves, the DESIGN-weighted fit
+        # records "design", and the release-blocking gate passes carrying it.
+        _installed_variable_metadata_index()
+        from microcosm.build import FitWeightRecord, weights_audit_gate
+        from microcosm.build.us_runtime import US_PUF_SUPPORT_FIT_NAME
+
+        donor = pd.DataFrame(
+            {
+                "filing_status_code": [1.0, 2.0, 4.0, 1.0],
+                "tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
+                "employment_income_before_lsr": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+                "qualified_dividend_income": [10.0, 20.0, 30.0, 40.0],
+                "weight": [1.0, 1.0, 1.0, 1.0],
+            }
+        )
+        fit_records: list = []
+        impute_us_puf_tax_detail_support(
+            clone_us_frame_for_puf_support(_minimal_us_frame()),
+            donor,
+            predictors=(
+                "puf_predictor_filing_status_code",
+                "puf_predictor_tax_unit_person_count",
+            ),
+            person_outputs=(
+                "employment_income_before_lsr",
+                "qualified_dividend_income",
+            ),
+            tax_unit_outputs=(),
+            n_estimators=4,
+            seed=0,
+            fit_records=fit_records,
+        )
+
+        assert fit_records == [FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, "design")]
+        result = weights_audit_gate(fit_records)
+        assert result.passed
+        assert result.details["resolved_weight_kinds"] == {
+            US_PUF_SUPPORT_FIT_NAME: "design"
+        }
 
 
 # --------------------------------------------------------------------------- #

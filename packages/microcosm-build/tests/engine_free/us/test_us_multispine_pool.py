@@ -2135,19 +2135,20 @@ def test_row_sensitive_prefix_exposes_clone_first_defects(
         time_period=2024,
         acs_rent_donor=donor,
     )
-    old_order = multispine_pool_module.with_us_eligibility_inputs(
-        old_order,
-        seed=0,
-        time_period=2024,
-    )
-
     person = old_order.table("person")
     source_id = support_source_id_column("person")
     heads = person["is_household_head"].eq(True)
     rent_variants = person.loc[heads].groupby(source_id)["pre_subsidy_rent"].nunique()
     assert rent_variants.eq(2).all()
-    parents = person["A_LINENO"].eq(1)
-    assert person.loc[parents, "own_children_in_household"].eq(2.0).all()
+    # Clone-first, the raw (PH_SEQ, A_LINENO) pointers are duplicated. The
+    # count used to double silently; resolving the pointers to parent ids
+    # (microcosm#884) now refuses the ambiguous line outright.
+    with pytest.raises(SourceRuntimeError, match="repeats line"):
+        multispine_pool_module.with_us_eligibility_inputs(
+            old_order,
+            seed=0,
+            time_period=2024,
+        )
 
 
 def test_every_source_operator_output_has_a_pool_owner() -> None:

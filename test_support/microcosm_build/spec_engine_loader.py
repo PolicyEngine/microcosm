@@ -1,6 +1,6 @@
-# ruff: noqa: F401
 from __future__ import annotations
 
+# ruff: noqa: F401
 import json
 from dataclasses import replace
 from importlib.resources import files as resource_files

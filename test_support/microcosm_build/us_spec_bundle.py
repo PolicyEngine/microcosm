@@ -1,9 +1,8 @@
 """Generation-1 US bundle migration and package-seam gates."""
 
-# ruff: noqa: F401
-
 from __future__ import annotations
 
+# ruff: noqa: F401
 import copy
 import hashlib
 import importlib.util
@@ -196,7 +195,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "9f4f983091fb18dea8f4524cc100be20f9fca2b006435461592f8edf53c9a5d8"
+        "e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
