@@ -1,10 +1,13 @@
 # PUF imputation self-prediction (#982): receipts
 
-Issue: PolicyEngine/microcosm#982. Branch `us-982-puf-demographic-rank-predictors`.
-Scripts in this folder: `compare_predictors.py` (fit and predict per predictor
-variant) and `score_variants.py` (score against SOI). Scored output:
-`results/scores_8_trees.json`; input counts and per-run metadata (trees, rows,
-peak memory): `results/inputs_and_runs.json`.
+Issue: PolicyEngine/microcosm#982. Fix merged in #1033 (branch
+`us-982-puf-demographic-rank-predictors`). Scripts in this folder:
+`compare_predictors.py` (fit and predict per predictor variant),
+`score_variants.py` (score the PUF-clone half ×2 against SOI) and
+`actual_pool_bands.py` (score the real pool, both halves at frame weight).
+Scored output: `results/scores_8_trees.json` and
+`results/actual_pool_bands.json`; input counts and per-run metadata (trees,
+rows, peak memory): `results/inputs_and_runs.json`.
 
 ## The defect
 
@@ -16,7 +19,9 @@ variant below), PUF-clone wages have rank correlation 1.000 with the same
 unit's survey wages; among units with positive survey wages, 99.98% land within
 10% of their survey value; and no clone exceeds the survey maximum.
 Survey topcodes and underreporting therefore carried into the PUF half, which
-is where the missing $5M+ tail came from (#958).
+is why that half lacked the $5M+ tail (#958). The survey half, which carries
+the other half of the weight, has no units there at all; see
+[Real pool at frame weight](#real-pool-at-frame-weight).
 
 ## The fix
 
@@ -39,12 +44,19 @@ middle.
 
 All numbers below are pre-calibration, from one fit on the saved 2026-09-12
 donor frame (211,677 PUF tax units) predicted onto the 231,007 saved PUF-clone
-recipients, weights = PUF-clone half x2. AGI is a proxy: the sum of the 15
-imputed income items. Run with 8 trees per variant (memory was constrained);
-every variant uses the same configuration. SOI references: Table 1.1 TY2023
-counts and AGI; Table 1.4 shares.
+recipients, weights = PUF-clone half ×2 ("as if this half were the whole
+population"). AGI is a proxy: the sum of the 15 imputed income items. Run with
+8 trees per variant (memory was constrained); every variant uses the same
+configuration. SOI references: Table 1.1 TY2023 counts and AGI; Table 1.4
+shares.
 
-### Returns by size of proxy AGI
+The ×2 weighting compares the variants' distributions with one another and
+with SOI's shape. It is not a level comparison with SOI: in the real pool the
+survey half carries the other 50% of the weight and has no units at $5M+ proxy
+AGI. For levels, see
+[Real pool at frame weight](#real-pool-at-frame-weight).
+
+### Returns by size of proxy AGI: PUF-clone half ×2 (distribution check, not a level comparison)
 
 | Band | Old design | Rank only | Rank + flag (chosen) | Within-group rank + flag | SOI 1.1 |
 |---|---|---|---|---|---|
@@ -54,10 +66,10 @@ counts and AGI; Table 1.4 shares.
 | $5M-10M | 23,600 | 47,582 | 48,629 | 49,569 | 49,262 |
 | $10M+ | 8,186 | 31,404 | 33,920 | 29,041 | 30,382 |
 
-AGI in $10M+: old $185B, chosen $1,037B, SOI $908B. Capital gains share of
-$10M+ AGI: old 0.1%, chosen 42.6%, SOI Table 1.4 39.5%.
+AGI in $10M+ (×2): old $185B, chosen $1,037B, SOI $908B. Capital gains share
+of $10M+ AGI: old 0.1%, chosen 42.6%, SOI Table 1.4 39.5%.
 
-### Wages: self-prediction and participation
+### Wage self-prediction and participation: PUF-clone half ×2 (distribution check, not a level comparison)
 
 | Measure | Old | Rank only | Rank + flag | Within-group |
 |---|---|---|---|---|
@@ -77,13 +89,59 @@ that includes many small separate returns (for example dependents filing their
 own), cutting imputed wages to $7.93T; the pooled rank keeps $9.68T with the
 same participation fidelity.
 
+## Real pool at frame weight
+
+The PUF-detail expansion (`microcosm.build.us_runtime.puf_support`) splits
+each unit's weight evenly between two clone channels. Clone index 0, the
+native survey channel, keeps the survey values; clone index 1
+(`PUF_TAX_DETAIL_CLONE_INDEX`) receives the imputed ones.
+`actual_pool_bands.py` combines both halves at frame weight and writes
+`results/actual_pool_bands.json`. The figures are from the same fit as above
+(8 trees, proxy AGI), before calibration and before main's capital-gains tail
+stage (#567). "Old design" is the `current` variant; "#1033" is
+`demographic_midrank6_earn`, the rank + flag design that #1033 merged.
+
+Clone 0 carries 50.0% of the tax-unit weight (`clone0_weight_share`) and has
+no units at $5M+ proxy AGI in either variant: in both $5M+ bands,
+`clone1_returns` equals `returns`. Its proxy AGI sums the 11 of the 15 items
+that its person table carries; estate, farm, partnership and S-corporation
+income are absent (`clone0_items_used`).
+
+| Band | Old design | #1033 | SOI Table 1.1 |
+|---|---|---|---|
+| $1M–1.5M returns | 701k (1.90×) | 483k (1.31×) | 369k |
+| $5M–10M returns | 11.8k (0.24×) | 24.3k (0.49×) | 49.3k |
+| $10M+ returns | 4.1k (0.13×) | 17.0k (0.56×) | 30.4k |
+| $10M+ AGI | $92B (0.10×) | $519B (0.57×) | $908B |
+| Colorado income above $1M | $20.2B (0.64×; largest record 28%) | $66.3B (2.1×; largest record 81%) | $31.7B (Historic Table 2, via #940) |
+
+"Largest record" is the share of the state's income above $1M carried by its
+single largest contributor.
+
+#1033 roughly quadruples the pool's proxy AGI at $5M+ ($174B to $675B) and
+lifts its $5M+ returns from 15.9k to 41.3k. On its own, though, it reaches
+about half of SOI there (52% of the 79.6k returns and 54% of the $1,244B), not
+SOI. At $5M+ the real-pool figures are exactly half of the ×2 ones (for
+example 48,629 to 24,315 returns at $5M–10M), because only the PUF-clone half
+has units there. The bands in between ($1.5M–5M) sit at 0.59–0.84× SOI in
+both designs. At $1M–1.5M the survey half alone holds 284k returns, 77% of
+SOI's count, in both designs. All five bands, with AGI and record counts, are
+in `results/actual_pool_bands.json`.
+
+These figures correct the ×2 level comparisons first posted on #982, #940 and
+#1033; a correction is posted on each.
+
 ## Known limits
 
-- Colorado (#940) is not fixed by this change. The chosen variant has 15
-  Colorado records at $1M+ proxy AGI; the largest (survey six-item total
-  $1.1M, weight 867) draws $125.4M of proxy AGI and carries 84% of the state's
-  income above $1M (`colorado_1m_plus` in the scores), so state top-tail totals
-  are noisy until state x AGI-band amount targets (#940) enter calibration.
+- Colorado (#940) is not fixed by this change. In the PUF-clone half the
+  chosen variant has 15 Colorado records at $1M+ proxy AGI. The largest
+  (survey six-item total $1.1M) draws $125.4M of proxy AGI at frame weight
+  434, shown as 867 in the ×2 scores. In the real pool at frame weight,
+  Colorado's income above $1M is $66.3B, 2.1× SOI's $31.7B, and that one
+  record carries 81% of it. The ×2 scores put the total at $128.5B, about 4×
+  SOI, with that record at 84% (`colorado_1m_plus`); those are not levels.
+  State top-tail totals therefore stay noisy until state × AGI-band amount
+  targets (#940) enter calibration.
 - All variants ran at 8 trees because memory was constrained; production fits
   more trees. The comparison is like for like across variants.
 - The within-10% and wage-total rows are pre-calibration; calibration targets
