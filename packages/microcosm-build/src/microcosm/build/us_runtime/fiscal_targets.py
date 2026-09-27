@@ -1502,8 +1502,10 @@ _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS: dict[str, str] = {
 #: PE-US ``capital_gains`` (short-term plus long-term, i.e. Schedule D, before
 #: the loss limit); distributions reported without Schedule D are the separate
 #: ``non_sch_d_capital_gains``. Its indicator therefore counts Table 1.4 col 37
-#: returns and its sum is col 38. The model carries no Schedule D loss returns,
-#: so a line-7 count has no model counterpart at any level.
+#: returns and its sum is col 38; a line-7 count, which also counts losses and
+#: distributions-only returns, is a different population. (PE-US allows
+#: negative gains, but the Build P release data carries no tax unit with a
+#: net loss, so it could not reach a line-7 count at any level.)
 _SOI_CAPITAL_GAINS_MODEL_CONCEPT = _SOI_SCHEDULE_D_TAXABLE_NET_GAIN
 
 
@@ -1590,13 +1592,14 @@ def _soi_capital_gains_active_totals(
     ``capital_gains_gross`` measures qualifies, so HT2 and
     congressional-district rows never do, whatever their period stamp. The
     latest qualifying period not after the build period wins, and the choice
-    depends on the fact set alone: two different records at the winning
-    period refuse the compile. Feed order used to break that tie, and the
+    depends on the fact set alone: two different candidates at the winning
+    period (different records, or one record with different values or period
+    labels) refuse the compile. Feed order used to break that tie, and the
     September re-pin, which re-sorted the feed by content hash, handed the
     returns control to the congressional-district US row (microcosm#1035).
     """
     controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
-    tied_record_ids: dict[tuple[str, str, str], set[str]] = {}
+    tied: dict[tuple[str, str, str], set[tuple[str, float, str]]] = {}
     target_period_key = _period_key_from_value(target_period)
     for fact in facts:
         key = _soi_capital_gains_control_key_from_fact(fact)
@@ -1610,26 +1613,28 @@ def _soi_capital_gains_active_totals(
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
+        candidate = _SoiTotalControl(
+            value=_numeric_value(fact),
+            source_period=str(_period_value(fact)),
+            source_record_id=source_record_id,
+            period_key=period_key,
+        )
+        identity = (source_record_id, candidate.value, candidate.source_period)
         current = controls.get(key)
         if current is not None and period_key[:2] == current.period_key[:2]:
-            tied_record_ids[key].add(source_record_id)
+            tied[key].add(identity)
             continue
         if current is None or period_key[:2] > current.period_key[:2]:
-            controls[key] = _SoiTotalControl(
-                value=_numeric_value(fact),
-                source_period=str(_period_value(fact)),
-                source_record_id=source_record_id,
-                period_key=period_key,
-            )
-            tied_record_ids[key] = {source_record_id}
+            controls[key] = candidate
+            tied[key] = {identity}
     ambiguous = {
-        key: sorted(record_ids)
-        for key, record_ids in tied_record_ids.items()
-        if len(record_ids) > 1
+        key: sorted(candidates)
+        for key, candidates in tied.items()
+        if len(candidates) > 1
     }
     if ambiguous:
         raise AmbiguousSoiCapitalGainsControlError(
-            "SOI capital-gains control is ambiguous: different records tie at "
+            "SOI capital-gains control is ambiguous: different candidates tie at "
             f"the latest period for {ambiguous}. Deduplicate them upstream; "
             "feed order must not pick a rebase control (microcosm#1035)."
         )

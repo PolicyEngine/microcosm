@@ -75,7 +75,7 @@ share of Schedule D gain returns. No IRS state product publishes a gain-only
 count, so this cannot be checked directly. AGI composition is one measurable
 source of difference: weighting each state's HT2 N01000 by AGI class with
 Table 1.4's gain share per class would move TY2022 state targets by −2.9% (WV)
-to +4.3% (DC), with a median of 1.6% and no state beyond 5%.
+to +4.3% (DC), with a median absolute change of 1.6% and no state beyond 5%.
 
 ## How the returns control drifted
 

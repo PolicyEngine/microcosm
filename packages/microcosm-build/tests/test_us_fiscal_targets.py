@@ -4804,6 +4804,57 @@ def test_capital_gains_control_refuses_two_matched_records_at_one_period() -> No
     )
 
 
+def _t14_returns_fact(period: object, *, record_id: str, value: float) -> dict:
+    fact = _soi_capital_gains_fact(
+        2023,
+        source_record_id=record_id,
+        measure_id="net_capital_gains_returns",
+        layout_record_set_id="irs_soi.ty2023.table_1_4",
+        value=value,
+    )
+    fact["period"] = {**fact["period"], "value": period}
+    return fact
+
+
+@pytest.mark.parametrize(
+    "rival",
+    [
+        # One record id carrying two values: order would pick the value.
+        {"period": 2023, "record_id": _CG_T14_RETURNS, "value": 41.0},
+        # Another record at the same period under an equivalent label.
+        {
+            "period": "tax_year_2023",
+            "record_id": "irs_soi.ty2023.table_1_4.v2.net_capital_gains_returns",
+            "value": 40.0,
+        },
+    ],
+    ids=["same-id-other-value", "equivalent-period-label"],
+)
+def test_capital_gains_control_refuses_any_ambiguous_candidate(rival) -> None:
+    control = _t14_returns_fact(2023, record_id=_CG_T14_RETURNS, value=40.0)
+    other = _t14_returns_fact(
+        rival["period"], record_id=rival["record_id"], value=rival["value"]
+    )
+    for ordered in ((control, other), (other, control)):
+        with pytest.raises(fiscal_targets.AmbiguousSoiCapitalGainsControlError):
+            fiscal_targets._soi_capital_gains_active_totals(ordered, target_period=2024)
+
+
+def test_capital_gains_tie_at_a_superseded_period_is_not_ambiguous() -> None:
+    """Only a tie at the winning period matters: a later control supersedes
+    an older tie, in any order."""
+    older = (
+        _t14_returns_fact(2022, record_id="irs_soi.ty2022.table_1_4.a", value=1.0),
+        _t14_returns_fact(2022, record_id="irs_soi.ty2022.table_1_4.b", value=2.0),
+    )
+    latest = _t14_returns_fact(2023, record_id=_CG_T14_RETURNS, value=40.0)
+    for ordered in ((*older, latest), (latest, *older), (older[0], latest, older[1])):
+        (control,) = fiscal_targets._soi_capital_gains_active_totals(
+            ordered, target_period=2024
+        ).values()
+        assert (control.source_record_id, control.value) == (_CG_T14_RETURNS, 40.0)
+
+
 @pytest.mark.parametrize(
     ("record_set_id", "family"),
     [
