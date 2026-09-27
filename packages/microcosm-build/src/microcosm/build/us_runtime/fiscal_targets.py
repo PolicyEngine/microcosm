@@ -45,6 +45,7 @@ from microcosm.calibrate import (
 from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 __all__ = [
+    "AmbiguousSoiCapitalGainsControlError",
     "US_FISCAL_MACRO_REALISM_BANDS",
     "US_FISCAL_TARGET_REGISTRY",
     "US_FISCAL_TARGET_SPECS",
@@ -1471,13 +1472,62 @@ class _SoiTotalControl:
     period_key: tuple[int, int, str]
 
 
+#: What an SOI record-set family's ``net_capital_gains_*`` columns count, read
+#: from the published IRS workbooks and documentation guides, TY2020-TY2023
+#: (microcosm#1035):
+#:
+#: - Table 1.4 cols 37/38, "Sales of capital assets reported on Form 1040,
+#:   Schedule D: Taxable net gain", cover Schedule D returns that net to a
+#:   gain. Returns reporting only capital gain distributions on Form 1040
+#:   (col 35) and Schedule D loss returns (col 39) are outside them: Table 1.3
+#:   row 18 "Sales of capital assets net gain" equals col 35 + col 37 exactly.
+#: - Historic Table 2 and the congressional-district file carry N01000/A01000,
+#:   which both documentation guides define as "Number of returns with net
+#:   capital gain (less loss)" / "Net capital gain (less loss) amount" at Form
+#:   1040 line 7: a Schedule D gain, a loss-limited Schedule D loss, or
+#:   distributions only. HT2 US N01000 equals Table 1.4 col 35 + col 37 +
+#:   col 39 within 0.25% in each of TY2020-TY2023, and is 2.36x col 37 in
+#:   TY2022. Its amount, net of losses, is 1.4% below col 38 in TY2022.
+#:
+#: A family absent from this register has no reviewed concept and is never a
+#: capital-gains control.
+_SOI_SCHEDULE_D_TAXABLE_NET_GAIN = "schedule_d_taxable_net_gain"
+_SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS = "form_1040_line_7_net_gain_or_loss"
+_SOI_CAPITAL_GAINS_FAMILY_CONCEPTS: dict[str, str] = {
+    "table_1_4": _SOI_SCHEDULE_D_TAXABLE_NET_GAIN,
+    "historic_table_2": _SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS,
+    "congressional_district": _SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS,
+}
+#: The concept ``capital_gains_gross`` measures. It is the positive part of
+#: PE-US ``capital_gains`` (short-term plus long-term, i.e. Schedule D, before
+#: the loss limit); distributions reported without Schedule D are the separate
+#: ``non_sch_d_capital_gains``. Its indicator therefore counts Table 1.4 col 37
+#: returns and its sum is col 38. The model carries no Schedule D loss returns,
+#: so a line-7 count has no model counterpart at any level.
+_SOI_CAPITAL_GAINS_MODEL_CONCEPT = _SOI_SCHEDULE_D_TAXABLE_NET_GAIN
+
+
+class AmbiguousSoiCapitalGainsControlError(ValueError):
+    """Two different concept-matched records tie for one capital-gains control."""
+
+
 def _rebase_stale_soi_capital_gains_distributions(
     registry: TargetRegistry,
     facts: tuple[object, ...],
     *,
     target_period: int | str,
 ) -> TargetRegistry:
-    """Use stale SOI capital-gains rows as shares, not hard old-year totals."""
+    """Use Historic Table 2 capital-gains rows as shares of a Table 1.4 level.
+
+    HT2 rows count Form 1040 line 7 (gain or loss), a population
+    ``capital_gains_gross`` cannot measure, so they never ship as levels. Each
+    one ships as its share of the HT2 national total, scaled to the
+    concept-matched control of ``_soi_capital_gains_active_totals`` at or after
+    its own period, and declares the bridge in ``soi_source_concept`` /
+    ``soi_control_concept``. Without such a control, the row is dropped. The
+    national all-AGI HT2 rows retire because the control's own row owns the
+    national concept.
+    """
 
     controls = _soi_capital_gains_active_totals(
         facts,
@@ -1494,15 +1544,11 @@ def _rebase_stale_soi_capital_gains_distributions(
         key = _soi_capital_gains_control_key_from_spec(spec)
         control = controls.get(key)
         source_total = stale_national_totals.get((*key, spec.metadata["source_period"]))
-        if control is None:
-            specs.append(spec)
-            continue
-        if source_total in (None, 0):
-            continue
-        if not _period_not_before(
+        if control is None or not _period_not_before(
             control.period_key, _period_key_from_value(spec.metadata["source_period"])
         ):
-            specs.append(spec)
+            continue
+        if source_total in (None, 0):
             continue
 
         if _is_national_all_agi_spec(spec):
@@ -1525,6 +1571,8 @@ def _rebase_stale_soi_capital_gains_distributions(
                     "uprating_index_source_record_id": control.source_record_id,
                     "uprating_factor": _format_float(factor),
                     "stale_distribution_rebased_to_active_total": "true",
+                    "soi_source_concept": _SOI_FORM_1040_LINE_7_NET_GAIN_OR_LOSS,
+                    "soi_control_concept": _SOI_CAPITAL_GAINS_MODEL_CONCEPT,
                 },
             )
         )
@@ -1536,13 +1584,25 @@ def _soi_capital_gains_active_totals(
     *,
     target_period: int | str,
 ) -> dict[tuple[str, str, str], _SoiTotalControl]:
+    """The capital-gains control per (measure, filing status, universe).
+
+    Only a national full-AGI fact whose family counts what
+    ``capital_gains_gross`` measures qualifies, so HT2 and
+    congressional-district rows never do, whatever their period stamp. The
+    latest qualifying period not after the build period wins, and the choice
+    depends on the fact set alone: two different records at the winning
+    period refuse the compile. Feed order used to break that tie, and the
+    September re-pin, which re-sorted the feed by content hash, handed the
+    returns control to the congressional-district US row (microcosm#1035).
+    """
     controls: dict[tuple[str, str, str], _SoiTotalControl] = {}
+    tied_record_ids: dict[tuple[str, str, str], set[str]] = {}
     target_period_key = _period_key_from_value(target_period)
     for fact in facts:
         key = _soi_capital_gains_control_key_from_fact(fact)
         if key is None:
             continue
-        if _is_stale_soi_historic_capital_gains_fact(fact):
+        if _soi_capital_gains_concept(fact) != _SOI_CAPITAL_GAINS_MODEL_CONCEPT:
             continue
         period_key = _period_key(fact)
         if not _not_after_target_period(period_key, target_period_key):
@@ -1550,20 +1610,57 @@ def _soi_capital_gains_active_totals(
         source_record_id = _source_record_id(fact)
         if not source_record_id:
             continue
-        candidate = _SoiTotalControl(
-            value=_numeric_value(fact),
-            source_period=str(_period_value(fact)),
-            source_record_id=source_record_id,
-            period_key=period_key,
-        )
         current = controls.get(key)
-        if current is None or _prefer_candidate(
-            candidate.period_key,
-            current.period_key,
-            target_period_key=target_period_key,
-        ):
-            controls[key] = candidate
+        if current is not None and period_key[:2] == current.period_key[:2]:
+            tied_record_ids[key].add(source_record_id)
+            continue
+        if current is None or period_key[:2] > current.period_key[:2]:
+            controls[key] = _SoiTotalControl(
+                value=_numeric_value(fact),
+                source_period=str(_period_value(fact)),
+                source_record_id=source_record_id,
+                period_key=period_key,
+            )
+            tied_record_ids[key] = {source_record_id}
+    ambiguous = {
+        key: sorted(record_ids)
+        for key, record_ids in tied_record_ids.items()
+        if len(record_ids) > 1
+    }
+    if ambiguous:
+        raise AmbiguousSoiCapitalGainsControlError(
+            "SOI capital-gains control is ambiguous: different records tie at "
+            f"the latest period for {ambiguous}. Deduplicate them upstream; "
+            "feed order must not pick a rebase control (microcosm#1035)."
+        )
     return controls
+
+
+def _soi_record_set_family(record_set_id: str) -> str:
+    """An SOI record set's table family, without period or data vintage.
+
+    ``irs_soi.ty2023.table_1_4`` is ``table_1_4``,
+    ``irs_soi.ty2022.historic_table_2.state_broad`` is ``historic_table_2`` and
+    ``irs_soi.ty2023.congressional_district_2022.all_returns`` is
+    ``congressional_district``.
+    """
+    parts = record_set_id.split(".")
+    if parts[0] != "irs_soi":
+        return ""
+    rest = parts[2:] if len(parts) > 1 and _is_period_token(parts[1]) else parts[1:]
+    if not rest:
+        return ""
+    family = rest[0]
+    if family.startswith("congressional_district"):
+        return "congressional_district"
+    return family
+
+
+def _soi_capital_gains_concept(fact: object) -> str | None:
+    """The reviewed IRS concept of a capital-gains fact's family, if any."""
+    return _SOI_CAPITAL_GAINS_FAMILY_CONCEPTS.get(
+        _soi_record_set_family(_str_at(fact, "layout", "record_set_id"))
+    )
 
 
 def _soi_capital_gains_stale_national_totals(
