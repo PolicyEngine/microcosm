@@ -1,0 +1,44 @@
+{
+ "500k-1M": {
+  "agi_bn": 1299.1493857223898,
+  "cand_wages_pct": 51.3087146505716,
+  "soi_wages_pct": 60.1,
+  "cand_net_cg_pct": 17.73423662278216,
+  "soi_net_cg_pct": 8.2
+ },
+ "1M-1.5M": {
+  "agi_bn": 482.3513937207277,
+  "cand_wages_pct": 42.352429412002444,
+  "soi_wages_pct": 47.6,
+  "cand_net_cg_pct": 19.07240106407821,
+  "soi_net_cg_pct": 12.2
+ },
+ "1.5M-2M": {
+  "agi_bn": 274.95998184540053,
+  "cand_wages_pct": 46.083144131631535,
+  "soi_wages_pct": 40.3,
+  "cand_net_cg_pct": 19.23652023810555,
+  "soi_net_cg_pct": 14.4
+ },
+ "2M-5M": {
+  "agi_bn": 655.2125774702369,
+  "cand_wages_pct": 24.725477205611742,
+  "soi_wages_pct": 33.1,
+  "cand_net_cg_pct": 28.174070561419374,
+  "soi_net_cg_pct": 18.1
+ },
+ "5M-10M": {
+  "agi_bn": 365.667681293509,
+  "cand_wages_pct": 26.881453575796286,
+  "soi_wages_pct": 26.3,
+  "cand_net_cg_pct": 32.35979185487453,
+  "soi_net_cg_pct": 24.2
+ },
+ "10M+": {
+  "agi_bn": 987.082105827065,
+  "cand_wages_pct": 17.60957953057645,
+  "soi_wages_pct": 17.0,
+  "cand_net_cg_pct": 52.49461884174599,
+  "soi_net_cg_pct": 39.5
+ }
+}

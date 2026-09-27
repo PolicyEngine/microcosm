@@ -1,0 +1,141 @@
+{
+ "households": 72468,
+ "adjustable_households": 39396,
+ "capped_at_5x": 70,
+ "max_weight_ratio": 5.0,
+ "min_weight_ratio": 0.0020502593613960394,
+ "below_100k_uniform_factor": 1.0723888421378365,
+ "weight_total_before_m": 122.60832623638544,
+ "weight_total_after_m": 122.60832623638545,
+ "converged_max_abs_rel_error": 5.5996984826833796e-11,
+ "rows": [
+  {
+   "name": "irs_soi.ty2023.table_1_1.100k_to_200k.adjusted_gross_income",
+   "target": 4151301907372.7075,
+   "before": 4176851172191.975,
+   "after": 4151301907372.709,
+   "before_rel": 0.006154518603884718,
+   "after_rel": 4.440892098500626e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.200k_to_500k.adjusted_gross_income",
+   "target": 3428938030287.7554,
+   "before": 4057574318771.6826,
+   "after": 3428938030287.7563,
+   "before_rel": 0.1833326478726629,
+   "after_rel": 2.220446049250313e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.500k_to_1m.adjusted_gross_income",
+   "target": 1299149385722.3894,
+   "before": 1600534325769.7083,
+   "after": 1299149385722.3896,
+   "before_rel": 0.23198636227637093,
+   "after_rel": 2.220446049250313e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.1m_to_1_5m.adjusted_gross_income",
+   "target": 482351393720.7279,
+   "before": 1440011355722.4368,
+   "after": 482351393720.7279,
+   "before_rel": 1.9853989735876567,
+   "after_rel": 0.0
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.1_5m_to_2m.adjusted_gross_income",
+   "target": 274959981845.4005,
+   "before": 546267128031.73975,
+   "after": 274959981845.40063,
+   "before_rel": 0.9867150280031836,
+   "after_rel": 4.440892098500626e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.2m_to_5m.adjusted_gross_income",
+   "target": 655212577470.0013,
+   "before": 685845194964.1956,
+   "after": 655212577470.0012,
+   "before_rel": 0.04675218173081652,
+   "after_rel": -2.220446049250313e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.5m_to_10m.adjusted_gross_income",
+   "target": 365667681293.509,
+   "before": 216004325520.1666,
+   "after": 365667681313.06854,
+   "before_rel": -0.4092878956213052,
+   "after_rel": 5.349010123723019e-11
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.10m_plus.adjusted_gross_income",
+   "target": 987082105827.0651,
+   "before": 427803137825.4431,
+   "after": 987082105827.0646,
+   "before_rel": -0.5665982238964897,
+   "after_rel": -4.440892098500626e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.100k_to_200k.return_count",
+   "target": 27602755.0,
+   "before": 29275569.013769917,
+   "after": 27602754.99999999,
+   "before_rel": 0.0606031540608869,
+   "after_rel": -4.440892098500626e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.200k_to_500k.return_count",
+   "target": 10955818.0,
+   "before": 13687773.111342497,
+   "after": 10955817.999999996,
+   "before_rel": 0.24936112587325732,
+   "after_rel": -3.3306690738754696e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.500k_to_1m.return_count",
+   "target": 1779720.0,
+   "before": 2353187.0028425637,
+   "after": 1779720.0,
+   "before_rel": 0.32222316029631837,
+   "after_rel": 0.0
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.1m_to_1_5m.return_count",
+   "target": 368931.0,
+   "before": 1199799.5720325287,
+   "after": 368931.00000000006,
+   "before_rel": 2.252097470888943,
+   "after_rel": 2.220446049250313e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.1_5m_to_2m.return_count",
+   "target": 147290.0,
+   "before": 326451.7703970565,
+   "after": 147290.0,
+   "before_rel": 1.2163878769574068,
+   "after_rel": 0.0
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.2m_to_5m.return_count",
+   "target": 203229.0,
+   "before": 246217.59235059185,
+   "after": 203229.0000000001,
+   "before_rel": 0.2115278447002733,
+   "after_rel": 4.440892098500626e-16
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.5m_to_10m.return_count",
+   "target": 49262.0,
+   "before": 33034.03193528694,
+   "after": 49262.00000275852,
+   "before_rel": -0.32942162447145995,
+   "after_rel": 5.5996984826833796e-11
+  },
+  {
+   "name": "irs_soi.ty2023.table_1_1.10m_plus.return_count",
+   "target": 30382.0,
+   "before": 12806.574008806396,
+   "after": 30382.000000000004,
+   "before_rel": -0.578481534829623,
+   "after_rel": 2.220446049250313e-16
+  }
+ ]
+}

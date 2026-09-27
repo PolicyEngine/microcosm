@@ -1,0 +1,1 @@
+Bind the national SOI Table 1.1 size-of-AGI distribution (return counts and AGI, size classes from $100k up) as shares of the active national control, so calibration anchors the shape of the upper income distribution and not only its total (#958).
