@@ -1,0 +1,90 @@
+{
+  "chambers": [
+    {
+      "area_type": "sldu",
+      "max_realized_weight_ratio": 89.5111503253955,
+      "median_fraction_within_10pct": 1.0,
+      "n_districts": 29,
+      "past_at_final": 0,
+      "pushed_out": 0
+    },
+    {
+      "area_type": "sldl",
+      "max_realized_weight_ratio": 100.0,
+      "median_fraction_within_10pct": 0.9714285714285714,
+      "n_districts": 75,
+      "past_at_final": 0,
+      "pushed_out": 0
+    }
+  ],
+  "doctrine": {
+    "anchor_rule": "artifact_calibrated_weights",
+    "max_weight_ratio": 100.0,
+    "min_initial_weight": 0.0001,
+    "scale_rule": "default_target_loss_scales",
+    "target_loss_cap": 10.0,
+    "target_weight_rule": "uniform"
+  },
+  "environment": {
+    "git_sha": "bf465c6644c6f3bb3c8b0e2c0cd646c6d29fad0b",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "python": "3.14.4",
+    "torch": "2.12.0"
+  },
+  "household_universe": {
+    "gq_marker_present": true,
+    "n_group_quarters_rows": 1617,
+    "statement": "household counts and income brackets bind on housing-unit households only (ACS TYPEHUGQ 1); group-quarters rows support the population age bands"
+  },
+  "inputs": {
+    "artifact_h5": {
+      "path": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/515b7398d7b4414694865b7a95e4c3f1faa2edb5/populace_us_2024_acs_local.h5",
+      "sha256": "71763290ded993789af0ad818fd833a6aabb9ca7ff7d14f78315340d8617c6f4"
+    },
+    "membership_ladder": {
+      "path": "/private/tmp/claude-501/-Users-maxghenis-PolicyEngine-populace--claude-worktrees-musing-bardeen-994886/396b617b-ef7b-4224-bdcb-c40a9d98a429/scratchpad/us_sld_membership_ladder_2024_v2.npz",
+      "sha256": "34d99fc413a8d213b680346c49e2f2a787bc7f8cf52816bf9614e12c1c8ac080"
+    },
+    "sld_facts": {
+      "path": "/private/tmp/claude-501/-Users-maxghenis-PolicyEngine-microcosm--claude-worktrees-musing-bardeen-994886/396b617b-ef7b-4224-bdcb-c40a9d98a429/scratchpad/ut_sld_facts_2024_v2.jsonl",
+      "sha256": "b32b9e6f9c7698b9a0c6ea2320479a0504a2793ec2bfde8dbe88d6791f44ff19"
+    }
+  },
+  "ladder_vintage": {
+    "boundary_vintage": "2024_state_legislative_districts",
+    "source_kind": "census_2024_sld_bef"
+  },
+  "membership_gate": {
+    "method_counts": {
+      "puma_cd_county_draw": 12972,
+      "puma_county_draw": 718,
+      "tract_exact": 490,
+      "tract_split_draw": 371
+    },
+    "n_rows": 14551,
+    "tract_degraded_rows": 0,
+    "unassigned_share": 0.0,
+    "unassigned_weight_share": 0.0
+  },
+  "schema_version": 1,
+  "scope_states": [
+    "49"
+  ],
+  "sidecar_sha256": {
+    "sld_achieved_vs_target.csv.gz": "3293c1f57ca43ca901acc9e3df4ff6b93a43e2e4059db148650e5c8faa8e404d",
+    "sld_local_boundaries.json": "9b8be4a893f6c615ded8be1761d74309e9a92a0070b4ef37089529fc95a1711d",
+    "sld_local_boundaries.md": "4b27d3f6b5ab7580693f529963d21ab5d03b2d8d47b5236136fad047c31df355",
+    "sld_local_diagnostics.json": "39f551049f4e8eb7d362f33123499ca97424beb2e1e3dddb36025555e8b5b927",
+    "sld_local_weights.csv.gz": "0fa275bfee7f7f89ea55bf4a11027cd0f3ef3746f9a77319bce1196f696d0066"
+  },
+  "solver": {
+    "epochs": 512,
+    "learning_rate": 0.15,
+    "seed": 0
+  },
+  "zero_support_districts": {
+    "sldl": [],
+    "sldu": []
+  }
+}
