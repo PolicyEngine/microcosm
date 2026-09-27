@@ -116,6 +116,9 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     load_congressional_district_vintage_crosswalk,
 )
+from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
@@ -2447,6 +2450,21 @@ class _PoolStageCheckpointStore:
                     f"{expected_identity_sha256}."
                 )
                 return None
+            missing_outputs = _checkpoint_missing_person_outputs(manifest, stage=stage)
+            if missing_outputs:
+                # The retiring pipeline's identity is byte-stable and does not
+                # bind the source-stage outputs, so a checkpoint written before
+                # an output existed still matches it. Reusing it would skip the
+                # stage that adds the column (microcosm#884); recompute instead.
+                self._attempts[stage] = {
+                    "load_status": "missing_person_outputs",
+                    "ignored_checkpoint": {"missing_person_columns": missing_outputs},
+                }
+                print(
+                    f"Ignored stale pool checkpoint {stage!r} at {path}: "
+                    f"person columns {missing_outputs} are missing."
+                )
+                return None
             if manifest.get("identity_sha256") != expected_identity_sha256:
                 raise ValueError(f"{stage} checkpoint manifest identity digest changed")
             checkpoint_receipt = manifest.get("checkpoint")
@@ -2916,6 +2934,33 @@ def _frame_schema_payload(frame: Frame) -> dict[str, object]:
             for entity in frame.weighted_entities
         },
     }
+
+
+#: Checkpoint stages written after the pre-clone source operators ran, whose
+#: person table must therefore carry every eligibility output.
+_POST_SOURCE_OPERATOR_CHECKPOINT_STAGES = frozenset({"transferred", "simulated"})
+
+
+def _checkpoint_missing_person_outputs(
+    manifest: Mapping[str, object], *, stage: str
+) -> list[str]:
+    """Eligibility outputs a post-operator checkpoint's recorded schema lacks."""
+
+    if stage not in _POST_SOURCE_OPERATOR_CHECKPOINT_STAGES:
+        return []
+    schema = manifest.get("frame_schema")
+    entities = schema.get("entities") if isinstance(schema, Mapping) else None
+    person = entities.get("person") if isinstance(entities, Mapping) else None
+    if not isinstance(person, list):
+        return []
+    present = {
+        str(column.get("name")) for column in person if isinstance(column, Mapping)
+    }
+    return [
+        column
+        for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+        if column not in present
+    ]
 
 
 def _validate_checkpoint_frame(

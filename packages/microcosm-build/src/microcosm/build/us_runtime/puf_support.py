@@ -2314,16 +2314,21 @@ def _remap_person_reference_ids(
 
     ``0`` means "no such person" on these columns, so it must not be shifted
     into ``clone_index * id_multiplier`` — a valid-looking id naming a
-    stranger.
+    stranger. A missing value (a row, such as a preassembled PUF tax-detail
+    person, that never had a parent pointer to resolve) is that same
+    "unknown" and is written as ``0``.
     """
 
+    known = pd.to_numeric(pd.Series(values), errors="coerce").fillna(0)
     shifted = _remap_ids(
-        values,
+        known.to_numpy(),
         clone_index=clone_index,
         id_multiplier=id_multiplier,
     )
-    original = _validated_integral_ids(values, label="PUF support person references")
-    return np.where(original == 0, 0, shifted)
+    original = _validated_integral_ids(
+        known.to_numpy(), label="PUF support person references"
+    )
+    return np.where(original == 0, 0, shifted).astype(np.int64)
 
 
 def _validate_channels(channels: Sequence[str]) -> tuple[str, ...]:

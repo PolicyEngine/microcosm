@@ -2506,7 +2506,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "f830589331dad583398485de5724dace0714d8526fb63b37f81cd783b1cb8f30",
+            "spec_sha256": "1cf1f44d9a11458f59ea7d75dce68303816cab3e66668a6c6f6ecfe62d56f8dc",
         },
     }
 
@@ -7201,3 +7201,46 @@ def test_local_artifact_reference_never_embeds_host_absolute_paths(
     for reference in (repo_reference, home_reference, outside_reference):
         assert not reference.startswith("local:///")
         assert "local://Users/" not in reference
+
+
+def test_post_operator_checkpoint_without_parent_ids_is_stale(
+    pool_tool: ModuleType,
+) -> None:
+    """microcosm#884: the byte-stable legacy identity cannot see new outputs."""
+
+    from microcosm.build.us_runtime.eligibility_inputs import (
+        US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
+    )
+
+    def manifest(columns: list[str]) -> dict[str, object]:
+        return {
+            "frame_schema": {
+                "entities": {
+                    "person": [{"name": name, "dtype": "int64"} for name in columns]
+                }
+            }
+        }
+
+    before = [
+        "person_id",
+        *[c for c in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS if "parent" not in c],
+    ]
+    after = ["person_id", *US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS]
+
+    assert pool_tool._checkpoint_missing_person_outputs(
+        manifest(before), stage="simulated"
+    ) == ["parent_1_id", "parent_2_id"]
+    assert pool_tool._checkpoint_missing_person_outputs(
+        manifest(before), stage="transferred"
+    ) == ["parent_1_id", "parent_2_id"]
+    # Checkpoints written before the source operators run are not bound.
+    assert (
+        pool_tool._checkpoint_missing_person_outputs(
+            manifest(before), stage="assembled"
+        )
+        == []
+    )
+    assert (
+        pool_tool._checkpoint_missing_person_outputs(manifest(after), stage="simulated")
+        == []
+    )

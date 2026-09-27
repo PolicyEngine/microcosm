@@ -571,17 +571,26 @@ class TestGate:
         assert not gate.passed
         assert any("their own parent" in failure for failure in gate.failures)
 
-    def test_count_disagreeing_with_the_pointers_fails(self) -> None:
+    def test_count_below_the_pointers_naming_a_person_fails(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        person = frame.table("person").copy()
+        person.loc[person.index[_PARENT_INDEX], "own_children_in_household"] = 0.0
+        gate = us_eligibility_inputs_signal_gate(_replace_person(frame, person))
+        assert not gate.passed
+        assert any("named as a parent by more" in failure for failure in gate.failures)
+
+    def test_count_above_the_pointers_passes(self) -> None:
+        # ACS rows carry an imputed count with pointers declared unknown, and
+        # a cloned id-0 parent keeps a count no pointer can reach.
         frame = with_us_eligibility_inputs(
             _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
         )
         person = frame.table("person").copy()
         person.loc[person.index[_PARENT_INDEX], "own_children_in_household"] = 7.0
         gate = us_eligibility_inputs_signal_gate(_replace_person(frame, person))
-        assert not gate.passed
-        assert any(
-            "disagrees with the parent pointers" in failure for failure in gate.failures
-        )
+        assert not any("named as a parent" in failure for failure in gate.failures)
 
     def test_null_parent_id_fails(self) -> None:
         frame = with_us_eligibility_inputs(
@@ -631,3 +640,100 @@ class TestGate:
         gate = us_eligibility_inputs_signal_gate(frame)
         assert not gate.passed
         assert any("disabled share" in failure for failure in gate.failures)
+
+
+class TestParentIdReworkRegressions:
+    """Review of microcosm#1032: existing frames, exact ids, int32 consumers."""
+
+    def test_legacy_frame_gets_only_the_parent_ids_appended(self) -> None:
+        # A --base-h5 input carries trusted eligibility values that differ from
+        # a raw re-derivation; adding the new columns must not rewrite them.
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        person = frame.table("person").copy()
+        person.loc[person.index[_VETERAN_INDEX], "veterans_benefits"] = 24_000.0
+        person = person.drop(columns=list(US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS))
+        legacy = _replace_person(frame, person)
+
+        result = with_us_eligibility_inputs(legacy, seed=0, time_period=TIME_PERIOD)
+        out = result.table("person")
+
+        assert out["veterans_benefits"].iloc[_VETERAN_INDEX] == 24_000.0
+        for column in person.columns:
+            pd.testing.assert_series_equal(out[column], person[column])
+        # The raw pointers are still present, so the ids resolve.
+        assert int(out["parent_1_id"].iloc[_CHILD_INDEX]) == int(
+            out["person_id"].iloc[_PARENT_INDEX]
+        )
+
+    def test_legacy_frame_without_raw_pointers_gets_unknown_ids(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        person = frame.table("person").drop(
+            columns=[*US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS, "PEPAR1", "PEPAR2"]
+        )
+        result = with_us_eligibility_inputs(
+            _replace_person(frame, person), seed=0, time_period=TIME_PERIOD
+        )
+        out = result.table("person")
+
+        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS:
+            assert out[column].dtype == np.int64
+            assert (out[column] == 0).all()
+        # All-zero ids mean "unknown", which the gate accepts.
+        assert us_eligibility_inputs_signal_gate(result).passed
+
+    def test_household_ids_past_2_53_are_compared_exactly(self) -> None:
+        big = 10**16
+        frame = with_us_eligibility_inputs(
+            _us_frame(
+                [
+                    {"PH_SEQ": 1, "A_LINENO": 1, "person_household_id": big},
+                    {
+                        "PH_SEQ": 1,
+                        "A_LINENO": 2,
+                        "PEPAR1": 1,
+                        "A_AGE": 8,
+                        "person_household_id": big,
+                    },
+                    {"PH_SEQ": 2, "A_LINENO": 1, "person_household_id": big + 1},
+                    {
+                        "PH_SEQ": 2,
+                        "A_LINENO": 2,
+                        "PEPAR1": 1,
+                        "A_AGE": 8,
+                        "person_household_id": big + 1,
+                    },
+                ]
+            ),
+            seed=0,
+            time_period=TIME_PERIOD,
+        )
+        person = frame.table("person").copy()
+        # Swap the two children's parents: counts still match, homes do not.
+        first, second = person["parent_1_id"].iloc[1], person["parent_1_id"].iloc[3]
+        person.loc[person.index[1], "parent_1_id"] = second
+        person.loc[person.index[3], "parent_1_id"] = first
+        gate = us_eligibility_inputs_signal_gate(_replace_person(frame, person))
+
+        assert any(
+            "outside the pointing person's household" in failure
+            for failure in gate.failures
+        )
+
+    def test_linked_household_ids_must_fit_int32(self) -> None:
+        frame = with_us_eligibility_inputs(
+            _us_frame(_plausible_rows()), seed=0, time_period=TIME_PERIOD
+        )
+        person = frame.table("person").copy()
+        shift = 2**32
+        person["person_id"] = person["person_id"] + shift
+        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS:
+            person[column] = np.where(person[column] > 0, person[column] + shift, 0)
+        gate = us_eligibility_inputs_signal_gate(_replace_person(frame, person))
+
+        assert any("int32" in failure for failure in gate.failures)
+        # The same links with int32-safe ids pass.
+        assert us_eligibility_inputs_signal_gate(frame).passed

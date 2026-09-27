@@ -82,9 +82,14 @@ person, against PH_SEQ values ``asec_pool`` has already made unique
 across pooled ASEC years. The PUF support clone that follows renumbers
 ``person_id``; :func:`microcosm.build.us_runtime.puf_support.clone_us_frame_for_puf_support`
 therefore shifts these two columns with the rest of the person id
-surface, preserving ``0``. The gate below re-checks co-residence and the
-``own_children_in_household`` identity on whatever frame it is handed,
-so a missed remap fails closed instead of exporting a stale pointer.
+surface, preserving ``0``. The gate below re-checks co-residence, the
+count bound, and int32 safety on whatever frame it is handed, so a missed
+remap fails closed instead of exporting a stale pointer.
+
+Existing-frame note: a frame that already carries the pre-#884 outputs
+with signal (a ``--base-h5`` release input) gets only the two id columns
+appended — resolved from the raw pointers if it still has them, ``0``
+otherwise — and no other column is recomputed.
 """
 
 from __future__ import annotations
@@ -143,10 +148,27 @@ US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS: tuple[str, ...] = (
     "veterans_benefits",
 )
 
-#: Release gates require these person columns to carry signal (≥2 values).
-US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS: tuple[str, ...] = (
-    US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+#: The columns this stage owned before the parent ids (microcosm#884).
+_LEGACY_OUTPUT_COLUMNS: tuple[str, ...] = tuple(
+    column
+    for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+    if column not in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
 )
+
+#: Release gates require these person columns to carry signal (≥2 values).
+#: The parent ids are not among them: all-zero parent ids mean "unknown",
+#: which PolicyEngine-US reads as "use the count-based proxy", so a frame
+#: that has no parent pointers to resolve (an ACS-only or legacy base) is
+#: valid with zeros. Their integrity is asserted by
+#: :func:`_parent_id_invariant_failures` instead.
+US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS: tuple[str, ...] = (
+    _LEGACY_OUTPUT_COLUMNS
+)
+
+#: PolicyEngine-US stores ``int`` variables as int32, and matches a parent id
+#: against the household members' ``person_id``. Every id in a household that
+#: carries a parent link must therefore survive an int32 cast unchanged.
+_INT32_MAX = 2**31 - 1
 
 #: The six ASEC disability-difficulty items; 1 means "yes".
 _DISABILITY_DIFFICULTY_COLUMNS: tuple[str, ...] = (
@@ -162,6 +184,13 @@ _DISABILITY_DIFFICULTY_COLUMNS: tuple[str, ...] = (
 #: order. Positional correspondence with
 #: :data:`US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS` is load-bearing.
 _PARENT_POINTER_COLUMNS: tuple[str, ...] = ("PEPAR1", "PEPAR2")
+
+#: Raw columns the parent-id resolution needs on top of ``person_id``.
+_PARENT_ID_SOURCE_COLUMNS: tuple[str, ...] = (
+    *_PARENT_POINTER_COLUMNS,
+    "PH_SEQ",
+    "A_LINENO",
+)
 
 #: The frame's person identifier. Not an ASEC source column: it is the
 #: structural id the stage aligns its output on, so it is already present.
@@ -437,11 +466,20 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
     if frame.schema != US_SCHEMA:
         raise ValueError("US eligibility inputs require the US schema.")
     person = frame.table("person")
-    have_all = all(
-        column in person.columns for column in US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS
+    have_legacy = all(
+        column in person.columns for column in _LEGACY_OUTPUT_COLUMNS
+    ) and _disabled_carries_signal(person)
+    have_parent_ids = all(
+        column in person.columns for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
     )
-    if have_all and _disabled_carries_signal(person):
+    if have_legacy and have_parent_ids:
         return frame
+    if have_legacy:
+        # A frame built before the parent ids existed (e.g. a --base-h5
+        # release input) already carries trusted eligibility inputs. Add the
+        # two id columns and touch nothing else: recomputing the whole stage
+        # here would overwrite carried values with raw-column re-derivations.
+        return _with_parent_ids_appended(frame)
 
     stage_person = person.copy(deep=True)
     stage_person[_PERSON_WEIGHT_COLUMN] = frame.resolve_weights("person").values
@@ -460,6 +498,19 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
                 f"US eligibility-inputs stage output does not cover every "
                 f"person for {column!r}."
             )
+    # Where the relationships are measured, the count and the ids come from
+    # the same pointers, so they must agree exactly. Downstream frames (ACS
+    # rows with imputed counts and zero pointers, clones of the person who
+    # held id 0) only satisfy the weaker gate identity.
+    derived = aligned.reset_index()
+    mismatched = _count_identity_mismatches(derived)
+    if mismatched:
+        raise SourceRuntimeError(
+            "US eligibility-inputs derivation produced own_children_in_household "
+            "counts that disagree with the resolved parent ids for "
+            f"{mismatched} person(s); both read the same PEPAR pointers, so this "
+            "is a derivation defect."
+        )
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     bool_columns = ("is_disabled", "is_blind", "is_full_time_college_student")
@@ -480,6 +531,75 @@ def with_us_eligibility_inputs(frame: Frame, *, seed: int, time_period: int) -> 
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def _with_parent_ids_appended(frame: Frame) -> Frame:
+    """Add ``parent_1_id``/``parent_2_id`` without touching any other column.
+
+    The ids are resolved from the raw ASEC pointers when the person table
+    still carries them (``PEPAR1``/``PEPAR2``, ``PH_SEQ``, ``A_LINENO``) and
+    are ``0`` ("unknown") otherwise, which PolicyEngine-US reads as "use the
+    count-based proxy" — the behavior such a frame had before this column
+    existed.
+    """
+
+    person = frame.table("person")
+    if all(column in person.columns for column in _PARENT_ID_SOURCE_COLUMNS):
+        resolved = _parent_person_ids(person)
+    else:
+        resolved = {
+            column: np.zeros(len(person), dtype=np.int64)
+            for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+        }
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for column, values in resolved.items():
+        tables["person"][column] = np.asarray(values, dtype=np.int64)
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def _pointed_at_counts(
+    person_id: np.ndarray, resolved: dict[str, np.ndarray]
+) -> np.ndarray:
+    """How many people's parent ids name each person (by row)."""
+
+    position_by_id = {
+        identifier: index for index, identifier in enumerate(person_id.tolist())
+    }
+    counts = np.zeros(len(person_id), dtype=np.float64)
+    for column_ids in resolved.values():
+        for value in column_ids[column_ids > 0].tolist():
+            position = position_by_id.get(int(value))
+            if position is not None:
+                counts[position] += 1.0
+    return counts
+
+
+def _count_identity_mismatches(person: pd.DataFrame) -> int:
+    """Rows whose child count differs from the number of ids naming them.
+
+    Exact on a freshly derived CPS frame, except for the one person holding
+    ``person_id`` 0, whom a 0-means-unknown pointer cannot name.
+    """
+
+    person_id = pd.to_numeric(person[_PERSON_ID_COLUMN], errors="raise").to_numpy(
+        dtype=np.int64
+    )
+    resolved = {
+        column: pd.to_numeric(person[column], errors="raise").to_numpy(dtype=np.int64)
+        for column in US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS
+    }
+    observed = pd.to_numeric(
+        person["own_children_in_household"], errors="coerce"
+    ).to_numpy(dtype=np.float64)
+    expected = _pointed_at_counts(person_id, resolved)
+    return int(((observed != expected) & (person_id != 0)).sum())
 
 
 def us_eligibility_inputs_summary(frame: Frame) -> dict[str, object]:
@@ -617,60 +737,70 @@ def _parent_id_invariant_failures(person: pd.DataFrame) -> list[str]:
         if household.isna().any():
             failures.append(f"{household_column!r} carries non-numeric values.")
         else:
+            # Exact integers: household ids can run past 2**53, where a float
+            # comparison would call two different households equal.
+            household_ids = household.to_numpy(dtype=np.int64)
             household_by_id = dict(
-                zip(person_id.tolist(), household.to_numpy().tolist(), strict=True)
+                zip(person_id.tolist(), household_ids.tolist(), strict=True)
             )
+            linked_households: set[int] = set()
             for column, column_ids in resolved.items():
-                pointed = column_ids > 0
-                if not pointed.any():
-                    continue
-                parent_household = np.array(
-                    [
-                        household_by_id.get(int(value), np.nan)
-                        for value in column_ids[pointed]
-                    ],
-                    dtype=np.float64,
-                )
-                offsite = parent_household != household.to_numpy()[pointed]
-                if offsite.any():
+                pointed = np.flatnonzero(column_ids > 0)
+                offsite = 0
+                for row in pointed.tolist():
+                    parent_household = household_by_id.get(int(column_ids[row]))
+                    # A name no person carries is reported above as unknown.
+                    if parent_household is None:
+                        continue
+                    if parent_household != int(household_ids[row]):
+                        offsite += 1
+                    linked_households.add(int(household_ids[row]))
+                if offsite:
                     failures.append(
-                        f"{column}: {int(offsite.sum())} pointer(s) name a "
-                        "person outside the pointing person's household; a "
-                        "parent id is only ever a co-resident."
+                        f"{column}: {offsite} pointer(s) name a person outside "
+                        "the pointing person's household; a parent id is only "
+                        "ever a co-resident."
+                    )
+            if linked_households:
+                in_linked = np.isin(household_ids, list(linked_households))
+                linked_ids = person_id[in_linked]
+                out_of_range = (linked_ids < 0) | (linked_ids > _INT32_MAX)
+                if out_of_range.any():
+                    failures.append(
+                        f"{int(out_of_range.sum())} person_id(s) in households "
+                        f"that carry a parent link fall outside [0, {_INT32_MAX}]. "
+                        "PolicyEngine-US stores parent and person ids as int32, "
+                        "so such ids would wrap and could name the wrong member "
+                        "or collide with the 0 sentinel; renumber person ids "
+                        "(and both parent-id columns with them) before export."
                     )
 
-    expected = np.zeros(len(person), dtype=np.float64)
-    position_by_id = {
-        identifier: index for index, identifier in enumerate(person_id.tolist())
-    }
-    for column_ids in resolved.values():
-        for value in column_ids[column_ids > 0].tolist():
-            position = position_by_id.get(int(value))
-            if position is not None:
-                expected[position] += 1.0
+    # Every id naming a person counts toward that person's own children, so
+    # the count can never be smaller. It can be larger: ACS rows carry an
+    # imputed count with pointers declared unknown, and the person who held
+    # id 0 (unnameable) keeps their count after a clone renumbers them. The
+    # exact equality holds where relationships are measured and is checked
+    # when the stage derives them.
+    pointed_at_by = _pointed_at_counts(person_id, resolved)
     observed = (
         pd.to_numeric(person["own_children_in_household"], errors="coerce")
         .fillna(-1.0)
         .to_numpy(dtype=np.float64)
     )
-    # The person holding id 0 cannot be named by a 0-means-unknown pointer,
-    # so their count is unverifiable here by construction. It is reported as
-    # ``pointers_unnameable_at_person_id_zero`` rather than silently passing.
-    mismatched = (observed != expected) & (person_id != 0)
-    if mismatched.any():
+    overcounted = pointed_at_by > observed
+    if overcounted.any():
         examples = [
             {
                 "person_id": int(person_id[index]),
                 "own_children_in_household": float(observed[index]),
-                "pointed_at_by": float(expected[index]),
+                "pointed_at_by": float(pointed_at_by[index]),
             }
-            for index in np.flatnonzero(mismatched)[:5]
+            for index in np.flatnonzero(overcounted)[:5]
         ]
         failures.append(
-            f"own_children_in_household disagrees with the parent pointers "
-            f"for {int(mismatched.sum())} person(s): the count must equal the "
-            f"number of people whose parent id names them. Examples: "
-            f"{examples}."
+            f"{int(overcounted.sum())} person(s) are named as a parent by more "
+            "people than own_children_in_household counts; a parent id can "
+            f"only name a person's own co-resident child. Examples: {examples}."
         )
     return failures
 
@@ -685,11 +815,12 @@ def us_eligibility_inputs_signal_gate(frame: Frame) -> GateResult:
 
     It also asserts the parent-id identities from
     :func:`_parent_id_invariant_failures`: every resolved pointer names a
-    co-resident person, nobody parents themselves, and
-    ``own_children_in_household`` equals the number of people whose parent
-    ids name that person (microcosm#884). Those are exact identities, so
-    they fail closed on a stale or donated id rather than on an unusual
-    population.
+    co-resident person, nobody parents themselves, nobody is named as a
+    parent by more people than ``own_children_in_household`` counts, and
+    every id in a linked household survives PolicyEngine-US's int32 storage
+    (microcosm#884). Those hold for every valid frame, so they fail closed
+    on a stale or donated id rather than on an unusual population. The
+    parent ids themselves may be all zero ("unknown").
     """
 
     person = frame.table("person")
@@ -709,6 +840,8 @@ def us_eligibility_inputs_signal_gate(frame: Frame) -> GateResult:
 
     summary = us_eligibility_inputs_summary(frame)
     for column, count in summary["unique_counts"].items():
+        if column not in US_ELIGIBILITY_INPUTS_NONCONSTANT_PERSON_COLUMNS:
+            continue
         if count < 2:
             failures.append(
                 f"{column}: constant column (one observed value) — the "
