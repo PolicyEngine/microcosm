@@ -643,6 +643,17 @@ def _runtime_marker(value, depth=0):
     return type(value), id(value)
 
 
+def _closure_marker(name, cell):
+    # Python 3.14 compiles class annotations into an __annotate__ function
+    # closed over the class namespace (the __classdict__ cell). The first read
+    # of the class's annotations caches them in that namespace, so bind its
+    # identity, not its contents. The namespace's functions and classes are
+    # sealed individually by _live.
+    if name == "__classdict__":
+        return name, type(cell.cell_contents), id(cell.cell_contents)
+    return _runtime_marker(cell.cell_contents)
+
+
 def _function_seal(function, depth=0):
     # contextmanager keeps executable code in both __wrapped__ and a closure;
     # the public wrapper's __code__ alone cannot bind that implementation.
@@ -653,7 +664,12 @@ def _function_seal(function, depth=0):
         function.__code__,
         _runtime_marker(function.__defaults__),
         _runtime_marker(function.__kwdefaults__),
-        tuple(_runtime_marker(c.cell_contents) for c in function.__closure__ or ()),
+        tuple(
+            _closure_marker(name, cell)
+            for name, cell in zip(
+                function.__code__.co_freevars, function.__closure__ or (), strict=True
+            )
+        ),
         _function_seal(wrapped, depth + 1)
         if isinstance(wrapped, FunctionType)
         else _runtime_marker(wrapped),

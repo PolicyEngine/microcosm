@@ -873,3 +873,33 @@ def test_semantic_identity_includes_column_and_strata_indexes(tmp_path, monkeypa
     candidate.person.columns.name = None
     candidate.strata.index.name = "different"
     assert owner._frame_identity(candidate) != expected
+
+
+def test_producer_seal_survives_a_lazy_class_annotation_cache():
+    """Reading a producer class's annotations is not a producer change.
+
+    Python 3.14 compiles class annotations into an ``__annotate__`` function
+    closed over the class namespace, and the first read caches them there.
+    The seal binds that namespace by identity, so the cache cannot trip
+    PRODUCER_CHANGED, while a different namespace still does.
+    """
+    import sys
+
+    from microcosm.frame.weights import MassChangeRecord
+
+    assert owner._live() == owner._LIVE
+    MassChangeRecord.__annotations__  # noqa: B018 - populate any lazy cache
+    assert owner._live() == owner._LIVE
+    if sys.version_info < (3, 14):
+        return
+    annotate = MassChangeRecord.__annotate_func__
+    names = annotate.__code__.co_freevars
+    assert "__classdict__" in names
+    cell = annotate.__closure__[names.index("__classdict__")]
+    namespace = cell.cell_contents
+    try:
+        cell.cell_contents = dict(namespace)
+        assert owner._live() != owner._LIVE
+    finally:
+        cell.cell_contents = namespace
+    assert owner._live() == owner._LIVE
