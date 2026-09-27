@@ -158,6 +158,11 @@ def test_a_reviewed_exemption_admits_a_truthful_later_observation() -> None:
     }
     assert not detect_restamped_facts([fact], exemptions=exemptions)
     assert not source_vintage_corrections([fact], exemptions=exemptions)
+    # The exemption covers its reviewed periods only.
+    later = _fact(
+        "bea_regional.cy2026.x", period=2026, raw_r2_key=_raw_key("bea-sainc", 2024)
+    )
+    assert detect_restamped_facts([later], exemptions=exemptions)
     assert US_LATER_PERIOD_OBSERVATION_EXEMPTIONS == {}
 
 
@@ -269,6 +274,33 @@ def test_a_restamped_fact_in_an_aging_chain_index_is_refused() -> None:
         check_restamps_stay_out_of_aging_indexes(chain, {restamped_id: correction})
     check_restamps_stay_out_of_aging_indexes(chain, {_TIPS_2023: _CORRECTION})
     check_restamps_stay_out_of_aging_indexes(chain, {})
+
+
+def test_a_restamped_fact_in_the_cbo_projection_index_is_refused() -> None:
+    projection_id = (
+        "cbo.revenue_projection.ty2023.income_by_source.wages_and_salaries."
+        "projected_amount"
+    )
+    projection = {
+        "assertion": "source_projection",
+        "lineage": {"source_record_id": projection_id},
+        "period": {"type": "tax_year", "value": 2023},
+        "value": 1e13,
+        "layout": {
+            "record_set_id": "cbo.revenue_projection.ty2023.income_by_source",
+            "groupby_dimension": "cbo.income_source",
+            "groupby_value_id": "wages_and_salaries",
+        },
+        "observed_measure": {
+            "source_name": "cbo",
+            "source_measure_id": "projected_amount",
+        },
+    }
+    correction = SourceVintageCorrection(projection_id, "cbo-2026-02", 2023, 2022)
+    with pytest.raises(RestampedAgingIndexError, match="cbo.revenue_projection"):
+        check_restamps_stay_out_of_aging_indexes(
+            [projection], {projection_id: correction}
+        )
 
 
 _CORRECTION = SourceVintageCorrection(

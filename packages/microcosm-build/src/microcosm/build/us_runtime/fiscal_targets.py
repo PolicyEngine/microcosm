@@ -36,7 +36,6 @@ from microcosm.build.us_runtime.source_vintage import (
     source_vintage_corrections,
 )
 from microcosm.build.us_runtime.target_aging import (
-    _period_year,
     age_us_dollar_targets,
     enforce_period_contract,
 )
@@ -1027,7 +1026,8 @@ def compile_us_fiscal_target_registry(
     # build year, PolicyEngine/chronicle#117). Refuses a restamp that is not
     # in the reviewed register, or one an aging index would read at its stamp.
     restamps = source_vintage_corrections(materialized_facts)
-    check_restamps_stay_out_of_aging_indexes(materialized_facts, restamps)
+    if age_targets:
+        check_restamps_stay_out_of_aging_indexes(materialized_facts, restamps)
     references = (
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
@@ -2336,7 +2336,6 @@ def _latest_dynamic_target_references(
     the stamp would pick the older data (microcosm#1030 review).
     """
 
-    facts = tuple(facts)
     candidates: list[
         tuple[
             tuple[str, ...],
@@ -2362,7 +2361,11 @@ def _latest_dynamic_target_references(
                 )
             )
     if restamps:
-        _refuse_restamps_that_shadow_newer_vintages(candidates, facts, restamps)
+        _refuse_restamps_that_shadow_newer_vintages(
+            candidates,
+            restamps,
+            target_period_key=_period_key_from_value(target_period),
+        )
     keys_with_positive_observations = {
         key for key, _, value, _, _ in candidates if value > 0
     }
@@ -2397,36 +2400,42 @@ def _latest_dynamic_target_references(
 
 
 def _refuse_restamps_that_shadow_newer_vintages(
-    candidates: Iterable[tuple[tuple[str, ...], object, float, str, object]],
-    facts: Iterable[object],
+    candidates: Iterable[
+        tuple[tuple[str, ...], tuple[int, int, str], float, str, object]
+    ],
     restamps: Mapping[str, SourceVintageCorrection],
+    *,
+    target_period_key: tuple[int, int, str],
 ) -> None:
     """Refuse a restamped candidate that would outrank newer truthful data.
 
     A TY2020 cell stamped 2023 beats a truthful TY2021 fact of the same
     target shape on the stamp alone, and the newer data would drop silently.
-    None exists on the pinned feed: the ty2020 W-2 twins sit at the data
-    year, not after it.
+    A truthful fact dated from the year after the restamp's data year up to
+    its stamp is shadowed; only candidates eligible at the target period
+    count. None exists on the pinned feed: the ty2020 W-2 twins sit at the
+    data year, not after it.
     """
 
-    candidates = tuple(candidates)
+    eligible = [
+        candidate
+        for candidate in candidates
+        if _not_after_target_period(candidate[1], target_period_key)
+    ]
     restamped_keys: dict[tuple[str, ...], list[SourceVintageCorrection]] = {}
-    for key, _, _, source_record_id, _ in candidates:
+    for key, _, _, source_record_id, _ in eligible:
         restamp = restamps.get(source_record_id)
         if restamp is not None:
             restamped_keys.setdefault(key, []).append(restamp)
     if not restamped_keys:
         return
-    years = {
-        _source_record_id(fact): _period_year(_period_value(fact)) for fact in facts
-    }
     conflicts: list[str] = []
-    for key, _, _, source_record_id, _ in candidates:
-        if source_record_id in restamps:
+    for key, period_key, _, source_record_id, _ in eligible:
+        if source_record_id in restamps or not period_key[0]:
             continue
-        year = years.get(source_record_id)
+        year = period_key[1] // 100
         for restamp in restamped_keys.get(key, ()):
-            if year is not None and restamp.data_year < year <= restamp.stamped_year:
+            if restamp.data_year < year <= restamp.stamped_year:
                 conflicts.append(
                     f"{restamp.source_record_id} ({restamp.label}) would outrank "
                     f"{source_record_id} ({year})"

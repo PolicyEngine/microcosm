@@ -1296,6 +1296,49 @@ def test_pinned_feed_w2_tips_amount_ages_from_tax_year_2020(
     assert spec.value == pytest.approx(34_287_530_779, abs=1)
 
 
+def test_pinned_feed_corrects_the_translated_congressional_district_specs(
+    pinned_feed_national_state_surface,
+) -> None:
+    """Most corrections land on congressional-district facts that the vintage
+    crosswalk re-keys (``current_cd.*``). Detection runs on the translated
+    facts, so every translated spec carries the correction, and the dollar
+    ones age on the chained bridge from TY2022."""
+    from collections import Counter
+
+    registry, _, _ = pinned_feed_national_state_surface
+    corrected = Counter(
+        (
+            spec.metadata["source_vintage_correction"].split(":")[0],
+            ".current_cd." in spec.metadata["ledger_source_record_id"],
+            spec.metadata["aging_factor_source"].startswith("chained:"),
+        )
+        for spec in registry.specs
+        if "source_vintage_correction" in spec.metadata
+    )
+    assert corrected == {
+        ("soi-congressional-district-2022", True, True): 11_772,
+        ("soi-congressional-district-2022", True, False): 12_208,
+        ("soi-congressional-district-2022", False, True): 1_404,
+        ("soi-congressional-district-2022", False, False): 1_404,
+        ("soi-state-2022", False, False): 2,
+        ("soi-w2-statistics-2020", False, True): 1,
+    }
+    assert all(
+        spec.metadata["source_period"] == "2022"
+        for spec in registry.specs
+        if spec.metadata.get("source_vintage_correction", "").startswith(
+            "soi-congressional-district-2022"
+        )
+    )
+    assert (
+        sum(
+            "uprating_index_source_vintage_correction" in spec.metadata
+            for spec in registry.specs
+        )
+        == 60
+    )
+
+
 def test_pinned_feed_capital_gains_returns_control_reads_its_data_year(
     pinned_feed_national_state_surface,
 ) -> None:
@@ -5285,6 +5328,45 @@ def test_compile_refuses_a_restamp_that_would_outrank_newer_data() -> None:
     ]
     with pytest.raises(RestampShadowsNewerVintageError, match="ty2021"):
         compile_us_fiscal_target_registry(facts, target_period=2024, age_targets=True)
+    # A truthful fact at the stamp year itself is shadowed too (the tie-break,
+    # not the data, would decide), and one after the target period is not a
+    # candidate at all.
+    at_stamp = dict(newer, value=31_000_000_000)
+    at_stamp["lineage"] = {
+        "source_record_id": _W2_TIPS_AMOUNT.format(year=2023) + "_truthful"
+    }
+    at_stamp["period"] = {"type": "calendar_year", "value": 2023}
+    for key in ("aggregate_fact_key", "semantic_fact_key", "legacy_fact_key"):
+        at_stamp[key] = str(newer[key]).replace("2021", "2023truthful")
+    with pytest.raises(RestampShadowsNewerVintageError, match="2023"):
+        compile_us_fiscal_target_registry(
+            [
+                *_w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY),
+                at_stamp,
+            ],
+            target_period=2024,
+            age_targets=True,
+        )
+    # Selection eligibility applies first: at target 2022 neither the 2023
+    # restamp nor the 2023 truthful fact is a candidate.
+    from microcosm.build.us_runtime.source_vintage import SourceVintageCorrection
+
+    restamp = SourceVintageCorrection("restamped", "pkg", 2023, 2020)
+    candidates = [
+        (("key",), (1, 202399, "2023"), 1.0, "restamped", None),
+        (("key",), (1, 202399, "2023"), 1.0, "truthful", None),
+    ]
+    fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+        candidates,
+        {"restamped": restamp},
+        target_period_key=(1, 202299, "2022"),
+    )
+    with pytest.raises(RestampShadowsNewerVintageError, match="truthful"):
+        fiscal_targets._refuse_restamps_that_shadow_newer_vintages(
+            candidates,
+            {"restamped": restamp},
+            target_period_key=(1, 202499, "2024"),
+        )
 
     # The honest twin at the data year is not newer data: no refusal.
     twin = dict(newer, value=26_786_522_000)
@@ -5299,6 +5381,35 @@ def test_compile_refuses_a_restamp_that_would_outrank_newer_data() -> None:
         [*_w2_tips_chain_facts(tips_year=2023, raw_r2_key=_W2_RAW_R2_KEY), twin],
         target_period=2024,
         age_targets=True,
+    )
+
+
+def test_compile_refuses_a_restamp_in_an_aging_index_only_when_aging(
+    monkeypatch,
+) -> None:
+    # No registered restamp sits in the chain today; force one to prove the
+    # compile runs the check before aging, and skips it when not aging.
+    from microcosm.build.us_runtime.source_vintage import (
+        RestampedAgingIndexError,
+        SourceVintageCorrection,
+    )
+
+    chain_id = "irs_soi.ty2023.table_1_4.all.wages_salaries_amount"
+    monkeypatch.setattr(
+        fiscal_targets,
+        "source_vintage_corrections",
+        lambda facts: {
+            chain_id: SourceVintageCorrection(chain_id, "soi-t14-2022", 2023, 2022)
+        },
+    )
+    facts = _w2_tips_chain_facts(tips_year=2020)
+    with pytest.raises(RestampedAgingIndexError, match=chain_id):
+        compile_us_fiscal_target_registry(facts, target_period=2024, age_targets=True)
+    compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        age_targets=False,
+        allow_unaged_dollar_targets=True,
     )
 
 
