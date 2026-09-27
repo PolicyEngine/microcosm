@@ -123,6 +123,9 @@ AT-RISK only, `0` clean):
    support but zero selected support **fails** (the input the frozen selection
    cannot express); a thin selection or a signed leaf whose net sign
    contradicts the probe's `expected_sign` is AT-RISK.
+5. **SPM measurement composition** — every SPM unit has a classified adult. A
+   single unit without one makes spm-calculator refuse the whole population's
+   SPM measurement, which the release otherwise hits hours in.
 
 **A new lineage** — a release built on a fresh base with no selection source
 ([docs/us-release-build-rule.md](docs/us-release-build-rule.md) §3) — has no
@@ -151,6 +154,117 @@ to the selection-source manifest or the target/coverage registry. The
 synthetic-fixture unit tests
 (`packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py`) run in the
 normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
+
+### Dry-running the release's registers
+
+The checks above read the raw base. The release's waiver registers are graded on
+something else: the *staged* frame, after the input stages the release runs
+itself. Five QRF stages run inside the release (`scf_wealth`, `org_wages`,
+`ssi_disability_criteria`, `sipp_head_start`, `voluntary_filing_input`), and
+the release grades those registers only at the end. On 2026-09-26, route A run
+`310842b986d7` ran 13,707 s and then failed on its QRF tail-concentration
+waiver register alone. After microcosm#1033 changed the QRF draws:
+
+- four columns crossed the 0.75 top-100 share unwaived (`bond_assets`, which
+  exists only after the release's SCF stage, `domestic_production_ald`,
+  `estate_income` and `w2_wages_from_qualified_business`);
+- two entries went stale (`alimony_expense`, `qualified_bdc_income`);
+- one went thin (`farm_income`).
+
+In that run the input stages took about an hour, target materialization about
+2 h 20 min, and the solve plus terminal gates about half an hour.
+
+The dry run replays the release itself and stops before the expensive part:
+
+```bash
+# The release config a supervisor saved ("argv" holds the full command):
+uv run python tools/dry_run_us_release_gates.py \
+  --release-config run/release-config.json \
+  --json-out run/dry-run-gates.json
+
+# A new base, or a candidate register, against that same config:
+uv run python tools/dry_run_us_release_gates.py \
+  --release-config run/release-config.json \
+  --base-h5 base-out/base_populace_us_2024_puf_support.h5 \
+  --qrf-tail-concentration-exclusions candidate_register.json \
+  --json-out dry-run-gates.json
+
+# Or the release command itself, with one flag added:
+uv run python tools/build_us_fiscal_refresh_release.py <release args> \
+  --dry-run-gates-report dry-run-gates.json
+```
+
+`--dry-run-gates-report` runs the release's own code path: the same argv, base
+load, input stages and pre-solve gates. It stops where the staged frame would
+go to target materialization. There it grades the staged frame at its base
+weights, calling the release tool's own gate functions (none is
+re-implemented), and exits `1` on any certain failure, `2` on AT-RISK only,
+and `0` when clean. An argparse error also exits `2` but writes no report, so
+the wrapper returns `64` whenever no report was written. It writes only its report: nothing under `--out`, no
+staging telemetry, no receipts. A base or donor that the config does not name
+locally is still downloaded, into the same caches the release uses. A refusal
+before the stop point becomes the report's certain failure. The checks:
+
+- **`qrf_tail_register`** covers every QRF output and every register entry. It
+  reports each one's release class at base weights (`over`, `at_or_under`,
+  `thin`, `dense`, `absent`, `non_numeric` or `not_qrf_output`), the verdict
+  that class gives (`used`, `stale`, `unused`, `unwaived` or `waived`), and
+  every verdict the solve could still reach.
+- **`export_input_mass`** runs the export input-mass gate with the staged
+  frame standing in for the export. It classifies the
+  `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
+  `below_reference_floor` or `unused`.
+- **`degenerate_input_register`**, **`ecps_parity_register`**,
+  **`input_coverage_register`**, **`stored_inputs`**, **`spm_composition`**,
+  **`zero_support_preview`** and **`pre_solve_battery`** grade the remaining
+  base-computable pre-export gates. `pre_solve_battery` holds the batched early
+  failures and every signal gate's lines.
+- **`not_previewable`** lists every gate that depends on the solve, on target
+  materialization or on the written H5, so the report never implies coverage
+  it lacks.
+
+The report also records what the run is bound to:
+
+- the base sha256;
+- the build commit;
+- the staged frame's sha256 and the target-frame materializer identity, which
+  the release's own checkpoint will carry;
+- whether an existing target-frame checkpoint matches it, in which case the
+  release will skip materialization;
+- each register's path, sha256 and entry count.
+
+**What is certain.** The solve can change two things: record weights, and on
+the L0 path which records ship. The full-pool solve parametrizes each weight as
+`exp(log w)`, so on that path carrier counts, nonzero shares and every value
+are exact at base weights. A column's top-k share is not exact, and nor is any
+weighted mass. For each graded item the dry run lists the release classes that
+the stated margins allow. If they all give one verdict, the item is certain (a
+FAIL when that verdict fails). If they give several and some fail, the item is
+AT-RISK. With every margin at zero, the verdict equals the release gate's
+verdict at base weights, which the tests check against the release tool's own
+functions. The default margins:
+
+| Margin | Default | Basis |
+| --- | --- | --- |
+| `--dry-run-tail-share-rise-margin` | 0.35 | largest measured rise +0.299 (run 310842b986d7, 32 columns); d177 register pairs up to +0.29 |
+| `--dry-run-tail-share-fall-margin` | 0.05 | largest measured fall −0.033 |
+| `--dry-run-mass-drift-margin` | 0.10 | flags in-band columns near the ±50% edge; measured drift moves reach +0.84, so no nonzero-mass verdict is certain |
+| `--dry-run-support-nonzero-share-margin` | 0.02 | L0 path only; a conservative default, not a measurement |
+| `--dry-run-support-carrier-retention` | 0.25 | L0 path only; a conservative default, not a measurement |
+
+The measurements behind them are in
+[experiments/us-release-dry-run-margin-evidence.md](experiments/us-release-dry-run-margin-evidence.md).
+Graded at base weights with these defaults, run 310842b986d7's register exits
+`1` on `farm_income`, a thin column whose unused entry is certain. Every other
+refused column that the base carries is AT-RISK, and none is PASS (`bond_assets`
+exists only after the release's own stages).
+
+**Run it** after the base build exits and before launching the release, with
+the release config you will launch. Run it again after any change to a waiver
+register. The certainty model lives in
+`microcosm.build.us_runtime.release_gate_dry_run`; its tests
+(`packages/microcosm-build/tests/engine_free/us/test_us_release_gate_dry_run.py`,
+including Hypothesis properties) run in the normal `uv run pytest` suite.
 
 ## Releasing & alerts
 
