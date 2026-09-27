@@ -295,10 +295,11 @@ selection. The merge carries them onto the scorer:
 - An explicit SPM selection is copied once at construction. Every batch engine
   and every reform system receives its own copy, and the manifest block records
   the selection actually used.
-- With no explicit seam, every call keeps main's shape exactly: the default
-  loader and dataset helper see their existing arguments, each engine declares
-  `US_RELEASE_SPM_SELECTION`, and a reform system is built from `reform=`
-  alone. `_main` supplies no seam.
+- With no explicit seam, every engine, dataset and reform-system construction
+  keeps main's call shape: each engine declares `US_RELEASE_SPM_SELECTION`,
+  and a reform system is built from `reform=` alone. Some internal helper calls
+  pass the omitted seams on as explicit `None` keywords, which change no
+  behavior. `_main` supplies no seam.
 - `_score_post_export_consumer`, `_write_reform_validation` and
   `_write_demographics` forward explicit seams only to a scorer they open
   themselves. An existing scorer refuses them.
@@ -370,7 +371,7 @@ relaxes a validation condition.
 | `test_us_asec_census_person_columns.py` | The native health projection names `NOW_CAID`, recorded as "no build reader". | `NOW_CAID` carries a reason of its own. It is read only from the native projection's own pinned member, never the pooled H5, and a test fails if any other module names it. |
 | `test_us_multispine_pool.py` | The ported #779 paired immigration transfer needs ACS `CIT`/`POBP`/`YOEP` on every ACS row; the port omitted #779's ACS loader carriage. | `acs_pums` reads the three as optional person columns, as #765 does for hours. Its reviewed fingerprint is re-pinned. The pool fixture carries them, and the transfer has #779's 35 predictors. |
 | `test_us_population_input_coverage.py` | The native profile froze main's coverage manifest at 163 inputs; main now requires 167 (#959 role, #978 receipts). | Re-extract the profile in manifest order, re-pin the manifest digest, and version the identifiers (`us_release_167_v1`, `us_national_cd_165_v1`, `us_native_national_cd_163_v1`). |
-| 3.14 lanes: PRODUCER_CHANGED | Python 3.14 compiles class annotations into an `__annotate__` closure over the class namespace. The first annotation read caches into that namespace, and the producer seal recorded closure cells by value. | Seal a `__classdict__` cell by identity. A regression test swaps the namespace and requires a seal change; it fails under the old rule. |
+| 3.14 lanes: PRODUCER_CHANGED | On Python 3.14 a class's `__annotate__` function closes over the live class namespace (the `__classdict__` cell), and the producer seal records closure cells by value. `test_us_native_calibration_attachment.py` deep-copies a mass log, and copying caches `__slotnames__` in `MassChangeRecord`'s namespace (`copyreg._slotnames`). That was the only moved entry. | Seal that cell by identity and by its contents minus `__slotnames__` only, so every other class attribute, dataclass fields included, stays sealed. The regression test requires a copy to pass, and an in-place field edit or a replaced namespace to refuse. It fails under both the original and an identity-only rule. |
 | Wheels: UK seam tests | Main's newer seam tests drove the real `run_uk_calibration`, which pins a git commit, without the native invented pin. | They request the invented pin. Production stays strict. |
 | Wheels: donor-receipt producer identity | The native sharded wheels group newly runs this checkout-bound check against installed shards. | Its success and foreign-module tests skip only when the producer's modules are not this checkout's files. |
 | `test_us_fiscal_refresh_builder.py`, `test_us_fiscal_targets.py` | Main tests counted three solve calls in `_main` and main's pinned-feed target counts. | Count the shared solve helper. Main's counts plus exactly the 16 native #958 Table 1.1 size-of-AGI rows, observed by their rebase flag. Every Route A fence assertion holds. |

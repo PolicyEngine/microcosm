@@ -875,26 +875,46 @@ def test_semantic_identity_includes_column_and_strata_indexes(tmp_path, monkeypa
     assert owner._frame_identity(candidate) != expected
 
 
-def test_producer_seal_survives_a_lazy_class_annotation_cache():
-    """Reading a producer class's annotations is not a producer change.
+def test_producer_seal_ignores_only_the_copy_cache_in_a_class_namespace():
+    """Copying a producer dataclass is not a producer change; editing it is.
 
-    Python 3.14 compiles class annotations into an ``__annotate__`` function
-    closed over the class namespace, and the first read caches them there.
-    The seal binds that namespace by identity, so the cache cannot trip
-    PRODUCER_CHANGED, while a different namespace still does.
+    Python 3.14 closes a class's ``__annotate__`` over its live namespace, so
+    the seal covers every class attribute. Copying an instance caches
+    ``__slotnames__`` there (``copyreg._slotnames``), which alone is ignored.
+    An in-place dataclass-field edit and a replaced namespace still refuse.
     """
+    import copyreg
     import sys
 
     from microcosm.frame.weights import MassChangeRecord
 
     assert owner._live() == owner._LIVE
-    MassChangeRecord.__annotations__  # noqa: B018 - populate any lazy cache
-    assert owner._live() == owner._LIVE
+    namespace_had_cache = "__slotnames__" in MassChangeRecord.__dict__
+    if namespace_had_cache:
+        cached = MassChangeRecord.__slotnames__
+        del MassChangeRecord.__slotnames__
+    try:
+        assert owner._live() == owner._LIVE
+        # What copy.deepcopy of an instance calls on first use.
+        copyreg._slotnames(MassChangeRecord)
+        assert "__slotnames__" in MassChangeRecord.__dict__
+        assert owner._live() == owner._LIVE
+    finally:
+        if namespace_had_cache:
+            MassChangeRecord.__slotnames__ = cached
     if sys.version_info < (3, 14):
         return
+    fields = MassChangeRecord.__dataclass_fields__
+    original = list(fields.items())
+    try:
+        del fields[original[-1][0]]
+        assert owner._live() != owner._LIVE
+    finally:
+        fields.clear()
+        fields.update(original)
+    assert owner._live() == owner._LIVE
     annotate = MassChangeRecord.__annotate_func__
     names = annotate.__code__.co_freevars
-    assert "__classdict__" in names
     cell = annotate.__closure__[names.index("__classdict__")]
     namespace = cell.cell_contents
     try:

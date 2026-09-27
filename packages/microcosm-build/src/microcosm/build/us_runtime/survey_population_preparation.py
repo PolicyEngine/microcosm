@@ -643,15 +643,31 @@ def _runtime_marker(value, depth=0):
     return type(value), id(value)
 
 
+# copy and pickle cache a class's slot names in its namespace
+# (copyreg._slotnames); that cache is not producer code.
+_INCIDENTAL_CLASS_NAMESPACE_CACHES = frozenset({"__slotnames__"})
+
+
 def _closure_marker(name, cell):
     # Python 3.14 compiles class annotations into an __annotate__ function
-    # closed over the class namespace (the __classdict__ cell). The first read
-    # of the class's annotations caches them in that namespace, so bind its
-    # identity, not its contents. The namespace's functions and classes are
-    # sealed individually by _live.
-    if name == "__classdict__":
-        return name, type(cell.cell_contents), id(cell.cell_contents)
-    return _runtime_marker(cell.cell_contents)
+    # closed over the live class namespace (the __classdict__ cell), so this
+    # seal binds every attribute of the class, dataclass fields included.
+    # Copying an instance adds __slotnames__ there; only that cache is left
+    # out, and the namespace's identity is bound as well.
+    value = cell.cell_contents
+    if name == "__classdict__" and type(value) is dict:
+        return (
+            name,
+            id(value),
+            _runtime_marker(
+                {
+                    key: item
+                    for key, item in value.items()
+                    if key not in _INCIDENTAL_CLASS_NAMESPACE_CACHES
+                }
+            ),
+        )
+    return _runtime_marker(value)
 
 
 def _function_seal(function, depth=0):
