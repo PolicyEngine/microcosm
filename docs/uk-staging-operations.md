@@ -266,10 +266,11 @@ uv run python tools/build_uk_frs_spine.py \
   --staging-run-id ci-uk-smoke-full-s42
 ```
 
-The workflow `.github/workflows/integration-tests.yml` runs on manual dispatch
-and every pull request to `main`, without a path filter. Its commands live in
-`tools/run_integration_tests.sh`. The test reports total elapsed time and the
-elapsed time for each transformation.
+The `integration-uk` job in `.github/workflows/test.yml` runs on every pull
+request to `main` and every push to `main`, without a path filter. `ci-ok`
+requires the job to pass. Its commands live in `tools/run_integration_tests.sh`.
+The test reports total elapsed time and the elapsed time for each
+transformation.
 
 An authorized operator can verify the current remote layout with the same
 synthetic fixture by omitting `--staging-local-only`, adding

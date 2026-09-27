@@ -92,7 +92,7 @@ uv run python tools/build_us_target_parity_manifest.py
 ```
 
 ```bash
-uv run pytest packages/microcosm-build/tests/test_release_target_parity.py packages/microcosm-build/tests/test_us_chronicle_feed.py
+uv run pytest packages/microcosm-build/tests/engine_free/shared/test_release_target_parity.py packages/microcosm-build/tests/engine_free/us/test_us_chronicle_feed.py
 ```
 
 ## What moved and what did not
