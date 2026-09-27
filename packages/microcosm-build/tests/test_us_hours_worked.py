@@ -5,8 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import pytest
-from hypothesis import given, settings
-from hypothesis import strategies as st
 
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.source_runtime import SourceRuntimeError
@@ -407,32 +405,38 @@ class TestGateFromSummary:
         assert not gate.passed
         assert any(failure.startswith(_WEEKS) for failure in gate.failures)
 
-    @settings(max_examples=300, deadline=None)
-    @given(
-        counts=st.fixed_dictionaries(
-            {column: st.integers(0, 4) for column in _POOL},
-            optional={_WEEKS: st.integers(0, 4)},
-        ),
-        worked_share=st.floats(0.0, 1.0),
-        mean_hours=st.floats(0.0, 80.0),
-    )
-    def test_scope_changes_only_which_counted_columns_are_required(
-        self, counts, worked_share, mean_hours
-    ) -> None:
-        summary = _summary(counts, worked_share=worked_share, mean_hours=mean_hours)
-        pool = us_hours_worked_gate_from_summary(summary, required_columns=_POOL)
-        if _WEEKS in counts:
-            full = us_hours_worked_gate_from_summary(summary)
-            assert (full.passed, full.failures) == (pool.passed, pool.failures)
-        else:
-            with pytest.raises(ValueError, match="complete original summary"):
-                us_hours_worked_gate_from_summary(summary)
-        constant = [column for column, count in counts.items() if count < 2]
-        for column in constant:
-            assert any(failure.startswith(column) for failure in pool.failures)
-        in_bands = 0.35 <= worked_share <= 0.62 and 30.0 <= mean_hours <= 45.0
-        assert pool.passed is (in_bands and not constant)
-        # Failure order follows the declared output order, whatever the scope.
-        named = [f.split(":")[0] for f in pool.failures if ":" in f]
-        assert named == [c for c in US_HOURS_WORKED_OUTPUT_COLUMNS if c in constant]
+    def test_scope_changes_only_which_counted_columns_are_required(self) -> None:
+        # Hypothesis is not installed in the wheels lane; skip there, as the
+        # repo's other property tests do.
+        pytest.importorskip("hypothesis")
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
 
+        @settings(max_examples=300, deadline=None)
+        @given(
+            counts=st.fixed_dictionaries(
+                {column: st.integers(0, 4) for column in _POOL},
+                optional={_WEEKS: st.integers(0, 4)},
+            ),
+            worked_share=st.floats(0.0, 1.0),
+            mean_hours=st.floats(0.0, 80.0),
+        )
+        def check(counts, worked_share, mean_hours) -> None:
+            summary = _summary(counts, worked_share=worked_share, mean_hours=mean_hours)
+            pool = us_hours_worked_gate_from_summary(summary, required_columns=_POOL)
+            if _WEEKS in counts:
+                full = us_hours_worked_gate_from_summary(summary)
+                assert (full.passed, full.failures) == (pool.passed, pool.failures)
+            else:
+                with pytest.raises(ValueError, match="complete original summary"):
+                    us_hours_worked_gate_from_summary(summary)
+            constant = [column for column, count in counts.items() if count < 2]
+            for column in constant:
+                assert any(failure.startswith(column) for failure in pool.failures)
+            in_bands = 0.35 <= worked_share <= 0.62 and 30.0 <= mean_hours <= 45.0
+            assert pool.passed is (in_bands and not constant)
+            # Failure order follows the declared output order, whatever the scope.
+            named = [f.split(":")[0] for f in pool.failures if ":" in f]
+            assert named == [c for c in US_HOURS_WORKED_OUTPUT_COLUMNS if c in constant]
+
+        check()
