@@ -739,7 +739,24 @@ def test_producer_files_are_the_modules_that_are_actually_imported() -> None:
         assert (root / filename).is_file(), filename
 
 
+def _require_checkout_producer() -> None:
+    """Skip where the producer's own modules are not this checkout's files.
+
+    The producer identity binds checkout source paths and a git commit, so it
+    refuses by design in the wheel lane, which executes installed shards; that
+    refusal is itself covered by the local-shards refusal test above.
+    """
+    root = builder._repository_root()
+    actual = Path(builder.cps_carried.__file__).resolve()
+    expected = (
+        root / "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py"
+    ).resolve()
+    if actual != expected:
+        pytest.skip("producer identity binds checkout sources; shards are installed")
+
+
 def test_producer_receipt_hashes_the_code_that_decides_the_channel_counts() -> None:
+    _require_checkout_producer()
     # resolve_acs_donor_channel and Frame.select decide the gate-selected
     # channel counts that refusal 7 judges, so their sources are receipt inputs.
     assert {
@@ -793,6 +810,7 @@ class _ForeignSchema:
 def test_producer_identity_refuses_channel_code_from_elsewhere(
     monkeypatch, name, replacement, filename
 ) -> None:
+    _require_checkout_producer()
     monkeypatch.setattr(builder, name, replacement)
 
     with pytest.raises(builder.DonorQualificationError) as refusal:
