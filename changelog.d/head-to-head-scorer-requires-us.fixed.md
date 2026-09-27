@@ -1,0 +1,1 @@
+The head-to-head scorer tests that load real H5 fixtures now carry the `requires_us` marker, so a no-extras sync (`uv sync --all-packages`) skips them instead of failing on the `policyengine_us` import inside `release._load_frame`.
