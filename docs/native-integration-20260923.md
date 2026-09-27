@@ -355,6 +355,27 @@ The loader's minimal golden vector binds the seed protocol implementation
 digest, so it moves with it:
 `f2047cb96d0d063f40c2d5eb5afa2f3821e5667e49968268d14829bc5e09ab5a`.
 
+## Failures fixed after the `2bce66156` merge
+
+CI on the earlier head and on the merge exposed failures beyond the two
+residuals above. Each was reproduced or diagnosed before the fix, and none
+relaxes a validation condition.
+
+| Failure | Cause | Fix |
+| --- | --- | --- |
+| `test_spec_seed_identity_lock.py` (LOCK) | The seed diagnostic still pinned the native `uv.lock` of `e47adc6db`; `worker_identity.py` already bound the current lock. | Re-pin `LOCK_SHA256` to the committed lock's digest. |
+| 3.13 lanes: `test_us_child_property_verification_operation.py`, `test_us_current_survey_household_domains.py` | Their `sys.monitoring` observers called `clear_tool_id`, which exists only from 3.14, before `free_tool_id`, leaving the tool id claimed. | Zero local events, unregister the callback, check nothing remains, free the id (the pattern `test_us_graph_survey_puf55.py` already used). |
+| `test_us_hours_worked.py`, `test_us_acs_local_release_tool.py` | The native summary gate required all three hours columns; main's #941 pool/ACS gate counts only the two it carries. | `us_hours_worked_gate_from_summary` takes the same `required_columns`, with the strict three-column default. A property test (skipped where hypothesis is absent) checks that the scope changes only which counted columns are required. |
+| `test_us_plan.py` | Native `071f563b1` made the legacy immigration stage require `A_LFSR`, which no base-stage provider supplied, and left the plan's Pew citation at the 2024 report. | `A_LFSR` joins main's #720 Census person restoration as a separately declared post-#720 column. Its codes {0,1,2,3,4,7} were observed complete in all three pinned members. The donor citation now matches the stage's 2025 report. |
+| `test_us_asec_census_person_columns.py` | The native health projection names `NOW_CAID`, recorded as "no build reader". | `NOW_CAID` carries a reason of its own. It is read only from the native projection's own pinned member, never the pooled H5, and a test fails if any other module names it. |
+| `test_us_multispine_pool.py` | The ported #779 paired immigration transfer needs ACS `CIT`/`POBP`/`YOEP` on every ACS row; the port omitted #779's ACS loader carriage. | `acs_pums` reads the three as optional person columns, as #765 does for hours. Its reviewed fingerprint is re-pinned. The pool fixture carries them, and the transfer has #779's 35 predictors. |
+| `test_us_population_input_coverage.py` | The native profile froze main's coverage manifest at 163 inputs; main now requires 167 (#959 role, #978 receipts). | Re-extract the profile in manifest order, re-pin the manifest digest, and version the identifiers (`us_release_167_v1`, `us_national_cd_165_v1`, `us_native_national_cd_163_v1`). |
+| 3.14 lanes: PRODUCER_CHANGED | Python 3.14 compiles class annotations into an `__annotate__` closure over the class namespace. The first annotation read caches into that namespace, and the producer seal recorded closure cells by value. | Seal a `__classdict__` cell by identity. A regression test swaps the namespace and requires a seal change; it fails under the old rule. |
+| Wheels: UK seam tests | Main's newer seam tests drove the real `run_uk_calibration`, which pins a git commit, without the native invented pin. | They request the invented pin. Production stays strict. |
+| Wheels: donor-receipt producer identity | The native sharded wheels group newly runs this checkout-bound check against installed shards. | Its success and foreign-module tests skip only when the producer's modules are not this checkout's files. |
+| `test_us_fiscal_refresh_builder.py`, `test_us_fiscal_targets.py` | Main tests counted three solve calls in `_main` and main's pinned-feed target counts. | Count the shared solve helper. Main's counts plus exactly the 16 native #958 Table 1.1 size-of-AGI rows, observed by their rebase flag. Every Route A fence assertion holds. |
+
+
 ## Local Git recovery and validation record
 
 The sandbox could read the original linked-worktree Git administration but could
