@@ -1376,7 +1376,9 @@ def test_run_uk_calibration_refuses_unresolved_code_pin_before_io(
     assert list(tmp_path.iterdir()) == []
 
 
-def test_run_uk_calibration_accepts_a_caller_minted_attempt_id(monkeypatch, tmp_path):
+def test_run_uk_calibration_accepts_a_caller_minted_attempt_id(
+    monkeypatch, tmp_path, invented_code_pin
+):
     """The rowwise driver mints the id before telemetry opens (microcosm#823)."""
 
     pytest.importorskip("tables")
