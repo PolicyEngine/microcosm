@@ -463,6 +463,26 @@ def _solve_observer(args: argparse.Namespace, telemetry):
     return observer
 
 
+def _require_gate_kernel_completed(manifest, node_id: str) -> None:
+    """Surface a gate battery that recorded an exception instead of a report.
+
+    A GATE kernel preserves a failure inside its receipt rather than raising,
+    so the executor completes the node with no artifacts; the driver then met
+    the missing artifact as a bare KeyError (first licensed graph build). Name
+    the node and the recorded exception instead.
+    """
+
+    receipt = dict(manifest.nodes[node_id].receipt or {})
+    evidence = receipt.get("evidence")
+    if receipt.get("outcome") == "fail" and isinstance(evidence, dict):
+        exception_type = evidence.get("exception_type")
+        if exception_type:
+            raise RuntimeError(
+                f"{node_id} failed inside the gate battery: {exception_type}: "
+                f"{evidence.get('message')}"
+            )
+
+
 def prepare_full_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKFullBuild:
@@ -1165,6 +1185,7 @@ def _execute_full_build(
     )
     _persist_checkpoint(manifest, store, args, "numerical")
     _materialize_evidence(manifest, store, args.out)
+    _require_gate_kernel_completed(manifest, "uk.full.gates.calibrated")
     terminal_files = materialize_uk_terminal_artifacts(
         manifest, store, directory=args.out, stem=stem
     )

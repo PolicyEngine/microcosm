@@ -20,6 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame, engine_tables
 from microcosm.graph import (
     ArtifactInput,
@@ -733,6 +734,23 @@ class UKFullGateKernel(KernelBase):
             selected_registry = registry_from_payload(
                 json.loads(context.artifacts["selection"].payload)["registry"]
             )
+            # The diagnostics partition the registry that entered the solve, as
+            # the rowwise tool's diagnostics registry does: below the f100 rung
+            # the problem drops cells unreachable in the sample, so the selected
+            # registry is wider than the solved one (found by the first licensed
+            # graph build: the local-authority UC rows were neither compiled nor
+            # skipped and the battery refused).
+            solved = {
+                (target.name, target.period) for target in problem.problem.targets
+            }
+            target_registry = TargetRegistry(
+                [
+                    spec
+                    for spec in selected_registry.specs
+                    if (spec.name, spec.period) in solved
+                ],
+                country="uk",
+            )
             holdout = json.loads(context.artifacts["holdout"].payload)
             complete_diagnostics = uk_calibration_diagnostics_payload(
                 result,
@@ -743,7 +761,7 @@ class UKFullGateKernel(KernelBase):
                         problem.problem.targets, problem.target_metadata, strict=True
                     )
                 },
-                target_registry=selected_registry,
+                target_registry=target_registry,
                 local_area_support=support_frame,
                 rotated_holdout=holdout,
                 build={

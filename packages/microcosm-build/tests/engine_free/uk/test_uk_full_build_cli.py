@@ -1207,3 +1207,36 @@ def test_every_typed_edge_of_the_full_graph_has_a_compatible_consumer(tmp_path):
     assert {"uk.full.holdout", "uk.full.gates.calibrated"} <= producers
     assert typed_edges > 0
     assert incompatible == []
+
+
+def test_gate_battery_recorded_exception_is_named_not_a_missing_artifact():
+    """A GATE kernel keeps a failure inside its receipt and completes with no
+    artifacts; the driver names the node and the exception (first licensed
+    graph build: a bare KeyError on the missing diagnostics artifact)."""
+    from types import SimpleNamespace
+
+    import pytest
+
+    failed = SimpleNamespace(
+        nodes={
+            "uk.full.gates.calibrated": SimpleNamespace(
+                receipt={
+                    "outcome": "fail",
+                    "evidence": {
+                        "exception_type": "ValueError",
+                        "message": "registry must exactly partition",
+                    },
+                }
+            )
+        }
+    )
+    with pytest.raises(RuntimeError, match="uk.full.gates.calibrated failed inside"):
+        cli._require_gate_kernel_completed(failed, "uk.full.gates.calibrated")
+    passed = SimpleNamespace(
+        nodes={
+            "uk.full.gates.calibrated": SimpleNamespace(
+                receipt={"outcome": "fail", "evidence": {"blocking": ["a_gate"]}}
+            )
+        }
+    )
+    cli._require_gate_kernel_completed(passed, "uk.full.gates.calibrated")

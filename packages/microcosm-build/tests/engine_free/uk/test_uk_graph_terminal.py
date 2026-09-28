@@ -507,6 +507,20 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
             },
         ),
     ]
+    unsolved_spec = replace(
+        specs[1],
+        name="dropped_local",
+        metadata={
+            **specs[1].metadata,
+            "geography_level": "la",
+            "geography_id": "E07000002",
+            "area_type": "la",
+            "area_code": "E07000002",
+        },
+        hierarchy=uk_fixture_hierarchy(
+            "dropped_local", level="la", geography_id="E07000002"
+        ),
+    )
     targets = TargetSet(
         [
             replace(specs[0].to_target(), measure=lambda f: np.ones(2)),
@@ -560,7 +574,12 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
         "selection": artifact(
             {
                 "receipt": selection,
-                "registry": registry_payload(TargetRegistry(specs, country="uk")),
+                # Below the f100 rung the problem drops cells unreachable in the
+                # sample, so the selected registry is wider than the solved one;
+                # the battery partitions the registry that entered the solve.
+                "registry": registry_payload(
+                    TargetRegistry([*specs, unsolved_spec], country="uk")
+                ),
             }
         ),
         "preflight": artifact(preflight_payload(selection=selection), True),
