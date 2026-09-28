@@ -391,9 +391,11 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # The v21b (2026-09-23) national line on spine-u with the reserved income
     # band donors (PolicyEngine/chronicle#280 lane): the SE 20-30k deferral of 2026-09-18
     # is retired because the row is back inside the bound, and two
-    # calibration-competition residuals are deferred for four weeks.
+    # calibration-competition residuals are deferred for four weeks. The SE
+    # 12,570-15,000 income-tax deferral is retired in turn (microcosm#1012):
+    # with the SPI households' housing imputed from their own incomes the row
+    # fits at +24.5 %, back inside the bound.
     assert set(register) == {
-        "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025",
         "hmrc/state_pension_income_band_50_000_to_70_000@2025",
     }
     for name in sorted(register):
