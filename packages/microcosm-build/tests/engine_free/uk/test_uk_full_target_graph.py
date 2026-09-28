@@ -96,3 +96,38 @@ def test_target_kernel_identity_includes_reconciliation_and_ladder_diagnostics(
     graph_targets.UKFullTargetCompilationKernel().implementation_hash()
     assert graph_targets.cross_grain in hashed
     assert graph_targets.ladder_targets in hashed
+
+
+def test_joint_surface_keeps_region_rows_as_cross_grain_controls():
+    """The joint surface carries the whole national register, region rows
+    included, as main's rowwise tool does; a country-only filter left the
+    region_over_constituency legs unparented on the first licensed graph build."""
+    from microcosm.build.uk_runtime import full_problem
+    from microcosm.calibrate import TargetRegistry, TargetSpec
+
+    def spec(name, level, geography_id):
+        return TargetSpec(
+            name=name,
+            entity="person",
+            value=1.0,
+            measure="age",
+            period=2025,
+            source="test",
+            family="age",
+            metadata={
+                "contract_target_id": name,
+                "geography_level": level,
+                "geography_id": geography_id,
+            },
+        )
+
+    national = TargetRegistry(
+        [spec("age_uk", "country", "K02000001"), spec("age_ne", "region", "E12000001")],
+        country="uk",
+    )
+    local = TargetRegistry(
+        [spec("age_pcon", "constituency", "E14000530")], country="uk"
+    )
+    joint = full_problem._joint_surface_registry(local, national)
+    assert [s.name for s in joint.specs] == ["age_pcon", "age_uk", "age_ne"]
+    assert full_problem._national_contract_target_ids(national) == ("age_ne", "age_uk")

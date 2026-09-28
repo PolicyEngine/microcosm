@@ -13,7 +13,6 @@ from microcosm.build.uk_runtime import (
     uk_area_region_codes,
     uk_local_target_surface,
 )
-from microcosm.build.uk_runtime.ledger_targets import _spec_geography
 from microcosm.build.uk_runtime.local_rowwise import (
     build_uk_rowwise_local_surface_matrix,
     empty_uk_local_problem,
@@ -27,7 +26,6 @@ def _national_contract_target_ids(registry: TargetRegistry) -> tuple[str, ...]:
             {
                 str(spec.metadata.get("contract_target_id", spec.name))
                 for spec in registry.specs
-                if _spec_geography(spec)[0] == "country"
             }
         )
     )
@@ -37,22 +35,18 @@ def _joint_surface_registry(
     local_registry: TargetRegistry,
     national_registry: TargetRegistry,
 ) -> TargetRegistry:
-    """Put country controls beside local cells for declared reconciliation.
+    """Put national controls beside local cells for cross-grain reconciliation.
 
-    Regional constraints stay in the national solve registry. They are outside
-    the country/constituency/LA reconciliation rule and cannot be passed as
-    country controls or silently assigned a new reconciliation policy.
+    The whole national register goes in, as the rowwise tool passes it: the
+    country rows parent the regions and, since microcosm#906 activated the
+    region grain, the region rows are the controls that parent constituency
+    and local-authority legs (``region_over_constituency``, ``region_over_la``).
+    Filtering to country rows leaves those legs unparented and the surface
+    refuses (found by the first licensed graph build).
     """
 
     return TargetRegistry(
-        [
-            *local_registry.specs,
-            *(
-                spec
-                for spec in national_registry.specs
-                if _spec_geography(spec)[0] == "country"
-            ),
-        ],
+        [*local_registry.specs, *national_registry.specs],
         country="uk",
     )
 
