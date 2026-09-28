@@ -170,21 +170,51 @@ Why Historic Table 2:
 - **Two vintages of one concept are contradictory constraints**; the solve can
   only split the difference.
 
-The six measures only the district file has (`charitable_*`,
-`interest_paid_deduction_*`, `qualified_business_income_deduction_*`) keep the
-district file's state rows as their parent (306 state rows); their district
-rows already sum to those exactly. Every district row records its parent
-(`state_cd_parent_target_name`), the parent's basis, the district file's own
-value and the rebase factor.
+The rebase factors on the pinned feed, by measure across the 43 states with
+district rows, are mostly 1.00 to 1.10.
 
-The rebase factors on the pinned feed, by measure across the 42 states with
-district rows, are mostly 1.00 to 1.10: amounts cluster near 1.05 and counts
-near 1.02, the one-year aging gap. Two reflect known level differences:
-taxable interest (2.35 to 2.70, the Table 4.3 rebase) and capital-gains
-amounts (0.77 to 1.00). The largest single-state factors are on qualified and
-ordinary dividends (up to 2.68 and 2.17) and tax-exempt interest (up to 1.43),
-where the two tables disagree about a state's level. `materialize_rss.json`
-records the full table under `soi_surface.rebase_factor_by_measure`.
+- **Counts cluster near 1.017** (median `return_count` factor), from 1.00 to
+  1.03. Counts are never aged in either file (`aging_factor` 1,
+  `not_dollar_amount`), so this is purely a level difference between the two
+  publications: the district file's state totals count about 1.7% fewer
+  returns than Historic Table 2 (California: 18,242,570 against 18,487,690).
+- **Amounts cluster near 1.05.** That is the same level difference times the
+  aging gap: the district file is aged 2023→2024 by one CBO growth factor
+  (about 1.087 for AGI), while Historic Table 2 is aged 2022→2024 on the
+  chained SOI and CBO series (about 1.120). The smallest amount factor,
+  1.03, is that aging ratio alone. Correcting the district file's stamp
+  (#1030) would remove the aging part only.
+- **Two factors reflect known level differences:** taxable interest (2.35 to
+  2.70, the Table 4.3 rebase) and capital-gains amounts (0.77 to 1.00).
+- **The largest single-state factors** are on qualified and ordinary
+  dividends (up to 2.68 and 2.17) and tax-exempt interest (up to 1.43), where
+  the two tables disagree about a state's level.
+
+`materialize_rss.json` records the full table under
+`soi_surface.rebase_factor_by_measure`.
+
+The six measures only the district file has (`charitable_*`,
+`interest_paid_deduction_*`, `qualified_business_income_deduction_*`) have no
+Historic Table 2 parent. Their parent is the district file's own state row,
+**lifted onto the Historic Table 2 basis** by a sibling concept both files
+carry in the same state (`STATE_CD_LEVEL_BRIDGES`):
+
+- counts use `return_count`;
+- charitable and interest-paid amounts use `itemized_deductions_amount`;
+- QBI deduction amounts use `adjusted_gross_income`.
+
+Each sibling's Historic Table 2 / district-file ratio measures exactly the
+coverage and aging gap above. Without it these 306 state rows and their
+2,562 district rows would sit 2–6% below every related concept. On the pinned
+feed the bridge factors are 1.00–1.03 for counts (median 1.016), 1.03–1.75
+for the itemized-deduction amounts (median 1.062) and 1.03–1.08 for QBI
+amounts (median 1.049). The bridge is stamp-invariant: if #1030 corrects the
+stamp, the sibling ratio shrinks with it. Its district rows keep their
+within-state shares, as every other district row does.
+
+Every district row records its parent (`state_cd_parent_target_name`), the
+parent's basis, the district file's own value and the rebase factor; a
+bridged state row records its sibling and bridge factor.
 
 ### What stays off the surface
 
@@ -289,24 +319,43 @@ where the calibration beats the baseline). It is report-only.
 `calibration_summary.json` → `weight_origin` records, at the design and at
 the calibrated weights:
 
-- Kish ESS over rows, overall and per spine;
+- Kish ESS over rows: nationally, per spine, per state and per district
+  (each with its distribution);
 - Kish ESS over **distinct households**: rows summed by (`household_spine`,
   `household_source_id`). ACS source ids are pre-offset and collide with donor
   ids, so the spine is part of the key; a donor household's native row and its
   PUF-detail clone count once;
+- the share of total weight on the heaviest 1% of records;
 - household-weight share by spine.
+
+The weight cap and `l2_lambda` are unchanged; the concentration they allow is
+a known issue (`low_effective_sample_size_lambda_zero`) under review. This
+reports it rather than tuning it.
 
 ## Development rungs
 
-`--sample-fraction` draws a development rung, one of f001, f004, f010 or f025
-(DESIGN.md "Production US stacked spine"). It samples whole households with
-`microcosm.build.frame_sampling.sample_frame_households`, stratified by spine
-x district, and scales each spine back to its full household mass.
-`run_identity.json` records the rung, seed and selected-id digest; the
-calibrate stage re-draws the same households before attaching weights and
-refuses a mismatch, and `--stage package` refuses any rung but f100. The
-staging frame is still loaded in full before sampling, so a rung lowers the
-engine pass and the solve, not the load.
+`--sample-fraction` draws a development rung, one of the stacked pool's
+f001, f004, f010 or f025 (`tools/build_us_multispine_pool.py`; DESIGN.md
+"Production US stacked spine" names f001, f010 and f100).
+
+- **The draw.** It samples whole households with
+  `microcosm.build.frame_sampling.sample_frame_households`, taking
+  `floor(fraction x n_h)` in every (spine, district) stratum `h`.
+- **The weights.** Each drawn household's weight is scaled by its stratum's
+  inverse sampling rate `n_h / k_h`, so a drawn stratum keeps its household
+  mass in expectation (exactly, when a stratum's weights are equal). Each
+  spine is then scaled to its full household mass.
+- **Strata that draw nothing.** A stratum that floors to zero draws loses its
+  households, and its weight is spread over the rest of its spine. The
+  receipt records how many strata that is and their weight share. At f001
+  this is material for the donor spine, whose district strata are small, so
+  read district-level evidence from f010 or above.
+- **Refusals.** `run_identity.json` records the rung, seed and selected-id
+  digest. The calibrate stage re-draws the same households before attaching
+  weights and refuses a mismatch, and `--stage package` refuses any rung but
+  f100.
+- **Memory.** The staging frame is still loaded in full before sampling, so a
+  rung lowers the engine pass and the solve, not the load.
 
 ## Target matrix storage
 
@@ -329,8 +378,9 @@ column per distinct SOI concept, and each district row is its carrier
 restricted to the district's households. That equals the direct
 materialization, because the SOI slice masks a tax unit by its household's
 state and district; the first chunk of every run also materializes one
-district row per carrier directly and refuses any difference
-(`materialize_rss.json` → `carrier_check`). The calibrate stage builds
+district row per carrier directly and compares it with the row the assembler
+actually stored for it, refusing any difference (`materialize_rss.json` →
+`carrier_check`). The calibrate stage builds
 each training target from its registry spec (value, metadata, hierarchy)
 with a callable measure that reads its CSR row, so the calibrate kernel's own
 `build_constraint_matrix` compiles them one row at a time, unchanged, and the
@@ -362,10 +412,17 @@ record one of the four modes, before any release directory exists.
 - `run_identity.json`: the sha256 of `target_registry.json`,
   `target_roles.json` and `target_matrix.npz` (with its shape and nnz); the
   CD holdout (unit, salt, fraction, held units and targets); the sampling
-  rung. Later stages refuse any of the three files whose bytes changed, and
-  `--resume` refuses weights calibrated to a different surface, holdout or
-  sample.
-- `calibration_summary.json`: `cd_holdout`, `weight_origin`,
+  rung. Calibrate and finalize refuse any of the three files whose bytes
+  changed.
+- `weights_latest.npz` and `calibration_summary.json` carry the digest of
+  that run identity (`run_identity_sha256`). `--resume`, the calibrate
+  stage's "already complete" shortcut, finalize and package refuse weights or
+  a summary without it or from another materialization (another staging
+  file, surface, holdout or sample). A new materialize also deletes the
+  previous calibration outputs.
+- `calibration_summary.json`: `cd_holdout`, `weight_origin` (ESS nationally,
+  per spine, per state and per district, over distinct households, and the
+  top-1% weight share, at the design and the calibrated weights),
   `n_holdout_targets` and the checkpoint matrix's shape and nnz, beside the
   fit summary.
 - `materialize_rss.json`: the full SOI surface receipt (`soi_surface`: counts,
