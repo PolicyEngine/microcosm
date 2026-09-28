@@ -1887,7 +1887,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b7a336af7cb300905d09ad9a33aa1a624f878c2471352d4e252fa69db55aee17"
+          "sha256": "3db095ce2d1ef89028d3862f0edc827d704f099c5b3323f9b115642a3c27e007"
         },
         "failures": [],
         "observed": {
@@ -1911,7 +1911,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "b7a336af7cb300905d09ad9a33aa1a624f878c2471352d4e252fa69db55aee17"
+          "sha256": "3db095ce2d1ef89028d3862f0edc827d704f099c5b3323f9b115642a3c27e007"
         },
         "status": "covered"
       },
@@ -2045,7 +2045,7 @@
             "congressional_district_vintage_crosswalk",
             "puma_ladder"
           ],
-          "sha256": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
+          "sha256": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
           "target_vintage": "119th_congress"
         },
         "failures": [],
@@ -2054,7 +2054,7 @@
             "congressional_district_vintage_crosswalk",
             "puma_ladder"
           ],
-          "sha256": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
+          "sha256": "44e7f5f6cd7ceeef85d532c3d46306d03de4f4ee811376e6d29920742746b65c",
           "target_vintage": "119th_congress"
         },
         "status": "covered"
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "1cf1f44d9a11458f59ea7d75dce68303816cab3e66668a6c6f6ecfe62d56f8dc"
+      "spec_sha256": "ffbb93ed5ae22a95536ae475d6912a42628568609b442360dc1cd3bcf26772cd"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "1cf1f44d9a11458f59ea7d75dce68303816cab3e66668a6c6f6ecfe62d56f8dc"
+    "spec_sha256": "ffbb93ed5ae22a95536ae475d6912a42628568609b442360dc1cd3bcf26772cd"
   },
   "status": "pass"
 }
