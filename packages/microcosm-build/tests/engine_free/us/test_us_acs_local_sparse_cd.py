@@ -364,21 +364,24 @@ def test_carriers_drop_the_district_hierarchy() -> None:
     )
 
 
-def test_a_carrier_that_disagrees_with_its_direct_row_is_refused(
+def test_a_stored_district_row_that_disagrees_with_its_direct_row_is_refused(
     monkeypatch, tmp_path
 ) -> None:
+    """The first-chunk check compares the rows the assembler stored."""
+
     module = _load_tool_module()
     import build_us_fiscal_refresh_release as release
 
     fixtures = _load_fixtures()
-    real = module.cd_surface.carrier_derived_column
+    assembler = module.cd_surface.SparseTargetAssembler
+    real_add_masked = assembler.add_masked
 
-    def perturbed(carrier, **kwargs):
-        column = real(carrier, **kwargs)
-        column[np.flatnonzero(column)[:1]] += 1.0
-        return column
+    def corrupting_add_masked(self, row, low, carrier, positions, *, name):
+        corrupted = np.asarray(carrier, dtype=np.float64).copy()
+        corrupted[positions] += 1.0
+        return real_add_masked(self, row, low, corrupted, positions, name=name)
 
-    monkeypatch.setattr(module.cd_surface, "carrier_derived_column", perturbed)
+    monkeypatch.setattr(assembler, "add_masked", corrupting_add_masked)
     with pytest.raises(RuntimeError, match="carrier split is not exact"):
         _materialize(
             module,
@@ -624,11 +627,21 @@ def test_full_rung_returns_the_frame_unchanged() -> None:
     assert receipt["sampled"] is False
 
 
-def test_the_refresh_recipe_names_the_cd_holdout() -> None:
+def test_the_refresh_recipe_reproduces_the_recorded_cd_holdout() -> None:
+    """Re-running a recorded recipe draws the recorded holdout, 0 included."""
+
+    import shlex
+
     module = _load_tool_module()
-    recipe = module.release_refresh_recipe("state_cd", 0.1)
-    assert "--soi-mode state_cd --cd-holdout-fraction 0.1 " in recipe
-    assert "--cd-holdout-fraction" not in module.release_refresh_recipe("state")
+    assert "--cd-holdout-fraction" not in module.release_refresh_recipe("state", 0.0)
+    for fraction in (0.0, 0.1, 0.1234567):
+        recipe = module.release_refresh_recipe("state_cd", fraction)
+        assert f"--soi-mode state_cd --cd-holdout-fraction {fraction!r} " in recipe
+        argv = [
+            token.replace("<", "").replace(">", "") for token in shlex.split(recipe)[3:]
+        ]
+        args = module._parse_args(argv)
+        assert module._cd_holdout_fraction(args) == fraction
 
 
 def test_holdout_needs_the_state_cd_surface(tmp_path) -> None:
@@ -705,7 +718,7 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
         "congressional_district": 21777,
         "congressional_district_by_parent_basis": {
             "historic_table_2": 19215,
-            "cd_file_state_total": 2562,
+            "cd_file_state_total_bridged": 2562,
         },
         "total": 25902,
     }
@@ -741,4 +754,193 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     ]
     assert all(spec.metadata.get("state_cd_parent_target_name") for spec in districts)
     assert receipt["sigma"]["targets_with_sigma"] == 0
+    # 43 states carry district rows (51 minus the 8 at-large on the 117th plan).
+    assert {entry["n"] for entry in receipt["rebase_factor_by_measure"].values()} == {
+        43
+    }
+    # Every district-file-only state level is bridged, in all 51 states.
+    bridges = receipt["level_bridge_factor_by_measure"]
+    assert set(bridges) == set(module.cd_surface.STATE_CD_LEVEL_BRIDGES)
+    assert {entry["n"] for entry in bridges.values()} == {51}
     assert json.dumps(receipt)  # the receipt is manifest-serializable
+
+
+def test_the_cd_holdout_hash_is_pinned() -> None:
+    """Golden values: a changed hash formula would silently redraw the holdout.
+
+    The US holdout port reuses the same function, so both lines move together.
+    """
+
+    from microcosm.build.holdout import hash_holdout_uniform
+
+    salt = _load_tool_module().cd_surface.CD_HOLDOUT_SALT
+    assert hash_holdout_uniform("06|eitc", salt=salt) == 0.7980954941465199
+    assert (
+        hash_holdout_uniform("36|adjusted_gross_income", salt=salt)
+        == 0.037229772944579555
+    )
+
+
+def _stratified_frame(donor_sizes: tuple[int, ...]) -> Frame:
+    """Two spines x five districts; one weight per stratum (so sums are exact)."""
+
+    from microcosm.frame import WeightKind, Weights
+
+    districts = ["0601", "0602", "3601", "3602", "2401"]
+    rows = []
+    for spine, sizes in (("acs_2024_1yr", (40,) * 5), ("asec_puf", donor_sizes)):
+        for index, (district, size) in enumerate(zip(districts, sizes, strict=True)):
+            rows += [
+                (spine, district, 10.0 + index + (50 if spine == "asec_puf" else 0))
+            ] * size
+    n = len(rows)
+    ids = np.arange(1, n + 1, dtype=np.int64)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            **{f"person_{group}_id": ids for group in US_SCHEMA.group_entities},
+        }
+    )
+    tables = {"person": person}
+    for group in US_SCHEMA.group_entities:
+        tables[group] = pd.DataFrame({f"{group}_id": ids})
+    tables["household"] = pd.DataFrame(
+        {
+            "household_id": ids,
+            "household_spine": [row[0] for row in rows],
+            "congressional_district_geoid": [row[1] for row in rows],
+        }
+    )
+    weights = np.asarray([row[2] for row in rows])
+    return Frame(tables, US_SCHEMA, {"household": Weights(weights, WeightKind.DESIGN)})
+
+
+def _stratum_mass(frame) -> pd.Series:
+    table = frame.table("household").assign(
+        weight=frame.weights_for("household").values
+    )
+    return table.groupby(
+        ["household_spine", "congressional_district_geoid"]
+    ).weight.sum()
+
+
+def test_a_rung_keeps_every_drawn_stratum_at_full_mass() -> None:
+    """Inverse-rate stratum weights: with one weight per stratum, exact."""
+
+    cd_surface = _load_tool_module().cd_surface
+    frame = _stratified_frame(donor_sizes=(8, 8, 8, 8, 8))
+    sampled, receipt = cd_surface.sample_staging_frame(frame, fraction=0.25, seed=578)
+    assert receipt["rung"] == "f025"
+    assert receipt["zero_draw_strata"] == 0
+    assert all(
+        factor == pytest.approx(1.0, rel=1e-12)
+        for factor in receipt["per_spine_normalization_factor"].values()
+    )
+    pd.testing.assert_series_equal(_stratum_mass(sampled), _stratum_mass(frame))
+
+
+def test_zero_draw_strata_are_recorded_and_spread_over_their_spine() -> None:
+    cd_surface = _load_tool_module().cd_surface
+    # The first donor district (3 households) floors to zero draws at f025.
+    frame = _stratified_frame(donor_sizes=(3, 8, 8, 8, 8))
+    full = _stratum_mass(frame)
+    sampled, receipt = cd_surface.sample_staging_frame(frame, fraction=0.25, seed=578)
+    assert receipt["zero_draw_strata"] == 1
+    lost = full[("asec_puf", "0601")]
+    assert receipt["zero_draw_weight_share"] == pytest.approx(lost / full.sum())
+    mass = _stratum_mass(sampled)
+    assert ("asec_puf", "0601") not in mass.index
+    donor_full = full.xs("asec_puf").sum()
+    factor = donor_full / (donor_full - lost)
+    for district in ("0602", "3601", "3602", "2401"):
+        assert mass[("asec_puf", district)] == pytest.approx(
+            full[("asec_puf", district)] * factor, rel=1e-12
+        )
+    assert mass.xs("asec_puf").sum() == pytest.approx(donor_full, rel=1e-12)
+    # A spine none of whose strata draws cannot be represented at the rung.
+    with pytest.raises(ValueError, match="drew no weight on spine 'asec_puf'"):
+        cd_surface.sample_staging_frame(
+            _stratified_frame(donor_sizes=(3, 3, 3, 3, 3)), fraction=0.25, seed=578
+        )
+
+
+@requires_pytables
+def test_calibration_outputs_are_bound_to_the_materialization(tmp_path) -> None:
+    """Resume, the complete shortcut, finalize and package refuse stale evidence."""
+
+    module = _load_tool_module()
+    identity = {
+        "staging_sha256": "s",
+        "target_roles_sha256": "r",
+        "target_registry_sha256": "g",
+        "target_matrix": {"sha256": "m"},
+        "sampling": {"rung": "f100", "sampled": False},
+    }
+    stamp = module._run_identity_digest(identity)
+    assert stamp == module._run_identity_digest(dict(reversed(identity.items())))
+    changed = {**identity, "sampling": {"rung": "f010", "sampled": True}}
+    assert module._run_identity_digest(changed) != stamp
+    module._require_current_calibration(
+        identity, {"run_identity_sha256": stamp}, stage="finalize"
+    )
+    for summary in ({}, {"run_identity_sha256": module._run_identity_digest(changed)}):
+        with pytest.raises(SystemExit, match="does not belong to this checkpoint"):
+            module._require_current_calibration(identity, summary, stage="package")
+    # A pre-sparse identity (no roles digest) stays readable.
+    module._require_current_calibration({"staging_sha256": "s"}, {}, stage="finalize")
+    assert set(module.CALIBRATION_OUTPUT_FILENAMES) == {
+        "weights_latest.npz",
+        "calibration_summary.json",
+        "calibration_diagnostics.json",
+    }
+
+
+def test_resume_refuses_weights_without_the_run_identity_stamp(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    checkpoint = tmp_path / "ckpt"
+    checkpoint.mkdir()
+    identity = {"staging_sha256": "s", "target_roles_sha256": "r"}
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
+    frame = _load_fixtures()._nested_frame()
+    registry = SimpleNamespace(specs=())
+    monkeypatch.setattr(
+        module,
+        "load_checkpoint_surface",
+        lambda *a, **k: (
+            frame,
+            np.ones(5),
+            registry,
+            [],
+            sparse.csr_array((0, 5), dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(module.cd_surface, "calibration_target_set", lambda *a, **k: [])
+    args = SimpleNamespace(checkpoint_dir=checkpoint, resume=True, epochs=10)
+    for saved in (
+        {"weights": np.ones(5), "epochs_done": 5, "staging_sha256": "s"},
+        {
+            "weights": np.ones(5),
+            "epochs_done": 5,
+            "run_identity_sha256": module._run_identity_digest(
+                {**identity, "target_roles_sha256": "other"}
+            ),
+        },
+    ):
+        np.savez(checkpoint / "weights_latest.npz", **saved)
+        with pytest.raises(SystemExit, match="different materialization"):
+            module.do_calibrate(args)
+    # A matching stamp with every epoch done still needs a matching summary.
+    np.savez(
+        checkpoint / "weights_latest.npz",
+        weights=np.ones(5),
+        epochs_done=10,
+        run_identity_sha256=module._run_identity_digest(identity),
+    )
+    (checkpoint / "calibration_summary.json").write_text(
+        json.dumps({"run_identity_sha256": "stale"})
+    )
+    with pytest.raises(SystemExit, match="belongs to another materialization"):
+        module.do_calibrate(args)

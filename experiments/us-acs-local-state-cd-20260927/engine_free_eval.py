@@ -10,7 +10,7 @@ Stages (each writes under ``--out`` and can be re-run alone):
 
 ``convert``
     Stream the dense checkpoint into the sparse checkpoint format the tool
-    now writes (structure H5 + CSR + targets.json).
+    now writes (structure H5, target registry, CSR matrix and target roles).
 ``state``
     Re-calibrate the ``state`` surface from the sparse checkpoint with the
     09-23 settings through the tool's ``calibrate_surface`` and compare the

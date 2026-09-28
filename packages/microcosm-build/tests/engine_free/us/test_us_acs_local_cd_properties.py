@@ -184,9 +184,14 @@ def _soi_spec(name, measure, value, *, level, record_set, state, district=None):
 @st.composite
 def _state_cd_inputs(draw):
     states = [f"{10 + index:02d}" for index in range(draw(st.integers(1, 4)))]
-    measures = draw(
+    # return_count is always present in both files: it is the level bridge
+    # of every concept Historic Table 2 lacks here (_BRIDGES).
+    measures = ["return_count"] + draw(
         st.lists(
-            st.sampled_from(sorted(_MEASURES)), min_size=1, max_size=4, unique=True
+            st.sampled_from(sorted(set(_MEASURES) - {"return_count"})),
+            min_size=0,
+            max_size=3,
+            unique=True,
         )
     )
     positive = st.floats(1.0, 1e10, allow_nan=False, allow_infinity=False)
@@ -208,7 +213,7 @@ def _state_cd_inputs(draw):
         # file has no sub-state rows for it, whatever the current plan says.
         layout[state] = (districts, len(source) == 1)
         for measure in measures:
-            if draw(st.booleans()):
+            if measure == "return_count" or draw(st.booleans()):
                 specs.append(
                     _soi_spec(
                         f"ht2.{state}.{measure}",
@@ -245,6 +250,9 @@ def _state_cd_inputs(draw):
     return [specs[i] for i in order], pd.DataFrame(crosswalk), layout
 
 
+_BRIDGES = {measure: "return_count" for measure in _MEASURES}
+
+
 @_SETTINGS
 @given(_state_cd_inputs())
 def test_district_targets_add_up_to_one_state_vintage(inputs) -> None:
@@ -253,6 +261,7 @@ def test_district_targets_add_up_to_one_state_vintage(inputs) -> None:
         specs,
         state_surface_predicate=_TOOL.soi_surface_predicate("state"),
         crosswalk=crosswalk,
+        level_bridges=_BRIDGES,
     )
     kept = {spec.name: spec for spec in surface.specs}
     original = {spec.name: spec for spec in specs}
@@ -285,6 +294,16 @@ def test_district_targets_add_up_to_one_state_vintage(inputs) -> None:
         expected_parent = ht2 if ht2 in original else f"cdfile.{state}_total.{measure}"
         assert spec.metadata["state_cd_parent_target_name"] == expected_parent
         assert expected_parent in kept
+        if expected_parent != ht2:
+            # A district-file-only state level is lifted onto the Historic
+            # Table 2 basis by its bridge sibling's two levels in that state.
+            bridge = (
+                original[f"ht2.{state}.return_count"].value
+                / original[f"cdfile.{state}_total.return_count"].value
+            )
+            assert kept[expected_parent].value == pytest.approx(
+                original[expected_parent].value * bridge, rel=1e-12
+            )
     # A rebase rescales a block and keeps each district's share of it.
     for children in by_parent.values():
         ratios = [spec.value / original[spec.name].value for spec in children]

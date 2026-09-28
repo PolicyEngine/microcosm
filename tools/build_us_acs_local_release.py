@@ -22,8 +22,10 @@ package; each is separately resumable):
                 projection + reviewed-null fill), add PUMA-ladder population
                 marginals (state + congressional district), assign the CD
                 holdout, and write the lean checkpoint: a structure-only H5,
-                a sparse (targets x households) float32 CSR target matrix and
-                targets.json. ``--sample-fraction`` draws a development rung.
+                target_registry.json, a sparse (targets x households) float32
+                CSR target matrix row-aligned with it (target_matrix.npz) and
+                target_roles.json. ``--sample-fraction`` draws a development
+                rung.
                 Heavy stage; a crash in calibrate never re-runs the microsim.
   calibrate   : epoch-batched warm-start calibrate on the checkpoint's
                 training targets (adam, mass conserved, hard weight-ratio cap;
@@ -147,13 +149,17 @@ def release_refresh_recipe(
     """The one-command release refresh, pinned to the SOI surface it built.
 
     The recipe names ``--soi-mode`` explicitly so re-running it reproduces
-    the recorded surface even if the parser default changes again, and
-    ``--cd-holdout-fraction`` whenever a CD holdout was drawn.
+    the recorded surface even if the parser default changes again, and, for
+    every ``state_cd`` build, ``--cd-holdout-fraction`` at the recorded value
+    (0 included, full precision), since ``state_cd`` otherwise defaults to a
+    10% holdout.
     """
 
     _require_soi_mode(soi_mode)
     holdout = (
-        f"--cd-holdout-fraction {cd_holdout_fraction:g} " if cd_holdout_fraction else ""
+        f"--cd-holdout-fraction {float(cd_holdout_fraction)!r} "
+        if soi_mode == SOI_MODE_STATE_CD and cd_holdout_fraction is not None
+        else ""
     )
     return (
         "uv run tools/build_us_acs_local_release.py --stage all "
@@ -724,7 +730,8 @@ def materialize_chunked(
                 if carrier in compiled_names
             }
             split = tuple(row for row in plan.split if row[3] in carriers)
-            cd_surface.split_carriers_into(
+            index_of = {spec.name: index for index, spec in enumerate(plan.declared)}
+            captured = cd_surface.split_carriers_into(
                 assembler,
                 cd_surface.CarrierPlan(
                     declared=plan.declared,
@@ -737,6 +744,7 @@ def materialize_chunked(
                 low=low,
                 state_codes=state_codes,
                 district_codes=district_codes,
+                capture=frozenset(index_of[spec.name] for spec in check_specs),
             )
             if check_specs:
                 checked = []
@@ -748,22 +756,16 @@ def materialize_chunked(
                             f"{carrier} did not materialize."
                         )
                     direct = target_households[spec.measure].to_numpy(dtype=np.float64)
-                    derived = cd_surface.carrier_derived_column(
-                        carriers[carrier],
-                        state=int(
-                            spec.metadata.get("state_fips", cd_surface.NO_STATE_MASK)
-                        ),
-                        district=int(spec.metadata["congressional_district_geoid"]),
-                        state_codes=state_codes,
-                        district_codes=district_codes,
-                    )
-                    if not np.array_equal(direct, derived):
+                    positions, values = captured[index_of[spec.name]]
+                    stored = np.zeros(high - low, dtype=np.float32)
+                    stored[positions] = values
+                    if not np.array_equal(stored, direct.astype(np.float32)):
+                        differing = int((stored != direct.astype(np.float32)).sum())
                         raise RuntimeError(
                             f"District row {spec.name} materialized directly "
-                            "differs from its carrier restricted to the "
-                            f"district ({int((direct != derived).sum())} "
-                            "household(s)); the carrier split is not exact "
-                            "for this surface."
+                            "differs from the row stored from its carrier "
+                            f"({differing} household(s)); the carrier split is "
+                            "not exact for this surface."
                         )
                     checked.append(
                         {
@@ -779,6 +781,7 @@ def materialize_chunked(
                         "checked_nonzero_households": sum(
                             entry["nonzero_households"] for entry in checked
                         ),
+                        "compared": "stored CSR row vs direct materialization",
                         "all_equal": True,
                         "checked": checked,
                     }
@@ -1194,6 +1197,8 @@ def do_materialize(args) -> None:
     started = time.time()
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
     (args.checkpoint_dir / "measures_f32.mmap").unlink(missing_ok=True)
+    for name in CALIBRATION_OUTPUT_FILENAMES:
+        (args.checkpoint_dir / name).unlink(missing_ok=True)
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -1343,6 +1348,65 @@ def _verify_run_identity(args, *, require: bool = True) -> dict:
     return identity
 
 
+#: Outputs of the calibrate stage that describe one materialization; a new
+#: materialize removes them so none can outlive the surface it described.
+CALIBRATION_OUTPUT_FILENAMES = (
+    "weights_latest.npz",
+    "calibration_summary.json",
+    "calibration_diagnostics.json",
+)
+
+
+def _run_identity_digest(identity: dict) -> str:
+    """Content digest of a run identity (canonical JSON)."""
+
+    return hashlib.sha256(
+        json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def _verify_checkpoint_digests(checkpoint_dir: Path, identity: dict) -> None:
+    """Refuse a registry, roles file or matrix whose bytes changed."""
+
+    checks = (
+        (
+            checkpoint_dir / "target_registry.json",
+            identity.get("target_registry_sha256"),
+        ),
+        (checkpoint_dir / TARGET_ROLES_FILENAME, identity.get("target_roles_sha256")),
+        (
+            checkpoint_dir / TARGET_MATRIX_FILENAME,
+            (identity.get("target_matrix") or {}).get("sha256"),
+        ),
+    )
+    for path, recorded in checks:
+        if not path.exists() or _sha256(path) != recorded:
+            raise SystemExit(
+                f"{path.name} changed since materialize (or the run identity "
+                "records none); the checkpoint and surface no longer agree. "
+                "Re-run --stage materialize."
+            )
+
+
+def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -> None:
+    """Refuse a calibration summary from another materialization.
+
+    A sparse-era run identity (one that records ``target_roles_sha256``)
+    binds its calibration: the summary must carry that identity's digest.
+    Pre-sparse checkpoints stay readable (finalize's read-only path); package
+    refuses them separately (no sampling block).
+    """
+
+    if "target_roles_sha256" not in identity:
+        return
+    if summary.get("run_identity_sha256") != _run_identity_digest(identity):
+        raise SystemExit(
+            "calibration_summary.json does not belong to this checkpoint's "
+            "materialization (its run identity differs or is not recorded); "
+            f"re-run --stage calibrate before --stage {stage}."
+        )
+
+
 def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
     """The lean frame, design weights, registry, roles and matrix of a checkpoint.
 
@@ -1366,18 +1430,7 @@ def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
             "with the current tool."
         )
     if identity is not None:
-        checks = (
-            (registry_path, identity.get("target_registry_sha256")),
-            (roles_path, identity.get("target_roles_sha256")),
-            (matrix_path, (identity.get("target_matrix") or {}).get("sha256")),
-        )
-        for path, recorded in checks:
-            if _sha256(path) != recorded:
-                raise SystemExit(
-                    f"{path.name} changed since materialize (or the run identity "
-                    "records none); the checkpoint and surface no longer "
-                    "agree. Re-run --stage materialize."
-                )
+        _verify_checkpoint_digests(checkpoint_dir, identity)
     registry = TargetRegistry.from_json(registry_path)
     roles = json.loads(roles_path.read_text())
     matrix = cd_surface.load_target_matrix(matrix_path)
@@ -1529,31 +1582,22 @@ def do_calibrate(args) -> None:
         f"nnz={matrix.nnz:,}, design_total={design_weights.sum():,.0f}"
     )
 
+    stamp = _run_identity_digest(identity)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
         saved = np.load(resume_npz)
-        saved_identity = (
-            str(saved["staging_sha256"]) if "staging_sha256" in saved else None
-        )
-        if saved_identity is not None and saved_identity != identity.get(
-            "staging_sha256"
-        ):
-            raise SystemExit(
-                "weights_latest.npz was produced against a different staging "
-                "H5; refusing to warm-start from a foreign checkpoint."
-            )
-        saved_surface = (
-            str(saved["target_roles_sha256"])
-            if "target_roles_sha256" in saved
+        saved_stamp = (
+            str(saved["run_identity_sha256"])
+            if "run_identity_sha256" in saved
             else None
         )
-        if saved_surface is not None and saved_surface != identity.get(
-            "target_roles_sha256"
-        ):
+        if saved_stamp != stamp:
             raise SystemExit(
-                "weights_latest.npz was calibrated to a different target "
-                "surface, holdout or sample; refusing to warm-start from it."
+                "weights_latest.npz was calibrated for a different "
+                "materialization (staging, surface, holdout or sample), or "
+                "predates the run-identity stamp; refusing to warm-start from "
+                "it. Delete it to recalibrate."
             )
         warm, done = saved["weights"], int(saved["epochs_done"])
         if len(warm) != n_households:
@@ -1564,7 +1608,7 @@ def do_calibrate(args) -> None:
         log(f"RESUME from {done} epochs")
     if done >= args.epochs:
         summary_path = args.checkpoint_dir / "calibration_summary.json"
-        if summary_path.exists():
+        if _load_json(summary_path).get("run_identity_sha256") == stamp:
             log(
                 f"calibration already complete at {done} epochs and "
                 "the calibration summary exists; nothing to do (delete "
@@ -1576,8 +1620,9 @@ def do_calibrate(args) -> None:
             return
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
-            f"{args.epochs}) but calibration_summary.json is missing. "
-            "Delete the checkpoint to recalibrate, or raise --epochs."
+            f"{args.epochs}) but calibration_summary.json is missing or "
+            "belongs to another materialization. Delete the checkpoint to "
+            "recalibrate, or raise --epochs."
         )
 
     def save(weights: np.ndarray, epochs_done: int) -> None:
@@ -1587,7 +1632,7 @@ def do_calibrate(args) -> None:
             epochs_done=epochs_done,
             initial_weights=design_weights,
             staging_sha256=np.str_(identity["staging_sha256"]),
-            target_roles_sha256=np.str_(identity["target_roles_sha256"]),
+            run_identity_sha256=np.str_(stamp),
         )
 
     started = time.time()
@@ -1613,6 +1658,7 @@ def do_calibrate(args) -> None:
             "measures or the targets before shipping."
         )
     summary = {
+        "run_identity_sha256": stamp,
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
@@ -2094,6 +2140,15 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
         return []
     surface = materialize_rss.get("soi_surface") or {}
     holdout = materialize_rss.get("cd_holdout") or {}
+    excluded = surface.get("excluded_cd_states") or {}
+    exclusion = (
+        " District rows of state(s) "
+        + ", ".join(sorted(excluded))
+        + " are excluded: "
+        + "; ".join(f"{state}: {why}" for state, why in sorted(excluded.items()))
+        if excluded
+        else " No state's district rows are excluded for the mapping."
+    )
     return [
         {
             "id": "cd_soi_117th_plan_population_crosswalk",
@@ -2102,16 +2157,16 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
                 "The SOI congressional-district file (22incd.csv, TY2022) is "
                 "tabulated on the 117th-Congress plan. Its district rows are "
                 "mapped onto the households' 119th-plan districts by the "
-                "packaged 2020-block population crosswalk, so each 119th "
-                "district target assumes returns spread with population "
-                "inside every 117th/119th intersection. North Carolina's "
-                "district rows are excluded because that crosswalk used the "
-                "wrong NC plan."
+                "packaged 2020-block population crosswalk (built from the "
+                "block plan registry since #1043), so each 119th district "
+                "target assumes returns spread with population inside every "
+                "117th/119th intersection." + exclusion
             ),
             "treatment": (
-                "The block -> CD plan registry (PR #1041) plus a household "
-                "117th-plan district column lets these targets bind as exact "
-                "block sums; the NC exclusion lifts then."
+                "A household 117th-plan district column "
+                "(congressional_district_geoid__117th_congress, from the "
+                "location v1 block draw with the plan registry attached) lets "
+                "these targets bind as exact block sums with no crosswalk."
             ),
             "excluded_states": surface.get("excluded_cd_states"),
             "crosswalk": surface.get("crosswalk"),
@@ -2122,6 +2177,10 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
             "status": "reviewed_construction",
             "reason": surface.get("vintage_rule_description"),
             "rebase_factor_by_measure": surface.get("rebase_factor_by_measure"),
+            "level_bridges": surface.get("level_bridges"),
+            "level_bridge_factor_by_measure": surface.get(
+                "level_bridge_factor_by_measure"
+            ),
             "dropped": surface.get("dropped"),
             "calibration_blocker": False,
         },
@@ -2143,7 +2202,8 @@ def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
                 f"{holdout.get('held_units')} (state x concept family) units "
                 f"(fraction {holdout.get('fraction')}, salt "
                 f"{holdout.get('salt')}) never reach the calibrator; they are "
-                "scored against a pro-rata baseline in calibration_diagnostics."
+                "scored against a pro-rata baseline in calibration_summary.json "
+                "(cd_holdout) and gate_summary.json (gates.cd_holdout)."
             ),
             "calibration_blocker": False,
         },
@@ -2192,6 +2252,9 @@ def do_finalize(args) -> None:
             "--stage calibrate first."
         )
     identity = _verify_run_identity(args)
+    _require_current_calibration(identity, diagnostics, stage="finalize")
+    if "target_roles_sha256" in identity:
+        _verify_checkpoint_digests(args.checkpoint_dir, identity)
     ladder_sha = _sha256(args.ladder)
     if ladder_sha != identity.get("ladder_sha256"):
         raise SystemExit(
@@ -2585,6 +2648,7 @@ def do_package(args) -> dict:
     staging_orchestration = _require_uncapped_staging(staging_summary)
     soi_mode = _require_recorded_soi_mode(materialize_rss)
     _require_full_rung(identity)
+    _require_current_calibration(identity, diagnostics, stage="package")
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")

@@ -76,6 +76,23 @@ STATE_CD_UNPARENTED_CD_MEASURES: Mapping[str, str] = {
         "for its district rows to reconcile to."
     ),
 }
+#: District-file-only concepts (Historic Table 2 lacks them) and the sibling
+#: concept whose two state levels bridge theirs onto the Historic Table 2
+#: basis. The district file's own state levels sit below Historic Table 2's
+#: for two reasons: it covers only the returns processed in its window (about
+#: 1.7% fewer), and the feed stamps it one tax year late, so its amounts are
+#: aged one year less. A sibling both files carry, in the same state, measures
+#: that gap exactly: counts bridge by ``return_count`` (counts are not aged),
+#: amounts by the closest amount Historic Table 2 carries. The bridge is
+#: stamp-invariant: if the stamp is corrected (#1030) both levels move together.
+STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = {
+    "charitable_amount": "itemized_deductions_amount",
+    "charitable_returns": "return_count",
+    "interest_paid_deduction_amount": "itemized_deductions_amount",
+    "interest_paid_deduction_returns": "return_count",
+    "qualified_business_income_deduction_amount": "adjusted_gross_income",
+    "qualified_business_income_deduction_returns": "return_count",
+}
 #: States whose district SOI rows stay off the surface, with the evidence.
 #: Empty since #1043 rebuilt the 117th->119th crosswalk from the block plan
 #: registry: the packaged crosswalk before it (sha256 c7cb040b...) carried
@@ -114,7 +131,8 @@ ROLE_TRAIN = "train"
 ROLE_HOLDOUT = "holdout"
 
 # ---------------------------------------------------------------------------
-# Sampling constants (DESIGN.md "Production US stacked spine")
+# Sampling constants: the rung tokens of tools/build_us_multispine_pool.py
+# (DESIGN.md "Production US stacked spine" names f001, f010 and f100).
 # ---------------------------------------------------------------------------
 
 SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
@@ -267,6 +285,7 @@ def state_cd_soi_surface(
     state_surface_predicate: Callable[[object], bool],
     crosswalk: pd.DataFrame,
     crosswalk_sha256: str | None = None,
+    level_bridges: Mapping[str, str] = STATE_CD_LEVEL_BRIDGES,
 ) -> StateCdSurface:
     """Select and reconcile the ``state_cd`` SOI surface.
 
@@ -277,6 +296,9 @@ def state_cd_soi_surface(
         crosswalk: The 117th->119th CD crosswalk the compiler used; it names
             each state's source-plan and current-plan districts.
         crosswalk_sha256: Recorded in the receipt.
+        level_bridges: District-file-only measure -> sibling measure whose
+            Historic Table 2 / district-file ratio in the same state lifts
+            the district file's state level onto the Historic Table 2 basis.
 
     Returns:
         The surface in a fixed order (Historic Table 2 state rows, district
@@ -336,6 +358,52 @@ def state_cd_soi_surface(
             )
         cd_file_state_by_key[key] = spec
 
+    # One basis for every state level: a concept Historic Table 2 lacks keeps
+    # the district file's state row, scaled by a sibling's two levels.
+    bridged: dict[str, object] = {}
+    bridge_factors: dict[str, list[float]] = defaultdict(list)
+    for key, spec in sorted(cd_file_state_by_key.items()):
+        state, identity = key
+        measure = identity[0]
+        if key in ht2_by_key or measure in STATE_CD_DEFECTIVE_CD_FILE_MEASURES:
+            continue
+        sibling = level_bridges.get(measure)
+        if sibling is None:
+            raise ValueError(
+                f"District-file-only concept {measure!r} has no level bridge; "
+                "register a sibling measure in STATE_CD_LEVEL_BRIDGES before "
+                "binding it."
+            )
+        sibling_key = (state, (sibling, *identity[1:]))
+        ht2_sibling = ht2_by_key.get(sibling_key)
+        cd_sibling = cd_file_state_by_key.get(sibling_key)
+        if ht2_sibling is None or cd_sibling is None or float(cd_sibling.value) == 0:
+            raise ValueError(
+                f"Level bridge {measure} -> {sibling} in state {state} needs "
+                "the sibling's state total in both files."
+            )
+        factor = float(ht2_sibling.value) / float(cd_sibling.value)
+        if not (math.isfinite(factor) and factor > 0.0):
+            raise ValueError(
+                f"Level bridge {measure} -> {sibling} in state {state} has "
+                f"factor {factor}."
+            )
+        metadata = dict(spec.metadata)
+        metadata.update(
+            {
+                "state_cd_vintage_rule": STATE_CD_VINTAGE_RULE,
+                "state_cd_cd_file_value": repr(float(spec.value)),
+                "state_cd_level_bridge_sibling": ht2_sibling.name,
+                "state_cd_level_bridge_cd_file_sibling": cd_sibling.name,
+                "state_cd_level_bridge_factor": repr(factor),
+            }
+        )
+        value = float(spec.value) * factor
+        bridged[spec.name] = replace(
+            spec, value=value, signed=value < 0.0, metadata=metadata
+        )
+        bridge_factors[measure].append(factor)
+
     kept_cd_by_key: dict[tuple, list] = defaultdict(list)
     for spec in cd_rows:
         metadata = spec.metadata
@@ -381,12 +449,13 @@ def state_cd_soi_surface(
         basis = "historic_table_2"
         if parent is None:
             parent = cd_file_state_by_key.get(key)
-            basis = "cd_file_state_total"
+            basis = "cd_file_state_total_bridged"
             if parent is None:
                 raise ValueError(
                     f"District concept {identity} in state {state} has no "
                     "state parent in either vintage."
                 )
+            parent = bridged[parent.name]
             kept_cd_file_parents.add(parent.name)
         if soi_materializer_semantics(parent) != child_semantics:
             raise ValueError(
@@ -442,7 +511,7 @@ def state_cd_soi_surface(
         elif key in ht2_by_key:
             drop(spec, "second_vintage_of_state_concept")
         else:
-            kept_cd_file_state.append(spec)
+            kept_cd_file_state.append(bridged[spec.name])
     missing_parents = kept_cd_file_parents - {spec.name for spec in kept_cd_file_state}
     if missing_parents:
         raise ValueError(
@@ -460,7 +529,9 @@ def state_cd_soi_surface(
             "concept it carries. District-file (22incd.csv) district rows "
             "keep only their within-state shares and are rebased to sum to "
             "that parent. Concepts only the district file carries keep its "
-            "own state row as their parent."
+            "own state row as their parent, lifted onto the Historic Table 2 "
+            "basis by a sibling concept's ratio of the two files' state "
+            "totals in the same state (STATE_CD_LEVEL_BRIDGES)."
         ),
         "counts": {
             "historic_table_2_state": len(ht2_state),
@@ -475,6 +546,11 @@ def state_cd_soi_surface(
         "unparented_cd_measures": dict(STATE_CD_UNPARENTED_CD_MEASURES),
         "excluded_cd_states": dict(STATE_CD_EXCLUDED_CD_STATES),
         "at_large_on_source_plan": at_large_source_states,
+        "level_bridges": dict(level_bridges),
+        "level_bridge_factor_by_measure": {
+            measure: _factor_summary(values)
+            for measure, values in sorted(bridge_factors.items())
+        },
         "rebase_factor_by_measure": {
             measure: _factor_summary(values)
             for measure, values in sorted(factors_by_measure.items())
@@ -490,8 +566,9 @@ def state_cd_soi_surface(
             "targets_without_sigma": len(specs) - with_sigma,
             "note": (
                 "The pinned feed carries no uncertainty field for any fact; "
-                "IRS SOI tables are administrative. targets.json records "
-                "sigma wherever a spec carries one."
+                "IRS SOI tables are administrative. target_roles.json records "
+                "sigma and sigma_basis for every target, null wherever a spec "
+                "carries none."
             ),
         },
     }
@@ -643,8 +720,9 @@ def carrier_check_specs(plan: CarrierPlan, district_codes: np.ndarray) -> tuple:
     """District rows the first chunk also materializes directly, as a check.
 
     One per carrier: the row whose district has the most households in the
-    chunk (ties to the lower row). The assembler compares each one with its
-    carrier-derived row and refuses any difference.
+    chunk (ties to the lower row). ``materialize_chunked`` compares each
+    directly materialized row with the row the assembler stored for it and
+    refuses any difference.
     """
 
     counts = Counter(int(code) for code in district_codes)
@@ -698,7 +776,10 @@ class SparseTargetAssembler:
         *,
         name: str,
     ) -> None:
-        """Add a carrier restricted to chunk ``positions`` (the district's)."""
+        """Add a carrier restricted to chunk ``positions`` (the district's).
+
+        Returns the chunk positions and float32 values actually stored.
+        """
 
         values32 = np.asarray(carrier[positions], dtype=np.float32)
         if not np.isfinite(values32).all():
@@ -706,11 +787,13 @@ class SparseTargetAssembler:
                 f"Target {name!r} derives non-finite values from its carrier."
             )
         keep = values32 != 0
+        stored = (positions[keep], values32[keep])
         if not keep.any():
-            return
+            return stored
         self._rows.append(np.full(int(keep.sum()), row, dtype=np.int32))
         self._cols.append((positions[keep] + low).astype(np.int32))
         self._data.append(values32[keep])
+        return stored
 
     def extend(self, other_rows: sparse.csr_array, row_offset: int) -> None:
         """Append already-assembled CSR rows at ``row_offset``."""
@@ -771,39 +854,32 @@ def split_carriers_into(
     low: int,
     state_codes: np.ndarray,
     district_codes: np.ndarray,
-) -> None:
-    """Add every district SOI row of one chunk from its carrier column."""
+    capture: set[int] | frozenset[int] = frozenset(),
+) -> dict[int, tuple[np.ndarray, np.ndarray]]:
+    """Add every district SOI row of one chunk from its carrier column.
+
+    Returns, for each declared row index in ``capture``, the chunk positions
+    and float32 values the assembler stored for it.
+    """
 
     positions_by_district = district_positions(district_codes)
     states = np.asarray(state_codes, dtype=np.int64)
     empty = np.empty(0, dtype=np.int64)
+    captured: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     for index, state, district, carrier in plan.split:
         positions = positions_by_district.get(district, empty)
         if len(positions) and state != NO_STATE_MASK:
             positions = positions[states[positions] == state]
-        assembler.add_masked(
+        stored = assembler.add_masked(
             index,
             low,
             carrier_columns[carrier],
             positions,
             name=plan.declared[index].name,
         )
-
-
-def carrier_derived_column(
-    carrier: np.ndarray,
-    *,
-    state: int,
-    district: int,
-    state_codes: np.ndarray,
-    district_codes: np.ndarray,
-) -> np.ndarray:
-    """The dense column a district row derives from its carrier (float64)."""
-
-    mask = np.asarray(district_codes, dtype=np.int64) == district
-    if state != NO_STATE_MASK:
-        mask &= np.asarray(state_codes, dtype=np.int64) == state
-    return np.where(mask, np.asarray(carrier, dtype=np.float64), 0.0)
+        if index in capture:
+            captured[index] = stored
+    return captured
 
 
 def population_rows(
@@ -920,7 +996,7 @@ def csr_row_measure(matrix: sparse.csr_array, row: int, n: int):
 
 
 def target_record(spec) -> dict:
-    """The targets.json record for one admin spec (metadata subset)."""
+    """The target_roles.json record for one admin spec (metadata subset)."""
 
     metadata = spec.metadata
     level = metadata.get("ledger_geography_level")
@@ -1333,18 +1409,32 @@ def rung_token(fraction: float) -> str:
             return token
     raise ValueError(
         f"sample fraction {fraction!r} is not a rung; use one of "
-        f"{sorted(SAMPLE_RUNG_TOKENS)} (DESIGN.md 'Production US stacked spine')."
+        f"{sorted(SAMPLE_RUNG_TOKENS)} (the stacked pool's rungs)."
+    )
+
+
+def _staging_strata(households: pd.DataFrame, tag: str) -> pd.Series:
+    return (
+        households[tag]
+        .astype(str)
+        .str.cat(households["congressional_district_geoid"].astype(str), sep="|cd=")
     )
 
 
 def sample_staging_frame(frame, *, fraction: float, seed: int):
-    """Sample whole households at a rung, stratified by spine and district.
+    """Sample whole households at a development rung.
 
     ``fraction == 1`` returns the frame unchanged. Otherwise
     :func:`microcosm.build.frame_sampling.sample_frame_households` draws
-    ``floor(fraction * n)`` households per (spine, district) stratum, and each
-    spine's weights are scaled back to that spine's full household mass, so
-    per-spine totals and the district mix are preserved.
+    ``floor(fraction * n_h)`` households in every (spine, district) stratum
+    ``h``, each drawn household's weight is scaled by ``n_h / k_h`` (the
+    stratum's inverse sampling rate, so a drawn stratum keeps its full
+    household mass), and each spine is then scaled to its full household
+    mass. A stratum that floors to zero draws loses its households; the
+    receipt records how many strata and how much weight that is, and the
+    per-spine scaling spreads that weight over the spine's drawn strata. At
+    f001 that is material for the donor spine (its district strata are
+    small), so read district-level evidence from f010 or above.
     """
 
     from microcosm.build.frame_sampling import (
@@ -1366,14 +1456,14 @@ def sample_staging_frame(frame, *, fraction: float, seed: int):
             "households": int(len(households)),
         }
     tag = spine_column("household")
+    strata = _staging_strata(households, tag)
     spine = households[tag].astype(str).to_numpy()
-    strata = pd.Series(spine).str.cat(
-        households["congressional_district_geoid"].astype(str).to_numpy(), sep="|cd="
-    )
     full_weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     full_mass = {
         value: float(full_weights[spine == value].sum()) for value in sorted(set(spine))
     }
+    stratum_size = strata.value_counts()
+    stratum_mass = pd.Series(full_weights).groupby(strata.to_numpy()).sum()
     sampled, receipt = sample_frame_households(
         frame,
         fraction=float(fraction),
@@ -1383,9 +1473,14 @@ def sample_staging_frame(frame, *, fraction: float, seed: int):
         floor_context="the ACS local development rung",
     )
     sampled_households = sampled.table("household")
+    sampled_strata = _staging_strata(sampled_households, tag)
+    drawn = sampled_strata.value_counts()
+    inverse_rate = sampled_strata.map(stratum_size).to_numpy(
+        dtype=np.float64
+    ) / sampled_strata.map(drawn).to_numpy(dtype=np.float64)
     sampled_spine = sampled_households[tag].astype(str).to_numpy()
     weights = sampled.weights_for("household")
-    values = np.asarray(weights.values, dtype=np.float64).copy()
+    values = np.asarray(weights.values, dtype=np.float64) * inverse_rate
     factors = {}
     for value, mass in full_mass.items():
         mask = sampled_spine == value
@@ -1397,6 +1492,7 @@ def sample_staging_frame(frame, *, fraction: float, seed: int):
             )
         factors[value] = mass / sampled_mass
         values[mask] *= factors[value]
+    zero_draw = sorted(set(stratum_size.index) - set(drawn.index))
     new_total = float(values.sum())
     normalized = sampled.with_weights(
         "household",
@@ -1404,8 +1500,9 @@ def sample_staging_frame(frame, *, fraction: float, seed: int):
         mass=MassChange(
             factor=new_total / float(weights.total),
             reason=(
-                f"ACS local {token} development rung: per-spine normalization "
-                "to the full staging household mass"
+                f"ACS local {token} development rung: inverse stratum sampling "
+                "rate, then per-spine normalization to the full staging "
+                "household mass"
             ),
         ),
     )
@@ -1416,7 +1513,13 @@ def sample_staging_frame(frame, *, fraction: float, seed: int):
         "sample_seed": int(seed),
         "sampled": True,
         "strata": "household_spine x congressional_district_geoid",
-        "n_strata": int(strata.nunique()),
+        "n_strata": int(len(stratum_size)),
+        "zero_draw_strata": len(zero_draw),
+        "zero_draw_weight_share": float(
+            stratum_mass.reindex(zero_draw).sum() / full_weights.sum()
+        )
+        if zero_draw
+        else 0.0,
         "per_spine_normalization_factor": factors,
         "full_household_mass_by_spine": full_mass,
         "households": int(len(sampled_households)),
