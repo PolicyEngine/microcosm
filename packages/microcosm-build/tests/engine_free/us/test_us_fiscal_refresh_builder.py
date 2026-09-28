@@ -6022,16 +6022,6 @@ def _run_green_register_release(
             "torch": "2.12.0",
         },
     )
-    monkeypatch.setattr(
-        builder,
-        "diagnostics_payload",
-        lambda result, *, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "e" * 64, "n_targets": 1},
-        },
-    )
     reference_frame = object()
 
     def fake_load_us_frame(path):
@@ -8187,7 +8177,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(
         builder,
         "target_surface_payload",
-        lambda result: {"sha256": "e" * 64, "n_targets": 0},
+        lambda result: {
+            "sha256": "e" * 64,
+            "n_targets": 0 if prepared_pool else 1,
+        },
     )
     if terminal_mode == "puf_tail":
         # The real receipt type, so ``_main``'s exact-k branch that drops the
@@ -12119,16 +12112,6 @@ def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
         },
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
-    monkeypatch.setattr(
-        builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
-    )
     return release_id, release_dir, artifact_root
 
 
@@ -12352,11 +12335,14 @@ def test_release_calibration_diagnostics_record_calibration_runtime(
     monkeypatch.setattr(
         builder,
         "write_calibration_diagnostics",
-        lambda result, path, *, target_registry, build: builds.append(build),
+        lambda result, path, *, target_registry, build, target_surface: builds.append(
+            build
+        ),
     )
     gate = SimpleNamespace(passed=True, failures=(), details={})
     kwargs = dict(
         result=SimpleNamespace(),
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         release_dir=tmp_path,
         registry=TargetRegistry((), country="us"),
         base_dataset_sha256="base-sha",
