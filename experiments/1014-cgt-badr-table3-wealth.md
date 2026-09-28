@@ -168,5 +168,18 @@ wealth or self-employment income fall to 3.9 and 4.4 percent (listed-shares gain
 dividends 14.8, residential gainers without another residential property or property income 51.7, from
 62.0 and 82.6). Calibration: effective sample size 5,176 against 5,173, liability +3.5 percent, Table 3
 within 0.4 and Table 4.1 within 2.8 percent; the worst tax-by-age row is +9.6 percent against +7.7, and
-the redraw realizes GBP 138.8bn against its GBP 119.05bn plan (c4′ 135.3bn). When the commits land they
-are re-measured against a c4 rebuilt on #1012's merged base.
+the redraw realizes GBP 138.8bn against its GBP 119.05bn plan (c4′ 135.3bn).
+
+On the merged #1012 (main `937aca4ec`) three arms were rebuilt and recalibrated: a control on that main,
+the PR head (c1 to c4 with the #1012 review fixes) and the WP3 pair. The spines the PR head and the pair
+build are identical, dataset for dataset, to those built on the pre-merge tree, and so are their
+calibrations: #1012's final review round changed gates, the target-fit register and stage health, nothing
+the spine or the solve reads. Against the control on the merged main, liability moves from +12.8 to +3.7
+percent (GBP 25.38bn to 23.33bn against the published 22.503bn), the worst tax-by-age row from +18.7 to
++7.7 percent, the worst gains-by-age row from 10.8 to 0.3 percent, and the share of gains above GBP
+125,140 of taxable income from 46.2 to 55.4 percent, with the effective sample size 5,173 against 5,200,
+the loss 0.0084 against 0.0088 and the entrants fence 129,433 against 129,863. The pair on that base:
+effective sample size 5,176, liability +3.5 percent, worst tax-by-age row +9.6 percent, fence 99,133, and
+the coherence figures above unchanged. Runs `spine-assessment-1014-{ctl1012,c4m1012,wp3m1012}`; outputs
+`phase-b/cgt-phase-b-m1012.json`, `wp3/coherence-m1012.json` and `wp3/calib-summary-m1012.txt` under the
+evidence directory.
