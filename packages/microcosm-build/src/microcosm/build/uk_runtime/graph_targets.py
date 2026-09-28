@@ -134,6 +134,27 @@ def _surface_records(frame: pd.DataFrame) -> list[dict]:
     ]
 
 
+def _surface_frame(payload: Mapping) -> pd.DataFrame:
+    """Rebuild the stored local surface, decoding what ``_surface_records`` encoded.
+
+    The frame crosses a graph node boundary as JSON, so a spec's
+    ``CalibrationHierarchy`` comes back as a mapping; the problem assembly
+    hands each row's hierarchy to ``Target``, which refuses a mapping (found by
+    the first licensed graph build). Main's rowwise tool never serialises the
+    frame and never saw this.
+    """
+
+    surface = pd.DataFrame(payload["surface"], columns=payload["surface_columns"])
+    if "hierarchy" in surface.columns:
+        surface["hierarchy"] = [
+            CalibrationHierarchy.from_dict(dict(value))
+            if isinstance(value, Mapping)
+            else value
+            for value in surface["hierarchy"]
+        ]
+    return surface
+
+
 def _local_specs(surface: pd.DataFrame) -> list[TargetSpec]:
     return [
         TargetSpec(
@@ -470,7 +491,7 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
         grain: pd.DataFrame(arrays[f"metrics_{grain}"], columns=columns, index=ids)
         for grain, columns in metadata["grains"].items()
     }
-    surface = pd.DataFrame(full["surface"], columns=full["surface_columns"])
+    surface = _surface_frame(full)
     surface = _selected_local_surface(surface, local_specs)
     ladder = load_uk_oa_ladder(context.sources["uk_ladder"])
     _, local_problem, cross, bound_families, rung = build_uk_full_local_problem(

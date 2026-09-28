@@ -131,3 +131,42 @@ def test_joint_surface_keeps_region_rows_as_cross_grain_controls():
     joint = full_problem._joint_surface_registry(local, national)
     assert [s.name for s in joint.specs] == ["age_pcon", "age_uk", "age_ne"]
     assert full_problem._national_contract_target_ids(national) == ("age_ne", "age_uk")
+
+
+def test_stored_surface_round_trip_restores_the_hierarchy():
+    """The local surface crosses the node boundary as JSON; its schema-8
+    hierarchy must come back as a CalibrationHierarchy, or the problem assembly
+    refuses every hierarchy-bearing target (first licensed graph build)."""
+    import json
+
+    import pandas as pd
+
+    from microcosm.build.uk_runtime import graph_targets
+    from microcosm.calibrate.hierarchy import CalibrationHierarchy
+    from test_support.microcosm_build.uk_hierarchy_fixtures import uk_fixture_hierarchy
+
+    name = "hmrc.self_employment_income.amount@E14001063"
+    hierarchy = uk_fixture_hierarchy(
+        name, level="constituency", geography_id="E14001063"
+    )
+    frame = pd.DataFrame(
+        [
+            {"target_name": name, "value": 1.5, "hierarchy": hierarchy},
+            {"target_name": "plain@E14001063", "value": 2.0, "hierarchy": None},
+        ]
+    )
+    payload = json.loads(
+        json.dumps(
+            {
+                "surface": graph_targets._surface_records(frame),
+                "surface_columns": frame.columns.tolist(),
+            }
+        )
+    )
+    assert isinstance(payload["surface"][0]["hierarchy"], dict)
+    restored = graph_targets._surface_frame(payload)
+    assert restored.columns.tolist() == frame.columns.tolist()
+    assert isinstance(restored["hierarchy"][0], CalibrationHierarchy)
+    assert restored["hierarchy"][0] == hierarchy
+    assert restored["hierarchy"][1] is None
+    assert restored["value"].tolist() == [1.5, 2.0]
