@@ -25,6 +25,7 @@ microcosm-diagnostics = { workspace = true }
 [dependency-groups]
 dev = [
     "pytest>=8",
+    "hypothesis>=6",
 ]
 
 [build-system]
