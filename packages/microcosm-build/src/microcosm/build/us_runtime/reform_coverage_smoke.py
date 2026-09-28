@@ -30,6 +30,8 @@ from typing import Any
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.release_input_coverage import (
     ReformCoverageProbe,
+    installed_list_parameter_baseline,
+    resolve_probe_parameter_changes,
     us_release_reform_coverage_probes,
 )
 
@@ -47,6 +49,18 @@ def _weighted_total(simulation: Any, measure: str, period: int) -> float:
 
 
 def _build_reform(probe: ReformCoverageProbe) -> Any:
+    """The probe's reform, its list edits resolved on the installed engine.
+
+    A list edit resolves against the installed PolicyEngine-US baseline here,
+    so an edit that no longer fits that baseline fails before anything is
+    scored. The returned reform also re-reads each edited list from the system
+    it is applied to and refuses to apply if that baseline differs from the one
+    the edit was resolved against, so the resolved list can only replace the
+    baseline it was derived from.
+
+    Raises:
+        ValueError: If a list edit does not fit the installed baseline.
+    """
     from policyengine_core.reforms import Reform
 
     if probe.neutralized_variable:
@@ -61,7 +75,35 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
                 )
 
         return _Neutralize
-    return Reform.from_dict(dict(probe.parameter_changes), country_id="us")
+    if not probe.list_edits:
+        return Reform.from_dict(dict(probe.parameter_changes), country_id="us")
+
+    baselines = {
+        path: installed_list_parameter_baseline(path, edit)
+        for path, edit in probe.list_edits.items()
+    }
+    changes = resolve_probe_parameter_changes(probe, lambda path, edit: baselines[path])
+    resolved = Reform.from_dict(changes, country_id="us")
+    probe_id, list_edits = probe.id, dict(probe.list_edits)
+
+    class _ResolvedListEdits(resolved):
+        resolved_list_edits = {
+            path: list(changes[path][edit.period]) for path, edit in list_edits.items()
+        }
+
+        def apply(self) -> None:
+            for path, edit in list_edits.items():
+                applied_to = list(self.parameters.get_child(path)(edit.start))
+                if applied_to != baselines[path]:
+                    raise ValueError(
+                        f"reform-coverage probe {probe_id!r}: {path} was resolved "
+                        f"against the baseline {baselines[path]} but the system "
+                        f"it is applied to holds {applied_to} at {edit.start}; "
+                        "the resolved list would revert that difference."
+                    )
+            resolved.apply(self)
+
+    return _ResolvedListEdits
 
 
 def us_reform_coverage_smoke_gate(
@@ -76,7 +118,10 @@ def us_reform_coverage_smoke_gate(
     For each probe, the budget-measure change (reform vs baseline, signed by
     ``effect_direction``) must have the declared ``expected_sign`` and magnitude
     at least ``min_abs_effect``. A zero, undersized, or wrong-signed effect means
-    the reform did not bind as declared and fails the release.
+    the reform did not bind as declared and fails the release. A probe's list
+    edits resolve against the installed engine as its reform is built; one that
+    no longer fits raises rather than scoring a different reform, and each
+    result records the resolved lists under ``list_edits``.
 
     Args:
         simulate: ``simulate(None)`` builds the baseline; ``simulate(reform)``
@@ -136,6 +181,19 @@ def us_reform_coverage_smoke_gate(
             "issue": probe.issue,
             "passed": passed,
         }
+        if probe.list_edits:
+            # Record the list each edit resolved to, so the smoke evidence
+            # names exactly what was scored against the installed engine.
+            resolved_lists = getattr(reform, "resolved_list_edits", None) or {}
+            results[probe.id]["list_edits"] = {
+                path: {
+                    "period": edit.period,
+                    "remove": list(edit.remove),
+                    "add": list(edit.add),
+                    "resolved": resolved_lists.get(path),
+                }
+                for path, edit in probe.list_edits.items()
+            }
         if not passed:
             expectation = (
                 "an effect in either direction"

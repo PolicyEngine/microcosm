@@ -44,13 +44,24 @@ the pinned eCPS surface and the live PolicyEngine-US graph, so the register
 cannot silently rot: it must cover exactly the reference eCPS populated layers,
 every declared column must be a real engine input leaf, and the SSI asset inputs
 must stay hard requirements.
+
+A reform-coverage probe that changes a list-valued parameter declares the items
+it removes or adds (:class:`ListParameterEdit`) instead of pinning the whole
+list. The 2026-09-28 US release failed its post-export smoke because four probes
+pinned lists copied from an older PolicyEngine-US: after 2.2.1 moved ``tanf``
+to ``unearned_spm_unit``, the pinned lists re-added TANF and scored
+wrong-signed. A declared edit is resolved against the installed engine's
+baseline list when the reform is built, and resolution fails loudly when the
+edit no longer fits that baseline.
 """
 
 from __future__ import annotations
 
+import functools
 import json
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import date
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -122,15 +133,21 @@ __all__ = [
     "US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS",
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
+    "US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
     "REFERENCE_ECPS_LAYER_RENAMES",
     "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "ListParameterEdit",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
     "ReleaseInputCoverageManifest",
     "assert_release_input_coverage_manifest_current",
+    "installed_list_parameter_baseline",
+    "list_parameter_baseline",
     "load_release_input_coverage_manifest",
     "project_ecps_parity_known_gap_names",
+    "resolve_list_parameter_edit",
+    "resolve_probe_parameter_changes",
     "us_release_input_coverage_gate",
     "us_release_input_coverage_required_columns",
     "us_release_input_coverage_reviewed_exclusions",
@@ -138,6 +155,12 @@ __all__ = [
 ]
 
 US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
+
+#: Manifest schema version this loader reads. Version 2 declares a probe's
+#: list-valued parameter changes as ``list_edits`` resolved against the
+#: installed engine and forbids pinning a whole list in ``parameter_changes``;
+#: version 1 manifests pinned lists and are refused with a regeneration hint.
+US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION = 2
 
 # The SHA-pinned incumbent predates the verified PolicyEngine-US 1.777.0 WIC
 # input rename. Preserve its historical evidence bytes while projecting the
@@ -329,6 +352,189 @@ class ReleaseInputColumn:
                 )
 
 
+def _iso_date(text: str) -> date | None:
+    if len(text) != 10:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+@dataclass(frozen=True)
+class ListParameterEdit:
+    """A declared change to a list-valued parameter, relative to its baseline.
+
+    Pinning a whole list copies the engine's baseline as it stood when the probe
+    was written, so any later engine change to that list is silently reverted
+    by the reform (the 2026-09-28 TANF failure). An edit names only the items
+    it changes; :func:`resolve_list_parameter_edit` applies it to the installed
+    engine's baseline when the reform is built.
+
+    Attributes:
+        period: The bounded ``"YYYY-MM-DD.YYYY-MM-DD"`` range the edit applies
+            over, as a ``Reform.from_dict`` period key. Resolution requires
+            the baseline to be one list across the whole range.
+        remove: Items to drop from the baseline; each must be in it.
+        add: Items to append to the baseline; none may already be in it.
+    """
+
+    period: str
+    remove: tuple[str, ...] = ()
+    add: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        start, separator, stop = str(self.period).partition(".")
+        start_date, stop_date = _iso_date(start), _iso_date(stop)
+        if not separator or start_date is None or stop_date is None:
+            raise ValueError(
+                f"list edit period {self.period!r} must be a bounded "
+                "'YYYY-MM-DD.YYYY-MM-DD' range: an open-ended edit would "
+                "resolve against one baseline and apply across later ones."
+            )
+        if start_date > stop_date:
+            raise ValueError(f"list edit period {self.period!r} starts after it stops.")
+        for kind, items in (("remove", self.remove), ("add", self.add)):
+            if not isinstance(items, tuple):
+                raise ValueError(f"list edit {kind} must be a tuple of item names.")
+            if any(not isinstance(item, str) or not item for item in items):
+                raise ValueError(
+                    f"list edit {kind} items must be non-empty strings, got "
+                    f"{list(items)!r}."
+                )
+            duplicates = sorted({item for item in items if items.count(item) > 1})
+            if duplicates:
+                raise ValueError(f"list edit {kind} repeats {duplicates}.")
+        if not self.remove and not self.add:
+            raise ValueError("a list edit must remove or add at least one item.")
+        both = sorted(set(self.remove) & set(self.add))
+        if both:
+            raise ValueError(f"list edit both removes and adds {both}.")
+
+    @property
+    def start(self) -> str:
+        """The first instant of :attr:`period`."""
+        return self.period.partition(".")[0]
+
+    @property
+    def stop(self) -> str:
+        """The last instant of :attr:`period`."""
+        return self.period.partition(".")[2]
+
+
+#: ``baseline(path, edit) -> list`` — the baseline value an edit resolves on.
+ListBaselineFn = Callable[[str, ListParameterEdit], Sequence[str]]
+
+
+def resolve_list_parameter_edit(
+    path: str, edit: ListParameterEdit, baseline: Sequence[str]
+) -> list[str]:
+    """Apply ``edit`` to the baseline list of the parameter at ``path``.
+
+    Keeps the baseline's order, drops every removed item and appends the added
+    items in their declared order, so the result is the baseline minus
+    ``edit.remove`` plus ``edit.add``.
+
+    Raises:
+        ValueError: If the baseline is not a list of strings, a removed item is
+            not in it, or an added item already is. Each means the declared
+            edit no longer describes a change to the installed engine's list,
+            so scoring it would test something other than what it declares.
+    """
+    if isinstance(baseline, (str, bytes)) or not isinstance(baseline, Sequence):
+        raise ValueError(
+            f"{path}: baseline value {baseline!r} is not a list; list edits "
+            "apply only to list-valued parameters."
+        )
+    items = list(baseline)
+    if any(not isinstance(item, str) for item in items):
+        raise ValueError(
+            f"{path}: baseline list {items!r} holds non-string items; list "
+            "edits apply only to lists of names."
+        )
+    missing = [item for item in edit.remove if item not in items]
+    present = [item for item in edit.add if item in items]
+    if missing or present:
+        problems = []
+        if missing:
+            problems.append(f"removes {missing}, which the baseline lacks")
+        if present:
+            problems.append(f"adds {present}, which the baseline already has")
+        raise ValueError(
+            f"{path} over {edit.period}: the list edit "
+            + " and ".join(problems)
+            + f" (installed baseline {items}). The engine's list has changed "
+            "under the probe; re-declare the edit against it."
+        )
+    removed = set(edit.remove)
+    return [item for item in items if item not in removed] + list(edit.add)
+
+
+def list_parameter_baseline(
+    parameters: Any, path: str, edit: ListParameterEdit
+) -> list[str]:
+    """Read the baseline list a ``policyengine-core`` parameter tree holds.
+
+    Args:
+        parameters: The root parameter node of a tax-benefit system.
+        path: The list-valued parameter's dotted path.
+        edit: The edit whose period the baseline must span.
+
+    Returns:
+        The baseline list at ``edit.start``.
+
+    Raises:
+        ValueError: If ``path`` is not a list-valued parameter, or its baseline
+            changes inside ``edit.period`` (no single baseline to edit, so the
+            edit must be split at the change).
+    """
+    try:
+        parameter = parameters.get_child(path)
+    except ValueError as error:
+        raise ValueError(
+            f"{path}: not a parameter of the installed engine ({error})."
+        ) from error
+    if not callable(parameter) or not hasattr(parameter, "values_list"):
+        raise ValueError(f"{path}: not a leaf parameter of the installed engine.")
+    baseline = parameter(edit.start)
+    if isinstance(baseline, (str, bytes)) or not isinstance(baseline, Sequence):
+        raise ValueError(
+            f"{path}: baseline value {baseline!r} at {edit.start} is not a list; "
+            "list edits apply only to list-valued parameters."
+        )
+    for value_at in parameter.values_list:
+        instant = str(value_at.instant_str)
+        if edit.start < instant <= edit.stop and list(parameter(instant)) != list(
+            baseline
+        ):
+            raise ValueError(
+                f"{path}: the baseline list changes at {instant}, inside the "
+                f"list edit period {edit.period}; split the edit at {instant} "
+                "so each part edits one baseline."
+            )
+    return list(baseline)
+
+
+@functools.cache
+def _installed_parameters() -> Any:
+    from policyengine_us import CountryTaxBenefitSystem
+
+    return CountryTaxBenefitSystem().parameters
+
+
+def installed_list_parameter_baseline(path: str, edit: ListParameterEdit) -> list[str]:
+    """The installed PolicyEngine-US baseline list an edit resolves against.
+
+    Builds one baseline tax-benefit system per process and keeps only its
+    parameter tree.
+
+    Raises:
+        ImportError: If PolicyEngine-US is not installed.
+        ValueError: As :func:`list_parameter_baseline`.
+    """
+    return list_parameter_baseline(_installed_parameters(), path, edit)
+
+
 @dataclass(frozen=True)
 class ReformCoverageProbe:
     """A pinned reform whose $0 score on the export signals a coverage hole.
@@ -341,9 +547,16 @@ class ReformCoverageProbe:
     Attributes:
         id: Stable probe id.
         name: Human-readable reform description.
-        parameter_changes: ``Reform.from_dict`` payload (country ``us``).
-            Exactly one of this mapping or ``neutralized_variable`` is
-            non-empty.
+        parameter_changes: ``Reform.from_dict`` payload (country ``us``) for
+            scalar changes. A list value is refused: pinning a whole list
+            reverts any later engine change to it, so list changes go in
+            ``list_edits``.
+        list_edits: Declared edits to list-valued parameters, keyed by
+            parameter path and resolved against the installed engine's
+            baseline when the reform is built
+            (:func:`resolve_probe_parameter_changes`). A probe has parameter
+            changes or list edits (or both, on different paths), or else a
+            ``neutralized_variable``.
         neutralized_variable: Input leaf neutralized by a
             structural reform when no parameter change isolates the leaf.
         budget_measure: The variable whose weighted total change is scored.
@@ -374,16 +587,38 @@ class ReformCoverageProbe:
     period: int | None = None
     expected_sign: str = "positive"
     neutralized_variable: str | None = None
+    list_edits: Mapping[str, ListParameterEdit] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.id:
             raise ValueError("ReformCoverageProbe.id is required.")
-        has_params = bool(self.parameter_changes)
+        has_params = bool(self.parameter_changes) or bool(self.list_edits)
         has_neutralize = bool(self.neutralized_variable)
         if has_params == has_neutralize:
             raise ValueError(
-                f"{self.id}: provide exactly one of parameter_changes or "
-                "neutralized_variable."
+                f"{self.id}: provide exactly one of parameter changes "
+                "(parameter_changes and/or list_edits) or neutralized_variable."
+            )
+        for path, periods in self.parameter_changes.items():
+            values = periods.values() if isinstance(periods, Mapping) else (periods,)
+            if any(isinstance(value, (list, tuple)) for value in values):
+                raise ValueError(
+                    f"{self.id}: parameter_changes pins a whole list for {path}. "
+                    "A pinned list reverts any later engine change to it (the "
+                    "2026-09-28 TANF failure); declare the items it removes or "
+                    "adds in list_edits so it resolves against the installed "
+                    "engine's baseline."
+                )
+        for path, edit in self.list_edits.items():
+            if not isinstance(edit, ListParameterEdit):
+                raise ValueError(
+                    f"{self.id}: list_edits[{path!r}] must be a ListParameterEdit."
+                )
+        overlap = sorted(set(self.parameter_changes) & set(self.list_edits))
+        if overlap:
+            raise ValueError(
+                f"{self.id}: {overlap} appear in both parameter_changes and "
+                "list_edits; give each parameter one definition."
             )
         if (
             self.neutralized_variable
@@ -412,6 +647,40 @@ class ReformCoverageProbe:
             )
 
 
+def resolve_probe_parameter_changes(
+    probe: ReformCoverageProbe,
+    baseline: ListBaselineFn | None = None,
+) -> dict[str, Any]:
+    """The probe's full ``Reform.from_dict`` payload, list edits resolved.
+
+    Args:
+        probe: The probe to resolve.
+        baseline: ``baseline(path, edit)`` returns the baseline list the edit
+            applies to; defaults to the installed PolicyEngine-US
+            (:func:`installed_list_parameter_baseline`).
+
+    Returns:
+        ``probe.parameter_changes`` plus ``{path: {edit.period: resolved}}``
+        for every list edit.
+
+    Raises:
+        ValueError: Naming the probe, if a list edit does not fit its baseline
+            (see :func:`resolve_list_parameter_edit`).
+    """
+    baseline = baseline or installed_list_parameter_baseline
+    changes: dict[str, Any] = {
+        path: dict(periods) if isinstance(periods, Mapping) else periods
+        for path, periods in probe.parameter_changes.items()
+    }
+    for path, edit in probe.list_edits.items():
+        try:
+            resolved = resolve_list_parameter_edit(path, edit, baseline(path, edit))
+        except ValueError as error:
+            raise ValueError(f"reform-coverage probe {probe.id!r}: {error}") from error
+        changes[path] = {edit.period: resolved}
+    return changes
+
+
 @dataclass(frozen=True)
 class ReleaseInputCoverageManifest:
     """The full parsed coverage contract.
@@ -426,7 +695,7 @@ class ReleaseInputCoverageManifest:
     reference: Mapping[str, str]
     columns: tuple[ReleaseInputColumn, ...]
     probes: tuple[ReformCoverageProbe, ...] = ()
-    schema_version: int = 1
+    schema_version: int = US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION
     _by_name: dict[str, ReleaseInputColumn] = field(
         default_factory=dict, repr=False, compare=False
     )
@@ -480,18 +749,78 @@ def _resource_payload(resource: str) -> Mapping[str, Any]:
     return raw
 
 
+_LIST_EDIT_KEYS = frozenset({"period", "remove", "add"})
+
+
+def _parse_list_edits(raw: Any, *, where: str) -> dict[str, ListParameterEdit]:
+    """Parse a probe's ``list_edits`` JSON object into declared edits."""
+    if raw is None:
+        return {}
+    if not isinstance(raw, Mapping):
+        raise ValueError(f"{where}: list_edits must be a JSON object.")
+    edits: dict[str, ListParameterEdit] = {}
+    for path, raw_edit in raw.items():
+        if not isinstance(raw_edit, Mapping):
+            raise ValueError(f"{where}: list_edits[{path!r}] must be a JSON object.")
+        unknown = sorted(set(raw_edit) - _LIST_EDIT_KEYS)
+        if unknown:
+            raise ValueError(
+                f"{where}: list_edits[{path!r}] has unknown key(s) {unknown}; "
+                f"expected {sorted(_LIST_EDIT_KEYS)}."
+            )
+        items: dict[str, tuple[str, ...]] = {}
+        for kind in ("remove", "add"):
+            value = raw_edit.get(kind, [])
+            if not isinstance(value, list):
+                raise ValueError(
+                    f"{where}: list_edits[{path!r}].{kind} must be a JSON array."
+                )
+            items[kind] = tuple(value)
+        try:
+            edits[str(path)] = ListParameterEdit(
+                period=str(raw_edit.get("period", "")),
+                remove=items["remove"],
+                add=items["add"],
+            )
+        except ValueError as error:
+            raise ValueError(f"{where}: list_edits[{path!r}]: {error}") from error
+    return edits
+
+
 def load_release_input_coverage_manifest(
     resource: str = US_RELEASE_INPUT_COVERAGE_RESOURCE,
 ) -> ReleaseInputCoverageManifest:
     """Load and validate the release input-column coverage manifest.
 
     Raises:
-        ValueError: If the payload shape is wrong, a column has an unknown
-            status, a reviewed exclusion is missing its reason or issue, or the
-            declared column set is empty (a silently-empty manifest would make
-            the coverage gate vacuous).
+        ValueError: If the schema version is not
+            :data:`US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION`, the payload shape
+            is wrong, a column has an unknown status, a reviewed exclusion is
+            missing its reason or issue, a probe pins a whole list or declares a
+            malformed list edit, or the declared column set is empty (a
+            silently-empty manifest would make the coverage gate vacuous).
     """
     payload = _resource_payload(resource)
+
+    schema_version = payload.get("schema_version", 1)
+    if isinstance(schema_version, bool) or not isinstance(schema_version, int):
+        raise ValueError(f"{resource}: 'schema_version' must be an integer.")
+    if schema_version == 1:
+        raise ValueError(
+            f"{resource}: schema_version 1 is no longer read. It pinned "
+            "list-valued probe parameters as whole lists, which revert any "
+            "later engine change to those lists (the 2026-09-28 TANF failure); "
+            f"schema_version {US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION} "
+            "declares them as list_edits resolved against the installed "
+            "engine. Regenerate the manifest with "
+            "tools/build_us_release_input_coverage_manifest.py."
+        )
+    if schema_version != US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION:
+        raise ValueError(
+            f"{resource}: unsupported schema_version {schema_version}; this "
+            "loader reads schema_version "
+            f"{US_RELEASE_INPUT_COVERAGE_SCHEMA_VERSION}."
+        )
 
     raw_reference = payload.get("reference")
     if not isinstance(raw_reference, Mapping):
@@ -528,11 +857,16 @@ def load_release_input_coverage_manifest(
                 f"{resource}: probe {raw_probe.get('id')!r} parameter_changes "
                 "must be a JSON object."
             )
+        list_edits = _parse_list_edits(
+            raw_probe.get("list_edits", {}),
+            where=f"{resource}: probe {raw_probe.get('id')!r}",
+        )
         probes.append(
             ReformCoverageProbe(
                 id=str(raw_probe.get("id", "")),
                 name=str(raw_probe.get("name", "")),
                 parameter_changes=dict(parameter_changes),
+                list_edits=list_edits,
                 budget_measure=str(raw_probe.get("budget_measure", "")),
                 binding_inputs=tuple(
                     str(leaf) for leaf in raw_probe.get("binding_inputs", ())
@@ -556,10 +890,6 @@ def load_release_input_coverage_manifest(
                 ),
             )
         )
-
-    schema_version = payload.get("schema_version", 1)
-    if not isinstance(schema_version, int):
-        raise ValueError(f"{resource}: 'schema_version' must be an integer.")
 
     return ReleaseInputCoverageManifest(
         reference=reference,
@@ -742,6 +1072,7 @@ def assert_release_input_coverage_manifest_current(
     engine: Any | None = None,
     manifest: ReleaseInputCoverageManifest | None = None,
     parity_known_gaps: Iterable[str] | None = None,
+    list_baseline: ListBaselineFn | None = None,
 ) -> None:
     """Fail if the coverage manifest has drifted from its authoritative sources.
 
@@ -766,9 +1097,16 @@ def assert_release_input_coverage_manifest_current(
     - Every declared column must be a real PolicyEngine-US input leaf, and every
       probe's ``binding_inputs`` / ``budget_measure`` must resolve on the live
       engine, so the contract cannot guard names the engine no longer has.
+    - Every probe's ``list_edits`` must resolve against the engine's baseline
+      lists, so a removed item the engine dropped (or an added item it now
+      carries) fails here, before calibration, rather than in the post-export
+      smoke.
 
     A no-op for the engine-graph half when no engine is available (the workspace
-    test environment); the checked-in-facts half always runs.
+    test environment); the checked-in-facts half always runs. List edits resolve
+    through ``list_baseline`` when given, else against the installed
+    PolicyEngine-US when the engine was discovered here (``engine=None``); an
+    explicitly injected engine without ``list_baseline`` skips them.
 
     Raises:
         ValueError: Naming every drift found, or if two parity known-gap names
@@ -862,6 +1200,8 @@ def assert_release_input_coverage_manifest_current(
 
     if engine is None:
         engine = _coverage_engine()
+        if list_baseline is None:
+            list_baseline = installed_list_parameter_baseline
     if engine is not None:
         try:
             input_variables = set(engine.variables())
@@ -881,6 +1221,14 @@ def assert_release_input_coverage_manifest_current(
                         f"probe {probe.id!r}: binding_inputs are not "
                         f"PolicyEngine-US input leaves: {bad_inputs}."
                     )
+            if list_baseline is not None:
+                for probe in manifest.probes:
+                    if not probe.list_edits:
+                        continue
+                    try:
+                        resolve_probe_parameter_changes(probe, list_baseline)
+                    except ValueError as error:
+                        failures.append(str(error))
 
     if failures:
         raise ValueError(
