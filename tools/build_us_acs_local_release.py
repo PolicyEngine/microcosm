@@ -10,22 +10,27 @@ ACS 2024 1-year spine, nullable, simulation-ready except calibration).
 Stages (``--stage all`` runs materialize -> calibrate -> qa -> finalize ->
 package; each is separately resumable):
 
-  materialize : compile the state-level administrative surface from the
-                Ledger feed exactly like the production path
+  materialize : compile the administrative surface from the Ledger feed
+                exactly like the production path
                 (``compile_us_fiscal_target_registry`` -> RI Medicaid
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
-                state-geography SOI contract -- with ``totals`` and ``full``
-                as explicit opt-ins), run the household-chunked engine pass under the
-                nullable-artifact contract (input-schema projection +
-                reviewed-null fill), add PUMA-ladder population marginals
-                (state + congressional district), and write a lean float32
-                target-frame checkpoint + targets.json. Heavy stage; a crash
-                in calibrate never re-runs the microsim.
-  calibrate   : epoch-batched warm-start calibrate on the lean checkpoint
-                (adam, mass conserved, hard weight-ratio cap; resumable with
-                --resume), write diagnostics and the calibrated weights onto
-                a copy of the staging H5.
+                state-geography SOI contract -- with ``totals``, ``full`` and
+                ``state_cd`` (district SOI rows, one vintage per state
+                concept) as explicit opt-ins), run the household-chunked
+                engine pass under the nullable-artifact contract (input-schema
+                projection + reviewed-null fill), add PUMA-ladder population
+                marginals (state + congressional district), assign the CD
+                holdout, and write the lean checkpoint: a structure-only H5,
+                a sparse (targets x households) float32 CSR target matrix and
+                targets.json. ``--sample-fraction`` draws a development rung.
+                Heavy stage; a crash in calibrate never re-runs the microsim.
+  calibrate   : epoch-batched warm-start calibrate on the checkpoint's
+                training targets (adam, mass conserved, hard weight-ratio cap;
+                resumable with --resume), score the held-out district targets
+                against the pro-rata baseline, record ESS over rows and
+                distinct households, and write the calibrated weights onto a
+                copy of the staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
@@ -74,6 +79,8 @@ if str(_TOOLS_DIR) not in sys.path:
     # the sibling release tool rather than forking it.
     sys.path.insert(0, str(_TOOLS_DIR))
 
+import us_acs_local_cd_surface as cd_surface  # noqa: E402 - needs tools/ on sys.path
+
 PERIOD = 2024
 RELEASE_NAMESPACE = "buildo_acs_local"
 RELEASE_ID_PREFIX = "populace-us-2024-buildo-acs-local"
@@ -104,13 +111,21 @@ LEGACY_STAGING_REFRESH_RECIPE = (
 #: ``totals`` keeps only the specs whose ``target_role`` is not
 #: ``soi_fiscal_distribution`` -- on the pinned feed, ACA premium tax credit
 #: rows and no state AGI, income-tax or EITC total. ``full`` keeps every
-#: state-bearing spec, including the TY2023 congressional-district file, which
-#: needs a dense matrix too large for one 128 GB machine. Both are explicit
-#: opt-ins. docs/us-acs-local-soi-target-surface.md has the measured surfaces.
+#: state-bearing spec, including the congressional-district file, with both
+#: vintages of each state concept. Both are explicit opt-ins.
+#:
+#: ``state_cd`` (explicit opt-in) binds the congressional-district file's
+#: district rows on top of ``state``, keeping one vintage per state concept:
+#: Historic Table 2 gives a state concept's level, the district file only
+#: each district's share of it (``us_acs_local_cd_surface.state_cd_soi_surface``).
+#: A hash-assigned block of its district targets is held out of calibration
+#: and scored against a pro-rata baseline. The target matrix is sparse in
+#: every mode. docs/us-acs-local-soi-target-surface.md has the surfaces.
 SOI_MODE_STATE = "state"
 SOI_MODE_TOTALS = "totals"
 SOI_MODE_FULL = "full"
-SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL)
+SOI_MODE_STATE_CD = "state_cd"
+SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL, SOI_MODE_STATE_CD)
 DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: Ledger record-set specs from a congressional-district file start with this;
 #: ``state`` mode excludes them, which is what Build O's switch did.
@@ -126,19 +141,26 @@ def _require_soi_mode(soi_mode: str) -> str:
     return soi_mode
 
 
-def release_refresh_recipe(soi_mode: str) -> str:
+def release_refresh_recipe(
+    soi_mode: str, cd_holdout_fraction: float | None = None
+) -> str:
     """The one-command release refresh, pinned to the SOI surface it built.
 
     The recipe names ``--soi-mode`` explicitly so re-running it reproduces
-    the recorded surface even if the parser default changes again.
+    the recorded surface even if the parser default changes again, and
+    ``--cd-holdout-fraction`` whenever a CD holdout was drawn.
     """
 
     _require_soi_mode(soi_mode)
+    holdout = (
+        f"--cd-holdout-fraction {cd_holdout_fraction:g} " if cd_holdout_fraction else ""
+    )
     return (
         "uv run tools/build_us_acs_local_release.py --stage all "
         "--staging-h5 <run>/acs_multispine_staging.h5 "
         "--feed <ledger-facts.jsonl> --feed-sha256 <sha> "
         f"--soi-mode {soi_mode} "
+        f"{holdout}"
         "--ladder build/us/us_puma_ladder_2020.npz "
         "--checkpoint-dir <run>/checkpoints "
         "--out-h5 <run>/populace_us_2024_acs_local.h5 "
@@ -214,9 +236,13 @@ def soi_surface_predicate(soi_mode: str):
       AGI-band slices: every SOI fact without a named role gets it, which at
       state level includes the all-income-range state and district rows.
     - ``full`` keeps them all.
+    - ``state_cd`` is not a filter: this returns the ``full`` candidates it
+      starts from, and :func:`state_admin_surface` reconciles them.
     """
 
     _require_soi_mode(soi_mode)
+    if soi_mode == SOI_MODE_STATE_CD:
+        soi_mode = SOI_MODE_FULL
 
     def selected(spec) -> bool:
         metadata = spec.metadata
@@ -245,11 +271,34 @@ def state_admin_specs(
 ):
     """Select the state-level admin surface from the production compile path.
 
+    Returns ``(registry, ri_substitutions)``; :func:`state_admin_surface`
+    also returns the SOI surface receipt.
+    """
+
+    surface = state_admin_surface(feed, families, soi_mode=soi_mode)
+    return surface.registry, surface.ri_substitutions
+
+
+class AdminSurface:
+    """The compiled admin registry plus how its SOI slice was chosen."""
+
+    def __init__(self, registry, ri_substitutions, soi_receipt: dict) -> None:
+        self.registry = registry
+        self.ri_substitutions = ri_substitutions
+        self.soi_receipt = soi_receipt
+
+
+def state_admin_surface(
+    feed: str | Path, families: list[str], soi_mode: str = DEFAULT_SOI_MODE
+) -> AdminSurface:
+    """Select the admin surface from the production compile path.
+
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
     {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
-    :func:`soi_surface_predicate`: ``state`` (the default), ``totals`` or
-    ``full``.
+    :func:`soi_surface_predicate` for ``state`` (the default), ``totals`` and
+    ``full``; ``state_cd`` adds the reconciled congressional-district rows
+    (:func:`us_acs_local_cd_surface.state_cd_soi_surface`).
     """
 
     # Refuse an unknown mode before loading the feed and compiling the registry.
@@ -269,14 +318,12 @@ def state_admin_specs(
     from microcosm.calibrate.registry import TargetRegistry
 
     artifact = load_ledger_consumer_artifact(str(feed))
+    crosswalk_path = default_congressional_district_vintage_crosswalk_path()
+    crosswalk = load_congressional_district_vintage_crosswalk(crosswalk_path)
     registry = compile_us_fiscal_target_registry(
         artifact.facts,
         target_period=PERIOD,
-        congressional_district_vintage_crosswalk=(
-            load_congressional_district_vintage_crosswalk(
-                default_congressional_district_vintage_crosswalk_path()
-            )
-        ),
+        congressional_district_vintage_crosswalk=crosswalk,
         age_targets=True,
     )
     registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)
@@ -295,11 +342,26 @@ def state_admin_specs(
                 and spec.metadata.get("target_role") == "medicaid_enrollment"
             ),
         ).specs
+    soi_receipt: dict = {"soi_mode": soi_mode}
     if "soi" in families:
-        picked += registry.select(
+        candidates = registry.select(
             family="irs_soi", predicate=soi_surface_predicate(soi_mode)
         ).specs
-    return TargetRegistry(list(picked), country="us"), ri_substitutions
+        if soi_mode == SOI_MODE_STATE_CD:
+            surface = cd_surface.state_cd_soi_surface(
+                candidates,
+                state_surface_predicate=soi_surface_predicate(SOI_MODE_STATE),
+                crosswalk=crosswalk,
+                crosswalk_sha256=_sha256(crosswalk_path),
+            )
+            picked += list(surface.specs)
+            soi_receipt.update(surface.receipt)
+        else:
+            picked += candidates
+            soi_receipt["counts"] = {"total": len(candidates)}
+    return AdminSurface(
+        TargetRegistry(list(picked), country="us"), ri_substitutions, soi_receipt
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -499,6 +561,31 @@ def fill_reviewed_nulls(
     return fills, drift_warnings
 
 
+class MaterializedSurface:
+    """The sparse admin surface one engine pass produced."""
+
+    def __init__(self, matrix, compiled_specs, chunk_stats, carrier_check) -> None:
+        #: (compiled specs x households) CSR, float32 data, declared order.
+        self.matrix = matrix
+        self.compiled_specs = compiled_specs
+        self.chunk_stats = chunk_stats
+        #: Direct-vs-carrier evidence from the first chunk (district rows).
+        self.carrier_check = carrier_check
+
+    @property
+    def names(self) -> list[str]:
+        return [spec.measure for spec in self.compiled_specs]
+
+
+def _household_codes(release_tool, households, column: str) -> np.ndarray:
+    return np.asarray(
+        release_tool._integer_geography_codes(
+            households[column].to_numpy(), column=column
+        ),
+        dtype=np.int64,
+    )
+
+
 def materialize_chunked(
     base_frame,
     specs,
@@ -509,15 +596,24 @@ def materialize_chunked(
     dropped_manifest_path: Path | None = None,
     summary_path: Path | None = None,
     fills_manifest_path: Path | None = None,
-    matrix_path: Path | None = None,
-):
-    """Household-chunked production materialization (memory-bounded).
+) -> MaterializedSurface:
+    """Household-chunked production materialization into a sparse matrix.
 
     One full-frame Microsimulation caches the entire dependency closure of
     the SOI components (the 1.6M-row jetsam class), so the unchanged
     production ``_materialize_target_frame`` runs on whole-household
-    sub-frames; each chunk's calc cache dies with its simulation and the
-    float32 measure matrix accumulates on disk when ``matrix_path`` is set.
+    sub-frames; each chunk's calc cache dies with its simulation. Each
+    chunk's measure columns go straight into a (targets x households) CSR
+    matrix with float32 values (``SparseTargetAssembler``): no dense
+    households x targets matrix exists at any point.
+
+    District SOI rows are not materialized one column each. The engine pass
+    materializes one geography-free carrier per distinct SOI concept, and
+    each district row is its carrier restricted to the district's households
+    (``us_acs_local_cd_surface.plan_carriers``). That equals the direct
+    materialization because the SOI slice masks a tax unit by its household's
+    state and district. The first chunk also materializes one district row
+    per carrier directly and refuses any difference.
     """
 
     import build_us_fiscal_refresh_release as release_tool
@@ -561,9 +657,11 @@ def materialize_chunked(
             "table; frame is invalid."
         )
 
-    measure_names = None
-    compiled_specs = None
-    matrix = None
+    plan = cd_surface.plan_carriers(specs)
+    by_name = {spec.name: spec for spec in plan.declared}
+    assembler = cd_surface.SparseTargetAssembler(plan.n_rows, n_households)
+    compiled_names: set[str] | None = None
+    carrier_check: dict[str, object] = {"district_rows": len(plan.split)}
     chunk_stats = []
     n_chunks = (n_households + hh_chunk - 1) // hh_chunk
     if n_chunks > 1:
@@ -574,32 +672,36 @@ def materialize_chunked(
         started = time.time()
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
+        chunk_households = sub_frame.table("household")
+        state_codes = district_codes = None
+        if plan.split:
+            state_codes = _household_codes(release_tool, chunk_households, "state_fips")
+            district_codes = _household_codes(
+                release_tool, chunk_households, "congressional_district_geoid"
+            )
+        check_specs = (
+            cd_surface.carrier_check_specs(plan, district_codes)
+            if chunk_index == 0 and plan.split
+            else ()
+        )
         target_frame, compiled_registry, _ = release_tool._materialize_target_frame(
             sub_frame,
-            tuple(specs),
+            plan.engine_specs + check_specs,
             maximum_microsim_batch_size=batch,
             refuse_population_aggregates=True if n_chunks > 1 else None,
         )
-        names = [spec.measure for spec in compiled_registry.specs]
-        if measure_names is None:
-            measure_names = names
-            compiled_specs = list(compiled_registry.specs)
-            if matrix_path is not None:
-                matrix = np.memmap(
-                    matrix_path,
-                    dtype=np.float32,
-                    mode="w+",
-                    shape=(n_households, len(names)),
-                )
-            else:
-                matrix = np.zeros((n_households, len(names)), dtype=np.float32)
-        elif names != measure_names:
+        compiled = {spec.name for spec in compiled_registry.specs}
+        engine_compiled = compiled - {spec.name for spec in check_specs}
+        if compiled_names is None:
+            compiled_names = engine_compiled
+        elif engine_compiled != compiled_names:
             raise RuntimeError(
                 f"chunk {chunk_index} compiled a different measure set "
-                f"({len(names)} vs {len(measure_names)}); refusing to assemble."
+                f"({len(engine_compiled)} vs {len(compiled_names)}); refusing "
+                "to assemble."
             )
-        chunk_households = target_frame.table("household")
-        got_ids = chunk_households["household_id"].to_numpy()
+        target_households = target_frame.table("household")
+        got_ids = target_households["household_id"].to_numpy()
         if len(got_ids) != high - low or not np.array_equal(
             got_ids, household_ids[low:high]
         ):
@@ -607,11 +709,81 @@ def materialize_chunked(
                 f"chunk {chunk_index} household order/id mismatch; refusing "
                 "to assemble."
             )
-        for j, measure in enumerate(measure_names):
-            matrix[low:high, j] = chunk_households[measure].to_numpy(dtype=np.float32)
-        if matrix_path is not None:
-            matrix.flush()
-        del target_frame, compiled_registry, chunk_households, sub_frame, got_ids
+        for index, measure in plan.direct_rows:
+            if plan.declared[index].name in compiled_names:
+                assembler.add_column(
+                    index,
+                    low,
+                    target_households[measure].to_numpy(dtype=np.float64),
+                    name=plan.declared[index].name,
+                )
+        if plan.split:
+            carriers = {
+                carrier: target_households[carrier].to_numpy(dtype=np.float64)
+                for carrier in sorted(set(plan.carrier_of.values()))
+                if carrier in compiled_names
+            }
+            split = tuple(row for row in plan.split if row[3] in carriers)
+            cd_surface.split_carriers_into(
+                assembler,
+                cd_surface.CarrierPlan(
+                    declared=plan.declared,
+                    engine_specs=plan.engine_specs,
+                    direct_rows=plan.direct_rows,
+                    split=split,
+                    carrier_of=plan.carrier_of,
+                ),
+                carriers,
+                low=low,
+                state_codes=state_codes,
+                district_codes=district_codes,
+            )
+            if check_specs:
+                checked = []
+                for spec in check_specs:
+                    carrier = plan.carrier_of[spec.name]
+                    if spec.name not in compiled or carrier not in carriers:
+                        raise RuntimeError(
+                            f"carrier check spec {spec.name} or its carrier "
+                            f"{carrier} did not materialize."
+                        )
+                    direct = target_households[spec.measure].to_numpy(dtype=np.float64)
+                    derived = cd_surface.carrier_derived_column(
+                        carriers[carrier],
+                        state=int(
+                            spec.metadata.get("state_fips", cd_surface.NO_STATE_MASK)
+                        ),
+                        district=int(spec.metadata["congressional_district_geoid"]),
+                        state_codes=state_codes,
+                        district_codes=district_codes,
+                    )
+                    if not np.array_equal(direct, derived):
+                        raise RuntimeError(
+                            f"District row {spec.name} materialized directly "
+                            "differs from its carrier restricted to the "
+                            f"district ({int((direct != derived).sum())} "
+                            "household(s)); the carrier split is not exact "
+                            "for this surface."
+                        )
+                    checked.append(
+                        {
+                            "target": spec.name,
+                            "carrier": carrier,
+                            "nonzero_households": int(np.count_nonzero(direct)),
+                        }
+                    )
+                carrier_check.update(
+                    {
+                        "carriers": len(carriers),
+                        "checked_district_rows": len(checked),
+                        "checked_nonzero_households": sum(
+                            entry["nonzero_households"] for entry in checked
+                        ),
+                        "all_equal": True,
+                        "checked": checked,
+                    }
+                )
+        del target_frame, compiled_registry, target_households, sub_frame, got_ids
         gc.collect()
         stat = {
             "chunk": chunk_index + 1,
@@ -624,7 +796,27 @@ def materialize_chunked(
         log(f"materialize chunk {chunk_index + 1}/{n_chunks}: {stat['wall_s']}s")
     del projected
     gc.collect()
-    return matrix, measure_names, compiled_specs, chunk_stats
+    matrix = assembler.to_csr()
+    keep = [
+        index
+        for index, spec in enumerate(plan.declared)
+        if spec.name in compiled_names
+        or plan.carrier_of.get(spec.name) in (compiled_names or set())
+    ]
+    compiled_specs = [by_name[plan.declared[index].name] for index in keep]
+    if len(keep) != plan.n_rows:
+        matrix = sparse_rows(matrix, keep)
+    return MaterializedSurface(matrix, compiled_specs, chunk_stats, carrier_check)
+
+
+def sparse_rows(matrix, rows):
+    """The CSR rows ``rows`` of ``matrix`` (float32 data preserved)."""
+
+    from scipy import sparse
+
+    selected = sparse.csr_array(matrix[rows])
+    selected.sort_indices()
+    return selected
 
 
 # ---------------------------------------------------------------------------
@@ -668,45 +860,40 @@ def ladder_population(ladder_path: Path, geographies: list[str]):
     return populations
 
 
-def population_measure_arrays(frame, ladder_populations, geographies: list[str]):
-    """Household-grain population measures as float32 arrays.
+def household_sizes(frame) -> np.ndarray:
+    """Persons per household, aligned to the household table (float32)."""
+
+    households = frame.table("household")
+    size = frame.table("person").groupby("person_household_id").size()
+    return households["household_id"].map(size).fillna(0).to_numpy(np.float32)
+
+
+def population_targets(frame, ladder_populations, geographies: list[str]):
+    """Household-grain population marginals as sparse target rows.
 
     Population in a geography = sum over persons-in-geo of household weight;
     every person shares its household's geography, so the household-grain
     measure is household_size x 1[household geo == value]. No engine
     involved. A ladder cell with no supporting household is DROPPED from the
-    surface and returned in the fourth element — the caller decides whether
-    a shrunken surface is acceptable (a capped smoke) or a defect (release).
+    surface and returned in the third element: the caller decides whether a
+    shrunken surface is acceptable (a capped smoke) or a defect (release).
+    Returns ``(target records, CSR rows, dropped cell names)``.
     """
 
-    households = frame.table("household")
-    persons = frame.table("person")
-    size = persons.groupby("person_household_id").size()
-    household_size = households["household_id"].map(size).fillna(0).to_numpy(np.float32)
-    names, arrays, values, dropped = [], [], [], []
-    column_map = {
-        "state": ("state_fips", "state"),
-        "cd": ("congressional_district_geoid", "cd"),
-    }
-    for geography in geographies:
-        column, key = column_map[geography]
-        geo_values = pd.to_numeric(households[column]).to_numpy()
-        for value, population in sorted(ladder_populations[key].items()):
-            present = geo_values == value
-            width = 2 if geography == "state" else 4
-            name = f"pop_{geography}_{value:0{width}d}"
-            if not present.any():
-                dropped.append(name)
-                continue
-            names.append(name)
-            arrays.append((household_size * present).astype(np.float32))
-            values.append(float(population))
-    return names, arrays, values, dropped
+    return cd_surface.population_rows(
+        frame.table("household"),
+        household_sizes(frame),
+        ladder_populations,
+        geographies,
+    )
 
 
 def population_target_specs(names, values):
     """Declare ladder population targets with the shared diagnostics hierarchy."""
 
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        CURRENT_CONGRESSIONAL_DISTRICT_PREFIX,
+    )
     from microcosm.calibrate import TargetSpec
     from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
     from microcosm.calibrate.hierarchy import (
@@ -736,8 +923,11 @@ def population_target_specs(names, values):
                 "at-large" if district == "00" else f"district {int(district)}"
             )
             label = f"{state} congressional {district_label}"
+            # The ladder's districts are the 119th Congress plan.
             geography = HierarchyGeography(
-                f"5001800US{geoid}", label, "congressional_district"
+                f"{CURRENT_CONGRESSIONAL_DISTRICT_PREFIX}{geoid}",
+                label,
+                "congressional_district",
             )
         else:  # pragma: no cover - names originate in population_measure_arrays
             raise ValueError(f"Unknown population target name {name!r}.")
@@ -763,19 +953,30 @@ def population_target_specs(names, values):
     return tuple(specs)
 
 
+#: Household columns the lean checkpoint keeps: identity, geography, and the
+#: origin tags the distinct-household ESS and spine shares need.
+LEAN_HOUSEHOLD_COLUMNS = (
+    "household_id",
+    "state_fips",
+    "congressional_district_geoid",
+    "county_fips",
+    "household_spine",
+    "household_source_id",
+)
+#: The checkpoint's sparse target matrix: (targets x households) CSR with
+#: float32 values, row ``i`` of which is ``target_registry.json`` spec ``i``.
+TARGET_MATRIX_FILENAME = "target_matrix.npz"
+#: Per-target build roles, row-aligned with the registry: train or holdout,
+#: geography, sigma, and a district row's state parent and populations.
+TARGET_ROLES_FILENAME = "target_roles.json"
+
+
 def extract_struct_tables(frame):
     """Small structural/geography copies so the big frame can be freed early."""
 
     households = frame.table("household")
     struct_columns = [
-        column
-        for column in (
-            "household_id",
-            "state_fips",
-            "congressional_district_geoid",
-            "county_fips",
-        )
-        if column in households.columns
+        column for column in LEAN_HOUSEHOLD_COLUMNS if column in households.columns
     ]
     person_columns = [
         column for column in PERSON_STRUCT if column in frame.table("person").columns
@@ -793,33 +994,41 @@ def extract_struct_tables(frame):
 
 def write_lean_checkpoint(
     struct,
-    admin_matrix,
-    admin_names,
-    admin_specs,
-    pop_names,
-    pop_arrays,
-    pop_values,
+    matrix,
+    specs,
+    roles: list[dict],
     checkpoint_dir: Path,
 ):
-    """Assemble the lean target frame and its versioned target registry."""
+    """Write the lean checkpoint: structure H5, registry, sparse matrix, roles.
+
+    ``target_frame_lean.h5`` holds only structure (household identity,
+    geography, origin tags and design weights; person memberships; group
+    ids). ``target_registry.json`` holds every target, held-out ones
+    included; ``target_matrix.npz`` is a (targets x households) CSR with
+    float32 values whose row ``i`` is registry spec ``i``;
+    ``target_roles.json`` is row-aligned with both. Returns
+    ``(h5 path, registry, digests)``.
+    """
+
+    from scipy import sparse
 
     from microcosm.calibrate import TargetRegistry
     from microcosm.frame import put_frame_table
 
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    if isinstance(admin_matrix, np.memmap):
-        admin_matrix = np.array(admin_matrix)
-    parts = {
-        column: struct["household_struct"][column]
-        for column in struct["household_struct"].columns
-    }
-    for j, name in enumerate(admin_names):
-        parts[name] = admin_matrix[:, j]
-    for name, array in zip(pop_names, pop_arrays, strict=True):
-        parts[name] = array
-    lean_households = pd.DataFrame(parts)
-    del parts
-    gc.collect()
+    specs = tuple(specs)
+    matrix = sparse.csr_array(matrix)
+    n_households = len(struct["household_struct"])
+    if matrix.shape != (len(specs), n_households):
+        raise ValueError(
+            f"target matrix shape {matrix.shape} does not pair with "
+            f"{len(specs)} targets x {n_households} households."
+        )
+    if [role["name"] for role in roles] != [spec.name for spec in specs]:
+        raise ValueError("target roles are not row-aligned with the target specs.")
+    if matrix.data.dtype != np.float32:
+        matrix = sparse.csr_array(matrix, dtype=np.float32)
+    lean_households = struct["household_struct"].copy()
     lean_households["household_weight"] = struct["weights"]
     checkpoint_h5 = checkpoint_dir / "target_frame_lean.h5"
     with pd.HDFStore(checkpoint_h5, mode="w") as store:
@@ -843,17 +1052,27 @@ def write_lean_checkpoint(
                 preferred_format="fixed",
             )
         store.put("_time_period", pd.Series([PERIOD]), format="table")
-    registry = TargetRegistry(
-        (*admin_specs, *population_target_specs(pop_names, pop_values)),
-        country="us",
-    )
+    registry = TargetRegistry(specs, country="us")
     registry.to_json(checkpoint_dir / "target_registry.json")
-    log(
-        f"checkpoint: {checkpoint_h5.name} ({len(lean_households)} hh, "
-        f"{len(admin_names) + len(pop_names)} measures), target_registry.json "
-        f"({len(registry)} targets)"
+    matrix_sha = cd_surface.save_target_matrix(
+        checkpoint_dir / TARGET_MATRIX_FILENAME, matrix
     )
-    return checkpoint_h5, registry
+    (checkpoint_dir / TARGET_ROLES_FILENAME).write_text(json.dumps(roles, indent=1))
+    log(
+        f"checkpoint: {checkpoint_h5.name} ({n_households} hh), "
+        f"target_registry.json ({len(registry)} targets), "
+        f"{TARGET_MATRIX_FILENAME} ({matrix.shape[0]} x {matrix.shape[1]}, "
+        f"nnz {matrix.nnz:,})"
+    )
+    return (
+        checkpoint_h5,
+        registry,
+        {
+            "target_registry_sha256": _sha256(checkpoint_dir / "target_registry.json"),
+            "target_matrix_sha256": matrix_sha,
+            "target_roles_sha256": _sha256(checkpoint_dir / TARGET_ROLES_FILENAME),
+        },
+    )
 
 
 def load_lean_frame(checkpoint_h5: Path):
@@ -892,9 +1111,51 @@ def _load_staging_frame(path: Path):
     return _load_base_frame(Path(path))
 
 
+def _cd_holdout_fraction(args) -> float:
+    """The CD holdout fraction this run draws (0 when there is no CD surface)."""
+
+    fraction = getattr(args, "cd_holdout_fraction", None)
+    if fraction is None:
+        return (
+            cd_surface.DEFAULT_STATE_CD_HOLDOUT_FRACTION
+            if args.soi_mode == SOI_MODE_STATE_CD
+            else 0.0
+        )
+    return float(fraction)
+
+
+def _attach_pro_rata_populations(targets: list[dict], cd_populations: dict) -> None:
+    """Give each district SOI target its district and state populations.
+
+    The pro-rata baseline allocates the state parent by these; both come
+    from the PUMA ladder's 119th-plan district overlap populations, so a
+    state's district shares sum to one.
+    """
+
+    state_population: dict[int, float] = {}
+    for district, population in cd_populations.items():
+        state = int(district) // 100
+        state_population[state] = state_population.get(state, 0.0) + float(population)
+    for target in targets:
+        geoid = target.get("congressional_district_geoid")
+        if target.get("family") != "irs_soi" or not geoid:
+            continue
+        district = int(geoid)
+        target["cd_population"] = float(cd_populations.get(district, 0.0))
+        target["state_population"] = float(state_population.get(district // 100, 0.0))
+
+
 def do_materialize(args) -> None:
+    from scipy import sparse
+
     families = [item.strip() for item in args.families.split(",") if item.strip()]
     geographies = [item.strip() for item in args.geographies.split(",") if item.strip()]
+    holdout_fraction = _cd_holdout_fraction(args)
+    if holdout_fraction and args.soi_mode != SOI_MODE_STATE_CD:
+        raise SystemExit(
+            f"--cd-holdout-fraction {holdout_fraction} needs --soi-mode "
+            f"{SOI_MODE_STATE_CD}; no other surface binds district SOI targets."
+        )
     started = time.time()
     if args.feed_sha256:
         actual = _sha256(args.feed)
@@ -903,12 +1164,11 @@ def do_materialize(args) -> None:
                 f"Ledger feed sha256 mismatch: {args.feed} is {actual}, "
                 f"expected {args.feed_sha256}."
             )
-    registry, ri_substitutions = state_admin_specs(
-        args.feed, families, soi_mode=args.soi_mode
-    )
+    surface = state_admin_surface(args.feed, families, soi_mode=args.soi_mode)
+    registry = surface.registry
     log(
         f"admin specs: {len(registry)} ({families}, soi_mode={args.soi_mode}); "
-        f"RI substitution records={len(ri_substitutions)}"
+        f"RI substitution records={len(surface.ri_substitutions)}"
     )
     summary_path = _staging_summary_path(args)
     if not summary_path.exists():
@@ -922,15 +1182,19 @@ def do_materialize(args) -> None:
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(summary_path))
+    frame, sampling = cd_surface.sample_staging_frame(
+        frame, fraction=args.sample_fraction, seed=args.sample_seed
+    )
+    gc.collect()
     log(
         f"loaded staging frame households={frame.n('household')} "
-        f"({time.time() - started:.1f}s)"
+        f"(rung {sampling['rung']}; {time.time() - started:.1f}s)"
     )
 
     started = time.time()
-    matrix_path = args.checkpoint_dir / "measures_f32.mmap"
     args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    matrix, admin_names, compiled_specs, chunk_stats = materialize_chunked(
+    (args.checkpoint_dir / "measures_f32.mmap").unlink(missing_ok=True)
+    materialized = materialize_chunked(
         frame,
         registry.specs,
         hh_chunk=args.hh_chunk,
@@ -939,20 +1203,27 @@ def do_materialize(args) -> None:
         dropped_manifest_path=args.checkpoint_dir / "held_back_columns.json",
         summary_path=summary_path,
         fills_manifest_path=args.checkpoint_dir / "reviewed_null_fills.json",
-        matrix_path=matrix_path,
     )
+    admin_matrix = materialized.matrix
+    compiled_specs = materialized.compiled_specs
+    chunk_stats = materialized.chunk_stats
     log(
-        f"materialized admin: {len(admin_names)} measures over "
-        f"{len(chunk_stats)} chunks ({time.time() - started:.1f}s)"
+        f"materialized admin: {len(compiled_specs)} measures over "
+        f"{len(chunk_stats)} chunks, nnz {admin_matrix.nnz:,} "
+        f"({time.time() - started:.1f}s)"
     )
-    if len(admin_names) != len(registry):
+    if len(compiled_specs) != len(registry):
         raise SystemExit(
-            f"Compiled admin surface has {len(admin_names)} measures but "
+            f"Compiled admin surface has {len(compiled_specs)} measures but "
             f"{len(registry)} specs were declared; admin targets must never "
             "disappear silently between compile and materialization."
         )
-    populations = ladder_population(args.ladder, geographies)
-    pop_names, pop_arrays, pop_values, pop_dropped = population_measure_arrays(
+    admin_roles = [cd_surface.target_record(spec) for spec in compiled_specs]
+
+    populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
+    if args.soi_mode == SOI_MODE_STATE_CD:
+        _attach_pro_rata_populations(admin_roles, populations["cd"])
+    pop_roles, pop_matrix, pop_dropped = population_targets(
         frame, populations, geographies
     )
     if pop_dropped:
@@ -967,26 +1238,39 @@ def do_materialize(args) -> None:
                 "--allow-partial-geography only for capped smokes."
             )
         log("WARNING " + message + " Continuing (--allow-partial-geography).")
-    log(f"population measures: {len(pop_names)} ({geographies})")
+    pop_specs = population_target_specs(
+        [record["name"] for record in pop_roles],
+        [record["value"] for record in pop_roles],
+    )
+    log(f"population measures: {len(pop_specs)} ({geographies})")
+    roles = admin_roles + pop_roles
+    holdout = cd_surface.assign_target_roles(roles, fraction=holdout_fraction)
+    log(
+        f"CD holdout: {holdout['held_units']}/{holdout['eligible_units']} units, "
+        f"{holdout['held_targets']} district targets held out of calibration"
+    )
+    matrix = sparse.vstack([admin_matrix, pop_matrix], format="csr")
+    del admin_matrix, pop_matrix
     struct = extract_struct_tables(frame)
     n_households = frame.n("household")
     del frame
     gc.collect()
 
-    write_lean_checkpoint(
+    _checkpoint_h5, _registry, digests = write_lean_checkpoint(
         struct,
         matrix,
-        admin_names,
-        compiled_specs,
-        pop_names,
-        pop_arrays,
-        pop_values,
+        (*compiled_specs, *pop_specs),
+        roles,
         args.checkpoint_dir,
     )
-    del matrix, struct, pop_arrays
+    matrix_shape = [int(value) for value in matrix.shape]
+    matrix_nnz = int(matrix.nnz)
+    del matrix, struct
     gc.collect()
-    matrix_path.unlink(missing_ok=True)
-    registry_digest = _sha256(args.checkpoint_dir / "target_registry.json")
+    holdout_identity = {
+        key: holdout[key]
+        for key in ("unit", "salt", "fraction", "held_units", "held_targets")
+    }
     (args.checkpoint_dir / "run_identity.json").write_text(
         json.dumps(
             {
@@ -994,11 +1278,22 @@ def do_materialize(args) -> None:
                 "staging_sha256": staging_sha,
                 "ladder_sha256": ladder_sha,
                 "households": n_households,
-                "n_targets": len(admin_names) + len(pop_names),
-                "target_registry_sha256": registry_digest,
+                "n_targets": len(roles),
+                "target_registry_sha256": digests["target_registry_sha256"],
+                "target_roles_sha256": digests["target_roles_sha256"],
+                "target_matrix": {
+                    "file": TARGET_MATRIX_FILENAME,
+                    "sha256": digests["target_matrix_sha256"],
+                    "format": "csr_float32",
+                    "shape": matrix_shape,
+                    "nnz": matrix_nnz,
+                },
                 "declared_admin_specs": len(registry),
-                "compiled_admin_specs": len(admin_names),
+                "compiled_admin_specs": len(compiled_specs),
                 "population_cells_dropped": pop_dropped,
+                "soi_mode": args.soi_mode,
+                "cd_holdout": holdout_identity,
+                "sampling": sampling,
             },
             indent=2,
         )
@@ -1008,11 +1303,16 @@ def do_materialize(args) -> None:
             {
                 "soi_mode": args.soi_mode,
                 "families": families,
-                "n_admin": len(admin_names),
-                "n_population": len(pop_names),
+                "n_admin": len(compiled_specs),
+                "n_population": len(pop_specs),
                 "population_cells_dropped": pop_dropped,
                 "hh_chunk": args.hh_chunk,
                 "chunk_stats": chunk_stats,
+                "target_matrix": {"shape": matrix_shape, "nnz": matrix_nnz},
+                "carrier_check": materialized.carrier_check,
+                "soi_surface": surface.soi_receipt,
+                "cd_holdout": holdout,
+                "sampling": sampling,
                 "materialize_peak_rss_gb": round(rss(), 3),
             },
             indent=2,
@@ -1043,34 +1343,193 @@ def _verify_run_identity(args, *, require: bool = True) -> dict:
     return identity
 
 
-def do_calibrate(args) -> None:
-    from microcosm.calibrate import (
-        TargetRegistry,
-        calibrate,
-        write_calibration_diagnostics,
-    )
+def load_checkpoint_surface(checkpoint_dir: Path, identity: dict | None = None):
+    """The lean frame, design weights, registry, roles and matrix of a checkpoint.
 
-    identity = _verify_run_identity(args)
-    checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
-    registry_path = args.checkpoint_dir / "target_registry.json"
-    registry_sha = _sha256(registry_path)
-    if registry_sha != identity.get("target_registry_sha256"):
+    With ``identity`` (the materialize-time run identity) the registry, the
+    roles and the matrix must still be the bytes materialize wrote. A
+    checkpoint from before the sparse matrix (dense measure columns in the
+    lean H5) is refused: re-run ``--stage materialize``.
+    Returns ``(frame, design_weights, registry, roles, matrix)``.
+    """
+
+    from microcosm.calibrate import TargetRegistry
+
+    matrix_path = checkpoint_dir / TARGET_MATRIX_FILENAME
+    roles_path = checkpoint_dir / TARGET_ROLES_FILENAME
+    registry_path = checkpoint_dir / "target_registry.json"
+    if not matrix_path.exists() or not roles_path.exists():
         raise SystemExit(
-            "target_registry.json changed since materialize; the checkpoint and "
-            "surface no longer agree. Re-run --stage materialize."
+            f"{checkpoint_dir} has no {TARGET_MATRIX_FILENAME} or "
+            f"{TARGET_ROLES_FILENAME}: it predates the sparse target matrix "
+            "(its measures are dense H5 columns). Re-run --stage materialize "
+            "with the current tool."
         )
+    if identity is not None:
+        checks = (
+            (registry_path, identity.get("target_registry_sha256")),
+            (roles_path, identity.get("target_roles_sha256")),
+            (matrix_path, (identity.get("target_matrix") or {}).get("sha256")),
+        )
+        for path, recorded in checks:
+            if _sha256(path) != recorded:
+                raise SystemExit(
+                    f"{path.name} changed since materialize (or the run identity "
+                    "records none); the checkpoint and surface no longer "
+                    "agree. Re-run --stage materialize."
+                )
     registry = TargetRegistry.from_json(registry_path)
-    frame, design_weights = load_lean_frame(checkpoint_h5)
+    roles = json.loads(roles_path.read_text())
+    matrix = cd_surface.load_target_matrix(matrix_path)
+    frame, design_weights = load_lean_frame(checkpoint_dir / "target_frame_lean.h5")
     n_households = frame.n("household")
-    if n_households != identity.get("households"):
+    if identity is not None and n_households != identity.get("households"):
         raise SystemExit(
             f"Lean checkpoint has {n_households} households but the run "
             f"identity pins {identity.get('households')}."
         )
-    target_set = registry.to_target_set()
+    if [role["name"] for role in roles] != [spec.name for spec in registry.specs]:
+        raise SystemExit(
+            f"{TARGET_ROLES_FILENAME} is not row-aligned with target_registry.json."
+        )
+    if matrix.shape != (len(registry), n_households):
+        raise SystemExit(
+            f"{TARGET_MATRIX_FILENAME} is {matrix.shape}, not "
+            f"{len(registry)} targets x {n_households} households."
+        )
+    return frame, design_weights, registry, roles, matrix
+
+
+def calibrate_surface(
+    frame,
+    target_set,
+    *,
+    epochs: int,
+    epoch_batch: int,
+    max_weight_ratio: float,
+    target_loss_cap: float,
+    l2_lambda: float,
+    seed: int,
+    warm: np.ndarray | None = None,
+    done: int = 0,
+    on_batch=None,
+):
+    """Epoch-batched warm-start calibration of ``target_set``.
+
+    ``target_set`` comes from ``cd_surface.calibration_target_set``, which
+    builds only the training targets, each a callable row of the checkpoint
+    CSR. Each batch calls the kernel's ``calibrate``, which compiles those
+    rows into its own CSR constraint matrix. Returns ``(result, epochs_done)``.
+    """
+
+    from microcosm.calibrate import calibrate
+
+    batch = epoch_batch if epoch_batch > 0 else epochs
+    result = None
+    while done < epochs:
+        this_batch = min(batch, epochs - done)
+        batch_started = time.time()
+        result = calibrate(
+            frame,
+            target_set,
+            weight_entity="household",
+            method="adam",
+            epochs=this_batch,
+            learning_rate=0.02,
+            mass="conserve",
+            max_weight_ratio=max_weight_ratio,
+            target_loss_cap=target_loss_cap,
+            l2_lambda=l2_lambda,
+            seed=seed,
+            warm_start_weights=warm,
+        )
+        done += this_batch
+        warm = result.weights.copy()
+        if on_batch is not None:
+            on_batch(warm, done)
+        log(
+            f"batch -> {done}/{epochs} ep, "
+            f"{time.time() - batch_started:.1f}s, "
+            f"loss={result.final_loss:.5f}, "
+            f"within10%={result.fraction_within_10pct:.2%}, "
+            f"ESS={result.effective_sample_size:,.0f}"
+        )
+    return result, done
+
+
+def _origin_columns(frame):
+    households = frame.table("household")
+    spine = (
+        households["household_spine"].to_numpy()
+        if "household_spine" in households.columns
+        else None
+    )
+    source = (
+        households["household_source_id"].to_numpy()
+        if "household_source_id" in households.columns
+        else None
+    )
+    return spine, source
+
+
+def calibration_evidence(
+    *,
+    frame,
+    roles: list[dict],
+    matrix,
+    design_weights: np.ndarray,
+    weights: np.ndarray,
+    target_loss_cap: float,
+) -> dict:
+    """The sparse-surface evidence the calibration summary adds.
+
+    The CD holdout scored against the pro-rata baseline, and ESS over rows
+    and distinct households with household-weight share by spine, at the
+    design and the calibrated weights.
+    """
+
+    spine, source = _origin_columns(frame)
+    return {
+        "n_targets_on_surface": len(roles),
+        "n_holdout_targets": len(cd_surface.holdout_rows(roles)),
+        "checkpoint_matrix": {
+            "format": "csr_float32",
+            "shape": [int(x) for x in matrix.shape],
+            "nnz": int(matrix.nnz),
+        },
+        "weight_origin": {
+            "design": cd_surface.weight_origin_summary(
+                design_weights, spine=spine, source_id=source
+            ),
+            "calibrated": cd_surface.weight_origin_summary(
+                weights, spine=spine, source_id=source
+            ),
+        },
+        "cd_holdout": cd_surface.score_cd_holdout(
+            roles,
+            matrix,
+            design_weights=design_weights,
+            final_weights=weights,
+            cap=target_loss_cap,
+        ),
+    }
+
+
+def do_calibrate(args) -> None:
+    from microcosm.calibrate import write_calibration_diagnostics
+
+    identity = _verify_run_identity(args)
+    frame, design_weights, registry, roles, matrix = load_checkpoint_surface(
+        args.checkpoint_dir, identity
+    )
+    n_households = frame.n("household")
+    target_set = cd_surface.calibration_target_set(
+        roles, matrix, n_households, specs=registry.specs
+    )
     log(
-        f"calibrate: households={n_households}, targets={len(target_set)}, "
-        f"design_total={design_weights.sum():,.0f}"
+        f"calibrate: households={n_households}, targets={len(target_set)} "
+        f"trained + {len(roles) - len(target_set)} held out, "
+        f"nnz={matrix.nnz:,}, design_total={design_weights.sum():,.0f}"
     )
 
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
@@ -1086,6 +1545,18 @@ def do_calibrate(args) -> None:
             raise SystemExit(
                 "weights_latest.npz was produced against a different staging "
                 "H5; refusing to warm-start from a foreign checkpoint."
+            )
+        saved_surface = (
+            str(saved["target_roles_sha256"])
+            if "target_roles_sha256" in saved
+            else None
+        )
+        if saved_surface is not None and saved_surface != identity.get(
+            "target_roles_sha256"
+        ):
+            raise SystemExit(
+                "weights_latest.npz was calibrated to a different target "
+                "surface, holdout or sample; refusing to warm-start from it."
             )
         warm, done = saved["weights"], int(saved["epochs_done"])
         if len(warm) != n_households:
@@ -1111,42 +1582,31 @@ def do_calibrate(args) -> None:
             f"{args.epochs}) but calibration_summary.json is missing. "
             "Delete the checkpoint to recalibrate, or raise --epochs."
         )
-    batch = args.epoch_batch if args.epoch_batch > 0 else args.epochs
-    result = None
-    started = time.time()
-    while done < args.epochs:
-        this_batch = min(batch, args.epochs - done)
-        batch_started = time.time()
-        result = calibrate(
-            frame,
-            target_set,
-            weight_entity="household",
-            method="adam",
-            epochs=this_batch,
-            learning_rate=0.02,
-            mass="conserve",
-            max_weight_ratio=args.max_weight_ratio,
-            target_loss_cap=args.target_loss_cap,
-            l2_lambda=args.l2_lambda,
-            seed=args.seed,
-            warm_start_weights=warm,
-        )
-        done += this_batch
-        warm = result.weights.copy()
+
+    def save(weights: np.ndarray, epochs_done: int) -> None:
         np.savez(
             resume_npz,
-            weights=warm,
-            epochs_done=done,
+            weights=weights,
+            epochs_done=epochs_done,
             initial_weights=design_weights,
             staging_sha256=np.str_(identity["staging_sha256"]),
+            target_roles_sha256=np.str_(identity["target_roles_sha256"]),
         )
-        log(
-            f"batch -> {done}/{args.epochs} ep, "
-            f"{time.time() - batch_started:.1f}s, "
-            f"loss={result.final_loss:.5f}, "
-            f"within10%={result.fraction_within_10pct:.2%}, "
-            f"ESS={result.effective_sample_size:,.0f}"
-        )
+
+    started = time.time()
+    result, done = calibrate_surface(
+        frame,
+        target_set,
+        epochs=args.epochs,
+        epoch_batch=args.epoch_batch,
+        max_weight_ratio=args.max_weight_ratio,
+        target_loss_cap=args.target_loss_cap,
+        l2_lambda=args.l2_lambda,
+        seed=args.seed,
+        warm=warm,
+        done=done,
+        on_batch=save,
+    )
 
     if result.problem.skipped:
         skipped = [getattr(item, "name", str(item)) for item in result.problem.skipped]
@@ -1160,12 +1620,14 @@ def do_calibrate(args) -> None:
         "n_targets": result.problem.n_targets,
         "families": args.families,
         "geographies": args.geographies,
+        "soi_mode": identity.get("soi_mode"),
         "matrix_format": result.options["matrix_format"],
         "matrix_shape": [int(x) for x in result.problem.matrix.shape],
         "matrix_nnz": int(result.problem.matrix.nnz),
         "epochs": args.epochs,
         "epoch_batch": args.epoch_batch,
         "max_weight_ratio": args.max_weight_ratio,
+        "target_loss_cap": args.target_loss_cap,
         "l2_lambda": args.l2_lambda,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
@@ -1177,6 +1639,15 @@ def do_calibrate(args) -> None:
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
         ),
+        "sampling": identity.get("sampling"),
+        **calibration_evidence(
+            frame=frame,
+            roles=roles,
+            matrix=matrix,
+            design_weights=design_weights,
+            weights=np.asarray(result.weights, dtype=np.float64),
+            target_loss_cap=args.target_loss_cap,
+        ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
     }
@@ -1184,6 +1655,7 @@ def do_calibrate(args) -> None:
         args, np.asarray(result.weights, dtype=np.float64), identity
     )
 
+    holdout = summary["cd_holdout"]
     outcome = write_calibration_diagnostics(
         result,
         args.checkpoint_dir / "calibration_diagnostics.json",
@@ -1192,12 +1664,15 @@ def do_calibrate(args) -> None:
             "dataset_role": "non_default_local_area",
             "families": args.families,
             "geographies": args.geographies,
+            "soi_mode": identity.get("soi_mode"),
             "epochs": args.epochs,
             "epoch_batch": args.epoch_batch,
             "total_wall_seconds": summary["total_wall_seconds"],
             "peak_rss_gb": summary["peak_rss_gb"],
             "ess_fraction": summary["ess_fraction"],
             "mass_conserved_ratio": summary["mass_conserved_ratio"],
+            "n_holdout_targets": summary["n_holdout_targets"],
+            "sampling_rung": (identity.get("sampling") or {}).get("rung"),
         },
     )
     summary["calibration_diagnostics"] = (
@@ -1221,7 +1696,40 @@ def do_calibrate(args) -> None:
         f"calibrate stage complete: loss={summary['final_loss']}, "
         f"within10%={summary['fraction_within_10pct']:.2%}, "
         f"diagnostics={outcome.status}"
+        + (
+            f"; CD holdout {holdout['n_targets']} targets: calibrated "
+            f"{holdout['calibrated']['mean_abs_rel_error']:.2%} vs pro-rata "
+            f"{holdout['pro_rata_baseline']['mean_abs_rel_error']:.2%} mean "
+            "abs rel error"
+            if holdout.get("n_targets")
+            else ""
+        )
     )
+
+
+def _resample_like_materialize(frame, identity: dict):
+    """Re-draw the development rung materialize drew, or refuse.
+
+    A full-rung (or pre-sampling) identity returns the frame unchanged. A
+    sampled one re-draws with the recorded fraction and seed and must select
+    exactly the recorded households.
+    """
+
+    sampling = identity.get("sampling") or {}
+    if not sampling.get("sampled"):
+        return frame
+    sampled, receipt = cd_surface.sample_staging_frame(
+        frame,
+        fraction=float(sampling["sample_fraction"]),
+        seed=int(sampling["sample_seed"]),
+    )
+    recorded = sampling.get("selected_household_ids_sha256")
+    if receipt.get("selected_household_ids_sha256") != recorded:
+        raise SystemExit(
+            "Re-drawing the recorded development rung selected different "
+            "households than materialize did; refusing to attach weights."
+        )
+    return sampled
 
 
 def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> None:
@@ -1245,6 +1753,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
 
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(_staging_summary_path(args)))
+    frame = _resample_like_materialize(frame, identity)
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -1581,6 +2090,79 @@ def finalize_reviewed_limitations(
     return list(deduped.values())
 
 
+def state_cd_reviewed_limitations(materialize_rss: dict) -> list[dict]:
+    """Reviewed limitations a ``state_cd`` surface adds to the register."""
+
+    if materialize_rss.get("soi_mode") != SOI_MODE_STATE_CD:
+        return []
+    surface = materialize_rss.get("soi_surface") or {}
+    holdout = materialize_rss.get("cd_holdout") or {}
+    return [
+        {
+            "id": "cd_soi_117th_plan_population_crosswalk",
+            "status": "reviewed_construction",
+            "reason": (
+                "The SOI congressional-district file (22incd.csv, TY2022) is "
+                "tabulated on the 117th-Congress plan. Its district rows are "
+                "mapped onto the households' 119th-plan districts by the "
+                "packaged 2020-block population crosswalk, so each 119th "
+                "district target assumes returns spread with population "
+                "inside every 117th/119th intersection. North Carolina's "
+                "district rows are excluded because that crosswalk used the "
+                "wrong NC plan."
+            ),
+            "treatment": (
+                "The block -> CD plan registry (PR #1041) plus a household "
+                "117th-plan district column lets these targets bind as exact "
+                "block sums; the NC exclusion lifts then."
+            ),
+            "excluded_states": surface.get("excluded_cd_states"),
+            "crosswalk": surface.get("crosswalk"),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_soi_one_vintage_per_state_concept",
+            "status": "reviewed_construction",
+            "reason": surface.get("vintage_rule_description"),
+            "rebase_factor_by_measure": surface.get("rebase_factor_by_measure"),
+            "dropped": surface.get("dropped"),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_soi_defective_district_columns_excluded",
+            "status": "reviewed_exclusion",
+            "reason": (
+                "District-file measures that read the wrong IRS column are "
+                "off the surface at both geographies (microcosm#1038)."
+            ),
+            "measures": surface.get("defective_cd_file_measures"),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_holdout_sealed",
+            "status": "reviewed_construction",
+            "reason": (
+                f"{holdout.get('held_targets')} district SOI targets in "
+                f"{holdout.get('held_units')} (state x concept family) units "
+                f"(fraction {holdout.get('fraction')}, salt "
+                f"{holdout.get('salt')}) never reach the calibrator; they are "
+                "scored against a pro-rata baseline in calibration_diagnostics."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "cd_soi_sigma_absent",
+            "status": "reviewed_data_gap",
+            "reason": (
+                "The pinned facts feed carries no uncertainty for any IRS SOI "
+                "fact, so no target carries sigma and the loss is unchanged "
+                "(fixed-scale capped relative error)."
+            ),
+            "calibration_blocker": False,
+        },
+    ]
+
+
 def _local_hours_gate(frame, staging_summary: dict):
     audit = staging_summary.get("reviewed_engine_input_nulls")
     if not isinstance(audit, list) or not all(isinstance(item, dict) for item in audit):
@@ -1622,7 +2204,10 @@ def do_finalize(args) -> None:
         )
     materialize_rss = _load_json(args.checkpoint_dir / "materialize_rss.json")
     registry_path = args.checkpoint_dir / "target_registry.json"
-    if registry_path.is_file():
+    roles_path = args.checkpoint_dir / TARGET_ROLES_FILENAME
+    if roles_path.is_file():
+        targets = json.loads(roles_path.read_text())
+    elif registry_path.is_file():
         registry = TargetRegistry.from_json(registry_path)
         targets = [
             {"name": spec.name, "family": spec.family} for spec in registry.specs
@@ -1667,7 +2252,13 @@ def do_finalize(args) -> None:
     breakdown: dict[str, int] = {}
     for target in targets:
         name = target["name"]
-        if name.startswith("pop_state"):
+        if target.get("role") == cd_surface.ROLE_HOLDOUT:
+            key = "cd_holdout"
+        elif name.startswith("irs_soi") and (
+            target.get("geography_level") == cd_surface.GEOGRAPHY_CD
+        ):
+            key = "soi_congressional_district"
+        elif name.startswith("pop_state"):
             key = "population_state"
         elif name.startswith("pop_cd"):
             key = "population_cd"
@@ -1728,8 +2319,34 @@ def do_finalize(args) -> None:
                 "n_targets": len(targets),
                 "n_admin": materialize_rss.get("n_admin"),
                 "n_population": materialize_rss.get("n_population"),
+                "n_trained": diagnostics.get("n_targets"),
+                "n_holdout": diagnostics.get("n_holdout_targets"),
                 "breakdown": breakdown,
+                "target_matrix": materialize_rss.get("target_matrix"),
+                "rung": (identity.get("sampling") or {}).get("rung"),
             },
+        },
+        "cd_holdout": {
+            # Report-only: held-out district targets never reach the solve;
+            # the comparison with the pro-rata baseline is evidence, not a
+            # bound (d487 asks whether district fidelity beats pro-rata).
+            "passed": True,
+            "report_only": True,
+            "detail": {
+                key: value
+                for key, value in (diagnostics.get("cd_holdout") or {}).items()
+                if key != "targets"
+            },
+        },
+        "weight_origin": {
+            "passed": True,
+            "report_only": True,
+            "note": (
+                "Household-weight share by spine and Kish ESS over rows and "
+                "over distinct households (household_spine, "
+                "household_source_id), at design and calibrated weights."
+            ),
+            "detail": diagnostics.get("weight_origin"),
         },
         "input_coverage": {
             # Enforced upstream: the staging driver's donor-coverage gate
@@ -1783,6 +2400,7 @@ def do_finalize(args) -> None:
     }
 
     limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
+    limitations += state_cd_reviewed_limitations(materialize_rss)
     hard_failures = [
         name
         for name in (
@@ -1884,6 +2502,29 @@ def _require_recorded_soi_mode(materialize_rss: dict) -> str:
     return soi_mode
 
 
+def _require_full_rung(identity: dict) -> dict:
+    """Refuse to package a development rung, or a run that cannot show its rung.
+
+    ``--sample-fraction`` below 1 is for development runs (DESIGN.md
+    "Production US stacked spine"); a release is always full scale.
+    """
+
+    sampling = identity.get("sampling")
+    if not isinstance(sampling, dict) or "sampled" not in sampling:
+        raise SystemExit(
+            "run_identity.json records no sampling block, so packaging cannot "
+            "establish that the surface was materialized at full scale. "
+            "Re-run --stage materialize with the current tool."
+        )
+    if sampling.get("sampled") or sampling.get("rung") != "f100":
+        raise SystemExit(
+            f"The checkpoint was materialized on the {sampling.get('rung')} "
+            "development rung; a release is packaged only at full scale "
+            "(--sample-fraction 1)."
+        )
+    return sampling
+
+
 def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
     """Refuse an artifact that stores a model input the installed engine lacks.
 
@@ -1946,6 +2587,7 @@ def do_package(args) -> dict:
     # Before any release directory exists: a refused smoke leaves nothing.
     staging_orchestration = _require_uncapped_staging(staging_summary)
     soi_mode = _require_recorded_soi_mode(materialize_rss)
+    _require_full_rung(identity)
     calibrated_h5 = Path(args.out_h5)
     if not calibrated_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
@@ -2069,7 +2711,9 @@ def do_package(args) -> dict:
             "unchanged."
         ),
         "staging": LEGACY_STAGING_REFRESH_RECIPE,
-        "release": release_refresh_recipe(soi_mode),
+        "release": release_refresh_recipe(
+            soi_mode, (identity.get("cd_holdout") or {}).get("fraction")
+        ),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
             f"--artifact-root <run> --repo-id {HF_REPO_ID}"
@@ -2118,6 +2762,12 @@ def do_package(args) -> dict:
         },
         "materialize": {
             "soi_mode": soi_mode,
+            "soi_surface_counts": (materialize_rss.get("soi_surface") or {}).get(
+                "counts"
+            ),
+            "target_matrix": identity.get("target_matrix"),
+            "cd_holdout": identity.get("cd_holdout"),
+            "sampling": identity.get("sampling"),
             "peak_rss_gb": materialize_rss.get("materialize_peak_rss_gb"),
             "hh_chunk": materialize_rss.get("hh_chunk"),
             "engine_pass": (
@@ -2325,15 +2975,42 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=SOI_MODES,
         default=DEFAULT_SOI_MODE,
         help=(
-            "State SOI target surface for --stage materialize. 'state' "
-            "(default) is Build O's contract: every state-geography SOI spec "
-            "outside the congressional-district file. 'totals' drops every "
+            "SOI target surface for --stage materialize. 'state' (default) "
+            "is Build O's contract: every state-geography SOI spec outside "
+            "the congressional-district file. 'totals' drops every "
             "soi_fiscal_distribution spec (no state AGI, income-tax or EITC "
-            "total); 'full' keeps every state-bearing spec, including the "
-            "district file, and needs a much larger dense admin matrix "
-            "(contents and sizes in docs/us-acs-local-soi-target-surface.md). "
-            "Later stages use the mode the checkpoint recorded."
+            "total); 'full' keeps every state-bearing spec, both vintages "
+            "of each state concept included. 'state_cd' adds the district "
+            "file's district rows to 'state' with one vintage per state "
+            "concept, and holds a hash-assigned block of them out "
+            "(docs/us-acs-local-soi-target-surface.md). Later stages use the "
+            "mode the checkpoint recorded."
         ),
+    )
+    parser.add_argument(
+        "--cd-holdout-fraction",
+        type=float,
+        default=None,
+        help=(
+            "Share of (state x SOI concept family) district-target units held "
+            "out of calibration and scored against a pro-rata baseline "
+            f"(state_cd only; default {cd_surface.DEFAULT_STATE_CD_HOLDOUT_FRACTION}"
+            f" there, max {cd_surface.MAX_CD_HOLDOUT_FRACTION}; 0 disables)."
+        ),
+    )
+    parser.add_argument(
+        "--sample-fraction",
+        type=float,
+        default=1.0,
+        help=(
+            "Development rung: sample whole staging households at this "
+            f"fraction ({sorted(cd_surface.SAMPLE_RUNG_TOKENS)}), stratified "
+            "by spine x district and normalized to each spine's full mass. "
+            "Recorded in the run identity; package refuses anything below 1."
+        ),
+    )
+    parser.add_argument(
+        "--sample-seed", type=int, default=cd_surface.DEFAULT_SAMPLE_SEED
     )
     parser.add_argument("--epochs", type=int, default=800)
     parser.add_argument("--epoch-batch", type=int, default=400)
@@ -2404,7 +3081,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         args.out_summary = args.out_h5.with_suffix(".summary.json")
     if args.gate_report is None:
         args.gate_report = args.checkpoint_dir / "gate_summary.json"
+    try:
+        cd_surface.rung_token(args.sample_fraction)
+    except ValueError as error:
+        parser.error(str(error))
+    if args.cd_holdout_fraction is not None and not (
+        0.0 <= args.cd_holdout_fraction <= cd_surface.MAX_CD_HOLDOUT_FRACTION
+    ):
+        parser.error(
+            "--cd-holdout-fraction must be in "
+            f"[0, {cd_surface.MAX_CD_HOLDOUT_FRACTION}]."
+        )
     args.stages = stages
+
     return args
 
 

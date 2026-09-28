@@ -19,6 +19,9 @@ from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
 
+#: The sampling block a full-scale materialize records in run_identity.json.
+_FULL_RUNG = {"sample_fraction": 1.0, "rung": "f100", "sampled": False}
+
 # Tests that write real H5 bytes go through pandas' HDFStore, which needs
 # pytables; the base wheel gate installs the shards without it.
 requires_pytables = pytest.mark.skipif(
@@ -407,6 +410,7 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         "run_identity.json": {
             "staging_sha256": module._sha256(staging),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
@@ -587,6 +591,7 @@ def _package_args_before_evidence(
             {
                 "staging_sha256": module._sha256(staging),
                 "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
             }
         )
     )
@@ -676,6 +681,7 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
             {
                 "staging_sha256": module._sha256(staging),
                 "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
             }
         )
     )
@@ -739,10 +745,10 @@ def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
     asking for them."""
 
     module = _load_tool_module()
-    assert module.SOI_MODES == ("state", "totals", "full")
+    assert module.SOI_MODES == ("state", "totals", "full", "state_cd")
     assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
     assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
-    for mode in ("totals", "full"):
+    for mode in ("totals", "full", "state_cd"):
         assert (
             module._parse_args(_materialize_argv(tmp_path, "--soi-mode", mode)).soi_mode
             == mode
@@ -1214,6 +1220,7 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
             "staging_sha256": module._sha256(args.staging_h5),
             "ladder_sha256": module._sha256(args.ladder),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
@@ -1281,6 +1288,7 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
         "run_identity.json": {
             "staging_sha256": module._sha256(args.staging_h5),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,

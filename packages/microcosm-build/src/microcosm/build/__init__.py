@@ -124,6 +124,8 @@ from microcosm.build.gates import (  # noqa: E402 - after the compat gate
     weights_audit_gate,
 )
 from microcosm.build.holdout import (  # noqa: E402 - after the compat gate
+    hash_holdout_uniform,
+    hash_holdout_unit,
     rotated_folds,
     summarize_rotations,
 )
@@ -270,6 +272,8 @@ __all__ = [
     "export_surface_gate",
     "exported_nonzero_gate",
     "formula_owned_export_gate",
+    "hash_holdout_uniform",
+    "hash_holdout_unit",
     "input_column_coverage_gate",
     "input_mass_parity_gate",
     "ledger_compile_parity_gate",
