@@ -60,6 +60,19 @@ def test_dense_role_refuses_the_national_knobs(tmp_path, extra, needle):
     assert needle in str(excinfo.value)
 
 
+def test_engine_blocks_must_be_positive_and_equal_the_clone_count(tmp_path):
+    """The per-clone engine block count is either one or the clone count."""
+    with pytest.raises(ValueError, match="must equal --n-clones"):
+        cli.validate_cli_args(
+            arguments(tmp_path, "--n-clones", "4", "--engine-blocks", "2")
+        )
+    with pytest.raises(ValueError, match="must be positive"):
+        cli.validate_cli_args(arguments(tmp_path, "--engine-blocks", "0"))
+    cli.validate_cli_args(
+        arguments(tmp_path, "--n-clones", "2", "--engine-blocks", "2")
+    )
+
+
 def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
     argv = [
         "--release-role",
@@ -416,6 +429,28 @@ def test_rejected_output_inside_source_never_writes_failure_sidecar(
     assert not args.out.exists()
 
 
+def test_input_inside_the_output_directory_is_refused_before_anything_is_written(
+    tmp_path, monkeypatch
+):
+    """An input that would collide with a published file keeps its bytes.
+
+    The candidate tool refused a ladder named as the manifest inside the
+    output directory; the graph driver refuses any input source under the
+    output directory before it writes, and the colliding file is untouched.
+    """
+    args = arguments(tmp_path)
+    args.out.mkdir()
+    collision = args.out / cli.MANIFEST_FILENAME
+    collision.write_bytes(b"ladder stand-in living where the manifest goes")
+    build = prepared(tmp_path)
+    build = replace(build, sources={"fixture": collision})
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(cli, "prepare_full_build", lambda args, **kwargs: build)
+    assert cli.main([]) == 1
+    assert collision.read_bytes() == b"ladder stand-in living where the manifest goes"
+    assert list(args.out.iterdir()) == [collision]
+
+
 def test_main_runs_the_logbook_envelope_around_a_dense_build(tmp_path, monkeypatch):
     pytest.importorskip("tables")
     from microcosm.build.logbook import load_spool_rows
@@ -525,8 +560,16 @@ def test_source_phase_evidence_survives_later_exception(tmp_path, monkeypatch, r
     )
 
 
-def test_main_stages_the_bundle_locally_with_staging_local_only(tmp_path, monkeypatch):
-    """``--staging-local-only`` writes and validates the v2 bundle, uploads nothing."""
+def test_main_stages_the_bundle_locally_with_staging_local_only(
+    tmp_path, monkeypatch, capsys
+):
+    """``--staging-local-only`` writes and validates the v2 bundle, uploads nothing.
+
+    The second half restores the candidate tool's bundle-inventory contract on
+    the graph driver: the stdout manifest is the on-disk one, the run id is
+    the build id, the staged inventory names every output with its digest, the
+    local sums verify the directory, and the sidecars are never outputs.
+    """
 
     pytest.importorskip("tables")
     from microcosm.build.staging_dataset import (
@@ -568,3 +611,526 @@ def test_main_stages_the_bundle_locally_with_staging_local_only(tmp_path, monkey
     staged = json.loads((artifacts / "staged_dataset.json").read_text())
     assert staged["mode"] == "local_only" and staged["status"] == "skipped"
     assert (artifacts / "fit_summary.json").is_file()
+
+    captured = capsys.readouterr()
+    # The stdout manifest is the on-disk manifest, evidence blocks included.
+    assert json.loads(captured.out)["staged_dataset"] == manifest["staged_dataset"]
+    assert "staged dataset: skipped (local_only)" in captured.err
+    run_id = runs[0]
+    rows = spool_rows(out)
+    assert rows[0].build_id == run_id
+    run_manifest = bundle["run_manifest"]
+    assert run_manifest["operation_id"] == "uk_rowwise_candidate"
+    assert run_manifest["pipeline"]["id"] == "uk-local-candidate"
+    assert run_manifest["non_release"] is True
+    # The candidate tool wrote ``sample == {"mode": "full"}``; the graph driver
+    # sets no sample block (receipts R5, residual gap for a ruling).
+    assert run_manifest["delivery"]["mode"] == "local_only"
+    assert run_manifest["delivery"]["upload_attempts"] == 0
+    assert {a["logical_name"] for a in run_manifest["artifacts"]} == {
+        "fit_summary",
+        "staged_dataset",
+    }
+    fit_summary = json.loads((artifacts / "fit_summary.json").read_text())
+    assert fit_summary["run_id"] == run_id
+    assert fit_summary["gates"]["uk_local_target_fit"] == "passed"
+    assert fit_summary["loss"]["final"] == manifest["solve"]["final_loss"]
+    assert staged == manifest["staged_dataset"]
+    # Every graph phase reports started then completed, in build order. The
+    # synthetic preflight gate binds no selection node, so target compilation
+    # only starts here; on the real graph it completes with the selected count.
+    events = bundle["events"]
+    completed = [e["stage_id"] for e in events if e["status"] == "completed"]
+    assert completed == [
+        "calibration",
+        "gate_battery",
+        "output_bundle",
+        "dataset_staging",
+        "complete",
+    ]
+    assert [e["status"] for e in events if e["stage_id"] == "target_compilation"] == [
+        "started"
+    ]
+    for stage in ("calibration", "output_bundle"):
+        transitions = [e["status"] for e in events if e["stage_id"] == stage]
+        assert transitions == ["started", "completed"], stage
+    # The manifest carries both receipts; the bundle inventory is the outputs.
+    assert manifest["staging_delivery"]["run_id"] == run_id
+    assert staged["prefix"] == f"staged/{run_id}"
+    assert set(staged["files"]) == {
+        Path(entry["path"]).name for entry in manifest["outputs"].values()
+    }
+    for entry in manifest["outputs"].values():
+        assert staged["files"][Path(entry["path"]).name]["sha256"] == entry["sha256"]
+    # The local sums verify the directory as it is, evidence blocks included.
+    for line in (out / SHA256SUMS_FILENAME).read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+    inventory = json.loads((out / STAGED_MANIFEST_FILENAME).read_text())
+    assert inventory["run_id"] == run_id and inventory["files"] == staged["files"]
+    assert inventory["summary"]["releasable"] is True
+    assert inventory["telemetry"] == {
+        "repository": None,
+        "prefix": f"runs/{run_id}",
+        "mode": "local_only",
+    }
+    # The sidecars are evidence about the outputs, never outputs themselves.
+    assert "sha256sums" not in manifest["outputs"]
+    assert "staged_manifest" not in manifest["outputs"]
+
+
+# ---------------------------------------------------------------------------
+# Delivery-side resilience and refusal receipts on the graph driver. These
+# restore the in-process candidate tool's contracts (retired in af01b990d;
+# mapping in experiments/901-uk-main-rebase-receipts.md, R5) against
+# ``full_build_cli.main`` over the synthetic dense build: a delivery-side
+# problem must never fail a good build, and a refusal must leave its receipt
+# pointers on the Logbook row.
+# ---------------------------------------------------------------------------
+
+
+def _drive_epochs(args, telemetry, epochs: int = 2) -> None:
+    """Feed synthetic dense-solve epochs through the driver's own observer.
+
+    The synthetic graph has no calibration kernel, so the thinned staging rows
+    the real solve would forward are produced here through the very callback
+    ``prepare_full_build`` hands the kernels.
+    """
+    observer = cli._solve_observer(args, telemetry)
+    for epoch in range(1, epochs + 1):
+        observer(
+            {
+                "kind": "calibration_epoch",
+                "epoch": epoch,
+                "epochs": epochs,
+                "loss": 0.5 / epoch,
+            }
+        )
+
+
+def _remote_hub(monkeypatch, **kwargs):
+    from microcosm.build.uk_runtime import rowwise_staging
+    from test_support.microcosm_build.uk_rowwise_candidate import _FakeHub
+
+    hub = _FakeHub(**kwargs)
+    monkeypatch.setattr(rowwise_staging, "_hub_api", lambda: hub)
+    monkeypatch.setattr(rowwise_staging, "_hub_token", lambda: "hf_test_token")
+    return hub
+
+
+def test_no_staging_records_both_opt_outs(tmp_path, monkeypatch):
+    pytest.importorskip("tables")
+    status, out = run_dense_main(tmp_path, monkeypatch, staging="--no-staging")
+    assert status == 0
+    assert not (out / "staging").exists()
+    assert not (out / "sha256sums.txt").exists()
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "disabled"
+    assert manifest["staging_delivery"]["opt_out_reason"] == "--no-staging"
+    assert manifest["staged_dataset"] == {
+        "contract_version": 1,
+        "mode": "disabled",
+        "repository": None,
+        "prefix": None,
+        "run_id": None,
+        "revision": None,
+        "status": "skipped",
+        "error_code": None,
+        "opt_out_reason": "--no-staging",
+        "files": {},
+    }
+    rows = spool_rows(out)
+    assert "dataset_stage_skipped" in rows[0].phases_reached
+
+
+def test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure(
+    tmp_path, monkeypatch, capsys
+):
+    pytest.importorskip("tables")
+    from microcosm.build.staging_v2 import StagingContractError
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    class Invalid(rowwise_staging.StagingTelemetryV2):
+        def validate_local_bundle(self):
+            raise StagingContractError("synthetic bundle defect")
+
+    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Invalid)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging="--staging-local-only")
+    assert status == 0
+    err = capsys.readouterr().err
+    assert "does not validate" in err and "synthetic bundle defect" in err
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_only"
+    assert manifest["staged_dataset"]["status"] == "skipped"
+    rows = spool_rows(out)
+    assert rows and rows[0].disposition == "iterating"
+
+
+def test_telemetry_content_refusal_never_aborts_the_solve(
+    tmp_path, monkeypatch, capsys
+):
+    pytest.importorskip("tables")
+    from microcosm.build.staging_v2 import StagingContentError, validate_v2_bundle
+    from microcosm.build.uk_runtime import rowwise_staging
+
+    class Refusing(rowwise_staging.StagingTelemetryV2):
+        def calibration_progress(self, event):
+            raise StagingContentError("Staging file exceeds the 5242880-byte limit.")
+
+    monkeypatch.setattr(rowwise_staging, "StagingTelemetryV2", Refusing)
+    status, out = run_dense_main(
+        tmp_path, monkeypatch, staging="--staging-local-only", on_prepare=_drive_epochs
+    )
+    assert status == 0
+    err = capsys.readouterr().err
+    assert err.count("no longer forwarded") == 1
+    run_id = single_run_id(out)
+    bundle = validate_v2_bundle(out / "staging", run_id)
+    assert bundle["run_manifest"]["status"] == "completed"
+    assert not (
+        out / "staging" / "runs" / run_id / "calibration_progress.json"
+    ).exists()
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_only"
+    assert spool_rows(out)[0].disposition == "iterating"
+
+
+def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
+    tmp_path, monkeypatch, capsys
+):
+    pytest.importorskip("tables")
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--staging-upload-interval-seconds",
+        "0",
+        staging=None,
+        on_prepare=_drive_epochs,
+    )
+    assert status == 0
+    err = capsys.readouterr().err
+    run_id = single_run_id(out)
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+
+    # Telemetry went to runs/<run_id>/ of the staging repository, artifacts
+    # included, under the fixed prefix and nothing else.
+    telemetry_paths = hub.paths("policyengine/populace-uk-staging")
+    assert telemetry_paths == sorted(
+        f"runs/{run_id}/{name}"
+        for name in (
+            "run_manifest.json",
+            "progress.json",
+            "events.ndjson",
+            "calibration_progress.json",
+            "artifacts/fit_summary.json",
+            "artifacts/staged_dataset.json",
+        )
+    )
+    delivery = manifest["staging_delivery"]
+    assert delivery["mode"] == "local_and_remote"
+    assert delivery["configured_repository"] == "policyengine/populace-uk-staging"
+    assert delivery["upload_successes"] == delivery["upload_attempts"] > 0
+    remote_progress = json.loads(
+        hub.files[("policyengine/populace-uk-staging", f"runs/{run_id}/progress.json")]
+    )
+    assert remote_progress["status"] == "completed"
+
+    # The bundle went to staged/<run_id>/ of the private repository in one
+    # commit: every output, the manifest as built, and the two sidecars.
+    assert len(hub.commits) == 1
+    commit = hub.commits[0]
+    assert commit["repo_id"] == "policyengine/populace-uk-private"
+    expected = {Path(e["path"]).name for e in manifest["outputs"].values()} | {
+        cli.MANIFEST_FILENAME,
+        "staged_manifest.json",
+        "sha256sums.txt",
+    }
+    assert commit["paths"] == sorted(f"staged/{run_id}/{name}" for name in expected)
+    assert hub.paths("policyengine/populace-uk-private") == commit["paths"]
+    staged = manifest["staged_dataset"]
+    assert staged["status"] == "uploaded"
+    assert staged["repository"] == "policyengine/populace-uk-private"
+    assert staged["prefix"] == f"staged/{run_id}"
+    assert staged["revision"] == hub.sha
+    assert (
+        f"staged dataset: uploaded at policyengine/populace-uk-private/staged/{run_id}"
+        in err
+    )
+    dataset_name = Path(manifest["outputs"]["dataset"]["path"]).name
+    remote_h5 = hub.files[
+        ("policyengine/populace-uk-private", f"staged/{run_id}/{dataset_name}")
+    ]
+    assert remote_h5 == (out / dataset_name).read_bytes()
+    # The uploaded manifest is the one the bundle was built from; the local
+    # copy gained the two evidence blocks afterwards.
+    remote_manifest = json.loads(
+        hub.files[
+            (
+                "policyengine/populace-uk-private",
+                f"staged/{run_id}/{cli.MANIFEST_FILENAME}",
+            )
+        ]
+    )
+    assert (
+        "staged_dataset" not in remote_manifest
+        and "staging_delivery" not in remote_manifest
+    )
+    assert remote_manifest["outputs"] == manifest["outputs"]
+    rows = spool_rows(out)
+    assert "dataset_staged" in rows[0].phases_reached
+    assert rows[0].disposition == "iterating"
+
+    def sums_verify() -> None:
+        for line in (out / "sha256sums.txt").read_text().splitlines():
+            digest, name = line.split("  ")
+            assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+
+    # Re-staging a directory whose record already says these outputs are
+    # uploaded touches nothing: the driver's record and revision stand, the
+    # sidecars keep their bytes, and no commit is made.
+    stager = load_tool("stage_uk_rowwise_candidate")
+    monkeypatch.setattr(stager, "_hub_api", lambda: hub)
+    sidecar_bytes = (out / "staged_manifest.json").read_bytes()
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out)]) == 0
+    assert "nothing to do" in capsys.readouterr().err
+    restaged = json.loads((out / cli.MANIFEST_FILENAME).read_text())["staged_dataset"]
+    assert restaged == staged
+    assert (out / "staged_manifest.json").read_bytes() == sidecar_bytes
+    sums_verify()
+    assert len(hub.commits) == 1
+
+    # A record that says the upload failed while the Hub already holds these
+    # outputs: the re-stage finds the bundle and records its own commit, not
+    # the repository head, which has moved on since.
+    manifest_path = out / cli.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    manifest["staged_dataset"] = {
+        **staged,
+        "status": "failed",
+        "revision": None,
+        "error_code": "UPLOAD_FAILED",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    hub.sha = "e" * 40
+    assert stager.main(["--run-dir", str(out)]) == 0
+    recovered = json.loads(manifest_path.read_text())["staged_dataset"]
+    assert recovered["status"] == "already_staged"
+    assert recovered["revision"] == staged["revision"] != hub.sha
+    assert len(hub.commits) == 1
+    sums_verify()
+
+    # Consumers fetch by run id and get digest-verified local files.
+    fetcher = load_tool("fetch_uk_staged_dataset")
+    monkeypatch.setattr(fetcher, "_hub_api", lambda: hub)
+    dest = tmp_path / "fetched"
+    capsys.readouterr()
+    assert fetcher.main(["--run-id", run_id, "--dest", str(dest)]) == 0
+    listed = capsys.readouterr().out.splitlines()
+    assert str(dest / dataset_name) in listed
+    assert (dest / "sha256sums.txt").is_file()
+    assert (dest / dataset_name).read_bytes() == remote_h5
+
+
+def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
+    tmp_path, monkeypatch, capsys
+):
+    pytest.importorskip("tables")
+    hub = _remote_hub(monkeypatch, fail_commit=True)
+    status, out = run_dense_main(tmp_path, monkeypatch, staging=None)
+    assert status == 0
+    err = capsys.readouterr().err
+    assert "staged dataset upload failed" in err and "do-not-record" not in err
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    staged = manifest["staged_dataset"]
+    assert staged["status"] == "failed" and staged["error_code"] == "UPLOAD_FAILED"
+    assert staged["revision"] is None and staged["files"]
+    assert "do-not-record" not in json.dumps(manifest)
+    assert hub.paths("policyengine/populace-uk-private") == []
+    # Telemetry still completed and recorded the outcome.
+    run_id = single_run_id(out)
+    progress = json.loads(
+        hub.files[("policyengine/populace-uk-staging", f"runs/{run_id}/progress.json")]
+    )
+    assert progress["status"] == "completed"
+    events = [
+        json.loads(line)
+        for line in hub.files[
+            ("policyengine/populace-uk-staging", f"runs/{run_id}/events.ndjson")
+        ]
+        .decode()
+        .splitlines()
+        if line
+    ]
+    done = next(
+        e
+        for e in events
+        if e["stage_id"] == "dataset_staging" and e["status"] == "completed"
+    )
+    assert done["details"]["status"] == "failed"
+    assert done["details"]["error_code"] == "UPLOAD_FAILED"
+    rows = spool_rows(out)
+    assert rows[0].disposition == "iterating"
+    assert "dataset_stage_failed" in rows[0].phases_reached
+    # The sidecars are in place for a later re-stage.
+    assert (out / "sha256sums.txt").is_file() and (
+        out / "staged_manifest.json"
+    ).is_file()
+
+
+def test_no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local(
+    tmp_path, monkeypatch
+):
+    pytest.importorskip("tables")
+    hub = _remote_hub(monkeypatch)
+    status, out = run_dense_main(
+        tmp_path, monkeypatch, "--no-staged-dataset", staging=None
+    )
+    assert status == 0
+    assert hub.paths("policyengine/populace-uk-private") == []
+    assert hub.commits == []
+    assert hub.paths("policyengine/populace-uk-staging")
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_and_remote"
+    assert manifest["staged_dataset"]["mode"] == "disabled"
+    assert manifest["staged_dataset"]["opt_out_reason"] == "--no-staged-dataset"
+    assert not (out / "sha256sums.txt").exists()
+
+
+def test_refusal_records_the_gate_and_error_receipt_pointers(tmp_path, monkeypatch):
+    """A refusal leaves its receipt pointer on the failed Logbook row.
+
+    The candidate tool re-raised a blocking gate and recorded both the gate
+    verdict and a pipeline error; the graph driver returns the block as a
+    non-zero status and records the failed gate's receipt pointer, and a run
+    that raises records the error receipt pointer.
+    """
+    pytest.importorskip("tables")
+    geography = "uk_local_geography_ladder_post_calibration"
+    blocked = tmp_path / "blocked"
+    blocked.mkdir()
+    status, out = run_dense_main(blocked, monkeypatch, failed=geography)
+    assert status == 1
+    gate_report_path = out / f"{STEM}.local_gates.json"
+    assert gate_report_path.exists()
+    rows = spool_rows(out)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.disposition == "failed"
+    assert row.gate_verdicts[geography] == {
+        "verdict": "failed",
+        "receipt": f"{local_ref(gate_report_path)}#/gates/{geography}",
+    }
+    assert "pipeline_error" not in row.gate_verdicts
+
+    # A refusal after the targets are bound (the binding adjudication's
+    # place on the candidate tool) and before the solve completes.
+    raised = tmp_path / "raised"
+    raised.mkdir()
+    original_run = cli.run_graph
+
+    def refuse_numerical(compiled, **kwargs):
+        if "uk.full.gates.calibrated" in {node.id for node in compiled.graph.nodes}:
+            raise ValueError("census_disclosure_control_noise is not adjudicated")
+        return original_run(compiled, **kwargs)
+
+    monkeypatch.setattr(cli, "run_graph", refuse_numerical)
+    status, out = run_dense_main(raised, monkeypatch)
+    assert status == 1
+    rows = spool_rows(out)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.disposition == "failed"
+    assert "targets_bound" in row.phases_reached
+    assert "solved" not in row.phases_reached
+    receipts = list((out / "logbook-receipts").rglob("error.json"))
+    assert len(receipts) == 1
+    assert row.gate_verdicts["pipeline_error"] == {
+        "verdict": "error",
+        "receipt": f"{local_ref(receipts[0])}#/error_type",
+    }
+    assert not (out / cli.MANIFEST_FILENAME).exists()
+
+    # A pre-graph setup failure (the ladder load's place on the candidate
+    # tool) still spools a failed row with its error receipt pointer.
+    setup = tmp_path / "setup"
+    setup.mkdir()
+    monkeypatch.setattr(cli, "run_graph", original_run)
+
+    def refuse_setup(args, telemetry):
+        raise RuntimeError("ladder artifact refused to parse")
+
+    status, out = run_dense_main(setup, monkeypatch, on_prepare=refuse_setup)
+    assert status == 1
+    rows = spool_rows(out)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.disposition == "failed"
+    assert "targets_bound" not in row.phases_reached
+    receipts = list((out / "logbook-receipts").rglob("error.json"))
+    assert len(receipts) == 1
+    assert json.loads(receipts[0].read_text())["message"] == (
+        "ladder artifact refused to parse"
+    )
+    assert row.gate_verdicts["pipeline_error"] == {
+        "verdict": "error",
+        "receipt": f"{local_ref(receipts[0])}#/error_type",
+    }
+    assert not (out / cli.MANIFEST_FILENAME).exists()
+
+
+def test_blocked_gates_partition_failures_by_criticality(tmp_path, monkeypatch, capsys):
+    """Two release-blocking local failures are both enforced and none is diagnostic."""
+    pytest.importorskip("tables")
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        failed=(
+            ("uk_local_area_support", "ESS 42.3 < 50"),
+            ("uk_local_weight_ratio", "ratio 578 > 100"),
+        ),
+    )
+    assert status == 1
+    assert "artifact unreleasable" in capsys.readouterr().err
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["failing_gate_ids"] == [
+        "uk_local_area_support",
+        "uk_local_weight_ratio",
+    ]
+    assert manifest["blocked_at_f100"] is True
+    assert manifest["blocking_failures"] == [
+        "[uk_local_area_support] ESS 42.3 < 50",
+        "[uk_local_weight_ratio] ratio 578 > 100",
+    ]
+    assert manifest["diagnostic_failures"] == []
+    assert manifest["releasable"] is False
+    report = json.loads(
+        Path(manifest["outputs"]["local_gate_report"]["path"]).read_text()
+    )
+    outcomes = {outcome["id"]: outcome for outcome in report["report"]["outcomes"]}
+    for gate_id in ("uk_local_area_support", "uk_local_weight_ratio"):
+        assert outcomes[gate_id]["criticality"] == "release_blocking"
+        assert outcomes[gate_id]["status"] == "failed"
+    assert spool_rows(out)[0].disposition == "failed"
+
+
+def test_multi_block_engine_run_is_never_releasable(tmp_path, monkeypatch):
+    """End to end: ``--engine-blocks K`` on f100 writes ``releasable: false``.
+
+    Every release-blocking gate passes here; the posture alone withholds the
+    verdict, and the manifest names the leg (``single_block_engine``).
+    """
+    pytest.importorskip("tables")
+    status, out = run_dense_main(
+        tmp_path, monkeypatch, "--n-clones", "2", "--engine-blocks", "2"
+    )
+    assert status == 0
+    manifest = json.loads((out / cli.MANIFEST_FILENAME).read_text())
+    assert manifest["parameters"]["engine_blocks"] == 2
+    assert manifest["blocking_failures"] == []
+    assert manifest["releasable"] is False
+    posture = manifest["release_posture"]
+    assert posture["full_rung"] is True
+    assert posture["single_block_engine"] is False
+    assert posture["release_blocking_gates_passed"] is True

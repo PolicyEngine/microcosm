@@ -90,3 +90,131 @@ cannot be built at main's head (R1). Options put to María on 2026-09-25: wait f
 lane to settle main's fence; a non-release measurement flag that accepts a stale gate manifest
 and records the mismatch; or a measurement-only branch over #1012. The national role is parity
 by identity regardless (same engine, moved code); the dense comparison needs a spine.
+
+## R5. The 25 retired in-process tool tests, mapped onto the graph driver (2026-09-28)
+
+Vahid's review counted 7 replaced, 8 partially covered and 10 lost. Re-derived here for all 25
+against the pre-retirement bodies (`af01b990d~1:packages/microcosm-build/tests/engine_free/uk/test_uk_rowwise_candidate.py`),
+each retired test is either restored on `full_build_cli.main` over the synthetic dense build
+(`test_support/microcosm_build/uk_full_build_cli.py`: `run_dense_main`, multi-gate
+`gate_payload`, `_FakeHub` from the rowwise helper, patches on `rowwise_staging`) or shown
+covered by a named test. Unqualified `::` names below are in
+`packages/microcosm-build/tests/engine_free/uk/test_uk_full_build_cli.py`. Totals: 14 rows
+restored (rows 3, 8, 9, 10, 12, 14, 15, 18, 20 to 25, through 11 new test functions and one
+extended test; rows 9 and 10 live inside row 8's test), 10 rows covered by named tests (1, 2, 4,
+5, 6, 7, 11, 13, 16, 17), 1 row superseded by a documented behaviour change (19, R3). Residual
+gaps are named on their rows; rows 18 and 19 carry the two for a ruling.
+
+1. `candidate_build_writes_calibrated_h5_and_evidence`: covered. Manifest projection (schema 4,
+   dense role and release id, doctrine block, identity pins, solve, weights, output digests,
+   releasable) by `::test_dense_run_projects_the_rowwise_candidate_manifest`; the H5 and sidecars
+   written and replayed by `::test_cli_cold_and_required_replay_recreate_dataset_and_sidecars`;
+   the Logbook row (pipeline, rung, seed, iterating, artifact location, every verdict passed
+   with a `.local_gates.json#/gates/` receipt) by
+   `::test_main_runs_the_logbook_envelope_around_a_dense_build`; the real-solve calibrated
+   weights, mass record and solver parity by
+   `engine/uk/test_uk_full_target_graph.py::test_default_all_has_direct_matrix_and_solver_parity_and_replays`.
+   The seeded adjudication row values are pinned by
+   `test_uk_local_rowwise.py::test_committed_local_binding_register_references_committed_census`
+   rather than through the driver.
+2. `candidate_dry_run_plans_without_solve_or_write`: covered by
+   `::test_dry_run_has_no_files_or_kernel_execution` (no files, no kernel execution, no Logbook
+   row) and `test_uk_rowwise_candidate.py::test_graph_driver_dry_run_prints_the_operation_inventory`;
+   the plan is the operation inventory by design, and the old plan's sampling, binding and
+   cross-grain blocks are graph artifacts asserted through row 1.
+3. `candidate_sampling_rung_receipt_and_engine_block_validation`: the `--engine-blocks` must
+   equal `--n-clones` refusal restored as
+   `::test_engine_blocks_must_be_positive_and_equal_the_clone_count`; the sampled-rung receipt
+   covered by `test_uk_national_sampling.py::test_spine_sampling_is_stratified_keeps_families_and_normalizes`
+   and `::test_source_sampling_cannot_be_reapplied_as_pool_sampling` (the graph samples the
+   source spine, never the pool). The dry-run plan no longer carries a sampling block (row 2).
+4. `candidate_f100_does_not_call_any_sampler`: covered by
+   `test_uk_national_sampling.py::test_full_fraction_is_a_structural_no_op` and
+   `::test_source_sampling_cannot_be_reapplied_as_pool_sampling`; the compact national sampler
+   is not reachable from the graph's population node.
+5. `candidate_engine_surface_reuses_one_resolver`: covered by
+   `test_uk_full_measure.py::test_full_measure_reuses_one_resolver` (direct port).
+6. `candidate_engine_surface_resolves_real_per_clone_blocks`: covered by
+   `test_uk_full_measure.py::test_full_measure_resolves_real_per_clone_blocks` (direct port, same
+   parametrisation).
+7. `joint_candidate_f100_and_f001_end_to_end`: covered. The joint local/ladder/national matrix,
+   solver parity and replay by
+   `engine/uk/test_uk_full_target_graph.py::test_default_all_has_direct_matrix_and_solver_parity_and_replays`;
+   the unbound-bridge and fan-out receipts by `test_uk_ledger_targets.py`; the rowwise dataset
+   round trip and `clone_index` rename by `test_uk_rowwise_dataset.py::test_clone_uk_dataset_h5_roundtrip`
+   and `test_uk_ladder_rowwise_clone.py::test_inherited_clone_index_is_replaced_like_the_pre_frame_writer`.
+   Residual: the f001 leg's `rung_surface` counts are asserted through the driver only as a
+   present manifest key (row 1); a sampled-rung run through the driver is not repeated.
+8. `candidate_refusal_records_receipt_and_reraises`: restored as
+   `::test_refusal_records_the_gate_and_error_receipt_pointers` (a blocked geography gate leaves
+   `{verdict: failed, receipt: <local_gates.json>#/gates/<id>}` on the failed row; a raise
+   leaves `pipeline_error` with `#/error_type`). The graph driver returns the block as status 1
+   instead of re-raising, by design.
+9. `candidate_binding_adjudication_failure_records_failed_row`: restored inside the same test
+   (a refusal after `targets_bound` and before `solved` records the failed row and pointer); the
+   binding refusal itself by `test_uk_local_rowwise.py::test_rowwise_binding_refuses_unadjudicated_committed_fence`.
+10. `candidate_setup_failure_records_failed_row`: restored inside the same test (a preparation
+    failure spools the failed row with the pointer and no manifest); `inputs_pinned` is not a
+    graph-driver phase, the pins ride on the prepared build's `inputs` record (row 1).
+11. `households_only_targets_come_from_compiled_chronicle_registry`: covered by
+    `::test_households_only_binds_the_census_family_on_the_selection_node`, the uprating receipt
+    cases in `test_uk_ledger_targets.py`, and the compiled-registry problem in
+    `engine/uk/test_uk_full_target_graph.py` (both selection cases).
+12. `candidate_dry_run_refuses_ladder_sidecar_collision`: restored as
+    `::test_input_inside_the_output_directory_is_refused_before_anything_is_written` (an input
+    under the output directory is refused by `_output_locations` before anything is written; the
+    colliding file keeps its bytes), beside
+    `::test_rejected_output_inside_source_never_writes_failure_sidecar` for the reverse direction.
+13. `candidate_weight_ratio_failure_is_reported_and_blocks`: covered by
+    `::test_blocked_gate_projects_an_unreleasable_manifest` and the restored row 14 (the
+    weight-ratio failure line, the report's criticality and status, the failed row).
+14. `candidate_block_partitions_failures_by_criticality`: restored as
+    `::test_blocked_gates_partition_failures_by_criticality`.
+15. `candidate_multi_block_engine_run_is_never_releasable`: restored as
+    `::test_multi_block_engine_run_is_never_releasable` (end to end on the driver), beside
+    `test_uk_rowwise_candidate.py::test_release_verdict_requires_single_block_engine`.
+16. `size_candidate_exports_compact_links_and_cannot_claim_dense_release`: covered by
+    `test_uk_full_calibration_graph.py::test_graph_preserves_numerical_path_and_complete_resume`
+    (size search and refit nodes, the size artifact, complete resume) and
+    `::test_changing_k_reuses_dense_but_source_bytes_invalidate_it`;
+    `test_uk_rowwise_candidate.py::test_dense_candidate_manifest_has_no_size_sidecars` and
+    `::test_size_cli_refuses_promotion_without_separate_certification`; the size outputs are
+    read by `test_uk_size_evaluation.py::test_weight_tables_size_and_dense_spine_paths`.
+    Residual: the K=300 export's link integrity and the two-seed manifest projection are not
+    repeated through the driver.
+17. `size_candidate_checkpoints_before_the_draw_and_resumes_from_it`: covered by
+    `test_uk_full_calibration_graph.py::test_external_search_checkpoint_is_imported_without_repeating_solves`
+    and `::test_reused_draw_skips_rng_and_rejects_changed_binding`, and the size-checkpoint cases
+    in `test_uk_local_rowwise.py`. Residual: the `size_selection_checkpointed` and
+    `size_selection_resumed` Logbook phases and the stderr progress lines are not pinned through
+    the driver.
+18. `candidate_build_stages_telemetry_locally_and_inventories_the_bundle`: restored by extending
+    `::test_main_stages_the_bundle_locally_with_staging_local_only` with the retired inventory
+    assertions (stdout manifest equals the on-disk one, run id equals build id, operation and
+    pipeline ids, artifacts, fit summary, staged files with digests, sha256sums, sidecar
+    inventory, sidecars never outputs, stage sequence). Residual for a ruling: the run manifest's
+    `sample` block is unset on the graph driver where the tool wrote `{"mode": "full"}`; per-epoch
+    rows are the dense solve's only (R3).
+19. `size_candidate_stages_the_search_and_refit_phases`: superseded by design (R3: per-epoch
+    staging rows come from the dense solve only; the search and refit forward no epochs), pinned
+    by `::test_dense_run_projects_the_rowwise_candidate_manifest` (`graph.epoch_rows ==
+    "dense_solve_only"`); the size-run manifest claims are rows 16 and 17. Not restorable as
+    written; flagged for a ruling with row 18.
+20. `telemetry_content_refusal_never_aborts_the_solve`: restored as
+    `::test_telemetry_content_refusal_never_aborts_the_solve` (drives the driver's own
+    `_solve_observer` with synthetic epochs).
+21. `invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure`: restored as
+    `::test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure`.
+22. `no_staging_records_both_opt_outs`: restored as `::test_no_staging_records_both_opt_outs`.
+23. `remote_staging_uploads_telemetry_and_the_bundle_in_one_commit`: restored as
+    `::test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit`, including the
+    re-stage (`tools/stage_uk_rowwise_candidate.py`) and fetch (`tools/fetch_uk_staged_dataset.py`)
+    legs.
+24. `remote_staging_failure_is_recorded_and_the_build_still_succeeds`: restored as
+    `::test_remote_staging_failure_is_recorded_and_the_build_still_succeeds`.
+25. `no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local`: restored as
+    `::test_no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local`.
+
+One helper defect surfaced while restoring row 8: `arguments()` parsed through `cli.parse_args`,
+which an earlier `run_dense_main` in the same test had already patched, so a second run reused
+the first run's output directory; the helper now parses through the real parser bound at import.

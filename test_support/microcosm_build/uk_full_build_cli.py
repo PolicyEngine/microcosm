@@ -6,6 +6,7 @@ feed."""
 # ruff: noqa: F401
 
 import hashlib
+import importlib.util
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,8 @@ from microcosm.build.gate_battery import (
     gate_phase_report_payload,
 )
 from microcosm.build.gates import GateResult
+from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
+from microcosm.build.logbook_adoption import local_artifact_reference
 from microcosm.build.uk_runtime import full_build_cli as cli
 from microcosm.build.uk_runtime.full_certification import FULL_CERTIFICATION_TYPE
 from microcosm.build.uk_runtime.full_gates import (
@@ -70,10 +73,18 @@ from microcosm.graph import (
 )
 from microcosm.graph.canonical import canonical_json
 from test_support.microcosm_build.uk_graph_terminal import _frame
+from test_support.paths import paths_for
 
 PIN = "0" * 64
 
 STEM = "microcosm_uk_2024_25_local"
+
+_TEST_PATHS = paths_for("microcosm-build")
+
+# The real parser, bound before any test patches ``cli.parse_args`` to return
+# one prepared namespace: a test that runs ``main`` twice must still parse
+# its second request rather than receive the first one's.
+_PARSE_ARGS = cli.parse_args
 
 
 def _placeholder(path: Path, payload: bytes) -> str:
@@ -87,11 +98,12 @@ def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
 
     The pins are the stand-ins' real digests so the validator and a real
     preparation would both accept them; the Ledger pins are synthetic
-    because these tests never compile targets.
+    because these tests never compile targets. ``staging=None`` passes no
+    staging switch at all, which is the remote (``local_and_remote``) mode.
     """
     spine = tmp_path / "spine.h5"
     ladder = tmp_path / "ladder.npz"
-    return cli.parse_args(
+    return _PARSE_ARGS(
         [
             "--release-role",
             role,
@@ -111,10 +123,38 @@ def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
             PIN,
             "--out",
             str(tmp_path / "out"),
-            staging,
+            *(() if staging is None else (staging,)),
             *extra,
         ]
     )
+
+
+def local_ref(path: Path) -> str:
+    """The Logbook receipt reference of a file, as the driver writes it."""
+    return local_artifact_reference(path, repository_hint=cli.REPOSITORY)
+
+
+def spool_rows(out: Path):
+    rows = load_spool_rows(out / "logbook-spool")
+    for row in rows:
+        assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
+    return rows
+
+
+def single_run_id(out: Path) -> str:
+    runs = sorted(path.name for path in (out / "staging" / "runs").iterdir())
+    assert len(runs) == 1, runs
+    return runs[0]
+
+
+def load_tool(name: str):
+    """Execute ``tools/<name>.py`` as a private module copy (its seams patchable)."""
+    root = _TEST_PATHS.repository
+    spec = importlib.util.spec_from_file_location(name, root / "tools" / f"{name}.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _national_argv(tmp_path, *extra):
@@ -149,19 +189,35 @@ SELECTION = {
 }
 
 
+def failure_lines(failed) -> dict[str, str]:
+    """Gate ids to fail with their failure line.
+
+    ``failed`` is one gate id (line ``"synthetic failure"``), a tuple of
+    ``(gate_id, line)`` pairs, or ``None``; the pair form rides on a node
+    parameter (tuples of strings), so a synthetic evidence node can fail
+    several gates with distinct lines.
+    """
+    if failed is None:
+        return {}
+    if isinstance(failed, str):
+        return {failed: "synthetic failure"}
+    return {str(gate_id): str(line) for gate_id, line in failed}
+
+
 def gate_payload(phase, failed=None):
     gates = uk_full_gate_manifest(SELECTION)
+    lines = failure_lines(failed)
     report = GatePhaseReport(
         phase,
         tuple(
             GateOutcome(
                 entry,
-                GateStatus.FAILED if entry.id == failed else GateStatus.PASSED,
+                GateStatus.FAILED if entry.id in lines else GateStatus.PASSED,
                 GateResult(
                     name=entry.id,
-                    passed=entry.id != failed,
+                    passed=entry.id not in lines,
                     details={},
-                    failures=("synthetic failure",) if entry.id == failed else (),
+                    failures=(lines[entry.id],) if entry.id in lines else (),
                 ),
             )
             for entry in gates.gates
@@ -505,20 +561,45 @@ def certification_service_fixture(monkeypatch):
     patch_certification(monkeypatch)
 
 
+def run_dense_main(
+    tmp_path,
+    monkeypatch,
+    *extra,
+    staging="--no-staging",
+    failed=None,
+    on_prepare=None,
+) -> tuple[int, Path]:
+    """Run the synthetic dense build through ``main``; return its status and bundle.
+
+    ``failed`` fails those gates on the synthetic evidence nodes (see
+    :func:`failure_lines`); ``on_prepare(args, telemetry)`` runs inside the
+    patched preparation, where the driver's own solve observer can be driven
+    with synthetic epochs (the synthetic graph has no calibration kernel).
+    """
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+    patch_certification(monkeypatch)
+    args = arguments(tmp_path, *extra, staging=staging)
+    build = prepared(tmp_path, failed)
+
+    def prepare(args, *, telemetry=None, attempt=None):
+        if on_prepare is not None:
+            on_prepare(args, telemetry)
+        return build
+
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(cli, "prepare_full_build", prepare)
+    return cli.main([]), args.out
+
+
 def graph_dense_bundle(tmp_path, monkeypatch, *extra, staging="--no-staging") -> Path:
     """Run the synthetic dense build through ``main`` and return its bundle.
 
     The other UK test modules feed the resulting ``rowwise_candidate_manifest.json``
     to the release pre-flight and the dense assembler.
     """
-    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
-    patch_certification(monkeypatch)
-    args = arguments(tmp_path, *extra, staging=staging)
-    build = prepared(tmp_path)
-    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
-    monkeypatch.setattr(cli, "prepare_full_build", lambda args, **kwargs: build)
-    assert cli.main([]) == 0
-    return args.out
+    status, out = run_dense_main(tmp_path, monkeypatch, *extra, staging=staging)
+    assert status == 0
+    return out
 
 
 def prepared(tmp_path, failed=None):
