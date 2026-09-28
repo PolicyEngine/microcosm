@@ -1179,3 +1179,31 @@ def test_multi_block_engine_run_is_never_releasable(tmp_path, monkeypatch):
     assert posture["full_rung"] is True
     assert posture["single_block_engine"] is False
     assert posture["release_blocking_gates_passed"] is True
+
+
+def test_every_typed_edge_of_the_full_graph_has_a_compatible_consumer(tmp_path):
+    """Amendment 19 refuses a typed artifact whose consumer claims a stronger
+    numeric class than its producer; the first licensed graph build found the
+    calibrated gate battery reading a platform-bitwise holdout report. Every
+    typed edge of the composed graph is checked here, on the synthetic spec."""
+    from microcosm.graph.artifact_edges import numeric_scope, require_compatible_scope
+
+    build = prepared(tmp_path)
+    graph, kernels = build.full.graph, build.kernels
+    incompatible = []
+    typed_edges = 0
+    for node in graph.nodes:
+        consumer = kernels.get(node.kernel).capabilities
+        for binding in node.artifact_inputs:
+            typed_edges += 1
+            producer = kernels.get(graph.node(binding.producer).kernel).capabilities
+            try:
+                require_compatible_scope(numeric_scope(producer), consumer)
+            except Exception as error:  # noqa: BLE001 - the message is the finding
+                incompatible.append(
+                    (node.id, binding.producer, binding.name, str(error))
+                )
+    producers = {b.producer for n in graph.nodes for b in n.artifact_inputs}
+    assert {"uk.full.holdout", "uk.full.gates.calibrated"} <= producers
+    assert typed_edges > 0
+    assert incompatible == []

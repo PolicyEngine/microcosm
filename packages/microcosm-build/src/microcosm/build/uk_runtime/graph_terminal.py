@@ -944,9 +944,13 @@ def register_uk_full_gate_kernels(
 
 class UKFullHoldoutKernel(KernelBase):
     ref = "uk.full.rotated-holdout@1"
+    # Declared like the dense solve it rotates (graph_calibration's kernels:
+    # the default numeric class with the same solver dependencies). Declaring
+    # platform-bitwise here made the holdout report unreadable by the
+    # calibrated gate battery and the certification node, which claim the
+    # default class (found by the first licensed graph build).
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
-        numeric=Numeric.PLATFORM_BITWISE,
         seed_source=SeedSource.PARAM,
         dependencies=("policyengine-uk", "torch"),
     )
