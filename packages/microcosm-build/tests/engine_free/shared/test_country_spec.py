@@ -1539,6 +1539,8 @@ class TestUKGatesManifest:
             "region",
         ]
         assert energy_rake["maximum_relative_deviation"] == 0.025
+        assert energy_rake["convergence_window_sweeps"] == 10
+        assert energy_rake["maximum_residual_change_over_window"] == 0.001
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}

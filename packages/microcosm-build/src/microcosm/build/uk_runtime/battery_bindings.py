@@ -1626,10 +1626,13 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "band_lower_bounds",
                 "donors_per_band",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
-                # design weights, with the published gas-connected share.
+                # prior weights, with the published gas-connected share, and
+                # a converged (not truncated) terminal residual (#1012).
                 "margins",
                 "margins_period_value",
                 "maximum_connected_share_deviation",
+                "convergence_window_sweeps",
+                "maximum_residual_change_over_window",
                 # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
                 # trip rates recomputed from the vendored rows.
                 "trip_rates_period_value",

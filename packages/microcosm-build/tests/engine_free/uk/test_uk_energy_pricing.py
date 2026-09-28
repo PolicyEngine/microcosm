@@ -31,6 +31,9 @@ from microcosm.build.uk_runtime.energy_pricing import (
     rake_energy_kwh,
     spend_to_kwh,
 )
+from microcosm.build.uk_runtime.lcfs_consumption import (
+    _recipient_energy_rake_iterations,
+)
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from test_support.paths import paths_for
 
@@ -582,6 +585,13 @@ def test_need_margins_come_from_both_geographies_in_kwh() -> None:
         need_margins_from_facts(period_value=2019)
 
 
+def _declared_sweeps() -> int:
+    """The recipient rake's sweep count as the packaged stage declares it."""
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    return _recipient_energy_rake_iterations(stage)
+
+
 def _synthetic_rake_receipt(n: int = 1200):
     """A synthetic recipient frame raked like the stage does, with its receipt."""
 
@@ -617,7 +627,7 @@ def _synthetic_rake_receipt(n: int = 1200):
         frs_region=region,
         income=income,
         weights=weights,
-        iterations=50,
+        iterations=_declared_sweeps(),
         tenure=tenure,
         accommodation=accommodation,
         use_region_margin=True,
@@ -631,18 +641,20 @@ def _synthetic_rake_receipt(n: int = 1200):
 def test_rake_receipt_records_one_cross_margin_residual_per_sweep() -> None:
     """The IPF's terminal residual is shown to be converged, not truncated.
 
-    ``iterative_proportional_fit`` runs a fixed 50 sweeps; the receipt carries
-    the maximum absolute relative cell deviation after every sweep for each
-    fuel, and the last value is the residual the ``energy_rake`` gate holds
-    to its declared tolerance.
+    ``iterative_proportional_fit`` runs the stage's declared sweeps (200 since
+    microcosm#1012); the receipt carries the maximum absolute relative cell
+    deviation after every sweep for each fuel, and the last value is the
+    residual the ``energy_rake`` gate holds to its declared tolerance, once
+    the gate has checked the series is flat over its convergence window.
     """
 
     _, _, _, _, receipt = _synthetic_rake_receipt()
     residuals = receipt["sweep_residuals"]
     assert set(residuals) == {ELECTRICITY_KWH, GAS_KWH}
+    assert _declared_sweeps() == 200
     for fuel in (ELECTRICITY_KWH, GAS_KWH):
         series = residuals[fuel]
-        assert len(series) == receipt["iterations"] == 50
+        assert len(series) == receipt["iterations"] == 200
         assert all(np.isfinite(v) and v >= 0 for v in series)
         # Converged: the last two sweeps agree to well inside the gate's
         # tolerance, and the walk does not end higher than it started.
@@ -890,6 +902,40 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
         {"stage": "lcfs_consumption", "energy_rake": tampered},
         match="not the published",
     )
+    # Convergence is checked, not asserted: a residual still moving over the
+    # declared window is a truncated rake even inside the tolerance.
+    assert parameters["convergence_window_sweeps"] == 10
+    assert parameters["maximum_residual_change_over_window"] == 0.001
+    assert set(passed.details["residual_change_over_window"]) == {
+        ELECTRICITY_KWH,
+        GAS_KWH,
+    }
+    assert max(passed.details["residual_change_over_window"].values()) < 0.001
+    truncated = copy.deepcopy(receipt)
+    series = truncated["sweep_residuals"][ELECTRICITY_KWH]
+    series[-11] = series[-1] + 0.01
+    failing(
+        generous,
+        {"stage": "lcfs_consumption", "energy_rake": truncated},
+        match="truncated, not converged",
+    )
+    short = copy.deepcopy(receipt)
+    short["sweep_residuals"][GAS_KWH] = short["sweep_residuals"][GAS_KWH][-10:]
+    failing(
+        generous,
+        {"stage": "lcfs_consumption", "energy_rake": short},
+        match="do not cover the 10-sweep convergence window",
+    )
+    failing(
+        generous,
+        {
+            "stage": "lcfs_consumption",
+            "energy_rake": {k: v for k, v in receipt.items() if k != "sweep_residuals"},
+        },
+        match="carries no sweep_residuals",
+    )
+    with pytest.raises(ValueError, match="convergence_window_sweeps"):
+        run({**generous, "convergence_window_sweeps": 0})
     with pytest.raises(ValueError, match="declares no margins"):
         run({**generous, "margins": []})
     with pytest.raises(ValueError, match="differs from the stage"):
