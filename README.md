@@ -170,6 +170,22 @@ opt-ins. See
 [the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
 for what each mode contains and where the build records it.
 
+National and ACS local-area builds now use the same typed schema-8 calibration
+diagnostics writer. The local builder adds its Census population marginals to a
+versioned `TargetRegistry`, including provider, category, geography, and target
+hierarchy, before calibration. Both builders always attempt diagnostics after
+the calibrated dataset exists. If construction, validation, serialization, or
+writing fails, the release manifest records the failure and publication emits a
+warning without discarding the dataset release.
+
+Current UK national and rowwise builders use that same schema and writer. The
+UK extension is fully typed: weight summaries, zero-weight strata,
+geography-level pass rates, local fit summaries, and rotated holdout evidence
+are validated at construction, including their cross-field reconciliations.
+UK release workflows stop when diagnostics are unavailable because their later
+release checks require that evidence; historical schema-6 and schema-7 UK
+artifacts remain readable through isolated compatibility validation.
+
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
 on the build machine (it needs the freshly built H5), so it isn't a CI step:
