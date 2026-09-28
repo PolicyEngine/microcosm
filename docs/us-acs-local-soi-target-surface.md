@@ -1,15 +1,20 @@
 # US ACS local-area SOI target surface
 
 `tools/build_us_acs_local_release.py --stage materialize` calibrates the ACS
-local-area artifact to a state-level administrative surface: USDA SNAP,
-CMS Medicaid enrollment and IRS SOI. `--soi-mode` decides which SOI specs it
-keeps.
+local-area artifact to an administrative surface: USDA SNAP, CMS Medicaid
+enrollment and IRS SOI, plus PUMA-ladder population marginals. `--soi-mode`
+decides which SOI specs it keeps.
 
 | `--soi-mode` | What it keeps | Status |
 |---|---|---|
 | `state` | State-level `irs_soi` specs at `ledger_geography_level == "state"` whose `ledger_layout_record_set_spec_id` is not a congressional-district file, of any `target_role` | Default |
 | `totals` | State-level `irs_soi` specs whose `target_role` is not `soi_fiscal_distribution` | Explicit opt-in |
 | `full` | Every state-level `irs_soi` spec | Explicit opt-in |
+| `state_cd` | `state`, plus the congressional-district file's district rows reconciled to one vintage per state concept, and the district file's state rows for concepts Historic Table 2 lacks (see [The `state_cd` surface](#the-state_cd-surface)) | Explicit opt-in |
+
+Every mode now materializes into a sparse target matrix (see
+[Target matrix storage](#target-matrix-storage)), so the surface size is no
+longer bounded by a dense households x targets matrix.
 
 "State-level" means the spec's metadata carries `state_fips`, which the
 congressional-district SOI rows also carry. The rule lives in
@@ -110,14 +115,13 @@ are aged to 2024. Its district rows reconcile to their state parents in the
 same file. Using them needs one vintage per state concept and a sparse target
 matrix.
 
-### Matrix size
+### Matrix size before the sparse checkpoint
 
-This is arithmetic from the code, not a memory measurement.
-`materialize_chunked` allocates one float32 column per admin spec for every
-household (`np.memmap(..., dtype=np.float32, shape=(n_households,
-len(names)))`), and `write_lean_checkpoint` copies that memmap into memory
-(`np.array(admin_matrix)`). At 1,588,854 households, 4 bytes x households x
-specs gives:
+Until 2026-09-27 `materialize_chunked` allocated one float32 column per admin
+spec for every household (`np.memmap(..., dtype=np.float32,
+shape=(n_households, len(names)))`), and `write_lean_checkpoint` copied that
+memmap into memory. At 1,588,854 households, 4 bytes x households x specs
+gave (arithmetic from the code):
 
 | Surface | Admin specs | Dense float32 admin matrix |
 |---|---:|---:|
@@ -125,10 +129,203 @@ specs gives:
 | `state` (default) | 3,972 | 23.5 GiB |
 | `full` | 31,066 | 183.9 GiB |
 
-Measured peaks for comparison: Build P's ACS local release, on this surface,
-recorded a 93.9 GB materialize peak (`build_manifest.json` →
-`materialize.peak_rss_gb`); the 2026-09-22 hours rebuild on `totals` peaked at
-75.6 GB in materialize. `full` does not fit a 128 GB machine as a dense matrix.
+Measured peaks for comparison: Build P's ACS local release, on the `state`
+surface, recorded a 93.9 GB materialize peak (`build_manifest.json` →
+`materialize.peak_rss_gb`); the 2026-09-23 `state` run peaked at 77.9 GB, of
+which the checkpoint write was the jump from 55.4 GB; the 2026-09-22 hours
+rebuild on `totals` peaked at 75.6 GB. [Target matrix
+storage](#target-matrix-storage) replaces this.
+
+## The `state_cd` surface
+
+`state_cd` binds district-level SOI targets. It is the `state` surface plus
+the TY2022 SOI congressional-district file (`22incd.csv`, record-set spec
+`irs_soi.congressional_district_2022.all_returns.v1`), reconciled so that
+every state concept has one vintage. The rule is
+`us_acs_local_cd_surface.state_cd_soi_surface`.
+
+### One vintage per state concept
+
+Both files carry state totals for 48 of the district file's measures:
+Historic Table 2 (TY2022) and the district file's own `<st>_total` rows.
+After aging they disagree by a few percent. `state_cd` keeps **Historic Table
+2 as the single vintage of every state concept it carries**, and uses the
+district file only for each district's **share** of its state:
+
+```
+district target = Historic Table 2 state total
+                  x district-file district value / sum of the district file's districts in that state
+```
+
+Why Historic Table 2:
+
+- **It is the level `state` already calibrates to** (Build O, Build P and the
+  2026-09-23 run), so a `state_cd` build is comparable to them state by state.
+- **The district file's state levels are off in ways the shares are not.** The
+  feed labels the file "Congressional District Data 2022" but stamps it tax
+  year 2023 (PR #1040, #1030), so it is aged one year less than Historic Table
+  2; its taxable-interest rows are not rebased to Table 4.3 (Historic Table
+  2's are; the rebase factor here is about 2.47). A within-state share is
+  unaffected by a level factor common to the state.
+- **Two vintages of one concept are contradictory constraints**; the solve can
+  only split the difference.
+
+The six measures only the district file has (`charitable_*`,
+`interest_paid_deduction_*`, `qualified_business_income_deduction_*`) keep the
+district file's state rows as their parent (306 state rows); their district
+rows already sum to those exactly. Every district row records its parent
+(`state_cd_parent_target_name`), the parent's basis, the district file's own
+value and the rebase factor.
+
+The rebase factors on the pinned feed, by measure across the 42 states with
+district rows, are mostly 1.00 to 1.10: amounts cluster near 1.05 and counts
+near 1.02, the one-year aging gap. Two reflect known level differences:
+taxable interest (2.35 to 2.70, the Table 4.3 rebase) and capital-gains
+amounts (0.77 to 1.00). The largest single-state factors are on qualified and
+ordinary dividends (up to 2.68 and 2.17) and tax-exempt interest (up to 1.43),
+where the two tables disagree about a state's level. `materialize_rss.json`
+records the full table under `soi_surface.rebase_factor_by_measure`.
+
+### What stays off the surface
+
+| Rows | Specs on the pinned feed | Why |
+|---|---:|---|
+| District-file `limited_state_local_taxes_*`, both geographies | 974 | Column A18425/N18425 is state and local income taxes, not the limited SALT deduction (microcosm#1038) |
+| District-file `premium_tax_credit_returns`, both geographies | 487 | Column N85530 is the additional Medicare tax, not the premium tax credit (microcosm#1038) |
+| District `tax_filer_individual_count` | 436 | No state parent in either vintage, so it could not nest in a bound state target |
+| District rows of states with one district on the 117th plan (AK, DE, DC, MT, ND, SD, VT, WY) | 459 | The SOI file has no sub-state rows there. These rows are the state total copied, or for Montana split by population, so they carry no district information |
+| Historic Table 2 rows copied to at-large districts | 360 | The same copies from the other vintage |
+| North Carolina's district rows | 714 | The packaged 117th→119th crosswalk was built from NC's 2016 plan, not the 2019 plan the 117th Congress used; a crosswalk built from the block plan registry (#1041) maps 37.0% of NC's population to a different 119th district. They return when #1043 (the registry-built crosswalk) merges; a test pins the crosswalk digest this exclusion was reviewed against |
+| District-file state rows for concepts Historic Table 2 carries | 2,295 | Second vintage of a state concept |
+
+PR #1040 (awaiting a ruling) excludes the same SALT and PTC columns in the
+compiler and rescales the district file's capital-gains rows by one national
+factor. `state_cd` already takes district capital gains as within-state
+shares of Historic Table 2, which a national factor does not move, so their
+level changes only when Historic Table 2's own capital-gains rows do
+(#1036).
+
+### Counts on the pinned feed
+
+| Family | `state_cd` |
+|---|---:|
+| `usda_snap` | 102 |
+| `cms_medicaid` (enrollment) | 51 |
+| `irs_soi` state, Historic Table 2 | 3,819 |
+| `irs_soi` state, district file (district-file-only measures) | 306 |
+| `irs_soi` district (413 districts x 51 measures) | 21,063 |
+| **Admin specs** | **25,341** |
+
+Of the 21,063 district rows, 18,585 are rebased to a Historic Table 2 parent
+and 2,478 keep a district-file parent. The 2,142 (state, concept) district
+blocks each sum to their parent within 1e-9. Adding the 487 population
+marginals gives 25,828 targets, before the holdout. The feed-gated test
+`test_pinned_feed_state_cd_surface_matches_its_contract` pins these counts
+and the reconciliation.
+
+### District plans
+
+The SOI district file is tabulated on the 117th-Congress plan and the
+households carry 119th-plan districts (drawn within their PUMA from the
+ladder). The compiler maps the 117th rows onto the 119th plan with the
+packaged 2020-block population crosswalk; `state_cd` uses that mapping as is
+and records the crosswalk's sha256. The block plan registry (#1041) and a
+household column on the 117th plan (the location v1 block draw) would let
+these targets bind as exact block sums with no crosswalk; the district rows
+are materialized against one named household column, so that change is a
+parameter, not a rewrite.
+
+### Sigma
+
+No fact in the pinned feed carries an uncertainty field, and IRS SOI tables
+are administrative. `targets.json` records `sigma` for every target (`null`,
+`sigma_basis: "not_provided_by_feed"`), so a feed that supplies standard
+errors surfaces them. The calibration loss is unchanged: fixed-scale capped
+relative error.
+
+## CD holdout and the pro-rata baseline
+
+`state_cd` holds a hash-assigned subset of its district targets out of
+calibration and scores it afterwards (`--cd-holdout-fraction`, default 0.1 in
+`state_cd`, 0 elsewhere).
+
+**The held unit is a (state, SOI concept family) block** of district targets,
+not a single district or target. With a state total and its sibling districts
+trained, one held district is pinned by adding up, so it would score
+perfectly for free. A concept family also groups measures that add up to each
+other: every EITC measure is one family, because the per-child rows sum to
+the EITC total. The state totals stay trained; the question a held block
+answers is how well the calibrated file splits a known state total across
+districts.
+
+**Assignment** is `microcosm.build.holdout.hash_holdout_unit`: SHA-256 of a
+salt and the unit key `"<state_fips>|<family>"`, read as a uniform on
+[0, 1), held iff below the fraction. It is deterministic, does not depend on
+which other units exist or their order, and is nested in the fraction. Held
+targets are never built into the calibrator's `TargetSet`
+(`calibration_target_set`); a property test spies on the solve to check it.
+
+**The baseline** allocates each held target's state parent by population:
+`parent x district population / state population`, both from the PUMA
+ladder's 119th-plan district overlap populations, so a held block's baseline
+sums to its parent exactly. `calibration_diagnostics.json` → `cd_holdout`
+scores the held targets under the design weights, the calibrated weights and
+the baseline (mean, median and p90 absolute relative error, share within 10%,
+the capped loss the solve minimizes, per family, and the share of targets
+where the calibration beats the baseline). It is report-only.
+
+## Effective sample size and weight by origin
+
+`calibration_diagnostics.json` → `weight_origin` records, at the design and at
+the calibrated weights:
+
+- Kish ESS over rows, overall and per spine;
+- Kish ESS over **distinct households**: rows summed by (`household_spine`,
+  `household_source_id`). ACS source ids are pre-offset and collide with donor
+  ids, so the spine is part of the key; a donor household's native row and its
+  PUF-detail clone count once;
+- household-weight share by spine.
+
+## Development rungs
+
+`--sample-fraction` draws a development rung, one of f001, f004, f010 or f025
+(DESIGN.md "Production US stacked spine"). It samples whole households with
+`microcosm.build.frame_sampling.sample_frame_households`, stratified by spine
+x district, and scales each spine back to its full household mass.
+`run_identity.json` records the rung, seed and selected-id digest; the
+calibrate stage re-draws the same households before attaching weights and
+refuses a mismatch, and `--stage package` refuses any rung but f100. The
+staging frame is still loaded in full before sampling, so a rung lowers the
+engine pass and the solve, not the load.
+
+## Target matrix storage
+
+The materialize stage writes three files:
+
+- `target_frame_lean.h5`: structure only (household id, geography, spine,
+  source id, design weight; person memberships; group ids).
+- `target_matrix.npz`: a (targets x households) CSR matrix with float32
+  values, row *i* of which is `targets.json[i]`.
+- `targets.json`: name, value, family, geography, role (train or holdout),
+  sigma, and for district rows their state parent and pro-rata populations.
+
+No dense households x targets matrix exists at any point. Each engine chunk's
+columns go straight into the CSR. District SOI rows are not materialized one
+column each: the engine pass materializes one geography-free **carrier**
+column per distinct SOI concept, and each district row is its carrier
+restricted to the district's households. That equals the direct
+materialization, because the SOI slice masks a tax unit by its household's
+state and district; the first chunk of every run also materializes one
+district row per carrier directly and refuses any difference
+(`materialize_rss.json` → `carrier_check`). The calibrate stage builds
+the training rows as callable measures over the CSR, so the calibrate
+kernel's own `build_constraint_matrix` compiles them one row at a time,
+unchanged.
+
+A differential test materializes the fixture both ways: dense float32
+columns compiled by the kernel from frame columns, and the carrier-split CSR
+through the checkpoint. It requires the identical constraint matrix and the
+identical calibrated weights.
 
 ## Where the chosen mode is recorded
 
@@ -143,16 +340,34 @@ recorded a 93.9 GB materialize peak (`build_manifest.json` →
   reproduces the recorded surface even if the default changes again.
 
 `--stage package` refuses a checkpoint whose `materialize_rss.json` does not
-record one of the three modes, before any release directory exists.
+record one of the four modes, before any release directory exists.
+
+`state_cd` runs also record:
+
+- `run_identity.json`: the target matrix's sha256, shape and nnz; the CD
+  holdout (unit, salt, fraction, held units and targets); the sampling rung.
+  Later stages refuse a `targets.json` or `target_matrix.npz` whose bytes
+  changed, and `--resume` refuses weights calibrated to a different surface.
+- `materialize_rss.json`: the full SOI surface receipt (`soi_surface`: counts,
+  every drop reason, rebase factors, crosswalk digest, sigma), the holdout
+  receipt with every held unit, and the carrier check.
+- `gate_summary.json`: `cd_holdout` and `weight_origin` (report-only), and
+  the calibrated surface's trained and held-out counts.
+- The release refresh recipe, which names `--cd-holdout-fraction`.
 
 ## Operating notes
 
-- The default command calibrates to `state`. Raise the supervisor's RSS cap
-  above Build P's 93.9 GB peak before a full-scale run, and leave room on disk
-  for the 23.5 GiB memmap.
+- The default command calibrates to `state`. The dense admin matrix is gone,
+  so the materialize peak is the staging frame plus one engine chunk; the
+  calibrate stage's peak is the artifact write.
+- A checkpoint written before the sparse matrix (measures as dense H5
+  columns) is refused by `--stage calibrate`; re-run `--stage materialize`.
 - To reproduce the 2026-09-22 hours rebuild (#974), pass `--soi-mode totals`.
   To reproduce a build that ran as `full` after `b7922b089`, pass
   `--soi-mode full`.
 - A checkpoint materialized under an earlier default records its own mode and
   packages as that mode.
-- `--soi-mode` only matters when `soi` is in `--families`.
+- `--soi-mode` only matters when `soi` is in `--families`. `state_cd` is
+  meant to run with `cd` in `--geographies` (the default), so district
+  population marginals are bound too; `--cd-holdout-fraction` above 0 is
+  refused without `state_cd`.
