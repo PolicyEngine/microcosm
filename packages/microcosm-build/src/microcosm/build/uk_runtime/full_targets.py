@@ -129,9 +129,10 @@ def load_uk_full_target_inputs(
     evaluated_on = exclusion_evaluation_date(exclusions_evaluated_on)
     crosswalk = load_uk_local_area_crosswalk()
     # The calibration year is fail-closed. The historical validation periods
-    # are compiled when the pinned feed still carries their facts and skipped
-    # (recorded below) when it does not: a feed that has moved past a period
-    # must not block the build the way a missing calibration-year fact does.
+    # keep whatever the pinned feed still compiles, as the release-cut producer
+    # does (tools/certify_uk_release_cut.py keeps ``compilation.registry`` for
+    # every parity period): the references the feed no longer carries are
+    # recorded below instead of blocking the build.
     national_registries = {}
     local_registries = {}
     unsupported_validation: dict[str, dict[int, tuple[str, ...]]] = {
@@ -149,7 +150,6 @@ def load_uk_full_target_inputs(
             unsupported_validation["national"][period] = _unsupported_names(
                 compilation.unsupported
             )
-            continue
         national_registries[period] = compilation.registry
     for period in sorted({*_LOCAL_VALIDATION_PERIODS, year}):
         compilation = compile_uk_local_target_registry(
@@ -164,7 +164,6 @@ def load_uk_full_target_inputs(
             unsupported_validation["local"][period] = _unsupported_names(
                 compilation.unsupported
             )
-            continue
         local_registries[period] = compilation.registry
     band_edges = national_registries[year]
     frozen_version = None

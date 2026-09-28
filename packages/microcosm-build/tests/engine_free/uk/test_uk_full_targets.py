@@ -262,12 +262,13 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
     prepared, monkeypatch
 ):
     national, approved, local, artifact, calls = prepared
+    partial = _registry("retained")
 
     def compile_national(facts, *, target_period):
         calls.append(("national", target_period))
         if target_period == 2023:
             return SimpleNamespace(
-                registry=None,
+                registry=partial,
                 unsupported=(
                     {"name": "obr.income_tax", "period": 2023, "reason": "no fact"},
                 ),
@@ -276,9 +277,15 @@ def test_historical_validation_period_without_facts_is_recorded_not_fatal(
 
     monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
     result = _load()
-    assert set(result["uk_ledger_compiled_registries"]) == {2024, 2025}
+    # The partial 2023 registry stays available to the parity gates, as the
+    # release-cut producer keeps it; the missing references are recorded.
+    assert set(result["uk_ledger_compiled_registries"]) == {2023, 2024, 2025}
+    assert result["uk_ledger_compiled_registries"][2023] is partial
     completeness = result["register_completeness"]
-    assert completeness["validation_periods"] == {"national": [2025], "local": [2025]}
+    assert completeness["validation_periods"] == {
+        "national": [2023, 2025],
+        "local": [2025],
+    }
     assert completeness["validation_periods_unsupported"] == {
         "national": {"2023": ["obr.income_tax"]},
         "local": {},
