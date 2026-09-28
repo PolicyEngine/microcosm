@@ -961,3 +961,38 @@ def test_cps_pins_must_be_the_raw_stage_sources(pool_tool: ModuleType) -> None:
         bind(raw_stage, {2023: "1" * 64, 2024: "3" * 64})
     with pytest.raises(ValueError, match="records no source_receipt.sources"):
         bind({}, {2023: "1" * 64})
+
+
+def test_an_acs_household_that_lost_its_puma_is_refused_not_joined_to_cps(
+    pool_tool: ModuleType, ladder
+) -> None:
+    """Production ACS rows carry the ``puma_geoid`` alias and raw ``PUMA`` and
+    share the CPS 2024 source-key space, so one without a valid ``puma`` must
+    be refused rather than routed through a CPS source-key join."""
+
+    frame = _stacked_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    household = tables["household"]
+    has_puma = household["puma"].astype("string").str.len().fillna(0) > 0
+    household["puma_geoid"] = household["puma"].where(has_puma, pd.NA)
+    first_acs = int(np.flatnonzero(has_puma.to_numpy())[0])
+    household.loc[first_acs, "puma"] = pd.NA
+    broken = Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+    with pytest.raises(ValueError, match="carry an ACS 'puma_geoid' but no valid"):
+        _assign(pool_tool, ladder, frame=broken)
+
+    household.loc[first_acs, "puma"] = household.loc[first_acs, "puma_geoid"]
+    household.loc[first_acs, "puma_geoid"] = "0100999"
+    mismatched = Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+    with pytest.raises(ValueError, match="disagrees with their puma_geoid"):
+        _assign(pool_tool, ladder, frame=mismatched)

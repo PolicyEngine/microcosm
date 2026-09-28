@@ -2961,6 +2961,31 @@ def _assign_stacked_household_block_location(
             f"block_v1: {int(malformed.sum())} household(s) carry a puma that is "
             "not a 7-digit 2020 PUMA geoid; the rule never widens such a draw."
         )
+    # An ACS PUMS record also carries its PUMA as the ``puma_geoid`` alias and
+    # the raw five-digit ``PUMA``; an ASEC record carries neither. A household
+    # with either field but no valid matching ``puma`` is malformed, so it
+    # can never fall through to a CPS source-key join (ACS source keys share
+    # the CPS 2024 key space).
+    for alias in ("puma_geoid", "PUMA"):
+        if alias not in household:
+            continue
+        carried = household[alias].astype("string").fillna("").str.len() > 0
+        carried = carried.to_numpy(bool)
+        orphaned = carried & ~has_puma
+        if orphaned.any():
+            raise ValueError(
+                f"block_v1: {int(orphaned.sum())} household(s) carry an ACS "
+                f"{alias!r} but no valid 7-digit puma; refusing to resolve them "
+                "through CPS source keys."
+            )
+    if "puma_geoid" in household:
+        alias_values = household["puma_geoid"].astype("string").fillna("")
+        disagree = has_puma & (alias_values != observed.fillna("")).to_numpy(bool)
+        if disagree.any():
+            raise ValueError(
+                f"block_v1: {int(disagree.sum())} household(s) carry a puma that "
+                "disagrees with their puma_geoid alias."
+            )
     puma = np.zeros(n, dtype=np.int64)
     if has_puma.any():
         puma[has_puma] = observed[has_puma].astype(np.int64).to_numpy()

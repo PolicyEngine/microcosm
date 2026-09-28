@@ -75,6 +75,30 @@ With `clones = K`, each household is drawn K times. Clone k of household h becom
 
 Every line currently refuses K > 1, because Route A's and the stacked pool's duplicate-copy checks do not yet recognize a location clone. That follow-up is tracked separately.
 
+## On each line
+
+Every US line takes `--location-rule {legacy,block_v1}` (default `legacy`, byte-identical to before), `--location-seed` and `--location-clones`.
+
+Under `block_v1`, each line records:
+
+- the `us_block_location_manifest` record under `household_location`;
+- the H5 root attributes `populace_location_rule`, `populace_location_seed`, `populace_location_clones`, `populace_block_ladder_sha256` and `populace_block_ladder_vintages`.
+
+What each line does:
+
+- **Base-h5** (`tools/build_us_puf_support_base.py`, the Route A base). One stage, `household_location_assignment`, replaces the district and block stages in a separate pipeline, so the legacy pipeline sha is unchanged.
+  - Every household, including its PUF support copies, resolves its CPS ASEC row by `(source_year, source_household_id)` from `--asec-h5`.
+  - The crosswalk and `119th_congress` attributes Route A checks are still written.
+- **Stacked pool** (`tools/build_us_multispine_pool.py`, validated by `us_runtime/h5_io.py`). The line stays source-spine blind:
+  - a household with an observed 7-digit `puma` draws within it;
+  - every other household resolves through its pinned CPS ASEC source key;
+  - a household that carries an ACS `puma_geoid` or `PUMA` without a valid `puma` is refused, because ACS source keys share the CPS 2024 key space.
+
+  Location runs before PUF cloning, so support clones inherit their native row's block.
+- **ACS local release** (`tools/_legacy/build_us_acs_multispine_base.py` → `tools/build_us_acs_local_release.py`).
+  - ACS households draw within their observed PUMA. Donors that already carry a block from their base keep it, and donors without one draw within their state.
+  - Finalize runs `us_block_location_gate` on the staged ladder. The targets' `--ladder` must be the PUMA ladder staging recorded.
+
 ## Invariants
 
 Each of these is a property test in `tests/engine_free/us/test_us_block_location.py` (Hypothesis over nested synthetic ladders) or `test_us_cps_source_geography.py`:
@@ -97,7 +121,7 @@ Each of these is a property test in `tests/engine_free/us/test_us_block_location
    - Each household appears K times, with clone indices 0 to K−1 and clone ids key·K + k.
    - Its clone weights sum to its weight (relative tolerance 1e-12).
    - Frame cloning conserves every weighted entity's mass, keeps linkage valid, and places every parent in the same clone.
-6. **Both confirmations.** The excluded set is exactly the intersection of listed and coded counties, per year.
+6. **Both confirmations.** The excluded set is exactly the intersection of listed and coded counties, per year, when that year's list carries the whole-county guarantee, and empty when it does not. The opt-in remainder weighting never applies to a year without the guarantee.
 
 The differential tests are:
 

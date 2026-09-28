@@ -15,7 +15,7 @@ it; see ``cps_excluded_county_sets``.
 
 Example:
     uv run python tools/build_us_cps_identified_counties.py \
-        --asec-year 2023 --asec-year 2024 --asec-year 2025
+        --asec-year 2023 --asec-year 2024 --asec-year 2025 --asec-year 2026
 """
 
 from __future__ import annotations

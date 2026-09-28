@@ -428,3 +428,99 @@ def test_every_state_keeps_candidate_blocks_for_its_gtco_zero_records(
             identification_group=[2024],
             identified_counties={2024: frozenset(state_one)},
         )
+
+
+def test_parser_stops_at_the_next_section_without_a_footnote() -> None:
+    """The 2026 documentation has no footnote after List 4; the list ends at
+    the first line that is not a state, county or page header."""
+
+    rendered = _RENDERED.split("* Counties marked")[0] + (
+        "                Source of the Data and Accuracy of the Estimates\n"
+        "001          Not a county\n"
+    )
+    counties = parse_cps_identified_county_list(rendered.splitlines())
+    assert [(c.state_fips, c.county_code) for c in counties][-1] == ("36", "061")
+    assert len(counties) == 4
+
+
+def test_the_official_list_must_match_its_provenance_digest(
+    tmp_path, monkeypatch
+) -> None:
+    import shutil
+
+    from microcosm.build.us_runtime import block_location
+    from microcosm.build.us_runtime.block_location import (
+        default_cps_asec_identified_counties_path,
+        load_cps_asec_identified_counties,
+    )
+
+    packaged = default_cps_asec_identified_counties_path()
+    copy = tmp_path / packaged.name
+    shutil.copy(packaged, copy)
+    shutil.copy(
+        packaged.with_name(packaged.name + ".provenance.json"),
+        copy.with_name(copy.name + ".provenance.json"),
+    )
+    assert load_cps_asec_identified_counties(copy)
+    copy.write_text(copy.read_text().replace(",003,Baldwin,", ",005,Baldwin,", 1))
+    with pytest.raises(ValueError, match="provenance records"):
+        load_cps_asec_identified_counties(copy)
+    # The packaged list must ship with its provenance.
+    bare = tmp_path / "bare" / packaged.name
+    bare.parent.mkdir()
+    shutil.copy(packaged, bare)
+    monkeypatch.setattr(
+        block_location, "default_cps_asec_identified_counties_path", lambda: bare
+    )
+    with pytest.raises(FileNotFoundError, match="lacks"):
+        load_cps_asec_identified_counties()
+
+
+def test_record_names_the_packaged_list_digest(tmp_path) -> None:
+    from microcosm.build.us_runtime.block_location import (
+        default_cps_asec_identified_counties_path,
+        file_sha256,
+    )
+
+    ladder = load_us_location_ladder(write_location_ladder(tmp_path / "l.npz"))
+    cps = _cps_table()
+    geography = cps_source_geography(
+        ladder,
+        cps,
+        source_year=cps["source_year"],
+        source_household_id=cps["source_household_id"],
+        state_fips=cps["state_fips"],
+    )
+    assert geography.record["official_list_csv_sha256"] == file_sha256(
+        default_cps_asec_identified_counties_path()
+    )
+
+
+def test_remainder_weighting_never_applies_to_a_year_without_the_guarantee(
+    tmp_path,
+) -> None:
+    ladder = load_us_location_ladder(write_location_ladder(tmp_path / "l.npz"))
+    cps = _cps_table()
+    lists = _official({1001})
+    lists[2025] = CpsIdentifiedCountyList(
+        asec_year=2025,
+        counties=frozenset({1001}),
+        source="https://example.test/cpsmar25.pdf",
+        source_sha256="c" * 64,
+        entire_county_guarantee=False,
+    )
+    geography = cps_source_geography(
+        ladder,
+        cps,
+        source_year=cps["source_year"],
+        source_household_id=cps["source_household_id"],
+        state_fips=cps["state_fips"],
+        official=lists,
+        partial_county_remainder=True,
+    )
+    assert geography.identified_counties[2024] == frozenset()
+    assert 2024 not in geography.unidentified_county_share
+    assert 2023 in geography.unidentified_county_share
+    assert geography.record["partial_county_remainder"][
+        "skipped_groups_without_guarantee"
+    ] == [2024]

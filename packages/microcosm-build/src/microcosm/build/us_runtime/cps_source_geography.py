@@ -209,8 +209,23 @@ def cps_source_geography(
         if use_cbsa
         else None
     )
+    # The remainder weighting presumes countywide censoring, which a year
+    # without the whole-county guarantee does not honour (ASEC 2026 codes all
+    # of Delaware yet has Delaware GTCO=0 households), so such a year keeps
+    # its whole-state draw even when the option is on.
+    no_guarantee = sorted(
+        int(group)
+        for group, entry in record["groups"].items()
+        if entry.get("basis") == "no_whole_county_guarantee_state_draw"
+    )
     shares = (
-        cps_unidentified_county_shares(coverage, excluded)
+        {
+            group: share
+            for group, share in cps_unidentified_county_shares(
+                coverage, excluded
+            ).items()
+            if group not in no_guarantee
+        }
         if partial_county_remainder
         else None
     )
@@ -237,6 +252,7 @@ def cps_source_geography(
             },
             "partial_county_remainder": {
                 "applied": bool(partial_county_remainder),
+                "skipped_groups_without_guarantee": no_guarantee,
                 "coverage_ratio_definition": (
                     "coded weighted persons / 2020 census population, "
                     "median-normalized per source year"
