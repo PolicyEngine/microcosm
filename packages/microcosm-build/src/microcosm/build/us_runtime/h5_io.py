@@ -28,6 +28,13 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_table_string_dtypes,
 )
 from microcosm.build.us_runtime import worker_identity as worker_identity_runtime
+from microcosm.build.us_runtime.block_location import (
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+)
 from microcosm.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
@@ -69,13 +76,25 @@ __all__ = [
     "refuse_denied_pool_h5",
     "refuse_denied_pool_h5_digest",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
+    "POPULACE_BLOCK_LADDER_SHA256_ATTR",
+    "POPULACE_BLOCK_LADDER_VINTAGES_ATTR",
+    "POPULACE_LOCATION_CLONES_ATTR",
+    "POPULACE_LOCATION_RULE_ATTR",
+    "POPULACE_LOCATION_SEED_ATTR",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
     "US_MULTISPINE_POOL_H5_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
     "US_STACKED_POOL_OPERATOR_ORDER",
+    "US_STACKED_BLOCK_LOCATION_ALGORITHM_ID",
+    "US_STACKED_BLOCK_LOCATION_DIGEST_COLUMNS",
+    "US_STACKED_BLOCK_LOCATION_ROOT_ATTRIBUTES",
+    "US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER",
+    "expected_us_stacked_block_location_contract",
     "identify_us_multispine_pool_manifest",
+    "ordered_household_block_location_receipt",
+    "us_stacked_pool_operator_order",
     "load_authenticated_us_multispine_pool_for_release",
     "load_authenticated_us_multispine_pool_for_scoring",
     "load_legacy_calibrated_us_h5",
@@ -135,6 +154,48 @@ US_STACKED_POOL_OPERATOR_ORDER = (
     "stacked_completeness_gate",
     "by_origin_battery",
 )
+# ``--location-rule block_v1`` (microcosm#696) replaces only the geography
+# slot: one 2020 census block per household drawn within its finest source
+# geography, every other geography looked up from that block.  The id is the
+# block-location rule id every US line records
+# (``block_location.US_BLOCK_LOCATION_RULE_ID``; a test pins the equality).
+US_STACKED_BLOCK_LOCATION_ALGORITHM_ID = "us_block_location.population_draw.v1"
+US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER = tuple(
+    "assign_us_block_location" if operator == "assign_us_puma_ladder" else operator
+    for operator in US_STACKED_POOL_OPERATOR_ORDER
+)
+# Ordered native-household digest columns of a block_v1 assignment.  Every
+# other location column is a ladder lookup of ``block_geoid``.
+US_STACKED_BLOCK_LOCATION_DIGEST_COLUMNS = (
+    "household_id",
+    "block_geoid",
+    "puma",
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+    "county_fips",
+)
+_STACKED_BLOCK_LOCATION_COHERENT_COLUMNS = (
+    "block_geoid",
+    "tract_geoid",
+    "county_fips",
+    "place_fips",
+    "sldu",
+    "sldl",
+    "cbsa_code",
+    "puma",
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+)
+US_STACKED_BLOCK_LOCATION_ROOT_ATTRIBUTES = (
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+)
+_STACKED_BLOCK_LOCATION_RULE = "block_v1"
+_STACKED_BLOCK_LADDER_ROLE = "block_ladder"
+_STACKED_BLOCK_LADDER_SOURCE_REF = "source:us_block_ladder_2020_puma"
+_STACKED_CPS_ASEC_ROLE_PREFIX = "cps_asec_household_geography_"
+_STACKED_CD_CROSSWALK_ROLE = "congressional_district_vintage_crosswalk"
 _LEGACY_POOL_OPERATOR_ORDER = (
     "assemble",
     "clone",
@@ -1427,7 +1488,7 @@ def _validate_stacked_late_dag_manifest_binding(
 
     if manifest.get("pipeline") != "us-stacked-pool":
         return
-    if manifest.get("operator_order") != list(US_STACKED_POOL_OPERATOR_ORDER):
+    if manifest.get("operator_order") != list(us_stacked_pool_operator_order(manifest)):
         raise ValueError(
             f"US stacked pool manifest {manifest_path} does not bind the "
             "canonical late-DAG operator order."
@@ -1481,6 +1542,32 @@ def _validate_stacked_late_dag_manifest_binding(
         )
 
 
+def _stacked_geography_algorithm_id(manifest: Mapping[str, object]) -> object:
+    """The manifest's geography algorithm id, or ``None`` when absent."""
+
+    assignment = manifest.get("geography_assignment")
+    contract = assignment.get("contract") if isinstance(assignment, Mapping) else None
+    algorithm = contract.get("algorithm") if isinstance(contract, Mapping) else None
+    return algorithm.get("id") if isinstance(algorithm, Mapping) else None
+
+
+def us_stacked_pool_operator_order(
+    manifest: Mapping[str, object],
+) -> tuple[str, ...]:
+    """The operator order a stacked manifest must bind, chosen by its rule.
+
+    A ``block_v1`` geography algorithm selects the block-location order;
+    every other manifest (including one without a geography receipt, which
+    the geography validator then refuses) expects the legacy order.
+    """
+
+    if _stacked_geography_algorithm_id(manifest) == (
+        US_STACKED_BLOCK_LOCATION_ALGORITHM_ID
+    ):
+        return US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
+    return US_STACKED_POOL_OPERATOR_ORDER
+
+
 def _validate_stacked_geography_assignment_manifest_binding(
     manifest: Mapping[str, object],
     *,
@@ -1488,6 +1575,14 @@ def _validate_stacked_geography_assignment_manifest_binding(
 ) -> None:
     """Authenticate the post-assembly household-CD authority and receipt."""
 
+    if _stacked_geography_algorithm_id(manifest) == (
+        US_STACKED_BLOCK_LOCATION_ALGORITHM_ID
+    ):
+        _validate_stacked_block_location_manifest_binding(
+            manifest,
+            manifest_path=manifest_path,
+        )
+        return
     assignment = manifest.get("geography_assignment")
     if not isinstance(assignment, Mapping):
         raise ValueError(
@@ -1735,6 +1830,309 @@ def _validate_stacked_geography_assignment_manifest_binding(
         )
 
 
+def expected_us_stacked_block_location_contract(
+    *,
+    seed: int,
+    clones: int,
+    block_ladder_sha256: str,
+    crosswalk_sha256: str,
+    cps_asec_sha256: Mapping[int, str],
+) -> dict[str, object]:
+    """The closed ``block_v1`` household-location contract a stacked pool binds.
+
+    This is the consumer's independent statement of the contract the stacked
+    pool tool writes (``_stacked_block_location_contract``); a differential
+    test pins the two together.  Only the seed, the clone count and the
+    authenticated input digests vary between runs.
+    """
+
+    authorities: dict[str, object] = {
+        _STACKED_BLOCK_LADDER_ROLE: {
+            "input_role": _STACKED_BLOCK_LADDER_ROLE,
+            "source_ref": _STACKED_BLOCK_LADDER_SOURCE_REF,
+            "sha256": block_ladder_sha256,
+        },
+        _STACKED_CD_CROSSWALK_ROLE: {
+            "input_role": _STACKED_CD_CROSSWALK_ROLE,
+            "source_ref": (
+                "source:us_congressional_district_vintage_crosswalk_117_to_119"
+            ),
+            "sha256": crosswalk_sha256,
+            "source_vintage_ref": "vintage:cd_117",
+            "source_vintage": "117th_congress",
+            "target_vintage_ref": "vintage:cd_119",
+            "target_vintage": CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+        },
+    }
+    for income_year, sha256 in sorted(cps_asec_sha256.items()):
+        role = f"{_STACKED_CPS_ASEC_ROLE_PREFIX}{int(income_year)}"
+        authorities[role] = {
+            "input_role": role,
+            "source_ref": f"source:census_cps_{int(income_year)}",
+            "income_year": int(income_year),
+            "sha256": sha256,
+        }
+    return {
+        "declaration": {
+            "anchor": "block",
+            "order": "before_gap_fill",
+            "location_rule": _STACKED_BLOCK_LOCATION_RULE,
+            "kernels": {
+                "assign": "kernel:assign_us_block_location",
+                "validate": "kernel:us_block_location_gate",
+            },
+            "draw": {
+                "unit": "household",
+                "universe": "census_block_2020",
+                "weight": "block_population_2020",
+                "candidate_sets": {
+                    "acs": "blocks_within_observed_puma",
+                    "asec": "cps_asec_source_geography",
+                },
+                "uniforms": "stable_identity_uniforms",
+            },
+            "derive": list(_STACKED_BLOCK_LOCATION_COHERENT_COLUMNS),
+            "assertions": [
+                "observed_acs_puma_preserved",
+                "block_state_matches_state_fips",
+                "geography_derived_from_block",
+            ],
+            "ladder_source": _STACKED_BLOCK_LADDER_SOURCE_REF,
+            "congressional_district_vintage_crosswalk": {
+                "source_ref": (
+                    "source:us_congressional_district_vintage_crosswalk_117_to_119"
+                ),
+                "source_vintage": "vintage:cd_117",
+                "target_vintage": "vintage:cd_119",
+            },
+            "seed": "stream:household_location_block_v1",
+            "clones": clones,
+            "validation": [
+                "us_block_location_gate",
+                "puma_ladder_gate",
+                "vintage_refusal",
+            ],
+        },
+        "algorithm": {
+            "id": US_STACKED_BLOCK_LOCATION_ALGORITHM_ID,
+            "kernel": "with_household_us_block_location",
+            "operator": "assign_us_block_location",
+            "order": "before_gap_fill",
+            "location_rule": _STACKED_BLOCK_LOCATION_RULE,
+            "clones": clones,
+        },
+        "authorities": authorities,
+        "seed": {
+            "site": "us_block_location",
+            "stream": "household_location_block_v1",
+            "value_source": "cli.location_seed",
+            "value": seed,
+        },
+    }
+
+
+def _is_whole_number(value: object, *, minimum: int) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= minimum
+
+
+def _validate_stacked_block_location_manifest_binding(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> None:
+    """Authenticate a ``block_v1`` household-location authority and receipt."""
+
+    label = f"US stacked pool manifest {manifest_path}"
+    assignment = manifest.get("geography_assignment")
+    if not isinstance(assignment, Mapping):
+        raise ValueError(f"{label} has no geography assignment receipt.")
+    stage_receipts = manifest.get("stage_receipts")
+    stage_assignment = (
+        stage_receipts.get("geography_assignment")
+        if isinstance(stage_receipts, Mapping)
+        else None
+    )
+    if stage_assignment != assignment:
+        raise ValueError(
+            f"{label} geography assignment differs from its assembled-stage receipt."
+        )
+    if (
+        assignment.get("artifact_kind")
+        != "populace_us_stacked_household_geography_assignment"
+        or assignment.get("schema_version") != 1
+    ):
+        raise ValueError(f"{label} has an unsupported geography assignment receipt.")
+    contract = _mapping(
+        assignment.get("contract"),
+        label=f"{label} geography assignment contract",
+    )
+    seed_block = contract.get("seed")
+    algorithm = contract.get("algorithm")
+    authorities = contract.get("authorities")
+    if (
+        not isinstance(seed_block, Mapping)
+        or not isinstance(algorithm, Mapping)
+        or not isinstance(authorities, Mapping)
+    ):
+        raise ValueError(f"{label} block-location contract is malformed.")
+    seed = seed_block.get("value")
+    clones = algorithm.get("clones")
+    if not _is_whole_number(seed, minimum=0):
+        raise ValueError(f"{label} block-location seed must be a whole number >= 0.")
+    if clones != 1 or isinstance(clones, bool):
+        raise ValueError(
+            f"{label} binds {clones!r} location clones; the stacked pool admits "
+            "exactly one location per household."
+        )
+    block_authority = authorities.get(_STACKED_BLOCK_LADDER_ROLE)
+    crosswalk_authority = authorities.get(_STACKED_CD_CROSSWALK_ROLE)
+    if not isinstance(block_authority, Mapping) or not isinstance(
+        crosswalk_authority, Mapping
+    ):
+        raise ValueError(f"{label} block-location authorities are incomplete.")
+    cps_asec_sha256: dict[int, str] = {}
+    for role, authority in authorities.items():
+        if not str(role).startswith(_STACKED_CPS_ASEC_ROLE_PREFIX):
+            continue
+        income_year = (
+            authority.get("income_year") if isinstance(authority, Mapping) else None
+        )
+        if not _is_whole_number(income_year, minimum=1) or role != (
+            f"{_STACKED_CPS_ASEC_ROLE_PREFIX}{income_year}"
+        ):
+            raise ValueError(f"{label} CPS ASEC authority {role!r} is malformed.")
+        cps_asec_sha256[int(income_year)] = str(authority.get("sha256"))
+    if not cps_asec_sha256:
+        raise ValueError(
+            f"{label} block-location contract binds no CPS ASEC source geography."
+        )
+    expected_contract = expected_us_stacked_block_location_contract(
+        seed=int(seed),
+        clones=1,
+        block_ladder_sha256=str(block_authority.get("sha256")),
+        crosswalk_sha256=str(crosswalk_authority.get("sha256")),
+        cps_asec_sha256=cps_asec_sha256,
+    )
+    if contract != expected_contract:
+        raise ValueError(f"{label} block-location contract changed.")
+    if manifest.get("random_seed") != 0:
+        raise ValueError(f"{label} model random_seed changed.")
+
+    provenance_pins = manifest.get("provenance_pins")
+    if not isinstance(provenance_pins, Mapping):
+        raise ValueError(f"{label} has no provenance pins.")
+    for role in sorted(authorities):
+        authority = authorities[role]
+        pin = provenance_pins.get(role)
+        sha256 = authority.get("sha256") if isinstance(authority, Mapping) else None
+        if (
+            not isinstance(pin, Mapping)
+            or not isinstance(sha256, str)
+            or _LOWERCASE_SHA256.fullmatch(sha256) is None
+            or sha256 != pin.get("actual_sha256")
+            or pin.get("expected_sha256") != pin.get("actual_sha256")
+        ):
+            raise ValueError(
+                f"{label} geography authority {role!r} differs from its "
+                "authenticated input pin."
+            )
+
+    location = manifest.get("household_location")
+    ladder_record = (
+        location.get("block_ladder") if isinstance(location, Mapping) else None
+    )
+    if (
+        not isinstance(location, Mapping)
+        or location != assignment.get("household_location")
+        or location.get("rule") != US_STACKED_BLOCK_LOCATION_ALGORITHM_ID
+        or location.get("location_rule") != _STACKED_BLOCK_LOCATION_RULE
+        or location.get("seed") != seed
+        or location.get("clones") != 1
+        or not isinstance(ladder_record, Mapping)
+        or ladder_record.get("sha256") != block_authority.get("sha256")
+    ):
+        raise ValueError(
+            f"{label} household_location record does not match its "
+            "block-location contract."
+        )
+    _block_ladder_layer_vintages(manifest, manifest_path=manifest_path)
+
+    output = assignment.get("output")
+    if not isinstance(output, Mapping):
+        raise ValueError(f"{label} geography output is missing.")
+    rows = output.get("household_rows")
+    positive_rows = output.get("positive_congressional_district_rows")
+    unique_values = output.get("unique_congressional_district_values")
+    if (
+        not _is_whole_number(rows, minimum=1)
+        or positive_rows != rows
+        or not _is_whole_number(unique_values, minimum=1)
+        or location.get("households") != rows
+        or location.get("rows") != rows
+    ):
+        raise ValueError(
+            f"{label} does not prove one located block and a positive "
+            "congressional district for every household."
+        )
+    order = assignment.get("pre_assignment_household_order")
+    if (
+        not isinstance(order, Mapping)
+        or order.get("column") != "household_id"
+        or order.get("codec") != "int64_little_endian.v1"
+        or order.get("row_count") != rows
+        or not isinstance(order.get("sha256"), str)
+        or _LOWERCASE_SHA256.fullmatch(str(order["sha256"])) is None
+    ):
+        raise ValueError(f"{label} has an invalid seeded household-order receipt.")
+    assigned_geography = assignment.get("assigned_household_geography")
+    if (
+        not isinstance(assigned_geography, Mapping)
+        or assigned_geography.get("columns")
+        != list(US_STACKED_BLOCK_LOCATION_DIGEST_COLUMNS)
+        or assigned_geography.get("codec")
+        != "block_location_column_major_int64_little_endian.v1"
+        or assigned_geography.get("row_count") != rows
+        or not isinstance(assigned_geography.get("sha256"), str)
+        or _LOWERCASE_SHA256.fullmatch(str(assigned_geography["sha256"])) is None
+    ):
+        raise ValueError(
+            f"{label} has an invalid ordered household block-location receipt."
+        )
+    summary = assignment.get("summary")
+    if (
+        not isinstance(summary, Mapping)
+        or summary.get("applied") is not True
+        or summary.get("household_rows") != rows
+    ):
+        raise ValueError(f"{label} has an invalid geography assignment summary.")
+    gate = assignment.get("gate")
+    gates = gate.get("gates") if isinstance(gate, Mapping) else None
+    if (
+        not isinstance(gate, Mapping)
+        or gate.get("passed") is not True
+        or not isinstance(gates, Mapping)
+        or set(gates) != {"us_block_location", "us_puma_ladder"}
+        or any(
+            not isinstance(gates[name], Mapping)
+            or gates[name].get("passed") is not True
+            for name in gates
+        )
+    ):
+        raise ValueError(
+            f"{label} does not carry passed block-location and PUMA-ladder gates."
+        )
+    universe = assignment.get("target_universe")
+    if (
+        not isinstance(universe, Mapping)
+        or not _is_whole_number(universe.get("district_count"), minimum=1)
+        or not isinstance(universe.get("geoids_sha256"), str)
+        or _LOWERCASE_SHA256.fullmatch(str(universe["geoids_sha256"])) is None
+    ):
+        raise ValueError(
+            f"{label} has an invalid congressional-district target-universe receipt."
+        )
+
+
 def _ordered_household_id_receipt(
     household: pd.DataFrame,
     *,
@@ -1842,6 +2240,300 @@ def _ordered_household_geography_receipt(
     }
 
 
+def ordered_household_block_location_receipt(
+    household: pd.DataFrame,
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    """Digest ordered native household IDs and their located block geography.
+
+    The producer (stacked pool tool) and every consumer compute this one
+    function: household id, 15-digit block, 7-digit PUMA, positive integral
+    congressional district and 5-digit county, column-major little-endian
+    int64 under their own domain tag.
+    """
+
+    missing = [
+        column
+        for column in US_STACKED_BLOCK_LOCATION_DIGEST_COLUMNS
+        if column not in household
+    ]
+    if missing:
+        raise ValueError(f"{boundary} is missing geography column(s): {missing}.")
+    household_ids = pd.to_numeric(
+        household["household_id"],
+        errors="coerce",
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    valid_ids = np.isfinite(household_ids) & (household_ids == np.floor(household_ids))
+    if not valid_ids.all():
+        raise ValueError(f"{boundary} household_id values must be integral.")
+
+    def fixed_width_values(column: str, width: int) -> np.ndarray:
+        text = household[column].astype(str)
+        if not text.str.fullmatch(rf"[0-9]{{{width}}}").all():
+            raise ValueError(
+                f"{boundary} {column!r} must contain exactly {width}-digit codes."
+            )
+        return text.astype(np.int64).to_numpy(dtype="<i8", copy=False)
+
+    arrays = (
+        household_ids.astype("<i8", copy=False),
+        fixed_width_values("block_geoid", 15),
+        fixed_width_values("puma", 7),
+        _positive_integral_district_values(
+            household,
+            boundary=boundary,
+        ).astype("<i8", copy=False),
+        fixed_width_values("county_fips", 5),
+    )
+    digest = hashlib.sha256()
+    digest.update(
+        b"populace-ordered-household-block-location-column-major-int64-le-v1\0"
+    )
+    digest.update(len(household).to_bytes(8, byteorder="little", signed=False))
+    for values in arrays:
+        digest.update(values.tobytes(order="C"))
+    return {
+        "columns": list(US_STACKED_BLOCK_LOCATION_DIGEST_COLUMNS),
+        "codec": "block_location_column_major_int64_little_endian.v1",
+        "row_count": len(household),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _block_ladder_layer_vintages(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> Mapping[str, str]:
+    """The block ladder's layer vintages a block_v1 manifest records."""
+
+    location = manifest.get("household_location")
+    ladder = location.get("block_ladder") if isinstance(location, Mapping) else None
+    vintages = ladder.get("layer_vintages") if isinstance(ladder, Mapping) else None
+    if (
+        not isinstance(vintages, Mapping)
+        or not vintages
+        or not all(
+            isinstance(key, str) and isinstance(value, str) and key and value
+            for key, value in vintages.items()
+        )
+    ):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} household_location does "
+            "not record its block ladder's layer vintages."
+        )
+    return vintages
+
+
+def _validate_stacked_block_location_h5_binding(
+    manifest: Mapping[str, object],
+    household: pd.DataFrame,
+    root_attributes: Mapping[str, str | None],
+    *,
+    manifest_path: Path,
+    pool_path: Path,
+) -> None:
+    """Bind a ``block_v1`` manifest's location claims to the authenticated H5."""
+
+    assignment = _mapping(
+        manifest.get("geography_assignment"),
+        label=f"US stacked pool manifest {manifest_path}.geography_assignment",
+    )
+    contract = _mapping(
+        assignment.get("contract"),
+        label=(
+            f"US stacked pool manifest {manifest_path}.geography_assignment.contract"
+        ),
+    )
+    authorities = _mapping(
+        contract.get("authorities"),
+        label=(
+            "US stacked pool manifest "
+            f"{manifest_path}.geography_assignment.contract.authorities"
+        ),
+    )
+    crosswalk = _mapping(
+        authorities.get(_STACKED_CD_CROSSWALK_ROLE),
+        label=(
+            "US stacked pool manifest "
+            f"{manifest_path}.geography_assignment crosswalk authority"
+        ),
+    )
+    block_ladder = _mapping(
+        authorities.get(_STACKED_BLOCK_LADDER_ROLE),
+        label=(
+            "US stacked pool manifest "
+            f"{manifest_path}.geography_assignment block-ladder authority"
+        ),
+    )
+    seed = _mapping(
+        contract.get("seed"),
+        label=f"US stacked pool manifest {manifest_path} block-location seed",
+    ).get("value")
+    clones = _mapping(
+        contract.get("algorithm"),
+        label=f"US stacked pool manifest {manifest_path} block-location algorithm",
+    ).get("clones")
+    expected_attributes = {
+        CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: crosswalk.get("sha256"),
+        CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: crosswalk.get("target_vintage"),
+        POPULACE_LOCATION_RULE_ATTR: _STACKED_BLOCK_LOCATION_RULE,
+        POPULACE_LOCATION_SEED_ATTR: str(seed),
+        POPULACE_LOCATION_CLONES_ATTR: str(clones),
+        POPULACE_BLOCK_LADDER_SHA256_ATTR: block_ladder.get("sha256"),
+        POPULACE_BLOCK_LADDER_VINTAGES_ATTR: json.dumps(
+            dict(_block_ladder_layer_vintages(manifest, manifest_path=manifest_path)),
+            sort_keys=True,
+        ),
+    }
+    if (
+        expected_attributes[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR]
+        != CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+    ):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} does not name the current "
+            "congressional-district target vintage."
+        )
+    mismatched_attributes = {
+        key: {"expected": expected, "actual": root_attributes.get(key)}
+        for key, expected in expected_attributes.items()
+        if root_attributes.get(key) != expected
+    }
+    if mismatched_attributes:
+        raise ValueError(
+            f"US stacked pool H5 {pool_path} location root attributes do not "
+            f"match its manifest: {mismatched_attributes}."
+        )
+
+    boundary = f"US stacked pool H5 {pool_path}"
+    native_household, source_column = _stacked_native_households(
+        household,
+        boundary=boundary,
+    )
+    expected_order = assignment.get("pre_assignment_household_order")
+    actual_order = _ordered_household_id_receipt(
+        native_household,
+        boundary=boundary,
+    )
+    if actual_order != expected_order:
+        raise ValueError(
+            f"{boundary} native household order differs from its manifest "
+            "geography assignment receipt."
+        )
+    actual_geography = ordered_household_block_location_receipt(
+        native_household,
+        boundary=boundary,
+    )
+    if actual_geography != assignment.get("assigned_household_geography"):
+        raise ValueError(
+            f"{boundary} native household block location differs from its "
+            "manifest assignment output receipt."
+        )
+    native_districts = _positive_integral_district_values(
+        native_household,
+        boundary=boundary,
+    )
+    _positive_integral_district_values(household, boundary=boundary)
+    actual_output = {
+        "household_rows": len(native_household),
+        "positive_congressional_district_rows": len(native_districts),
+        "unique_congressional_district_values": int(len(np.unique(native_districts))),
+    }
+    if assignment.get("output") != actual_output:
+        raise ValueError(
+            f"{boundary} household geography counts differ from its manifest "
+            "assignment output receipt."
+        )
+    block = household["block_geoid"].astype(str)
+    for column, width in (("tract_geoid", 11), ("county_fips", 5)):
+        if column not in household:
+            raise ValueError(f"{boundary} is missing geography column {column!r}.")
+        if not household[column].astype(str).eq(block.str[:width]).all():
+            raise ValueError(
+                f"{boundary} {column!r} is not the prefix of its household's "
+                "located block."
+            )
+    missing_coherent = [
+        column
+        for column in _STACKED_BLOCK_LOCATION_COHERENT_COLUMNS
+        if column not in household
+    ]
+    if missing_coherent:
+        raise ValueError(
+            f"{boundary} is missing block-location column(s): {missing_coherent}."
+        )
+    grouped = household.groupby(source_column, sort=False, dropna=False)
+    for column in _STACKED_BLOCK_LOCATION_COHERENT_COLUMNS:
+        incoherent = grouped[column].nunique(dropna=False) > 1
+        if bool(incoherent.any()):
+            raise ValueError(
+                f"{boundary} cloned household rows disagree on assigned "
+                f"geography column {column!r}."
+            )
+
+
+def _stacked_native_households(
+    household: pd.DataFrame,
+    *,
+    boundary: str,
+) -> tuple[pd.DataFrame, str]:
+    """Validate PUF-support clone lineage; return native rows and source column."""
+
+    clone_column = support_clone_index_column("household")
+    source_column = support_source_id_column("household")
+    missing_lineage = [
+        column for column in (source_column, clone_column) if column not in household
+    ]
+    if missing_lineage:
+        raise ValueError(
+            f"{boundary} is missing household clone-lineage column(s): "
+            f"{missing_lineage}."
+        )
+    clone_index = pd.to_numeric(household[clone_column], errors="coerce")
+    clone_numeric = clone_index.to_numpy(dtype=np.float64, na_value=np.nan)
+    valid_clone_index = (
+        np.isfinite(clone_numeric)
+        & (clone_numeric >= 0)
+        & (clone_numeric == np.floor(clone_numeric))
+    )
+    if not valid_clone_index.all():
+        raise ValueError(f"{boundary} has invalid {clone_column!r} values.")
+    source_ids = pd.to_numeric(household[source_column], errors="coerce")
+    source_numeric = source_ids.to_numpy(dtype=np.float64, na_value=np.nan)
+    valid_source_ids = np.isfinite(source_numeric) & (
+        source_numeric == np.floor(source_numeric)
+    )
+    if not valid_source_ids.all():
+        raise ValueError(f"{boundary} has invalid {source_column!r} values.")
+    lineage = pd.DataFrame(
+        {
+            "source_id": source_numeric.astype(np.int64),
+            "clone_index": clone_numeric.astype(np.int64),
+        },
+        index=household.index,
+    )
+    if lineage.duplicated(["source_id", "clone_index"]).any():
+        raise ValueError(f"{boundary} has duplicate household clone-lineage roles.")
+    native_counts = lineage["clone_index"].eq(0).groupby(lineage["source_id"]).sum()
+    if not native_counts.eq(1).all():
+        raise ValueError(
+            f"{boundary} requires exactly one native household for every clone lineage."
+        )
+    native_mask = lineage["clone_index"].eq(0)
+    native_household = household.loc[native_mask]
+    native_ids = pd.to_numeric(
+        native_household["household_id"], errors="coerce"
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    native_source_ids = lineage.loc[native_mask, "source_id"].to_numpy(dtype=np.float64)
+    if not np.array_equal(native_ids, native_source_ids):
+        raise ValueError(
+            f"{boundary} native household IDs differ from their clone-lineage "
+            "source IDs."
+        )
+    return native_household, source_column
+
+
 def _validate_stacked_geography_h5_binding(
     manifest: Mapping[str, object],
     household: pd.DataFrame,
@@ -1854,6 +2546,30 @@ def _validate_stacked_geography_h5_binding(
 
     if manifest.get("pipeline") != _STACKED_PIPELINE:
         return
+    if _stacked_geography_algorithm_id(manifest) == (
+        US_STACKED_BLOCK_LOCATION_ALGORITHM_ID
+    ):
+        _validate_stacked_block_location_h5_binding(
+            manifest,
+            household,
+            root_attributes,
+            manifest_path=manifest_path,
+            pool_path=pool_path,
+        )
+        return
+    # A legacy-rule pool never writes location-rule root attributes; an H5
+    # that carries them claims a rule its manifest does not bind.
+    claimed_location_attributes = sorted(
+        key
+        for key in US_STACKED_BLOCK_LOCATION_ROOT_ATTRIBUTES
+        if root_attributes.get(key) is not None
+    )
+    if claimed_location_attributes:
+        raise ValueError(
+            f"US stacked pool H5 {pool_path} carries location-rule root "
+            f"attribute(s) {claimed_location_attributes} that its legacy-rule "
+            f"manifest {manifest_path} does not bind."
+        )
     assignment = _mapping(
         manifest.get("geography_assignment"),
         label=f"US stacked pool manifest {manifest_path}.geography_assignment",
@@ -2191,6 +2907,7 @@ def _load_us_multispine_pool(
             for key in (
                 CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
                 CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+                *US_STACKED_BLOCK_LOCATION_ROOT_ATTRIBUTES,
             )
         }
 

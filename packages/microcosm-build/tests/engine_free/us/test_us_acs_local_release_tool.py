@@ -1496,3 +1496,296 @@ def test_package_rechecks_final_bytes_after_copy_or_reuse(
         assert root_copy.exists(), "the calibrated H5 itself is never removed"
     else:
         assert not root_copy.exists(), "a refused copy is not left at the root"
+
+
+# ---------------------------------------------------------------------------
+# --location-rule block_v1 staging (microcosm#696): finalize re-runs the
+# block-location gate against the sha-verified block ladder the staging run
+# recorded; a legacy staging run's finalize report is unchanged.
+# ---------------------------------------------------------------------------
+
+
+def _block_located_hours_frame(tmp_path: Path, *, tamper: bool = False):
+    from microcosm.build.us_runtime.block_location import (
+        load_us_location_ladder,
+        with_household_us_block_location,
+    )
+    from microcosm.frame import US_SCHEMA, Frame
+    from test_support.microcosm_build.us_block_location import (
+        synthetic_blocks,
+        write_location_ladder,
+    )
+
+    ladder_path = write_location_ladder(
+        tmp_path / "blocks.npz", synthetic_blocks(3, states=(1, 2, 36))
+    )
+    ladder = load_us_location_ladder(ladder_path)
+    frame = _plausible_hours_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"]["state_fips"] = [1, 1, 2, 2, 36, 36, 1, 2]
+    frame = Frame(tables, US_SCHEMA, {"household": frame.weights_for("household")})
+    located, _ = with_household_us_block_location(frame, ladder, seed=0)
+    if tamper:
+        tables = {entity: located.table(entity).copy() for entity in located.entities}
+        tables["household"].loc[0, "county_fips"] = "99999"
+        located = Frame(
+            tables, US_SCHEMA, {"household": located.weights_for("household")}
+        )
+    return ladder_path, located
+
+
+def _mark_staging_block_v1(
+    module, args, ladder_path: Path, *, targets_ladder: bool = False
+) -> None:
+    path = module._staging_summary_path(args)
+    summary = json.loads(path.read_text())
+    sha = module._sha256(ladder_path)
+    summary["orchestration"].update(
+        {"location_rule": "block_v1", "location_seed": 0, "location_clones": 1}
+    )
+    summary["household_location"] = {
+        "rule": "us_block_location.population_draw.v1",
+        "block_ladder": {"sha256": sha, "layer_vintages": {}},
+        "block_ladder_path": str(ladder_path),
+    }
+    if targets_ladder:
+        # Under block_v1 the targets' --ladder must be the PUMA ladder staging
+        # recorded (require_block_v1_targets_ladder).
+        summary.setdefault("geography_ladder", {})["sha256"] = module._sha256(
+            args.ladder
+        )
+    path.write_text(json.dumps(summary))
+
+
+def test_finalize_runs_the_block_location_gate_for_a_block_v1_staging_run(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, frame = _block_located_hours_frame(tmp_path)
+    _mark_staging_block_v1(module, args, ladder_path, targets_ladder=True)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    gate = report["gates"]["us_block_location_gate"]
+    assert gate["passed"] is True, gate["failures"]
+    assert "us_block_location_gate" not in message
+    assert report["gates"]["us_puma_ladder_gate"]["passed"] is True
+
+
+def test_finalize_hard_fails_a_block_v1_artifact_whose_geography_left_its_block(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, frame = _block_located_hours_frame(tmp_path, tamper=True)
+    _mark_staging_block_v1(module, args, ladder_path, targets_ladder=True)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    gate = report["gates"]["us_block_location_gate"]
+    assert gate["passed"] is False
+    assert any("county_fips" in failure for failure in gate["failures"])
+    assert "us_block_location_gate" in message
+
+
+def test_finalize_refuses_a_block_v1_run_whose_block_ladder_bytes_moved(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, frame = _block_located_hours_frame(tmp_path)
+    _mark_staging_block_v1(module, args, ladder_path, targets_ladder=True)
+    ladder_path.write_bytes(b"different ladder bytes")
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "the block_v1 staging run located households with" in message
+    assert report is None
+
+
+def test_finalize_report_of_a_legacy_staging_run_has_no_block_gate(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _message, report = _run_finalize(
+        module, monkeypatch, args, _plausible_hours_frame()
+    )
+    assert "us_block_location_gate" not in report["gates"]
+
+
+def _write_calibrated(
+    module, monkeypatch, tmp_path: Path, frame, *, block_ladder: Path | None
+):
+    """Run ``_write_calibrated_artifact`` on ``frame`` with its heavy steps stubbed.
+
+    ``block_ladder`` marks the staging summary as a ``block_v1`` run located
+    with that ladder; ``None`` leaves it a legacy run.
+    """
+
+    args = _finalize_args(module, tmp_path)
+    args.out_h5.unlink()
+    if block_ladder is not None:
+        _mark_staging_block_v1(module, args, block_ladder)
+        path = module._staging_summary_path(args)
+        summary = json.loads(path.read_text())
+        summary["geography_ladder"] = {
+            "sha256": "c" * 64,
+            "layer_vintages": {"puma": "2020_puma"},
+        }
+        path.write_text(json.dumps(summary))
+    with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="w") as store:
+        store.put("household", frame.table("household")[["household_id"]])
+    monkeypatch.setattr(module, "_load_staging_frame", lambda path: frame)
+    monkeypatch.setattr(module, "_require_local_hours", lambda *a, **k: None)
+    monkeypatch.setattr(
+        module, "project_input_only", lambda base, period=None: (base, {})
+    )
+    monkeypatch.setattr(module, "fill_reviewed_nulls", lambda *a, **k: ([], None))
+    module._write_calibrated_artifact(
+        args, frame.weights_for("household").values.copy(), {}
+    )
+    with pd.HDFStore(args.out_h5, mode="r") as store:
+        attributes = store.get_node("/")._v_attrs
+        return {
+            name: str(attributes[name])
+            for name in attributes._v_attrnames
+            if name.startswith("populace_")
+        }
+
+
+@requires_pytables
+def test_calibrated_artifact_of_a_block_v1_staging_run_records_its_location_rule(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    ladder_path, frame = _block_located_hours_frame(tmp_path)
+    attributes = _write_calibrated(
+        module, monkeypatch, tmp_path, frame, block_ladder=ladder_path
+    )
+    assert attributes["populace_location_rule"] == "block_v1"
+    assert attributes["populace_location_seed"] == "0"
+    assert attributes["populace_location_clones"] == "1"
+    assert attributes["populace_block_ladder_sha256"] == module._sha256(ladder_path)
+    assert attributes["populace_puma_ladder_artifact_sha256"] == "c" * 64
+    assert json.loads(attributes["populace_puma_ladder_vintages"]) == {
+        "puma": "2020_puma"
+    }
+
+
+@requires_pytables
+def test_calibrated_artifact_of_a_legacy_staging_run_has_no_location_attributes(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    _ladder_path, frame = _block_located_hours_frame(tmp_path)
+    attributes = _write_calibrated(
+        module, monkeypatch, tmp_path, frame, block_ladder=None
+    )
+    assert not any(name.startswith("populace_location") for name in attributes)
+    assert "populace_block_ladder_sha256" not in attributes
+
+
+def test_block_v1_location_attributes_refuse_a_summary_without_the_puma_ladder_sha(
+    tmp_path,
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, _ = _block_located_hours_frame(tmp_path)
+    _mark_staging_block_v1(module, args, ladder_path)
+    summary = json.loads(module._staging_summary_path(args).read_text())
+    with pytest.raises(SystemExit, match="no PUMA-ladder sha256"):
+        module.calibrated_location_root_attributes(summary)
+
+
+def test_package_of_a_block_v1_staging_run_records_its_location_rule(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    ladder_path, _ = _block_located_hours_frame(tmp_path)
+    _mark_staging_block_v1(module, args, ladder_path)
+    result = module.do_package(args)
+    build_manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    orchestration = build_manifest["staging_orchestration"]
+    assert orchestration["location_rule"] == "block_v1"
+    assert orchestration["location_seed"] == 0
+    assert orchestration["location_clones"] == 1
+    location = orchestration["household_location"]
+    assert location["rule"] == "us_block_location.population_draw.v1"
+    assert location["block_ladder"]["sha256"] == module._sha256(ladder_path)
+    staging_recipe = build_manifest["refresh_recipe"]["staging"]
+    assert staging_recipe.startswith(module.LEGACY_STAGING_REFRESH_RECIPE)
+    assert "--location-rule block_v1 --location-seed 0" in staging_recipe
+
+
+def test_package_of_a_legacy_staging_run_records_no_location_rule(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    build_manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert list(build_manifest["staging_orchestration"]) == list(
+        module._STAGING_ORCHESTRATION_KEYS
+    )
+    assert (
+        build_manifest["refresh_recipe"]["staging"]
+        == module.LEGACY_STAGING_REFRESH_RECIPE
+    )
+
+
+@requires_pytables
+def test_block_location_gate_passes_on_the_written_calibrated_bytes(
+    tmp_path, monkeypatch
+) -> None:
+    """Finalize gates the H5 it reloads; empty place/SLD/CBSA codes must survive."""
+
+    from microcosm.build.us_runtime.block_location import (
+        load_us_location_ladder,
+        us_block_location_gate,
+    )
+
+    module = _load_tool_module()
+    load_written = module._load_staging_frame
+    ladder_path, frame = _block_located_hours_frame(tmp_path)
+    household = frame.table("household")
+    assert (household["place_fips"] == "").any() or (household["sldl"] == "").any()
+    _write_calibrated(module, monkeypatch, tmp_path, frame, block_ladder=ladder_path)
+    written = load_written(tmp_path / "out.h5").table("household")
+    gate = us_block_location_gate(written, load_us_location_ladder(ladder_path))
+    assert gate.passed, gate.failures
+
+
+def test_finalize_refuses_a_block_v1_run_whose_targets_ladder_is_not_the_staged_one(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    ladder_path, frame = _block_located_hours_frame(tmp_path)
+    _mark_staging_block_v1(module, args, ladder_path, targets_ladder=True)
+    path = module._staging_summary_path(args)
+    summary = json.loads(path.read_text())
+    summary["geography_ladder"]["sha256"] = "d" * 64
+    path.write_text(json.dumps(summary))
+    with pytest.raises(SystemExit, match="is not the PUMA ladder the block_v1"):
+        module.require_block_v1_targets_ladder(summary, module._sha256(args.ladder))
+    with pytest.raises(SystemExit, match="is not the PUMA ladder the block_v1"):
+        module.calibrated_location_root_attributes(
+            summary, targets_ladder_sha256=module._sha256(args.ladder)
+        )
+    # A legacy staging run is never refused on this account.
+    legacy = json.loads(json.dumps(summary))
+    legacy.pop("household_location")
+    for key in ("location_rule", "location_seed", "location_clones"):
+        legacy["orchestration"].pop(key, None)
+    module.require_block_v1_targets_ladder(legacy, "e" * 64)

@@ -458,3 +458,14 @@ def test_qrf_multi_regime_chain_has_golden_shared_draw_state() -> None:
     assert (
         post_state == "de1c423f97685d93be539e0d8748b61d13251bcb8b04f63ee01ca37072f7ab43"
     )
+
+
+def test_legacy_v1_seed_protocol_equals_the_pinned_inventory_digest() -> None:
+    """Engine-free tripwire: a byte edit to any seed-kernel module (even a
+    formatter pass) moves this digest; the engine lane's coverage check would
+    otherwise be the first to notice."""
+
+    from microcosm.build.spec_engine.inventory_coverage import EXPECTED_HASHES
+    from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
+
+    assert LEGACY_V1_PROTOCOL.implementation_sha256 == EXPECTED_HASHES["seed_protocol"]
