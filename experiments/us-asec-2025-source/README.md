@@ -180,8 +180,9 @@ It passed `--asec-h5` and `--asec-h5-sha256` for 2023, 2024 and 2025, the
 three local Census archives, and `PYTHONHASHSEED=0`. Both stages succeeded: 63
 s and 10.9 GB peak, then 60 s and 13.5 GB.
 
-An earlier run from the uncommitted working tree gave byte-identical checkpoints
-for both stages and identical signal values. The one differing field was the
+An earlier run from the uncommitted working tree, on 27 September, gave the same
+checkpoint digests for both stages (recorded in the receipt's `earlier_run`)
+and identical signal values. The one differing field was the
 digest of the SPM-role stage's intermediate projection file.
 
 - **Pins.** All three `--asec-h5-sha256` pins were verified before either stage

@@ -196,8 +196,8 @@ and the US release build rule is where it belongs.
 ## What a 2022-free pool still reads
 
 The `source_construction` and `pre_clone_enrichment` stages ran on the real
-2023/2024/2025 files, fully pinned, on 27 September 2026 (see the experiment
-README). Things that still name income year 2022 or the old pool:
+2023/2024/2025 files, fully pinned, at commit `e96165359` on 28 September 2026
+(see the experiment README). Things that still name income year 2022 or the old pool:
 
 - **The LKWEEKS sidecar.** The builder loads the income-2022 sidecar
   `asecpub23csv.zip` in every mode. It fetches the file when
@@ -235,7 +235,7 @@ README). Things that still name income year 2022 or the old pool:
 source-enrichment producer inventories (`source_enrichment.PRODUCER_SOURCE_FILES`
 and `RECEIPT_QUALIFICATION_SOURCE_FILES`). Publication checks each file's bytes
 in the current checkout against the build's recorded hashes. The income-2025
-registry entries changed those bytes on 27 September 2026, so any SPM-role or
+registry entries in the PR that pinned it changed those bytes, so any SPM-role or
 reported-receipt candidate built earlier must be certified and published from
 a checkout of its own recorded producer commit, not from `main`. The published
 `populace-us-2024-spm-20260915` and `populace-us-2024-spm-receipts-20260923`

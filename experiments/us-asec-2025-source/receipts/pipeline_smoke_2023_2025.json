@@ -805,5 +805,13 @@
    "passed": true
   }
  },
- "reproducibility_note": "An earlier run of the same two stages on 2026-09-27, from the working tree before these commits, produced byte-identical stage checkpoints (source_construction and pre_clone_enrichment checkpoint_sha256 equal) and identical signal values. The only differing field is spm_independence_role_signal.details.derivation.dataset_sha256 / frame_projection_sha256, the digest of the stage's intermediate projection file."
+ "reproducibility_note": "The earlier run (earlier_run) produced the same checkpoint_sha256 for both stages and identical signal values; the only differing field is spm_independence_role_signal.details.derivation.dataset_sha256 / frame_projection_sha256, the digest of the stage's intermediate projection file.",
+ "earlier_run": {
+  "date": "2026-09-27",
+  "code": "working tree before e518fb86 was committed",
+  "checkpoint_sha256": {
+   "source_construction": "e0776a293b40cedb2f3dc865d4bf55a45cc9bfe31f0a6ad5e583049bda3f78d0",
+   "pre_clone_enrichment": "ae91435fce01006522c43ec3b327712f48005a314efbfd6881c17d1c9effa31d"
+  }
+ }
 }
