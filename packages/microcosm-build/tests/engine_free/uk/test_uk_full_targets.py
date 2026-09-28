@@ -113,6 +113,14 @@ def test_full_inputs_preserve_band_edges_and_validation_periods(prepared):
     ]
     assert result["register_completeness"]["compiled_reference_count"] == 2
     assert result["register_completeness"]["approved_reference_count"] == 1
+    assert result["register_completeness"]["validation_periods"] == {
+        "national": [2023, 2025],
+        "local": [2025],
+    }
+    assert result["register_completeness"]["validation_periods_unsupported"] == {
+        "national": {},
+        "local": {},
+    }
     assert result["register_completeness"]["compiled_local_reference_count"] == 1
     assert result["local_source_pin"]["fact_row_count"] == 1
     assert result["reviewed_unbound_higher_targets"] == {
@@ -245,5 +253,33 @@ def test_validation_reference_compilation_is_fail_closed(prepared, monkeypatch):
             registry=prepared[0], unsupported=({"target": "missing"},)
         ),
     )
-    with pytest.raises(ValueError, match="failed to compile for 2023"):
+    # 2023 is a validation period and is skipped; the calibration year is not.
+    with pytest.raises(ValueError, match="failed to compile for 2024"):
         _load()
+
+
+def test_historical_validation_period_without_facts_is_recorded_not_fatal(
+    prepared, monkeypatch
+):
+    national, approved, local, artifact, calls = prepared
+
+    def compile_national(facts, *, target_period):
+        calls.append(("national", target_period))
+        if target_period == 2023:
+            return SimpleNamespace(
+                registry=None,
+                unsupported=(
+                    {"name": "obr.income_tax", "period": 2023, "reason": "no fact"},
+                ),
+            )
+        return SimpleNamespace(registry=national, unsupported=())
+
+    monkeypatch.setattr(runtime, "compile_uk_target_registry", compile_national)
+    result = _load()
+    assert set(result["uk_ledger_compiled_registries"]) == {2024, 2025}
+    completeness = result["register_completeness"]
+    assert completeness["validation_periods"] == {"national": [2025], "local": [2025]}
+    assert completeness["validation_periods_unsupported"] == {
+        "national": {"2023": ["obr.income_tax"]},
+        "local": {},
+    }

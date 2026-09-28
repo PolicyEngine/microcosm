@@ -7,6 +7,7 @@ reference-period compilations remain available for release validation.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -51,6 +52,21 @@ def load_uk_local_chronicle_pin() -> dict[str, Any]:
     """Return the independently reviewed local target census feed identity."""
 
     return dict(_LEDGER_FACT_FEED_PIN)
+
+
+#: Historical target periods compiled beside the calibration year so the
+#: terminal surface and the certifier can compare against them; skipped, not
+#: fatal, when the pinned feed no longer carries their facts.
+_VALIDATION_PERIODS: frozenset[int] = frozenset({2023, 2025})
+_LOCAL_VALIDATION_PERIODS: frozenset[int] = frozenset({2025})
+
+
+def _unsupported_names(unsupported: object) -> tuple[str, ...]:
+    names = []
+    for item in unsupported:
+        name = item.get("name") if isinstance(item, Mapping) else None
+        names.append(str(name if name is not None else item))
+    return tuple(names)
 
 
 def load_uk_full_target_inputs(
@@ -112,25 +128,43 @@ def load_uk_full_target_inputs(
         raise ValueError("calibration_year must be a positive integer.")
     evaluated_on = exclusion_evaluation_date(exclusions_evaluated_on)
     crosswalk = load_uk_local_area_crosswalk()
+    # The calibration year is fail-closed. The historical validation periods
+    # are compiled when the pinned feed still carries their facts and skipped
+    # (recorded below) when it does not: a feed that has moved past a period
+    # must not block the build the way a missing calibration-year fact does.
     national_registries = {}
     local_registries = {}
-    for period in sorted({2023, 2025, year}):
+    unsupported_validation: dict[str, dict[int, tuple[str, ...]]] = {
+        "national": {},
+        "local": {},
+    }
+    for period in sorted({*_VALIDATION_PERIODS, year}):
         compilation = compile_uk_target_registry(artifact.facts, target_period=period)
         if compilation.unsupported:
-            raise ValueError(
-                f"UK national target references failed to compile for {period}: "
-                f"{compilation.unsupported!r}."
+            if period == year:
+                raise ValueError(
+                    f"UK national target references failed to compile for {period}: "
+                    f"{compilation.unsupported!r}."
+                )
+            unsupported_validation["national"][period] = _unsupported_names(
+                compilation.unsupported
             )
+            continue
         national_registries[period] = compilation.registry
-    for period in sorted({2025, year}):
+    for period in sorted({*_LOCAL_VALIDATION_PERIODS, year}):
         compilation = compile_uk_local_target_registry(
             artifact.facts, target_period=period, crosswalk=crosswalk
         )
         if compilation.unsupported:
-            raise ValueError(
-                f"UK local target references failed to compile for {period}: "
-                f"{compilation.unsupported!r}."
+            if period == year:
+                raise ValueError(
+                    f"UK local target references failed to compile for {period}: "
+                    f"{compilation.unsupported!r}."
+                )
+            unsupported_validation["local"][period] = _unsupported_names(
+                compilation.unsupported
             )
+            continue
         local_registries[period] = compilation.registry
     band_edges = national_registries[year]
     frozen_version = None
@@ -180,6 +214,14 @@ def load_uk_full_target_inputs(
             "band_edge_registry_reconciled": True,
             "compiled_local_reference_count": len(local_registries[year].specs),
             "local_registry_version": local_registries[year].version,
+            "validation_periods": {
+                "national": sorted(p for p in national_registries if p != year),
+                "local": sorted(p for p in local_registries if p != year),
+            },
+            "validation_periods_unsupported": {
+                scope: {str(p): list(names) for p, names in sorted(periods.items())}
+                for scope, periods in unsupported_validation.items()
+            },
         },
         "uk_ledger_compiled_registries": national_registries,
         "uk_ledger_compiled_local_registries": local_registries,
