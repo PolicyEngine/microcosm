@@ -226,3 +226,37 @@ closed on 2026-09-28 by restoring the tool's behaviour on the driver.
 One helper defect surfaced while restoring row 8: `arguments()` parsed through `cli.parse_args`,
 which an earlier `run_dense_main` in the same test had already patched, so a second run reused
 the first run's output directory; the helper now parses through the real parser bound at import.
+
+## R6. Rebase onto main 937aca4ec after #1012 merged (2026-09-28)
+
+- Replay: `git rebase origin/main` over the 33-commit series (pre-rebase head ae3179cff, local tag
+  `uk-901-pre-1012-rebase`). Two stops. At the spine consolidation commit the shim-vs-tool conflict
+  on `tools/build_uk_frs_spine.py` and the `uk_spine.json` fixture were staged by rerere from the
+  trial merge (`repos/populace-901-1012trial`, 6103d2be2, never pushed); at the HMRC tail
+  retirement commit the coverage manifest and `test_country_spec` were staged by rerere and
+  `test_uk_graph.py` was resolved by hand (34 stages; the exclusion assertion stays retired). The
+  trial's two modify/delete stops did not recur because #1012 merged on #998's layout.
+- Lifted as the recipe recorded: #1012's three spine-tool hunks into `uk_runtime/spine_build.py`
+  (the `UKSPIHousingShellStageTransform` import, the `impute_spi_housing_shell` and
+  `price_domestic_energy` seed branches in `_declared_seeds`, the `implementations["spi_housing_shell"]`
+  entry in `prepare_uk_spine_execution`), identical to main's delta on the tool; the H2 docstring count
+  in `test_support/microcosm_graph/acceptance_h_parity.py`. Main already carried the 34 counts in
+  `graph_kernels.py`, `tools/graph_uk_spine_fixture.py` and the three #1012 tests at their #998
+  paths, so those lifts were moot. Both lifts are squashed into the commits they belong to
+  (spine consolidation, tail retirement), so each commit keeps "spine_build = main's tool moved" true.
+- Derived surfaces regenerated with their tools and found unchanged: the release-input coverage
+  manifest (`--check` current, 145 required, 0 reviewed exclusions) equals the rerere resolution;
+  the H2 fixture (oracle identity `9a069cfae…` on this machine) equals main's #1012 fixture with the
+  rerere'd `uk_spine.json`. `uv lock --check` is quiet; `APPROVED_UV_LOCK_SHA256` stays `e299eef1…`.
+- Roster: 34 stages, #1012's 36 minus the retired pair, in #1012's order (SPI block after
+  `frs_brma`, `spi_housing_shell` after `hmrc_spi_income_spine`).
+- Verification (targeted to the files the rebase touched, JUnit-counted): the 24 files the rebase touched or #1012 added (spine, roster, coverage, gates, evidence, driver, staging, pins) 729 passed / 0 failed, after one test fix: `test_uk_graph_evidence` had hard-coded `was_wealth` as the stage the assembled gate admits; the gate is roster-derived (the stage after `frs_brma`, now `frs_hmrc_spine_leaves` because #1012 moved the SPI block ahead of the WAS transfer, exactly where main's tool places `UK_SPINE_ASSEMBLED_FINAL_STAGE`), so the test now derives it and pins the new value; H2 spine parity, the shared parity check and the interface lock 5 passed;
+  `tools/ci_test_groups.py --verify` ok (engine-free-shared 145, engine-free-us 142, engine-free-uk
+  163, engine-us 78, engine-uk 34, integration-uk 1); `ruff check` and `ruff format --check` clean
+  on the edited files. The rest is CI on the pushed head.
+- Found by the targeted run: `tests/engine_free/shared/test_gate_battery_contract_pins.py` was a
+  zero-byte file on this branch since the #998 re-homing (the national-dispatch commit's 17-line edit
+  to the flat file had been replayed as a delete), so its 20 tests collected nothing on the pushed
+  heads and CI. Restored from main's 585-line file with the branch's own hunk (the dense-line mirror
+  reads `UK_ROWWISE_DENSE_POSTURE.gate_policy_suffix` instead of loading the retired tool by path);
+  20 passed on this tree, no digest moved.
