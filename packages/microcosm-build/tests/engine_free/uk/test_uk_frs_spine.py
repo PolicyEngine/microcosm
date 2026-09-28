@@ -2008,6 +2008,127 @@ def test_driver_records_sanitized_failed_staging_lifecycle(
     assert str(tmp_path) not in serialized
 
 
+def test_driver_materializes_a_blocked_assembled_gate_report_before_failing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A gate refusal inside ``run_graph`` still leaves ``spine_gates.json``.
+
+    The assembled battery runs as a graph node and the first later stage
+    refuses on its stored verdict, so ``run_graph`` raises before the
+    success-path materialisation. The driver hands the operator the same
+    report file the in-process battery wrote before it raised: blocked at
+    ``assembled``, the transferred phase unreached, the block error in the
+    receipt and on stderr, and no H5.
+    """
+    from microcosm.build.gate_battery import (
+        GateOutcome,
+        GatePhaseReport,
+        GateStatus,
+        gate_phase_report_payload,
+    )
+    from microcosm.build.gates import GateResult
+    from microcosm.build.uk_runtime.graph_evidence import (
+        require_uk_spine_gate_admission,
+    )
+    from microcosm.graph import NodeRejected
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "blocked.h5"
+    tool = _load_tool()
+    spec = _synthetic_spec(stage)
+    # The synthetic roster carries the real gate declarations, so the driver
+    # arms the spine battery and the graph gains its gate nodes.
+    spec.gates = load_country_spec("uk").gates
+    monkeypatch.setattr(tool, "load_country_spec", lambda country: spec)
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+
+    gates = tool._spine_gate_manifest_from_spec(spec)
+    assembled = [entry for entry in gates.gates if entry.phase == "assembled"]
+    failed = assembled[0]
+    report = GatePhaseReport(
+        "assembled",
+        tuple(
+            GateOutcome(
+                entry,
+                GateStatus.FAILED if entry is failed else GateStatus.PASSED,
+                GateResult(
+                    name=entry.id,
+                    passed=entry is not failed,
+                    failures=(
+                        ("synthetic assembled failure",) if entry is failed else ()
+                    ),
+                    details={},
+                ),
+            )
+            for entry in assembled
+        ),
+    )
+    stored = json.dumps(gate_phase_report_payload(report, gates=gates)).encode()
+
+    def _refuse_admission(*_args, **_kwargs):
+        # What the first post-checkpoint stage does with the stored verdict,
+        # wrapped the way the executor wraps a kernel failure.
+        context = SimpleNamespace(
+            artifacts={"spine_gate": SimpleNamespace(payload=stored)},
+            node=SimpleNamespace(artifact_inputs=()),
+            params={
+                "spine_gate_phase": "assembled",
+                "spine_gate_release_candidate": False,
+                "spine_gate_synthetic_smoke": False,
+            },
+        )
+        try:
+            require_uk_spine_gate_admission(context)
+        except ValueError as refusal:
+            raise NodeRejected(
+                f"Node 'frs_age_tail' kernel 'uk.stage@1' failed: {refusal}"
+            ) from refusal
+        pytest.fail("the stored assembled verdict did not refuse admission")
+
+    monkeypatch.setattr(tool, "run_graph", _refuse_admission)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--no-staging",
+            ]
+        )
+        == 1
+    )
+
+    report_path = output.with_suffix(".spine_gates.json")
+    err = capsys.readouterr().err
+    assert f"Gate battery blocked at phase 'assembled' (report: {report_path})" in err
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["blocked_at_phase"] == "assembled"
+    assert payload["gates"][failed.id]["status"] == "failed"
+    transferred = [entry.id for entry in gates.gates if entry.phase == "transferred"]
+    assert transferred
+    assert {payload["gates"][gate_id]["status"] for gate_id in transferred} == {
+        "unreached"
+    }
+    assert not output.exists()
+    receipts = list((tmp_path / "logbook-receipts").rglob("error.json"))
+    assert len(receipts) == 1
+    assert json.loads(receipts[0].read_text())["error_type"].endswith(
+        "GateBatteryBlockedError"
+    )
+    rows = load_spool_rows(tmp_path / "logbook-spool")
+    assert len(rows) == 1
+    assert rows[0].disposition == "failed"
+
+
 def test_driver_sampled_named_edge_aborts_with_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

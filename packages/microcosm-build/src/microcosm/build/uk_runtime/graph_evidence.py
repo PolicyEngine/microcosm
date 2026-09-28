@@ -49,6 +49,30 @@ from .frs_relationships import CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS
 SPINE_GATE_REPORT_TYPE = ArtifactType("microcosm.gate-phase-report", 1)
 
 
+class SpineGateBlockedError(ValueError):
+    """A stored spine gate report refused the stage that depends on it.
+
+    Raised by :func:`require_uk_spine_gate_admission` with the report it
+    decoded from the gate node's persisted artifact (the executor loaded
+    those bytes from the store by their verified key). The executor wraps
+    the refusal in ``NodeRejected`` with this as its cause, so the driver
+    can find the report on the failure path and materialise it for the
+    operator before it re-raises: the graph holds the evidence, the
+    sidecar is how the operator reads it.
+    """
+
+    def __init__(
+        self,
+        report: gate_battery.GatePhaseReport,
+        blocking: Sequence[gate_battery.GateOutcome],
+    ) -> None:
+        self.report = report
+        super().__init__(
+            f"Stored {report.phase} spine gates block downstream execution: "
+            + ", ".join(outcome.entry.id for outcome in blocking)
+        )
+
+
 def require_uk_spine_gate_admission(
     context: KernelContext, *, alias: str = "spine_gate"
 ) -> None:
@@ -71,10 +95,46 @@ def require_uk_spine_gate_admission(
         synthetic_smoke=bool(context.params["spine_gate_synthetic_smoke"]),
     )
     if blocking:
-        raise ValueError(
-            f"Stored {report.phase} spine gates block downstream execution: "
-            + ", ".join(outcome.entry.id for outcome in blocking)
-        )
+        raise SpineGateBlockedError(report, blocking)
+
+
+def blocked_spine_gate_report(
+    error: BaseException,
+) -> gate_battery.GatePhaseReport | None:
+    """The stored phase report behind a graph failure, when a gate refused it.
+
+    Walks the cause/context chain the executor builds around a kernel
+    refusal; ``None`` when the run failed for any other reason.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, SpineGateBlockedError):
+            return current.report
+        current = current.__cause__ or current.__context__
+    return None
+
+
+def materialize_blocked_spine_gate_report(
+    error: BaseException, *, battery: GateBatteryRun
+) -> None:
+    """Apply the write-before-block policy to a run ``run_graph`` refused.
+
+    The success path restores every stored phase through
+    :func:`materialize_spine_gate_reports`; a run the assembled gate blocks
+    never returns a manifest, so the report reaches the operator from the
+    refusal itself. Recording it through ``battery`` writes the sidecar with
+    ``blocked_at_phase`` set and the later phase ``unreached``, then raises
+    :class:`~microcosm.build.gate_battery.GateBatteryBlockedError` naming the
+    report path, exactly as the in-process battery did. A failure that is not
+    a gate refusal, or a battery that already blocked, leaves nothing to do.
+    """
+    report = blocked_spine_gate_report(error)
+    if report is None or battery.blocked_at_phase is not None:
+        return
+    battery.record_phase(report)
+    battery.enforce(report.phase, mode=BlockingMode.BLOCKS_ARTIFACT)
 
 
 def uk_spine_gate_manifest(spec: CountrySpec) -> GatesManifest | None:

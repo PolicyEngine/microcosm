@@ -103,7 +103,7 @@ Structural failures stop export. The maintained local statistical failure policy
 
 Recorded for review in `experiments/901-uk-main-rebase-receipts.md` (R3):
 
-- A blocked *assembled* spine gate now fails inside `run_graph`, so the gate report lives in the content store on that path (the previous tool wrote `spine_gates.json` before raising); a blocked *transferred* gate still writes the file.
+- A blocked *assembled* spine gate fails inside `run_graph` (the first post-checkpoint stage refuses on the stored verdict), and the driver materialises the stored assembled report into `spine_gates.json` (`blocked_at_phase: "assembled"`, the transferred phase `unreached`) before it fails, so the operator gets the same file the previous tool wrote before raising; a blocked *transferred* gate writes the file on the success path. The report is also in the content store either way.
 - `numerical_dependencies` pins installed versions into the H2 fixture.
 - `_normalise_uk_local_bound_families` accepts an empty declaration (country-only scope).
 - Per-epoch `calibration_progress` staging rows come from the dense solve only.

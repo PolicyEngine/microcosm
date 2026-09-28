@@ -64,9 +64,11 @@ sampling; `--no-staging`; checkpoints on. Script and outputs:
 
 ## R3. Behaviour changes recorded for review
 
-- A blocked *assembled* spine gate now fails inside `run_graph`, so the gate report lives in
-  the content store on that path (main wrote `spine_gates.json` before raising); a blocked
-  *transferred* gate still writes the file (R1).
+- Withdrawn 2026-09-28 (review item 1): a blocked *assembled* spine gate fails inside
+  `run_graph`, and the driver now materialises the stored assembled report into
+  `spine_gates.json` (`blocked_at_phase: "assembled"`, transferred `unreached`) before it
+  fails, as main's tool did; a blocked *transferred* gate writes the file on the success path
+  (R1). Pinned by `test_uk_frs_spine.py::test_driver_materializes_a_blocked_assembled_gate_report_before_failing`.
 - `numerical_dependencies` pins installed versions into the H2 fixture.
 - `_normalise_uk_local_bound_families` accepts an empty declaration (country-only scope).
 - Per-epoch `calibration_progress` staging rows come from the dense solve only.

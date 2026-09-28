@@ -21,7 +21,12 @@ from microcosm.build.frame_sampling import (
     normalize_sampled_household_mass,
     sample_frame_households,
 )
-from microcosm.build.gate_battery import BlockingMode, EvidenceContext, GateBatteryRun
+from microcosm.build.gate_battery import (
+    BlockingMode,
+    EvidenceContext,
+    GateBatteryBlockedError,
+    GateBatteryRun,
+)
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -103,6 +108,7 @@ from microcosm.build.uk_runtime.graph import (
 from microcosm.build.uk_runtime.graph_evidence import (
     add_uk_spine_gate_nodes,
     load_spine_stage_artifacts,
+    materialize_blocked_spine_gate_report,
     materialize_spine_gate_reports,
     register_spine_gate_kernel,
     spine_sidecar_evidence,
@@ -1634,6 +1640,7 @@ def main(argv: list[str] | None = None) -> int:
     code_pin = "unresolved-local-git-code-pin"
     spool_dir = args.spine_h5.parent / "logbook-spool"
     telemetry: StagingTelemetryV2 | None = None
+    spine_battery: GateBatteryRun | None = None
     try:
         _validate_args(args)
         # A crash between the H5 write and the sidecar writes must never
@@ -1933,6 +1940,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
         return 0
     except Exception as error:
+        if spine_battery is not None:
+            # A run the assembled gate blocked never returned a manifest for
+            # the success-path materialisation; the refusal carries the
+            # stored report, and the battery writes ``spine_gates.json``
+            # before the block error replaces the graph's own wrapper, so
+            # the receipt and the operator message both name the report.
+            try:
+                materialize_blocked_spine_gate_report(error, battery=spine_battery)
+            except GateBatteryBlockedError as blocked:
+                error = blocked
         if telemetry is not None and telemetry.status == "running":
             try:
                 telemetry.fail(error)
