@@ -213,11 +213,13 @@ def _energy_rake_gate(
     relative deviation of any cell mean from its levelled target, per margin
     and fuel, to ``maximum_relative_deviation``, one fixed tolerance on the
     IPF's cross-margin residual. That residual must be converged, not
-    truncated: each fuel's ``sweep_residuals`` series may change by at most
-    ``maximum_residual_change_over_window`` over its last
-    ``convergence_window_sweeps`` sweeps, so a rake stopped while its residual
-    was still falling fails even when the truncated value sits inside the
-    tolerance. The rake must have run in kWh with gas over gas-connected rows
+    truncated: across each fuel's last ``convergence_window_sweeps`` sweeps,
+    its ``sweep_residuals`` may range (maximum minus minimum) by at most
+    ``maximum_residual_change_over_window``, so a rake stopped while its
+    residual was still falling fails even when the truncated value sits inside
+    the tolerance, and so does one oscillating inside the window. The window
+    presupposes the rake runs more sweeps than the window is long; a shorter
+    series fails closed. The rake must have run in kWh with gas over gas-connected rows
     and no zero-current cell; a missing margin, block, tolerance or sweep
     series fails closed.
 
@@ -421,12 +423,15 @@ def _energy_rake_gate(
                 f"{window}-sweep convergence window."
             )
             continue
-        change = abs(float(series[-1]) - float(series[-1 - window]))
+        # The window's range, not its endpoints: a rake oscillating with a
+        # period that divides the window would score zero on its endpoints.
+        tail = [float(v) for v in series[-1 - window :]]
+        change = max(tail) - min(tail)
         details["residual_change_over_window"][fuel] = change
         if change > flatness:
             failures.append(
-                f"{stage}: {fuel} residual moved {change:.4f} over the last {window} "
-                f"of {len(series)} sweeps, above {flatness}: the rake was "
+                f"{stage}: {fuel} residual ranged over {change:.4f} across the last "
+                f"{window} of {len(series)} sweeps, above {flatness}: the rake was "
                 "truncated, not converged."
             )
     zero_cells = receipt.get("zero_current_cells")
@@ -1492,7 +1497,7 @@ def _bus_travel_facts_gate(
 
     Fact checks on the ``nts_bus_travel`` receipts, every published value
     recomputed here from the vendored rows the stage declares (never taken
-    from the receipt): the frame's design-weighted share of persons who use
+    from the receipt): the frame's prior-weighted share of persons who use
     a local bus at least yearly must sit within ``maximum_user_share_deviation``
     (points) of the vendored NTS0313 all-ages share, and the frame's mean
     local-bus trips per person per series within ``maximum_trip_rate_deviation``
