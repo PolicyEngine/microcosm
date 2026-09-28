@@ -43,6 +43,7 @@ __all__ = [
     "SupportMixArm",
     "acs_selection_order",
     "arm_initial_weights",
+    "assemble_target_matrix",
     "clone_copies",
     "distinct_unit_ess",
     "hash_uniform",
@@ -127,8 +128,10 @@ class SupportMixArm:
         acs_fill_share: Share of the fill (``budget`` minus the CPS source
             households) taken by ACS households; the rest are CPS location
             clones. ``1.0`` fills with ACS only, ``0.0`` with clones only.
-        seed: Salt suffix for the ACS order and clone draws, so replicate
-            arms differ only in which households fill.
+        seed: Replicate index. The bake-off driver takes the ``seed``-th
+            disjoint block of one fixed ACS order (so seed 0 arms are nested
+            across budgets and replicates are independent draws) and salts
+            the clone draws with it.
     """
 
     budget: int | None
@@ -341,3 +344,57 @@ def distinct_unit_ess(weights: np.ndarray, unit_codes: Iterable) -> float:
     _, inverse = np.unique(codes, return_inverse=True)
     unit_weight = np.bincount(inverse.ravel(), weights=w)
     return kish_ess(unit_weight)
+
+
+def assemble_target_matrix(
+    values,
+    row_geography: Mapping[str, np.ndarray],
+    target_concept: np.ndarray,
+    target_level: Sequence[str],
+    target_geography: np.ndarray,
+):
+    """Targets x rows: ``A[t, i] = values[i, concept(t)]`` where row ``i`` is
+    in target ``t``'s geography, else 0.
+
+    ``values`` is a rows x concepts sparse matrix. ``row_geography`` maps each
+    level (``"state"``, ``"cd"``) to one integer code per row; ``"national"``
+    needs none. Several targets may share a (concept, level, geography) cell
+    (the same concept published by two sources); each receives the cell's
+    values.
+    """
+    import scipy.sparse as sp
+
+    coo = sp.coo_matrix(values)
+    concept = np.asarray(target_concept, dtype=np.int64)
+    level = np.asarray(target_level, dtype=object)
+    geography = np.asarray(target_geography, dtype=np.int64)
+    n_targets, n_rows = len(concept), coo.shape[0]
+    rows_parts, cols_parts, data_parts = [], [], []
+    for name in np.unique(level):
+        sel = np.flatnonzero(level == name)
+        if name == "national":
+            row_geo = np.zeros(n_rows, dtype=np.int64)
+            target_geo = np.zeros(len(sel), dtype=np.int64)
+        else:
+            row_geo = np.asarray(row_geography[name], dtype=np.int64)
+            target_geo = geography[sel]
+        span = int(max(row_geo.max(initial=0), target_geo.max(initial=0))) + 1
+        cell = concept[sel] * span + target_geo
+        order = np.argsort(cell, kind="stable")
+        cells_sorted, targets_sorted = cell[order], sel[order]
+        entry = coo.col.astype(np.int64) * span + row_geo[coo.row]
+        low = np.searchsorted(cells_sorted, entry, "left")
+        count = np.searchsorted(cells_sorted, entry, "right") - low
+        keep = count > 0
+        repeat = count[keep]
+        starts = np.repeat(low[keep], repeat)
+        offsets = np.arange(int(repeat.sum())) - np.repeat(np.cumsum(repeat) - repeat, repeat)
+        rows_parts.append(targets_sorted[starts + offsets])
+        cols_parts.append(np.repeat(coo.row[keep], repeat))
+        data_parts.append(np.repeat(coo.data[keep], repeat))
+    if not rows_parts:
+        return sp.csr_matrix((n_targets, n_rows), dtype=np.float64)
+    return sp.csr_matrix(
+        (np.concatenate(data_parts), (np.concatenate(rows_parts), np.concatenate(cols_parts))),
+        shape=(n_targets, n_rows),
+    )

@@ -13,6 +13,8 @@ Invariants checked for every drawn input:
   source households; a row's copies sum back to its per-year weight;
 - ESS: distinct-unit ESS never exceeds the row ESS or the number of distinct
   units, and equals the row ESS when every unit is distinct;
+- assembly (differential): the sparse target matrix equals a naive dense
+  construction, including cells that carry several targets;
 - split: the role is a pure function of the group key, district children
   share their parent's role, vintage tokens never change a role, and the
   hash matches the pending release primitive byte for byte.
@@ -36,6 +38,7 @@ from microcosm.build.us_runtime.support_mix import (  # noqa: E402
     SupportMixArm,
     acs_selection_order,
     arm_initial_weights,
+    assemble_target_matrix,
     clone_copies,
     distinct_unit_ess,
     hash_uniform,
@@ -222,3 +225,29 @@ def test_arm_validation() -> None:
     arm = SupportMixArm(budget=600_000, cps_income_years=(2024, 2022), acs_fill_share=0.5, seed=2)
     assert arm.cps_income_years == (2022, 2024)
     assert arm.label == "b600k.cps2022-2024.acs050.s2"
+
+
+@settings(max_examples=120, deadline=None)
+@given(data=st.data())
+def test_assemble_matches_naive_dense_construction(data) -> None:
+    import scipy.sparse as sp
+
+    n_rows = data.draw(st.integers(1, 30))
+    n_concepts = data.draw(st.integers(1, 6))
+    dense = np.array(data.draw(st.lists(
+        st.lists(st.sampled_from([0.0, 0.0, 1.5, -2.0, 7.0]), min_size=n_concepts, max_size=n_concepts),
+        min_size=n_rows, max_size=n_rows)))
+    state = np.array(data.draw(st.lists(st.integers(0, 3), min_size=n_rows, max_size=n_rows)))
+    cd = np.array(data.draw(st.lists(st.integers(0, 5), min_size=n_rows, max_size=n_rows)))
+    targets = data.draw(st.lists(st.tuples(
+        st.integers(0, n_concepts - 1), st.sampled_from(["national", "state", "cd"]), st.integers(0, 5)),
+        min_size=1, max_size=25))
+    concept = np.array([t[0] for t in targets])
+    level = [t[1] for t in targets]
+    geo = np.array([0 if t[1] == "national" else (t[2] % 4 if t[1] == "state" else t[2]) for t in targets])
+    got = assemble_target_matrix(sp.csr_matrix(dense), {"state": state, "cd": cd}, concept, level, geo).toarray()
+    expected = np.zeros((len(targets), n_rows))
+    for t, (c, lv, g) in enumerate(zip(concept, level, geo, strict=True)):
+        member = np.ones(n_rows, bool) if lv == "national" else ((state if lv == "state" else cd) == g)
+        expected[t] = dense[:, c] * member
+    np.testing.assert_array_equal(got, expected)

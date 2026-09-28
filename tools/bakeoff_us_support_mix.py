@@ -48,6 +48,7 @@ from microcosm.build.us_runtime.support_mix import (  # noqa: E402
     SupportMixArm,
     acs_selection_order,
     arm_initial_weights,
+    assemble_target_matrix,
     clone_copies,
     distinct_unit_ess,
     hash_uniform,
@@ -281,6 +282,15 @@ def do_compile(args) -> None:
     )
     national_state_names = {spec.name for spec in national_state}
     loss_weights = np.asarray(tool._fiscal_target_loss_weights(registry), dtype=np.float64)
+    # The release computes weights on the surface it calibrates, so the
+    # national product gets its own vector over the national_state specs.
+    from types import SimpleNamespace
+
+    national_state_weights = dict(zip(
+        (spec.name for spec in national_state),
+        np.asarray(tool._fiscal_target_loss_weights(SimpleNamespace(specs=tuple(national_state))), dtype=np.float64),
+        strict=True,
+    ))
 
     concept_ids: dict[tuple, int] = {}
     concept_specs = []
@@ -337,6 +347,7 @@ def do_compile(args) -> None:
             "notes": ";".join(n for n in notes if not n.startswith("excluded:")),
             "in_national_state": spec.name in national_state_names,
             "loss_weight": float(loss_weights[index]),
+            "loss_weight_national_state": float(national_state_weights.get(spec.name, np.nan)),
             "group_key": group_key,
             "role": target_split_role(group_key),
             "dimension_group": group,
@@ -496,6 +507,8 @@ def _row_index_columns(tables: dict[str, pd.DataFrame], source: str) -> pd.DataF
     })
     if source == "cps":
         peridnum = person["PERIDNUM"].astype(str).str[:20].to_numpy()
+        if (pd.Series(peridnum).groupby(person_position).nunique() != 1).any():
+            raise RuntimeError("persons of one CPS household disagree on PERIDNUM[:20] (H_IDNUM)")
         first = pd.Series(peridnum).groupby(person_position).first()
         out["unit_key"] = "cps:" + first.reindex(np.arange(n)).to_numpy().astype(str)
         year = pd.Series(pd.to_numeric(person["source_year"]).to_numpy()).groupby(person_position).first()
@@ -661,15 +674,18 @@ def _materialize_frame(frame, concept_specs, *, summary_path: Path | None, batch
 
 
 def acs_rank(work: Path) -> np.ndarray:
-    """Each ACS row's position in the fixed salted selection order (cached)."""
-    path = work / "acs_rank.npy"
-    if path.exists():
-        return np.load(path)
+    """Each ACS row's position in the fixed salted selection order (cached,
+    keyed by a digest of the row index's unit-key sequence)."""
     rows = pd.read_parquet(work / "rows_acs.parquet", columns=["unit_key"])
+    digest = hashlib.sha256("\n".join(rows["unit_key"]).encode()).hexdigest()
+    path, key = work / "acs_rank.npy", work / "acs_rank.key"
+    if path.exists() and key.exists() and key.read_text() == digest:
+        return np.load(path)
     order = acs_selection_order(rows["unit_key"].tolist(), salt=ACS_SELECTION_SALT)
     rank = np.empty(len(order), dtype=np.int64)
     rank[order] = np.arange(len(order))
     np.save(path, rank)
+    key.write_text(digest)
     return rank
 
 
@@ -919,29 +935,30 @@ class _ConceptStore:
 
     Each materialized part carries its rows' global positions; rows never
     materialized are all-zero and flagged, and an arm refuses to use them.
+    Parts must not overlap: a row materialized twice would be summed.
     """
 
     def __init__(self, work: Path, source: str):
         directory = work / "concepts" / source
-        n_rows = len(pd.read_parquet(work / f"rows_{source}.parquet", columns=["shard"]))
         shard_of = pd.read_parquet(work / f"rows_{source}.parquet", columns=["shard"])["shard"].to_numpy()
+        n_rows = len(shard_of)
         self.measures = json.loads((directory / "measures.json").read_text())
         rows_parts, parts = [], []
+        self.materialized = np.zeros(n_rows, dtype=bool)
         for path in sorted(directory.glob("shard_*.npz")):
             if path.name.endswith(".tmp.npz"):
                 continue
+            part = sp.load_npz(path).tocoo()
             rows_path = path.with_suffix(".rows.npy")
             rows = (np.load(rows_path) if rows_path.exists()
                     else np.flatnonzero(shard_of == int(path.stem.split("_")[1].split(".")[0])))
-            part = sp.load_npz(path).tocoo()
+            if part.shape[0] != len(rows):
+                raise RuntimeError(f"{path.name}: {part.shape[0]} rows but {len(rows)} positions")
+            if self.materialized[rows].any():
+                raise RuntimeError(f"{path.name}: overlaps rows already materialized by another part")
+            self.materialized[rows] = True
             rows_parts.append(rows[part.row])
             parts.append(part)
-        self.materialized = np.zeros(n_rows, dtype=bool)
-        for path in sorted(directory.glob("shard_*.rows.npy")):
-            self.materialized[np.load(path)] = True
-        for path in sorted(directory.glob("shard_*.npz")):
-            if not path.with_suffix(".rows.npy").exists() and not path.name.endswith(".tmp.npz"):
-                self.materialized[shard_of == int(path.stem.split("_")[1].split(".")[0])] = True
         self.matrix = sp.csr_matrix(
             (np.concatenate([p.data for p in parts]).astype(np.float32),
              (np.concatenate(rows_parts), np.concatenate([p.col for p in parts]))),
@@ -999,25 +1016,17 @@ def _spmv_class():
 _SpMV = None
 
 
-def _assemble(values: sp.csr_matrix, geo: dict[str, np.ndarray], lookup: dict[str, np.ndarray],
-              n_targets: int) -> sp.csr_matrix:
-    """Targets x rows: each nonzero concept value lands in its geography's target."""
-    coo = values.tocoo()
-    rows_parts, cols_parts, data_parts = [], [], []
-    for level, table in lookup.items():
-        if level == "national":
-            target = table[coo.col]
-        else:
-            codes = geo[level][coo.row]
-            target = table[coo.col, codes]
-        keep = target >= 0
-        rows_parts.append(target[keep])
-        cols_parts.append(coo.row[keep])
-        data_parts.append(coo.data[keep])
-    return sp.csr_matrix(
-        (np.concatenate(data_parts), (np.concatenate(rows_parts), np.concatenate(cols_parts))),
-        shape=(n_targets, values.shape[0]),
-    )
+def _assemble(values: sp.csr_matrix, geo: dict[str, np.ndarray], frame: pd.DataFrame,
+              state_code: dict, cd_code: dict) -> sp.csr_matrix:
+    """Targets x rows for a target frame (see ``assemble_target_matrix``)."""
+    levels = frame["level"].to_numpy()
+    target_geo = np.zeros(len(frame), dtype=np.int64)
+    is_state, is_cd = levels == "state", levels == "cd"
+    target_geo[is_state] = [state_code[x] for x in frame["state_fips"].to_numpy()[is_state]]
+    target_geo[is_cd] = [cd_code[x] for x in frame["cd_geoid"].to_numpy()[is_cd]]
+    return assemble_target_matrix(
+        values, geo, frame["col"].to_numpy(), levels, target_geo
+    ).tocsr()
 
 
 def do_arm(args) -> None:
@@ -1044,7 +1053,15 @@ def do_arm(args) -> None:
     if args.exclude_gq:
         rows_acs = rows_acs[~rows_acs["group_quarters"]].reset_index(drop=True)
     # ---------------- rows
-    cps_hh = rows_cps[rows_cps["channel"] == "asec"].groupby("income_year").size().to_dict()
+    asec = rows_cps[rows_cps["channel"] == "asec"]
+    cps_hh = asec.groupby("income_year").size().to_dict()
+    if (asec.groupby("source_key").size() != 1).any() or rows_cps["unit_key"].str.endswith("nan").any():
+        raise SystemExit("CPS source keys are not one ASEC row per source household")
+    if rows_cps.groupby("income_year")["source_key"].nunique().to_dict() != cps_hh:
+        raise SystemExit("CPS source keys disagree with ASEC household counts")
+    for name, frame in (("cps", rows_cps), ("acs", rows_acs)):
+        if not (frame["owner"].mean() > 0.3 and frame["renter"].mean() > 0.1):
+            raise SystemExit(f"{name} tenure columns look unparsed (owner/renter shares)")
     counts = plan_arm_counts(arm, cps_households_by_year=cps_hh, acs_households=len(rows_acs))
     cps_rows = rows_cps[rows_cps["income_year"].isin(arm.cps_income_years)].reset_index(drop=True)
     source_keys = cps_rows["source_key"].drop_duplicates().to_numpy()
@@ -1077,7 +1094,8 @@ def do_arm(args) -> None:
     cps_expanded["copy"] = copy_number
     w_cps = np.repeat(cps_w, repeat)
     if counts.clones:
-        geo_pool = rows_acs[["state_fips", "cd_geoid", "county_fips", "design_weight"]]
+        geo_pool = rows_acs.loc[~rows_acs["group_quarters"].astype(bool),
+                                ["state_fips", "cd_geoid", "county_fips", "design_weight"]]
         for state, group in cps_expanded[cps_expanded["copy"] > 0].groupby("state_fips"):
             pool = geo_pool[geo_pool["state_fips"] == state]
             cum = np.cumsum(pool["design_weight"].to_numpy())
@@ -1128,33 +1146,23 @@ def do_arm(args) -> None:
     geo = {"state": selected["state_fips"].map(state_code).to_numpy(),
            "cd": selected["cd_geoid"].map(cd_code).to_numpy()}
 
-    def lookup_for(frame: pd.DataFrame) -> dict[str, np.ndarray]:
-        tables = {"national": np.full(len(measures), -1, np.int64),
-                  "state": np.full((len(measures), len(state_code)), -1, np.int64),
-                  "cd": np.full((len(measures), len(cd_code)), -1, np.int64)}
-        for i, row in enumerate(frame.itertuples(index=False)):
-            if row.level == "national":
-                tables["national"][row.col] = i
-            elif row.level == "state":
-                tables["state"][row.col, state_code[row.state_fips]] = i
-            elif row.level == "cd":
-                tables["cd"][row.col, cd_code[row.cd_geoid]] = i
-        return tables
-
-    a_train = _assemble(values, geo, lookup_for(train), len(train))
-    a_hold = _assemble(values, geo, lookup_for(holdout), len(holdout))
+    a_train = _assemble(values, geo, train, state_code, cd_code)
+    a_hold = _assemble(values, geo, holdout, state_code, cd_code)
     b_train = train["value"].to_numpy(np.float64)
-    loss_w = train["loss_weight"].to_numpy(np.float64)
+    loss_w = train["loss_weight_national_state" if args.product == "national" else "loss_weight"].to_numpy(np.float64)
     # Local product: district household populations are trained, as in the
     # ACS local release (never scored).
     truth = truth_table(args.truth)
     extra_train = 0
     if args.product == "local":
-        cd_truth = truth[(truth["level"] == "cd") & (truth["measure"] == "persons_total")]
+        # Household population (B25008): group-quarters rows neither count
+        # toward nor can be pushed by it, so CPS-only arms are not forced to
+        # inflate households to stand in for dorms and nursing homes.
+        cd_truth = truth[(truth["level"] == "cd") & (truth["measure"] == "persons_in_households")]
         cd_truth = cd_truth[cd_truth["geo"].isin(cd_code)]
-        persons = selected["persons"].to_numpy(np.float64)
+        persons = selected["persons"].to_numpy(np.float64) * ~selected["group_quarters"].astype(bool).to_numpy()
         codes = selected["cd_geoid"].map({g: i for i, g in enumerate(cd_truth["geo"])}).fillna(-1).to_numpy().astype(np.int64)
-        keep = codes >= 0
+        keep = (codes >= 0) & (persons > 0)
         pop = sp.csr_matrix((persons[keep], (codes[keep], np.flatnonzero(keep))), shape=(len(cd_truth), len(selected)))
         a_train = sp.vstack([a_train, pop], format="csr")
         b_train = np.concatenate([b_train, cd_truth["value"].to_numpy(np.float64)])
@@ -1213,6 +1221,7 @@ def do_arm(args) -> None:
         "owner": selected["owner"].to_numpy() * household_rows,
         "renter": selected["renter"].to_numpy() * household_rows,
         "rent_contract_annual_aggregate": selected["rent_annual"].to_numpy() * household_rows,
+        "rent_gross_annual_aggregate": selected["rent_annual"].to_numpy() * household_rows,
         "real_estate_taxes_aggregate": selected["real_estate_taxes"].to_numpy() * household_rows * selected["owner"].to_numpy(),
         "persons_in_households": selected["persons"].to_numpy() * household_rows,
         "persons_total": selected["persons"].to_numpy(),
@@ -1237,7 +1246,7 @@ def do_arm(args) -> None:
             est0_map = dict(zip(uniq, e0, strict=True))
             est1_map = dict(zip(uniq, e1, strict=True))
             for geo_code, value in zip(t["geo"], t["value"], strict=True):
-                if (level == "cd" and args.product == "local" and measure == "persons_total"):
+                if (level == "cd" and args.product == "local" and measure == "persons_in_households"):
                     continue  # trained
                 acs_eval.append((level, measure, int(geo_code), float(value),
                                  float(est0_map.get(geo_code, 0.0)), float(est1_map.get(geo_code, 0.0))))
@@ -1344,7 +1353,15 @@ def do_report(args) -> None:
     if not holdout.empty:
         holdout["capped"] = holdout["rel_error"].clip(upper=1.0)
         holdout["capped_initial"] = holdout["rel_error_initial"].clip(upper=1.0)
-        grouped = holdout[holdout["supported"]].groupby(
+        # Unsupported targets (no row can move them) are scored as misses
+        # (estimate 0 -> capped error 1), so every arm is averaged over the
+        # same held-out set; an intersection table is written as well.
+        supported_everywhere = holdout.groupby(["product", "name"])["supported"].transform("all")
+        holdout[supported_everywhere].groupby(
+            ["product", "arm", "dimension_group", "dimension", "level"]
+        ).agg(targets=("capped", "size"), capped_mean=("capped", "mean")).reset_index().to_csv(
+            args.out / "holdout_by_dimension_level_common_support.csv", index=False)
+        grouped = holdout.groupby(
             ["product", "arm", "dimension_group", "dimension", "level"])
         table = grouped.apply(lambda g: pd.Series({
             "targets": len(g),
@@ -1352,6 +1369,7 @@ def do_report(args) -> None:
             "weighted_capped_mean": np.average(g["capped"], weights=g["loss_weight"]),
             "median_rel": g["rel_error"].median(),
             "capped_mean_initial": g["capped_initial"].mean(),
+            "unsupported": int((~g["supported"]).sum()),
         })).reset_index()
         table.to_csv(args.out / "holdout_by_dimension_level.csv", index=False)
         unsupported = holdout[~holdout["supported"]].groupby(["product", "arm"]).size()
