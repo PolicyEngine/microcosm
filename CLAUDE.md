@@ -31,7 +31,9 @@ across two pytest workers with `--dist loadfile`. The US engine job runs the
 contract and scenario categories in small pytest processes with at most two
 processes active at once, then runs each full-workflow module in its own serial
 process. This releases country-engine state between batches while limiting peak
-memory. The UK engine job remains serial.
+memory. The UK engine job remains serial. Shell orchestration for these jobs,
+the US timing summary, and the final job-result checks lives in versioned
+scripts under `tools/`; the workflow invokes those scripts directly.
 The engine-free job
 installs no country extra and always runs shared tests plus the affected
 countries' engine-free tests. The country

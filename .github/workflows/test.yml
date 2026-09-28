@@ -65,19 +65,7 @@ jobs:
         env:
           RUN_US: ${{ github.event_name == 'push' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.us == 'true' }}
           RUN_UK: ${{ github.event_name == 'push' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.uk == 'true' }}
-        run: |
-          groups=(engine-free-shared)
-          if [[ "$RUN_US" == "true" ]]; then groups+=(engine-free-us); fi
-          if [[ "$RUN_UK" == "true" ]]; then groups+=(engine-free-uk); fi
-          files=()
-          for group in "${groups[@]}"; do
-            while IFS= read -r file; do files+=("$file"); done < <(
-              uv run --no-sync python tools/ci_test_groups.py --list "$group"
-            )
-          done
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -n 2 --dist loadfile -v --tb=short --maxfail=1 \
-            --durations=25 -p no:cacheprovider
+        run: bash tools/run_engine_free_tests.sh
 
   engine-us:
     needs: changes
@@ -95,17 +83,10 @@ jobs:
       - name: Sync workspace with the US engine
         run: uv sync --all-packages --locked --extra us
       - name: Run US engine tests
-        run: |
-          /usr/bin/time -v uv run --no-sync python \
-            -m tools.run_engine_test_categories \
-            --json-report engine-us-timings.json \
-            --markdown-report engine-us-timings.md
+        run: bash tools/run_engine_us_tests.sh
       - name: Add US engine timings to the job summary
         if: always()
-        run: |
-          if [[ -f engine-us-timings.md ]]; then
-            cat engine-us-timings.md >> "$GITHUB_STEP_SUMMARY"
-          fi
+        run: bash tools/add_engine_us_timing_summary.sh
       - name: Upload US engine timing reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -132,14 +113,7 @@ jobs:
       - name: Sync workspace with the UK engine
         run: uv sync --all-packages --locked --extra uk
       - name: Run UK engine tests
-        run: |
-          mapfile -t files < <(
-            uv run --no-sync python tools/ci_test_groups.py --list engine-uk
-          )
-          # Keep country-engine execution serial for the same bounded-memory
-          # contract as the US engine job.
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -v --tb=short --maxfail=1 --durations=25 -p no:cacheprovider
+        run: bash tools/run_engine_uk_tests.sh
 
   integration-uk:
     permissions:
@@ -178,6 +152,9 @@ jobs:
       EXPECT_US: ${{ github.event_name == 'push' || needs.changes.outputs.us == 'true' || needs.changes.outputs.shared == 'true' }}
       EXPECT_UK: ${{ github.event_name == 'push' || needs.changes.outputs.uk == 'true' || needs.changes.outputs.shared == 'true' }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Require all selected jobs to pass
         env:
           CHANGES_RESULT: ${{ needs.changes.result }}
@@ -187,31 +164,4 @@ jobs:
           ENGINE_UK_RESULT: ${{ needs['engine-uk'].result }}
           INTEGRATION_UK_RESULT: ${{ needs['integration-uk'].result }}
           WHEELS_RESULT: ${{ needs.wheels.result }}
-        run: |
-          set -euo pipefail
-          fail=0
-          require_success() {
-            if [[ "$2" != "success" ]]; then
-              echo "::error::$1 = $2 (expected success)"
-              fail=1
-            fi
-          }
-          require_conditional() {
-            expected=$2
-            result=$3
-            if [[ "$expected" == "true" && "$result" != "success" ]]; then
-              echo "::error::$1 = $result (expected success)"
-              fail=1
-            elif [[ "$expected" != "true" && "$result" != "skipped" ]]; then
-              echo "::error::$1 = $result (expected skipped)"
-              fail=1
-            fi
-          }
-          require_success changes "$CHANGES_RESULT"
-          require_success lint "$LINT_RESULT"
-          require_success engine-free "$ENGINE_FREE_RESULT"
-          require_success integration-uk "$INTEGRATION_UK_RESULT"
-          require_success wheels "$WHEELS_RESULT"
-          require_conditional engine-us "$EXPECT_US" "$ENGINE_US_RESULT"
-          require_conditional engine-uk "$EXPECT_UK" "$ENGINE_UK_RESULT"
-          exit "$fail"
+        run: bash tools/require_ci_results.sh

@@ -10,12 +10,28 @@ _TEST_WORKFLOW = _ROOT / ".github/workflows/test.yml"
 _LEGACY_INTEGRATION_WORKFLOW = _ROOT / ".github/workflows/integration-tests.yml"
 _INTEGRATION_SCRIPT = _ROOT / "tools/run_integration_tests.sh"
 _ENGINE_RUNNER = _ROOT / "tools/run_engine_test_categories.py"
+_ENGINE_FREE_SCRIPT = _ROOT / "tools/run_engine_free_tests.sh"
+_ENGINE_US_SCRIPT = _ROOT / "tools/run_engine_us_tests.sh"
+_ENGINE_US_SUMMARY_SCRIPT = _ROOT / "tools/add_engine_us_timing_summary.sh"
+_ENGINE_UK_SCRIPT = _ROOT / "tools/run_engine_uk_tests.sh"
+_CI_RESULTS_SCRIPT = _ROOT / "tools/require_ci_results.sh"
+
+_WORKFLOW_SCRIPTS = (
+    _ENGINE_FREE_SCRIPT,
+    _ENGINE_US_SCRIPT,
+    _ENGINE_US_SUMMARY_SCRIPT,
+    _ENGINE_UK_SCRIPT,
+    _CI_RESULTS_SCRIPT,
+)
 
 
 def test_tests_workflow_selects_every_test_environment() -> None:
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
     script = _INTEGRATION_SCRIPT.read_text(encoding="utf-8")
     engine_runner = _ENGINE_RUNNER.read_text(encoding="utf-8")
+    workflow_scripts = "\n".join(
+        path.read_text(encoding="utf-8") for path in _WORKFLOW_SCRIPTS
+    )
 
     assert not _LEGACY_INTEGRATION_WORKFLOW.exists()
     assert "push:" in workflow
@@ -23,7 +39,7 @@ def test_tests_workflow_selects_every_test_environment() -> None:
     assert "workflow_dispatch:" not in workflow
     assert "  integration-uk:\n" in workflow
     for group in ci_test_groups.GROUP_DIRECTORIES:
-        assert group in workflow + script + engine_runner
+        assert group in workflow + script + engine_runner + workflow_scripts
     assert "uv sync --all-packages --locked --extra uk" in script
     assert "--list integration-uk" in script
     assert "--run-integration" in script
@@ -31,6 +47,7 @@ def test_tests_workflow_selects_every_test_environment() -> None:
 
 def test_integration_job_is_required_and_read_only() -> None:
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+    results_script = _CI_RESULTS_SCRIPT.read_text(encoding="utf-8")
 
     assert "timeout-minutes: 15" in workflow
     assert "permissions:\n      contents: read" in workflow
@@ -44,20 +61,28 @@ def test_integration_job_is_required_and_read_only() -> None:
         "integration-uk, wheels]" in workflow
     )
     assert "INTEGRATION_UK_RESULT: ${{ needs['integration-uk'].result }}" in workflow
-    assert 'require_success integration-uk "$INTEGRATION_UK_RESULT"' in workflow
+    assert 'require_success integration-uk "$INTEGRATION_UK_RESULT"' in results_script
+
+
+def test_workflow_invokes_versioned_shell_scripts_without_inline_blocks() -> None:
+    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+    ci_ok = workflow.split("\n  ci-ok:\n", maxsplit=1)[1]
+
+    assert "run: |" not in workflow
+    assert "- uses: actions/checkout@v4" in ci_ok
+    for path in _WORKFLOW_SCRIPTS:
+        relative = path.relative_to(_ROOT)
+        assert f"run: bash {relative}" in workflow
+        assert path.read_text(encoding="utf-8").startswith(
+            "#!/usr/bin/env bash\nset -euo pipefail\n"
+        )
 
 
 def test_country_engine_jobs_bound_their_process_concurrency() -> None:
     """Country-engine tests should bound their peak memory use."""
-    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
-
-    engine_free = workflow.split("\n  engine-free:\n", 1)[1].split(
-        "\n  engine-us:\n", 1
-    )[0]
-    engine_us = workflow.split("\n  engine-us:\n", 1)[1].split("\n  engine-uk:\n", 1)[0]
-    engine_uk = workflow.split("\n  engine-uk:\n", 1)[1].split(
-        "\n  integration-uk:\n", 1
-    )[0]
+    engine_free = _ENGINE_FREE_SCRIPT.read_text(encoding="utf-8")
+    engine_us = _ENGINE_US_SCRIPT.read_text(encoding="utf-8")
+    engine_uk = _ENGINE_UK_SCRIPT.read_text(encoding="utf-8")
 
     assert "-n 2 --dist loadfile" in engine_free
     assert "-m tools.run_engine_test_categories" in engine_us
@@ -71,15 +96,9 @@ def test_country_engine_jobs_bound_their_process_concurrency() -> None:
 
 def test_ordinary_jobs_report_the_first_failure_with_test_names() -> None:
     """CI must identify each test and finish reporting the first failure."""
-    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
     engine_runner = _ENGINE_RUNNER.read_text(encoding="utf-8")
-
-    engine_free = workflow.split("\n  engine-free:\n", 1)[1].split(
-        "\n  engine-us:\n", 1
-    )[0]
-    engine_uk = workflow.split("\n  engine-uk:\n", 1)[1].split(
-        "\n  integration-uk:\n", 1
-    )[0]
+    engine_free = _ENGINE_FREE_SCRIPT.read_text(encoding="utf-8")
+    engine_uk = _ENGINE_UK_SCRIPT.read_text(encoding="utf-8")
 
     for ordinary_job in (engine_free, engine_uk):
         assert "-v --tb=short --maxfail=1" in ordinary_job

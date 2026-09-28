@@ -1,1 +1,1 @@
-Classify US engine-backed tests by execution mechanism, run lightweight categories in bounded batches and full workflows in isolated processes, and publish per-category, per-file, and per-test timing reports in CI.
+Classify US engine-backed tests by execution mechanism, run lightweight categories in bounded batches and full workflows in isolated processes, publish per-category, per-file, and per-test timing reports in CI, and keep CI shell orchestration in locally executable scripts.
