@@ -1400,13 +1400,17 @@ def _composition_frame(
 class TestCompositionGate:
     def test_passes_on_plausible_composition(self) -> None:
         gate = us_immigration_composition_gate(
-            _composition_frame(), controls=_plausible_controls()
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(),
+            controls=_plausible_controls(),
         )
         assert gate.passed, gate.failures
 
     def test_fails_when_columns_missing(self) -> None:
         gate = us_immigration_composition_gate(
-            _us_frame([{"PRCITSHP": 1}]), controls=_plausible_controls()
+            time_period=TIME_PERIOD,
+            frame=_us_frame([{"PRCITSHP": 1}]),
+            controls=_plausible_controls(),
         )
         assert not gate.passed
         assert any("missing person column" in failure for failure in gate.failures)
@@ -1421,7 +1425,9 @@ class TestCompositionGate:
             for _ in range(50)
         ]
         gate = us_immigration_composition_gate(
-            _us_frame(rows), controls=_plausible_controls()
+            time_period=TIME_PERIOD,
+            frame=_us_frame(rows),
+            controls=_plausible_controls(),
         )
         assert not gate.passed
         assert any("constant" in failure for failure in gate.failures)
@@ -1430,7 +1436,9 @@ class TestCompositionGate:
         frame = _composition_frame()
         person = frame.table("person")
         person.loc[0, "ssn_card_type"] = "5"
-        gate = us_immigration_composition_gate(frame, controls=_plausible_controls())
+        gate = us_immigration_composition_gate(
+            time_period=TIME_PERIOD, frame=frame, controls=_plausible_controls()
+        )
         assert not gate.passed
         assert any("enum domain" in failure for failure in gate.failures)
 
@@ -1438,13 +1446,16 @@ class TestCompositionGate:
         frame = _composition_frame()
         person = frame.table("person")
         person.loc[0, "immigration_status_str"] = "LEGAL_PERMANENT_RESIDENT"
-        gate = us_immigration_composition_gate(frame, controls=_plausible_controls())
+        gate = us_immigration_composition_gate(
+            time_period=TIME_PERIOD, frame=frame, controls=_plausible_controls()
+        )
         assert not gate.passed
         assert any("citizenship" in failure for failure in gate.failures)
 
     def test_fails_when_undocumented_far_from_anchor(self) -> None:
         gate = us_immigration_composition_gate(
-            _composition_frame(citizens=930, other=48, ead=10, none=2),
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(citizens=930, other=48, ead=10, none=2),
             controls=_plausible_controls(),
         )
         assert not gate.passed
@@ -1453,7 +1464,8 @@ class TestCompositionGate:
 
     def test_fails_when_non_citizen_share_implausible(self) -> None:
         gate = us_immigration_composition_gate(
-            _composition_frame(citizens=40, other=20, ead=20, none=20),
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(citizens=40, other=20, ead=20, none=20),
             controls=ImmigrationControls(
                 undocumented=UndocumentedControls(
                     workers=8.0,
@@ -1471,7 +1483,9 @@ class TestCompositionGate:
         packaged = us_immigration_controls()
         assert packaged.undocumented.workers == 9_700_000
         assert packaged.humanitarian_target("refugee") == 160_000
-        gate = us_immigration_composition_gate(_us_frame([{"PRCITSHP": 1}]))
+        gate = us_immigration_composition_gate(
+            time_period=TIME_PERIOD, frame=_us_frame([{"PRCITSHP": 1}])
+        )
         assert not gate.passed
         controls = gate.details["controls"]
         assert controls["undocumented_workers"] == 9_700_000
@@ -1497,7 +1511,8 @@ class TestCompositionGate:
 
     def test_gate_passes_with_in_band_humanitarian_masses(self) -> None:
         gate = us_immigration_composition_gate(
-            _composition_frame(humanitarian={"REFUGEE": 4, "TPS": 6}),
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(humanitarian={"REFUGEE": 4, "TPS": 6}),
             controls=_plausible_controls(refugee=4.0, tps=6.0),
         )
         assert gate.passed, gate.failures
@@ -1508,7 +1523,8 @@ class TestCompositionGate:
 
     def test_gate_counts_temporary_protections_in_pew_population(self) -> None:
         gate = us_immigration_composition_gate(
-            _composition_frame(
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(
                 none=10,
                 humanitarian={"DACA": 5, "PAROLED_ONE_YEAR": 10, "TPS": 10},
             ),
@@ -1530,7 +1546,8 @@ class TestCompositionGate:
             person.loc[row, "PEINUSYR"] = 24
 
         gate = us_immigration_composition_gate(
-            frame,
+            time_period=TIME_PERIOD,
+            frame=frame,
             controls=_plausible_controls(),
         )
         assert gate.passed, gate.failures
@@ -1551,7 +1568,8 @@ class TestCompositionGate:
             humanitarian=_humanitarian_draws(refugee=10.0, asylee=10.0),
         )
         gate = us_immigration_composition_gate(
-            _composition_frame(
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(
                 none=10,
                 humanitarian={"REFUGEE": 10, "ASYLEE": 10},
             ),
@@ -1562,7 +1580,8 @@ class TestCompositionGate:
 
     def test_gate_fails_when_humanitarian_category_collapses(self) -> None:
         gate = us_immigration_composition_gate(
-            _composition_frame(),
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(),
             controls=_plausible_controls(refugee=4.0),
         )
         assert not gate.passed
@@ -1573,7 +1592,8 @@ class TestCompositionGate:
 
     def test_gate_fails_when_explicit_zero_category_emits(self) -> None:
         gate = us_immigration_composition_gate(
-            _composition_frame(humanitarian={"DEPORTATION_WITHHELD": 2}),
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(humanitarian={"DEPORTATION_WITHHELD": 2}),
             controls=_plausible_controls(),
         )
         assert not gate.passed
@@ -1583,7 +1603,8 @@ class TestCompositionGate:
         # The ASEC undercovers 2022-24 arrivals; a draw that saturates at
         # roughly three-quarters of its admin target stays inside the band.
         gate = us_immigration_composition_gate(
-            _composition_frame(humanitarian={"PAROLED_ONE_YEAR": 3}),
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(humanitarian={"PAROLED_ONE_YEAR": 3}),
             controls=_plausible_controls(paroled_one_year=4.0),
         )
         assert gate.passed, gate.failures
@@ -1612,7 +1633,8 @@ class TestCompositionGate:
         # Both rows carry Ukraine evidence. The category total is exactly two,
         # but the per-origin targets are a zero/two redistribution.
         gate = us_immigration_composition_gate(
-            _composition_frame(humanitarian={"PAROLED_ONE_YEAR": 2}),
+            time_period=TIME_PERIOD,
+            frame=_composition_frame(humanitarian={"PAROLED_ONE_YEAR": 2}),
             controls=controls,
         )
         assert not gate.passed

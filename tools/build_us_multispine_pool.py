@@ -4063,7 +4063,7 @@ def build_stacked_pool(
         simulation_frame,
         tail_manifest=tail_manifest,
     )
-    immigration = us_immigration_composition_gate(current)
+    immigration = us_immigration_composition_gate(current, time_period=POOL_TIME_PERIOD)
     # Manifest conversion is itself the final canonical-authority check and
     # deliberately happens before publication or readiness is asserted.
     GateReport((completeness, battery, immigration)).to_manifest()

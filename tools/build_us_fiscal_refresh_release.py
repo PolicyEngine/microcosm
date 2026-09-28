@@ -12276,7 +12276,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             seed=args.seed,
             time_period=PERIOD,
         )
-    immigration_gate = us_immigration_composition_gate(base_frame)
+    immigration_gate = us_immigration_composition_gate(base_frame, time_period=PERIOD)
     if not immigration_gate.passed:
         if telemetry is not None:
             telemetry.stage(
@@ -13831,7 +13831,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # labels remain structurally valid. Re-evaluate the composition contract
     # at delivered weights and use this final verdict in every terminal gate
     # and release artifact below.
-    final_immigration_gate = us_immigration_composition_gate(export_frame)
+    final_immigration_gate = us_immigration_composition_gate(
+        export_frame, time_period=PERIOD
+    )
     result = _without_calibrated_frames(
         result,
         export_frame=export_frame if ladder_outcome is not None else None,

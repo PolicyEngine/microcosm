@@ -1161,6 +1161,9 @@ def _pew_unauthorized_projection_mask(
     )
 
 
+_SPILL_CLOSURE_RELATIVE_TOLERANCE = 1e-9
+
+
 def _spill_pew_unauthorized_excess(
     person: pd.DataFrame,
     ssn_codes: np.ndarray,
@@ -1188,6 +1191,14 @@ def _spill_pew_unauthorized_excess(
     """
 
     draws = _stable_person_draws(person, seed=seed, salt=salt)
+    # A selection that closes the gap exactly can leave floating-point
+    # residue in the recomputed sum (it adds the weights in a different order
+    # than the selection's cumulative sum). Treat anything within a
+    # billionth of the in-scope weight as closed, so residue never opens the
+    # next tier and spills a row the ordering promised to keep.
+    closed_within = _SPILL_CLOSURE_RELATIVE_TOLERANCE * max(
+        1.0, float(weights[scope].sum())
+    )
 
     def current_excess() -> float:
         included = _pew_unauthorized_projection_mask(
@@ -1206,7 +1217,7 @@ def _spill_pew_unauthorized_excess(
         # EAD and so remain inside Pew's estimate; only rows outside those
         # cohorts reduce the count, which the corrective draw supplies.
         for retained_allowed in (True, False):
-            if current_excess() <= 0:
+            if current_excess() <= closed_within:
                 return
             candidates = (ssn_codes == 0) & noncitizens & scope & priority
             if not retained_allowed:
@@ -2124,6 +2135,7 @@ def us_immigration_composition_summary(frame: Frame) -> dict[str, object]:
 def us_immigration_composition_gate(
     frame: Frame,
     *,
+    time_period: int,
     controls: ImmigrationControls | None = None,
 ) -> GateResult:
     """Release gate: the SSN/immigration surface exists and is plausible.
@@ -2138,6 +2150,10 @@ def us_immigration_composition_gate(
     cited stock target (microcosm #767 — the H.R.1 §71109/§71301/§71302 and
     SNAP §10108 eligibility channels all bind through these categories; an
     explicit zero target must emit exactly zero).
+
+    ``time_period`` must be the period the stage ran for: the source-aware
+    cohort evidence (the DACA arrival windows in particular) is re-derived at
+    that period, exactly as ``with_us_immigration_inputs`` derived it.
     """
 
     if controls is None:
@@ -2184,7 +2200,7 @@ def us_immigration_composition_gate(
     ssn = person["ssn_card_type"].astype(str)
     status = person["immigration_status_str"].astype(str)
     try:
-        evidence = _source_aware_immigration_profile(person, time_period=2024)
+        evidence = _source_aware_immigration_profile(person, time_period=time_period)
     except (SourceRuntimeError, ValueError) as exc:
         evidence = None
         failures.append(f"source-aware immigration evidence is invalid: {exc}")

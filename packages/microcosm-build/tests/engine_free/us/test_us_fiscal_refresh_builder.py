@@ -7265,7 +7265,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         lambda frame, *, seed, time_period: frame,
     )
 
-    def fake_immigration_composition_gate(frame):
+    def fake_immigration_composition_gate(frame, *, time_period):
+        assert time_period == builder.PERIOD
         statuses = frame.table("person")["immigration_status_str"].astype(str)
         household_weights = frame.weights_for("household")
         weights = np.asarray(household_weights.values, dtype=np.float64)
@@ -11845,6 +11846,10 @@ def test_main_rechecks_immigration_composition_on_export_for_terminal_gates() ->
         "us_immigration_composition_gate"
     )
     assert ast.unparse(final_assignment.value.args[0]) == "export_frame"
+    assert [
+        (keyword.arg, ast.unparse(keyword.value))
+        for keyword in final_assignment.value.keywords
+    ] == [("time_period", "PERIOD")]
 
     terminal_calls = [
         node

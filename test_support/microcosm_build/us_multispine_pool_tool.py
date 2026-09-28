@@ -2493,7 +2493,8 @@ def _install_stacked_entrypoint_stubs(
     monkeypatch.setattr(pool_tool, "stacked_completeness_gate", completeness)
     monkeypatch.setattr(pool_tool, "by_origin_battery", battery)
 
-    def immigration(_frame: Frame) -> GateResult:
+    def immigration(_frame: Frame, *, time_period: int) -> GateResult:
+        assert time_period == pool_tool.POOL_TIME_PERIOD
         order.append("immigration")
         if terminal == "immigration_red":
             return GateResult(
