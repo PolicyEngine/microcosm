@@ -49,6 +49,10 @@ for label, path, survey in (("income_2024", old_p, 2025), ("income_2025", new_p,
         coded_not_listed=len(coded_set - listed),
         listed_not_coded=len(listed - coded_set),
         coded_not_listed_fips=sorted(coded_set - listed),
+        # PEINUSYR top codes, whose intervals Census re-bins every year.
+        peinusyr_top_code_persons={
+            int(code): int((per["PEINUSYR"] == code).sum()) for code in (27, 28, 29)
+        },
     )
 
 ho, po = load(old_p)

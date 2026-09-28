@@ -743,3 +743,27 @@ def test_fetch_tool_refuses_an_unpinned_year(monkeypatch: pytest.MonkeyPatch) ->
     tool = _load_tool_module("fetch_us_asec_sources")
     with pytest.raises(SystemExit, match=r"No pinned ASEC source for income year 2019"):
         tool.main(["2019"])
+
+
+def test_year_keyed_loaders_default_to_the_default_pool() -> None:
+    # A bare call loads the default pool, never every registered year: with
+    # 2022 still pinned, "every year" would silently mean a four-year pool.
+    import inspect
+
+    from microcosm.build.us_runtime.education_assistance_source import (
+        load_asec_education_assistance_sources,
+    )
+    from microcosm.build.us_runtime.public_assistance_type_source import (
+        load_asec_public_assistance_type_sources,
+    )
+    from microcosm.build.us_runtime.spm_independence_role import (
+        resolve_asec_spm_role_source_paths,
+    )
+
+    for loader in (
+        load_asec_education_assistance_sources,
+        load_asec_public_assistance_type_sources,
+        resolve_asec_spm_role_source_paths,
+    ):
+        default = inspect.signature(loader).parameters["income_years"].default
+        assert default == ASEC_DEFAULT_POOL_INCOME_YEARS, loader.__name__

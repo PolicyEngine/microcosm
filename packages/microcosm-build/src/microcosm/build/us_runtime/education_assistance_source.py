@@ -90,13 +90,13 @@ class AsecEducationArchive:
     weighted_total: float
 
 
-#: One pinned archive per pinned income year (a build pools a subset:
-#: :data:`.asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS` by default). The survey-year file published
-#: the March after each income year carries that income year's person
-#: universe: row counts equal the pooled cohorts exactly and PERIDNUM
-#: coverage is 100.0% per year (and only ~33% against any adjacent survey
-#: year, the CPS rotation-group overlap — pinning the wrong vintage fails the
-#: full-coverage join loudly).
+#: One pinned archive per pinned income year; a build pools a subset
+#: (:data:`.asec_sources.ASEC_DEFAULT_POOL_INCOME_YEARS` by default). The
+#: survey-year file published the March after each income year carries that
+#: income year's person universe: row counts equal the pooled cohorts exactly
+#: and PERIDNUM coverage is 100.0% per year (and only ~33% against any adjacent
+#: survey year, the CPS rotation-group overlap — pinning the wrong vintage
+#: fails the full-coverage join loudly).
 ASEC_EDUCATION_ASSISTANCE_ARCHIVES: dict[int, AsecEducationArchive] = {
     archive.income_year: archive
     for archive in (

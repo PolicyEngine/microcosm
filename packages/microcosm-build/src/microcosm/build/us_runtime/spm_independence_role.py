@@ -130,7 +130,8 @@ _SPM_UNIT_TABLE = "spm_unit"
 _SPM_UNIT_ID = "spm_unit_id"
 _DERIVE_PARAMETER_KEYS = frozenset()
 
-#: Plausibility bands, measured on the three pinned vintages: the role share
+#: Plausibility bands, measured on the three Build P vintages (income years
+#: 2022-2024; the 2023-2025 default pool measured 0.628 and 1.81 %): the role share
 #: among all persons (the SPM head plus spouses; 0.601-0.603 per vintage on the
 #: phase-2 base, 0.567 on Build P) and among 15-to-17-year-olds (1.49 %-1.73 %
 #: per vintage). See ``docs/us-spm-role-stage.md`` §2 and the committed

@@ -227,3 +227,16 @@ README). Things that still name income year 2022 or the old pool:
 
   28 → 2023 stays inside both intervals. 29 → 2024 clamps the 1,121 most
   recent arrivals of 2025 to the 2024 target year (zero years in the US).
+
+## Operator note: source-enrichment producer identity
+
+`education_assistance_source.py`, `public_assistance_type_source.py`,
+`spm_role_source.py` and `tools/build_us_spm_role_enrichment.py` are in the
+source-enrichment producer inventories (`source_enrichment.PRODUCER_SOURCE_FILES`
+and `RECEIPT_QUALIFICATION_SOURCE_FILES`). Publication checks each file's bytes
+in the current checkout against the build's recorded hashes. The income-2025
+registry entries changed those bytes on 27 September 2026, so any SPM-role or
+reported-receipt candidate built earlier must be certified and published from
+a checkout of its own recorded producer commit, not from `main`. The published
+`populace-us-2024-spm-20260915` and `populace-us-2024-spm-receipts-20260923`
+are unaffected.

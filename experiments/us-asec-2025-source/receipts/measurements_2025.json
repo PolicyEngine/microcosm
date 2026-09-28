@@ -22,7 +22,12 @@
    48439,
    53033,
    53061
-  ]
+  ],
+  "peinusyr_top_code_persons": {
+   "27": 1277,
+   "28": 2749,
+   "29": 0
+  }
  },
  "income_2025": {
   "survey_year": 2026,
@@ -58,7 +63,12 @@
    45085,
    54019,
    54081
-  ]
+  ],
+  "peinusyr_top_code_persons": {
+   "27": 1047,
+   "28": 1741,
+   "29": 1121
+  }
  },
  "rotation_income_2025_vs_2024": {
   "shared_H_IDNUM": 16601,
