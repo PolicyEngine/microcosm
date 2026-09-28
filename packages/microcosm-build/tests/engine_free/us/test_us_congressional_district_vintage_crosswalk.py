@@ -532,7 +532,7 @@ def test_packaged_crosswalk_uses_north_carolinas_2019_plan_for_the_117th() -> No
     # populations in the crosswalk must match the General Assembly's official
     # figures within 0.5% (the registry's build tolerance). The earlier
     # crosswalk, which read NC's 2016 plan from the 2020 BAF layer, missed
-    # them by up to 7.6% (district 1), with 7 of 13 districts beyond 0.5%.
+    # them by up to 7.55% (district 1), with 10 of 13 districts beyond 0.5%.
     frame = load_default_congressional_district_vintage_crosswalk()
     source = frame["source_geography_id"].astype(str)
     north_carolina = frame[source.str.startswith("5001700US37")]
@@ -546,6 +546,43 @@ def test_packaged_crosswalk_uses_north_carolinas_2019_plan_for_the_117th() -> No
     assert sorted(totals) == sorted(NCGA_2020_POPULATION_2019_PLAN)
     for district, official in NCGA_2020_POPULATION_2019_PLAN.items():
         assert abs(totals[district] - official) <= 0.005 * official, district
+
+
+def test_packaged_crosswalk_conserves_national_and_state_population() -> None:
+    # Runs without the registry NPZ: the packaged CSV alone must carry every
+    # 2020 resident exactly once, never pair districts across state lines, and
+    # agree with its build receipt and the registry's national total.
+    from microcosm.build.us_runtime.cd_plan_registry import (
+        packaged_us_cd_plan_registry_provenance,
+    )
+
+    frame = load_default_congressional_district_vintage_crosswalk()
+    source_state = frame["source_geography_id"].astype(str).str[9:11]
+    target_state = frame["target_geography_id"].astype(str).str[9:11]
+    assert (source_state == target_state).all()
+
+    by_state = {
+        state: int(total)
+        for state, total in frame.groupby(source_state)["pair_population"].sum().items()
+    }
+    conservation = _packaged_provenance()["diagnostics"]["state_conservation"]
+    assert by_state == {
+        state: int(row["state_population"]) for state, row in conservation.items()
+    }
+    assert all(int(row["unmatched_population"]) == 0 for row in conservation.values())
+    assert len(by_state) == 51
+    national = sum(by_state.values())
+    assert national == packaged_us_cd_plan_registry_provenance()["population"]
+    assert national == 331_449_281
+    # 2020 Census resident populations (P.L. 94-171) for a few states.
+    for state, population in {
+        "01": 5_024_279,
+        "02": 733_391,
+        "06": 39_538_223,
+        "36": 20_201_249,
+        "48": 29_145_505,
+    }.items():
+        assert by_state[state] == population, state
 
 
 @pytest.mark.skipif(
