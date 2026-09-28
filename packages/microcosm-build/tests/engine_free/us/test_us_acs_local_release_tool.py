@@ -1538,3 +1538,271 @@ def test_package_rechecks_final_bytes_after_copy_or_reuse(
         assert root_copy.exists(), "the calibrated H5 itself is never removed"
     else:
         assert not root_copy.exists(), "a refused copy is not left at the root"
+
+
+def _calibrate_stage_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--stage",
+        "calibrate",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--out-h5",
+        str(tmp_path / "out.h5"),
+        *extra,
+    ]
+
+
+def test_penalty_options_default_to_the_historical_solve(tmp_path: Path) -> None:
+    """``--l2-basis`` and ``--mass-parametrization`` take the kernel's names.
+
+    Their defaults are the kernel defaults, so a refresh that passes neither
+    solves exactly as every earlier ACS local release did.
+    """
+    from microcosm.calibrate import (
+        L2_BASES,
+        L2_BASIS_RECORD,
+        MASS_PARAMETRIZATION_PROJECTION,
+        MASS_PARAMETRIZATIONS,
+    )
+
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_stage_argv(tmp_path))
+    assert args.l2_basis == L2_BASIS_RECORD
+    assert args.mass_parametrization == MASS_PARAMETRIZATION_PROJECTION
+    assert args.l2_lambda == 0.0
+    for basis in L2_BASES:
+        parsed = module._parse_args(
+            _calibrate_stage_argv(tmp_path, "--l2-basis", basis)
+        )
+        assert parsed.l2_basis == basis
+    for parametrization in MASS_PARAMETRIZATIONS:
+        parsed = module._parse_args(
+            _calibrate_stage_argv(tmp_path, "--mass-parametrization", parametrization)
+        )
+        assert parsed.mass_parametrization == parametrization
+    for flag in ("--l2-basis", "--mass-parametrization"):
+        with pytest.raises(SystemExit):
+            module._parse_args(_calibrate_stage_argv(tmp_path, flag, "bogus"))
+
+
+def _stub_calibrate_collaborators(module, monkeypatch, n: int = 30):
+    """A tiny real frame and target set behind do_calibrate's checkpoint I/O.
+
+    The kernel's ``calibrate`` runs for real (wrapped to record its keyword
+    arguments); the run identity, registry, lean checkpoint, diagnostics
+    writer and artifact writer are stand-ins.
+    """
+    import microcosm.calibrate as calibrate_package
+    from microcosm.calibrate import Target, TargetSet
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    rng = np.random.default_rng(0)
+    income = rng.lognormal(10.0, 1.0, n)
+    design = rng.lognormal(2.0, 0.8, n)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {"person_id": range(n), "person_household_id": range(n)}
+            ),
+            "household": pd.DataFrame({"household_id": range(n), "income": income}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=design, kind=WeightKind.DESIGN)},
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="income",
+                entity="household",
+                value=float((income * design).sum() * 1.2),
+                measure="income",
+            ),
+        )
+    )
+    calls: list[dict] = []
+    real_calibrate = calibrate_package.calibrate
+
+    def recording_calibrate(*args, **kwargs):
+        calls.append(kwargs)
+        return real_calibrate(*args, **kwargs)
+
+    class Registry:
+        @classmethod
+        def from_json(cls, path):
+            return cls()
+
+        def to_target_set(self):
+            return targets
+
+    identity = {
+        "target_registry_sha256": "registry",
+        "households": n,
+        "staging_sha256": "staging",
+    }
+    monkeypatch.setattr(calibrate_package, "calibrate", recording_calibrate)
+    monkeypatch.setattr(calibrate_package, "TargetRegistry", Registry)
+    monkeypatch.setattr(
+        calibrate_package,
+        "write_calibration_diagnostics",
+        lambda *a, **k: SimpleNamespace(
+            status="available", schema_version=4, sha256="diagnostics"
+        ),
+    )
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
+    monkeypatch.setattr(module, "_sha256", lambda path: "registry")
+    monkeypatch.setattr(module, "load_lean_frame", lambda path: (frame, design))
+    monkeypatch.setattr(module, "_write_calibrated_artifact", lambda *a, **k: None)
+    return calls, design
+
+
+def test_do_calibrate_threads_and_records_the_penalty_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    calls, design = _stub_calibrate_collaborators(module, monkeypatch)
+    argv = _calibrate_stage_argv(
+        tmp_path,
+        "--epochs",
+        "4",
+        "--epoch-batch",
+        "2",
+        "--l2-lambda",
+        "0.01",
+        "--l2-basis",
+        "chi_square",
+        "--mass-parametrization",
+        "softmax",
+    )
+    args = module._parse_args(argv)
+    args.checkpoint_dir.mkdir()
+    module.do_calibrate(args)
+
+    assert len(calls) == 2
+    for kwargs in calls:
+        assert kwargs["l2_lambda"] == 0.01
+        assert kwargs["l2_basis"] == "chi_square"
+        assert kwargs["mass_parametrization"] == "softmax"
+        assert kwargs["mass"] == "conserve"
+    summary = json.loads((args.checkpoint_dir / "calibration_summary.json").read_text())
+    assert summary["l2_lambda"] == 0.01
+    assert summary["l2_basis"] == "chi_square"
+    assert summary["mass_parametrization"] == "softmax"
+    assert summary["chi_square_distance"] >= 0.0
+    saved = np.load(args.checkpoint_dir / "weights_latest.npz")
+    assert str(saved["l2_basis"]) == "chi_square"
+    assert str(saved["mass_parametrization"]) == "softmax"
+    assert float(saved["l2_lambda"]) == 0.01
+    assert int(saved["epochs_done"]) == 4
+
+    # Extending the run under different settings is refused before any solve.
+    calls.clear()
+    args.epochs = 6
+    args.resume = True
+    args.l2_basis = "record"
+    with pytest.raises(SystemExit, match="l2_basis"):
+        module.do_calibrate(args)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("recorded", "requested", "refused"),
+    [
+        ({}, {}, None),
+        ({}, {"l2_basis": "chi_square"}, "predates"),
+        ({}, {"l2_lambda": 0.01}, "predates"),
+        ({"l2_basis": "chi_square"}, {"l2_basis": "chi_square"}, None),
+        ({"l2_basis": "chi_square"}, {}, "l2_basis"),
+        (
+            {"mass_parametrization": "softmax"},
+            {"mass_parametrization": "projection"},
+            "mass_parametrization",
+        ),
+        ({"l2_lambda": 0.01}, {"l2_lambda": 0.02}, "l2_lambda"),
+    ],
+)
+def test_resume_refuses_weights_solved_under_other_penalty_settings(
+    tmp_path: Path, recorded: dict, requested: dict, refused: str | None
+) -> None:
+    """A legacy checkpoint records no settings and resumes only as it was solved."""
+
+    module = _load_tool_module()
+    path = tmp_path / "weights_latest.npz"
+    np.savez(
+        path,
+        weights=np.ones(3),
+        **{key: np.asarray(value) for key, value in recorded.items()},
+    )
+    args = SimpleNamespace(
+        l2_lambda=0.0, l2_basis="record", mass_parametrization="projection"
+    )
+    for key, value in requested.items():
+        setattr(args, key, value)
+    saved = np.load(path)
+    if refused is None:
+        module._refuse_resume_with_other_penalty(saved, args)
+    else:
+        with pytest.raises(SystemExit, match=refused):
+            module._refuse_resume_with_other_penalty(saved, args)
+
+
+def test_package_manifest_records_the_penalty_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    summary_path = args.checkpoint_dir / "calibration_summary.json"
+    summary = json.loads(summary_path.read_text())
+    summary.update(
+        l2_lambda=0.003,
+        l2_basis="chi_square",
+        mass_parametrization="softmax",
+        chi_square_distance=0.21,
+    )
+    summary_path.write_text(json.dumps(summary))
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["l2_lambda"] == 0.003
+    assert manifest["calibration"]["l2_basis"] == "chi_square"
+    assert manifest["calibration"]["mass_parametrization"] == "softmax"
+    assert manifest["calibration"]["chi_square_distance"] == 0.21
+
+
+def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
+    module = _load_tool_module()
+    base = {
+        "effective_sample_size": 13631.3,
+        "ess_fraction": 0.0086,
+        "households": 1_588_854,
+        "max_weight_ratio": 5.0,
+    }
+    historical = module._ess_concentration_limitation({**base, "l2_lambda": 0.0})
+    assert historical["id"] == "low_effective_sample_size_lambda_zero"
+    assert historical["status"] == "reviewed_concentration"
+    assert module._ess_concentration_limitation(base) == historical
+
+    penalized = module._ess_concentration_limitation(
+        {
+            **base,
+            "l2_lambda": 0.003,
+            "l2_basis": "chi_square",
+            "mass_parametrization": "softmax",
+            "chi_square_distance": 0.21,
+        }
+    )
+    assert penalized["id"] == "effective_sample_size_under_l2_penalty"
+    assert penalized["status"] == "recorded_concentration"
+    assert "l2_lambda=0.003" in penalized["reason"]
+    assert "'chi_square'" in penalized["reason"]
+    assert "'softmax'" in penalized["reason"]
+    assert "l2_lambda=0 " not in penalized["reason"]

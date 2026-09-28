@@ -23,9 +23,13 @@ package; each is separately resumable):
                 target-frame checkpoint + targets.json. Heavy stage; a crash
                 in calibrate never re-runs the microsim.
   calibrate   : epoch-batched warm-start calibrate on the lean checkpoint
-                (adam, mass conserved, hard weight-ratio cap; resumable with
-                --resume), write diagnostics and the calibrated weights onto
-                a copy of the staging H5.
+                (adam, mass conserved, hard weight-ratio cap, optional L2
+                penalty --l2-lambda of form --l2-basis under
+                --mass-parametrization, all recorded in the summary and the
+                build manifest; resumable with --resume, which refuses a
+                checkpoint solved under other penalty settings), write
+                diagnostics and the calibrated weights onto a copy of the
+                staging H5.
   qa          : chunked engine probe of the calibrated artifact recording
                 per-spine SSI incidence and intensity (the microcosm#403
                 signature, measured rather than assumed).
@@ -1043,6 +1047,51 @@ def _verify_run_identity(args, *, require: bool = True) -> dict:
     return identity
 
 
+def _penalty_provenance(args) -> dict[str, np.ndarray]:
+    """The penalty settings a resumable weights checkpoint records."""
+
+    return {
+        "l2_lambda": np.float64(args.l2_lambda),
+        "l2_basis": np.str_(args.l2_basis),
+        "mass_parametrization": np.str_(args.mass_parametrization),
+    }
+
+
+def _refuse_resume_with_other_penalty(saved, args) -> None:
+    """Refuse to warm-start batches solved under different penalty settings.
+
+    A checkpoint from before these settings were recorded carries none of
+    them; it resumes only under the historical defaults it was solved with.
+    """
+
+    requested = _penalty_provenance(args)
+    for key, value in requested.items():
+        recorded = saved[key] if key in saved else None
+        if recorded is None:
+            from microcosm.calibrate import (
+                L2_BASIS_RECORD,
+                MASS_PARAMETRIZATION_PROJECTION,
+            )
+
+            historical = {
+                "l2_lambda": 0.0,
+                "l2_basis": L2_BASIS_RECORD,
+                "mass_parametrization": MASS_PARAMETRIZATION_PROJECTION,
+            }[key]
+            if value.item() != historical:
+                raise SystemExit(
+                    f"weights_latest.npz records no {key} (it predates that "
+                    f"setting, so it was solved with {historical!r}); refusing "
+                    f"to resume it under {key}={value.item()!r}."
+                )
+            continue
+        if recorded.item() != value.item():
+            raise SystemExit(
+                f"weights_latest.npz was solved with {key}={recorded.item()!r}; "
+                f"refusing to resume it under {key}={value.item()!r}."
+            )
+
+
 def do_calibrate(args) -> None:
     from microcosm.calibrate import (
         TargetRegistry,
@@ -1088,6 +1137,7 @@ def do_calibrate(args) -> None:
                 "H5; refusing to warm-start from a foreign checkpoint."
             )
         warm, done = saved["weights"], int(saved["epochs_done"])
+        _refuse_resume_with_other_penalty(saved, args)
         if len(warm) != n_households:
             raise SystemExit(
                 f"weights_latest.npz carries {len(warm)} weights but the "
@@ -1128,6 +1178,8 @@ def do_calibrate(args) -> None:
             max_weight_ratio=args.max_weight_ratio,
             target_loss_cap=args.target_loss_cap,
             l2_lambda=args.l2_lambda,
+            l2_basis=args.l2_basis,
+            mass_parametrization=args.mass_parametrization,
             seed=args.seed,
             warm_start_weights=warm,
         )
@@ -1139,6 +1191,7 @@ def do_calibrate(args) -> None:
             epochs_done=done,
             initial_weights=design_weights,
             staging_sha256=np.str_(identity["staging_sha256"]),
+            **_penalty_provenance(args),
         )
         log(
             f"batch -> {done}/{args.epochs} ep, "
@@ -1167,12 +1220,15 @@ def do_calibrate(args) -> None:
         "epoch_batch": args.epoch_batch,
         "max_weight_ratio": args.max_weight_ratio,
         "l2_lambda": args.l2_lambda,
+        "l2_basis": args.l2_basis,
+        "mass_parametrization": args.mass_parametrization,
         "seed": args.seed,
         "initial_loss": round(result.initial_loss, 6),
         "final_loss": round(result.final_loss, 6),
         "fraction_within_10pct": round(result.fraction_within_10pct, 4),
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
+        "chi_square_distance": round(result.chi_square_distance, 6),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
@@ -1449,6 +1505,47 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
     return {"sha": sha, "dirty": dirty, "branch": _git("branch", "--show-current")}
 
 
+def _ess_concentration_limitation(diagnostics: dict) -> dict:
+    """The lineage's weight-concentration entry, true to the penalty solved.
+
+    The unpenalized default keeps its historical reviewed entry. A penalized
+    run records its own settings instead: its concentration is measured, but
+    whether it is acceptable is a separate review this register cannot claim.
+    """
+
+    ess = diagnostics.get("effective_sample_size")
+    ess_fraction = diagnostics.get("ess_fraction", 0.0)
+    households = diagnostics.get("households") or 0
+    l2_lambda = float(diagnostics.get("l2_lambda") or 0.0)
+    if l2_lambda == 0.0:
+        return {
+            "id": "low_effective_sample_size_lambda_zero",
+            "status": "reviewed_concentration",
+            "reason": (
+                f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
+                "households under the hard 5x weight cap with l2_lambda=0 "
+                "(kept for consistency with the certified default and the "
+                "Build L doctrine; no new calibration knobs per "
+                "microcosm#492)."
+            ),
+            "calibration_blocker": False,
+        }
+    return {
+        "id": "effective_sample_size_under_l2_penalty",
+        "status": "recorded_concentration",
+        "reason": (
+            f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
+            f"households with max_weight_ratio="
+            f"{diagnostics.get('max_weight_ratio')}, l2_lambda={l2_lambda:g}, "
+            f"l2_basis={diagnostics.get('l2_basis')!r} and "
+            f"mass_parametrization={diagnostics.get('mass_parametrization')!r}; "
+            f"chi-square distance from the design weights "
+            f"{diagnostics.get('chi_square_distance')}."
+        ),
+        "calibration_blocker": False,
+    }
+
+
 def finalize_reviewed_limitations(
     staging_summary: dict,
     diagnostics: dict,
@@ -1462,9 +1559,6 @@ def finalize_reviewed_limitations(
     duplicates.
     """
 
-    ess = diagnostics.get("effective_sample_size")
-    ess_fraction = diagnostics.get("ess_fraction", 0.0)
-    households = diagnostics.get("households") or 0
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
     limitations = list(staging_summary.get("reviewed_limitations", []))
     aged_ssi = (spine_qa or {}).get("per_spine", {})
@@ -1529,18 +1623,7 @@ def finalize_reviewed_limitations(
             ),
             "calibration_blocker": False,
         },
-        {
-            "id": "low_effective_sample_size_lambda_zero",
-            "status": "reviewed_concentration",
-            "reason": (
-                f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
-                "households under the hard 5x weight cap with l2_lambda=0 "
-                "(kept for consistency with the certified default and the "
-                "Build L doctrine; no new calibration knobs per "
-                "microcosm#492)."
-            ),
-            "calibration_blocker": False,
-        },
+        _ess_concentration_limitation(diagnostics),
         {
             "id": "donor_sparse_selection_training_set",
             "status": "reviewed_construction",
@@ -2107,11 +2190,14 @@ def do_package(args) -> dict:
                 "epochs",
                 "max_weight_ratio",
                 "l2_lambda",
+                "l2_basis",
+                "mass_parametrization",
                 "seed",
                 "final_loss",
                 "fraction_within_10pct",
                 "effective_sample_size",
                 "ess_fraction",
+                "chi_square_distance",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
@@ -2295,6 +2381,13 @@ def do_package(args) -> dict:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    from microcosm.calibrate import (
+        L2_BASES,
+        L2_BASIS_RECORD,
+        MASS_PARAMETRIZATION_PROJECTION,
+        MASS_PARAMETRIZATIONS,
+    )
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--stage",
@@ -2340,6 +2433,30 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
     parser.add_argument("--target-loss-cap", type=float, default=1.0)
     parser.add_argument("--l2-lambda", type=float, default=0.0)
+    parser.add_argument(
+        "--l2-basis",
+        choices=sorted(L2_BASES),
+        default=L2_BASIS_RECORD,
+        help=(
+            "Form of the --l2-lambda penalty (microcosm.calibrate l2_basis). "
+            "'record' (default) is the historical mean((w / d) ** 2); "
+            "'chi_square' is GREG's design-weighted chi-square distance "
+            "sum(d * (w / d - 1) ** 2) / sum(d), which pulls toward the "
+            "design weights d themselves."
+        ),
+    )
+    parser.add_argument(
+        "--mass-parametrization",
+        choices=sorted(MASS_PARAMETRIZATIONS),
+        default=MASS_PARAMETRIZATION_PROJECTION,
+        help=(
+            "How the mass-conserving Adam solve holds the total "
+            "(microcosm.calibrate mass_parametrization). 'projection' "
+            "(default) is the historical per-step uniform shift; 'softmax' "
+            "optimizes total * softmax(log_w), which reaches the constrained "
+            "optimum where the shift can stall (docs/calibration-l2-basis.md)."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--batch", type=int, default=5_000)
