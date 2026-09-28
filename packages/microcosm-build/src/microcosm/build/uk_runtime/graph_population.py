@@ -394,6 +394,7 @@ def append_uk_population_nodes(
         spine_gate_params = {
             "spine_gate_phase": "transferred",
             "spine_gate_release_candidate": bool(gate.params["release_candidate"]),
+            "spine_gate_synthetic_smoke": bool(gate.params["synthetic_smoke"]),
         }
     nodes = list(graph.nodes)
     nodes.append(
