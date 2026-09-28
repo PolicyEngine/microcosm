@@ -22,9 +22,18 @@ from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
     "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "ACS_WEEKS_WORKED_REFERENCE",
     "AcsNativeInputResult",
+    "acs_weeks_worked_values",
     "map_acs_native_inputs",
+    "map_acs_weeks_worked",
 ]
+
+#: Census's own WKWN definition (1-52 weeks; the API's 0 is the FTP file's
+#: blank, NIU: under 16 or no work in the past 12 months).
+ACS_WEEKS_WORKED_REFERENCE = (
+    "https://api.census.gov/data/2023/acs/acs1/pums/variables/WKWN.json"
+)
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0
 
@@ -274,6 +283,115 @@ def _map_usual_hours(
             "data_dict/PUMS_Data_Dictionary_2024.pdf#page=45"
         ),
         "allocation_reference_page": 130,
+    }
+
+
+def map_acs_weeks_worked(frame: Frame) -> AcsNativeInputResult:
+    """Map ACS ``WKWN`` to ``weeks_worked`` under the ``WKHP`` universe rules.
+
+    ACS local lane only (microcosm#1021). :func:`map_acs_native_inputs`, which
+    the multispine pool shares, does not call this, so the pool's native
+    surface is unchanged. See :func:`acs_weeks_worked_values` for the rules.
+    A frame without ``WKWN`` is returned unmapped with an empty receipt; the
+    caller decides whether that is acceptable.
+    """
+
+    if frame.schema != US_SCHEMA:
+        raise ValueError("ACS weeks-worked mapping requires the US schema.")
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    person = tables["person"].copy()
+    tables["person"] = person
+    native: dict[str, Mapping[str, Any]] = {}
+    if "WKWN" in person:
+        values, counts = acs_weeks_worked_values(person)
+        output = "weeks_worked"
+        _add_native(
+            person,
+            output,
+            values,
+            entity="person",
+            source_columns=tuple(
+                column for column in ("WKWN", "WKHP", "AGEP", "WKL") if column in person
+            ),
+            transformation=(
+                "WKWN; zero only for source-confirmed past-year nonwork; "
+                "blank together with WKHP"
+            ),
+            register=native,
+        )
+        native[output] = {
+            **native[output],
+            **counts,
+            "reference": ACS_WEEKS_WORKED_REFERENCE,
+        }
+    mapped = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    return AcsNativeInputResult(mapped, native)
+
+
+def acs_weeks_worked_values(person: pd.DataFrame) -> tuple[np.ndarray, dict[str, int]]:
+    """Weeks worked in the past 12 months from ``WKWN``, and their row counts.
+
+    ``WKWN`` is 1-52. The 2024 FTP file leaves it blank for the universe
+    ``WKHP`` also leaves blank: under 16, or no work in the past 12 months
+    (the Census API codes that blank as 0, which this reader refuses, as it
+    does for ``WKHP``). So, as for usual hours, a blank is a structural zero
+    only where ``WKL`` confirms no work in the past 12 months (2 or 3); under
+    16 it stays missing, since that is survey-universe absence rather than
+    observed nonwork; and a value under 16 or with ``WKL`` 2/3 is a
+    contradiction. ``WKWN`` and ``WKHP`` describe the same weeks, so a row
+    carrying one without the other is refused.
+
+    Raises:
+        ValueError: On an invalid code, a missing ``WKHP``, a row carrying
+            only one of ``WKWN``/``WKHP``, or a value outside its universe.
+    """
+
+    if "WKHP" not in person:
+        raise ValueError(
+            "ACS WKWN requires WKHP: weeks worked and usual hours share one "
+            "past-year work universe, and the pairing is checked row by row."
+        )
+    weeks = _nullable_source_codes(person["WKWN"], minimum=1, maximum=52)
+    hours = _nullable_source_codes(person["WKHP"], minimum=1, maximum=99)
+    worked = (
+        _nullable_source_codes(person["WKL"], minimum=1, maximum=3)
+        if "WKL" in person
+        else pd.Series(np.nan, index=person.index)
+    )
+    age = (
+        pd.to_numeric(person["AGEP"], errors="coerce")
+        if "AGEP" in person
+        else pd.Series(np.nan, index=person.index)
+    )
+    unpaired = weeks.notna() != hours.notna()
+    if unpaired.any():
+        raise ValueError(
+            f"ACS WKWN and WKHP must be blank together: {int(unpaired.sum())} "
+            "row(s) carry weeks worked without usual hours or the reverse."
+        )
+    under_sixteen = age.ge(0) & age.lt(16)
+    not_worked = worked.isin([2, 3])
+    if (weeks.notna() & (under_sixteen | not_worked)).any() or (
+        under_sixteen & worked.notna()
+    ).any():
+        raise ValueError("ACS WKWN/WKL contradict their age or past-year universe.")
+    structural_zero = weeks.isna() & not_worked
+    values = weeks.mask(structural_zero, 0.0).to_numpy(dtype=float, na_value=np.nan)
+    return values, {
+        "source_value_rows": int(weeks.notna().sum()),
+        "structural_zero_rows": int(structural_zero.sum()),
+        "source_universe_unavailable_rows": int(under_sixteen.sum()),
+        "source_unresolved_rows": int(
+            (weeks.isna() & ~structural_zero & ~under_sixteen).sum()
+        ),
+        "hours_paired_rows": int((weeks.notna() & hours.notna()).sum()),
     }
 
 

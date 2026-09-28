@@ -28,6 +28,10 @@ from microcosm.build.us_runtime.acs_local_hours import (
     complete_acs_local_under15_hours,
     require_acs_local_hours_fallback_universe,
 )
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    map_acs_local_work_disability_inputs,
+    record_acs_local_work_disability_transfer,
+)
 from microcosm.build.us_runtime.acs_pums import (
     DEFAULT_CHUNKSIZE,
     AcsPumsSource,
@@ -83,6 +87,7 @@ def build_optional_acs_multispine(
     hours_donor_factory: Callable[[Frame], tuple[Frame, Frame, dict[str, object]]]
     | None = None,
     hours_under15_policy: str | None = None,
+    work_disability_inputs: bool = False,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -102,6 +107,10 @@ def build_optional_acs_multispine(
     fallback for usual-hours cells unresolved by the native WKHP mapping.
     Alternatively, ``hours_donor_factory`` qualifies that donor lazily: a
     source-complete ACS spine never needs its raw ASEC fields opened.
+    ``work_disability_inputs`` (the ACS local lane, microcosm#1021) writes
+    native ``is_disabled``/``is_blind``/``weeks_worked`` on every ACS row
+    before any transfer, so the null-only transfer leaves them alone; its
+    receipt is ``provenance["acs_local_work_disability"]``.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -126,6 +135,21 @@ def build_optional_acs_multispine(
     native_provenance = _json_ready_mapping(mapped.native_inputs)
     mapped_frame = mapped.frame
     del mapped
+    work_disability = None
+    if work_disability_inputs:
+        # Local lane only: map_acs_native_inputs is shared with the pool and
+        # stays unchanged. Native values must land before the transfers below,
+        # which fill only missing cells (microcosm#1021).
+        local = map_acs_local_work_disability_inputs(mapped_frame)
+        overlap = sorted(set(native_provenance) & set(local.native_inputs))
+        if overlap:
+            raise ValueError(
+                f"ACS local work/disability inputs would overwrite native {overlap}."
+            )
+        native_provenance.update(_json_ready_mapping(local.native_inputs))
+        mapped_frame = local.frame
+        work_disability = local.receipt
+        del local
     modeled_hours = None
     if hours_under15_policy is not None:
         mapped_frame, modeled_hours = complete_acs_local_under15_hours(
@@ -245,6 +269,12 @@ def build_optional_acs_multispine(
         provenance["local_hours_source"] = hours_source
     if modeled_hours is not None:
         provenance["hours_modeled_completion"] = modeled_hours
+    if work_disability is not None:
+        provenance["acs_local_work_disability"] = _json_ready_mapping(
+            record_acs_local_work_disability_transfer(
+                work_disability, imputed_provenance
+            )
+        )
     if puma_ladder is not None:
         geography = us_puma_ladder_assignment_summary(
             pooled.table("household"),

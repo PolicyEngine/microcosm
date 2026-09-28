@@ -4,7 +4,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
+from microcosm.build.us_runtime.acs_inputs import (
+    ACS_WEEKS_WORKED_REFERENCE,
+    map_acs_native_inputs,
+    map_acs_weeks_worked,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -169,6 +173,125 @@ def test_acs_ftp_hours_reject_invalid_codes_including_api_zero(invalid):
 def test_acs_usual_hours_refuse_conflicting_universe_or_invalid_allocation(columns):
     with pytest.raises(ValueError):
         map_acs_native_inputs(_hours_frame(**columns))
+
+
+# --- weeks worked (microcosm#1021, ACS local lane only) ---------------------
+
+
+def test_acs_weeks_worked_is_native_paired_and_absent_from_the_shared_mapping():
+    before = _hours_frame(WKHP=[40, np.nan], WKL=[1, np.nan], WKWN=[26, np.nan])
+    result = map_acs_weeks_worked(before)
+    weeks = result.frame.person["weeks_worked"]
+    assert weeks.iloc[0] == 26
+    assert pd.isna(weeks.iloc[1])
+    pd.testing.assert_series_equal(result.frame.person["WKWN"], before.person["WKWN"])
+    receipt = result.native_inputs["weeks_worked"]
+    assert receipt["provenance"] == "acs_2024_1yr_native"
+    assert receipt["source_columns"] == ["WKWN", "WKHP", "AGEP", "WKL"]
+    assert receipt["source_value_rows"] == 1
+    assert receipt["structural_zero_rows"] == 0
+    assert receipt["source_universe_unavailable_rows"] == 1
+    assert receipt["source_unresolved_rows"] == 0
+    assert receipt["hours_paired_rows"] == 1
+    assert receipt["observed_rows"] == 1
+    assert receipt["missing_rows"] == 1
+    assert receipt["reference"] == ACS_WEEKS_WORKED_REFERENCE
+    # The multispine pool shares map_acs_native_inputs; it never maps WKWN.
+    shared = map_acs_native_inputs(before)
+    assert "weeks_worked" not in shared.frame.person
+    assert "weeks_worked" not in shared.native_inputs
+
+
+@pytest.mark.parametrize("wkl", [2, 3])
+def test_acs_blank_weeks_are_zero_for_confirmed_past_year_nonworkers(wkl):
+    result = map_acs_weeks_worked(
+        _hours_frame(WKHP=[" ", np.nan], WKWN=[" ", np.nan], WKL=[wkl, np.nan])
+    )
+    assert result.frame.person["weeks_worked"].iloc[0] == 0
+    assert pd.isna(result.frame.person["weeks_worked"].iloc[1])
+    receipt = result.native_inputs["weeks_worked"]
+    assert receipt["structural_zero_rows"] == 1
+    assert receipt["source_universe_unavailable_rows"] == 1
+
+
+@pytest.mark.parametrize("wkl", [1, np.nan])
+def test_acs_eligible_or_unknown_weeks_blank_stays_unresolved(wkl):
+    result = map_acs_weeks_worked(
+        _hours_frame(WKHP=[np.nan, np.nan], WKWN=[np.nan, np.nan], WKL=[wkl, np.nan])
+    )
+    assert pd.isna(result.frame.person["weeks_worked"].iloc[0])
+    receipt = result.native_inputs["weeks_worked"]
+    assert receipt["missing_rows"] == 2
+    assert receipt["source_unresolved_rows"] == 1
+
+
+@pytest.mark.parametrize("age", [0, 12, 15])
+def test_acs_under_sixteen_weeks_are_unavailable_not_observed_nonwork(age):
+    result = map_acs_weeks_worked(
+        _hours_frame(
+            AGEP=[40, age], WKHP=[40, np.nan], WKWN=[52, np.nan], WKL=[1, np.nan]
+        )
+    )
+    assert pd.isna(result.frame.person["weeks_worked"].iloc[1])
+    receipt = result.native_inputs["weeks_worked"]
+    assert receipt["source_universe_unavailable_rows"] == 1
+    assert receipt["observed_rows"] == 1
+    assert receipt["structural_zero_rows"] == 0
+
+
+def test_acs_absent_weeks_source_does_not_become_a_structural_zero():
+    result = map_acs_weeks_worked(_hours_frame(WKHP=[40, np.nan], WKL=[1, np.nan]))
+    assert "weeks_worked" not in result.frame.person
+    assert result.native_inputs == {}
+
+
+@pytest.mark.parametrize("invalid", [0, -1, 53, 26.5, "unknown", np.inf])
+def test_acs_ftp_weeks_reject_invalid_codes_including_api_zero(invalid):
+    with pytest.raises(ValueError, match="WKWN requires blank or integer"):
+        map_acs_weeks_worked(
+            _hours_frame(WKHP=[40, np.nan], WKL=[1, np.nan], WKWN=[invalid, np.nan])
+        )
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"WKWN": [26, 10], "WKHP": [40, 10]},
+        {"WKWN": [26, np.nan], "WKHP": [40, np.nan], "WKL": [2, np.nan]},
+        {"WKWN": [26, np.nan], "WKHP": [40, np.nan], "WKL": [1, 2]},
+    ],
+    ids=["under-sixteen-value", "nonworker-value", "under-sixteen-wkl"],
+)
+def test_acs_weeks_refuse_conflicting_universe(columns):
+    with pytest.raises(ValueError, match="WKWN/WKL contradict"):
+        map_acs_weeks_worked(_hours_frame(**columns))
+
+
+@pytest.mark.parametrize(
+    "columns",
+    [
+        {"WKWN": [26, np.nan], "WKHP": [np.nan, np.nan], "WKL": [1, np.nan]},
+        {"WKWN": [np.nan, np.nan], "WKHP": [40, np.nan], "WKL": [1, np.nan]},
+    ],
+    ids=["weeks-without-hours", "hours-without-weeks"],
+)
+def test_acs_weeks_and_hours_must_be_blank_together(columns):
+    with pytest.raises(ValueError, match="must be blank together: 1 row"):
+        map_acs_weeks_worked(_hours_frame(**columns))
+
+
+def test_acs_weeks_require_the_hours_source_for_the_pairing():
+    with pytest.raises(ValueError, match="WKWN requires WKHP"):
+        map_acs_weeks_worked(_hours_frame(WKWN=[26, np.nan], WKL=[1, np.nan]))
+
+
+def test_acs_weeks_mapping_refuses_existing_output_collision():
+    with pytest.raises(ValueError, match="overwrite existing column 'weeks_worked'"):
+        map_acs_weeks_worked(
+            _hours_frame(
+                WKHP=[40, np.nan], WKWN=[26, np.nan], weeks_worked=[1.0, np.nan]
+            )
+        )
 
 
 def test_acs_income_mapping_adjusts_native_dollars_without_splitting_aggregates() -> (
