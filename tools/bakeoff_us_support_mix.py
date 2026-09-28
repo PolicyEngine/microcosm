@@ -486,7 +486,7 @@ def _row_index_columns(tables: dict[str, pd.DataFrame], source: str) -> pd.DataF
         return np.bincount(person_position, weights=np.asarray(values, dtype=np.float64), minlength=n)
 
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
-    male = person["is_male"].astype(bool).to_numpy() if "is_male" in person else np.zeros(len(person), bool)
+    male = ~pd.to_numeric(person["is_female"]).fillna(0).astype(bool).to_numpy()
     rent = pd.to_numeric(person.get("pre_subsidy_rent", 0.0), errors="coerce").fillna(0.0)
     taxes = pd.to_numeric(person.get("real_estate_taxes", 0.0), errors="coerce").fillna(0.0)
     tenure = hh["tenure_type"].astype(str).to_numpy()
@@ -1382,7 +1382,44 @@ def do_report(args) -> None:
             median_rel=("rel", "median"), mean_rel_initial=("rel_initial", lambda s: s.clip(upper=1.0).mean()),
         ).reset_index()
         acs_table.to_csv(args.out / "acs_native_by_level_measure.csv", index=False)
+    if not holdout.empty and not acs_native.empty:
+        _write_headline(args.out, arms, holdout, acs_native)
     log(f"report: {len(arms)} arm receipts")
+
+
+HEADLINE_ACS_MEASURES = (
+    "households", "owner", "renter", "rent_contract_annual_aggregate",
+    "real_estate_taxes_aggregate", "persons_in_households", "persons_0_17", "persons_65p",
+)
+
+
+def _write_headline(out: Path, arms: pd.DataFrame, holdout: pd.DataFrame, acs_native: pd.DataFrame) -> None:
+    """One markdown table per product: held-out error by dimension and level."""
+    cps = holdout[holdout["dimension_group"] == "cps_native"].groupby(["product", "arm", "level"])["capped"].mean()
+    pep = holdout[holdout["dimension_group"] == "acs_native"].groupby(["product", "arm"])["capped"].mean()
+    acs = acs_native[acs_native["measure"].isin(HEADLINE_ACS_MEASURES)].copy()
+    acs["capped"] = acs["rel"].clip(upper=1.0)
+    acs = acs.groupby(["product", "arm", "level"])["capped"].mean()
+    lines = []
+    for product, frame in arms.sort_values(["budget", "cps_years", "acs_fill_share", "seed"]).groupby("product", sort=False):
+        lines += [f"### {product} product", "",
+                  "| Arm | Rows | Distinct hh | ESS (distinct) | CPS-native nat | state | CD | PEP demog | ACS-native state | CD | county | Solve min | Peak GB |",
+                  "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+        for row in frame.itertuples(index=False):
+            key = (product, row.arm)
+
+            def cell(series, level=None, key=key):
+                index = (*key, level) if level else key
+                return f"{series.get(index, float('nan')):.3f}"
+
+            lines.append(
+                f"| {row.arm} | {row.rows_total:,} | {row.distinct_households:,} | {row.ess_distinct_households:,.0f} | "
+                f"{cell(cps, 'national')} | {cell(cps, 'state')} | {cell(cps, 'cd')} | {cell(pep)} | "
+                f"{cell(acs, 'state')} | {cell(acs, 'cd')} | {cell(acs, 'county')} | "
+                f"{row.runtime_solve_s / 60:.1f} | {row.runtime_peak_rss_gb:.1f} |"
+            )
+        lines.append("")
+    (out / "headline.md").write_text("\n".join(lines))
 
 
 # ------------------------------------------------------------------ main
