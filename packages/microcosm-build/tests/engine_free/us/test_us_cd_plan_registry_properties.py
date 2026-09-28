@@ -468,3 +468,85 @@ def test_fill_completes_every_block_with_a_district_already_nearby(case):
         carried.block_geoid.tolist(), carried.district_geoid.tolist(), strict=True
     ):
         assert kept[block] == district
+
+
+@st.composite
+def neighbourhoods(draw):
+    """Blocks spread over counties, tracts and block groups, some unassigned.
+
+    Returns assigned {block: district}, unassigned blocks, and populations
+    (small values so ties are common).
+    """
+
+    blocks = set()
+    for _ in range(draw(st.integers(2, 25))):
+        county = draw(st.sampled_from([1, 3]))
+        tract = draw(st.sampled_from([100, 200, 999999]))
+        group = draw(st.integers(1, 3))
+        block = draw(st.integers(0, 999))
+        blocks.add(int(f"37{county:03d}{tract:06d}{group}{block:03d}"))
+    blocks = sorted(blocks)
+    assigned_mask = draw(
+        st.lists(st.booleans(), min_size=len(blocks), max_size=len(blocks))
+    )
+    assigned = {
+        block: 3700 + draw(st.integers(1, 3))
+        for block, keep in zip(blocks, assigned_mask, strict=True)
+        if keep
+    }
+    # Every county with an unassigned block needs an assigned neighbour.
+    counties = {block // 10**10 for block in assigned}
+    unassigned = [
+        block
+        for block in blocks
+        if block not in assigned and block // 10**10 in counties
+    ]
+    population = {block: draw(st.integers(0, 3)) for block in blocks}
+    return assigned, unassigned, population
+
+
+@SETTINGS
+@given(case=neighbourhoods())
+def test_fill_takes_the_smallest_neighbourhood_majority(case):
+    assigned, unassigned, population = case
+    if not assigned:
+        return
+    filled, fills = fill_unassigned_blocks(
+        cd_block_assignment(assigned, label="assigned"),
+        np.asarray(unassigned, dtype=np.int64),
+        block_geoid=np.asarray(list(population), dtype=np.int64),
+        population=np.asarray(list(population.values()), dtype=np.int64),
+    )
+
+    # Reference: block group, then tract, then county; most people, then most
+    # blocks, then the lower district; only already-assigned blocks vote.
+    expected = []
+    for block in sorted(unassigned):
+        for rule, divisor in (
+            ("block_group", 10**3),
+            ("tract", 10**4),
+            ("county", 10**10),
+        ):
+            voters = [b for b in assigned if b // divisor == block // divisor]
+            if not voters:
+                continue
+            tally = {}
+            for voter in voters:
+                people, count = tally.get(assigned[voter], (0, 0))
+                tally[assigned[voter]] = (people + population[voter], count + 1)
+            district = min(tally, key=lambda d: (-tally[d][0], -tally[d][1], d))
+            expected.append(
+                {
+                    "block": f"{block:015d}",
+                    "district": f"{district % 100:02d}",
+                    "rule": rule,
+                    "population": population[block],
+                }
+            )
+            break
+    assert fills == expected
+    placed = dict(
+        zip(filled.block_geoid.tolist(), filled.district_geoid.tolist(), strict=True)
+    )
+    for block, district in assigned.items():
+        assert placed[block] == district

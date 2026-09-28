@@ -10,7 +10,7 @@ district the block belongs to under each registered plan.
   (see ``congressional_district_vintage``).
 - ``118th_congress``: the first post-2020-apportionment plan.
 - ``119th_congress``: the current plan and the block ladder's primary one.
-- ``120th_congress``: the plans in effect for the November 2026 election,
+- ``120th_congress``: the plans for the 2026 elections (120th Congress),
   including the 2025-26 mid-decade redraws.
 
 Each plan is one ``int16`` array aligned to the registry's sorted
@@ -24,21 +24,29 @@ files (URL + SHA-256), the apportionment it must match, and any known
 deviations. The build is byte-reproducible, and its SHA-256 is pinned in the
 packaged ``us_cd_plan_registry.provenance.json``.
 
-Invariants, checked by :func:`assemble_us_cd_plan_registry` when the artifact
-is built and again by :func:`load_us_cd_plan_registry` on every load:
+Structural invariants, checked by :func:`assemble_us_cd_plan_registry` when
+the artifact is built and again by :func:`load_us_cd_plan_registry` on every
+load:
 
-- The block universe is exactly the 2020 P.L. 94-171 blocks with positive
-  population (the block ladder's universe), sorted and unique.
+- ``block_geoid``, ``population`` and every plan array are one-dimensional
+  and aligned; the blocks are 15-digit geoids, sorted and unique, each with
+  positive population.
 - Every block has exactly one district under every plan. A populated block a
   plan's source leaves unassigned is a build error, never a gap.
 - Every district lies in its block's state.
-- Each state's districts under a plan are exactly its House apportionment
-  for that plan's census: ``00`` for an at-large state or the DC delegate,
-  otherwise ``01`` through ``n``. So every apportioned district contains at
-  least one populated block.
+- For every state present, the districts under a plan are exactly its House
+  apportionment for that plan's census: ``00`` for an at-large state or the
+  DC delegate, otherwise ``01`` through ``n``. So every apportioned district
+  contains at least one populated block.
 
 Summing block population by any plan's district therefore reproduces every
 state's population exactly: the plans are partitions of the same blocks.
+
+These checks are structural: a registry for a subset of states passes them.
+That the published artifact covers exactly the national universe (every 2020
+P.L. 94-171 block with positive population in the 50 states and DC) is
+established by the build, by its exact agreement with the block ladder, and
+by pinning the artifact's SHA-256 (:func:`load_pinned_us_cd_plan_registry`).
 
 This module is pure apart from the NPZ read. Nothing here assigns households;
 the block draw derives every plan's district from the chosen block.
@@ -160,8 +168,13 @@ class CdBlockAssignment:
     district_geoid: np.ndarray
 
     def __post_init__(self) -> None:
-        if self.block_geoid.shape != self.district_geoid.shape:
-            raise ValueError("block_geoid and district_geoid must be aligned.")
+        if (
+            self.block_geoid.ndim != 1
+            or self.block_geoid.shape != self.district_geoid.shape
+        ):
+            raise ValueError(
+                "block_geoid and district_geoid must be aligned 1-D arrays."
+            )
         if len(self.block_geoid) and not bool(np.all(np.diff(self.block_geoid) > 0)):
             raise ValueError("CdBlockAssignment block_geoid must be sorted and unique.")
 
@@ -753,15 +766,19 @@ def load_us_cd_plan_registry(
             f"{sorted(plans_metadata)} do not match its arrays {sorted(plan_arrays)}."
         )
 
+    _require_aligned_1d(
+        {"block_geoid": block_geoid, "population": population}
+        | {
+            f"{CD_PLAN_ARRAY_PREFIX}{plan}": values
+            for plan, values in plan_arrays.items()
+        },
+        label="US CD plan registry",
+    )
     _validate_block_geoids(block_geoid, label="block_geoid")
     if len(block_geoid) == 0:
         raise ValueError("US CD plan registry has zero blocks.")
     if not bool(np.all(np.diff(block_geoid) > 0)):
         raise ValueError("US CD plan registry block_geoid must be sorted and unique.")
-    if len(population) != len(block_geoid):
-        raise ValueError(
-            "US CD plan registry population is not aligned to block_geoid."
-        )
     if (population <= 0).any():
         raise ValueError(
             "US CD plan registry population must be positive for every block."
@@ -771,10 +788,6 @@ def load_us_cd_plan_registry(
     for plan in sorted(plan_arrays):
         spec = _validated_plan_spec(plan, plans_metadata[plan])
         values = plan_arrays[plan]
-        if len(values) != len(block_geoid):
-            raise ValueError(
-                f"CD plan {plan!r} has {len(values)} values for {len(block_geoid)} blocks."
-            )
         counts = _validate_plan_districts(
             block_geoid, values, plan=plan, apportionment=spec["apportionment"]
         )
@@ -833,6 +846,14 @@ def check_cd_plan_registry_against_block_ladder(
     difference; returns a small receipt on agreement.
     """
 
+    _require_aligned_1d(
+        {
+            "block_geoid": np.asarray(block_geoid),
+            "population": np.asarray(population),
+            "congressional_district_geoid": np.asarray(congressional_district_geoid),
+        },
+        label="Block ladder",
+    )
     ladder_blocks = _int64_array(np.asarray(block_geoid), label="ladder block_geoid")
     order = np.argsort(ladder_blocks, kind="stable")
     ladder_blocks = ladder_blocks[order]
@@ -935,8 +956,10 @@ def _sorted_assignment(
 ) -> CdBlockAssignment:
     blocks = _int64_array(np.asarray(blocks), label=f"{label} block_geoid")
     districts = _int64_array(np.asarray(districts), label=f"{label} district_geoid")
-    if blocks.shape != districts.shape:
-        raise ValueError(f"{label}: block and district arrays are not aligned.")
+    if blocks.ndim != 1 or blocks.shape != districts.shape:
+        raise ValueError(
+            f"{label}: block and district arrays must be aligned 1-D arrays."
+        )
     _validate_block_geoids(blocks, label=label)
     order = np.argsort(blocks, kind="stable")
     blocks = blocks[order]
@@ -1041,6 +1064,17 @@ def _validate_plan_districts(
         )
     counts = {state: len(roster) for state, roster in rosters.items()}
     return counts
+
+
+def _require_aligned_1d(arrays: Mapping[str, np.ndarray], *, label: str) -> None:
+    """Refuse any array that is not 1-D or not the length of the others."""
+
+    shapes = {name: tuple(np.shape(values)) for name, values in arrays.items()}
+    not_1d = {name: shape for name, shape in shapes.items() if len(shape) != 1}
+    if not_1d:
+        raise ValueError(f"{label} arrays must be one-dimensional; got {not_1d}.")
+    if len(set(shapes.values())) > 1:
+        raise ValueError(f"{label} arrays are not aligned: {shapes}.")
 
 
 def _validate_block_geoids(blocks: np.ndarray, *, label: str) -> None:

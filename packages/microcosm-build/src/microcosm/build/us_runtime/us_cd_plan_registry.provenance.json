@@ -14,7 +14,7 @@
   "block_vintage": "2020_tabulation_blocks",
   "blocks": 5769942,
   "kind": "us_cd_plan_registry",
-  "output_sha256": "aa2535a9585a6eb4c4a862d6cc65702d0fa1923476c7b0cf8be6fe95f3480c88",
+  "output_sha256": "6b16fc2141060be312eae6ac5e5bd6b2985e45816bcfcab8024f7488be75168f",
   "plan_sources": {
     "117th_congress": {
       "apportionment": "2010_census",
@@ -543,7 +543,7 @@
           "note": "Census's 120th rows for Missouri encode the 2025 HB 1 map, and Census's own 120th landing page warns they may not be the districts in place for November 2026. The Missouri Supreme Court held on 2026-09-03 (von Glahn v. Hoskins, SC101805) that HB 1 cannot take effect before a referendum on the November 2026 ballot, and the U.S. Supreme Court held on 2026-09-25 (People Not Politicians v. Onder, 26A388, per curiam) that 'the 2022 map\u2014not the 2025 map\u2014must be used in the 2026 congressional election.' Missouri's rows here are its 2022 map, taken from the 119th file (the build checks they are unchanged from the 118th)."
         }
       },
-      "notes": "Districts for the November 3, 2026 election (120th Congress, 2027-2029), including the 2025-26 mid-decade redraws: Census's 120th Congressional District block equivalency file, except any state whose map in force differs from Census's rows (see known_deviations).",
+      "notes": "Districts for the 2026 elections (120th Congress, 2027-2029), including the 2025-26 mid-decade redraws: Census's 120th Congressional District block equivalency file, except any state whose map in force differs from Census's rows (see known_deviations).",
       "published": "2026-08-31",
       "source": "Census 120th Congressional District block equivalency file (NationalCD120.txt)",
       "source_files": {

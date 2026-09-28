@@ -127,7 +127,9 @@ CENSUS_BEFS: dict[str, dict[str, str]] = {
 #: Blocks the Census split notes list as divided by a district line. For
 #: tabulation Census assigns each to one district "specified to the U.S.
 #: Census Bureau by the state"; the build checks the registry agrees. The
-#: 118th, 119th and 120th notes each list only this block.
+#: 118th, 119th and 120th notes each list only this block. The table is a
+#: transcription of the notes, so the build pins the reviewed notes' bytes
+#: (:data:`CENSUS_BLOCK_SPLIT_NOTE_SHA256`) and refuses a changed note.
 CENSUS_BLOCK_SPLITS: dict[str, dict[str, dict[str, Any]]] = {
     plan: {
         "080010096072000": {
@@ -136,6 +138,12 @@ CENSUS_BLOCK_SPLITS: dict[str, dict[str, dict[str, Any]]] = {
         }
     }
     for plan in CENSUS_BEFS
+}
+
+CENSUS_BLOCK_SPLIT_NOTE_SHA256 = {
+    "118th_congress": "016d7a697d79d84187828d19c8546878598f0e745bee88942c0749ef3875cb37",
+    "119th_congress": "f0b70f2bde47285f63367ef667a6080ec5c2042842af1e2457c0fb4b739dadcc",
+    "120th_congress": "722fa5d22d2d6c5c4a687686a6a039f515f0de045a4dbb16d967cc398a80a388",
 }
 
 PLAN_APPORTIONMENT = {
@@ -162,8 +170,8 @@ PLAN_NOTES = {
         "Districts of the 119th Congress (2025-2027); the block ladder's primary plan."
     ),
     "120th_congress": (
-        "Districts for the November 3, 2026 election (120th Congress, "
-        "2027-2029), including the 2025-26 mid-decade redraws: Census's 120th "
+        "Districts for the 2026 elections (120th Congress, 2027-2029), "
+        "including the 2025-26 mid-decade redraws: Census's 120th "
         "Congressional District block equivalency file, except any state whose "
         "map in force differs from Census's rows (see known_deviations)."
     ),
@@ -550,6 +558,14 @@ def _plan_from_census_bef(
     bef = CENSUS_BEFS[plan]
     path = _download(bef["url"], cache_dir)
     split_note = _download(bef["block_split_note"], cache_dir)
+    split_note_sha256 = _sha256(split_note)
+    if split_note_sha256 != CENSUS_BLOCK_SPLIT_NOTE_SHA256[plan]:
+        raise SystemExit(
+            f"{plan}: Census block-split note {bef['block_split_note']} has "
+            f"sha256 {split_note_sha256}, not the reviewed "
+            f"{CENSUS_BLOCK_SPLIT_NOTE_SHA256[plan]}. Re-read the note and update "
+            "CENSUS_BLOCK_SPLITS and CENSUS_BLOCK_SPLIT_NOTE_SHA256 together."
+        )
     with _zip_member_stream(path, bef["member"]) as stream:
         national = parse_cd_block_assignment(stream, label=bef["member"])
     national = concat_cd_block_assignments(

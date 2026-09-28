@@ -8,6 +8,7 @@ one.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import re
@@ -33,8 +34,10 @@ from microcosm.build.us_runtime.cd_plan_registry import (
     replace_state_assignments,
     summarize_cd_plan_registry,
 )
+from test_support.paths import paths_for
 
 SHA = "0" * 64
+_TEST_PATHS = paths_for("microcosm-build")
 
 
 def _spec(plan: str, apportionment: str = "2020_census") -> dict:
@@ -175,6 +178,19 @@ def test_parser_consumes_a_stream_lazily():
     parsed = parse_cd_block_assignment(lines(), label="stream")
     assert len(parsed) == 1000
     assert bool(np.all(np.diff(parsed.block_geoid) > 0))
+
+
+def test_parser_stops_at_a_bad_record_without_reading_ahead():
+    # A parser that materialized the stream first would hit the tail's
+    # AssertionError instead of reporting the bad record.
+    def lines():
+        yield "GEOID,CDFP"
+        yield "100010401001000,00"
+        yield "10001040100100X,00"
+        raise AssertionError("the parser read past the bad record")
+
+    with pytest.raises(ValueError, match="15 digits"):
+        parse_cd_block_assignment(lines(), label="stream")
 
 
 # --- apportionment -------------------------------------------------------
@@ -354,6 +370,54 @@ def test_loader_refuses_an_artifact_edited_after_the_build(tmp_path):
         load_us_cd_plan_registry(_write(tmp_path, missing_plan, "missing.npz"))
 
 
+@pytest.mark.parametrize(
+    ("key", "change", "message"),
+    [
+        ("population", lambda a: a.reshape(-1, 1), "one-dimensional"),
+        (
+            "population",
+            lambda a: np.concatenate([a, a]).reshape(2, -1),
+            "one-dimensional",
+        ),
+        ("block_geoid", lambda a: a[::-1].reshape(-1, 1).copy(), "one-dimensional"),
+        ("population", lambda a: np.append(a, 5), "not aligned"),
+        (
+            f"{CD_PLAN_ARRAY_PREFIX}120th_congress",
+            lambda a: a.reshape(-1, 1),
+            "one-dimensional",
+        ),
+        (f"{CD_PLAN_ARRAY_PREFIX}120th_congress", lambda a: a[:-1], "not aligned"),
+    ],
+)
+def test_loader_refuses_arrays_that_are_not_aligned_and_one_dimensional(
+    tmp_path, key, change, message
+):
+    payload = _payload()
+    tampered = {**payload, key: change(payload[key])}
+    with pytest.raises(ValueError, match=message):
+        load_us_cd_plan_registry(_write(tmp_path, tampered))
+
+
+def test_ladder_differential_refuses_misaligned_ladder_arrays(tmp_path):
+    # Extra trailing values must not be silently dropped by the reordering.
+    registry = load_us_cd_plan_registry(_write(tmp_path, _payload()))
+    ladder_cd = np.asarray([PLAN_119[b] for b in BLOCKS.tolist()], dtype=np.int64)
+    with pytest.raises(ValueError, match="not aligned"):
+        check_cd_plan_registry_against_block_ladder(
+            registry,
+            block_geoid=BLOCKS,
+            population=np.append(POPULATION, 999),
+            congressional_district_geoid=np.append(ladder_cd, 9999),
+        )
+    with pytest.raises(ValueError, match="one-dimensional"):
+        check_cd_plan_registry_against_block_ladder(
+            registry,
+            block_geoid=BLOCKS.reshape(-1, 1),
+            population=POPULATION.reshape(-1, 1),
+            congressional_district_geoid=ladder_cd.reshape(-1, 1),
+        )
+
+
 def test_ladder_differential_accepts_agreement_and_refuses_any_difference(tmp_path):
     registry = load_us_cd_plan_registry(_write(tmp_path, _payload()))
     order = np.asarray([6, 0, 3, 1, 5, 2, 4])  # ladder rows in any order
@@ -425,6 +489,46 @@ def test_cd_block_assignment_refuses_duplicates_and_bad_geoids():
         cd_block_assignment([(DE[0], 1000), (DE[0], 1000)], label="dup")
     with pytest.raises(ValueError, match="15-digit"):
         cd_block_assignment({12345: 1000}, label="short")
+
+
+# --- builder ---------------------------------------------------------------
+
+
+def _load_builder():
+    path = _TEST_PATHS.repository / "tools" / "build_us_cd_plan_registry_artifact.py"
+    spec = importlib.util.spec_from_file_location("build_us_cd_plan_registry", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_builder_pins_every_census_split_note_it_transcribes():
+    builder = _load_builder()
+    assert (
+        set(builder.CENSUS_BEFS)
+        == set(builder.CENSUS_BLOCK_SPLITS)
+        == set(builder.CENSUS_BLOCK_SPLIT_NOTE_SHA256)
+    )
+    receipt = packaged_us_cd_plan_registry_provenance()
+    for plan, digest in builder.CENSUS_BLOCK_SPLIT_NOTE_SHA256.items():
+        note = receipt["plan_sources"][plan]["source_files"][f"{plan}_block_split_note"]
+        assert note["sha256"] == digest
+        assert (
+            receipt["plan_sources"][plan]["block_splits"]
+            == (builder.CENSUS_BLOCK_SPLITS[plan])
+        )
+
+
+def test_builder_refuses_a_split_note_that_is_not_the_reviewed_one(
+    tmp_path, monkeypatch
+):
+    builder = _load_builder()
+    error_page = tmp_path / "CD119_BlockSplits.pdf"
+    error_page.write_text("<html>503 Service Unavailable</html>")
+    monkeypatch.setattr(builder, "_download", lambda url, cache_dir: error_page)
+    with pytest.raises(SystemExit, match="not the reviewed"):
+        builder._plan_from_census_bef("119th_congress", tmp_path, {"10"})
 
 
 # --- packaged provenance ---------------------------------------------------

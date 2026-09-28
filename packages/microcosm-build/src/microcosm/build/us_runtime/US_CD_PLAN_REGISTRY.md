@@ -5,8 +5,11 @@ geography is a lookup from that block. Congressional districts are the one
 layer with several live versions on the same blocks, so this registry records,
 for every populated 2020 block, its district under each registered plan. A
 block draw can then derive every plan's district from the chosen block, and
-SOI's 117th-Congress district tables become exact block sums with no
-crosswalk.
+SOI's 117th-Congress district tables become exact sums of blocks under the
+registry's assignments, with no crosswalk on the consumer's side. (The
+assignments themselves follow Census's whole-block tabulation; North
+Carolina's 117th rows are carried from 2010 blocks, below, so they
+approximate the official boundaries.)
 
 Code: `cd_plan_registry.py`. Build: `tools/build_us_cd_plan_registry_artifact.py`.
 Receipt (artifact SHA-256, sources, per-plan totals, every check's result):
@@ -19,7 +22,7 @@ Receipt (artifact SHA-256, sources, per-plan totals, every check's result):
 | `117th_congress` | 2021–2023; the geography of the IRS SOI congressional-district tables for tax years 2020–2022 | Census 2020 Block Assignment Files, `CD` layer; North Carolina carried from its 2019 plan (below) | 2010 |
 | `118th_congress` | 2023–2025 | Census 118th Congressional District block equivalency file | 2020 |
 | `119th_congress` | 2025–2027; the block ladder's primary plan | Census 119th Congressional District block equivalency file | 2020 |
-| `120th_congress` | the November 3, 2026 election, including the 2025–26 mid-decade redraws | Census 120th Congressional District block equivalency file (published 2026-08-31); Missouri from its 2022 map (below) | 2020 |
+| `120th_congress` | the 2026 elections (the 120th Congress), including the 2025–26 mid-decade redraws | Census 120th Congressional District block equivalency file (published 2026-08-31); Missouri from its 2022 map (below) | 2020 |
 
 District geoids are `state_fips * 100 + district`. At-large states and the
 DC delegate are district `00`, the repo-wide convention. Each plan's metadata
@@ -70,22 +73,30 @@ the court record as of 2026-09-27; a later ruling would mean a rebuild.
 
 ## Invariants
 
-Checked when the artifact is built (`assemble_us_cd_plan_registry`) and again
-on every load (`load_us_cd_plan_registry`):
+Structural invariants, checked when the artifact is built
+(`assemble_us_cd_plan_registry`) and again on every load
+(`load_us_cd_plan_registry`):
 
-- **Universe.** The blocks are exactly the 2020 P.L. 94-171 blocks with
-  positive population in the 50 states and DC (5,769,942 blocks, 331,449,281
-  people), sorted and unique: the block ladder's universe.
+- **Shape.** The block, population and plan arrays are one-dimensional and
+  aligned; the blocks are 15-digit geoids, sorted and unique, each with
+  positive population.
 - **Partition.** Every block has exactly one district under every plan, and
   that district lies in the block's state. A populated block that a plan's
   source leaves unassigned is a build error, never a gap.
-- **Apportionment.** Each state's districts under a plan are exactly its House
-  apportionment for that plan's census: `00` for an at-large state or DC,
+- **Apportionment.** For every state present, its districts under a plan are
+  exactly its House apportionment for that plan's census: `00` for an at-large state or DC,
   otherwise `01` through `n`. So every apportioned district contains a
   populated block.
 - **Conservation.** Therefore, for every plan, district populations sum
   exactly to state populations, and those sum to the national total.
   `summarize_cd_plan_registry` re-checks this.
+
+These are structural checks, so a registry for a subset of states (a
+`--states` smoke build) passes them too. That the published artifact covers
+exactly the national universe, every 2020 P.L. 94-171 block with positive
+population in the 50 states and DC (5,769,942 blocks, 331,449,281 people), is
+established by the build, by its exact agreement with the block ladder, and
+by the SHA-256 pin that `load_pinned_us_cd_plan_registry` enforces.
 
 The build also cross-checks its sources against each other and refuses on any
 disagreement:
@@ -97,7 +108,9 @@ disagreement:
   119th to the 120th, against the states Census ships a state file for (its
   list of redrawn states);
 - the one block Census lists as split by a district line (Colorado
-  080010096072000) against the district Census tabulates it with;
+  080010096072000) against the district Census tabulates it with. The table
+  is a transcription of Census's split notes, so the build pins the reviewed
+  notes' SHA-256 and refuses a changed note;
 - with `--block-ladder`, the registry against the ladder: the same blocks,
   the same populations, and the same 119th district on every block.
 
@@ -118,8 +131,10 @@ uv run python tools/build_us_cd_plan_registry_artifact.py \
 
 The tool downloads and caches its sources, builds the NPZ (about 18 MB), loads
 it back through the validating loader, and writes the receipt. The output is
-byte-reproducible from the pinned sources. A national build takes about two
-minutes and 2.4 GB of memory.
+byte-reproducible from the pinned sources: two independent national builds
+produced the same SHA-256. On the machine used for this PR (an Apple-silicon
+laptop, measured with `/usr/bin/time -l`), a national build took about two
+minutes with a 2.4 GB peak resident set; the receipt does not record this.
 
 ## Use
 
