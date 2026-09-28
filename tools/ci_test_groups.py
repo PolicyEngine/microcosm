@@ -15,7 +15,9 @@ GROUP_DIRECTORIES = {
     "engine-free-shared": ("engine_free", "shared"),
     "engine-free-us": ("engine_free", "us"),
     "engine-free-uk": ("engine_free", "uk"),
-    "engine-us": ("engine", "us"),
+    "engine-contract-us": ("engine_contract", "us"),
+    "engine-scenario-us": ("engine_scenario", "us"),
+    "engine-workflow-us": ("engine_workflow", "us"),
     "engine-uk": ("engine", "uk"),
     "integration-uk": ("integration", "uk"),
 }

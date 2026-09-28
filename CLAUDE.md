@@ -27,14 +27,20 @@ PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `tools/classify_ci_changes.py` classifies the complete changed-path inventory
 as shared, US, or UK. Each ordinary behavioral job has only a Python 3.13/3.14
 matrix and reports the 25 slowest tests. The engine-free job distributes files
-across two pytest workers with `--dist loadfile`. Both country-engine jobs run
-serially to bound peak memory.
+across two pytest workers with `--dist loadfile`. The US engine job runs the
+contract and scenario categories in small pytest processes with at most two
+processes active at once, then runs each full-workflow module in its own serial
+process. This releases country-engine state between batches while limiting peak
+memory. The UK engine job remains serial.
 The engine-free job
 installs no country extra and always runs shared tests plus the affected
 countries' engine-free tests. The country
 jobs install only their own extra and run only their country directory. Main
 pushes run every environment. Native numerical libraries receive one thread per
-process. The wheels job builds each wheel once and compares its archive with its
+process. The US runner writes JSON and Markdown timing reports with overall,
+category, process, file, and individual-test timings; CI publishes the Markdown
+report in the job summary and uploads both files as artifacts. The wheels job
+builds each wheel once and compares its archive with its
 source tree; it does not repeat behavioral tests. The integration job runs the
 UK staging smoke test serially on Python 3.13. `ci-ok` requires every selected
 ordinary job and the integration job to pass. Ordinary behavioral jobs pass
@@ -62,12 +68,23 @@ of these directories below its package's `tests/` directory:
 - `engine_free/shared/`: does not import a country engine and is country-neutral.
 - `engine_free/us/` or `engine_free/uk/`: does not import a country engine but
   tests country-specific code or data.
-- `engine/us/` or `engine/uk/`: imports or executes that country engine.
+- `engine_contract/us/`: imports the US engine to validate variable, parameter,
+  schema, graph, or package contracts without running a representative household
+  calculation or a complete data workflow.
+- `engine_scenario/us/`: runs one or more small household or entity-level US
+  engine calculations without reading or writing a representative-population H5
+  file.
+- `engine_workflow/us/`: performs H5 I/O, population-scale adaptation, static
+  aging, fiscal refresh, release preparation, scoring, or another complete data
+  workflow. Every module in this category runs in a fresh pytest process.
+- `engine/uk/`: imports or executes the UK engine.
 - `integration/uk/`: runs serially through the `integration-uk` job with the
   explicit `--run-integration` option.
 
-The directory is the execution authority. Do not create `both/`,
-`engine/shared/`, another category, or a module-local country-engine
+Classify a mixed US module by its most resource-intensive test, or split it when
+the tests already have cleanly separable helpers. The directory is the execution
+authority. Do not create `both/`, `engine/shared/`, another category, or a
+module-local country-engine
 `importorskip`, `find_spec`, skip alias, or `requires_*` decorator. Pytest
 excludes unavailable engine directories before module import and adds the
 registered `requires_us`, `requires_uk`, and `integration` markers from paths.

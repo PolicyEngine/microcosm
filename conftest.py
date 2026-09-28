@@ -45,7 +45,13 @@ def pytest_ignore_collect(collection_path: Path, config) -> bool | None:
     environment, scope = category
     if environment == "integration" and not config.getoption("--run-integration"):
         return True
-    if environment in {"engine", "integration"}:
+    if environment in {
+        "engine",
+        "engine_contract",
+        "engine_scenario",
+        "engine_workflow",
+        "integration",
+    }:
         module_name = {"us": "policyengine_us", "uk": "policyengine_uk"}.get(scope)
         if module_name is not None and importlib.util.find_spec(module_name) is None:
             return True
@@ -62,5 +68,11 @@ def pytest_collection_modifyitems(items) -> None:
         environment, scope = category
         if environment == "integration":
             item.add_marker("integration")
-        if environment in {"engine", "integration"} and scope in {"us", "uk"}:
+        if environment in {
+            "engine",
+            "engine_contract",
+            "engine_scenario",
+            "engine_workflow",
+            "integration",
+        } and scope in {"us", "uk"}:
             item.add_marker(f"requires_{scope}")

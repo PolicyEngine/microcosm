@@ -9,11 +9,13 @@ _ROOT = paths_for("microcosm-build").repository
 _TEST_WORKFLOW = _ROOT / ".github/workflows/test.yml"
 _LEGACY_INTEGRATION_WORKFLOW = _ROOT / ".github/workflows/integration-tests.yml"
 _INTEGRATION_SCRIPT = _ROOT / "tools/run_integration_tests.sh"
+_ENGINE_RUNNER = _ROOT / "tools/run_engine_test_categories.py"
 
 
 def test_tests_workflow_selects_every_test_environment() -> None:
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
     script = _INTEGRATION_SCRIPT.read_text(encoding="utf-8")
+    engine_runner = _ENGINE_RUNNER.read_text(encoding="utf-8")
 
     assert not _LEGACY_INTEGRATION_WORKFLOW.exists()
     assert "push:" in workflow
@@ -21,7 +23,7 @@ def test_tests_workflow_selects_every_test_environment() -> None:
     assert "workflow_dispatch:" not in workflow
     assert "  integration-uk:\n" in workflow
     for group in ci_test_groups.GROUP_DIRECTORIES:
-        assert group in workflow + script
+        assert group in workflow + script + engine_runner
     assert "uv sync --all-packages --locked --extra uk" in script
     assert "--list integration-uk" in script
     assert "--run-integration" in script
@@ -45,7 +47,7 @@ def test_integration_job_is_required_and_read_only() -> None:
     assert 'require_success integration-uk "$INTEGRATION_UK_RESULT"' in workflow
 
 
-def test_country_engine_jobs_run_serially() -> None:
+def test_country_engine_jobs_bound_their_process_concurrency() -> None:
     """Country-engine tests should bound their peak memory use."""
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
 
@@ -58,6 +60,9 @@ def test_country_engine_jobs_run_serially() -> None:
     )[0]
 
     assert "-n 2 --dist loadfile" in engine_free
+    assert "-m tools.run_engine_test_categories" in engine_us
+    assert "--json-report engine-us-timings.json" in engine_us
+    assert "--markdown-report engine-us-timings.md" in engine_us
     assert "-n 2" not in engine_us
     assert "--dist loadfile" not in engine_us
     assert "-n 2" not in engine_uk
@@ -67,14 +72,16 @@ def test_country_engine_jobs_run_serially() -> None:
 def test_ordinary_jobs_report_the_first_failure_with_test_names() -> None:
     """CI must identify each test and finish reporting the first failure."""
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+    engine_runner = _ENGINE_RUNNER.read_text(encoding="utf-8")
 
     engine_free = workflow.split("\n  engine-free:\n", 1)[1].split(
         "\n  engine-us:\n", 1
     )[0]
-    engine_us = workflow.split("\n  engine-us:\n", 1)[1].split("\n  engine-uk:\n", 1)[0]
     engine_uk = workflow.split("\n  engine-uk:\n", 1)[1].split(
         "\n  integration-uk:\n", 1
     )[0]
 
-    for ordinary_job in (engine_free, engine_us, engine_uk):
+    for ordinary_job in (engine_free, engine_uk):
         assert "-v --tb=short --maxfail=1" in ordinary_job
+    for option in ('"-v"', '"--tb=short"', '"--maxfail=1"'):
+        assert option in engine_runner
