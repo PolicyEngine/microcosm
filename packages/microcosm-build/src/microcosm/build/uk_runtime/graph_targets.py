@@ -71,10 +71,13 @@ def register_uk_source_codecs(registry=SOURCE_CODECS) -> None:
     """Register the UK raw-byte source codecs the target nodes bind.
 
     Registration is explicit and idempotent: importing this module leaves the
-    shared registry untouched (the shared codec suite asserts the shipped set),
-    and the driver's kernel registration is the one place the chronicle
-    consumer-facts codec joins ``SOURCE_CODECS`` before a graph runs. Re-registering
-    the same loader is a no-op by the registry's own rule.
+    shared registry untouched, and the driver's kernel registration is the one
+    place the chronicle consumer-facts codec joins ``SOURCE_CODECS`` before a
+    graph runs. The shared codec suite checks that the shipped raw-bytes codec
+    is present and behaves, and tolerates a country codec registered beside it
+    (it no longer asserts the shipped set is the whole registry); the registry
+    itself refuses a name claimed by a different loader, and re-registering the
+    same loader is a no-op by its own rule.
     """
 
     registry.register_bytes(CHRONICLE_SOURCE_CODEC, load_chronicle_source_bytes)
