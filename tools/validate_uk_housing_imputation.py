@@ -1,15 +1,23 @@
 """Holdout check of the SPI housing-shell imputation against donor matching.
 
 Development diagnostic for ``uk_runtime/spi_housing_shell.py``. On a built UK
-spine, the FRS base households are split by identity-keyed uniforms into a
-training share and a held-out share. The held-out households' housing is then
-filled two ways from the same predictors and compared with what they report:
+spine, the FRS base households are split into a training share and a
+held-out share: an identity-keyed random share (``--holdout random``) or the
+households above an income quantile (``--holdout top``, the extrapolation the
+SPI copies need). The held-out households' housing is then filled three ways
+from the same predictors and compared with what they report:
 
 * ``imputation``: the stage's model (classifier steps + chained regime-gated
   QRF + learned structural zeros);
 * ``matching``: whole-record nearest-k donor matching within region and
   single-adult status, composition ladder on ``ons_household_type``, k nearest
-  in log income, household-weighted draw.
+  in log income, household-weighted draw;
+* ``forest_joint``: one whole training record per recipient, drawn from a
+  multi-output forest's conditional weights (with its donor reuse reported).
+
+A fourth arm, ``noise_floor_shuffled_within_cells``, shuffles the held-out
+records within income band x composition x region cells, so the comparison
+reads against the sampling noise of the held-out records themselves.
 
 The JSON output is aggregate only.
 """

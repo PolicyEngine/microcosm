@@ -283,15 +283,17 @@ person's age and the household's income components; no engine run, so housing
 benefits do not become circular. Tenure, dwelling type, bedrooms and council
 tax band are drawn in that order by weighted multiclass classifiers with an
 inverse-CDF draw; council tax, rent, both mortgage repayments, insurance,
-service charges, water, Northern Ireland rates, subletting and the head benefit
-unit's Housing Benefit and the reference person's council tax benefit by one
-chained regime-gated QRF conditioned on those categories. Every draw reads
-uniforms keyed on household id. Structural zeros are learned from the training
-households (an amount is zero wherever the FRS has no positive value for that
-tenure or region); mortgage payments need a mortgaged tenure, Housing Benefit
-a rented one, and council tax benefit is capped at council tax and carried by
-the reference person, as the FRS holds it. Region, single-adult status, BRMA
-and composition stay the recipient's; FRS rows are unchanged.
+service charges, water, Northern Ireland rates, subletting, Housing Benefit and
+council tax benefit by one chained regime-gated QRF conditioned on those
+categories. The two benefit targets are trained on the head benefit unit's
+Housing Benefit and the reference person's council tax benefit. Every draw
+reads uniforms keyed on household id. Structural zeros are learned from the
+training households (an amount is zero wherever the FRS has no positive value
+for that tenure or region); mortgage payments need a mortgaged tenure, Housing
+Benefit a rented one, and council tax benefit is capped at council tax. Both
+drawn benefits land on the household reference person, with every other
+person's zeroed, and the stage checks it. Region, single-adult status, BRMA and
+composition stay the recipient's; FRS rows are unchanged.
 
 Imputation was chosen over whole-record donor matching on a holdout of FRS
 households (`tools/validate_uk_housing_imputation.py`). Within FRS support the
@@ -332,7 +334,10 @@ further from NEED's gradient, and at 50 sweeps they were still falling
 2.5 % from sweep 59 and flat by 200 (1.16 % and 1.36 % at 100, 0.91 % and
 1.12 % at 200, 0.82 % and 1.05 % at 300), so the gate reads a converged
 residual rather than a truncated one, as its governance note asks. The 2.5 %
-tolerance is unchanged.
+tolerance is unchanged. The gate now checks the convergence instead of
+asserting it: each fuel's residual may move by at most 0.1 point over the last
+10 sweeps (the final head moves 0.014 points; the 50-sweep receipts on main and
+after the reorder were still falling 0.11 to 0.75 points).
 
 ## Not done here
 
