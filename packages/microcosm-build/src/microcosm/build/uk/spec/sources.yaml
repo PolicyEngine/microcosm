@@ -3752,7 +3752,9 @@ stages:
     fail_on_mismatch: true
   - kind: assign_residential_property_flag
     population: persons with net capital gains above the annual exempt amount (the national taxpayer proxy)
-    model: logistic probability in centred log gains, p = 1 / (1 + exp(-(a + b (log g - c)))) with c the weighted mean log gain of the population
+    model: logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise
+    stock_log_odds: 1.6
+    stock_signal: household other residential property value above zero, or the person's property income above zero
     parameter_solver: nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains
     count_target: Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service
     gains_target: Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service
@@ -3766,7 +3768,9 @@ stages:
     population: liable gainers not flagged residential
     bands: HMRC Table 4.1 2024-25 individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000)
     band_pool: the population with net gains inside the band's range; the open top band takes net gains at or above the lifetime limit
-    model: 'per band below the lifetime limit, a logistic probability in centred log gains solved like the residential flag: the intercept matches the band''s published claimant count and the slope its published qualifying gains, with zero slope where the band pool''s own mean already matches; the open top band has a uniform probability matching its count'
+    model: 'per band below the lifetime limit, a logistic probability in centred log gains with the stock shift, solved like the residential flag: the intercept matches the band''s published claimant count and the slope its published qualifying gains, with zero slope where the band pool''s own mean already matches; the open top band has zero slope, so its probability varies only with the stock shift, and its intercept matches its count'
+    stock_log_odds: 1.6
+    stock_signal: household corporate wealth above zero, or the person's self-employment income above zero
     qualifying_amount: below the lifetime limit a claimant's whole net gain qualifies; in the open top band the qualifying gain is the lifetime limit
     top_band_count: the published top-band qualifying gains divided by the lifetime limit; the published count is rounded to the nearest thousand
     basis_assumption: Table 4.1 counts qualifying gains before losses and the annual exempt amount while the frame carries net gains after losses; Investors' Relief is merged with BADR, as in the engine's capital_gains_badr input; the whole-gain assumption reproduces Table 4.1's tax column to within half a percent
@@ -3793,8 +3797,13 @@ stages:
     - agricultural_commercial_industrial_land_buildings
     - other_non_financial_assets
     claimant_restriction: a BADR or Investors' Relief claimant draws only from the claimant categories, so the type follows the claim
-    kernel: log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width
+    kernel: log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width, multiplied by the stock floor where the type declares a stock signal the gainer does not show; types without a declared signal are not scaled
     log_sigma: 1.5
+    stock_type_floor: 0.2
+    stock_signals:
+      listed_shares: household stocks-and-shares ISA above zero, or the person's dividend income above zero
+      unlisted_shares: household corporate wealth above zero, or the person's self-employment income above zero
+      other_financial_assets: household gross financial wealth above zero
     share_targets: Table 7 2023-24 gains by asset type excluding residential land and buildings, as shares
     weight_fitting: multiplicative updates of the type weights, with claimants restricted to the claimant categories, until the household-weighted expected gains shares by type match the share targets; the fit refuses if it has not converged within the iteration limit, and refuses up front when claimants hold more of the gains than the claimant categories' share
     weight_fitting_iterations: 200

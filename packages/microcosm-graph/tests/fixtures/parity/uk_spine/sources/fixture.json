@@ -2084,21 +2084,23 @@
           "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
           "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
           "kind": "assign_residential_property_flag",
-          "model": "logistic probability in centred log gains, p = 1 / (1 + exp(-(a + b (log g - c)))) with c the weighted mean log gain of the population",
+          "model": "logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise",
           "output_column": "capital_gains_residential_property",
           "output_semantics": "the person's capital_gains where flagged residential, 0 otherwise",
           "parameter_solver": "nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains",
           "population": "persons with net capital gains above the annual exempt amount (the national taxpayer proxy)",
           "realization": "weighted systematic sampling in ascending gain order with one seeded offset: a person is flagged when the expected weight owed so far reaches their own weight, so the flagged weight tracks the expected weight within one person's weight along the gains axis and the realised count and gains sit close to their expectations; the Bernoulli sigma of each is reported as the envelope",
           "seed": 553,
-          "seed_mixing": "seed combined with the build period"
+          "seed_mixing": "seed combined with the build period",
+          "stock_log_odds": 1.6,
+          "stock_signal": "household other residential property value above zero, or the person's property income above zero"
         },
         {
           "band_pool": "the population with net gains inside the band's range; the open top band takes net gains at or above the lifetime limit",
           "bands": "HMRC Table 4.1 2024-25 individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000)",
           "basis_assumption": "Table 4.1 counts qualifying gains before losses and the annual exempt amount while the frame carries net gains after losses; Investors' Relief is merged with BADR, as in the engine's capital_gains_badr input; the whole-gain assumption reproduces Table 4.1's tax column to within half a percent",
           "kind": "assign_badr_qualifying_gains",
-          "model": "per band below the lifetime limit, a logistic probability in centred log gains solved like the residential flag: the intercept matches the band's published claimant count and the slope its published qualifying gains, with zero slope where the band pool's own mean already matches; the open top band has a uniform probability matching its count",
+          "model": "per band below the lifetime limit, a logistic probability in centred log gains with the stock shift, solved like the residential flag: the intercept matches the band's published claimant count and the slope its published qualifying gains, with zero slope where the band pool's own mean already matches; the open top band has zero slope, so its probability varies only with the stock shift, and its intercept matches its count",
           "output_column": "capital_gains_badr",
           "output_semantics": "the qualifying gain where the person claims BADR or Investors' Relief, 0 otherwise; never above the person's net gain or the lifetime limit",
           "policy_parameters": [
@@ -2111,6 +2113,8 @@
           "reported_not_fitted": "tax at the relief rate, with the annual exempt amount set against the main-rate gains first as the engine allocates it, against Table 4.1's tax column",
           "seed": 555,
           "seed_mixing": "seed combined with the build period",
+          "stock_log_odds": 1.6,
+          "stock_signal": "household corporate wealth above zero, or the person's self-employment income above zero",
           "top_band_count": "the published top-band qualifying gains divided by the lifetime limit; the published count is rounded to the nearest thousand",
           "type_coupling": "a claimant's main asset type is drawn only from unlisted_shares, agricultural_commercial_industrial_land_buildings, other_non_financial_assets"
         },
@@ -2129,7 +2133,7 @@
           ],
           "claimant_restriction": "a BADR or Investors' Relief claimant draws only from the claimant categories, so the type follows the claim",
           "diagnostic_only": true,
-          "kernel": "log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width",
+          "kernel": "log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width, multiplied by the stock floor where the type declares a stock signal the gainer does not show; types without a declared signal are not scaled",
           "kind": "assign_main_asset_type",
           "log_sigma": 1.5,
           "none_semantics": "no positive net gains",
@@ -2139,6 +2143,12 @@
           "seed": 554,
           "seed_mixing": "seed combined with the build period",
           "share_targets": "Table 7 2023-24 gains by asset type excluding residential land and buildings, as shares",
+          "stock_signals": {
+            "listed_shares": "household stocks-and-shares ISA above zero, or the person's dividend income above zero",
+            "other_financial_assets": "household gross financial wealth above zero",
+            "unlisted_shares": "household corporate wealth above zero, or the person's self-employment income above zero"
+          },
+          "stock_type_floor": 0.2,
           "sub_aea_semantics": "positive net gains at or below the annual exempt amount; never a taxpayer, so never classified",
           "value_domain": [
             "none",

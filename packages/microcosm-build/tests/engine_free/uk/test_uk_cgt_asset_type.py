@@ -20,7 +20,14 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_ASSET_TYPE_SUB_AEA,
     CGT_BADR_ELIGIBLE_TYPES,
     CGT_BADR_GAINS_COLUMN,
+    CGT_BUSINESS_STOCK_SIGNAL,
     CGT_RESIDENTIAL_GAINS_COLUMN,
+    CGT_RESIDENTIAL_STOCK_SIGNAL,
+    CGT_STOCK_HOUSEHOLD_COLUMNS,
+    CGT_STOCK_LOG_ODDS,
+    CGT_STOCK_PERSON_COLUMNS,
+    CGT_STOCK_TYPE_FLOOR,
+    CGT_TYPE_STOCK_SIGNALS,
     HMRC_CGT_ASSET_TYPE_RECORD_SETS,
     HMRC_CGT_ASSET_TYPE_RESOURCE,
     HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS,
@@ -149,7 +156,12 @@ def _synthetic_facts(
     )
 
 
-def _frame(gains, *, weights=None, time_period: str = "2024") -> Frame:
+def _frame(gains, *, weights=None, time_period: str = "2024", stocks=None) -> Frame:
+    """A one-person-per-household frame; ``stocks`` sets stock signal columns.
+
+    Every stock signal column the stage reads is present and zero unless
+    ``stocks`` gives its values.
+    """
     rows = len(gains)
     person = pd.DataFrame(
         {
@@ -173,6 +185,12 @@ def _frame(gains, *, weights=None, time_period: str = "2024") -> Frame:
             "region": np.full(rows, "LONDON", dtype=object),
         }
     )
+    for column in CGT_STOCK_HOUSEHOLD_COLUMNS:
+        household[column] = 0.0
+    for column, values in (stocks or {}).items():
+        table = person if column in CGT_STOCK_PERSON_COLUMNS else household
+        assert column in (*CGT_STOCK_PERSON_COLUMNS, *CGT_STOCK_HOUSEHOLD_COLUMNS)
+        table[column] = np.asarray(values, dtype=float)
     benunit = pd.DataFrame({"benunit_id": np.arange(rows, dtype="int64")})
     return uk_national_frame(
         person=person, benunit=benunit, household=household, time_period=time_period
@@ -461,7 +479,7 @@ class TestBADRClaims:
         gains = _synthetic_gains() if gains is None else gains
         weights = np.full(gains.size, 60.0) if weights is None else weights
         facts = kwargs.pop("facts", None) or _synthetic_facts(gains, weights)
-        frame = _frame(gains, weights=weights)
+        frame = _frame(gains, weights=weights, stocks=kwargs.pop("stocks", None))
         result, summary = assign_uk_cgt_asset_types(
             frame, facts, PARAMETERS, kwargs.pop("badr", BADR_PARAMETERS), **kwargs
         )
@@ -586,6 +604,109 @@ class TestBADRClaims:
 
         with pytest.raises(ValueError, match="above the Table 7 share"):
             self._run(gains, weights, facts=facts)
+
+
+class TestStockConditioning:
+    """Flags and types lean towards gainers who show the stock they imply."""
+
+    @staticmethod
+    def _stocks(rows: int) -> dict[str, np.ndarray]:
+        # Each signal marks half the persons, independently of the others and
+        # of the gains.
+        index = np.arange(rows)
+        return {
+            "other_residential_property_value": np.where(index % 2 == 0, 1e5, 0.0),
+            "corporate_wealth": np.where((index // 2) % 2 == 0, 1e5, 0.0),
+            "stocks_and_shares_isa": np.where((index // 4) % 2 == 0, 1e4, 0.0),
+            "gross_financial_wealth": np.where((index // 8) % 2 == 0, 1e4, 0.0),
+        }
+
+    def test_holders_are_drawn_more_often_while_every_total_holds(self) -> None:
+        gains = _synthetic_gains()
+        stocks = self._stocks(gains.size)
+
+        _, _, evidence = TestBADRClaims()._run(gains, stocks=stocks)
+
+        residential = evidence["residential"]
+        assert residential["expected_count"] == pytest.approx(
+            residential["count_target_individuals_basis"], rel=1e-6
+        )
+        assert residential["expected_gains"] == pytest.approx(
+            residential["gains_target_individuals_basis"], rel=1e-6
+        )
+        assert residential["stock_share_liable"] == pytest.approx(0.5, abs=0.02)
+        assert residential["stock_share_flagged"] > 0.65
+        badr = evidence["badr"]
+        for band in badr["bands"]:
+            assert band["expected_count"] == pytest.approx(
+                band["count_target"], rel=1e-6
+            )
+            assert band["expected_gains"] == pytest.approx(
+                band["gains_target"], rel=1e-6
+            )
+        assert badr["stock_share_pool"] == pytest.approx(0.5, abs=0.03)
+        assert badr["stock_share_claimants"] > 0.65
+        assert set(badr["invariants"].values()) == {0}
+        asset_type = evidence["asset_type"]
+        assert asset_type["share_fit_converged"] is True
+        for name in CGT_TYPE_STOCK_SIGNALS:
+            shares = asset_type["stock_share_by_type"][name]
+            assert shares["typed"] > shares["non_residential_liable"] + 0.1
+        # The receipts restate the declared settings.
+        assert residential["stock_log_odds"] == CGT_STOCK_LOG_ODDS
+        assert residential["stock_signal"] == CGT_RESIDENTIAL_STOCK_SIGNAL
+        assert badr["stock_log_odds"] == CGT_STOCK_LOG_ODDS
+        assert badr["stock_signal"] == CGT_BUSINESS_STOCK_SIGNAL
+        assert asset_type["stock_type_floor"] == CGT_STOCK_TYPE_FLOOR
+
+    def test_the_open_top_band_leans_without_a_slope(self) -> None:
+        gains = _synthetic_gains()
+        stocks = self._stocks(gains.size)
+
+        _, person, evidence = TestBADRClaims()._run(gains, stocks=stocks)
+
+        top = evidence["badr"]["bands"][-1]
+        assert top["qualifying_amount"] == "lifetime_limit"
+        assert top["logistic_slope"] == 0.0
+        assert top["logistic_intercept"] is not None
+        assert top["expected_count"] == pytest.approx(top["count_target"], rel=1e-9)
+        claimant = person[CGT_BADR_GAINS_COLUMN].to_numpy() > 0
+        at_limit = claimant & (gains >= BADR_PARAMETERS.lifetime_limit)
+        business = stocks["corporate_wealth"] > 0
+        assert business[at_limit].mean() > 0.65
+
+    def test_refuses_a_frame_without_a_stock_column(self) -> None:
+        gains = _synthetic_gains(3_000)
+        frame = _frame(gains)
+        stripped = uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=frame.table("household").drop(columns=["corporate_wealth"]),
+            time_period="2024",
+            household_weights=frame.weights_for("household").values,
+        )
+
+        with pytest.raises(ValueError, match=r"lacks \['corporate_wealth'\]"):
+            assign_uk_cgt_asset_types(
+                stripped,
+                _synthetic_facts(gains, np.full(gains.size, 60.0)),
+                PARAMETERS,
+                BADR_PARAMETERS,
+            )
+
+    def test_refuses_a_stock_signal_that_is_not_finite(self) -> None:
+        gains = _synthetic_gains(3_000)
+        wealth = np.zeros(gains.size)
+        wealth[7] = np.nan
+        frame = _frame(gains, stocks={"gross_financial_wealth": wealth})
+
+        with pytest.raises(ValueError, match="gross_financial_wealth must be finite"):
+            assign_uk_cgt_asset_types(
+                frame,
+                _synthetic_facts(gains, np.full(gains.size, 60.0)),
+                PARAMETERS,
+                BADR_PARAMETERS,
+            )
 
 
 class TestAssignment:

@@ -29,9 +29,12 @@ Three declared mechanisms, in order:
 
 1. **Residential flag.** Among liable gainers (net gains above the annual
    exempt amount, the national taxpayer proxy) the probability of holding
-   a residential disposal is logistic in centred log gains, ``p = 1 / (1 +
-   exp(-(a + b (log g - c))))`` with ``c`` the weighted mean log gain of the
-   liable population. ``(a, b)`` are solved by nested bisection so the
+   a residential disposal is logistic in centred log gains with a stock
+   shift, ``p = 1 / (1 + exp(-(a + b (log g - c) + s h)))`` with ``c`` the
+   weighted mean log gain of the liable population, ``h`` one for a gainer
+   who shows residential stock (another residential property in the
+   household, or property income) and ``s`` the declared stock log-odds
+   (microcosm#1014). ``(a, b)`` are solved by nested bisection so the
    household-weighted expected count and gains of flagged persons equal the
    individuals-basis Table 8a totals: residential gainers are many and
    small relative to the whole (a fifth of the gains on a third of the
@@ -53,11 +56,14 @@ Three declared mechanisms, in order:
    like the residential flag: a logistic in centred log gains whose
    intercept matches the band's published claimant count and whose slope
    matches its published qualifying gains, realised by the same weighted
-   systematic walk with one seeded offset per band. The open top band
-   holds claimants at the lifetime limit: every person with net gains at or
-   above it is equally likely, the count is the published gains over the
-   limit (the published count is rounded to the nearest thousand), and the
-   qualifying amount is the limit. The whole-gain assumption reproduces
+   systematic walk with one seeded offset per band. Each band's logistic
+   carries the same stock shift for a gainer who shows business stock
+   (household corporate wealth, or self-employment income). The open top
+   band holds claimants at the lifetime limit: its probability is flat in
+   gains and varies only with the stock shift, its intercept matches the
+   count, the count is the published gains over the limit (the published
+   count is rounded to the nearest thousand), and the qualifying amount is
+   the limit. The whole-gain assumption reproduces
    Table 4.1's tax column to within half a percent; Table 4.1 counts gains
    before losses while the frame carries net gains, and Investors' Relief
    is merged with BADR as in the engine's input.
@@ -65,7 +71,10 @@ Three declared mechanisms, in order:
    one of five Table 7 types from a size-tilted categorical: the type
    weight times a log-normal kernel in log gains centred on the type's
    Table 7 mean gain per disposal (listed shares near £5,500, unlisted
-   shares near £115,000) with one declared log-scale width. A BADR or
+   shares near £115,000) with one declared log-scale width, times the
+   declared stock floor where the type's stock signal is absent (listed
+   shares: a stocks-and-shares ISA or dividends; unlisted shares: business
+   stock; other financial assets: financial wealth). A BADR or
    Investors' Relief claimant draws only from the three types the reliefs
    apply to (unlisted shares, business land and buildings, other
    non-financial assets), so the type follows the claim. The type weights
@@ -651,8 +660,127 @@ def uk_cgt_badr_parameters(build_period: int | str) -> UKCGTBADRParameters:
 # ---------------------------------------------------------------------------
 
 
-def _logistic(log_gains: np.ndarray, a: float, b: float) -> np.ndarray:
-    return 1.0 / (1.0 + np.exp(-(a + b * log_gains)))
+def _logistic(
+    log_gains: np.ndarray, a: float, b: float, offset: np.ndarray | float = 0.0
+) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-(a + b * log_gains + offset)))
+
+
+#: A flag or a type implies the gainer holds the stock disposed of
+#: (microcosm#1014). The residential flag and each BADR band add this shift
+#: (odds times five) to the log-odds of a gainer who shows the implied stock;
+#: the solves still meet every published total, so the shift moves who is
+#: drawn, not how many or how much. On the licensed spine it took BADR
+#: claimants with neither corporate wealth nor self-employment income from
+#: 51.1 to 27.6 percent, and residential gainers with neither another
+#: residential property nor property income from 82.6 to 74.1 percent.
+CGT_STOCK_LOG_ODDS = 1.6
+
+#: The main-type kernel is scaled by this factor for a type whose declared
+#: stock signal the gainer lacks. On the licensed spine, with the shift above,
+#: it took unlisted-shares gainers without business stock from 49.9 to 26.1
+#: percent and listed-shares gainers with neither an ISA nor dividends from
+#: 62.0 to 47.9 percent. Business land and buildings and other non-financial
+#: assets declare no signal and are not scaled: no gainer typed business land
+#: holds non-residential property or land on the spine, so that stock cannot
+#: be read there.
+CGT_STOCK_TYPE_FLOOR = 0.2
+
+CGT_RESIDENTIAL_STOCK_SIGNAL = (
+    "household other residential property value above zero, or the person's "
+    "property income above zero"
+)
+CGT_BUSINESS_STOCK_SIGNAL = (
+    "household corporate wealth above zero, or the person's self-employment "
+    "income above zero"
+)
+CGT_TYPE_STOCK_SIGNALS: dict[str, str] = {
+    "listed_shares": (
+        "household stocks-and-shares ISA above zero, or the person's dividend "
+        "income above zero"
+    ),
+    "unlisted_shares": CGT_BUSINESS_STOCK_SIGNAL,
+    "other_financial_assets": "household gross financial wealth above zero",
+}
+CGT_STOCK_HOUSEHOLD_COLUMNS: tuple[str, ...] = (
+    "other_residential_property_value",
+    "corporate_wealth",
+    "stocks_and_shares_isa",
+    "gross_financial_wealth",
+)
+CGT_STOCK_PERSON_COLUMNS: tuple[str, ...] = (
+    "property_income",
+    "self_employment_income",
+    "dividend_income",
+)
+
+
+def _stock_signals(person: pd.DataFrame, household: pd.DataFrame) -> dict[str, object]:
+    """Which persons show the stock each flag or type implies.
+
+    A household column is shared by every member, so a signal read from one
+    marks all of them; a person column marks only that person.
+    """
+
+    missing = [c for c in CGT_STOCK_HOUSEHOLD_COLUMNS if c not in household.columns] + [
+        c for c in CGT_STOCK_PERSON_COLUMNS if c not in person.columns
+    ]
+    if missing:
+        raise ValueError(
+            "The CGT asset-type stage conditions flags and types on the stocks "
+            f"they imply; the frame lacks {missing}."
+        )
+    indexed = household.set_index("household_id")
+
+    def finite(column: str, values: np.ndarray) -> np.ndarray:
+        if not np.isfinite(values).all():
+            raise ValueError(
+                f"The stock signal column {column} must be finite for every person."
+            )
+        return values
+
+    def hh(column: str) -> np.ndarray:
+        values = pd.to_numeric(indexed[column], errors="raise")
+        return finite(
+            column, person["person_household_id"].map(values).to_numpy(dtype=float)
+        )
+
+    def pp(column: str) -> np.ndarray:
+        return finite(
+            column, pd.to_numeric(person[column], errors="raise").to_numpy(dtype=float)
+        )
+
+    residential = (hh("other_residential_property_value") > 0) | (
+        pp("property_income") > 0
+    )
+    business = (hh("corporate_wealth") > 0) | (pp("self_employment_income") > 0)
+    by_type = {
+        "listed_shares": (hh("stocks_and_shares_isa") > 0)
+        | (pp("dividend_income") > 0),
+        "unlisted_shares": business,
+        "other_financial_assets": hh("gross_financial_wealth") > 0,
+    }
+    factor = np.column_stack(
+        [
+            np.where(by_type[name], 1.0, CGT_STOCK_TYPE_FLOOR)
+            if name in by_type
+            else np.ones(len(person))
+            for name in CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES
+        ]
+    )
+    return {
+        "residential": residential,
+        "business": business,
+        "by_type": by_type,
+        "type_factor": factor,
+    }
+
+
+def _weighted_share(
+    weights: np.ndarray, rows: np.ndarray, holds: np.ndarray
+) -> float | None:
+    mass = float(weights[rows].sum())
+    return float(weights[rows & holds].sum() / mass) if mass > 0 else None
 
 
 def _centred_log_gains(
@@ -666,14 +794,19 @@ def _centred_log_gains(
 
 
 def _solve_a(
-    log_gains: np.ndarray, weights: np.ndarray, *, b: float, count_target: float
+    log_gains: np.ndarray,
+    weights: np.ndarray,
+    *,
+    b: float,
+    count_target: float,
+    offset: np.ndarray | float = 0.0,
 ) -> float:
     """The intercept that puts the expected weighted count on target at slope b."""
 
     low, high = -400.0, 400.0
     for _ in range(_BISECTION_ITERATIONS):
         mid = 0.5 * (low + high)
-        expected = float((weights * _logistic(log_gains, mid, b)).sum())
+        expected = float((weights * _logistic(log_gains, mid, b, offset)).sum())
         if expected < count_target:
             low = mid
         else:
@@ -687,6 +820,7 @@ def solve_residential_logistic(
     *,
     count_target: float,
     gains_target: float,
+    offset: np.ndarray | float = 0.0,
 ) -> tuple[float, float, float]:
     """Solve (a, b, c) so expected weighted count and gains hit both targets.
 
@@ -705,6 +839,7 @@ def solve_residential_logistic(
         gains_target=gains_target,
         label="Residential",
         population="liable",
+        offset=offset,
     )
 
 
@@ -716,6 +851,7 @@ def _solve_logistic(
     gains_target: float,
     label: str,
     population: str,
+    offset: np.ndarray | float = 0.0,
 ) -> tuple[float, float, float]:
     """The logistic solve behind the residential flag and each BADR band."""
 
@@ -737,8 +873,8 @@ def _solve_logistic(
     low, high = -12.0, 12.0
 
     def expected_gains(b: float) -> float:
-        a = _solve_a(log_gains, weights, b=b, count_target=count_target)
-        return float((weights * gains * _logistic(log_gains, a, b)).sum())
+        a = _solve_a(log_gains, weights, b=b, count_target=count_target, offset=offset)
+        return float((weights * gains * _logistic(log_gains, a, b, offset)).sum())
 
     if not expected_gains(low) <= gains_target <= expected_gains(high):
         raise ValueError(
@@ -755,7 +891,7 @@ def _solve_logistic(
         if high - low < _SOLVE_TOLERANCE:
             break
     b = 0.5 * (low + high)
-    a = _solve_a(log_gains, weights, b=b, count_target=count_target)
+    a = _solve_a(log_gains, weights, b=b, count_target=count_target, offset=offset)
     return a, b, centre
 
 
@@ -798,6 +934,7 @@ def _solve_band_logistic(
     count_target: float,
     gains_target: float,
     label: str,
+    offset: np.ndarray | float = 0.0,
 ) -> tuple[float, float, float]:
     """A band's logistic, with zero slope when the pool's own mean fits.
 
@@ -814,8 +951,12 @@ def _solve_band_logistic(
             f"taxpayer mass {total_weight}."
         )
     log_gains, centre = _centred_log_gains(gains, weights)
-    a_flat = _solve_a(log_gains, weights, b=0.0, count_target=count_target)
-    flat_gains = float((weights * gains * _logistic(log_gains, a_flat, 0.0)).sum())
+    a_flat = _solve_a(
+        log_gains, weights, b=0.0, count_target=count_target, offset=offset
+    )
+    flat_gains = float(
+        (weights * gains * _logistic(log_gains, a_flat, 0.0, offset)).sum()
+    )
     if abs(flat_gains - gains_target) <= _SOLVE_TOLERANCE * max(abs(gains_target), 1.0):
         return a_flat, 0.0, centre
     return _solve_logistic(
@@ -825,6 +966,7 @@ def _solve_band_logistic(
         gains_target=gains_target,
         label=label,
         population="band pool",
+        offset=offset,
     )
 
 
@@ -863,6 +1005,7 @@ def _assign_badr_claims(
     annual_exempt_amount: float,
     time_period: int,
     seed: int,
+    offset_by_person: np.ndarray | None = None,
 ) -> tuple[np.ndarray, list[dict[str, object]]]:
     """Draw each Table 4.1 band's claimants and their qualifying gains.
 
@@ -919,6 +1062,7 @@ def _assign_badr_claims(
             )
         band_weights = person_weight[rows]
         band_gains = gains[rows]
+        band_offset = 0.0 if offset_by_person is None else offset_by_person[rows]
         if open_top:
             mass = float(band_weights.sum())
             if count_target >= mass:
@@ -927,7 +1071,19 @@ def _assign_badr_claims(
                     f"pool taxpayer mass {mass}."
                 )
             intercept, slope, centre = float("nan"), 0.0, float("nan")
-            probabilities = np.full(rows.size, count_target / mass)
+            if not np.any(band_offset):
+                probabilities = np.full(rows.size, count_target / mass)
+            else:
+                # Zero slope: the probability varies only with the stock shift.
+                flat = np.zeros(rows.size)
+                intercept = _solve_a(
+                    flat,
+                    band_weights,
+                    b=0.0,
+                    count_target=count_target,
+                    offset=band_offset,
+                )
+                probabilities = _logistic(flat, intercept, 0.0, band_offset)
             amounts = np.full(rows.size, limit)
         else:
             intercept, slope, centre = _solve_band_logistic(
@@ -936,8 +1092,11 @@ def _assign_badr_claims(
                 count_target=count_target,
                 gains_target=band.gains,
                 label=label,
+                offset=band_offset,
             )
-            probabilities = _logistic(np.log(band_gains) - centre, intercept, slope)
+            probabilities = _logistic(
+                np.log(band_gains) - centre, intercept, slope, band_offset
+            )
             amounts = band_gains
         order = np.lexsort((person_id[rows], band_gains))
         flags = _weighted_systematic_flags(
@@ -1014,10 +1173,12 @@ def fit_type_weights(
     number of iterations used. Multiplicative updates on the weights are a
     one-dimensional rake per type; with a wide kernel every type reaches
     every person, so the fixed point exists and the loop converges quickly.
-    ``allowed`` (persons x types) zeroes the types a person may not take, as
-    a BADR claimant may take only the types the relief applies to; a person
-    must keep at least one type. The fit refuses if it has not converged
-    within the iteration limit rather than returning an unfitted draw.
+    ``allowed`` (persons x types) multiplies each kernel: zero for a type a
+    person may not take, as a BADR claimant may take only the types the
+    relief applies to, and the stock floor for a type whose stock the person
+    does not show; a person must keep at least one type. The fit refuses if
+    it has not converged within the iteration limit rather than returning an
+    unfitted draw.
     """
 
     kernels = _type_kernels(gains, medians)
@@ -1130,19 +1291,25 @@ def assign_uk_cgt_asset_types(
     asset_type = np.full(len(person), CGT_ASSET_TYPE_NONE, dtype=object)
     asset_type[positive & ~liable] = CGT_ASSET_TYPE_SUB_AEA
 
+    stocks = _stock_signals(person, household)
+
     # 1. Residential flag on the liable population.
     liable_index = np.flatnonzero(liable)
     liable_gains = gains[liable_index]
     liable_weights = person_weight[liable_index]
     count_target = facts.residential_taxpayers_individuals_basis
     gains_target = facts.residential_gains_individuals_basis
+    residential_offset = CGT_STOCK_LOG_ODDS * stocks["residential"][
+        liable_index
+    ].astype(float)
     a, b, centre = solve_residential_logistic(
         liable_gains,
         liable_weights,
         count_target=count_target,
         gains_target=gains_target,
+        offset=residential_offset,
     )
-    probabilities = _logistic(np.log(liable_gains) - centre, a, b)
+    probabilities = _logistic(np.log(liable_gains) - centre, a, b, residential_offset)
     rng_flag = np.random.default_rng((residential_seed, int(time_period)))
     order = np.lexsort((person_id[liable_index], liable_gains))
     flags = _weighted_systematic_flags(
@@ -1165,6 +1332,7 @@ def assign_uk_cgt_asset_types(
         annual_exempt_amount=parameters.annual_exempt_amount,
         time_period=int(time_period),
         seed=badr_seed,
+        offset_by_person=CGT_STOCK_LOG_ODDS * stocks["business"].astype(float),
     )
     claimant = qualifying > 0.0
     in_pool = np.zeros(len(person), dtype=bool)
@@ -1240,6 +1408,7 @@ def assign_uk_cgt_asset_types(
             dtype=bool,
         )
         allowed[claimant_in_remainder] = eligible_type
+        allowed = allowed * stocks["type_factor"][remainder_index]
         type_weights, type_probabilities, fit_iterations = fit_type_weights(
             gains[remainder_index],
             person_weight[remainder_index],
@@ -1298,6 +1467,16 @@ def assign_uk_cgt_asset_types(
         "table8a_gains_total": facts.table8a_gains_total,
         "table8b_individuals_taxpayer_share": facts.individuals_share("taxpayers"),
         "table8b_individuals_gains_share": facts.individuals_share("gains"),
+        "stock_log_odds": CGT_STOCK_LOG_ODDS,
+        "stock_signal": CGT_RESIDENTIAL_STOCK_SIGNAL,
+        "stock_share_flagged": _weighted_share(
+            person_weight,
+            asset_type == CGT_ASSET_TYPE_RESIDENTIAL,
+            stocks["residential"],
+        ),
+        "stock_share_liable": _weighted_share(
+            person_weight, liable, stocks["residential"]
+        ),
     }
     remainder_mass = float(
         (person_weight[remainder_index] * gains[remainder_index]).sum()
@@ -1333,6 +1512,20 @@ def assign_uk_cgt_asset_types(
         "claimant_categories": list(CGT_BADR_ELIGIBLE_TYPES),
         "claimant_gains_share": claimant_gains_share,
         "claimant_categories_target_share": eligible_share_target,
+        "stock_type_floor": CGT_STOCK_TYPE_FLOOR,
+        "stock_share_by_type": {
+            asset_type_name: {
+                "typed": _weighted_share(
+                    person_weight,
+                    asset_type == asset_type_name,
+                    stocks["by_type"][asset_type_name],
+                ),
+                "non_residential_liable": _weighted_share(
+                    person_weight, in_pool, stocks["by_type"][asset_type_name]
+                ),
+            }
+            for asset_type_name in CGT_TYPE_STOCK_SIGNALS
+        },
     }
     claimant_types = {
         asset_type_name: {
@@ -1387,6 +1580,12 @@ def assign_uk_cgt_asset_types(
         },
         "invariants": invariants,
         "claimant_types": claimant_types,
+        "stock_log_odds": CGT_STOCK_LOG_ODDS,
+        "stock_signal": CGT_BUSINESS_STOCK_SIGNAL,
+        "stock_share_claimants": _weighted_share(
+            person_weight, claimant, stocks["business"]
+        ),
+        "stock_share_pool": _weighted_share(person_weight, in_pool, stocks["business"]),
     }
     bounds = HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
     uppers = (*bounds[1:], np.inf)
@@ -1533,10 +1732,13 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
                 "(the national taxpayer proxy)"
             ),
             "model": (
-                "logistic probability in centred log gains, p = 1 / (1 + exp(-(a + "
-                "b (log g - c)))) with c the weighted mean log gain of the "
-                "population"
+                "logistic probability in centred log gains with a stock shift, p = "
+                "1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean "
+                "log gain of the population, s the stock log-odds and h one where "
+                "the stock signal holds, zero otherwise"
             ),
+            "stock_log_odds": CGT_STOCK_LOG_ODDS,
+            "stock_signal": CGT_RESIDENTIAL_STOCK_SIGNAL,
             "parameter_solver": (
                 "nested bisection; the intercept matches the expected weighted "
                 "count at each trial slope, the slope matches the expected weighted "
@@ -1585,12 +1787,15 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
             ),
             "model": (
                 "per band below the lifetime limit, a logistic probability in "
-                "centred log gains solved like the residential flag: the "
-                "intercept matches the band's published claimant count and the "
-                "slope its published qualifying gains, with zero slope where the "
-                "band pool's own mean already matches; the open top band has a "
-                "uniform probability matching its count"
+                "centred log gains with the stock shift, solved like the "
+                "residential flag: the intercept matches the band's published "
+                "claimant count and the slope its published qualifying gains, with "
+                "zero slope where the band pool's own mean already matches; the "
+                "open top band has zero slope, so its probability varies only with "
+                "the stock shift, and its intercept matches its count"
             ),
+            "stock_log_odds": CGT_STOCK_LOG_ODDS,
+            "stock_signal": CGT_BUSINESS_STOCK_SIGNAL,
             "qualifying_amount": (
                 "below the lifetime limit a claimant's whole net gain qualifies; "
                 "in the open top band the qualifying gain is the lifetime limit"
@@ -1643,9 +1848,14 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
             ),
             "kernel": (
                 "log-normal density in log gains centred on each type's Table 7 "
-                "2023-24 mean gain per disposal, one common log-scale width"
+                "2023-24 mean gain per disposal, one common log-scale width, "
+                "multiplied by the stock floor where the type declares a stock "
+                "signal the gainer does not show; types without a declared signal "
+                "are not scaled"
             ),
             "log_sigma": CGT_ASSET_TYPE_LOG_SIGMA,
+            "stock_type_floor": CGT_STOCK_TYPE_FLOOR,
+            "stock_signals": dict(CGT_TYPE_STOCK_SIGNALS),
             "share_targets": (
                 "Table 7 2023-24 gains by asset type excluding residential land "
                 "and buildings, as shares"

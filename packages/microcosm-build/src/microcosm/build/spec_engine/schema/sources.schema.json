@@ -5598,6 +5598,12 @@
       },
       "seed_mixing": {
        "type": "string"
+      },
+      "stock_log_odds": {
+       "type": "number"
+      },
+      "stock_signal": {
+       "type": "string"
       }
      },
      "required": [
@@ -5612,7 +5618,9 @@
       "population",
       "realization",
       "seed",
-      "seed_mixing"
+      "seed_mixing",
+      "stock_log_odds",
+      "stock_signal"
      ]
     },
     {
@@ -5664,6 +5672,12 @@
       "seed_mixing": {
        "type": "string"
       },
+      "stock_log_odds": {
+       "type": "number"
+      },
+      "stock_signal": {
+       "type": "string"
+      },
       "top_band_count": {
        "type": "string"
       },
@@ -5686,6 +5700,8 @@
       "reported_not_fitted",
       "seed",
       "seed_mixing",
+      "stock_log_odds",
+      "stock_signal",
       "top_band_count",
       "type_coupling"
      ]
@@ -5742,6 +5758,15 @@
       "share_targets": {
        "type": "string"
       },
+      "stock_signals": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "stock_type_floor": {
+       "type": "number"
+      },
       "sub_aea_semantics": {
        "type": "string"
       },
@@ -5776,6 +5801,8 @@
       "seed",
       "seed_mixing",
       "share_targets",
+      "stock_signals",
+      "stock_type_floor",
       "sub_aea_semantics",
       "value_domain",
       "weight_fitting",

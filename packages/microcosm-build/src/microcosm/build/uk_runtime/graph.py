@@ -304,8 +304,31 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     # The asset-type stage classifies the redrawn net gains; the AEA it
-    # gates on is a policy parameter, not a frame column (microcosm#725).
-    "hmrc_cgt_asset_type_spine": frozenset({("person", "capital_gains")}),
+    # gates on is a policy parameter, not a frame column (microcosm#725). Its
+    # flags and types lean towards gainers who show the stock they imply
+    # (microcosm#1014), read from these income and wealth columns.
+    "hmrc_cgt_asset_type_spine": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "capital_gains",
+                    "property_income",
+                    "self_employment_income",
+                    "dividend_income",
+                )
+            ),
+            *(
+                ("household", column)
+                for column in (
+                    "other_residential_property_value",
+                    "corporate_wealth",
+                    "stocks_and_shares_isa",
+                    "gross_financial_wealth",
+                )
+            ),
+        }
+    ),
     # The incidence anchor reads the redrawn gains, the carrier income proxy
     # and the clone/donor flags; it writes no cell and only moves household
     # weight between paired rows (microcosm#970).
