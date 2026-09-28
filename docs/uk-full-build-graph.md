@@ -105,7 +105,7 @@ Recorded for review in `experiments/901-uk-main-rebase-receipts.md` (R3):
 
 - A blocked *assembled* spine gate fails inside `run_graph` (the first post-checkpoint stage refuses on the stored verdict), and the driver materialises the stored assembled report into `spine_gates.json` (`blocked_at_phase: "assembled"`, the transferred phase `unreached`) before it fails, so the operator gets the same file the previous tool wrote before raising; a blocked *transferred* gate writes the file on the success path. The report is also in the content store either way.
 - `numerical_dependencies` pins installed versions into the H2 fixture.
-- `_normalise_uk_local_bound_families` accepts an empty declaration (country-only scope).
+- `_normalise_uk_local_bound_families` keeps main's refusal of a declaration that names nothing; only the graph's country-only target selection (`UKFullProblemKernel`, no local-surface spec selected) passes `allow_empty_local_binding=True` through `prepare_uk_full_solve`, because its local surface is empty by construction.
 - Per-epoch `calibration_progress` staging rows come from the dense solve only.
 - The HMRC family names `spi_income_band_donors` (microcosm#1006) as a predecessor and admits its two operation kinds; the contract otherwise refused the drifted operation order.
 - `tools/build_uk_rowwise_dataset.py` stays as it was on main (its tests load it by path; it still serves `--candidate-clone-counts`).

@@ -70,7 +70,12 @@ sampling; `--no-staging`; checkpoints on. Script and outputs:
   fails, as main's tool did; a blocked *transferred* gate writes the file on the success path
   (R1). Pinned by `test_uk_frs_spine.py::test_driver_materializes_a_blocked_assembled_gate_report_before_failing`.
 - `numerical_dependencies` pins installed versions into the H2 fixture.
-- `_normalise_uk_local_bound_families` accepts an empty declaration (country-only scope).
+- Withdrawn 2026-09-28 (review item 2): `_normalise_uk_local_bound_families` keeps main's
+  refusal of a declaration that names nothing; only the graph's country-only target selection
+  (`UKFullProblemKernel`, no local-surface spec selected) passes `allow_empty_local_binding=True`
+  through `prepare_uk_full_solve`. Both behaviours pinned by
+  `test_uk_local_rowwise.py::test_rowwise_binding_refuses_an_empty_declaration_unless_allowed`
+  and `test_uk_full_solve_scope.py::test_zero_local_scope_uses_same_solver_and_has_no_fake_holdout`.
 - Per-epoch `calibration_progress` staging rows come from the dense solve only.
 - The HMRC family names `spi_income_band_donors` (#1006) as a predecessor and admits its two
   operation kinds; the contract otherwise refused the drifted operation order.

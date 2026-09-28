@@ -52,8 +52,18 @@ def test_zero_local_scope_uses_same_solver_and_has_no_fake_holdout():
     frame = _clone_frame()
     local = empty_uk_local_problem(frame.table("household")["household_id"])
     rows = national_rows()
+    # The country-only selection is the one caller that declares no local
+    # family, and it says so explicitly; nothing else may declare nothing.
+    with pytest.raises(ValueError, match="at least one family/area_type pair"):
+        prepare_uk_full_solve(
+            frame, local, bound_families=("national/fixture",), national_rows=rows
+        )
     prepared = prepare_uk_full_solve(
-        frame, local, bound_families=("national/fixture",), national_rows=rows
+        frame,
+        local,
+        bound_families=("national/fixture",),
+        national_rows=rows,
+        allow_empty_local_binding=True,
     )
     dense = solve_uk_dense_reference(prepared, epochs=8, seed=17)
     finished = finish_uk_full_solve(prepared, dense)
@@ -64,6 +74,7 @@ def test_zero_local_scope_uses_same_solver_and_has_no_fake_holdout():
         national_rows=rows,
         epochs=8,
         seed=17,
+        allow_empty_local_binding=True,
     )
     np.testing.assert_array_equal(finished.weights, existing.weights)
     assert finished.diagnostics.empty

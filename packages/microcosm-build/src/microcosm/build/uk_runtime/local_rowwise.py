@@ -755,8 +755,15 @@ def require_adjudicated_uk_local_binding(
     census: Mapping[str, Any] | None = None,
     register: Mapping[str, Any] | None = None,
     now: Any = None,
+    allow_empty: bool = False,
 ) -> dict[str, Any]:
-    """Require in-force review records before binding fenced UK local families."""
+    """Require in-force review records before binding fenced UK local families.
+
+    A declaration that names nothing is refused unless ``allow_empty`` is
+    passed: only the graph's country-only target selection, whose local
+    surface is empty by construction, has nothing to declare; every other
+    caller must name exactly what its matrix binds.
+    """
 
     census_payload = (
         local_target_census.load_uk_local_target_census() if census is None else census
@@ -765,6 +772,7 @@ def require_adjudicated_uk_local_binding(
     declared, parsed = _normalise_uk_local_bound_families(
         bound_families,
         family_rows=family_rows,
+        allow_empty=allow_empty,
     )
     derived = _derive_uk_local_bound_families_from_target_frame(
         target_frame,
@@ -880,6 +888,7 @@ def _normalise_uk_local_bound_families(
     bound_families: Sequence[str],
     *,
     family_rows: Mapping[str, Mapping[str, Any]],
+    allow_empty: bool = False,
 ) -> tuple[tuple[str, ...], dict[str, tuple[str, str]]]:
     if isinstance(bound_families, str):
         raise ValueError(
@@ -887,6 +896,11 @@ def _normalise_uk_local_bound_families(
             "sequence of family/area_type strings, not one string."
         )
     declared = tuple(str(name) for name in bound_families)
+    if not declared and not allow_empty:
+        raise ValueError(
+            "UK local binding declarations: bound_families must name at "
+            "least one family/area_type pair."
+        )
     blanks = [name for name in declared if not name.strip()]
     if blanks:
         raise ValueError(
@@ -1118,8 +1132,15 @@ def prepare_uk_full_solve(
     bound_families: Sequence[str],
     national_rows: UKRowwiseNationalRows | None = None,
     target_weight_rule: str = "uniform",
+    allow_empty_local_binding: bool = False,
 ) -> UKPreparedFullSolve:
-    """Validate the selected surface with one doctrine for every geography."""
+    """Validate the selected surface with one doctrine for every geography.
+
+    ``allow_empty_local_binding`` admits a local declaration that names no
+    family: the graph's country-only target selection passes it, because its
+    local surface is empty by construction; any other caller keeps the
+    refusal of a declaration that names nothing.
+    """
 
     _require_uniform_target_surface(problem)
     if not len(problem.targets) and (
@@ -1132,6 +1153,7 @@ def prepare_uk_full_solve(
     binding_adjudications = require_adjudicated_uk_local_binding(
         local_bound_families,
         problem.target_frame,
+        allow_empty=allow_empty_local_binding,
     )
     national_families = (
         ()
@@ -1295,6 +1317,7 @@ def solve_uk_rowwise_weights_under_doctrine(
     checkpoint_provenance: Mapping[str, Any] | None = None,
     progress: Callable[[str], None] | None = None,
     progress_events: Callable[[dict[str, object]], None] | None = None,
+    allow_empty_local_binding: bool = False,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
 
@@ -1344,6 +1367,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         bound_families=bound_families,
         national_rows=national_rows,
         target_weight_rule=target_weight_rule,
+        allow_empty_local_binding=allow_empty_local_binding,
     )
     doctrine = UK_LOCAL_SOLVE_DOCTRINE
     target_set = prepared.target_set

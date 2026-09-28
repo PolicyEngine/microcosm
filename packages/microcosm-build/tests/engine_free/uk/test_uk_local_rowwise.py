@@ -699,6 +699,38 @@ def test_rowwise_binding_refuses_unknown_family_and_bad_area_type() -> None:
         )
 
 
+def test_rowwise_binding_refuses_an_empty_declaration_unless_allowed() -> None:
+    """A declaration that names nothing is refused for every caller by default.
+
+    Only the graph's country-only target selection, whose local surface is
+    empty by construction, passes ``allow_empty``; the keyword excuses the
+    empty declaration alone and every other malformed declaration is still
+    refused (review item 2 on microcosm#901).
+    """
+    from microcosm.build.uk_runtime.local_rowwise import empty_uk_local_problem
+
+    problem = empty_uk_local_problem([1, 2, 3])
+    with pytest.raises(ValueError, match="at least one family/area_type pair"):
+        require_adjudicated_uk_local_binding([], problem.target_frame)
+    with pytest.raises(ValueError, match="at least one family/area_type pair"):
+        require_adjudicated_uk_local_binding((), problem.target_frame, register={})
+
+    receipt = require_adjudicated_uk_local_binding(
+        [], problem.target_frame, allow_empty=True
+    )
+    assert receipt["bound_families"] == []
+    assert receipt["stood_on"] == {}
+    assert receipt["register_resource"] == "local_binding_adjudications.json"
+    with pytest.raises(ValueError, match="unknown census family"):
+        require_adjudicated_uk_local_binding(
+            ["not_a_family/constituency"], problem.target_frame, allow_empty=True
+        )
+    with pytest.raises(ValueError, match="extra.*census_households/constituency"):
+        require_adjudicated_uk_local_binding(
+            ["census_households/constituency"], problem.target_frame, allow_empty=True
+        )
+
+
 def test_rowwise_binding_refuses_expired_and_premature_adjudications() -> None:
     problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
     expired_register = {

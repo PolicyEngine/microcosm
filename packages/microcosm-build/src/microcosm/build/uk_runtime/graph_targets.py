@@ -436,6 +436,11 @@ class UKFullProblemInputs:
     rung: object
     national: TargetRegistry
     selected: TargetRegistry
+    #: The selection admits no local-surface spec (an explicit country-level
+    #: filter), so the local binding declaration is empty by construction and
+    #: the binding check is told so; every other selection keeps the refusal
+    #: of a declaration that names nothing.
+    country_only: bool = False
 
 
 def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemInputs:
@@ -496,6 +501,7 @@ def reconstruct_uk_full_problem_inputs(context: KernelContext) -> UKFullProblemI
         rung,
         national,
         selected,
+        country_only=not local_specs,
     )
 
 
@@ -516,6 +522,7 @@ class UKFullProblemKernel(_TargetKernel):
             bound_families=bound_families,
             national_rows=national_rows,
             target_weight_rule=str(context.params["target_weight_rule"]),
+            allow_empty_local_binding=inputs.country_only,
         )
         problem = build_constraint_matrix(frame, prepared.target_set, "household")
         if problem.skipped:
