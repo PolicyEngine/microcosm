@@ -425,6 +425,97 @@ class TestImputation:
         assert {"rows", "age_rows", "region_rows", "age_by_band_rows"} <= set(evidence)
 
 
+class TestWealthRanking:
+    """Gainers take amounts in the order of a prior and wealth rank blend (#1014)."""
+
+    def test_the_wealthiest_gainer_takes_the_top_band(self) -> None:
+        # One income band whose cells hold 100 people against weights of 100,
+        # so the GBP 5m+ band holds exactly one person of mass. The largest
+        # prior gainer holds no wealth; a smaller one holds the most.
+        distribution = _distribution(cell_people=100.0)
+        rows = 4_000
+        rng = np.random.default_rng(3)
+        gains = rng.lognormal(9, 2, rows)
+        order = np.argsort(-gains)
+        largest, runner_up = order[0], order[1]
+        wealth = rng.uniform(0.0, 1_000.0, rows)
+        wealth[largest] = 0.0
+        wealth[runner_up] = 1.0e9
+        frame = _frame(
+            rows, gains=gains, incomes=np.full(rows, 20_000.0), wealth=wealth
+        )
+
+        drawn = impute_uk_capital_gains(frame, distribution, PARAMETERS)
+        drawn = drawn.table("person")["capital_gains"].to_numpy()
+
+        assert drawn[runner_up] >= 5_000_000.0
+        assert drawn[largest] < 5_000_000.0
+
+    def test_the_blend_moves_who_carries_amounts_not_the_amounts(self) -> None:
+        # Equal weights: the walks and plan strata are fixed by mass, so the
+        # multiset of drawn amounts is the same whatever the wealth ordering.
+        distribution = _distribution(cell_people=100.0)
+        rows = 3_000
+        rng = np.random.default_rng(11)
+        gains = rng.lognormal(9, 2, rows)
+        incomes = rng.choice([20_000.0, 60_000.0, 150_000.0], rows)
+        prior_only = impute_uk_capital_gains(
+            _frame(rows, gains=gains, incomes=incomes), distribution, PARAMETERS
+        )
+        blended = impute_uk_capital_gains(
+            _frame(
+                rows,
+                gains=gains,
+                incomes=incomes,
+                wealth=rng.lognormal(11, 2, rows),
+            ),
+            distribution,
+            PARAMETERS,
+        )
+        a = prior_only.table("person")["capital_gains"].to_numpy()
+        b = blended.table("person")["capital_gains"].to_numpy()
+        np.testing.assert_allclose(np.sort(a), np.sort(b))
+        assert not np.array_equal(a, b)
+
+    def test_the_receipt_declares_the_blend_and_reports_coherence(self) -> None:
+        distribution = _distribution(cell_people=100.0)
+        rows = 2_000
+        rng = np.random.default_rng(5)
+        gains = rng.lognormal(9, 2, rows)
+        wealth = gains * rng.lognormal(0, 0.5, rows)
+        _, report = impute_uk_capital_gains_with_report(
+            _frame(rows, gains=gains, incomes=np.full(rows, 20_000.0), wealth=wealth),
+            distribution,
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+        rank_key = report.evidence()["rank_key"]
+        assert rank_key["wealth_rank_weight"] == UK_CGT_WEALTH_RANK_WEIGHT
+        assert rank_key["investable_wealth_columns"] == list(
+            UK_CGT_INVESTABLE_WEALTH_COLUMNS
+        )
+        coherence = rank_key["gains_wealth_spearman_within_income_band"]
+        assert coherence["mass_weighted"] > 0.5
+
+    def test_refuses_a_household_table_without_the_wealth_columns(self) -> None:
+        rows = 50
+        frame = _frame(
+            rows, gains=np.full(rows, 10_000.0), incomes=np.full(rows, 20_000.0)
+        )
+        household = frame.table("household").drop(
+            columns=[UK_CGT_INVESTABLE_WEALTH_COLUMNS[1]]
+        )
+        stripped = uk_national_frame(
+            person=frame.table("person"),
+            benunit=frame.table("benunit"),
+            household=household,
+            time_period="2023",
+            household_weights=frame.weights_for("household").values,
+        )
+        with pytest.raises(ValueError, match="investable wealth"):
+            impute_uk_capital_gains(stripped, _distribution(), PARAMETERS)
+
+
 class TestStage:
     """The spine stage is the only CGT gains stage; the June wrapper is retired."""
 
@@ -995,4 +1086,5 @@ class TestConditionedAllocation:
             "conditioning",
             "rounding_carry_out",
             "remainder",
+            "rank_key",
         }

@@ -2303,12 +2303,19 @@
           "band_order": "highest gain band first",
           "cell_order": "income band ascending, age group ascending, region group ascending, gain bands highest first inside a cell; then the pooled walk per income band",
           "column_reconciliation": "every income column rescales onto its published All-row taxpayer total",
+          "investable_wealth_columns": [
+            "gross_financial_wealth",
+            "corporate_wealth",
+            "other_residential_property_value",
+            "non_residential_property_value"
+          ],
           "kind": "rank_preserving_allocation",
           "minimum_allocation_people": 1,
-          "ordering": "existing gains descending, person_id ascending on ties",
+          "ordering": "a rank key descending, person_id ascending on ties: among gainers, the household investable-wealth rank times the wealth rank weight plus the prior-gain rank times its complement, both as average ranks over the gainers",
           "rounding": "systematic with one seeded offset per walk: a person joins the band whose cumulative boundary first covers (1 - offset) of their weight, so a band boundary smaller than a person's weight still receives that person on the share of walks it implies and the rounding is unbiased across the conditioning cells; each cell walk's signed rounding error is carried into the next cell's boundaries for the same gain band (error diffusion), so each gain band's walked total within an income band stays within one person's weight of its raked total instead of accumulating the overshoot of many cell walks",
           "shortfall_policy": "proportional scale-down inside a cell that holds less gainer mass than its raked target; the income band's net shortfall after every cell walk, apportioned to gain bands in proportion to their positive shortfalls, is walked over the income band's pooled unassigned gainers, scaled down proportionally when the pool is short, so cell-walk rounding overshoot is netted rather than compounded",
           "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
+          "wealth_rank_weight": 0.75,
           "weights": "household_weight mapped to persons; no person splits across bands",
           "within": "income band x age group x region group cell, then the income band's pooled unassigned gainers"
         },
@@ -2322,7 +2329,7 @@
           "mean_repair_reason": "Published counts round to the nearest thousand and amounts to the nearest million; two cells of the 2024-25 table (gains of GBP 1m to 2m at taxable incomes of GBP 37,700 to 49,999 and GBP 100,000 to 125,139) imply a mean below their own band, and repaired means clamp just inside the violated boundary.",
           "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
           "open_band_realization": "each open-band person takes the conditional mean of their weight-proportional quantile stratum, which averages back to the published mean exactly under the household weights; an iid draw from a Pareto with infinite variance sits well below it on a few dozen carriers, and equal strata on unequal weights put the tail's mass on whichever rows happen to be light",
-          "quantile_scheme": "stratified by weight: the persons a (gain band, income band) plan receives across every cell and the pooled walk take the quantile strata that partition (0, 1) in proportion to their household weights, in ascending prior-gain order with one seeded jitter per plan, so the plan's weighted realised mean sits on its published mean rather than carrying n independent draws or the weight-rank mix of equal strata",
+          "quantile_scheme": "stratified by weight: the persons a (gain band, income band) plan receives across every cell and the pooled walk take the quantile strata that partition (0, 1) in proportion to their household weights, in ascending rank-key order with one seeded jitter per plan, so the plan's weighted realised mean sits on its published mean rather than carrying n independent draws or the weight-rank mix of equal strata",
           "seed_base": 552,
           "seed_mixing": "seed combined with the build period; each walk draws its rounding offset in cell order then pooled-fallback order, then each plan draws its quantile jitter, income bands ascending and gain bands highest first"
         },
@@ -2332,7 +2339,7 @@
           "extrapolation": "ext=0",
           "kind": "sub_aea_remainder",
           "mapping": "remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; no seeded draw is consumed, so the walk and plan draw order is unchanged",
-          "ordering": "existing gains ascending, person_id descending on ties (the allocation ranking reversed, as the within-band draws order their strata)",
+          "ordering": "existing gains ascending, person_id descending on ties (the prior-gain ranking reversed; the allocation and the within-band draws rank on the wealth-blended key)",
           "policy": "gainers beyond the published taxpayer mass take amounts from the Advani-Summers within-band gains distribution restricted to (0, annual exempt amount], rank-preserving within each Advani-Summers total-income band",
           "quantile_points": [
             0.05,

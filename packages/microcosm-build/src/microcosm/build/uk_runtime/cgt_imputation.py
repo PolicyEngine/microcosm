@@ -279,6 +279,25 @@ UK_CGT_CONDITIONING_DIMENSIONS: tuple[str, ...] = (
     "region group",
 )
 
+#: The allocation ranks gainers within each cell by a blend of their prior-gain
+#: rank and their household's investable-wealth rank among gainers, the wealth
+#: rank weighted by this share and the prior's by the rest (microcosm#1014).
+#: The cells, walks and plan amounts do not change; only which gainer takes
+#: which amount does. On the licensed spine a weight of 0.75 raised the
+#: within-income-column Spearman of gains against investable wealth from 0.08
+#: to 0.46 and left no gainer of GBP 1m or more without investable wealth,
+#: while the calibration fit stayed as it was.
+UK_CGT_WEALTH_RANK_WEIGHT = 0.75
+
+#: Household investable wealth: the WAS-imputed stocks a gain is realised on,
+#: without the main residence and pensions.
+UK_CGT_INVESTABLE_WEALTH_COLUMNS: tuple[str, ...] = (
+    "gross_financial_wealth",
+    "corporate_wealth",
+    "other_residential_property_value",
+    "non_residential_property_value",
+)
+
 
 @dataclass(frozen=True)
 class UKCGTPolicyParameters:
@@ -603,10 +622,12 @@ class UKCGTAllocationReport:
     conditioning: Mapping[str, object]
     rounding_carry_out: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
     remainder: Mapping[str, object] = field(default_factory=dict)
+    rank_key: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
             "remainder": dict(self.remainder),
+            "rank_key": dict(self.rank_key),
             "band_rows": [dict(row) for row in self.band_rows],
             "joint_rows": [dict(row) for row in self.joint_rows],
             "rake": dict(self.rake),
@@ -1200,7 +1221,7 @@ def _draw_plan_amounts(
     """Draw one plan's amounts on weight-proportional quantile strata.
 
     The persons a (gain band, income band) plan received across every cell
-    take, in ascending prior-gain order, the quantile strata that partition
+    take, in ascending rank-key order, the quantile strata that partition
     (0, 1) in proportion to their household weights, with one seeded jitter
     per plan inside the stratum. The published mean is a people-weighted
     mean, so the strata must be too: equal strata on unequal weights put the
@@ -1240,8 +1261,9 @@ def _draw_plan_amounts(
 def _ranked(
     indices: np.ndarray, *, person_id: np.ndarray, existing: np.ndarray
 ) -> np.ndarray:
-    # Rank by existing gains, largest first; person_id breaks ties so the
-    # ordering, and with it every draw, is deterministic.
+    # Rank by the given key, largest first: the allocation's wealth-blended
+    # rank key, or the prior gain for the sub-AEA remainder. person_id breaks
+    # ties so the ordering, and with it every draw, is deterministic.
     order = np.lexsort((person_id[indices], -existing[indices]))
     return indices[order]
 
@@ -1261,8 +1283,9 @@ def _map_remainder_amounts(
 
     ``remainder`` holds the row positions of the gainers the allocation left
     unassigned. Within each Advani-Summers total-income band they take, in
-    ascending existing-gain order (the allocation ranking reversed, as the
-    plan draws order their strata), the midpoints of the weight-proportional
+    ascending existing-gain order (the prior-gain ranking reversed; the
+    allocation and the plan draws rank on the wealth-blended key), the
+    midpoints of the weight-proportional
     quantile strata of ``(q0, q_aea)``, the band spline's zero crossing and
     its crossing of the annual exempt amount, so the band's weighted
     remainder reproduces the published conditional shape on (0, AEA]. The
@@ -1315,6 +1338,73 @@ def _map_remainder_amounts(
         "bands_with_remainder": len(band_rows),
         "band_rows": band_rows,
     }
+
+
+def _allocation_rank_key(
+    person: pd.DataFrame, household: pd.DataFrame, existing: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """The allocation's ranking key and each person's household investable wealth.
+
+    Among gainers the key blends the prior-gain rank with the household
+    investable-wealth rank (average ranks as fractions of the gainers), the
+    wealth rank weighted by ``UK_CGT_WEALTH_RANK_WEIGHT``. Non-gainers keep
+    their prior gain, which no walk reads. Refuses a household table without
+    the declared wealth columns rather than ranking on the prior alone.
+    """
+
+    missing = [
+        column
+        for column in UK_CGT_INVESTABLE_WEALTH_COLUMNS
+        if column not in household.columns
+    ]
+    if missing:
+        raise ValueError(
+            "The CGT allocation ranks gainers on household investable wealth; "
+            f"the household table lacks {missing}."
+        )
+    wealth_by_household = (
+        household.set_index("household_id")[list(UK_CGT_INVESTABLE_WEALTH_COLUMNS)]
+        .apply(pd.to_numeric, errors="raise")
+        .sum(axis=1)
+    )
+    wealth = (
+        person["person_household_id"].map(wealth_by_household).to_numpy(dtype=float)
+    )
+    if not np.isfinite(wealth).all():
+        raise ValueError("Household investable wealth must be finite for every person.")
+    gainer = existing > 0
+    key = existing.astype(float).copy()
+    if gainer.any():
+        prior_rank = pd.Series(existing[gainer]).rank(pct=True).to_numpy()
+        wealth_rank = pd.Series(wealth[gainer]).rank(pct=True).to_numpy()
+        key[gainer] = (
+            UK_CGT_WEALTH_RANK_WEIGHT * wealth_rank
+            + (1.0 - UK_CGT_WEALTH_RANK_WEIGHT) * prior_rank
+        )
+    return key, wealth
+
+
+def _within_band_spearman(
+    values: np.ndarray, wealth: np.ndarray, band: np.ndarray, weights: np.ndarray
+) -> dict[str, object]:
+    """Spearman of drawn gains against wealth inside each income band, and its mass-weighted mean."""
+
+    rows: dict[str, float | None] = {}
+    total = 0.0
+    mass = 0.0
+    for lower in np.unique(band):
+        inside = band == lower
+        correlation = None
+        if int(inside.sum()) >= 3:
+            ranks = pd.DataFrame({"g": values[inside], "w": wealth[inside]}).rank()
+            if ranks["g"].std() > 0 and ranks["w"].std() > 0:
+                correlation = float(np.corrcoef(ranks["g"], ranks["w"])[0, 1])
+        rows[str(int(lower))] = correlation
+        if correlation is not None:
+            band_mass = float(weights[inside].sum())
+            total += correlation * band_mass
+            mass += band_mass
+    return {"by_income_band": rows, "mass_weighted": total / mass if mass else None}
 
 
 def impute_uk_capital_gains_with_report(
@@ -1370,6 +1460,8 @@ def impute_uk_capital_gains_with_report(
         np.digitize(taxable_income, HMRC_CGT_INCOME_BAND_LOWER_BOUNDS[1:])
     ]
     _, age_group, _, region_group = _person_conditioning_cells(person, household)
+
+    rank_key, investable_wealth = _allocation_rank_key(person, household, existing)
 
     rng = np.random.default_rng((seed, int(time_period)))
     new_gains = existing.copy()
@@ -1430,7 +1522,7 @@ def impute_uk_capital_gains_with_report(
                     carry = -deferred
                     continue
                 ranked = _ranked(
-                    np.flatnonzero(in_cell), person_id=person_id, existing=existing
+                    np.flatnonzero(in_cell), person_id=person_id, existing=rank_key
                 )
                 weights = person_weight[ranked]
                 # When the cell holds less gainer mass than its target,
@@ -1486,7 +1578,7 @@ def impute_uk_capital_gains_with_report(
             gain_lower: value * net_shortfall / positive_total
             for gain_lower, value in positive.items()
         }
-        ranked = _ranked(np.flatnonzero(pool), person_id=person_id, existing=existing)
+        ranked = _ranked(np.flatnonzero(pool), person_id=person_id, existing=rank_key)
         weights = person_weight[ranked]
         scale = min(1.0, float(weights.sum()) / net_shortfall)
         boundaries = [
@@ -1519,7 +1611,7 @@ def impute_uk_capital_gains_with_report(
                 joint[(gain_lower, income_lower)],
                 np.concatenate(chunks),
                 person_id=person_id,
-                existing=existing,
+                existing=rank_key,
                 weights=person_weight,
                 rng=rng,
                 new_gains=new_gains,
@@ -1581,8 +1673,20 @@ def impute_uk_capital_gains_with_report(
         )
         for gi, gain_lower in enumerate(gains)
     }
+    liable_after = assigned & (new_gains > 0)
     report = UKCGTAllocationReport(
         remainder=remainder_receipt,
+        rank_key={
+            "wealth_rank_weight": UK_CGT_WEALTH_RANK_WEIGHT,
+            "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
+            "ranked_gainers": int(is_gainer.sum()),
+            "gains_wealth_spearman_within_income_band": _within_band_spearman(
+                new_gains[liable_after],
+                investable_wealth[liable_after],
+                income_band[liable_after],
+                person_weight[liable_after],
+            ),
+        },
         band_rows=band_rows,
         joint_rows=tuple(joint_rows),
         rake=rake_report,
@@ -1982,7 +2086,14 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "income band x age group x region group cell, then the income "
                 "band's pooled unassigned gainers"
             ),
-            "ordering": "existing gains descending, person_id ascending on ties",
+            "ordering": (
+                "a rank key descending, person_id ascending on ties: among "
+                "gainers, the household investable-wealth rank times the wealth "
+                "rank weight plus the prior-gain rank times its complement, "
+                "both as average ranks over the gainers"
+            ),
+            "wealth_rank_weight": UK_CGT_WEALTH_RANK_WEIGHT,
+            "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
             "band_order": "highest gain band first",
             "suppressed_cell_allocation": (
                 "count implied by the cell's published gains at the band-total mean"
@@ -2030,7 +2141,7 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
                 "stratified by weight: the persons a (gain band, income band) "
                 "plan receives across every cell and the pooled walk take the "
                 "quantile strata that partition (0, 1) in proportion to their "
-                "household weights, in ascending prior-gain order with one "
+                "household weights, in ascending rank-key order with one "
                 "seeded jitter per plan, so the plan's weighted realised mean "
                 "sits on its published mean rather than carrying n independent "
                 "draws or the weight-rank mix of equal strata"
@@ -2109,8 +2220,8 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             ),
             "ordering": (
                 "existing gains ascending, person_id descending on ties (the "
-                "allocation ranking reversed, as the within-band draws order "
-                "their strata)"
+                "prior-gain ranking reversed; the allocation and the within-band "
+                "draws rank on the wealth-blended key)"
             ),
             "quantile_points": list(CGT_QUANTILE_POINTS),
             "spline_degree": 1,

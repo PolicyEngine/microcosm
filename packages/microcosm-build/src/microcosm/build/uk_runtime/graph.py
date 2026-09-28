@@ -270,7 +270,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "cgt_incidence_clone": None,
     "cgt_band_donors": None,
     # The amounts redraw conditions on age and household region as well as
-    # the income proxy (microcosm#725); both are context carriers, declared
+    # the income proxy (microcosm#725), and ranks gainers on household
+    # investable wealth (microcosm#1014); all are context carriers, declared
     # here so the ownership record names them.
     "hmrc_cgt_gains_spine": frozenset(
         {
@@ -291,6 +292,15 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 )
             ),
             ("household", "region"),
+            *(
+                ("household", column)
+                for column in (
+                    "gross_financial_wealth",
+                    "corporate_wealth",
+                    "other_residential_property_value",
+                    "non_residential_property_value",
+                )
+            ),
         }
     ),
     # The asset-type stage classifies the redrawn net gains; the AEA it

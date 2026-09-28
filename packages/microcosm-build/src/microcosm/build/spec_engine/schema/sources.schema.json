@@ -4667,6 +4667,12 @@
       "column_reconciliation": {
        "type": "string"
       },
+      "investable_wealth_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
       "kind": {
        "const": "rank_preserving_allocation"
       },
@@ -4685,6 +4691,9 @@
       "suppressed_cell_allocation": {
        "type": "string"
       },
+      "wealth_rank_weight": {
+       "type": "number"
+      },
       "weights": {
        "type": "string"
       },
@@ -4696,12 +4705,14 @@
       "band_order",
       "cell_order",
       "column_reconciliation",
+      "investable_wealth_columns",
       "kind",
       "minimum_allocation_people",
       "ordering",
       "rounding",
       "shortfall_policy",
       "suppressed_cell_allocation",
+      "wealth_rank_weight",
       "weights",
       "within"
      ]

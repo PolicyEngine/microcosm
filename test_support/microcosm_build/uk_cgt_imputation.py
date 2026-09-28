@@ -20,12 +20,14 @@ from microcosm.build.uk_runtime.advani_summers import (
 )
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_AGE_GROUP_LOWER_BOUNDS,
+    UK_CGT_INVESTABLE_WEALTH_COLUMNS,
     UK_CGT_REGION_GROUP_LABELS,
     UK_CGT_REGION_GROUPS,
     UK_CGT_REMAINDER_POLICY,
     UK_CGT_SPINE_MASS_CONSERVATION_REASON,
     UK_CGT_SPINE_STAGE_NAME,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
+    UK_CGT_WEALTH_RANK_WEIGHT,
     UKCGTPolicyParameters,
     _band_plans,
     _CellPlan,
@@ -150,6 +152,7 @@ def _frame(
     ages=None,
     regions=None,
     weights=None,
+    wealth=None,
 ) -> Frame:
     person = pd.DataFrame(
         {
@@ -183,6 +186,13 @@ def _frame(
             ),
         }
     )
+    # The allocation ranks gainers on household investable wealth
+    # (microcosm#1014); ``wealth`` lands in the first declared column and the
+    # rest stay zero, so equal wealth leaves the prior ranking in charge.
+    for column in UK_CGT_INVESTABLE_WEALTH_COLUMNS:
+        household[column] = 0.0
+    if wealth is not None:
+        household[UK_CGT_INVESTABLE_WEALTH_COLUMNS[0]] = np.asarray(wealth, dtype=float)
     benunit = pd.DataFrame({"benunit_id": np.arange(person_rows, dtype="int64")})
     return uk_national_frame(
         person=person,
