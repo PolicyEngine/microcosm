@@ -197,7 +197,7 @@ def _energy_rake_gate(
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """The energy kWh rake fits the NEED shape at the DESNZ level, at design weights.
+    """The energy kWh rake fits the NEED shape at the DESNZ level, at prior weights.
 
     Fact checks on the lcfs ``energy_rake`` receipt, every published value
     recomputed here from the vendored rows the stage declares (never taken
@@ -212,9 +212,14 @@ def _energy_rake_gate(
     shortfall instead). The residual check then holds the maximum absolute
     relative deviation of any cell mean from its levelled target, per margin
     and fuel, to ``maximum_relative_deviation``, one fixed tolerance on the
-    IPF's cross-margin residual. The rake must have run in kWh with gas over
-    gas-connected rows and no zero-current cell; a missing margin, block or
-    tolerance fails closed.
+    IPF's cross-margin residual. That residual must be converged, not
+    truncated: each fuel's ``sweep_residuals`` series may change by at most
+    ``maximum_residual_change_over_window`` over its last
+    ``convergence_window_sweeps`` sweeps, so a rake stopped while its residual
+    was still falling fails even when the truncated value sits inside the
+    tolerance. The rake must have run in kWh with gas over gas-connected rows
+    and no zero-current cell; a missing margin, block, tolerance or sweep
+    series fails closed.
 
     This is where NEED, DESNZ and the connection share are checked; the
     calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
@@ -243,6 +248,15 @@ def _energy_rake_gate(
     share_tolerance = _finite_number(
         parameters.get("maximum_connected_share_deviation"),
         label=f"{stage}.maximum_connected_share_deviation",
+    )
+    window = parameters.get("convergence_window_sweeps")
+    if not isinstance(window, int) or isinstance(window, bool) or window < 1:
+        raise ValueError(
+            f"{stage}: energy_rake declares no positive convergence_window_sweeps."
+        )
+    flatness = _finite_number(
+        parameters.get("maximum_residual_change_over_window"),
+        label=f"{stage}.maximum_residual_change_over_window",
     )
     expected_margins = [str(m) for m in parameters.get("margins", ())]
     if not expected_margins:
@@ -293,6 +307,9 @@ def _energy_rake_gate(
         "margins_period_value": margins_period,
         "maximum_relative_deviation": tolerance,
         "maximum_connected_share_deviation": share_tolerance,
+        "convergence_window_sweeps": window,
+        "maximum_residual_change_over_window": flatness,
+        "residual_change_over_window": {},
         "level_factor": {},
         "worst": {},
         "cells_fact_checked": 0,
@@ -386,6 +403,32 @@ def _energy_rake_gate(
                     f"from its levelled NEED target, above the residual tolerance "
                     f"{tolerance}."
                 )
+    sweeps = receipt.get("sweep_residuals")
+    if not isinstance(sweeps, Mapping):
+        failures.append(f"{stage}: energy_rake receipt carries no sweep_residuals.")
+        sweeps = {}
+    for fuel in (ELECTRICITY_KWH, GAS_KWH):
+        series = sweeps.get(fuel)
+        if (
+            not isinstance(series, list | tuple)
+            or len(series) <= window
+            or not all(
+                isinstance(v, int | float) and math.isfinite(float(v)) for v in series
+            )
+        ):
+            failures.append(
+                f"{stage}: {fuel} sweep_residuals do not cover the "
+                f"{window}-sweep convergence window."
+            )
+            continue
+        change = abs(float(series[-1]) - float(series[-1 - window]))
+        details["residual_change_over_window"][fuel] = change
+        if change > flatness:
+            failures.append(
+                f"{stage}: {fuel} residual moved {change:.4f} over the last {window} "
+                f"of {len(series)} sweeps, above {flatness}: the rake was "
+                "truncated, not converged."
+            )
     zero_cells = receipt.get("zero_current_cells")
     if zero_cells:
         failures.append(

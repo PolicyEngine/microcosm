@@ -103,3 +103,29 @@ def test_stage_transform_rewrites_property_and_records_its_receipt() -> None:
     assert receipt.reason == UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
     assert receipt.old_total == receipt.new_total == 40.0
     assert receipt.declared_factor == 1.0
+
+
+def test_regional_property_uprating_factor_excludes_spi_support_rows() -> None:
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4],
+            "region": ["LONDON", "LONDON", "LONDON", "LONDON"],
+            "household_support_channel": ["frs", "frs", "spi", "spi"],
+            "main_residence_value": [100.0, 300.0, 1_000.0, 0.0],
+            "property_wealth": [100.0, 300.0, 1_500.0, 50.0],
+        }
+    )
+    resource = {
+        "values": [{"region": "LONDON", "avg_house_price": 400.0, "dwellings": 1}]
+    }
+
+    uprated = uprate_household_property_by_region(household, resource)
+
+    # The FRS-base owner mean is 200, so the factor is 2 for every owner,
+    # the SPI owner included; the SPI non-owner is untouched.
+    assert uprated["main_residence_value"].tolist() == pytest.approx(
+        [200.0, 600.0, 2_000.0, 0.0]
+    )
+    assert uprated["property_wealth"].tolist() == pytest.approx(
+        [200.0, 600.0, 3_000.0, 50.0]
+    )

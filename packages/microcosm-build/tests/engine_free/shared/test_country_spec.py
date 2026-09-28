@@ -1008,7 +1008,7 @@ class TestUKCountryPackage:
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
         # spi_income_band_donors (PolicyEngine/chronicle#280 lane) as the newest) plus the two
         # certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 35
+        assert len(spec.sources.stages) == 36
 
 
 class TestExistingPackagesGeneralize:
@@ -1539,6 +1539,8 @@ class TestUKGatesManifest:
             "region",
         ]
         assert energy_rake["maximum_relative_deviation"] == 0.025
+        assert energy_rake["convergence_window_sweeps"] == 10
+        assert energy_rake["maximum_residual_change_over_window"] == 0.001
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
