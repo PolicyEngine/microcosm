@@ -3,9 +3,12 @@
 set -euo pipefail
 
 uv sync --all-packages --locked --extra uk
-uv run --no-sync pytest \
-  packages/microcosm-build/tests/test_uk_staging_integration.py \
-  -q -s -p no:cacheprovider
+files=()
+while IFS= read -r file; do files+=("$file"); done < <(
+  uv run --no-sync python tools/ci_test_groups.py --list integration-uk
+)
+uv run --no-sync pytest "${files[@]}" \
+  --run-integration -q -s -p no:cacheprovider
 
 if [[ -z "${HF_STAGING_READ_TOKEN:-}" ]]; then
   echo \

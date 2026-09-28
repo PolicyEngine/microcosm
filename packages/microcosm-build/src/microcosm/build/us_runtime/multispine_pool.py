@@ -44,6 +44,7 @@ from microcosm.build.us_runtime.disability_benefits import (
 )
 from microcosm.build.us_runtime.education_inputs import with_us_education_inputs
 from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
     with_us_eligibility_inputs,
 )
 from microcosm.build.us_runtime.energy_subsidy import (
@@ -675,6 +676,15 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
             "age",
             "is_female",
             "is_household_head",
+            # The parent ids are complete on both arms without a transfer:
+            # the eligibility operator resolves them on the CPS projection
+            # and ``map_acs_native_inputs`` writes the ACS spine's declared
+            # 0. They must never enter the QRF plan — parent_1_id is not a
+            # PolicyEngine-US variable, so ``_target_encoding`` would treat
+            # it as continuous and hand an ACS child a fractional
+            # interpolation between two unrelated ASEC person ids
+            # (microcosm#884).
+            *US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
         }
     ),
     "household": frozenset({"tenure_type"}),
