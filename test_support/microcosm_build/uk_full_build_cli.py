@@ -365,9 +365,13 @@ def surface_payload() -> bytes:
 
 
 def diagnostics_payload() -> bytes:
+    # A legacy-schema stand-in, like the rowwise-tool candidate fixture in the
+    # assembler tests: the assembler validates only the current schema
+    # (microcosm#1007), which the real gate kernel emits; this fake drives the
+    # driver's plumbing, not the diagnostics contract.
     return canonical_json(
         {
-            "schema_version": 8,
+            "schema_version": 6,
             "n_records": 2,
             "n_nonzero": 2,
             "initial_loss": 0.5,

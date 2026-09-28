@@ -595,7 +595,34 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
                 "uk_ledger_compiled_local_registries": {"2025": empty},
             }
         ),
-        "holdout": artifact({"report_only": True, "outcome": "fixture"}),
+        "holdout": artifact(
+            {
+                "report_only": True,
+                "method": "rotated_folds",
+                "target_loss_cap": 10.0,
+                "loss_weight_scale": "held_local_grains_only",
+                "target_weight_rule": "grain_equal",
+                "population": "held_out_local_targets",
+                "grains": ["constituency", "local_authority"],
+                "n_folds": 2,
+                "seed": 20260529,
+                "solve_seed": 42,
+                "mean_holdout_loss": 0.1,
+                "worst_holdout_loss": 0.15,
+                "fold_losses": [0.05, 0.15],
+                "folds": [
+                    {
+                        "fold": fold,
+                        "n_train_targets": 1,
+                        "n_holdout_targets": 1,
+                        "holdout_target_indices": [fold],
+                        "training_national_rows": 1,
+                        "holdout_loss": loss,
+                    }
+                    for fold, loss in enumerate([0.05, 0.15])
+                ],
+            }
+        ),
     }
     monkeypatch.setattr(
         geography_ladder,
@@ -645,7 +672,8 @@ def test_final_gate_kernel_owns_complete_diagnostics_and_reuses_decoded_result(
     phase, _ = decode_full_gate_report(stored.artifacts["gate_report"])
     assert phase.phase == "terminal"
     document = json.loads(stored.artifacts["calibration_diagnostics"])
-    assert document["uk_diagnostics"]["rotated_holdout"]["outcome"] == "fixture"
+    assert document["uk_diagnostics"]["rotated_holdout"]["method"] == "rotated_folds"
+    assert document["uk_diagnostics"]["rotated_holdout"]["worst_holdout_loss"] == 0.15
     assert len(document["targets"]) == 2
     assert (
         len(pd.read_csv(__import__("io").BytesIO(stored.artifacts["area_support_csv"])))
