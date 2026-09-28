@@ -606,11 +606,14 @@ def plan_carriers(specs: Sequence) -> CarrierPlan:
         carrier = carriers.get(semantics)
         if carrier is None:
             carrier_name = f"{CARRIER_PREFIX}{len(carriers):05d}"
+            # A carrier is an engine-pass column, never a calibration target:
+            # it drops the hierarchy, whose target id names the district row.
             carrier = replace(
                 spec,
                 name=carrier_name,
                 measure=carrier_name,
                 metadata=_without_geography(spec.metadata),
+                hierarchy=None,
             )
             carriers[semantics] = carrier
         district = str(spec.metadata["congressional_district_geoid"])
@@ -1232,19 +1235,73 @@ def distinct_household_weights(
     return frame.groupby(["spine", "source"], sort=True)["weight"].sum().to_numpy()
 
 
+def top_weight_share(weights: np.ndarray, fraction: float = 0.01) -> float:
+    """Share of total weight on the heaviest ``ceil(fraction * n)`` records."""
+
+    weights = np.asarray(weights, dtype=np.float64)
+    if not len(weights) or float(weights.sum()) <= 0.0:
+        return 0.0
+    k = max(1, math.ceil(fraction * len(weights)))
+    return float(np.sort(weights)[-k:].sum() / weights.sum())
+
+
+def ess_by_group(weights: np.ndarray, codes: np.ndarray) -> dict[str, float]:
+    """Kish ESS of the records in each group, keyed by the group code."""
+
+    frame = pd.DataFrame(
+        {"code": np.asarray(codes).astype(str), "w": np.asarray(weights, float)}
+    )
+    frame["w2"] = frame["w"] ** 2
+    sums = frame.groupby("code", sort=True)[["w", "w2"]].sum()
+    return {
+        str(code): float(row.w**2 / row.w2) if row.w2 > 0 else 0.0
+        for code, row in sums.iterrows()
+    }
+
+
+def _distribution(values: Mapping[str, float]) -> dict[str, float | int]:
+    array = np.asarray(list(values.values()), dtype=np.float64)
+    if not len(array):
+        return {"n": 0}
+    return {
+        "n": int(len(array)),
+        "min": float(array.min()),
+        "p10": float(np.quantile(array, 0.1)),
+        "median": float(np.median(array)),
+        "p90": float(np.quantile(array, 0.9)),
+        "max": float(array.max()),
+    }
+
+
 def weight_origin_summary(
     weights: np.ndarray,
     *,
     spine: np.ndarray | None,
     source_id: np.ndarray | None,
+    state: np.ndarray | None = None,
+    district: np.ndarray | None = None,
 ) -> dict:
-    """Row and distinct-household ESS, and household-weight share by spine."""
+    """Concentration and origin of a household weight vector.
+
+    Kish ESS over rows (national, per spine, per state, per district), over
+    distinct households, the top-1% weight share, and household-weight share
+    by spine.
+    """
 
     weights = np.asarray(weights, dtype=np.float64)
     summary: dict[str, object] = {
         "rows": int(len(weights)),
         "effective_sample_size_rows": kish_ess(weights),
+        "top_1pct_weight_share": top_weight_share(weights, 0.01),
     }
+    for label, codes in (("state", state), ("district", district)):
+        if codes is None:
+            continue
+        by_group = ess_by_group(weights, codes)
+        summary[f"effective_sample_size_by_{label}"] = by_group
+        summary[f"effective_sample_size_by_{label}_distribution"] = _distribution(
+            by_group
+        )
     if spine is None:
         summary["note"] = "no household_spine column; distinct ESS unavailable"
         return summary

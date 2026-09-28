@@ -54,13 +54,41 @@ def _load_fixtures():
     return fixtures
 
 
+def _district_hierarchy(name: str, district: str):
+    """A production-shaped hierarchy: its target id is the spec name."""
+
+    from microcosm.calibrate import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+    )
+
+    return CalibrationHierarchy(
+        provider=HierarchyNode(id="irs_soi", label="IRS SOI"),
+        category=HierarchyCategory(
+            id="irs_soi.fixture", label="Fixture", provider_id="irs_soi"
+        ),
+        geography=HierarchyGeography(
+            id=f"5001900US{district}",
+            label=f"District {district}",
+            level="congressional_district",
+        ),
+        dimensions=(),
+        target=HierarchyNode(id=name, label=name),
+    )
+
+
 def _cd_soi(fixtures, name, variable, state, district, **metadata):
-    return fixtures._soi(
-        name,
-        variable,
-        state_fips=state,
-        congressional_district_geoid=district,
-        **metadata,
+    return dataclasses.replace(
+        fixtures._soi(
+            name,
+            variable,
+            state_fips=state,
+            congressional_district_geoid=district,
+            **metadata,
+        ),
+        hierarchy=_district_hierarchy(name, district),
     )
 
 
@@ -314,6 +342,26 @@ def test_dense_and_sparse_paths_give_identical_problems_and_weights(
         warm = dense_result.weights.copy()
     np.testing.assert_array_equal(sparse_result.weights, dense_result.weights)
     _assert_same_problem(dense_result.problem, sparse_result.problem)
+
+
+def test_carriers_drop_the_district_hierarchy() -> None:
+    """A carrier is renamed, so it cannot keep a hierarchy naming its row."""
+
+    module = _load_tool_module()
+    fixtures = _load_fixtures()
+    plan = module.cd_surface.plan_carriers(_cd_surface_specs(fixtures))
+    carriers = [
+        spec
+        for spec in plan.engine_specs
+        if spec.name.startswith(module.cd_surface.CARRIER_PREFIX)
+    ]
+    assert len(carriers) == len(set(plan.carrier_of.values())) >= 6
+    assert all(carrier.hierarchy is None for carrier in carriers)
+    assert all(
+        spec.hierarchy is not None
+        for spec in plan.declared
+        if module.cd_surface.is_cd_soi_spec(spec) and spec.name != "cd_0601_wages"
+    )
 
 
 def test_a_carrier_that_disagrees_with_its_direct_row_is_refused(

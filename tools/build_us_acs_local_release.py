@@ -1457,19 +1457,20 @@ def calibrate_surface(
     return result, done
 
 
-def _origin_columns(frame):
+def _origin_columns(frame) -> dict:
+    """The household columns ``weight_origin_summary`` groups by, if present."""
+
     households = frame.table("household")
-    spine = (
-        households["household_spine"].to_numpy()
-        if "household_spine" in households.columns
-        else None
-    )
-    source = (
-        households["household_source_id"].to_numpy()
-        if "household_source_id" in households.columns
-        else None
-    )
-    return spine, source
+    columns = {
+        "spine": "household_spine",
+        "source_id": "household_source_id",
+        "state": "state_fips",
+        "district": "congressional_district_geoid",
+    }
+    return {
+        key: households[column].to_numpy() if column in households.columns else None
+        for key, column in columns.items()
+    }
 
 
 def calibration_evidence(
@@ -1488,7 +1489,7 @@ def calibration_evidence(
     design and the calibrated weights.
     """
 
-    spine, source = _origin_columns(frame)
+    origin = _origin_columns(frame)
     return {
         "n_targets_on_surface": len(roles),
         "n_holdout_targets": len(cd_surface.holdout_rows(roles)),
@@ -1498,12 +1499,8 @@ def calibration_evidence(
             "nnz": int(matrix.nnz),
         },
         "weight_origin": {
-            "design": cd_surface.weight_origin_summary(
-                design_weights, spine=spine, source_id=source
-            ),
-            "calibrated": cd_surface.weight_origin_summary(
-                weights, spine=spine, source_id=source
-            ),
+            "design": cd_surface.weight_origin_summary(design_weights, **origin),
+            "calibrated": cd_surface.weight_origin_summary(weights, **origin),
         },
         "cd_holdout": cd_surface.score_cd_holdout(
             roles,
