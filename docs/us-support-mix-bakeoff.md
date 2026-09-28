@@ -37,8 +37,11 @@ the budget with:
   larger arm's;
 - **CPS location clones** (`acs000`): copies of the arm's own CPS households,
   each physical row drawing a new (district, county) within its state in
-  proportion to ACS household weight, the way Route A draws rows
-  independently;
+  proportion to ACS household weight (group-quarters rows excluded), the way
+  Route A draws rows independently. A clone keeps its source row's engine
+  values, so anything that varies by county within a state (ACA benchmark
+  premiums by rating area) is carried from the origin county. Re-running the
+  engine per clone would remove this approximation;
 - a 50/50 mix (`acs050`, at 600k only).
 
 | Budget | CPS years | Fills |
@@ -46,14 +49,26 @@ the budget with:
 | natural size | 2024; 2023–24; 2022–24 | none |
 | 300k, 600k, 1.2M | 2024; 2023–24; 2022–24 | ACS; clones |
 | 300k, 600k, 1.2M | none | ACS only |
-| 600k | 2024; 2022–24 | 50/50; ACS with seeds 1 and 2 (replicates) |
+| 600k | 2024; 2022–24 | 50/50 |
+| 300k | 2024; 2022–24 | ACS, replicates 1 and 2 |
 
 That is 30 arms. Each is calibrated twice, once per product:
 
-- **national compact**: the release's `national_state` surface (national and
-  state targets, 5,694 in all, before the split);
-- **local**: the full surface (adding 24,340 district targets) plus district
-  total population from the ACS, as the ACS local release trains.
+- **national compact**: the release's `national_state` surface (5,683
+  usable national and state targets before the split), with loss weights
+  computed on that surface as the release does;
+- **local**: the full surface, which adds 27,148 targets the release
+  classifies as district targets (24,340 district-level, plus 2,808 state
+  and national totals from the SOI district file), plus district household
+  population (ACS B25008). The ACS local release trains district population
+  from its PUMA ladder instead; household population is used here so that
+  group-quarters rows, which only the ACS has, neither count toward nor are
+  pushed by the district total.
+
+Replicate arms take the next disjoint blocks of the one fixed ACS order, so
+they are independent draws; seed-0 arms are nested across budgets.
+Group-quarters households (12% of ACS records) stay in the ACS side, as in
+the ACS local release; the CPS has none.
 
 **Five CPS years were not run.** Income years 2020 and 2021 pass the
 response-quality check below, but main pins ASEC role and person sources
@@ -92,7 +107,7 @@ into 419 such concepts, and `materialize` runs the release tool's own
 5 GB). Every arm's target matrix is then concept value × geography mask,
 assembled sparse. `diffcheck` verifies the identity on real rows: production
 per-target columns and concept × mask agree exactly on sampled state and
-district targets of every family (receipt below). The 11 JCT tax-expenditure
+district targets of every family (see Evidence). The 11 JCT tax-expenditure
 targets need reform simulations and are excluded from every arm.
 
 ### Holdout
@@ -101,8 +116,10 @@ The US holdout ("Port the UK holdout to US release targets") has not merged.
 The bake-off mirrors its pending `target_split` spec byte for byte: SHA-256
 of `salt + "\x1f" + key`, sealed if below 0.05 on the sealed salt, otherwise
 held out if below 0.10 on the holdout salt. District children take their
-state parent's key, and vintage tokens are dropped, so a held-out group is
-held out at every level it appears. The pending spec's pins, which force
+state parent's key, so a held-out state total is held out with all its
+districts; national and state targets are drawn independently, so a
+held-out national total can still be pinned by trained state targets.
+Vintage tokens are dropped from keys. The pending spec's pins, which force
 some groups to train, were not yet written and are not mirrored, so the
 bake-off split differs from the eventual release split for pinned groups.
 Sealed targets are neither trained nor scored.
@@ -125,10 +142,12 @@ ACS-native scores as consistency with the published ACS, not as truth.
 ### Calibration
 
 Every arm uses the production optimizer, `microcosm.calibrate.solve._optimize`,
-with the fiscal release's settings: Adam on log-weights, learning rate 0.02,
+with the fiscal release's optimizer settings: Adam on log-weights, learning rate 0.02,
 capped relative error (cap 1.0), mass conserved, max weight ratio 5, the
-release's concept-budget loss weights computed once on the full registry
-(so train and holdout keep fixed weights), no L0 pruning (so the row budget
+release's concept-budget loss weights computed once per surface (the
+national_state surface for the national product, the full registry for the
+local one) before the split, so train and holdout keep fixed weights; district
+household-population rows weigh 1 each; no L0 pruning (so the row budget
 stays fixed). A sparse operator with a precomputed transpose replaces the
 torch sparse-CSR backward pass, which was the bottleneck; the objective and
 projections are unchanged.
@@ -153,10 +172,14 @@ with concept × mask.
 - **Registry holdout**: capped relative error `min(|est − target| /
   max(|target|, 1), 1)`, mean and loss-weighted mean, by dimension (CPS-native:
   income components, tax items, program receipt; ACS-native: PEP
-  demographics) and level. Unsupported targets (no row in the arm can move
-  them) are counted separately.
-- **ACS-native**: households, tenure, aggregate rent and real-estate taxes,
-  household population and age and sex bands, by level including county.
+  demographics) and level. A target no row in the arm can move scores as a
+  miss (error 1), so every arm is averaged over the same held-out set; a
+  common-support table is reported too.
+- **ACS-native**: households, tenure, aggregate rent (the model's
+  `pre_subsidy_rent`, scored against both contract rent B25060 and gross rent
+  B25065) and real-estate taxes, household population (B25008) and total
+  population, age and sex (B01003, B01001; these include group quarters), by
+  level including county. Household measures exclude group-quarters rows.
 - **ESS** over distinct households: weights summed within each household
   unit (an ASEC housing unit, `H_IDNUM`, counted once across rotation years,
   PUF clone rows and location clones; an ACS `SERIALNO`), then Kish; also the
