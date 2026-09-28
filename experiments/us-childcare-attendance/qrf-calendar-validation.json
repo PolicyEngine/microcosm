@@ -1,0 +1,417 @@
+{
+  "source": {
+    "study": "ICPSR39466.v1",
+    "source_year": 2024,
+    "measurement": "union_of_ECE_calendar_blocks_excluding_K8",
+    "monthly_conversion": "floor(days_per_week * 52 / 12 + 0.5)",
+    "national_representativeness_validated": false,
+    "calendar_bounds": {
+      "source": "NSECE 2024 Household User Guide HH-334, HH-565--568",
+      "meaning": "definite and possible ECE blocks; not imputations or confidence intervals",
+      "partial_calendar_zero": "unresolved assumed parental care, not observed nonattendance",
+      "missing_calendar": "uninformative 0--168 hours and 0--7 days"
+    },
+    "artifacts": [
+      {
+        "sha256": "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2",
+        "size_bytes": 122764947
+      },
+      {
+        "sha256": "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e",
+        "size_bytes": 269542239
+      }
+    ]
+  },
+  "recipe": {
+    "contract_sha256": "ae648c6cb0e2838fdf142975e9c536eb0683d9630fd1738096d524222ffb01dc",
+    "runtime_versions": {
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "policyengine-us": "2.2.1"
+    },
+    "code_sha256": {
+      "childcare_attendance.py": "da00ef1fb45232a731bd4a3b33d93cd0aeac0682b28d50e4d53cb79db12ce96e",
+      "childcare_population.py": "19fef5e4cc1838734783c2eb911f556596256cf093fb1063a403a6eadf49d04e",
+      "nsece_childcare.py": "0e72ff9388f8f59147305f07effec2b99dada0f91599727cc9e58ad4feb6edbb",
+      "nsece_childcare_bridge.py": "70a7edea8b28c6da21ff4fa9bb220766a3e6cd714926684af29bdba1a8421b0a",
+      "nsece_childcare_dependence.py": "1c5123a77f84460ba517d2b4c6c3e04ae658bf36e9cf54ed69ddbcacc85efc09",
+      "childcare_attendance_stage.py": "42e777b0edfc813d79204bc2932fe429d6a48cd2866397560a7386cbee54dadb",
+      "childcare_attendance_receipt.py": "0950fce7f372ca4b240cd055c931f5f8fe070223fd68504a3ea9cfbc4e16c645"
+    }
+  },
+  "plan_sha256": "8f3ea047c8d87a27faf5dbb0f7ce719f5aab9a1a8508fb3b6602d0cbbc4d4577",
+  "diagnostic_code_sha256": {
+    "validate_us_childcare_qrf.py": "78fd063407aaa24a1565ddab8b8b527c4cfa8a04f6a72b8b750658e511ede8d7",
+    "nsece_childcare_qrf.py": "cd18d77cce2199246b22407f4dc7f19f35fff25d94af4ce128c94b86188f838a"
+  },
+  "model": {
+    "name": "canonical_weighted_QRF_joint_schedule_decoder",
+    "predictors": [
+      "age",
+      "childcare_household_size",
+      "childcare_under6_count",
+      "childcare_schoolage_count",
+      "childcare_youngest_age_band",
+      "childcare_has_younger_sibling",
+      "parent_work_status",
+      "income_band",
+      "region",
+      "household_income",
+      "household_members",
+      "resident_parent_count"
+    ],
+    "trees": 100,
+    "seed": 915,
+    "integration_points": 128,
+    "mean_positive_decoder_code_movement": 0.2967616315205634,
+    "max_positive_decoder_code_movement": 12.0
+  },
+  "splits": [
+    {
+      "fold": 0,
+      "training_households": 5100,
+      "evaluation_households": 857,
+      "household_overlap": 0,
+      "evaluated_children": 1402,
+      "profiles": 1361
+    },
+    {
+      "fold": 1,
+      "training_households": 5108,
+      "evaluation_households": 864,
+      "household_overlap": 0,
+      "evaluated_children": 1461,
+      "profiles": 1422
+    },
+    {
+      "fold": 2,
+      "training_households": 5055,
+      "evaluation_households": 928,
+      "household_overlap": 0,
+      "evaluated_children": 1620,
+      "profiles": 1578
+    },
+    {
+      "fold": 3,
+      "training_households": 5071,
+      "evaluation_households": 874,
+      "household_overlap": 0,
+      "evaluated_children": 1527,
+      "profiles": 1482
+    },
+    {
+      "fold": 4,
+      "training_households": 5142,
+      "evaluation_households": 849,
+      "household_overlap": 0,
+      "evaluated_children": 1450,
+      "profiles": 1410
+    }
+  ],
+  "observed_child_validation": {
+    "comparisons": [
+      {
+        "group": "all",
+        "children": 7460,
+        "child_weight": 32249785.682044946,
+        "observed": {
+          "participation": 0.4651484510706186,
+          "days": 1.8750709563867471,
+          "weekly_hours": 14.240422572045734
+        },
+        "expected": {
+          "participation": 0.4626963402375239,
+          "days": 1.8782143152899593,
+          "weekly_hours": 14.28498839270566
+        },
+        "conditional_mean_squared_error": {
+          "participation": 0.22193735839098713,
+          "days": 4.738177957705935,
+          "weekly_hours": 495.36993857227833
+        },
+        "expected_draw_squared_error": {
+          "participation": 0.3980913088338638,
+          "days": 8.493289037594954,
+          "weekly_hours": 884.5670742156525
+        }
+      },
+      {
+        "group": "household_size_1",
+        "children": 1910,
+        "child_weight": 9010809.078107145,
+        "observed": {
+          "participation": 0.5242108914088932,
+          "days": 2.119495964700082,
+          "weekly_hours": 16.911581677434366
+        },
+        "expected": {
+          "participation": 0.5169591695664993,
+          "days": 2.1040041234632554,
+          "weekly_hours": 16.180318254505547
+        },
+        "conditional_mean_squared_error": {
+          "participation": 0.21309207916173845,
+          "days": 4.80186267546308,
+          "weekly_hours": 547.7558761783448
+        },
+        "expected_draw_squared_error": {
+          "participation": 0.3939817087645831,
+          "days": 8.676322304138447,
+          "weekly_hours": 939.0868577063078
+        }
+      },
+      {
+        "group": "household_size_2",
+        "children": 2845,
+        "child_weight": 13265562.299413564,
+        "observed": {
+          "participation": 0.47658623296590163,
+          "days": 1.921092628643475,
+          "weekly_hours": 13.941634457809398
+        },
+        "expected": {
+          "participation": 0.47437966009242294,
+          "days": 1.9431615330846461,
+          "weekly_hours": 14.443491705680222
+        },
+        "conditional_mean_squared_error": {
+          "participation": 0.2237912246436724,
+          "days": 4.589094013107792,
+          "weekly_hours": 408.2440342383202
+        },
+        "expected_draw_squared_error": {
+          "participation": 0.39728485474399067,
+          "days": 8.251821584734268,
+          "weekly_hours": 751.137626070225
+        }
+      },
+      {
+        "group": "household_size_3",
+        "children": 2705,
+        "child_weight": 9973414.304524235,
+        "observed": {
+          "participation": 0.3965732409177563,
+          "days": 1.5930240706983663,
+          "weekly_hours": 12.224491842781102
+        },
+        "expected": {
+          "participation": 0.39813090829428704,
+          "days": 1.587831290116023,
+          "weekly_hours": 12.361766263154577
+        },
+        "conditional_mean_squared_error": {
+          "participation": 0.22746310337909134,
+          "days": 4.878935323151912,
+          "weekly_hours": 563.9256416456769
+        },
+        "expected_draw_squared_error": {
+          "participation": 0.40287692057375285,
+          "days": 8.64909563220651,
+          "weekly_hours": 1012.7828745314389
+        }
+      },
+      {
+        "group": "complete_household",
+        "children": 6699,
+        "child_weight": 29099899.915354412,
+        "observed": {
+          "participation": 0.4440893924635181,
+          "days": 1.7729192348218485,
+          "weekly_hours": 13.202436331757639
+        },
+        "expected": {
+          "participation": 0.4611924940358734,
+          "days": 1.8679016105224053,
+          "weekly_hours": 14.20249149230845
+        },
+        "conditional_mean_squared_error": {
+          "participation": 0.21836908152439619,
+          "days": 4.576891305578152,
+          "weekly_hours": 458.29836605715
+        },
+        "expected_draw_squared_error": {
+          "participation": 0.39552745711675996,
+          "days": 8.329736490182508,
+          "weekly_hours": 844.8891652102076
+        }
+      },
+      {
+        "group": "unresolved_siblings",
+        "children": 761,
+        "child_weight": 3149885.766690531,
+        "observed": {
+          "participation": 0.659700426338619,
+          "days": 2.8187892667948593,
+          "weekly_hours": 23.8297530885091
+        },
+        "expected": {
+          "participation": 0.4765894707182824,
+          "days": 1.9734871914576904,
+          "weekly_hours": 15.047127632887687
+        },
+        "conditional_mean_squared_error": {
+          "participation": 0.25490252201250563,
+          "days": 6.22820832142038,
+          "weekly_hours": 837.8518981731377
+        },
+        "expected_draw_squared_error": {
+          "participation": 0.42177719266956654,
+          "days": 10.004252644889078,
+          "weekly_hours": 1251.127408916974
+        }
+      }
+    ],
+    "screen": {
+      "passed": false,
+      "checks": [
+        {
+          "group": "all",
+          "metric": "participation",
+          "relative": false,
+          "gap": 0.0024521108330947117,
+          "limit": 0.05,
+          "passed": true
+        },
+        {
+          "group": "all",
+          "metric": "days",
+          "relative": true,
+          "gap": 0.0016763946412296814,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "all",
+          "metric": "weekly_hours",
+          "relative": true,
+          "gap": 0.0031295293685603054,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "household_size_1",
+          "metric": "participation",
+          "relative": false,
+          "gap": 0.007251721842393866,
+          "limit": 0.05,
+          "passed": true
+        },
+        {
+          "group": "household_size_1",
+          "metric": "days",
+          "relative": true,
+          "gap": 0.007309210064487643,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "household_size_1",
+          "metric": "weekly_hours",
+          "relative": true,
+          "gap": 0.04324039210977919,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "household_size_2",
+          "metric": "participation",
+          "relative": false,
+          "gap": 0.002206572873478696,
+          "limit": 0.05,
+          "passed": true
+        },
+        {
+          "group": "household_size_2",
+          "metric": "days",
+          "relative": true,
+          "gap": 0.011487683681736041,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "household_size_2",
+          "metric": "weekly_hours",
+          "relative": true,
+          "gap": 0.035997016661823936,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "household_size_3",
+          "metric": "participation",
+          "relative": false,
+          "gap": 0.0015576673765307358,
+          "limit": 0.05,
+          "passed": true
+        },
+        {
+          "group": "household_size_3",
+          "metric": "days",
+          "relative": true,
+          "gap": 0.003259700011982134,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "household_size_3",
+          "metric": "weekly_hours",
+          "relative": true,
+          "gap": 0.011229458217074167,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "complete_household",
+          "metric": "participation",
+          "relative": false,
+          "gap": 0.01710310157235534,
+          "limit": 0.05,
+          "passed": true
+        },
+        {
+          "group": "complete_household",
+          "metric": "days",
+          "relative": true,
+          "gap": 0.053574000346440526,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "complete_household",
+          "metric": "weekly_hours",
+          "relative": true,
+          "gap": 0.07574777377605987,
+          "limit": 0.2,
+          "passed": true
+        },
+        {
+          "group": "unresolved_siblings",
+          "metric": "participation",
+          "relative": false,
+          "gap": 0.18311095562033664,
+          "limit": 0.05,
+          "passed": false
+        },
+        {
+          "group": "unresolved_siblings",
+          "metric": "days",
+          "relative": true,
+          "gap": 0.29988125940976446,
+          "limit": 0.2,
+          "passed": false
+        },
+        {
+          "group": "unresolved_siblings",
+          "metric": "weekly_hours",
+          "relative": true,
+          "gap": 0.3685571320441615,
+          "limit": 0.2,
+          "passed": false
+        }
+      ]
+    },
+    "interpretation": "child-weighted predictions of observed calendars; missing children are not scored as zeros; previously used survey, not external validation"
+  },
+  "production_ready": false,
+  "interpretation": "marginal development diagnostic only; no dependence fit, no source-selection correction, no population integration or independent validation"
+}

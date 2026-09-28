@@ -62,6 +62,14 @@ independent demographic, monetary, identity, and runtime acceptance checks.
 That process supplies the separate annual projection acceptance report and
 publication decision; this module supplies no certification override.
 
+If the base contains NSECE childcare attendance, every annual file preserves the
+original content-bound attendance receipt. Static aging holds ages and schedules
+fixed while changing weights and monetary inputs; the writer verifies that those
+bound values remain exact before finalizing a file. It rejects missing receipts
+for nonzero attendance and detects altered ages, identities or attendance instead
+of rebinding them. Each annual round-trip report includes the validated binding
+hash. This preserves provenance, not evidence of attendance changes over time.
+
 ## Qualification and publication order
 
 1. Qualify the base release under its existing contract with the intended

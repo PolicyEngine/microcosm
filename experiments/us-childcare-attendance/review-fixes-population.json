@@ -1,0 +1,1590 @@
+{
+  "parent_sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+  "candidate_checkpoint_sha256": "5cb9aa418768b5a82ee351e8b737f58c8989212f1ffbee36d605c22887e989a5",
+  "validation_code_sha256": "ee3ca65dcd2ef4492924edce54b6bdd03b8b4ed882c65684fc57a1622c341dfe",
+  "engine_version": "2.2.1",
+  "policy_year": 2026,
+  "population": "fixed BuildP source ages/incomes; no aging or uprating",
+  "people": 166321,
+  "households": 57240,
+  "under13_children": 31889,
+  "outside_source_domain_people": 134432,
+  "outside_source_domain_age13_17_with_disability": 557,
+  "outside_domain_baseline_receipt": {
+    "engine_version": "2.2.1",
+    "inherited_counts": {
+      "childcare_attending_days_per_month": 134432,
+      "childcare_days_per_week": 134432,
+      "childcare_hours_per_day": 134432
+    },
+    "interpretation": "baseline retained; not evidence of nonattendance outside ages 0-12",
+    "values": {
+      "childcare_attending_days_per_month": 0.0,
+      "childcare_days_per_week": 0.0,
+      "childcare_hours_per_day": 0.0
+    }
+  },
+  "unresolved_people_retaining_baseline": 0,
+  "unresolved_age13_17_with_disability": 0,
+  "weighted_under13_attendance_share": 0.48476583170284354,
+  "weighted_under13_days_per_week": 1.9567197164255687,
+  "weighted_under13_hours_per_week": 14.09681286757626,
+  "candidate_receipt": {
+    "nsece_childcare_attendance": {
+      "artifacts": [
+        {
+          "sha256": "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2",
+          "size_bytes": 122764947
+        },
+        {
+          "sha256": "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e",
+          "size_bytes": 269542239
+        }
+      ],
+      "calendar_bounds": {
+        "meaning": "definite and possible ECE blocks; not imputations or confidence intervals",
+        "missing_calendar": "uninformative 0--168 hours and 0--7 days",
+        "partial_calendar_zero": "unresolved assumed parental care, not observed nonattendance",
+        "source": "NSECE 2024 Household User Guide HH-334, HH-565--568"
+      },
+      "candidate_only": true,
+      "fallback_match_columns": [
+        [
+          "age",
+          "parent_work_status",
+          "income_band"
+        ],
+        [
+          "age",
+          "parent_work_status"
+        ],
+        [
+          "age"
+        ]
+      ],
+      "match_columns": [
+        "age",
+        "region",
+        "parent_work_status",
+        "income_band"
+      ],
+      "measurement": "union_of_ECE_calendar_blocks_excluding_K8",
+      "monthly_conversion": "floor(days_per_week * 52 / 12 + 0.5)",
+      "national_representativeness_validated": false,
+      "noncalendar_bridge": {
+        "assumption": "conditional calendar pattern and irregular care transfer across questionnaire instruments",
+        "completed_children": 3046,
+        "imputed": "attended days and irregular care jointly from nearest regular-hour calendar donors",
+        "matching_levels": {
+          "age": 46,
+          "age,parent_work_status": 331,
+          "age,parent_work_status,income_band": 1287,
+          "age,region,parent_work_status,income_band": 1382
+        },
+        "observed": "regular weekly hours from May/fall questionnaire",
+        "seed": 915,
+        "unsupported_children": 0
+      },
+      "seed": 915,
+      "sibling_dependence": 0.7413149380294699,
+      "source_year": 2024,
+      "study": "ICPSR39466.v1"
+    },
+    "childcare_predictor_harmonization": {
+      "geography": "Census region from target state_fips",
+      "income": "Household sum of measured ASEC PTOTVAL, CPI-U adjusted from source year to 2023 dollars",
+      "income_source_receipts": [
+        {
+          "income_year": 2022,
+          "matched_people": 54464,
+          "sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+          "source_rows": 146133
+        },
+        {
+          "income_year": 2023,
+          "matched_people": 54654,
+          "sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+          "source_rows": 144265
+        },
+        {
+          "income_year": 2024,
+          "matched_people": 57203,
+          "sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+          "source_rows": 142125
+        }
+      ],
+      "parent_universe": "parents of any child age 0 through 12 in household",
+      "source": "ASEC resident parent line pointers",
+      "work_measure": "hours_worked_last_week > 0"
+    },
+    "childcare_outside_domain_baseline": {
+      "engine_version": "2.2.1",
+      "inherited_counts": {
+        "childcare_attending_days_per_month": 134432,
+        "childcare_days_per_week": 134432,
+        "childcare_hours_per_day": 134432
+      },
+      "interpretation": "baseline retained; not evidence of nonattendance outside ages 0-12",
+      "values": {
+        "childcare_attending_days_per_month": 0.0,
+        "childcare_days_per_week": 0.0,
+        "childcare_hours_per_day": 0.0
+      }
+    },
+    "childcare_attendance_stage": {
+      "modeled_age_domain": [
+        0,
+        12
+      ],
+      "operations": [
+        {
+          "age_max": 12,
+          "age_min": 0,
+          "kind": "derive_childcare_inputs",
+          "operation": "calendar_attendance"
+        },
+        {
+          "kind": "fit",
+          "operation": "fit_sibling_dependence",
+          "rho": 0.7413149380294699
+        },
+        {
+          "kind": "derive_childcare_inputs",
+          "nearest_donors": 10,
+          "operation": "regular_hours_schedule_bridge"
+        },
+        {
+          "kind": "derive",
+          "operation": "harmonize_asec_childcare_predictors"
+        },
+        {
+          "kind": "derive_childcare_inputs",
+          "operation": "joint_weighted_schedule_transfer",
+          "preserve_observed": true
+        },
+        {
+          "kind": "export_policy",
+          "operation": "inherit_engine_baseline"
+        }
+      ],
+      "outputs": [
+        "childcare_attending_days_per_month",
+        "childcare_days_per_week",
+        "childcare_hours_per_day"
+      ],
+      "outside_domain_policy": "inherit_engine_baseline",
+      "seed": 915,
+      "sibling_dependence": {
+        "estimation": "youngest pair in fully observed households; household design weights",
+        "households": 1941,
+        "independent_both_in_care": 0.2585427028841666,
+        "observed_both_in_care": 0.32858869865910467,
+        "rho": 0.7413149380294699,
+        "shared_both_in_care": 0.3530315526045447,
+        "unconstrained_rho": 0.7413149380294699
+      },
+      "stage": "nsece_childcare_attendance"
+    },
+    "childcare_attendance_binding": {
+      "schema_version": 1,
+      "binding_sha256": "5a67c4cdbefa261a6ba7be056ef37afbf6a20755c649432c10020026a7f1e9a2",
+      "execution_sha256": "a9c0c33d4eac2a876e7cee52c65b8e2ad3d2200bed62d91bc0465c05f590cc27",
+      "source_people": 166321,
+      "retained_people": 166321,
+      "execution": {
+        "context": {
+          "childcare_attendance_stage": {
+            "modeled_age_domain": [
+              0,
+              12
+            ],
+            "operations": [
+              {
+                "age_max": 12,
+                "age_min": 0,
+                "kind": "derive_childcare_inputs",
+                "operation": "calendar_attendance"
+              },
+              {
+                "kind": "fit",
+                "operation": "fit_sibling_dependence",
+                "rho": 0.7413149380294699
+              },
+              {
+                "kind": "derive_childcare_inputs",
+                "nearest_donors": 10,
+                "operation": "regular_hours_schedule_bridge"
+              },
+              {
+                "kind": "derive",
+                "operation": "harmonize_asec_childcare_predictors"
+              },
+              {
+                "kind": "derive_childcare_inputs",
+                "operation": "joint_weighted_schedule_transfer",
+                "preserve_observed": true
+              },
+              {
+                "kind": "export_policy",
+                "operation": "inherit_engine_baseline"
+              }
+            ],
+            "outputs": [
+              "childcare_attending_days_per_month",
+              "childcare_days_per_week",
+              "childcare_hours_per_day"
+            ],
+            "outside_domain_policy": "inherit_engine_baseline",
+            "seed": 915,
+            "sibling_dependence": {
+              "estimation": "youngest pair in fully observed households; household design weights",
+              "households": 1941,
+              "independent_both_in_care": 0.2585427028841666,
+              "observed_both_in_care": 0.32858869865910467,
+              "rho": 0.7413149380294699,
+              "shared_both_in_care": 0.3530315526045447,
+              "unconstrained_rho": 0.7413149380294699
+            },
+            "stage": "nsece_childcare_attendance"
+          },
+          "childcare_outside_domain_baseline": {
+            "engine_version": "2.2.1",
+            "inherited_counts": {
+              "childcare_attending_days_per_month": 134432,
+              "childcare_days_per_week": 134432,
+              "childcare_hours_per_day": 134432
+            },
+            "interpretation": "baseline retained; not evidence of nonattendance outside ages 0-12",
+            "values": {
+              "childcare_attending_days_per_month": 0.0,
+              "childcare_days_per_week": 0.0,
+              "childcare_hours_per_day": 0.0
+            }
+          },
+          "childcare_predictor_harmonization": {
+            "geography": "Census region from target state_fips",
+            "income": "Household sum of measured ASEC PTOTVAL, CPI-U adjusted from source year to 2023 dollars",
+            "income_source_receipts": [
+              {
+                "income_year": 2022,
+                "matched_people": 54464,
+                "sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+                "source_rows": 146133
+              },
+              {
+                "income_year": 2023,
+                "matched_people": 54654,
+                "sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+                "source_rows": 144265
+              },
+              {
+                "income_year": 2024,
+                "matched_people": 57203,
+                "sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+                "source_rows": 142125
+              }
+            ],
+            "parent_universe": "parents of any child age 0 through 12 in household",
+            "source": "ASEC resident parent line pointers",
+            "work_measure": "hours_worked_last_week > 0"
+          },
+          "nsece_childcare_attendance": {
+            "artifacts": [
+              {
+                "sha256": "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2",
+                "size_bytes": 122764947
+              },
+              {
+                "sha256": "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e",
+                "size_bytes": 269542239
+              }
+            ],
+            "calendar_bounds": {
+              "meaning": "definite and possible ECE blocks; not imputations or confidence intervals",
+              "missing_calendar": "uninformative 0--168 hours and 0--7 days",
+              "partial_calendar_zero": "unresolved assumed parental care, not observed nonattendance",
+              "source": "NSECE 2024 Household User Guide HH-334, HH-565--568"
+            },
+            "candidate_only": true,
+            "fallback_match_columns": [
+              [
+                "age",
+                "parent_work_status",
+                "income_band"
+              ],
+              [
+                "age",
+                "parent_work_status"
+              ],
+              [
+                "age"
+              ]
+            ],
+            "match_columns": [
+              "age",
+              "region",
+              "parent_work_status",
+              "income_band"
+            ],
+            "measurement": "union_of_ECE_calendar_blocks_excluding_K8",
+            "monthly_conversion": "floor(days_per_week * 52 / 12 + 0.5)",
+            "national_representativeness_validated": false,
+            "noncalendar_bridge": {
+              "assumption": "conditional calendar pattern and irregular care transfer across questionnaire instruments",
+              "completed_children": 3046,
+              "imputed": "attended days and irregular care jointly from nearest regular-hour calendar donors",
+              "matching_levels": {
+                "age": 46,
+                "age,parent_work_status": 331,
+                "age,parent_work_status,income_band": 1287,
+                "age,region,parent_work_status,income_band": 1382
+              },
+              "observed": "regular weekly hours from May/fall questionnaire",
+              "seed": 915,
+              "unsupported_children": 0
+            },
+            "seed": 915,
+            "sibling_dependence": 0.7413149380294699,
+            "source_year": 2024,
+            "study": "ICPSR39466.v1"
+          }
+        },
+        "recipe": {
+          "code_sha256": {
+            "childcare_attendance.py": "da00ef1fb45232a731bd4a3b33d93cd0aeac0682b28d50e4d53cb79db12ce96e",
+            "childcare_attendance_receipt.py": "d93ecfe1725bef2c0b87a137eaab88856fa9a76e601227089ceb94daa4335865",
+            "childcare_attendance_stage.py": "c5243b7f23865c352acee8f5946bb8c7b578645c7b5e56c24632fa94dd9dbecb",
+            "childcare_population.py": "19fef5e4cc1838734783c2eb911f556596256cf093fb1063a403a6eadf49d04e",
+            "nsece_childcare.py": "e11eef389f47433a2d407aaf7c01214dbefccb702b3fefe8fa6502c7e947ab4d",
+            "nsece_childcare_bridge.py": "517b3c3ae02e2316b028fd15bc60a090e7962d716d46b80e3e73067f08d5ff29",
+            "nsece_childcare_dependence.py": "1c5123a77f84460ba517d2b4c6c3e04ae658bf36e9cf54ed69ddbcacc85efc09"
+          },
+          "contract_sha256": "ae648c6cb0e2838fdf142975e9c536eb0683d9630fd1738096d524222ffb01dc",
+          "runtime_versions": {
+            "numpy": "2.4.6",
+            "pandas": "3.0.3",
+            "policyengine-us": "2.2.1"
+          }
+        }
+      }
+    }
+  },
+  "states": [
+    {
+      "state": "AL",
+      "sample_households": 1061,
+      "baseline": {
+        "variable": "al_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "al_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 13061.764184842585,
+        "annual_modeled_benefits": 32688921.398814265
+      }
+    },
+    {
+      "state": "AK",
+      "sample_households": 826,
+      "baseline": {
+        "variable": "ak_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 1390.1623900386767,
+        "annual_modeled_benefits": 6435797.486872292
+      },
+      "candidate": {
+        "variable": "ak_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 1390.1623900386767,
+        "annual_modeled_benefits": 6435797.486872292
+      }
+    },
+    {
+      "state": "AZ",
+      "sample_households": 1164,
+      "baseline": {
+        "variable": "az_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "az_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 18733.37486637244,
+        "annual_modeled_benefits": 21138074.239445645
+      }
+    },
+    {
+      "state": "AR",
+      "sample_households": 952,
+      "baseline": {
+        "variable": "ar_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ar_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 17289.894029146235,
+        "annual_modeled_benefits": 50793417.58586023
+      }
+    },
+    {
+      "state": "CA",
+      "sample_households": 2659,
+      "baseline": {
+        "variable": "ca_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ca_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 31,
+        "weighted_positive_units": 201632.45677746536,
+        "annual_modeled_benefits": 935799297.9584653
+      }
+    },
+    {
+      "state": "CO",
+      "sample_households": 1164,
+      "baseline": {
+        "variable": "co_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 19,
+        "weighted_positive_units": 30914.695305580855,
+        "annual_modeled_benefits": 252602567.65021172
+      },
+      "candidate": {
+        "variable": "co_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 18502.53110225743,
+        "annual_modeled_benefits": 236445530.32343873
+      }
+    },
+    {
+      "state": "CT",
+      "sample_households": 908,
+      "baseline": {
+        "variable": "ct_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 23,
+        "weighted_positive_units": 79449.487583021,
+        "annual_modeled_benefits": 405879416.70427954
+      },
+      "candidate": {
+        "variable": "ct_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 23,
+        "weighted_positive_units": 79449.487583021,
+        "annual_modeled_benefits": 653474165.4604676
+      }
+    },
+    {
+      "state": "DE",
+      "sample_households": 1068,
+      "baseline": {
+        "variable": "de_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 13026.181364486925,
+        "annual_modeled_benefits": 42150126.00852959
+      },
+      "candidate": {
+        "variable": "de_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 13026.181364486925,
+        "annual_modeled_benefits": 42150126.00852959
+      }
+    },
+    {
+      "state": "DC",
+      "sample_households": 551,
+      "baseline": {
+        "variable": "dc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "dc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 3288.0395223266023,
+        "annual_modeled_benefits": 23916792.31200898
+      }
+    },
+    {
+      "state": "FL",
+      "sample_households": 1642,
+      "baseline": {
+        "variable": "fl_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "fl_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 60231.19228101184,
+        "annual_modeled_benefits": 320519265.7821029
+      }
+    },
+    {
+      "state": "GA",
+      "sample_households": 1215,
+      "baseline": {
+        "variable": "ga_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 28445.463818153017,
+        "annual_modeled_benefits": 130565867.0594202
+      },
+      "candidate": {
+        "variable": "ga_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 13,
+        "weighted_positive_units": 28445.463818153017,
+        "annual_modeled_benefits": 130565867.0594202
+      }
+    },
+    {
+      "state": "HI",
+      "sample_households": 838,
+      "baseline": {
+        "variable": "hi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "hi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 1,
+        "weighted_positive_units": 0.0001588361046742648,
+        "annual_modeled_benefits": 0.6336225438054939
+      }
+    },
+    {
+      "state": "ID",
+      "sample_households": 746,
+      "baseline": {
+        "variable": "id_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "id_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 2,
+        "weighted_positive_units": 2335.738774359226,
+        "annual_modeled_benefits": 10651259.924815893
+      }
+    },
+    {
+      "state": "IL",
+      "sample_households": 1668,
+      "baseline": {
+        "variable": "il_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "il_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 15,
+        "weighted_positive_units": 62767.78443156066,
+        "annual_modeled_benefits": 196786246.13666055
+      }
+    },
+    {
+      "state": "IN",
+      "sample_households": 1141,
+      "baseline": {
+        "variable": "in_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 20,
+        "weighted_positive_units": 9694.763750434155,
+        "annual_modeled_benefits": 25856735.988747887
+      },
+      "candidate": {
+        "variable": "in_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 20,
+        "weighted_positive_units": 9694.763750434155,
+        "annual_modeled_benefits": 25856735.988747887
+      }
+    },
+    {
+      "state": "IA",
+      "sample_households": 973,
+      "baseline": {
+        "variable": "ia_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ia_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 13277.072875641927,
+        "annual_modeled_benefits": 55836595.948581845
+      }
+    },
+    {
+      "state": "KS",
+      "sample_households": 921,
+      "baseline": {
+        "variable": "ks_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ks_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 21785.09440057905,
+        "annual_modeled_benefits": 58709143.174893744
+      }
+    },
+    {
+      "state": "KY",
+      "sample_households": 776,
+      "baseline": {
+        "variable": "ky_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ky_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 0.02885724022053182,
+        "annual_modeled_benefits": 168.32094133054224
+      }
+    },
+    {
+      "state": "LA",
+      "sample_households": 1000,
+      "baseline": {
+        "variable": "la_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "la_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 37176.93537535961,
+        "annual_modeled_benefits": 72842360.51107226
+      }
+    },
+    {
+      "state": "ME",
+      "sample_households": 785,
+      "baseline": {
+        "variable": "me_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 11874.206514407007,
+        "annual_modeled_benefits": 46683663.687080294
+      },
+      "candidate": {
+        "variable": "me_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 17,
+        "weighted_positive_units": 11874.206514407007,
+        "annual_modeled_benefits": 46683670.942570195
+      }
+    },
+    {
+      "state": "MD",
+      "sample_households": 1091,
+      "baseline": {
+        "variable": "md_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "md_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      }
+    },
+    {
+      "state": "MA",
+      "sample_households": 1522,
+      "baseline": {
+        "variable": "ma_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ma_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 0.07485817919950932,
+        "annual_modeled_benefits": 214.60111108028417
+      }
+    },
+    {
+      "state": "MI",
+      "sample_households": 1478,
+      "baseline": {
+        "variable": "mi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 42453.16293835803,
+        "annual_modeled_benefits": 167344216.73651382
+      },
+      "candidate": {
+        "variable": "mi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 42453.16293835803,
+        "annual_modeled_benefits": 167344216.73651382
+      }
+    },
+    {
+      "state": "MN",
+      "sample_households": 1166,
+      "baseline": {
+        "variable": "mn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "mn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 21289.401307827327,
+        "annual_modeled_benefits": 274850426.2413397
+      }
+    },
+    {
+      "state": "MS",
+      "sample_households": 882,
+      "baseline": {
+        "variable": "ms_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ms_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 7256.952556610806,
+        "annual_modeled_benefits": 30449890.664512668
+      }
+    },
+    {
+      "state": "MO",
+      "sample_households": 1013,
+      "baseline": {
+        "variable": "mo_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "mo_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 9981.891486888984,
+        "annual_modeled_benefits": 44110018.22040879
+      }
+    },
+    {
+      "state": "MT",
+      "sample_households": 744,
+      "baseline": {
+        "variable": "mt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 4.609087781107519,
+        "annual_modeled_benefits": 343.68633474948
+      },
+      "candidate": {
+        "variable": "mt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 3,
+        "weighted_positive_units": 4.609087781107519,
+        "annual_modeled_benefits": 343.68633474948
+      }
+    },
+    {
+      "state": "NE",
+      "sample_households": 884,
+      "baseline": {
+        "variable": "ne_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 1.0507851635920815,
+        "annual_modeled_benefits": 754.4826039844379
+      },
+      "candidate": {
+        "variable": "ne_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 6,
+        "weighted_positive_units": 1.0507851635920815,
+        "annual_modeled_benefits": 752.3048707440652
+      }
+    },
+    {
+      "state": "NV",
+      "sample_households": 952,
+      "baseline": {
+        "variable": "nv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "nv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      }
+    },
+    {
+      "state": "NH",
+      "sample_households": 840,
+      "baseline": {
+        "variable": "nh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 6328.660297448034,
+        "annual_modeled_benefits": 16452735.29621234
+      },
+      "candidate": {
+        "variable": "nh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 6328.660297448034,
+        "annual_modeled_benefits": 16452735.29621234
+      }
+    },
+    {
+      "state": "NJ",
+      "sample_households": 1651,
+      "baseline": {
+        "variable": "nj_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 47645.06307415466,
+        "annual_modeled_benefits": 54783391.64412939
+      },
+      "candidate": {
+        "variable": "nj_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 12,
+        "weighted_positive_units": 47645.06307415466,
+        "annual_modeled_benefits": 39399036.82068616
+      }
+    },
+    {
+      "state": "NM",
+      "sample_households": 902,
+      "baseline": {
+        "variable": "nm_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 32,
+        "weighted_positive_units": 14416.283866321406,
+        "annual_modeled_benefits": 40276267.46262546
+      },
+      "candidate": {
+        "variable": "nm_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 32,
+        "weighted_positive_units": 14416.283866321406,
+        "annual_modeled_benefits": 59647115.49393122
+      }
+    },
+    {
+      "state": "NY",
+      "sample_households": 2166,
+      "baseline": {
+        "variable": "ny_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ny_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 28,
+        "weighted_positive_units": 84809.87077922659,
+        "annual_modeled_benefits": 386147637.05533403
+      }
+    },
+    {
+      "state": "NC",
+      "sample_households": 1337,
+      "baseline": {
+        "variable": "nc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 28725.60765656957,
+        "annual_modeled_benefits": 161822256.86665964
+      },
+      "candidate": {
+        "variable": "nc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 28725.60765656957,
+        "annual_modeled_benefits": 161822256.86665964
+      }
+    },
+    {
+      "state": "ND",
+      "sample_households": 682,
+      "baseline": {
+        "variable": "nd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.1099370562878903,
+        "annual_modeled_benefits": 409.12895149587507
+      },
+      "candidate": {
+        "variable": "nd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.1099370562878903,
+        "annual_modeled_benefits": 476.4295530626239
+      }
+    },
+    {
+      "state": "OH",
+      "sample_households": 1531,
+      "baseline": {
+        "variable": "oh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "oh_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 10,
+        "weighted_positive_units": 57197.27386227145,
+        "annual_modeled_benefits": 104095590.72541192
+      }
+    },
+    {
+      "state": "OK",
+      "sample_households": 918,
+      "baseline": {
+        "variable": "ok_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "ok_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 1,
+        "weighted_positive_units": 0.0031096774619072676,
+        "annual_modeled_benefits": 5.149625876918435
+      }
+    },
+    {
+      "state": "OR",
+      "sample_households": 1152,
+      "baseline": {
+        "variable": "or_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 15165.681869102991,
+        "annual_modeled_benefits": 33054937.630309362
+      },
+      "candidate": {
+        "variable": "or_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 15165.681869102991,
+        "annual_modeled_benefits": 33054937.630309362
+      }
+    },
+    {
+      "state": "PA",
+      "sample_households": 1999,
+      "baseline": {
+        "variable": "pa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "pa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 0.2005278345895931,
+        "annual_modeled_benefits": 561.099948525683
+      }
+    },
+    {
+      "state": "RI",
+      "sample_households": 804,
+      "baseline": {
+        "variable": "ri_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 4049.67838506322,
+        "annual_modeled_benefits": 2429808.7526231185
+      },
+      "candidate": {
+        "variable": "ri_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 4049.67838506322,
+        "annual_modeled_benefits": 2429813.4984327066
+      }
+    },
+    {
+      "state": "SC",
+      "sample_households": 955,
+      "baseline": {
+        "variable": "sc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "sc_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 11,
+        "weighted_positive_units": 27915.89938246878,
+        "annual_modeled_benefits": 77088809.79821464
+      }
+    },
+    {
+      "state": "SD",
+      "sample_households": 866,
+      "baseline": {
+        "variable": "sd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "sd_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 2978.0845139123267,
+        "annual_modeled_benefits": 5809179.365034073
+      }
+    },
+    {
+      "state": "TN",
+      "sample_households": 1082,
+      "baseline": {
+        "variable": "tn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "tn_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 14,
+        "weighted_positive_units": 54836.32565583871,
+        "annual_modeled_benefits": 120178659.05015105
+      }
+    },
+    {
+      "state": "TX",
+      "sample_households": 1875,
+      "baseline": {
+        "variable": "tx_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "tx_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 16,
+        "weighted_positive_units": 93309.70299506374,
+        "annual_modeled_benefits": 199602579.27443355
+      }
+    },
+    {
+      "state": "UT",
+      "sample_households": 861,
+      "baseline": {
+        "variable": "ut_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 23851.249713434547,
+        "annual_modeled_benefits": 66497469.149597794
+      },
+      "candidate": {
+        "variable": "ut_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 23851.249713434547,
+        "annual_modeled_benefits": 66497469.149597794
+      }
+    },
+    {
+      "state": "VT",
+      "sample_households": 496,
+      "baseline": {
+        "variable": "vt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 78,
+        "weighted_positive_units": 32213.61921006818,
+        "annual_modeled_benefits": 526819840.50677323
+      },
+      "candidate": {
+        "variable": "vt_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 81,
+        "weighted_positive_units": 33402.23592408285,
+        "annual_modeled_benefits": 686206383.39497
+      }
+    },
+    {
+      "state": "VA",
+      "sample_households": 1394,
+      "baseline": {
+        "variable": "va_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "va_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 9,
+        "weighted_positive_units": 45187.34717369359,
+        "annual_modeled_benefits": 254330200.2860741
+      }
+    },
+    {
+      "state": "WA",
+      "sample_households": 1305,
+      "baseline": {
+        "variable": "wa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 18,
+        "weighted_positive_units": 34613.59633511363,
+        "annual_modeled_benefits": 273947341.7692
+      },
+      "candidate": {
+        "variable": "wa_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 18,
+        "weighted_positive_units": 34613.59633511363,
+        "annual_modeled_benefits": 273947341.7692
+      }
+    },
+    {
+      "state": "WV",
+      "sample_households": 845,
+      "baseline": {
+        "variable": "wv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "wv_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 5,
+        "weighted_positive_units": 5322.572984872386,
+        "annual_modeled_benefits": 13548522.496824618
+      }
+    },
+    {
+      "state": "WI",
+      "sample_households": 1232,
+      "baseline": {
+        "variable": "wi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "wi_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 8,
+        "weighted_positive_units": 33918.60478726821,
+        "annual_modeled_benefits": 249284653.88471013
+      }
+    },
+    {
+      "state": "WY",
+      "sample_households": 557,
+      "baseline": {
+        "variable": "wy_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 0,
+        "weighted_positive_units": 0.0,
+        "annual_modeled_benefits": 0.0
+      },
+      "candidate": {
+        "variable": "wy_child_care_subsidies",
+        "entity": "spm_unit",
+        "positive_sample_units": 7,
+        "weighted_positive_units": 2962.834392214354,
+        "annual_modeled_benefits": 18103301.12153925
+      }
+    }
+  ],
+  "production_ready": false,
+  "interpretation": "attendance-only counterfactual; provider, activity, expenses and take-up inputs remain as in parent",
+  "matching_levels": {
+    "age,region,parent_work_status,income_band": 31152,
+    "age,parent_work_status,income_band": 576,
+    "age,parent_work_status": 161
+  },
+  "population_attendance_by_group": [
+    {
+      "grouping": "age",
+      "group": "0.0",
+      "children": 1689,
+      "weighted_children": 2750700.861434371,
+      "attendance_share": 0.3908649027002664,
+      "days_per_week": 1.4733482895551573,
+      "hours_per_week": 12.433364620574558
+    },
+    {
+      "grouping": "age",
+      "group": "1.0",
+      "children": 2157,
+      "weighted_children": 3858818.186826853,
+      "attendance_share": 0.5857212350699339,
+      "days_per_week": 2.4682816215895658,
+      "hours_per_week": 20.936959602461613
+    },
+    {
+      "grouping": "age",
+      "group": "2.0",
+      "children": 2364,
+      "weighted_children": 3754041.8444214575,
+      "attendance_share": 0.63217333018214,
+      "days_per_week": 2.625776145467515,
+      "hours_per_week": 21.417061319044002
+    },
+    {
+      "grouping": "age",
+      "group": "3.0",
+      "children": 2385,
+      "weighted_children": 3880377.4871301977,
+      "attendance_share": 0.6496350615721032,
+      "days_per_week": 2.8214495362637413,
+      "hours_per_week": 22.433119986053377
+    },
+    {
+      "grouping": "age",
+      "group": "4.0",
+      "children": 2482,
+      "weighted_children": 4358831.600945832,
+      "attendance_share": 0.7378382488231238,
+      "days_per_week": 3.4554539884839417,
+      "hours_per_week": 26.564435597480422
+    },
+    {
+      "grouping": "age",
+      "group": "5.0",
+      "children": 2391,
+      "weighted_children": 4095170.7360430276,
+      "attendance_share": 0.5629639983082603,
+      "days_per_week": 2.558431264266053,
+      "hours_per_week": 18.571862465758638
+    },
+    {
+      "grouping": "age",
+      "group": "6.0",
+      "children": 2562,
+      "weighted_children": 4029009.778184548,
+      "attendance_share": 0.44994930361979923,
+      "days_per_week": 1.6816438584425009,
+      "hours_per_week": 10.601418302478313
+    },
+    {
+      "grouping": "age",
+      "group": "7.0",
+      "children": 2612,
+      "weighted_children": 3768786.8623211696,
+      "attendance_share": 0.34301503193166,
+      "days_per_week": 1.4050708577667275,
+      "hours_per_week": 9.321322146324611
+    },
+    {
+      "grouping": "age",
+      "group": "8.0",
+      "children": 2689,
+      "weighted_children": 4419397.563846819,
+      "attendance_share": 0.4289583167472629,
+      "days_per_week": 1.572046628602081,
+      "hours_per_week": 9.528014323588392
+    },
+    {
+      "grouping": "age",
+      "group": "9.0",
+      "children": 2552,
+      "weighted_children": 3888389.065045069,
+      "attendance_share": 0.38602014666142587,
+      "days_per_week": 1.2822278907340288,
+      "hours_per_week": 8.230580792584078
+    },
+    {
+      "grouping": "age",
+      "group": "10.0",
+      "children": 2662,
+      "weighted_children": 4369978.335878741,
+      "attendance_share": 0.4062473204874741,
+      "days_per_week": 1.5012465135600794,
+      "hours_per_week": 7.890631718854404
+    },
+    {
+      "grouping": "age",
+      "group": "11.0",
+      "children": 2795,
+      "weighted_children": 4689133.259098214,
+      "attendance_share": 0.40248285339977075,
+      "days_per_week": 1.4232741547650194,
+      "hours_per_week": 8.373396107105151
+    },
+    {
+      "grouping": "age",
+      "group": "12.0",
+      "children": 2549,
+      "weighted_children": 4093051.641607744,
+      "attendance_share": 0.31040280481013055,
+      "days_per_week": 1.1000106686299516,
+      "hours_per_week": 7.921206635626762
+    },
+    {
+      "grouping": "region",
+      "group": "1",
+      "children": 5553,
+      "weighted_children": 7976838.3562431075,
+      "attendance_share": 0.5122082980828326,
+      "days_per_week": 2.137540339663031,
+      "hours_per_week": 14.921393569988492
+    },
+    {
+      "grouping": "region",
+      "group": "2",
+      "children": 7790,
+      "weighted_children": 10772583.599183697,
+      "attendance_share": 0.5121729637562082,
+      "days_per_week": 1.9819630179827,
+      "hours_per_week": 14.461387736332831
+    },
+    {
+      "grouping": "region",
+      "group": "3",
+      "children": 10750,
+      "weighted_children": 21007309.669184513,
+      "attendance_share": 0.44090280170545504,
+      "days_per_week": 1.803568625325827,
+      "hours_per_week": 13.322474186390497
+    },
+    {
+      "grouping": "region",
+      "group": "4",
+      "children": 7796,
+      "weighted_children": 12198955.598172724,
+      "attendance_share": 0.5181534861817509,
+      "days_per_week": 2.079925340499398,
+      "hours_per_week": 14.569132992972806
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "-1",
+      "children": 684,
+      "weighted_children": 1044954.9507498589,
+      "attendance_share": 0.5521504831293419,
+      "days_per_week": 2.3270185315729743,
+      "hours_per_week": 25.40529368071806
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "0",
+      "children": 2876,
+      "weighted_children": 5039737.2909418885,
+      "attendance_share": 0.3074240397539245,
+      "days_per_week": 1.2719798150247412,
+      "hours_per_week": 11.03519233829625
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "1",
+      "children": 9966,
+      "weighted_children": 15397404.080512933,
+      "attendance_share": 0.30361930919230407,
+      "days_per_week": 0.9707253415100399,
+      "hours_per_week": 6.653502499604582
+    },
+    {
+      "grouping": "parent_work_status",
+      "group": "2",
+      "children": 18363,
+      "weighted_children": 30473590.900579363,
+      "attendance_share": 0.6033120290865125,
+      "days_per_week": 2.5554583917183713,
+      "hours_per_week": 17.97625615205827
+    },
+    {
+      "grouping": "income_band",
+      "group": "0",
+      "children": 94,
+      "weighted_children": 81378.29635578688,
+      "attendance_share": 0.3855688612887243,
+      "days_per_week": 1.1732033382726887,
+      "hours_per_week": 6.896472838209584
+    },
+    {
+      "grouping": "income_band",
+      "group": "1",
+      "children": 3165,
+      "weighted_children": 6927519.022630059,
+      "attendance_share": 0.4099489581643712,
+      "days_per_week": 1.7141304062628688,
+      "hours_per_week": 12.474528478758927
+    },
+    {
+      "grouping": "income_band",
+      "group": "2",
+      "children": 6097,
+      "weighted_children": 10396829.673697237,
+      "attendance_share": 0.4650799637140388,
+      "days_per_week": 1.9345932911088046,
+      "hours_per_week": 14.621868846831072
+    },
+    {
+      "grouping": "income_band",
+      "group": "3",
+      "children": 9010,
+      "weighted_children": 14071962.152827512,
+      "attendance_share": 0.4488404939306434,
+      "days_per_week": 1.7742390271484756,
+      "hours_per_week": 13.367286745016436
+    },
+    {
+      "grouping": "income_band",
+      "group": "4",
+      "children": 7428,
+      "weighted_children": 13192218.644710096,
+      "attendance_share": 0.5109061436767217,
+      "days_per_week": 1.9814314491639318,
+      "hours_per_week": 14.248294331748822
+    },
+    {
+      "grouping": "income_band",
+      "group": "5",
+      "children": 6095,
+      "weighted_children": 7285779.432563353,
+      "attendance_share": 0.6071590090255058,
+      "days_per_week": 2.5354095841254956,
+      "hours_per_week": 16.105235893357964
+    }
+  ],
+  "summary": {
+    "states_evaluated": 51,
+    "all_zero_states": {
+      "baseline": [
+        "AL",
+        "AZ",
+        "AR",
+        "CA",
+        "DC",
+        "FL",
+        "HI",
+        "ID",
+        "IL",
+        "IA",
+        "KS",
+        "KY",
+        "LA",
+        "MD",
+        "MA",
+        "MN",
+        "MS",
+        "MO",
+        "NV",
+        "NY",
+        "OH",
+        "OK",
+        "PA",
+        "SC",
+        "SD",
+        "TN",
+        "TX",
+        "VA",
+        "WV",
+        "WI",
+        "WY"
+      ],
+      "candidate": [
+        "MD",
+        "NV"
+      ]
+    },
+    "annual_potential_modeled_benefits": {
+      "baseline": 2253603947.6976757,
+      "candidate": 6205696565.309278
+    }
+  }
+}

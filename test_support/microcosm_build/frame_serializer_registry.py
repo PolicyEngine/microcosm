@@ -359,20 +359,41 @@ def _round_trip_fiscal_checkpoint(
         )
 
 
+def _round_trip_childcare_candidate(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
+    pytest.importorskip("tables")
+    from microcosm.build.us_runtime.childcare_attendance_stage import (
+        _write_childcare_candidate_person_table,
+    )
+
+    source = _dtype_family_table(nullable_case)
+    before = source.copy(deep=True)
+    path = tmp_path / "childcare-candidate.h5"
+    receipt = {"childcare_attendance_stage": {"test_receipt": "preserved"}}
+    # Unrelated frame metadata must never reach the persisted receipt.
+    _write_childcare_candidate_person_table(
+        path, source, {**receipt, "unrelated_metadata": "dropped"}
+    )
+    with pd.HDFStore(path, mode="r") as store:
+        loaded = read_frame_table(store, "person")
+        assert json.loads(store["_childcare_attendance_receipt"].iloc[0]) == receipt
+    return _semantic_observation(source, before, loaded)
+
+
 def _round_trip_us_annual_static_aging(
     tmp_path: Path, nullable_case: str
 ) -> BooleanRoundTrip:
     __import__("policyengine_us")
     from microcosm.build.us_annual_static_aging import _write_year
+    from microcosm.frame.materialize import engine_tables
 
     source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     frame = _us_frame(source)
     path = tmp_path / "annual.h5"
     try:
-        _write_year(
-            path, {entity: frame.table(entity) for entity in frame.entities}, 2025
-        )
+        _write_year(path, engine_tables(frame, weighted_entities=("household",)), 2025)
     finally:
         pd.testing.assert_frame_equal(
             source, before, check_exact=True, check_dtype=True
@@ -398,6 +419,7 @@ def _round_trip_spm_role_projection(
 
 
 ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
+    "nsece_childcare_native_candidate": _round_trip_childcare_candidate,
     "frame_checkpoint": _round_trip_frame_checkpoint,
     "nullable_us_h5": _round_trip_nullable_us_h5,
     "uk_single_year_h5": _round_trip_uk_single_year,

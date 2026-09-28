@@ -40,6 +40,12 @@ may additionally carry the paired
 ``ssi_take_up_prior_weight_basis`` and
 ``ssi_take_up_prior_weight_basis_sha256`` fields for the house one-retry
 delivery-gate protocol.
+
+The optional ``childcare_attendance`` object supplies ``household_tsv`` and
+``calendar_tsv`` paths, an explicit ``inherit_outside_domain_baseline`` boolean,
+and an optional ``asec_source_cache`` directory. Paths are relative to the config
+file; survey hashes come from the packaged NSECE source contract. Without this
+object, the pool must already carry valid, bound attendance inputs.
 """
 
 # The sibling house builder is importable only after its tools directory is
@@ -77,6 +83,16 @@ _RELEASE_ID = re.compile(r"[A-Za-z0-9-]+")
 
 
 @dataclass(frozen=True)
+class ChildcareAttendanceConfig:
+    """Local survey inputs; the source contract owns their immutable pins."""
+
+    household_tsv: Path
+    calendar_tsv: Path
+    inherit_outside_domain_baseline: bool
+    asec_source_cache: Path | None
+
+
+@dataclass(frozen=True)
 class LadderReleaseConfig:
     """Validated, path-resolved launcher configuration."""
 
@@ -101,6 +117,7 @@ class LadderReleaseConfig:
     refit_l2_lambda: float
     release_id: str
     repo_id: str
+    childcare_attendance: ChildcareAttendanceConfig | None = None
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -137,6 +154,7 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             "calibration",
             "release",
         },
+        optional={"childcare_attendance"},
         label=f"ladder config {path}",
     )
     if (
@@ -298,6 +316,45 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         refit_l2_lambda=refit_l2_lambda,
         release_id=release_id,
         repo_id=repo_id,
+        childcare_attendance=(
+            _read_childcare_attendance(root["childcare_attendance"], config_dir)
+            if "childcare_attendance" in root
+            else None
+        ),
+    )
+
+
+def _read_childcare_attendance(
+    value: object, config_dir: Path
+) -> ChildcareAttendanceConfig:
+    source = _object(value, label="childcare_attendance")
+    _keys(
+        source,
+        required={
+            "household_tsv",
+            "calendar_tsv",
+            "inherit_outside_domain_baseline",
+        },
+        optional={"asec_source_cache"},
+        label="childcare_attendance",
+    )
+    inherit = source["inherit_outside_domain_baseline"]
+    if not isinstance(inherit, bool):
+        raise ValueError(
+            "childcare_attendance.inherit_outside_domain_baseline must be a boolean."
+        )
+
+    def source_path(key: str) -> Path:
+        raw = _nonempty_string(source[key], label=f"childcare_attendance.{key}")
+        return (config_dir / raw).resolve()
+
+    return ChildcareAttendanceConfig(
+        household_tsv=source_path("household_tsv"),
+        calendar_tsv=source_path("calendar_tsv"),
+        inherit_outside_domain_baseline=inherit,
+        asec_source_cache=(
+            source_path("asec_source_cache") if "asec_source_cache" in source else None
+        ),
     )
 
 
@@ -390,6 +447,32 @@ def _validate_pins_and_resolve_k(
                 f"{observed_prior_basis_sha256}, expected "
                 f"{config.ssi_take_up_prior_weight_basis_sha256}."
             )
+    if config.childcare_attendance is not None:
+        from microcosm.build.us_runtime.childcare_attendance import (
+            childcare_attendance_contract,
+        )
+
+        source = config.childcare_attendance
+        pins = {
+            artifact["dataset"]: artifact["sha256"]
+            for artifact in childcare_attendance_contract()["artifacts"]
+        }
+        for dataset, path in (
+            ("DS5", source.household_tsv),
+            ("DS4", source.calendar_tsv),
+        ):
+            if _sha256(path) != pins[dataset]:
+                raise ValueError(
+                    f"Childcare attendance {dataset} SHA-256 mismatch: {path}. "
+                    "Use the TSV from the pinned NSECE release."
+                )
+        if (
+            source.asec_source_cache is not None
+            and not source.asec_source_cache.is_dir()
+        ):
+            raise ValueError(
+                "childcare_attendance.asec_source_cache must be a directory."
+            )
     return k, pool_manifest
 
 
@@ -452,6 +535,22 @@ def _builder_argv(
                 str(config.ssi_take_up_prior_weight_basis_sha256),
             ]
         )
+    if config.childcare_attendance is not None:
+        source = config.childcare_attendance
+        argv.extend(
+            [
+                "--childcare-attendance-household-tsv",
+                str(source.household_tsv),
+                "--childcare-attendance-calendar-tsv",
+                str(source.calendar_tsv),
+            ]
+        )
+        if source.asec_source_cache is not None:
+            argv.extend(
+                ["--childcare-attendance-asec-cache", str(source.asec_source_cache)]
+            )
+        if source.inherit_outside_domain_baseline:
+            argv.append("--childcare-attendance-inherit-outside-domain-baseline")
     return argv
 
 

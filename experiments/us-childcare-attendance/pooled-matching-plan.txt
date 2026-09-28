@@ -1,0 +1,44 @@
+Partially pooled attendance comparison specified before new results, 2026-09-16.
+
+The previous hard household-size model is rejected. All previously inspected
+households, including the September 16 reserved partition, are now development
+evidence. Do not call a new split of them independent or untouched validation.
+
+Compare the existing production matcher with one fixed proposed model. Start
+with weighted exact-age empirical donor distributions, then successively add
+under-13 household count (capped at 3), parent work, income band, and region.
+At each level blend the local distribution with the preceding broader
+distribution using lambda = effective_households / (effective_households + 10).
+Effective households = squared total weight / sum of squared household weight
+contributions to that donor cell. Ten is fixed before results, not optimized.
+All days/hours are drawn jointly from real, complete schedules, including zeros;
+exact age is never relaxed. Empty local cells inherit their broader distribution.
+
+Fit the shared-rank mixture to measured participation, days and weekly-hours
+cross-products jointly. Use every pair of complete observed children in a
+household, including families whose other children have unresolved calendars.
+Divide household design weight among its observed pairs. Predict fitting pairs
+with their entire household excluded from every donor level. Normalize each
+outcome's squared-error contribution by its weighted training second moment;
+fit one coefficient by weighted least squares and report its unconstrained value
+and clipping. No fitting on held-out household outcomes.
+
+Evaluation: the same deterministic five whole-household folds, seed 271828,
+for both models. Refit every model component solely inside each training fold.
+Integrate the donor CDFs exactly. Retain all 15 previous joint-schedule screens.
+Additionally score every observed child (not only complete households), with
+child weights, overall, by count 1/2/3+, and by complete versus unresolved-sibling
+household. Report participation, days, weekly hours, and squared prediction error.
+Flag participation mean gaps over 0.05 and days/hour relative mean gaps over 20%.
+Report observed-pair results separately from complete-household total results.
+
+This model does not identify missing calendars, summer patterns or noncalendar
+irregular care. Incomplete-family subgroup errors remain visible and cannot be
+removed from acceptance merely because complete-family totals look good. Do not
+scale the population to complete-household means or claim a missingness correction.
+
+Do not select a favorable seed or tune smoothing/rho to the evaluation folds.
+Any adoption remains draft and requires source/target/bridge consistency,
+content-bound receipts, a rebuild from the original parent, population and
+noncalendar sensitivity checks. Failed diagnostics and source-selection
+uncertainty remain unresolved; publication is not authorized by this experiment.

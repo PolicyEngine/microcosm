@@ -21,6 +21,11 @@ from typing import Any
 
 import pandas as pd
 
+from microcosm.build.us_runtime.childcare_attendance_receipt import (
+    ATTENDANCE_RECEIPT_KEY,
+    restore_native_childcare_receipt,
+    write_native_childcare_receipt,
+)
 from microcosm.calibrate import (
     SeriesProjection,
     ssa_population_projection,
@@ -178,10 +183,30 @@ def _verify(path: Path, tables: Mapping[str, pd.DataFrame], year: int) -> dict:
             pd.testing.assert_frame_equal(
                 getattr(native, entity), external, check_dtype=False, check_exact=True
             )
-    return {"logical_tables": True, "native_loader": True, "time_period": year}
+    # Static aging retains ages, identities, and attendance; changing weights or
+    # monetary inputs must neither discard nor reseal the original receipt.
+    weights = Weights(
+        tables["household"]["household_weight"].to_numpy(dtype=float),
+        WeightKind.CALIBRATED,
+    )
+    verified = restore_native_childcare_receipt(
+        path, Frame(tables, US_SCHEMA, {"household": weights})
+    )
+    receipt = {"logical_tables": True, "native_loader": True, "time_period": year}
+    if ATTENDANCE_RECEIPT_KEY in verified.metadata:
+        receipt["childcare_attendance_binding_sha256"] = verified.metadata[
+            ATTENDANCE_RECEIPT_KEY
+        ]["binding_sha256"]
+    return receipt
 
 
-def _write_year(path: Path, tables: Mapping[str, pd.DataFrame], year: int) -> dict:
+def _write_year(
+    path: Path,
+    tables: Mapping[str, pd.DataFrame],
+    year: int,
+    *,
+    frame_metadata: Mapping[str, Any] | None = None,
+) -> dict:
     temporary = path.with_suffix(".tmp.h5")
     with pd.HDFStore(temporary, "w") as store:
         for entity, table in tables.items():
@@ -189,6 +214,8 @@ def _write_year(path: Path, tables: Mapping[str, pd.DataFrame], year: int) -> di
                 store, entity, table, preferred_format="table", data_columns=True
             )
         store.put("_time_period", pd.Series([year]), format="table")
+    if frame_metadata and ATTENDANCE_RECEIPT_KEY in frame_metadata:
+        write_native_childcare_receipt(temporary, frame_metadata)
     receipt = _verify(temporary, tables, year)
     temporary.replace(path)
     return receipt
@@ -261,13 +288,14 @@ def build_annual_static_aging(
     frame = Frame(
         tables, US_SCHEMA, {"household": Weights(weights, WeightKind.CALIBRATED)}
     )
+    frame = restore_native_childcare_receipt(base, frame)
     base_tables = {
         entity: table.loc[:, columns[entity]]
         for entity, table in engine_tables(
             frame, weighted_entities=("household",)
         ).items()
     }
-    _verify(base, base_tables, base_year)
+    base_round_trip = _verify(base, base_tables, base_year)
     del tables, base_tables
     demographics = ssa_population_projection(ssa, age_top=85, age_bands={80: 84})
     for year in range(base_year, end_year + 1):
@@ -332,11 +360,7 @@ def build_annual_static_aging(
             if year == base_year:
                 shutil.copyfile(base, path)
                 _check_pin(path, base_sha256)
-                round_trip = {
-                    "logical_tables": True,
-                    "native_loader": True,
-                    "time_period": year,
-                }
+                round_trip = dict(base_round_trip)
                 projection_receipt = None
             else:
                 result = static_aging(
@@ -363,7 +387,9 @@ def build_annual_static_aging(
                     entity: getattr(dataset, entity).loc[:, columns[entity]]
                     for entity in frame.entities
                 }
-                round_trip = _write_year(path, projected_tables, year)
+                round_trip = _write_year(
+                    path, projected_tables, year, frame_metadata=frame.metadata
+                )
                 receipt_path = output / f"projection_{year}.json"
                 _json(
                     receipt_path,

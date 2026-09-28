@@ -1138,6 +1138,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--release-id")
+    parser.add_argument("--childcare-attendance-household-tsv", type=Path)
+    parser.add_argument("--childcare-attendance-calendar-tsv", type=Path)
+    parser.add_argument("--childcare-attendance-asec-cache", type=Path)
+    parser.add_argument(
+        "--childcare-attendance-inherit-outside-domain-baseline",
+        action="store_true",
+        help="Retain the engine baseline outside modeled ages 0-12; does not assert older-child nonattendance",
+    )
     parser.add_argument(
         "--incumbent-diagnostics",
         type=Path,
@@ -1748,6 +1756,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Minimum seconds between progress uploads to the staging repo.",
     )
     args = parser.parse_args(argv)
+    if bool(args.childcare_attendance_household_tsv) != bool(
+        args.childcare_attendance_calendar_tsv
+    ):
+        parser.error("Both NSECE household and calendar TSV paths are required")
+    if (
+        args.childcare_attendance_inherit_outside_domain_baseline
+        and not args.childcare_attendance_household_tsv
+    ):
+        parser.error(
+            "Outside-domain baseline policy requires an NSECE attendance build"
+        )
     if args.congressional_district_vintage_crosswalk is None:
         # Every build compiles the same national + state + CD target surface,
         # translated through the canonical packaged vintage crosswalk unless
@@ -2525,6 +2544,7 @@ def _target_frame_checkpoint_identity(
     ssi_take_up_assignment_sha256: str,
     selection_identities_sha256: str | None,
     staged_frame_sha256: str,
+    childcare_attendance_binding_sha256: str | None = None,
     selection_mass_protections: tuple[str, ...] = (),
     ssi_take_up_prior_weight_basis_sha256: object = None,
 ) -> dict[str, object]:
@@ -2540,6 +2560,11 @@ def _target_frame_checkpoint_identity(
         # same frame still hits, and the writing commit is recorded beside
         # the identity as information only.
         "staged_frame_sha256": str(staged_frame_sha256),
+        # The staged values alone cannot distinguish two attendance recipes
+        # that happen to emit the same schedules. Bind the verified execution
+        # as well; reform-vector keys inherit this through the materializer
+        # identity digest. None is reserved for callers without attendance.
+        "childcare_attendance_binding_sha256": childcare_attendance_binding_sha256,
         "weeks_unemployed_source_sha256": str(weeks_unemployed_source_sha256),
         "policyengine_us_version": str(policyengine_us_version),
         "seed": int(seed),
@@ -2993,7 +3018,31 @@ def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
         {"household": Weights(weights, WeightKind.CALIBRATED)},
     )
     refuse_denied_frame(frame, consumer=consumer)
-    return frame
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        restore_native_childcare_receipt,
+    )
+
+    return restore_native_childcare_receipt(path, frame)
+
+
+def _require_bound_childcare_attendance(frame: Frame) -> dict[str, object]:
+    """Refuse before calibration a build that cannot export required attendance."""
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        assert_bound_childcare_attendance,
+    )
+    from microcosm.build.us_runtime.nsece_childcare import (
+        assert_childcare_attendance_exportable,
+    )
+
+    try:
+        assert_childcare_attendance_exportable(frame)
+        return assert_bound_childcare_attendance(frame)
+    except ValueError as error:
+        raise RuntimeError(
+            "Release gates failed: Childcare-attendance inputs failed: "
+            f"{error} Supply --childcare-attendance-household-tsv and "
+            "--childcare-attendance-calendar-tsv."
+        ) from error
 
 
 def _resolve_selection_source(args):
@@ -3694,6 +3743,7 @@ def _with_aca_marketplace_source_outputs(
         frame.schema,
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
+        metadata=frame.metadata,
     )
 
 
@@ -8056,6 +8106,7 @@ def _with_social_security_component_value_repair(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
     return repaired, {
         "method": "rescale_social_security_component_leaves_to_ssa_targets",
@@ -8141,6 +8192,7 @@ def _with_non_sch_d_cgd_value_repair(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
         mass_log=frame.mass_log,
+        metadata=frame.metadata,
     )
     return repaired, {
         "method": "rescale_non_sch_d_capital_gains_to_soi_table_1_4_fact",
@@ -12241,6 +12293,25 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 for failure in hours_worked_gate.failures
             )
         )
+    # The attendance harmonizer reads hours_worked_last_week, so it follows the
+    # childcare-expense and hours producers.
+    if args.childcare_attendance_household_tsv is not None:
+        from microcosm.build.us_runtime.childcare_attendance_stage import (
+            with_us_childcare_attendance_inputs,
+        )
+
+        base_frame = with_us_childcare_attendance_inputs(
+            base_frame,
+            household_tsv=args.childcare_attendance_household_tsv,
+            calendar_tsv=args.childcare_attendance_calendar_tsv,
+            asec_source_cache=args.childcare_attendance_asec_cache,
+            seed=args.seed,
+            inherit_outside_domain_baseline=args.childcare_attendance_inherit_outside_domain_baseline,
+        )
+    else:
+        # Attendance is a required, non-waivable export input: without the
+        # source stage this run can only end red after calibration.
+        _require_bound_childcare_attendance(base_frame)
     if telemetry is not None:
         telemetry.stage(
             "snap_take_up_inputs",
@@ -13367,6 +13438,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_specs = (*target_specs, *selection_mass_protection_specs)
     # microcosm#956: digest the very frame handed to the materializer below,
     # so a checkpoint hit proves the same staged inputs, not only the same base.
+    # Recheck after intervening stages and before any checkpoint/cache lookup.
+    attendance_binding = _require_bound_childcare_attendance(base_frame)
     staged_frame_sha256 = _staged_frame_sha256(base_frame)
     target_frame_checkpoint_identity = _target_frame_checkpoint_identity(
         base_dataset_sha256=base_dataset_sha256,
@@ -13383,6 +13456,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             None if selection_source is None else selection_source.identities_sha256
         ),
         staged_frame_sha256=staged_frame_sha256,
+        childcare_attendance_binding_sha256=attendance_binding["binding_sha256"],
         selection_mass_protections=selection_mass_protections,
         ssi_take_up_prior_weight_basis_sha256=(
             None
@@ -14251,8 +14325,14 @@ def _main(argv: Sequence[str] | None = None) -> None:
         )
         input_coverage_gate = None
     if input_coverage_gate is not None:
-        input_coverage_failed = (
-            not input_coverage_gate.passed and not args.allow_input_coverage_gaps
+        # Attendance integrity is not waivable: keep its failure in the batched
+        # report so the run retains its weight evidence instead of dying at
+        # the final native write below.
+        attendance_unbound = (
+            input_coverage_gate.details.get("childcare_attendance") is None
+        )
+        input_coverage_failed = not input_coverage_gate.passed and (
+            attendance_unbound or not args.allow_input_coverage_gaps
         )
         if input_coverage_failed:
             terminal_gate_failures.extend(
@@ -14507,7 +14587,23 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # the batched pre-export raise so a gate-failed run never produces it.
     # microcosm#443: #437 dropped this call while inserting the batched raise,
     # so attempts 13/14 smoke-scored a stale artifact from a prior run.
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        assert_bound_childcare_attendance,
+    )
+    from microcosm.build.us_runtime.childcare_attendance_stage import (
+        persist_native_childcare_receipt,
+    )
+    from microcosm.build.us_runtime.nsece_childcare import (
+        assert_childcare_attendance_exportable,
+    )
+
+    # Attendance integrity is not waivable by generic coverage/evidence flags.
+    assert_childcare_attendance_exportable(export_frame)
+    assert_bound_childcare_attendance(export_frame)
     release_engine.write_dataset(export_frame, dataset_path, period=PERIOD)
+    attendance_source_evidence = persist_native_childcare_receipt(
+        dataset_path, export_frame
+    )
     # microcosm#1026: the stored-input gate above graded a model of the
     # writer's output; the written bytes are graded whatever the gate reached
     # and must earn the same verdict (no refusal, if the gate could not
@@ -14677,6 +14773,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         },
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
+    coverage["childcare_attendance"] = attendance_source_evidence
     if congressional_district_vintage_crosswalk_metadata is not None:
         coverage["congressional_district_vintage_crosswalk"] = (
             congressional_district_vintage_crosswalk_metadata

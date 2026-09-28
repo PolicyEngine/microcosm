@@ -1483,6 +1483,143 @@ def test_reform_vector_cache_tightens_with_staged_frame_via_materializer_identit
     assert changed[1] != baseline[1]
 
 
+@pytest.mark.parametrize("change", ["values", "recipe"])
+def test_attendance_execution_invalidates_target_checkpoint_and_reform_cache(
+    monkeypatch, tmp_path, change
+):
+    """A4: real receipt checks and durable caches across two source executions."""
+    from microcosm.build.us_runtime import childcare_attendance_receipt as receipt
+    from test_support.microcosm_build.us_nsece_childcare import (
+        HOURS,
+        _candidate,
+        _replace,
+    )
+
+    builder = _load_builder_module()
+
+    def prepared_frame(hours=8.0):
+        frame = _candidate()
+        person = frame.table("person").copy()
+        person.loc[1, HOURS] = hours
+        source = dict(frame.metadata["nsece_childcare_attendance"])
+        source["artifacts"] = receipt.childcare_attendance_contract()["artifacts"]
+        metadata = {
+            **frame.metadata,
+            "nsece_childcare_attendance": source,
+            "childcare_attendance_stage": {
+                "stage": "nsece_childcare_attendance",
+                "seed": source["seed"],
+                "modeled_age_domain": [0, 12],
+                "outside_domain_policy": "require_observed",
+            },
+        }
+        # A synthetic source execution, never a repair of persisted input.
+        return receipt.bind_childcare_attendance(
+            _replace(frame, people=person, metadata=metadata)
+        )
+
+    target = TargetSpec(
+        name="fixture.care_hours",
+        entity="household",
+        measure="care_hours",
+        value=8.0,
+        source="Synthetic attendance",
+    )
+    materialized = []
+
+    def materialize(frame, specs, **kwargs):
+        materialized.append(frame)
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        tables["household"]["care_hours"] = frame.table("person")[HOURS].sum()
+        target_frame = Frame(
+            tables,
+            frame.schema,
+            {"household": frame.weights_for("household")},
+            frame.strata,
+            metadata=frame.metadata,
+        )
+        return target_frame, TargetRegistry(specs, country="us"), {}
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", materialize)
+
+    def run(frame):
+        binding = builder._require_bound_childcare_attendance(frame)
+        identity = builder._target_frame_checkpoint_identity(
+            base_dataset_sha256="unchanged-parent",
+            policyengine_us_version="unchanged-engine",
+            seed=915,
+            target_period=builder.PERIOD,
+            target_registry_version="unchanged-registry",
+            weeks_unemployed_source_sha256="unchanged-weeks",
+            congressional_district_vintage_crosswalk_sha256=None,
+            ssi_take_up_assignment_sha256="unchanged-ssi",
+            selection_identities_sha256=None,
+            staged_frame_sha256=builder._staged_frame_sha256(frame),
+            childcare_attendance_binding_sha256=binding["binding_sha256"],
+            selection_mass_protections=(HOURS,),
+        )
+        target_frame, _, compilation = builder._load_or_materialize_target_frame(
+            frame,
+            (target,),
+            target_frame_checkpoint_path=tmp_path / "targets.h5",
+            target_frame_checkpoint_identity=identity,
+            target_frame_checkpoint_build_commit="same-commit",
+        )
+        cache_identity = builder._target_materialization_cache_identity(
+            context={
+                "base_dataset_sha256": "unchanged-parent",
+                "target_frame_materializer_identity_sha256": (
+                    builder._target_frame_checkpoint_digest(identity)
+                ),
+            },
+            reform_spec=SimpleNamespace(
+                measure="fixture_reform", neutralized_variable="fixture_credit"
+            ),
+            n_households=1,
+        )
+        return identity, cache_identity, target_frame, compilation
+
+    original = prepared_frame()
+    identity, cache, _, first = run(original)
+    assert first["target_frame_checkpoint"]["status"] == "miss_written"
+    builder._write_reform_income_tax_cache(tmp_path / "reforms", cache, np.array([1.0]))
+    assert run(original)[3]["target_frame_checkpoint"]["status"] == "hit"
+    assert (
+        builder._read_reform_income_tax_cache(
+            tmp_path / "reforms", cache, n_households=1
+        )
+        is not None
+    )
+
+    if change == "recipe":
+        recipe = receipt.attendance_recipe_identity()
+        recipe["code_sha256"]["childcare_attendance.py"] = "f" * 64
+        monkeypatch.setattr(receipt, "attendance_recipe_identity", lambda: recipe)
+    updated = prepared_frame(hours=6.0 if change == "values" else 8.0)
+    changed, new_cache, target_frame, second = run(updated)
+    assert (changed["staged_frame_sha256"] == identity["staged_frame_sha256"]) == (
+        change == "recipe"
+    )
+    assert second["target_frame_checkpoint"]["status"] == "miss_written"
+    assert len(materialized) == 2
+    assert target_frame.table("household").care_hours.iloc[0] == (
+        6.0 if change == "values" else 8.0
+    )
+    assert (
+        builder._read_reform_income_tax_cache(
+            tmp_path / "reforms", new_cache, n_households=1
+        )
+        is None
+    )
+
+    # Changed values cannot obtain a cache identity by retaining the old receipt.
+    tampered = updated.table("person").copy()
+    tampered.loc[1, HOURS] += 1
+    with pytest.raises(RuntimeError, match="differ from the source receipt"):
+        run(_replace(updated, people=tampered))
+    assert len(materialized) == 2
+
+
 def test_runtime_versions_use_local_workspace_package_version(
     monkeypatch, tmp_path
 ) -> None:
@@ -5979,12 +6116,48 @@ def _run_green_register_release(
     ``stored_input_mode`` injects one stored-input failure (microcosm#1026)
     into that otherwise green run; see :func:`_assert_stored_input_abort`.
     """
+    from microcosm.build.us_runtime import (
+        childcare_attendance_receipt,
+        childcare_attendance_stage,
+        nsece_childcare,
+    )
     from microcosm.data.contract import (
         _check_build_manifest,
         _check_local_artifact_hashes,
         _check_release_manifest,
     )
     from microcosm.data.release import _release_manifest_release_artifacts
+
+    # This harness has household-only fakes and a placeholder H5 writer.
+    # Real row/binding/native checks run in test_us_nsece_childcare.py; here
+    # preserve the boundary calls and prove the scorer binds the bytes AFTER
+    # attendance persistence, including when the smoke consumer is skipped.
+    def check_attendance_rows(frame):
+        captured.setdefault("attendance_export_checks", []).append("rows")
+
+    def check_attendance_binding(frame):
+        captured.setdefault("attendance_export_checks", []).append("binding")
+
+    def persist_attendance(path, frame):
+        assert captured["attendance_export_checks"] == ["rows", "binding"]
+        assert captured["written_dataset"] == Path(path)
+        path.write_bytes(path.read_bytes() + b"\nattendance receipt fixture")
+        captured["attendance_persisted"] = True
+        return {"binding_sha256": "attendance-binding-sentinel", "fixture": True}
+
+    monkeypatch.setattr(
+        nsece_childcare, "assert_childcare_attendance_exportable", check_attendance_rows
+    )
+    monkeypatch.setattr(
+        childcare_attendance_receipt,
+        "assert_bound_childcare_attendance",
+        check_attendance_binding,
+    )
+    monkeypatch.setattr(
+        childcare_attendance_stage,
+        "persist_native_childcare_receipt",
+        persist_attendance,
+    )
 
     release_dir = out / "releases" / release_id
     # The harness stubs every hash to a constant. The run's own outputs, the
@@ -6035,6 +6208,7 @@ def _run_green_register_release(
         hands each consumer a seam naming that file."""
 
         def __init__(self, dataset_path, **kwargs):
+            assert captured["attendance_persisted"]
             self.dataset_path = Path(dataset_path)
             self.dataset_sha256 = builder._sha256(self.dataset_path)
             captured["scorer_opened_on"] = self.dataset_path
@@ -6130,7 +6304,9 @@ def _run_green_register_release(
             (release_dir / "reform_coverage_smoke.json").read_text()
         )["post_export_scoring"]
         assert smoke_scoring == {
-            "dataset_sha256": hashlib.sha256(b"release h5").hexdigest(),
+            "dataset_sha256": hashlib.sha256(
+                b"release h5\nattendance receipt fixture"
+            ).hexdigest(),
             "consumer": "reform_coverage_smoke",
         }
         assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
@@ -7148,6 +7324,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             passed=True,
             details={"checked": True},
         ),
+    )
+    # The fake frame carries no NSECE attendance stage; the fail-fast refusal
+    # has its own test below.
+    monkeypatch.setattr(
+        builder,
+        "_require_bound_childcare_attendance",
+        lambda frame: {"binding_sha256": "attendance-binding-sentinel"},
     )
 
     monkeypatch.setattr(
@@ -8543,6 +8726,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
         selection_identities_sha256=cache_context["selection_identities_sha256"],
         staged_frame_sha256="staged-frame-sentinel",
+        childcare_attendance_binding_sha256="attendance-binding-sentinel",
     )
     assert evidence_identity == dict(expected_evidence_identity)
     ids_block = final_weights_metadata.pop("household_ids")
@@ -8895,6 +9079,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
         selection_identities_sha256=cache_context["selection_identities_sha256"],
         staged_frame_sha256="staged-frame-sentinel",
+        childcare_attendance_binding_sha256="attendance-binding-sentinel",
     )
     assert cache_context[
         "target_frame_materializer_identity_sha256"
@@ -10025,6 +10210,7 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         schema = object()
         weighted_entities = ()
         strata = None
+        metadata = {"upstream_receipt": "preserved"}
 
         def table(self, entity):
             assert entity == "tax_unit"
@@ -10061,7 +10247,9 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "Frame",
-        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+        lambda tables, schema, weights, strata, *, metadata=None: SimpleNamespace(
+            tables=tables, metadata=metadata
+        ),
     )
 
     specs = (
@@ -10093,13 +10281,15 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         ),
     )
 
-    builder._with_aca_marketplace_source_outputs(
+    result = builder._with_aca_marketplace_source_outputs(
         FakeFrame(),
         specs,
         seed=42,
         simulation=object(),
     )
 
+    # Upstream receipts (e.g. the attendance binding) must survive this stage.
+    assert result.metadata == {"upstream_receipt": "preserved"}
     assert captured["stage"] == builder.US_ACA_MARKETPLACE_STAGE
     assert captured["stop_after"] is None
     target_tables = captured["tables"]
@@ -15679,6 +15869,63 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     assert len(owner_check_calls) == 5, (
         f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
     )
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--childcare-attendance-household-tsv", "household.tsv"],
+        ["--childcare-attendance-calendar-tsv", "calendar.tsv"],
+        ["--childcare-attendance-inherit-outside-domain-baseline"],
+    ],
+)
+def test_attendance_source_cli_requires_paired_inputs(options):
+    builder = _load_builder_module()
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            ["--ledger-facts", "facts.jsonl", "--out", "release", *options]
+        )
+
+
+def test_build_without_attendance_source_is_refused_before_calibration():
+    # No attendance columns and no receipt: what every base without the stage has.
+    frame = SimpleNamespace(
+        table=lambda entity: pd.DataFrame({"person_id": [1], "age": [4]}),
+        metadata={},
+    )
+    with pytest.raises(RuntimeError, match="--childcare-attendance-household-tsv"):
+        _load_builder_module()._require_bound_childcare_attendance(frame)
+
+
+def test_attendance_integrity_is_unconditional_at_final_native_write():
+    """Neither coverage overrides nor omitted TSV flags can skip integrity.
+
+    Pair this ordering contract with the behavioral receipt, row validation,
+    and real native reload tests in test_us_nsece_childcare.py.
+    """
+    import ast
+
+    main = ast.parse(inspect.getsource(_load_builder_module()._main)).body[0]
+    calls = []
+    # Direct body statements prove these checks are outside optional branches.
+    for statement in main.body:
+        value = getattr(statement, "value", None)
+        if isinstance(value, ast.Call):
+            function = value.func
+            name = (
+                function.attr
+                if isinstance(function, ast.Attribute)
+                else getattr(function, "id", None)
+            )
+            calls.append(name)
+    expected = [
+        "assert_childcare_attendance_exportable",
+        "assert_bound_childcare_attendance",
+        "write_dataset",
+        "persist_native_childcare_receipt",
+    ]
+    positions = [calls.index(name) for name in expected]
+    assert positions == list(range(positions[0], positions[0] + 4))
 
 
 # ---------------------------------------------------------------------------

@@ -251,6 +251,13 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Opt-in normalized-donor preparation; not a registered build stage.
+        # Still scanned for source-spine access by the all-runtime guard.
+        "childcare_attendance.py",
+        "childcare_attendance_receipt.py",  # Artifact lineage and integrity; no treatment.
+        "childcare_attendance_stage.py",  # Licensed source extension after relationship/hours inputs.
+        "childcare_population.py",  # ASEC relationship harmonization for candidate builds.
+        "childcare_sensitivity.py",  # Local assumption and benefit diagnostics.
         # Reviewed Chronicle feed pin loader; no population treatment. Remains
         # subject to the all-runtime source-identity scan.
         "chronicle_feed.py",
@@ -274,6 +281,14 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "medicaid_take_up.py",
         "misc_itemized.py",
         "nonzero_shares.py",
+        # Hash-verified local NSECE source adapter and opt-in candidate Frame step.
+        "nsece_childcare.py",
+        "nsece_childcare_assessment.py",  # Source selection and household validation.
+        "nsece_childcare_sibling_validation.py",  # Whole-household schedule diagnostics.
+        "nsece_childcare_dependence.py",  # Household dependence estimation.
+        "nsece_childcare_pooling.py",  # Experimental donor pooling; no source-spine routing.
+        "nsece_childcare_qrf.py",  # Experimental canonical conditional matching.
+        "nsece_childcare_bridge.py",  # Source measurement completion; no spine routing.
         "operator_boundary.py",  # Raw-stage validator; no population treatment.
         "org_wages.py",
         "parity_reference.py",
@@ -3472,13 +3487,10 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # 73 = main's 70 plus spm_independence_role.py, spm_role_source.py and
-        # spm_composition.py, reached because the pool's engine-input
-        # projection names the SPM role as a required source input (#893).
-        # All three are classified in _OTHER_US_RUNTIME_MODULES and scanned
-        # below like every other reached module.
-        assert len(runtime_graph) == 73, (
-            f"{tool.name} must reach the pinned 73-module runtime graph; "
+        # Main's 73 modules plus the two attendance integrity modules.
+        # Every reached module remains classified and scanned below.
+        assert len(runtime_graph) == 75, (
+            f"{tool.name} must reach the pinned 75-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

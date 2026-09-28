@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_404
+EXPECTED_AUTHORED_FIELD_COUNT = 32_407
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_780
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_184
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_187
 
 
 class FieldUsageError(AssertionError):
@@ -372,9 +372,10 @@ _PINS: dict[str, tuple[int, str]] = {
         5,
         "64182b6be1ea6d95bff345b30a2aa046b6fa7e8ee61a282b225dfa49c28fbfdc",
     ),
+    # The NSECE source-extension descriptor adds kind/path/schema_id leaves.
     "country_manifest": (
-        104,
-        "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
+        107,
+        "2c2099d3d5ef3d664f74a2e732870391022a852cf49d5cf96810c9a984d2b20b",
     ),
     "generated_authorities": (
         8_614,

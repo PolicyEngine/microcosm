@@ -17,6 +17,7 @@ from microcosm.build.spec_engine.field_usage import (
     Generation0Effect,
     UsageMode,
     build_field_usage_ledger,
+    configuration_sources,
     default_usage_claims,
 )
 from microcosm.build.spec_engine.legacy_adapter import (
@@ -95,22 +96,22 @@ def _mutated_bundle(
 
 
 def test_exact_complete_ledger_has_one_primary_mode_per_pointer(field_ledger) -> None:
-    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_184
+    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 42_187
     assert field_ledger.source_counts == {
-        "authored": 32_404,
+        "authored": 32_407,
         "resolved_bindings": 9_780,
     }
     assert field_ledger.mode_counts == {
         "legacy_behavior": 14_010,
         "compiler_semantic": 27_717,
-        "front_end_validation": 354,
+        "front_end_validation": 357,
         "identity_only": 103,
     }
     assert field_ledger.generation0_effect_counts == {
         "legacy_behavior": 38_498,
-        "no_generation0_effect": 3_686,
+        "no_generation0_effect": 3_689,
     }
-    assert len({field.pointer for field in field_ledger.fields}) == 42_184
+    assert len({field.pointer for field in field_ledger.fields}) == 42_187
 
 
 def test_eligibility_concepts_are_validation_not_generation0_behavior(
@@ -436,3 +437,26 @@ def test_geography_source_pin_mutation_changes_checkpoint_identity(
     ).field("/authored/spec~1sources.yaml/sources/7/sha256")
     assert field.claim_id == "source_geography_identity"
     assert field.mode is UsageMode.LEGACY_BEHAVIOR
+
+
+def test_nsece_source_descriptor_has_explicit_manifest_validation_claim(
+    resolved_us, field_ledger
+):
+    manifest = configuration_sources(resolved_us)["authored"]["country_package.json"]
+    index, descriptor = next(
+        (index, descriptor)
+        for index, descriptor in enumerate(manifest["resources"])
+        if descriptor["path"] == "childcare_attendance_source.json"
+    )
+    assert descriptor == {
+        "path": "childcare_attendance_source.json",
+        "kind": "legacy_json",
+        "schema_id": "legacy_json",
+    }
+    for name in descriptor:
+        field = field_ledger.field(
+            f"/authored/country_package.json/resources/{index}/{name}"
+        )
+        assert field.claim_id == "country_manifest"
+        assert field.mode is UsageMode.FRONT_END_VALIDATION
+        assert field.generation0_effect is Generation0Effect.NO_GENERATION0_EFFECT

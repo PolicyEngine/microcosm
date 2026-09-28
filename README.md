@@ -71,6 +71,13 @@ This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` without updating production
 `latest.json`.
 
+The three childcare-attendance inputs are required export inputs. A US fiscal
+build also needs the licensed NSECE files
+(`--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`
+and `--childcare-attendance-inherit-outside-domain-baseline`); without them the
+build is refused before calibration. See
+[docs/us-childcare-attendance.md](docs/us-childcare-attendance.md).
+
 The UK commands (`tools/build_uk_frs_spine.py` and
 `tools/build_uk_rowwise_candidate.py`, whose `--release-role` builds either
 the national or the dense line) stage version 2 telemetry to
@@ -223,7 +230,9 @@ Check local files from HDF metadata alone with
 `uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
 
 US exact-k ladder candidates use a tag-only lane. Run
-`tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
+`tools/build_us_exact_k_ladder_release.py` with the
+[`childcare_attendance` source configuration](docs/us-childcare-attendance.md#build-and-reproduction)
+unless the pool already carries bound attendance inputs, then execute the `publish_command`
 recorded in `package_result.json`. That command includes `--create-tag`,
 `--no-latest`, and `--tag-only`: it uploads the immutable release and creates its
 tag without committing candidate artifacts or release copies to the production

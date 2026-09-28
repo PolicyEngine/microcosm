@@ -6,7 +6,7 @@
   "country": "us",
   "documentation_sha256": "0931cbd3aae2abcd8c072b78eba40c1c006b1bf7fa23c6a6681f9a895e47070e",
   "field_usage": {
-    "authored_normative_field_count": 32404,
+    "authored_normative_field_count": 32407,
     "claim_count": 49,
     "claims": [
       {
@@ -16,8 +16,8 @@
         "legacy_sinks": [],
         "mode": "front_end_validation",
         "pointer_class": "all",
-        "pointer_count": 104,
-        "pointer_sha256": "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
+        "pointer_count": 107,
+        "pointer_sha256": "2c2099d3d5ef3d664f74a2e732870391022a852cf49d5cf96810c9a984d2b20b",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/country_package.json",
@@ -772,20 +772,20 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 42184,
-    "consumed_field_count": 42184,
+    "configuration_field_count": 42187,
+    "consumed_field_count": 42187,
     "generation0_effect_counts": {
       "legacy_behavior": 38498,
-      "no_generation0_effect": 3686
+      "no_generation0_effect": 3689
     },
     "mode_counts": {
       "compiler_semantic": 27717,
-      "front_end_validation": 354,
+      "front_end_validation": 357,
       "identity_only": 103,
       "legacy_behavior": 14010
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "8f655670b9794adae905ede64bdceba6395eeb8d642b6c5896d5c516f1f6a6a7",
+    "pointer_inventory_sha256": "72c746d5f084f96c2b776c65d69acb82b53c26feaa591bfacf2d8d8c878ef01f",
     "resolved_binding_field_count": 9780,
     "unused_field_count": 0
   },
@@ -2599,7 +2599,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "1cf1f44d9a11458f59ea7d75dce68303816cab3e66668a6c6f6ecfe62d56f8dc"
+      "spec_sha256": "dde0912303e7ee8cfdcad306f0cdc0b92fbab047f99e01cf3ea8bba1aa855269"
     }
   },
   "report_schema_version": 3,
@@ -2609,7 +2609,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "1cf1f44d9a11458f59ea7d75dce68303816cab3e66668a6c6f6ecfe62d56f8dc"
+    "spec_sha256": "dde0912303e7ee8cfdcad306f0cdc0b92fbab047f99e01cf3ea8bba1aa855269"
   },
   "status": "pass"
 }

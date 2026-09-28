@@ -1,0 +1,42 @@
+Canonical conditional-model diagnostic, specified after the composition result
+and before this model's results, 2026-09-16.
+
+The composition-cell model improves the original joint-screen count from two
+failures to one but worsens the unresolved-sibling hours prediction. It is not
+adopted. Test whether rigid matching cells, rather than insufficient observed
+predictors alone, explain that marginal error.
+
+Use microcosm.fit's canonical regime-gated weighted-bootstrap QRF (100 trees,
+seed 915, existing defaults). Predictors: the full-roster composition features
+from calendar-selection-plan.txt, region, parent work, income band, measured
+household income, number of household members, and number of resident parents
+of under-13 children. NSECE HH4_HHCOMP_MEMBERS counts all residents (HH-118);
+HH4_HHCOMP_NUMPARENTS is household-wide, not each child's parent count (HH-121).
+Corresponding ASEC fields can be derived from household membership and the
+existing resident-parent pointers. No calendar-response/status, attendance,
+provider usage, or source-only feature enters the predictors. Weekly NSECE
+cost after subsidies is not treated as interchangeable with annual ASEC care
+expenses.
+
+Fit one scalar joint schedule code: 25 * attended days + average daily hours.
+This orders schedules by days then daily hours, just as the existing donor CDF;
+zero means observed nonattendance. Decode positive QRF draws to the nearest
+observed positive schedule code among training donors of the recipient's exact
+age (ties choose the lower code). This is an ordinal distributional-matching
+model, not an observed quantity or a claim that days and hours are fungible.
+All output schedules therefore remain observed joint pairs; no fractional or
+independently combined day/hour schedule is invented. Record decoder movement.
+
+Evaluate all 7,460 observed children using the same five whole-household folds.
+Fit all QRF parameters and age-specific decoder catalogs solely on training
+households. Use a fixed 128-point two-dimensional Sobol grid for gate/quantile
+integration, and retain the empirical resulting CDF. The grid is fixed before
+results, not a selected simulation seed. Report the same 18 observed-child
+screens, conditional-mean MSE and expected random-draw error. These data have
+already informed development; no independent validation claim is possible.
+
+This is a marginal-model diagnostic first. Only a promising result proceeds to
+cross-fitted dependence estimation, joint household checks, higher-resolution
+integration stability, source/target/bridge integration and a fresh population
+candidate. Do not adopt it on child-average performance alone. Calendar
+nonresponse and noncalendar duration assumptions remain unidentified.
