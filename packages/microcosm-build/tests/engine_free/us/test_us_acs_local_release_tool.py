@@ -212,9 +212,20 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "low_effective_sample_size_lambda_zero",
         "donor_sparse_selection_training_set",
         "mixed_sub_puma_column_coverage",
+        "acs_immigration_status_method",
     ):
         assert required in by_id, required
         assert by_id[required]["calibration_blocker"] is False
+    # microcosm#1020: the ACS immigration inputs are a reviewed method, not
+    # an engine-default gap.
+    immigration = by_id["acs_immigration_status_method"]
+    assert immigration["status"] == "reviewed_modeling_decision"
+    assert set(immigration["columns"]) == {
+        "immigration_status_str",
+        "ssn_card_type",
+        "years_since_us_entry",
+    }
+    assert "acs_local_immigration_signal" in immigration["treatment"]
     ssi = by_id["ssi_aged_band_collapse_inherited"]
     assert ssi["measured_spine_ssi"] == {
         "acs_2024_1yr": 0.0259,
@@ -406,6 +417,182 @@ def test_take_up_consumers_refuse_a_checkpoint_without_the_assignment() -> None:
     assert module._recorded_take_up({"acs_local_take_up": recorded}) == recorded
 
 
+_IMMIGRATION_COLUMNS = (
+    "immigration_status_str",
+    "ssn_card_type",
+    "years_since_us_entry",
+)
+
+
+def test_immigration_inputs_are_never_default_filled() -> None:
+    """microcosm#1020: the engine defaults are a citizen with a valid SSN and
+    5 years since entry, so none of the three may ever be the fill."""
+
+    module = _load_tool_module()
+    for column in _IMMIGRATION_COLUMNS:
+        assert ("person", column) in module.NEVER_DEFAULT_FILLED
+
+
+def test_reviewed_null_fill_refuses_to_default_fill_immigration(tmp_path) -> None:
+    """A missing immigration cell is refused even when the staging register
+    lists it: the default fill is how every ACS person became a citizen."""
+
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    person = frame.table("person").assign(
+        immigration_status_str=["CITIZEN"] * 5 + [None] * 3,
+        ssn_card_type=["CITIZEN"] * 5 + [None] * 3,
+        years_since_us_entry=[40.0] * 7 + [np.nan],
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": "person", "column": column, "missing_rows": 3}
+                    for column in _IMMIGRATION_COLUMNS
+                ]
+            }
+        )
+    )
+    with pytest.raises(module.DeniedDefaultFillError) as exc:
+        module.fill_reviewed_nulls(frame, summary)
+    message = str(exc.value)
+    assert "person.immigration_status_str (3 null rows)" in message
+    assert "person.ssn_card_type (3 null rows)" in message
+    assert "person.years_since_us_entry (1 null rows)" in message
+    assert "microcosm#1020" in message
+    assert "re-run staging" in message
+    # Refused before anything was filled.
+    assert person["ssn_card_type"].isna().sum() == 3
+    assert person["years_since_us_entry"].isna().sum() == 1
+
+
+def _staging_immigration_summary(**overrides) -> dict:
+    """The two entries a current staging run records (microcosm#1020)."""
+
+    summary = {
+        "acs_local_immigration": {
+            "issue": "microcosm#1020",
+            "seed": 0,
+            "assigned_sha256": "b" * 64,
+        },
+        "acs_local_immigration_gate": {
+            "name": "acs_local_immigration_signal",
+            "passed": True,
+            "failures": [],
+        },
+    }
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        {},
+        _staging_immigration_summary(acs_local_immigration_gate=None),
+        _staging_immigration_summary(acs_local_immigration=None),
+        _staging_immigration_summary(
+            acs_local_immigration_gate={"passed": False, "failures": ["invented"]}
+        ),
+        _staging_immigration_summary(acs_local_immigration_gate={"passed": "true"}),
+        _staging_immigration_summary(
+            acs_local_immigration={"issue": "microcosm#1019", "assigned_sha256": "b"}
+        ),
+        _staging_immigration_summary(acs_local_immigration={"issue": "microcosm#1020"}),
+    ],
+    ids=[
+        "pre-1020-staging",
+        "no-gate",
+        "no-receipt",
+        "gate-failed",
+        "gate-truthy-not-true",
+        "wrong-issue",
+        "no-digest",
+    ],
+)
+def test_immigration_consumers_refuse_a_staging_run_without_the_stage(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match="Re-run staging"):
+        module._require_local_immigration(summary)
+
+
+def test_immigration_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_immigration_summary()
+    assert (
+        module._require_local_immigration(summary) == summary["acs_local_immigration"]
+    )
+
+
+def test_materialize_refuses_a_pre_1020_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """The refusal comes before the staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps({"reviewed_engine_input_nulls": [{"entity": "person"}]})
+    )
+    monkeypatch.setattr(module, "state_admin_specs", lambda *a, **k: ([], []))
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match="Re-run staging"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def test_calibrate_refuses_a_pre_1020_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    """A checkpoint materialized before #1020 is refused before hours of
+    solving, not by the consumer export at the end of the stage."""
+
+    module = _load_tool_module()
+    args = module._parse_args(
+        [
+            "--stage",
+            "calibrate",
+            "--staging-h5",
+            str(tmp_path / "staging.h5"),
+            "--checkpoint-dir",
+            str(tmp_path / "ckpt"),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+        ]
+    )
+    (tmp_path / "staging.summary.json").write_text(json.dumps({}))
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64}},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match="Re-run staging"):
+        module.do_calibrate(args)
+
+
 def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
     """Every package-stage input, with the finalize report's hours entry given.
 
@@ -445,6 +632,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
         },
         "acs_local_take_up_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_immigration_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -1141,6 +1334,26 @@ def _stub_local_take_up_gate(module, monkeypatch, *, passed=True) -> None:
     )
 
 
+def _stub_local_immigration_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS immigration classification pass (or fail); its tests
+    (test_us_acs_local_immigration.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_immigration_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_immigration_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: ssn_card_type is constant 'CITIZEN'",),
+            details={},
+        ),
+    )
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -1158,6 +1371,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
     _stub_local_hours_gate(module, monkeypatch)
     _stub_local_take_up_gate(module, monkeypatch)
+    _stub_local_immigration_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -1279,6 +1493,94 @@ def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
     )
 
 
+def test_do_finalize_hard_fails_on_a_failed_immigration_gate(tmp_path, monkeypatch):
+    """microcosm#1020: a failed immigration gate blocks simulation readiness
+    and is recorded bound to the evaluated bytes, like the take-up gate."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_immigration_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_immigration_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_immigration_signal"]
+    assert gate["passed"] is False
+    assert gate["failures"] == ["acs_2024_1yr: ssn_card_type is constant 'CITIZEN'"]
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert "acs_local_immigration_signal" in summary["simulation_readiness_blockers"]
+
+
+def test_do_finalize_immigration_gate_fails_on_default_filled_acs_rows(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 release signature: every ACS person a CITIZEN with a
+    citizen SSN card, every entry clock the engine default 5."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_immigration_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _plausible_hours_frame()
+    ssn = ["CITIZEN", "CITIZEN", "OTHER_NON_CITIZEN", "NONE"] + ["CITIZEN"] * 4
+    status = [
+        "CITIZEN",
+        "CITIZEN",
+        "LEGAL_PERMANENT_RESIDENT",
+        "UNDOCUMENTED",
+    ] + ["CITIZEN"] * 4
+    person = frame.table("person").assign(
+        **{
+            spine_column("person"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+            "ssn_card_type": ssn,
+            "immigration_status_str": status,
+            "years_since_us_entry": [5.0] * 8,
+            # Measured ACS citizenship: one ACS non-citizen the default fill
+            # coded a citizen.
+            "CIT": [np.nan] * 4 + [1, 1, 4, 5],
+        }
+    )
+    frame = Frame(
+        {
+            entity: person if entity == "person" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_immigration_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_immigration_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"][
+        "acs_local_immigration_signal"
+    ]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    failures = gate["failures"]
+    for column in ("ssn_card_type", "immigration_status_str"):
+        assert f"acs_2024_1yr: {column} is constant 'CITIZEN'" in " ".join(failures)
+    for spine in ("asec_puf", "acs_2024_1yr"):
+        assert (
+            f"{spine}: years_since_us_entry is the engine default 5 on every row."
+            in failures
+        )
+    assert (
+        "acs_2024_1yr: 1 person(s) are labelled against their measured CIT "
+        "citizenship." in failures
+    )
+    # The donor spine's labels vary, so only its entry clock is refused.
+    assert not any(
+        failure.startswith("asec_puf:") and "years_since_us_entry" not in failure
+        for failure in failures
+    )
+
+
 @requires_pytables
 def test_finalize_binds_the_hours_gate_to_the_calibrated_artifact_bytes(
     tmp_path, monkeypatch
@@ -1383,7 +1685,13 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
 
 
 def _package_args_with_hours(
-    module, tmp_path, monkeypatch, *, gate_state, take_up_state="passed"
+    module,
+    tmp_path,
+    monkeypatch,
+    *,
+    gate_state,
+    take_up_state="passed",
+    immigration_state="passed",
 ):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
@@ -1420,6 +1728,19 @@ def _package_args_with_hours(
         take_up_gate["artifact_sha256"] = "0" * 64
     if gates and take_up_state != "missing":
         gates["acs_local_take_up_signal"] = take_up_gate
+    immigration_gate = {
+        "passed": True,
+        "failures": [],
+        "artifact_sha256": artifact_sha,
+    }
+    if immigration_state == "failed":
+        immigration_gate.update(passed=False, failures=["invented CITIZEN spine"])
+    elif immigration_state == "truthy":
+        immigration_gate["passed"] = "true"
+    elif immigration_state == "stale":
+        immigration_gate["artifact_sha256"] = "0" * 64
+    if gates and immigration_state != "missing":
+        gates["acs_local_immigration_signal"] = immigration_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -1475,6 +1796,34 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     ]
     assert take_up["passed"] is True
     assert take_up["artifact_sha256"] == copied_sha
+    immigration = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "acs_local_immigration_signal"
+    ]
+    assert immigration["passed"] is True
+    assert immigration["artifact_sha256"] == copied_sha
+
+
+@requires_pytables
+@pytest.mark.parametrize("immigration_state", ["missing", "failed", "truthy", "stale"])
+def test_package_requires_a_current_immigration_gate(
+    tmp_path, monkeypatch, immigration_state
+):
+    """microcosm#1020: a report finalized before the immigration gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        immigration_state=immigration_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_immigration_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
 @requires_pytables
