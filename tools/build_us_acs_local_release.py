@@ -66,6 +66,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -583,6 +584,56 @@ class MaterializedSurface:
         return [spec.measure for spec in self.compiled_specs]
 
 
+def _check_district_blocks_rebuild_parents(
+    plan, captured, target_households, compiled_names, *, n_chunk: int, tally: dict
+) -> None:
+    """Every chunk: each state block's stored district rows rebuild its parent.
+
+    A ``state_cd`` district row names its state parent
+    (``state_cd_parent_target_name``), which the engine pass materializes
+    directly with the same semantics apart from geography. The district rows
+    of a block partition the parent's state, so the float32 values stored for
+    them, laid side by side, must equal the parent's own column exactly on
+    every household of the chunk. Unlike the first-chunk row check this
+    cannot be vacuous: it covers every household the concept touches.
+    """
+
+    children: dict[str, list[int]] = defaultdict(list)
+    for index, *_rest in plan.split:
+        parent = plan.declared[index].metadata.get("state_cd_parent_target_name")
+        if parent in compiled_names and index in captured:
+            children[parent].append(index)
+    by_name = {spec.name: spec for spec in plan.declared}
+    checked = nonzero = 0
+    for parent_name, rows in children.items():
+        rebuilt = np.zeros(n_chunk, dtype=np.float32)
+        written = np.zeros(n_chunk, dtype=bool)
+        for index in rows:
+            positions, values = captured[index]
+            if written[positions].any():
+                raise RuntimeError(
+                    f"District rows of {parent_name} overlap on a household."
+                )
+            written[positions] = True
+            rebuilt[positions] = values
+        direct = target_households[by_name[parent_name].measure].to_numpy(
+            dtype=np.float32
+        )
+        if not np.array_equal(rebuilt, direct):
+            differing = int((rebuilt != direct).sum())
+            raise RuntimeError(
+                f"The stored district rows of {parent_name} do not rebuild its "
+                f"directly materialized column ({differing} household(s)); the "
+                "carrier split is not exact for this surface."
+            )
+        checked += 1
+        nonzero += int(np.count_nonzero(direct))
+    tally["parent_blocks_checked"] = tally.get("parent_blocks_checked", 0) + checked
+    tally["parent_block_nonzero_households"] = (
+        tally.get("parent_block_nonzero_households", 0) + nonzero
+    )
+
+
 def _household_codes(release_tool, households, column: str) -> np.ndarray:
     return np.asarray(
         release_tool._integer_geography_codes(
@@ -744,7 +795,15 @@ def materialize_chunked(
                 low=low,
                 state_codes=state_codes,
                 district_codes=district_codes,
-                capture=frozenset(index_of[spec.name] for spec in check_specs),
+                capture=frozenset(index for index, *_rest in split),
+            )
+            _check_district_blocks_rebuild_parents(
+                plan,
+                captured,
+                target_households,
+                compiled_names,
+                n_chunk=high - low,
+                tally=carrier_check,
             )
             if check_specs:
                 checked = []
@@ -1074,6 +1133,7 @@ def write_lean_checkpoint(
             "target_registry_sha256": _sha256(checkpoint_dir / "target_registry.json"),
             "target_matrix_sha256": matrix_sha,
             "target_roles_sha256": _sha256(checkpoint_dir / TARGET_ROLES_FILENAME),
+            "lean_h5_sha256": _sha256(checkpoint_h5),
         },
     )
 
@@ -1148,6 +1208,26 @@ def _attach_pro_rata_populations(targets: list[dict], cd_populations: dict) -> N
         target["state_population"] = float(state_population.get(district // 100, 0.0))
 
 
+def _require_pro_rata_populations(targets: list[dict]) -> None:
+    """Refuse, before any solve, a district row the baseline cannot score."""
+
+    unpopulated = [
+        target["name"]
+        for target in targets
+        if target.get("family") == "irs_soi"
+        and target.get("congressional_district_geoid")
+        and not (
+            target.get("cd_population", 0) > 0 and target.get("state_population", 0) > 0
+        )
+    ]
+    if unpopulated:
+        raise SystemExit(
+            f"{len(unpopulated)} district SOI target(s) have no positive "
+            "ladder district or state population for the pro-rata "
+            f"baseline (e.g. {unpopulated[:3]}); refusing before the solve."
+        )
+
+
 def do_materialize(args) -> None:
     from scipy import sparse
 
@@ -1199,6 +1279,8 @@ def do_materialize(args) -> None:
     (args.checkpoint_dir / "measures_f32.mmap").unlink(missing_ok=True)
     for name in CALIBRATION_OUTPUT_FILENAMES:
         (args.checkpoint_dir / name).unlink(missing_ok=True)
+    if getattr(args, "gate_report", None) is not None:
+        Path(args.gate_report).unlink(missing_ok=True)
     materialized = materialize_chunked(
         frame,
         registry.specs,
@@ -1228,6 +1310,7 @@ def do_materialize(args) -> None:
     populations = ladder_population(args.ladder, sorted(set(geographies) | {"cd"}))
     if args.soi_mode == SOI_MODE_STATE_CD:
         _attach_pro_rata_populations(admin_roles, populations["cd"])
+        _require_pro_rata_populations(admin_roles)
     pop_roles, pop_matrix, pop_dropped = population_targets(
         frame, populations, geographies
     )
@@ -1286,6 +1369,7 @@ def do_materialize(args) -> None:
                 "n_targets": len(roles),
                 "target_registry_sha256": digests["target_registry_sha256"],
                 "target_roles_sha256": digests["target_roles_sha256"],
+                "lean_h5_sha256": digests["lean_h5_sha256"],
                 "target_matrix": {
                     "file": TARGET_MATRIX_FILENAME,
                     "sha256": digests["target_matrix_sha256"],
@@ -1354,7 +1438,25 @@ CALIBRATION_OUTPUT_FILENAMES = (
     "weights_latest.npz",
     "calibration_summary.json",
     "calibration_diagnostics.json",
+    "consumer_export.json",
+    "consumer_reviewed_null_fills.json",
+    "spine_qa.json",
 )
+
+
+def _solver_settings(args) -> dict:
+    """The calibrate-stage settings a resume or reuse must share."""
+
+    return {
+        "method": "adam",
+        "learning_rate": 0.02,
+        "mass": "conserve",
+        "max_weight_ratio": args.max_weight_ratio,
+        "target_loss_cap": args.target_loss_cap,
+        "l2_lambda": args.l2_lambda,
+        "seed": args.seed,
+        "epoch_batch": args.epoch_batch,
+    }
 
 
 def _run_identity_digest(identity: dict) -> str:
@@ -1379,6 +1481,10 @@ def _verify_checkpoint_digests(checkpoint_dir: Path, identity: dict) -> None:
             (identity.get("target_matrix") or {}).get("sha256"),
         ),
     )
+    if "lean_h5_sha256" in identity:
+        checks += (
+            (checkpoint_dir / "target_frame_lean.h5", identity["lean_h5_sha256"]),
+        )
     for path, recorded in checks:
         if not path.exists() or _sha256(path) != recorded:
             raise SystemExit(
@@ -1386,6 +1492,39 @@ def _verify_checkpoint_digests(checkpoint_dir: Path, identity: dict) -> None:
                 "records none); the checkpoint and surface no longer agree. "
                 "Re-run --stage materialize."
             )
+
+
+def _require_current_artifact(
+    identity: dict,
+    *,
+    consumer_export: dict,
+    spine_qa: dict | None,
+    out_h5: Path,
+    out_h5_sha256: str,
+    stage: str,
+) -> None:
+    """Refuse a calibrated H5 or its evidence from another materialization."""
+
+    if "target_roles_sha256" not in identity:
+        return
+    digest = _run_identity_digest(identity)
+    if consumer_export.get("run_identity_sha256") != digest:
+        raise SystemExit(
+            "consumer_export.json was written for another materialization "
+            f"(or records none); re-run --stage calibrate before --stage {stage}."
+        )
+    if Path(str(consumer_export.get("out_h5"))) != Path(out_h5).resolve() or (
+        consumer_export.get("out_h5_sha256") != out_h5_sha256
+    ):
+        raise SystemExit(
+            f"{out_h5} is not the calibrated H5 this checkpoint's calibrate stage "
+            f"wrote; re-run --stage calibrate before --stage {stage}."
+        )
+    if spine_qa is not None and spine_qa.get("run_identity_sha256") != digest:
+        raise SystemExit(
+            "spine_qa.json was written for another materialization; re-run "
+            f"--stage qa before --stage {stage}."
+        )
 
 
 def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -> None:
@@ -1583,6 +1722,7 @@ def do_calibrate(args) -> None:
     )
 
     stamp = _run_identity_digest(identity)
+    settings = _solver_settings(args)
     resume_npz = args.checkpoint_dir / "weights_latest.npz"
     warm, done = None, 0
     if args.resume and resume_npz.exists():
@@ -1592,12 +1732,17 @@ def do_calibrate(args) -> None:
             if "run_identity_sha256" in saved
             else None
         )
-        if saved_stamp != stamp:
+        saved_settings = (
+            json.loads(str(saved["solver_settings"]))
+            if "solver_settings" in saved
+            else None
+        )
+        if saved_stamp != stamp or saved_settings != settings:
             raise SystemExit(
                 "weights_latest.npz was calibrated for a different "
-                "materialization (staging, surface, holdout or sample), or "
-                "predates the run-identity stamp; refusing to warm-start from "
-                "it. Delete it to recalibrate."
+                "materialization (staging, surface, holdout or sample) or "
+                "under different solver settings, or predates the stamp; "
+                "refusing to warm-start from it. Delete it to recalibrate."
             )
         warm, done = saved["weights"], int(saved["epochs_done"])
         if len(warm) != n_households:
@@ -1608,7 +1753,11 @@ def do_calibrate(args) -> None:
         log(f"RESUME from {done} epochs")
     if done >= args.epochs:
         summary_path = args.checkpoint_dir / "calibration_summary.json"
-        if _load_json(summary_path).get("run_identity_sha256") == stamp:
+        previous = _load_json(summary_path)
+        if (
+            previous.get("run_identity_sha256") == stamp
+            and previous.get("solver_settings") == settings
+        ):
             log(
                 f"calibration already complete at {done} epochs and "
                 "the calibration summary exists; nothing to do (delete "
@@ -1621,8 +1770,8 @@ def do_calibrate(args) -> None:
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
             f"{args.epochs}) but calibration_summary.json is missing or "
-            "belongs to another materialization. Delete the checkpoint to "
-            "recalibrate, or raise --epochs."
+            "belongs to another materialization or solver settings. Delete "
+            "the checkpoint to recalibrate, or raise --epochs."
         )
 
     def save(weights: np.ndarray, epochs_done: int) -> None:
@@ -1633,6 +1782,7 @@ def do_calibrate(args) -> None:
             initial_weights=design_weights,
             staging_sha256=np.str_(identity["staging_sha256"]),
             run_identity_sha256=np.str_(stamp),
+            solver_settings=np.str_(json.dumps(settings, sort_keys=True)),
         )
 
     started = time.time()
@@ -1659,6 +1809,7 @@ def do_calibrate(args) -> None:
         )
     summary = {
         "run_identity_sha256": stamp,
+        "solver_settings": settings,
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
@@ -1838,6 +1989,8 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
         json.dumps(
             {
                 "out_h5": str(Path(args.out_h5).resolve()),
+                "out_h5_sha256": _sha256(args.out_h5),
+                "run_identity_sha256": _run_identity_digest(identity),
                 "staging_sha256": identity.get("staging_sha256"),
                 "held_back_formula_owned": dropped,
                 "held_back_total": sum(len(v) for v in dropped.values()),
@@ -1964,7 +2117,11 @@ def do_qa(args) -> None:
             if entry["person_weight"]
             else 0.0
         )
+    qa_identity = _verify_run_identity(args, require=False)
     payload = {
+        "run_identity_sha256": (
+            _run_identity_digest(qa_identity) if qa_identity else None
+        ),
         "period": PERIOD,
         "variable": "ssi",
         "artifact": str(Path(args.out_h5).resolve()),
@@ -2286,6 +2443,14 @@ def do_finalize(args) -> None:
     if not args.out_h5.exists():
         raise SystemExit(f"Calibrated H5 not found: {args.out_h5}.")
     hours_artifact_sha = _sha256(args.out_h5)
+    _require_current_artifact(
+        identity,
+        consumer_export=consumer_export,
+        spine_qa=spine_qa or None,
+        out_h5=args.out_h5,
+        out_h5_sha256=hours_artifact_sha,
+        stage="finalize",
+    )
     frame = _load_staging_frame(args.out_h5)
     local_hours_gate = _local_hours_gate(frame, staging_summary)
     households = frame.table("household")
@@ -2361,7 +2526,8 @@ def do_finalize(args) -> None:
             # per-target error bars) are maintainer-adjudicated surface
             # policy (#398-class), recorded here rather than invented.
             "passed": bool(
-                diagnostics.get("final_loss", 1.0) < args.target_loss_cap
+                diagnostics.get("final_loss", 1.0)
+                < diagnostics.get("target_loss_cap", args.target_loss_cap)
                 and diagnostics.get("final_loss", 1.0)
                 < diagnostics.get("initial_loss", 0.0)
                 and abs(mass - 1.0) < 1e-3
@@ -2656,6 +2822,18 @@ def do_package(args) -> dict:
     # as build.built_with_model_package, so the artifact may store no model
     # input that engine does not define. A refused artifact leaves nothing.
     stored_inputs_gate = _require_stored_inputs(calibrated_h5)
+    log("hashing calibrated H5 …")
+    h5_sha = _sha256(calibrated_h5)
+    # The H5 and its evidence must come from this checkpoint's calibration;
+    # a refused artifact leaves no release directory behind.
+    _require_current_artifact(
+        identity,
+        consumer_export=consumer_export,
+        spine_qa=spine_qa,
+        out_h5=calibrated_h5,
+        out_h5_sha256=h5_sha,
+        stage="package",
+    )
 
     code = _repo_code_identity(args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -2663,8 +2841,6 @@ def do_package(args) -> dict:
     release_dir = args.out / "releases" / release_id
     release_dir.mkdir(parents=True, exist_ok=True)
 
-    log("hashing calibrated H5 …")
-    h5_sha = _sha256(calibrated_h5)
     # The gate report certifies specific artifact bytes: the QA probe
     # recorded the sha it loaded plain. Packaging different bytes (a
     # recalibrate without re-running qa+finalize) is refused.

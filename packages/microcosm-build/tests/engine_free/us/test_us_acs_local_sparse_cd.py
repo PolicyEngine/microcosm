@@ -394,6 +394,102 @@ def test_a_stored_district_row_that_disagrees_with_its_direct_row_is_refused(
         )
 
 
+def _parented_surface_specs(fixtures) -> tuple:
+    """The district surface with each state's AGI block under a state row."""
+
+    parents = {
+        state: fixtures._soi(
+            f"state_{state}_agi", "adjusted_gross_income", state_fips=state
+        )
+        for state in ("06", "36", "24")
+    }
+    specs = []
+    for spec in _cd_surface_specs(fixtures):
+        state = spec.metadata.get("state_fips")
+        if spec.name.endswith("_agi") and state in parents:
+            spec = dataclasses.replace(
+                spec,
+                metadata={
+                    **spec.metadata,
+                    "state_cd_parent_target_name": parents[state].name,
+                },
+            )
+        specs.append(spec)
+    return (*specs, *parents.values())
+
+
+def test_every_chunk_rebuilds_each_state_parent_from_its_district_rows(
+    monkeypatch, tmp_path
+) -> None:
+    """The per-chunk check runs on every chunk and covers real households."""
+
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixtures = _load_fixtures()
+    materialized = _materialize(
+        module,
+        fixtures,
+        release,
+        monkeypatch,
+        tmp_path,
+        _parented_surface_specs(fixtures),
+        hh_chunk=2,
+    )
+    # Three chunks, three state parents each; every household carries AGI.
+    assert materialized.carrier_check["parent_blocks_checked"] == 9
+    assert materialized.carrier_check["parent_block_nonzero_households"] >= 4
+
+
+def test_a_later_chunk_that_breaks_a_parent_is_refused(monkeypatch, tmp_path) -> None:
+    """Corruption past the first chunk escapes the row check, not this one."""
+
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixtures = _load_fixtures()
+    assembler = module.cd_surface.SparseTargetAssembler
+    real_add_masked = assembler.add_masked
+
+    def corrupting_later_chunks(self, row, low, carrier, positions, *, name):
+        corrupted = np.asarray(carrier, dtype=np.float64).copy()
+        if low > 0:
+            corrupted[positions] += 1.0
+        return real_add_masked(self, row, low, corrupted, positions, name=name)
+
+    monkeypatch.setattr(assembler, "add_masked", corrupting_later_chunks)
+    with pytest.raises(RuntimeError, match="do not rebuild its directly"):
+        _materialize(
+            module,
+            fixtures,
+            release,
+            monkeypatch,
+            tmp_path,
+            _parented_surface_specs(fixtures),
+            hh_chunk=2,
+        )
+
+
+def test_district_rows_without_baseline_populations_are_refused() -> None:
+    module = _load_tool_module()
+    targets = [
+        {
+            "name": "cd_0601",
+            "family": "irs_soi",
+            "congressional_district_geoid": "0601",
+        },
+        {"name": "state_06", "family": "irs_soi", "state_fips": "06"},
+        {"name": "pop", "family": "census_population"},
+    ]
+    module._attach_pro_rata_populations(targets, {601: 10.0, 602: 30.0})
+    module._require_pro_rata_populations(targets)
+    assert targets[0]["cd_population"] == 10.0
+    assert targets[0]["state_population"] == 40.0
+    module._attach_pro_rata_populations(targets, {602: 30.0})
+    with pytest.raises(SystemExit, match="1 district SOI target"):
+        module._require_pro_rata_populations(targets)
+
+
 def test_calibration_never_sees_a_held_out_target(monkeypatch, tmp_path) -> None:
     module = _load_tool_module()
     import build_us_fiscal_refresh_release as release
@@ -517,6 +613,13 @@ def test_checkpoint_refuses_changed_bytes_and_dense_predecessors(tmp_path) -> No
     with pytest.raises(SystemExit, match="target_matrix.npz changed"):
         module.load_checkpoint_surface(
             checkpoint, {**identity, "target_matrix": {"sha256": "0" * 64}}
+        )
+    # The lean H5 the calibrator reads is bound too, once the identity has it.
+    with_h5 = {**identity, "lean_h5_sha256": digests["lean_h5_sha256"]}
+    module.load_checkpoint_surface(checkpoint, with_h5)
+    with pytest.raises(SystemExit, match="target_frame_lean.h5 changed"):
+        module.load_checkpoint_surface(
+            checkpoint, {**with_h5, "lean_h5_sha256": "0" * 64}
         )
     with pytest.raises(ValueError, match="row-aligned"):
         module.write_lean_checkpoint(struct, matrix, specs, records[::-1], checkpoint)
@@ -714,18 +817,18 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     soi = [spec for spec in specs if spec.family == "irs_soi"]
     assert receipt["counts"] == {
         "historic_table_2_state": 3819,
-        "cd_file_state": 306,
-        "congressional_district": 21777,
+        "cd_file_state": 302,
+        "congressional_district": 21743,
         "congressional_district_by_parent_basis": {
-            "historic_table_2": 19215,
+            "historic_table_2": 19181,
             "cd_file_state_total_bridged": 2562,
         },
-        "total": 25902,
+        "total": 25864,
     }
-    assert len(soi) == 25902
-    assert len(specs) == 25902 + 102 + 51
+    assert len(soi) == 25864
+    assert len(specs) == 25864 + 102 + 51
     reconciliation = module.cd_surface.state_parent_reconciliation(soi)
-    assert len(reconciliation) == 2193
+    assert len(reconciliation) == 2189
     assert all(block["ok"] for block in reconciliation)
     state_rows = [
         spec for spec in soi if spec.metadata.get("ledger_geography_level") == "state"
@@ -754,14 +857,50 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     ]
     assert all(spec.metadata.get("state_cd_parent_target_name") for spec in districts)
     assert receipt["sigma"]["targets_with_sigma"] == 0
-    # 43 states carry district rows (51 minus the 8 at-large on the 117th plan).
-    assert {entry["n"] for entry in receipt["rebase_factor_by_measure"].values()} == {
-        43
+    # The factor band drops these (state, measure) pairs, and only these:
+    # four district blocks whose two publications disagree about the state,
+    # and the itemized bridge of two at-large states (no district rows).
+    band = receipt["factor_band"]
+    assert band["tolerance"] == module.cd_surface.STATE_CD_FACTOR_BAND == 1.25
+    assert {
+        (row["state_fips"], row["measure"], row["basis"].split(":")[0])
+        for row in band["out_of_band"]
+    } == {
+        ("15", "ordinary_dividends_amount", "rebase"),
+        ("15", "qualified_dividends_amount", "rebase"),
+        ("36", "rental_royalty_income_amount", "rebase"),
+        ("49", "tax_exempt_interest_amount", "rebase"),
+        ("46", "charitable_amount", "level_bridge"),
+        ("46", "interest_paid_deduction_amount", "level_bridge"),
+        ("56", "charitable_amount", "level_bridge"),
+        ("56", "interest_paid_deduction_amount", "level_bridge"),
     }
-    # Every district-file-only state level is bridged, in all 51 states.
+    # 43 states carry district rows (51 minus the 8 at-large on the 117th
+    # plan), less the band's four blocks.
+    rebase_n = {
+        measure: entry["n"]
+        for measure, entry in receipt["rebase_factor_by_measure"].items()
+    }
+    banded = {
+        "ordinary_dividends_amount",
+        "qualified_dividends_amount",
+        "rental_royalty_income_amount",
+        "tax_exempt_interest_amount",
+    }
+    assert {measure for measure, n in rebase_n.items() if n == 42} == banded
+    assert set(rebase_n.values()) == {42, 43}
+    # Every district-file-only state level is bridged, in all 51 states but
+    # the band's two itemized outliers.
     bridges = receipt["level_bridge_factor_by_measure"]
     assert set(bridges) == set(module.cd_surface.STATE_CD_LEVEL_BRIDGES)
-    assert {entry["n"] for entry in bridges.values()} == {51}
+    assert {measure: entry["n"] for measure, entry in bridges.items()} == {
+        "charitable_amount": 49,
+        "charitable_returns": 51,
+        "interest_paid_deduction_amount": 49,
+        "interest_paid_deduction_returns": 51,
+        "qualified_business_income_deduction_amount": 51,
+        "qualified_business_income_deduction_returns": 51,
+    }
     assert json.dumps(receipt)  # the receipt is manifest-serializable
 
 
@@ -893,7 +1032,41 @@ def test_calibration_outputs_are_bound_to_the_materialization(tmp_path) -> None:
         "weights_latest.npz",
         "calibration_summary.json",
         "calibration_diagnostics.json",
+        "consumer_export.json",
+        "consumer_reviewed_null_fills.json",
+        "spine_qa.json",
     }
+    # The calibrated H5 and its evidence are bound too.
+    h5 = tmp_path / "out.h5"
+    h5.write_bytes(b"artifact")
+    export = {
+        "run_identity_sha256": stamp,
+        "out_h5": str(h5.resolve()),
+        "out_h5_sha256": module._sha256(h5),
+    }
+    module._require_current_artifact(
+        identity,
+        consumer_export=export,
+        spine_qa={"run_identity_sha256": stamp},
+        out_h5=h5,
+        out_h5_sha256=module._sha256(h5),
+        stage="package",
+    )
+    for bad_export, bad_qa, message in (
+        ({**export, "run_identity_sha256": "old"}, None, "consumer_export.json"),
+        ({**export, "out_h5_sha256": "0" * 64}, None, "is not the calibrated H5"),
+        ({**export, "out_h5": str(tmp_path / "other.h5")}, None, "is not the"),
+        (export, {"run_identity_sha256": "old"}, "spine_qa.json"),
+    ):
+        with pytest.raises(SystemExit, match=message):
+            module._require_current_artifact(
+                identity,
+                consumer_export=bad_export,
+                spine_qa=bad_qa,
+                out_h5=h5,
+                out_h5_sha256=module._sha256(h5),
+                stage="package",
+            )
 
 
 def test_resume_refuses_weights_without_the_run_identity_stamp(
@@ -918,7 +1091,17 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
         ),
     )
     monkeypatch.setattr(module.cd_surface, "calibration_target_set", lambda *a, **k: [])
-    args = SimpleNamespace(checkpoint_dir=checkpoint, resume=True, epochs=10)
+    args = SimpleNamespace(
+        checkpoint_dir=checkpoint,
+        resume=True,
+        epochs=10,
+        epoch_batch=5,
+        max_weight_ratio=5.0,
+        target_loss_cap=1.0,
+        l2_lambda=0.0,
+        seed=0,
+    )
+    settings = module._solver_settings(args)
     for saved in (
         {"weights": np.ones(5), "epochs_done": 5, "staging_sha256": "s"},
         {
@@ -932,12 +1115,23 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
         np.savez(checkpoint / "weights_latest.npz", **saved)
         with pytest.raises(SystemExit, match="different materialization"):
             module.do_calibrate(args)
+    # A matching stamp under other solver settings is refused too.
+    np.savez(
+        checkpoint / "weights_latest.npz",
+        weights=np.ones(5),
+        epochs_done=5,
+        run_identity_sha256=module._run_identity_digest(identity),
+        solver_settings=json.dumps({**settings, "l2_lambda": 0.1}, sort_keys=True),
+    )
+    with pytest.raises(SystemExit, match="different solver settings"):
+        module.do_calibrate(args)
     # A matching stamp with every epoch done still needs a matching summary.
     np.savez(
         checkpoint / "weights_latest.npz",
         weights=np.ones(5),
         epochs_done=10,
         run_identity_sha256=module._run_identity_digest(identity),
+        solver_settings=json.dumps(settings, sort_keys=True),
     )
     (checkpoint / "calibration_summary.json").write_text(
         json.dumps({"run_identity_sha256": "stale"})

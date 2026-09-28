@@ -186,12 +186,50 @@ district rows, are mostly 1.00 to 1.10.
   (#1030) would remove the aging part only.
 - **Two factors reflect known level differences:** taxable interest (2.35 to
   2.70, the Table 4.3 rebase) and capital-gains amounts (0.77 to 1.00).
-- **The largest single-state factors** are on qualified and ordinary
-  dividends (up to 2.68 and 2.17) and tax-exempt interest (up to 1.43), where
-  the two tables disagree about a state's level.
+- **The largest single-state factors** were on qualified and ordinary
+  dividends (Hawaii, 2.68 and 2.17), tax-exempt interest (Utah, 1.43) and
+  rental income (New York, 0.72), where the two tables disagree about one
+  state's level. The factor band below drops those blocks.
 
 `materialize_rss.json` records the full table under
 `soi_surface.rebase_factor_by_measure`.
+
+### The factor band
+
+A factor mixes a part common to every state (the coverage and aging gap, or
+a measure-wide rebase such as taxable interest's Table 4.3 factor) with a
+part specific to one state. The median across states absorbs the common
+part. A state whose factor sits more than 1.25x from its concept's median
+(`STATE_CD_FACTOR_BAND`, either direction) is one where the two publications
+disagree about that state, so neither the district file's shares nor a
+bridge built on that sibling is trusted there:
+
+- a rebase block out of band loses its district rows
+  (`rebase_out_of_band:<measure>`); its Historic Table 2 state row stays;
+- a bridge whose sibling ratio is out of band loses the bridged state row
+  and its district rows (`level_bridge_out_of_band:<measure>`).
+
+Every such (state, concept) is recorded in the receipt under
+`factor_band.out_of_band` with its ratio, the median and the relative gap.
+On the pinned feed the band drops eight:
+
+| State | Measure | Basis | Ratio | Median | Relative |
+|---|---|---|---:|---:|---:|
+| Hawaii | `qualified_dividends_amount` | rebase | 2.68 | 1.13 | 2.37 |
+| Hawaii | `ordinary_dividends_amount` | rebase | 2.17 | 1.07 | 2.03 |
+| New York | `rental_royalty_income_amount` | rebase | 0.72 | 1.05 | 0.68 |
+| Utah | `tax_exempt_interest_amount` | rebase | 1.43 | 1.09 | 1.32 |
+| Wyoming | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.75 | 1.06 | 1.65 |
+| South Dakota | `charitable_amount`, `interest_paid_deduction_amount` | bridge (itemized) | 1.44 | 1.06 | 1.36 |
+
+That removes 34 district rows (Hawaii 2 x 2, New York 26, Utah 4) and four
+bridged state rows (Wyoming and South Dakota are at-large, so they had no
+district rows). The largest gaps the band keeps are 1.22x (Wisconsin
+partnership and S-corporation income, West Virginia capital gains) and 1.20x
+(Mississippi capital gains); every other kept block is within 1.17x. So on
+this feed any tolerance between 1.22 and 1.31 drops the same eight. The band
+is a reviewed tolerance, not an estimate; changing it moves the contract
+counts below, which a feed-gated test pins.
 
 The six measures only the district file has (`charitable_*`,
 `interest_paid_deduction_*`, `qualified_business_income_deduction_*`) have no
@@ -203,12 +241,15 @@ carry in the same state (`STATE_CD_LEVEL_BRIDGES`):
 - charitable and interest-paid amounts use `itemized_deductions_amount`;
 - QBI deduction amounts use `adjusted_gross_income`.
 
-Each sibling's Historic Table 2 / district-file ratio measures exactly the
-coverage and aging gap above. Without it these 306 state rows and their
-2,562 district rows would sit 2–6% below every related concept. On the pinned
-feed the bridge factors are 1.00–1.03 for counts (median 1.016), 1.03–1.75
-for the itemized-deduction amounts (median 1.062) and 1.03–1.08 for QBI
-amounts (median 1.049). The bridge is stamp-invariant: if #1030 corrects the
+The bridge assumes the measure shares its sibling's Historic Table 2 /
+district-file ratio in that state: the coverage and aging gap above, plus
+whatever the two publications disagree about for the sibling. It is an
+estimate, not an identity, which is why the factor band applies to it too.
+Without it these state rows and their 2,562 district rows would sit 2–6%
+below every related concept. On the pinned feed the bridge factors are
+1.00–1.03 for counts (median 1.016), 1.03–1.75 for the itemized-deduction
+amounts (median 1.062; the two above 1.25x the median are dropped) and
+1.03–1.08 for QBI amounts (median 1.049). The bridge is stamp-invariant: if #1030 corrects the
 stamp, the sibling ratio shrinks with it. Its district rows keep their
 within-state shares, as every other district row does.
 
@@ -226,6 +267,8 @@ bridged state row records its sibling and bridge factor.
 | District rows of states with one district on the 117th plan (AK, DE, DC, MT, ND, SD, VT, WY) | 459 | The SOI file has no sub-state rows there. These rows are the state total copied, or for Montana split by population, so they carry no district information |
 | Historic Table 2 rows copied to at-large districts | 360 | The same copies from the other vintage |
 | District-file state rows for concepts Historic Table 2 carries | 2,295 | Second vintage of a state concept |
+| District rows of the four out-of-band rebase blocks | 34 | The factor band (above) |
+| Bridged state rows whose sibling ratio is out of band | 4 | The factor band (above) |
 
 PR #1040 (awaiting a ruling) excludes the same SALT and PTC columns in the
 compiler and rescales the district file's capital-gains rows by one national
@@ -249,14 +292,14 @@ change forces the same review.
 | `usda_snap` | 102 |
 | `cms_medicaid` (enrollment) | 51 |
 | `irs_soi` state, Historic Table 2 | 3,819 |
-| `irs_soi` state, district file (district-file-only measures) | 306 |
-| `irs_soi` district (427 districts x 51 measures) | 21,777 |
-| **Admin specs** | **26,055** |
+| `irs_soi` state, district file (district-file-only measures) | 302 |
+| `irs_soi` district (427 districts x 51 measures, less 34 banded) | 21,743 |
+| **Admin specs** | **26,017** |
 
-Of the 21,777 district rows, 19,215 are rebased to a Historic Table 2 parent
-and 2,562 keep a district-file parent. The 2,193 (state, concept) district
+Of the 21,743 district rows, 19,181 are rebased to a Historic Table 2 parent
+and 2,562 keep a district-file parent. The 2,189 (state, concept) district
 blocks each sum to their parent within 1e-9. Adding the 487 population
-marginals gives 26,542 targets, before the holdout. The feed-gated test
+marginals gives 26,504 targets, before the holdout. The feed-gated test
 `test_pinned_feed_state_cd_surface_matches_its_contract` pins these counts
 and the reconciliation.
 
@@ -364,7 +407,10 @@ The materialize stage writes four files:
 - `target_frame_lean.h5`: structure only (household id, geography, spine,
   source id, design weight; person memberships; group ids).
 - `target_registry.json`: every target as a `TargetSpec` with its
-  calibration hierarchy, held-out targets included.
+  calibration hierarchy, held-out targets included. Its spec count and
+  digest therefore identify the materialized surface, not the trained set;
+  the trained count is `calibration_summary.json`'s `n_targets`, and the
+  roles file says which rows trained.
 - `target_matrix.npz`: a (targets x households) CSR matrix with float32
   values, row *i* of which is registry spec *i*.
 - `target_roles.json`, row-aligned with both: role (train or holdout),
@@ -379,8 +425,14 @@ restricted to the district's households. That equals the direct
 materialization, because the SOI slice masks a tax unit by its household's
 state and district; the first chunk of every run also materializes one
 district row per carrier directly and compares it with the row the assembler
-actually stored for it, refusing any difference (`materialize_rss.json` →
-`carrier_check`). The calibrate stage builds
+actually stored for it, refusing any difference. That check covers one row
+per carrier in one chunk, which could miss the households a concept touches.
+So every chunk also rebuilds each state parent from its block's stored
+district rows: the district rows of a block partition the parent's state,
+so laid side by side they must equal the parent's directly materialized
+column on every household of the chunk, bit for bit, or materialize refuses
+(`materialize_rss.json` → `carrier_check`, with the blocks and nonzero
+households checked). The calibrate stage builds
 each training target from its registry spec (value, metadata, hierarchy)
 with a callable measure that reads its CSR row, so the calibrate kernel's own
 `build_constraint_matrix` compiles them one row at a time, unchanged, and the
@@ -410,16 +462,25 @@ record one of the four modes, before any release directory exists.
 `state_cd` runs also record:
 
 - `run_identity.json`: the sha256 of `target_registry.json`,
-  `target_roles.json` and `target_matrix.npz` (with its shape and nnz); the
-  CD holdout (unit, salt, fraction, held units and targets); the sampling
-  rung. Calibrate and finalize refuse any of the three files whose bytes
-  changed.
+  `target_roles.json`, `target_matrix.npz` (with its shape and nnz) and the
+  lean H5; the CD holdout (unit, salt, fraction, held units and targets); the
+  sampling rung. Calibrate and finalize refuse any of the four files whose
+  bytes changed.
 - `weights_latest.npz` and `calibration_summary.json` carry the digest of
-  that run identity (`run_identity_sha256`). `--resume`, the calibrate
-  stage's "already complete" shortcut, finalize and package refuse weights or
-  a summary without it or from another materialization (another staging
-  file, surface, holdout or sample). A new materialize also deletes the
-  previous calibration outputs.
+  that run identity (`run_identity_sha256`) and the solver settings (weight
+  cap, loss cap, `l2_lambda`, seed, epoch batch). `--resume` and the
+  calibrate stage's "already complete" shortcut refuse weights or a summary
+  from another materialization (another staging file, surface, holdout or
+  sample) or other settings; finalize and package refuse a summary from
+  another materialization.
+- `consumer_export.json` (written with the calibrated H5) records the H5's
+  path and sha256 and the run-identity digest; `spine_qa.json` records the
+  digest too. Finalize and package refuse an H5 that is not the one the
+  current calibration wrote, or QA evidence from another materialization,
+  before any release directory exists. A new materialize deletes the previous
+  calibration outputs, consumer export, spine QA and gate report.
+- Materialize refuses a district row without a positive ladder district and
+  state population, since the pro-rata baseline could not score it.
 - `calibration_summary.json`: `cd_holdout`, `weight_origin` (ESS nationally,
   per spine, per state and per district, over distinct households, and the
   top-1% weight share, at the design and the calibrated weights),

@@ -100,6 +100,17 @@ STATE_CD_LEVEL_BRIDGES: Mapping[str, str] = {
 #: and 37.0% of NC's population mapped to a different 119th district, so NC's
 #: district rows were held off until then.
 STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = {}
+#: How far a state's Historic Table 2 / district-file ratio may sit from its
+#: measure's median across states before the district file's data for that
+#: (state, concept) is refused. The ratio mixes a common part (the file's
+#: coverage and aging gap, or a measure-wide rebase such as taxable interest's
+#: x2.47 onto Table 4.3), which the median absorbs, with a state-specific part.
+#: A state-specific part beyond 25% means the two publications disagree about
+#: that state (Hawaii's dividends differ 2.4x from the typical gap on the
+#: pinned feed), so the district file's shares, or a bridge built on that
+#: sibling, are not trusted: the block's district rows and any bridged state
+#: row are dropped and recorded; the Historic Table 2 state row stays.
+STATE_CD_FACTOR_BAND = 1.25
 #: The packaged crosswalk the exclusions above were reviewed against. A test
 #: pins it, so regenerating the crosswalk forces a second look at them.
 STATE_CD_REVIEWED_CROSSWALK_SHA256 = (
@@ -286,6 +297,7 @@ def state_cd_soi_surface(
     crosswalk: pd.DataFrame,
     crosswalk_sha256: str | None = None,
     level_bridges: Mapping[str, str] = STATE_CD_LEVEL_BRIDGES,
+    factor_band: float = STATE_CD_FACTOR_BAND,
 ) -> StateCdSurface:
     """Select and reconcile the ``state_cd`` SOI surface.
 
@@ -299,6 +311,9 @@ def state_cd_soi_surface(
         level_bridges: District-file-only measure -> sibling measure whose
             Historic Table 2 / district-file ratio in the same state lifts
             the district file's state level onto the Historic Table 2 basis.
+        factor_band: Largest allowed ratio between a state's Historic Table 2
+            / district-file ratio and its measure's median across states
+            (either direction); see ``STATE_CD_FACTOR_BAND``.
 
     Returns:
         The surface in a fixed order (Historic Table 2 state rows, district
@@ -358,6 +373,46 @@ def state_cd_soi_surface(
             )
         cd_file_state_by_key[key] = spec
 
+    # Each state concept both files carry: its Historic Table 2 / district-file
+    # ratio, judged against the measure's median ratio across states.
+    vintage_ratio: dict[tuple, float] = {}
+    for key in ht2_by_key.keys() & cd_file_state_by_key.keys():
+        ht2_value = float(ht2_by_key[key].value)
+        cd_value = float(cd_file_state_by_key[key].value)
+        vintage_ratio[key] = (
+            ht2_value / cd_value
+            if cd_value != 0.0 and (ht2_value > 0) == (cd_value > 0)
+            else math.nan
+        )
+    ratios_by_identity: dict[tuple, list[float]] = defaultdict(list)
+    for (_state, identity), ratio in vintage_ratio.items():
+        if math.isfinite(ratio):
+            ratios_by_identity[identity].append(ratio)
+    median_ratio = {
+        identity: float(np.median(values))
+        for identity, values in ratios_by_identity.items()
+    }
+    out_of_band: list[dict] = []
+
+    def within_band(
+        key: tuple, ratio: float, median: float, basis: str, measure: str
+    ) -> bool:
+        relative = ratio / median if math.isfinite(ratio) and median else math.nan
+        ok = math.isfinite(relative) and 1 / factor_band <= relative <= factor_band
+        if not ok:
+            out_of_band.append(
+                {
+                    "state_fips": key[0],
+                    "measure": measure,
+                    "concept": key[1][0],
+                    "basis": basis,
+                    "ratio": ratio,
+                    "median_ratio": median,
+                    "relative": relative,
+                }
+            )
+        return ok
+
     # One basis for every state level: a concept Historic Table 2 lacks keeps
     # the district file's state row, scaled by a sibling's two levels.
     bridged: dict[str, object] = {}
@@ -382,6 +437,14 @@ def state_cd_soi_surface(
                 f"Level bridge {measure} -> {sibling} in state {state} needs "
                 "the sibling's state total in both files."
             )
+        if not within_band(
+            sibling_key,
+            vintage_ratio.get(sibling_key, math.nan),
+            median_ratio.get(sibling_key[1], math.nan),
+            f"level_bridge:{measure}",
+            measure,
+        ):
+            continue
         factor = float(ht2_sibling.value) / float(cd_sibling.value)
         if not (math.isfinite(factor) and factor > 0.0):
             raise ValueError(
@@ -420,6 +483,23 @@ def state_cd_soi_surface(
         else:
             kept_cd_by_key[(state, soi_concept_identity(spec))].append(spec)
 
+    # Each Historic-Table-2-parented block's rebase factor (parent over its
+    # district rows' sum), judged against its concept's median across states.
+    block_factor: dict[tuple, float] = {}
+    for key, block in kept_cd_by_key.items():
+        parent = ht2_by_key.get(key)
+        child_sum = math.fsum(float(spec.value) for spec in block)
+        if parent is not None and child_sum != 0.0:
+            block_factor[key] = float(parent.value) / child_sum
+    factors_by_identity: dict[tuple, list[float]] = defaultdict(list)
+    for (_state, identity), factor in block_factor.items():
+        if math.isfinite(factor) and factor > 0:
+            factors_by_identity[identity].append(factor)
+    median_factor = {
+        identity: float(np.median(values))
+        for identity, values in factors_by_identity.items()
+    }
+
     rebased: dict[str, object] = {}
     factors_by_measure: dict[str, list[float]] = defaultdict(list)
     parent_basis_counts: Counter = Counter()
@@ -455,6 +535,10 @@ def state_cd_soi_surface(
                     f"District concept {identity} in state {state} has no "
                     "state parent in either vintage."
                 )
+            if parent.name not in bridged:
+                for child in children:
+                    drop(child, f"level_bridge_out_of_band:{identity[0]}")
+                continue
             parent = bridged[parent.name]
             kept_cd_file_parents.add(parent.name)
         if soi_materializer_semantics(parent) != child_semantics:
@@ -479,6 +563,21 @@ def state_cd_soi_surface(
                     f"{child_sum}, opposite in sign to parent {parent.name}="
                     f"{parent_value}."
                 )
+        # An all-zero block agrees with a zero parent whatever the median.
+        if (
+            basis == "historic_table_2"
+            and child_sum != 0.0
+            and not within_band(
+                key,
+                factor,
+                median_factor.get(identity, math.nan),
+                "rebase",
+                identity[0],
+            )
+        ):
+            for child in children:
+                drop(child, f"rebase_out_of_band:{identity[0]}")
+            continue
         factors_by_measure[identity[0]].append(factor)
         parent_basis_counts[basis] += len(children)
         for child in children:
@@ -510,6 +609,8 @@ def state_cd_soi_surface(
             drop(spec, f"defective_cd_file_column:{measure}")
         elif key in ht2_by_key:
             drop(spec, "second_vintage_of_state_concept")
+        elif spec.name not in bridged:
+            drop(spec, f"level_bridge_out_of_band:{measure}")
         else:
             kept_cd_file_state.append(bridged[spec.name])
     missing_parents = kept_cd_file_parents - {spec.name for spec in kept_cd_file_state}
@@ -546,6 +647,14 @@ def state_cd_soi_surface(
         "unparented_cd_measures": dict(STATE_CD_UNPARENTED_CD_MEASURES),
         "excluded_cd_states": dict(STATE_CD_EXCLUDED_CD_STATES),
         "at_large_on_source_plan": at_large_source_states,
+        "factor_band": {
+            "tolerance": factor_band,
+            "relative_to": "the measure's median Historic Table 2 / "
+            "district-file ratio across states",
+            "out_of_band": sorted(
+                out_of_band, key=lambda row: (row["concept"], row["state_fips"])
+            ),
+        },
         "level_bridges": dict(level_bridges),
         "level_bridge_factor_by_measure": {
             measure: _factor_summary(values)
@@ -775,7 +884,7 @@ class SparseTargetAssembler:
         positions: np.ndarray,
         *,
         name: str,
-    ) -> None:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Add a carrier restricted to chunk ``positions`` (the district's).
 
         Returns the chunk positions and float32 values actually stored.
@@ -1003,6 +1112,8 @@ def target_record(spec) -> dict:
     se = getattr(spec, "se", None)
     record = {
         "name": spec.name,
+        "entity": spec.entity,
+        "period": spec.period,
         "value": float(spec.value),
         "source": spec.source or "ledger_feed",
         "family": spec.family,

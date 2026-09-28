@@ -18,6 +18,7 @@ Invariants, each for every input Hypothesis draws:
 from __future__ import annotations
 
 import importlib.util
+import math
 
 import numpy as np
 import pandas as pd
@@ -262,6 +263,8 @@ def test_district_targets_add_up_to_one_state_vintage(inputs) -> None:
         state_surface_predicate=_TOOL.soi_surface_predicate("state"),
         crosswalk=crosswalk,
         level_bridges=_BRIDGES,
+        # Random values make random vintage ratios; the band has its own test.
+        factor_band=math.inf,
     )
     kept = {spec.name: spec for spec in surface.specs}
     original = {spec.name: spec for spec in specs}
@@ -548,3 +551,105 @@ def test_a_pro_rata_block_sums_to_its_state_parent(parent_value, populations) ->
         )
     baseline = _CD.pro_rata_baseline(records, range(1, len(records)))
     assert baseline.sum() == pytest.approx(parent_value, rel=1e-9, abs=1e-6)
+
+
+@st.composite
+def _banded_inputs(draw):
+    """Two-district states whose vintage ratio is the median times a jitter."""
+
+    n_states = draw(st.integers(3, 8))
+    jitters = draw(
+        st.lists(
+            st.floats(0.3, 3.0, allow_nan=False),
+            min_size=n_states,
+            max_size=n_states,
+        )
+    )
+    median = draw(st.floats(0.5, 3.0, allow_nan=False))
+    specs, crosswalk = [], []
+    for index, jitter in enumerate(jitters):
+        state = f"{10 + index:02d}"
+        districts = [f"{state}01", f"{state}02"]
+        for district in districts:
+            crosswalk.append(
+                {
+                    "source_geography_id": f"5001700US{district}",
+                    "target_geography_id": f"5001900US{district}",
+                }
+            )
+        cd_total = 100.0
+        specs.append(
+            _soi_spec(
+                f"ht2.{state}.adjusted_gross_income",
+                "adjusted_gross_income",
+                cd_total * median * jitter,
+                level="state",
+                record_set=_HT2,
+                state=state,
+            )
+        )
+        specs.append(
+            _soi_spec(
+                f"cdfile.{state}_total.adjusted_gross_income",
+                "adjusted_gross_income",
+                cd_total,
+                level="state",
+                record_set=_CD_FILE,
+                state=state,
+            )
+        )
+        for district, share in zip(districts, (0.4, 0.6), strict=True):
+            specs.append(
+                _soi_spec(
+                    f"cdfile.{district}.adjusted_gross_income",
+                    "adjusted_gross_income",
+                    cd_total * share,
+                    level="congressional_district",
+                    record_set=_CD_FILE,
+                    state=state,
+                    district=district,
+                )
+            )
+    return specs, pd.DataFrame(crosswalk), jitters, median
+
+
+@_SETTINGS
+@given(_banded_inputs())
+def test_blocks_off_their_concepts_median_ratio_are_dropped_and_recorded(
+    inputs,
+) -> None:
+    """A block is kept iff its factor is within the band of the median factor."""
+
+    specs, crosswalk, jitters, median = inputs
+    band = _CD.STATE_CD_FACTOR_BAND
+    surface = _CD.state_cd_soi_surface(
+        specs,
+        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+        crosswalk=crosswalk,
+        level_bridges=_BRIDGES,
+    )
+    factors = np.asarray([median * jitter for jitter in jitters])
+    typical = float(np.median(factors))
+    bound_states = {
+        spec.metadata["state_fips"]
+        for spec in surface.specs
+        if spec.metadata["ledger_geography_level"] == "congressional_district"
+    }
+    recorded = {
+        row["state_fips"]
+        for row in surface.receipt["factor_band"]["out_of_band"]
+        if row["basis"] == "rebase"
+    }
+    for index, factor in enumerate(factors):
+        state = f"{10 + index:02d}"
+        relative = factor / typical
+        if 1 / band * (1 + 1e-9) < relative < band * (1 - 1e-9):
+            assert state in bound_states and state not in recorded
+        elif not 1 / band * (1 - 1e-9) <= relative <= band * (1 + 1e-9):
+            assert state not in bound_states and state in recorded
+    # The Historic Table 2 state rows stay whatever happens to their districts.
+    assert {
+        spec.metadata["state_fips"]
+        for spec in surface.specs
+        if spec.metadata["ledger_geography_level"] == "state"
+    } == {f"{10 + index:02d}" for index in range(len(jitters))}
