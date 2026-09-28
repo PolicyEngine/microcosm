@@ -16,7 +16,9 @@ package; each is separately resumable):
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
                 state-geography SOI contract -- with ``totals`` and ``full``
-                as explicit opt-ins), run the household-chunked engine pass under the
+                as explicit opt-ins), seed ACS-row SNAP/TANF take-up
+                (microcosm#1019; the consumer export re-derives the same
+                flags), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
                 reviewed-null fill), add PUMA-ladder population marginals
                 (state + congressional district), and write a lean float32
@@ -66,6 +68,12 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+from microcosm.build.us_runtime.acs_local_take_up import (
+    ACS_LOCAL_TAKE_UP_COLUMNS,
+    ACS_LOCAL_TAKE_UP_GATE_NAME,
+    acs_local_take_up_signal_gate,
+    with_acs_local_take_up_inputs,
+)
 
 _TOOLS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TOOLS_DIR.parent
@@ -311,6 +319,18 @@ class UnregisteredNullError(ValueError):
     """NaN in an engine-input column NOT in reviewed_engine_input_nulls."""
 
 
+class DeniedDefaultFillError(ValueError):
+    """NaN in an engine input whose engine default must never be the fill."""
+
+
+#: Runtime-owned take-up draws. Their engine default, ``True``, is universal
+#: take-up, so a missing cell is a build defect even when the staging register
+#: lists the column (microcosm#1019); the ACS take-up stage fills them first.
+NEVER_DEFAULT_FILLED = frozenset(
+    ("spm_unit", column) for column in ACS_LOCAL_TAKE_UP_COLUMNS
+)
+
+
 def project_input_only(base_frame, period: int = PERIOD):
     """Hold back every non-input variable so FED SET == ENGINE INPUT SET.
 
@@ -384,8 +404,21 @@ def fill_reviewed_nulls(
     Every registered (entity, column) has its NaN filled with the pe-us
     variable's own default; NaN in any engine-input column NOT in the
     register is a hard error with a per-spine diagnostic — an artifact
-    defect, surfaced not filled.
+    defect, surfaced not filled. NaN in a :data:`NEVER_DEFAULT_FILLED`
+    column is refused before anything is filled, registered or not.
     """
+
+    denied = [
+        f"{entity}.{column} ({int(frame.table(entity)[column].isna().sum())} null rows)"
+        for entity, column in sorted(NEVER_DEFAULT_FILLED)
+        if column in frame.table(entity) and frame.table(entity)[column].isna().any()
+    ]
+    if denied:
+        raise DeniedDefaultFillError(
+            "Refusing to default-fill runtime-owned take-up input(s) "
+            f"{'; '.join(denied)}: the engine default is universal take-up "
+            "(microcosm#1019). Run the ACS local take-up stage first."
+        )
 
     from policyengine_us import CountryTaxBenefitSystem
 
@@ -892,6 +925,40 @@ def _load_staging_frame(path: Path):
     return _load_base_frame(Path(path))
 
 
+def _with_local_take_up(frame, *, seed: int):
+    """Seed ACS-row SNAP/TANF take-up before any reviewed-null fill (#1019)."""
+
+    frame, receipt = with_acs_local_take_up_inputs(frame, seed=seed)
+    for column, entry in receipt["programs"].items():
+        log(
+            f"ACS take-up {column}: filled {entry['filled_rows']:,} rows, "
+            f"weighted ACS share {entry['weighted_take_up_share']:.3f}"
+        )
+    return frame, receipt
+
+
+def _recorded_take_up(identity: dict) -> dict:
+    """The ACS take-up assignment materialize calibrated against, or refuse.
+
+    The consumer export re-derives the flags with the recorded seed and must
+    reproduce the recorded digest, so both engine passes see the same flags.
+    """
+
+    receipt = identity.get("acs_local_take_up")
+    if (
+        not isinstance(receipt, dict)
+        or type(receipt.get("seed")) is not int
+        or not isinstance(receipt.get("assigned_sha256"), str)
+    ):
+        raise SystemExit(
+            "run_identity.json records no ACS local take-up assignment "
+            "(microcosm#1019): the checkpoint was materialized with every ACS "
+            "SPM unit default-filled to take up SNAP and TANF. Re-run --stage "
+            "materialize."
+        )
+    return receipt
+
+
 def do_materialize(args) -> None:
     families = [item.strip() for item in args.families.split(",") if item.strip()]
     geographies = [item.strip() for item in args.geographies.split(",") if item.strip()]
@@ -922,6 +989,7 @@ def do_materialize(args) -> None:
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(summary_path))
+    frame, take_up = _with_local_take_up(frame, seed=args.seed)
     log(
         f"loaded staging frame households={frame.n('household')} "
         f"({time.time() - started:.1f}s)"
@@ -999,6 +1067,7 @@ def do_materialize(args) -> None:
                 "declared_admin_specs": len(registry),
                 "compiled_admin_specs": len(admin_names),
                 "population_cells_dropped": pop_dropped,
+                "acs_local_take_up": take_up,
             },
             indent=2,
         )
@@ -1051,6 +1120,8 @@ def do_calibrate(args) -> None:
     )
 
     identity = _verify_run_identity(args)
+    # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
+    _recorded_take_up(identity)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
     registry_path = args.checkpoint_dir / "target_registry.json"
     registry_sha = _sha256(registry_path)
@@ -1243,8 +1314,16 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
 
     from microcosm.frame import Frame, WeightKind, Weights
 
+    recorded_take_up = _recorded_take_up(identity)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, _load_json(_staging_summary_path(args)))
+    frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
+    if take_up["assigned_sha256"] != recorded_take_up["assigned_sha256"]:
+        raise SystemExit(
+            "The consumer export's ACS take-up assignment differs from the one "
+            "materialize calibrated against (microcosm#1019). Re-run --stage "
+            "materialize against this staging file."
+        )
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -1291,6 +1370,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
                 "held_back_total": sum(len(v) for v in dropped.values()),
                 "filled_columns": len(fills),
                 "total_values_filled": sum(f["filled_rows"] for f in fills),
+                "acs_local_take_up": take_up,
                 "note": (
                     "The engine-pass contract (input-schema projection + "
                     "reviewed-null default fill) is applied to the published "
@@ -1519,6 +1599,21 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_take_up_engine_defaults",
+            "status": "reviewed_known_gap",
+            "affected_spines": ["acs_2024_1yr"],
+            "reason": (
+                "SNAP and TANF take-up on ACS rows are seeded by the local "
+                "runtime and gated by acs_local_take_up_signal "
+                "(microcosm#1019). The other runtime-owned takes_up_* flags "
+                "(EITC, ACA, Medicaid, SSI, Medicare, Head Start and the "
+                "rest) are neither transferred nor seeded on ACS rows, so "
+                "they ship at the engine default, universal take-up."
+            ),
+            "treatment": "Tracked via microcosm#1022.",
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -1656,6 +1751,10 @@ def do_finalize(args) -> None:
     hours_gate = us_hours_worked_signal_gate(
         frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
     )
+    # microcosm#1019: likewise refuse SNAP/TANF take-up that is missing or
+    # constant (the engine-default universal take-up) on either spine, or
+    # unanchored or out of band on the ACS spine this tool seeds.
+    take_up_gate = acs_local_take_up_signal_gate(frame)
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -1702,6 +1801,12 @@ def do_finalize(args) -> None:
             "detail": dict(hours_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
+        ACS_LOCAL_TAKE_UP_GATE_NAME: {
+            "passed": bool(take_up_gate.passed),
+            "failures": list(take_up_gate.failures),
+            "detail": dict(take_up_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
             # per-row losses at the same cap); the solve must also have
@@ -1741,7 +1846,11 @@ def do_finalize(args) -> None:
                 "before transfer; the ACS spine inherits required inputs via "
                 "QRF transfer. ACS native GQ-housing / source-universe nulls "
                 "are reviewed_limitations (calibration_blocker: false) and "
-                "are NOT re-imposed on the ACS spine."
+                "are NOT re-imposed on the ACS spine. Take-up draws are not "
+                "transferred: ACS SNAP/TANF take-up is seeded by this tool "
+                "and gated by acs_local_take_up_signal (microcosm#1019); the "
+                "other ACS take-up flags are the reviewed limitation "
+                "acs_take_up_engine_defaults (microcosm#1022)."
             ),
         },
         "spine_composition": {
@@ -1789,6 +1898,7 @@ def do_finalize(args) -> None:
             "us_puma_ladder_gate",
             "hours_worked_signal",
             "acs_local_hours_signal",
+            ACS_LOCAL_TAKE_UP_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -2004,6 +2114,19 @@ def do_package(args) -> dict:
             "The hours_worked_signal gate is missing its artifact binding or "
             "certifies different H5 bytes. Re-run --stage finalize against the "
             "current artifact."
+        )
+    # microcosm#1019: a report finalized before the take-up gate existed (or
+    # against other bytes) cannot vouch for the packaged ACS take-up surface.
+    take_up_gate = gates.get(ACS_LOCAL_TAKE_UP_GATE_NAME)
+    if (
+        not isinstance(take_up_gate, dict)
+        or take_up_gate.get("passed") is not True
+        or take_up_gate.get("artifact_sha256") != h5_sha
+    ):
+        raise SystemExit(
+            f"Packaging requires a present, passing {ACS_LOCAL_TAKE_UP_GATE_NAME} "
+            "gate bound to the packaged H5; an old simulation_ready summary is "
+            "insufficient. Re-run --stage finalize against the current artifact."
         )
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
