@@ -25,9 +25,19 @@ from microcosm.build.us_runtime.release_input_coverage import (
     us_release_reform_coverage_probes,
 )
 
-# A probe whose one-item change is an addition (re-enabling an item the
-# baseline list no longer carries) instead of a removal.
-_ADDITION_PROBES = {"domestic_production_ald_reactivation": "domestic_production_ald"}
+# Every list-valued probe and the one item it changes relative to the installed
+# engine's baseline list: removed, or added for a reactivation probe.
+_REMOVED_ITEM = {
+    "qbi_farm_operations_income_exclusion": "farm_operations_income",
+    "qbi_farm_rent_income_exclusion": "farm_rent_income",
+    "child_support_received_snap_exclusion": "child_support_received",
+    "child_support_expense_snap_deduction_abolition": "snap_child_support_deduction",
+    "disability_benefits_snap_exclusion": "disability_benefits",
+    "workers_compensation_snap_exclusion": "workers_compensation",
+    "educator_expense_ald_abolition": "educator_expense",
+    "alimony_expense_ald_abolition": "alimony_expense_ald",
+}
+_ADDED_ITEM = {"domestic_production_ald_reactivation": "domestic_production_ald"}
 
 _SNAP_SOURCE_PROBES = {
     "child_support_received_snap_exclusion": "child_support_received",
@@ -75,11 +85,12 @@ def reformed_systems():
     }
 
 
-def test_list_valued_probes_are_enumerated() -> None:
-    # Guards the parametrization below against silently collecting nothing.
+def test_every_list_valued_probe_declares_its_one_item() -> None:
+    # Guards the parametrization below against silently collecting nothing, and
+    # makes a new list-valued probe declare the item it means to change.
     ids = {probe_id for probe_id, *_ in _list_valued_changes()}
-    assert set(_SNAP_SOURCE_PROBES) <= ids
-    assert {"alimony_expense_ald_abolition", *_ADDITION_PROBES} <= ids
+    assert ids == set(_REMOVED_ITEM) | set(_ADDED_ITEM)
+    assert set(_SNAP_SOURCE_PROBES) <= set(_REMOVED_ITEM)
 
 
 @pytest.mark.parametrize(
@@ -95,18 +106,17 @@ def test_list_probe_differs_from_engine_baseline_by_exactly_one_item(
     assert len(value) == len(set(value)), f"{probe_id}: duplicate items in {path}"
     removed = set(baseline) - set(value)
     added = set(value) - set(baseline)
-    if probe_id in _ADDITION_PROBES:
-        assert (removed, added) == (set(), {_ADDITION_PROBES[probe_id]}), (
-            f"{probe_id}: {path} must equal the engine baseline plus "
-            f"{_ADDITION_PROBES[probe_id]}; removed {sorted(removed)}, "
-            f"added {sorted(added)}"
-        )
-    else:
-        assert len(removed) == 1 and not added, (
-            f"{probe_id}: {path} must equal the installed engine's baseline "
-            f"minus one item; removed {sorted(removed)}, added {sorted(added)}. "
-            "Re-derive the list from the engine's current value."
-        )
+    expected = (
+        (set(), {_ADDED_ITEM[probe_id]})
+        if probe_id in _ADDED_ITEM
+        else ({_REMOVED_ITEM[probe_id]}, set())
+    )
+    assert (removed, added) == expected, (
+        f"{probe_id}: {path} must equal the installed engine's baseline with "
+        f"only {expected} changed (removed, added); got removed "
+        f"{sorted(removed)}, added {sorted(added)}. Re-derive the list from "
+        "the engine's current value."
+    )
 
 
 @pytest.mark.parametrize("probe_id", sorted(_SNAP_SOURCE_PROBES))
