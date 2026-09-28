@@ -474,3 +474,121 @@ def test_packaged_validator_requires_population_provenance_and_full_coverage() -
     undersized = without_population.assign(pair_population=[600.0])
     with pytest.raises(ValueError, match="exactly 436 source districts"):
         validate_packaged_congressional_district_vintage_crosswalk(undersized)
+
+
+# --- the packaged crosswalk is derived from the CD plan registry -------------
+
+#: The General Assembly's official 2020-census populations of the 2019 North
+#: Carolina congressional plan, the 117th Congress's districts (NCGA, 2020
+#: deviation report, https://www.ncleg.gov/Files/GIS/Maps_Reports/
+#: Decennial_ReCalc/2020/DeviationReports/2020_Deviation_Rpt_Cong.xlsx).
+NCGA_2020_POPULATION_2019_PLAN = {
+    "01": 687_507,
+    "02": 912_226,
+    "03": 745_810,
+    "04": 877_475,
+    "05": 747_588,
+    "06": 807_200,
+    "07": 823_916,
+    "08": 821_133,
+    "09": 786_276,
+    "10": 776_331,
+    "11": 782_246,
+    "12": 899_859,
+    "13": 771_821,
+}
+
+
+def _packaged_provenance() -> dict:
+    import json
+
+    path = default_congressional_district_vintage_crosswalk_path()
+    return json.loads(
+        path.with_name(path.name + ".provenance.json").read_text(encoding="utf-8")
+    )
+
+
+def test_packaged_crosswalk_is_built_from_the_pinned_registry() -> None:
+    from microcosm.build.us_runtime.cd_plan_registry import (
+        packaged_us_cd_plan_registry_provenance,
+    )
+
+    provenance = _packaged_provenance()
+    registry = packaged_us_cd_plan_registry_provenance()
+    assert (
+        provenance["sources"]["cd_plan_registry"]["sha256"]
+        == (registry["output_sha256"])
+    )
+    # The crosswalk carries the registry's 117th deviations (North Carolina).
+    assert (
+        provenance["known_deviations"]
+        == (registry["plan_sources"]["117th_congress"]["known_deviations"])
+    )
+    assert set(provenance["known_deviations"]) == {"37"}
+
+
+def test_packaged_crosswalk_uses_north_carolinas_2019_plan_for_the_117th() -> None:
+    # North Carolina's 117th districts are its 2019 plan. Their 2020
+    # populations in the crosswalk must match the General Assembly's official
+    # figures within 0.5% (the registry's build tolerance). The earlier
+    # crosswalk, which read NC's 2016 plan from the 2020 BAF layer, missed
+    # them by up to 7.6% (district 1), with 7 of 13 districts beyond 0.5%.
+    frame = load_default_congressional_district_vintage_crosswalk()
+    source = frame["source_geography_id"].astype(str)
+    north_carolina = frame[source.str.startswith("5001700US37")]
+    totals = (
+        north_carolina.groupby(north_carolina["source_geography_id"].str[-2:])[
+            "pair_population"
+        ]
+        .sum()
+        .to_dict()
+    )
+    assert sorted(totals) == sorted(NCGA_2020_POPULATION_2019_PLAN)
+    for district, official in NCGA_2020_POPULATION_2019_PLAN.items():
+        assert abs(totals[district] - official) <= 0.005 * official, district
+
+
+@pytest.mark.skipif(
+    not __import__("os").environ.get("MICROCOSM_US_CD_PLAN_REGISTRY"),
+    reason="set MICROCOSM_US_CD_PLAN_REGISTRY to a built registry to rebuild",
+)
+def test_packaged_crosswalk_rebuilds_exactly_from_the_registry() -> None:
+    import os
+
+    from microcosm.build.us_runtime.cd_plan_registry import (
+        load_pinned_us_cd_plan_registry,
+    )
+
+    registry = load_pinned_us_cd_plan_registry(
+        os.environ["MICROCOSM_US_CD_PLAN_REGISTRY"]
+    )
+    blocks = registry.block_geoid.tolist()
+    rows, _ = build_cd_vintage_crosswalk_rows(
+        old_cd_by_block={
+            b: f"{d % 100:02d}"
+            for b, d in zip(
+                blocks, registry.plans["117th_congress"].tolist(), strict=True
+            )
+        },
+        current_cd_by_block={
+            b: f"{d % 100:02d}"
+            for b, d in zip(
+                blocks, registry.plans["119th_congress"].tolist(), strict=True
+            )
+        },
+        block_population=dict(zip(blocks, registry.population.tolist(), strict=True)),
+    )
+    packaged = load_default_congressional_district_vintage_crosswalk()
+    rebuilt = {
+        (row["source_geography_id"], row["target_geography_id"]): row["pair_population"]
+        for row in rows
+    }
+    assert rebuilt == {
+        (s, t): int(p)
+        for s, t, p in zip(
+            packaged["source_geography_id"],
+            packaged["target_geography_id"],
+            packaged["pair_population"],
+            strict=True,
+        )
+    }
