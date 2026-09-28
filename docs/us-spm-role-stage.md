@@ -41,7 +41,8 @@ The pool-global `SPM_ID` pattern the brief points at is exactly what
 instead reconstructs source membership through `(source_year, PERIDNUM)`.
 
 **Where they do exist:** the pinned complete Census ASEC person CSVs
-(`pppub23.csv`, `pppub24.csv`, `pppub25.csv`, income years 2022-2024), pinned in
+(`pppub23.csv`, `pppub24.csv`, `pppub25.csv`, income years 2022-2024; since
+2026-09-28 also `pppub26.csv`, income year 2025), pinned in
 `education_assistance_source.ASEC_EDUCATION_ASSISTANCE_ARCHIVES` and re-exposed
 as `spm_role_source.ASEC_SPM_ROLE_SOURCES`, cached by
 `fetch_asec_education_assistance_source` under

@@ -1,9 +1,9 @@
 """Restore the reviewed Census person columns the pinned ASEC H5 inputs lack.
 
-Microcosm #720. The base pools three processed ASEC HDF5 inputs (pins in
-:mod:`.asec_sources`: ``census_cps_2022.h5`` 7ccca976…, ``census_cps_2023.h5``
-cb578173…, ``census_cps_2024.h5`` ec36604c…). The income-year 2022 and 2023
-files were extracted with an older column list: they carry 2 of the 18
+Microcosm #720. Of the processed ASEC HDF5 inputs pinned in
+:mod:`.asec_sources`, the income-year 2022 and 2023 files
+(``census_cps_2022.h5`` 7ccca976…, ``census_cps_2023.h5`` cb578173…) were
+extracted with an older column list: they carry 2 of the 18
 ``NOW_*`` at-interview coverage recodes (``NOW_GRP``, ``NOW_MRK``) and lack
 ``A_EXPRRP``, ``PTOTVAL``, ``A_ENRLW`` and ``A_FTPT``, which the 2024 file
 carries. :func:`.asec_pool.pool_asec_sources` concatenates per-year person

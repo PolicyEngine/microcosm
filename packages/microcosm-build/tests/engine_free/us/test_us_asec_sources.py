@@ -193,6 +193,11 @@ def test_historical_coordinates_are_unchanged() -> None:
     # when the files were first mirrored: same revision, URL, digest and size.
     # Adding a year uploads a new revision and never moves these.
     assert ASEC_SOURCE_REVISION == "78acc83ea8b099a97cb0d658bbed91ea75aae8b0"
+    for year in (2022, 2023, 2024):
+        assert ASEC_SOURCE_ARTIFACTS[year].url == (
+            "https://huggingface.co/datasets/policyengine/microcosm-us-sources"
+            f"/resolve/78acc83ea8b099a97cb0d658bbed91ea75aae8b0/census_cps_{year}.h5"
+        )
     assert {
         year: (artifact.revision, artifact.sha256, artifact.size_bytes)
         for year, artifact in ASEC_SOURCE_ARTIFACTS.items()
@@ -279,7 +284,10 @@ def test_every_pinned_year_is_pinned_in_every_year_keyed_registry() -> None:
             "https://www2.census.gov/programs-surveys/cps/datasets/"
             f"{year + 1}/march/asecpub{(year + 1) % 100:02d}csv.zip"
         )
-        assert ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS[year].rows == archive.rows
+        audit = ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS[year]
+        assert audit.rows == archive.rows
+        assert sum(audit.paw_type_counts) == audit.rows
+        assert audit.paw_positive_tanf_rows <= audit.paw_positive_rows
         assert ASEC_SPM_ROLE_SOURCES[year].persons == archive.rows
 
 
