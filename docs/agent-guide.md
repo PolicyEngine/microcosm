@@ -44,17 +44,18 @@ the ordinary UK engine job.
 
 The US engine job runs contract and scenario categories in small pytest
 processes with at most two processes active at once, then runs each complete
-workflow module in its own serial process. This releases country-engine state
-between batches while limiting peak memory. The UK engine job and UK integration
-job remain serial. Shell orchestration lives in versioned scripts under
-`tools/`; the workflow invokes those scripts directly. Country jobs install
-only their own extra and run only their registered directories. Native numerical
-libraries receive one thread per process. The US runner writes JSON and Markdown
-timing reports with overall, category, process, file, and individual-test
-timings; CI publishes the Markdown report in the job summary and uploads both
-files as artifacts. The wheels job builds each wheel once and compares its
-archive with its source tree; it does not repeat behavioral tests. Ordinary
-behavioral jobs pass `-v --tb=short --maxfail=1 --durations=25`, so each job log
+workflow module in its own fresh pytest process with at most two processes
+active at once. Process exit releases country-engine state after every workflow
+file rather than retaining it across the suite. The UK engine job and UK
+integration job remain serial. Shell orchestration lives in versioned scripts
+under `tools/`; the workflow invokes those scripts directly. Country jobs
+install only their own extra and run only their registered directories. Native
+numerical libraries receive one thread per process. The US runner writes JSON
+and Markdown timing reports with overall, category, process, file, and
+individual-test timings; CI publishes the Markdown report in the job summary
+and uploads both files as artifacts. The wheels job builds each wheel once and
+compares its archive with its source tree; it does not repeat behavioral tests.
+Ordinary behavioral jobs pass `-v --tb=short --maxfail=1 --durations=25`, so each job log
 names tests as they run, prints a concise first-failure traceback, and reports
 its 25 slowest tests.
 

@@ -452,7 +452,7 @@ async def run_bounded(
 async def run_suite(
     light: Sequence[TaskSpec], workflows: Sequence[TaskSpec]
 ) -> tuple[tuple[TaskResult, ...], float]:
-    """Run light work two-at-a-time, then every full workflow alone."""
+    """Run light work and fresh-process workflows two at a time."""
 
     suite_started = time.monotonic()
 
@@ -461,7 +461,7 @@ async def run_suite(
 
     results = list(await run_bounded(light, max_processes=2, run_one=run_one))
     if all(result.returncode == 0 for result in results):
-        results.extend(await run_bounded(workflows, max_processes=1, run_one=run_one))
+        results.extend(await run_bounded(workflows, max_processes=2, run_one=run_one))
     return tuple(results), time.monotonic() - suite_started
 
 

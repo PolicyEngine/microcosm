@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
+from tools import run_engine_test_categories as runner
 from tools.run_engine_test_categories import (
     CategorySummary,
     TaskResult,
+    TaskSpec,
     active_seconds,
     batched,
     build_tasks,
@@ -128,3 +133,32 @@ def test_repository_plan_batches_light_files_and_isolates_workflows() -> None:
     assert workflows
     assert all(task.category == "workflow" for task in workflows)
     assert all(len(task.paths) == 1 for task in workflows)
+
+
+def test_runner_uses_two_fresh_process_slots_for_workflows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    light = (TaskSpec("contract", 0, (Path("contract.py"),)),)
+    workflows = (
+        TaskSpec("workflow", 0, (Path("workflow_0.py"),)),
+        TaskSpec("workflow", 1, (Path("workflow_1.py"),)),
+    )
+    calls: list[tuple[tuple[TaskSpec, ...], int]] = []
+
+    async def fake_run_bounded(
+        specs, *, max_processes: int, run_one
+    ) -> tuple[TaskResult, ...]:
+        del run_one
+        members = tuple(specs)
+        calls.append((members, max_processes))
+        return tuple(
+            _result(spec.category, spec.index, float(spec.index), spec.index + 1.0)
+            for spec in members
+        )
+
+    monkeypatch.setattr(runner, "run_bounded", fake_run_bounded)
+
+    results, _wall_seconds = asyncio.run(runner.run_suite(light, workflows))
+
+    assert len(results) == 3
+    assert calls == [(light, 2), (workflows, 2)]
