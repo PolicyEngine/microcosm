@@ -1,0 +1,123 @@
+{
+  "head": "622486abbe65c06ea348c5d4885193c073721344",
+  "worktree_status": [],
+  "script_sha256": "db5dcb680ac1af0c55dad996f0f1abe33b6ef78e5e9b19cb02f0b7551ec9a143",
+  "target_period": 2024,
+  "max_rss_bytes": 2875359232,
+  "results": [
+    {
+      "feed": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl",
+      "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+      "compile_seconds": 14.1,
+      "targets": 32866,
+      "age_key_census": {
+        "targets_carrying_restated_age_key": 939,
+        "by_family_role_materializer": {
+          "census_population|population_age|population_age": 936,
+          "ssa|ssa_ssi_age_band_recipients|policyengine_variable": 3
+        },
+        "by_age_bound_stamp_source": {
+          "constraint_rows": 939
+        },
+        "ledger_filter_age_keys": {
+          "ledger_filter_age_lower_bound": 939,
+          "ledger_filter_age_upper_bound": 886
+        }
+      },
+      "rule": {
+        "refused_targets": 0,
+        "refusal_entries": 0,
+        "refusal_entries_by_key": {},
+        "refused_by_family_role": {},
+        "soi_silently_skipped_targets": 0
+      },
+      "without_age_band": {
+        "refused_targets": 939,
+        "refusal_entries": 1825,
+        "refusal_entries_by_key": {
+          "ledger_filter_age_lower_bound": 939,
+          "ledger_filter_age_upper_bound": 886
+        },
+        "refused_by_family_role": {
+          "census_population|population_age": 936,
+          "ssa|ssa_ssi_age_band_recipients": 3
+        },
+        "soi_silently_skipped_targets": 0
+      },
+      "reverted": {
+        "refused_targets": 3208,
+        "refusal_entries": 5116,
+        "refusal_entries_by_key": {
+          "ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound": 1137,
+          "ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound": 1080,
+          "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound": 1074,
+          "ledger_filter_age_lower_bound": 939,
+          "ledger_filter_age_upper_bound": 886
+        },
+        "refused_by_family_role": {
+          "irs_soi|soi_fiscal_distribution": 2269,
+          "census_population|population_age": 936,
+          "ssa|ssa_ssi_age_band_recipients": 3
+        },
+        "soi_silently_skipped_targets": 2269
+      }
+    },
+    {
+      "feed": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl",
+      "feed_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+      "compile_seconds": 15.6,
+      "targets": 32866,
+      "age_key_census": {
+        "targets_carrying_restated_age_key": 939,
+        "by_family_role_materializer": {
+          "census_population|population_age|population_age": 936,
+          "ssa|ssa_ssi_age_band_recipients|policyengine_variable": 3
+        },
+        "by_age_bound_stamp_source": {
+          "constraint_rows": 939
+        },
+        "ledger_filter_age_keys": {
+          "ledger_filter_age_lower_bound": 939,
+          "ledger_filter_age_upper_bound": 886
+        }
+      },
+      "rule": {
+        "refused_targets": 0,
+        "refusal_entries": 0,
+        "refusal_entries_by_key": {},
+        "refused_by_family_role": {},
+        "soi_silently_skipped_targets": 0
+      },
+      "without_age_band": {
+        "refused_targets": 939,
+        "refusal_entries": 1825,
+        "refusal_entries_by_key": {
+          "ledger_filter_age_lower_bound": 939,
+          "ledger_filter_age_upper_bound": 886
+        },
+        "refused_by_family_role": {
+          "census_population|population_age": 936,
+          "ssa|ssa_ssi_age_band_recipients": 3
+        },
+        "soi_silently_skipped_targets": 0
+      },
+      "reverted": {
+        "refused_targets": 3208,
+        "refusal_entries": 5116,
+        "refusal_entries_by_key": {
+          "ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound": 1137,
+          "ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound": 1080,
+          "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound": 1074,
+          "ledger_filter_age_lower_bound": 939,
+          "ledger_filter_age_upper_bound": 886
+        },
+        "refused_by_family_role": {
+          "irs_soi|soi_fiscal_distribution": 2269,
+          "census_population|population_age": 936,
+          "ssa|ssa_ssi_age_band_recipients": 3
+        },
+        "soi_silently_skipped_targets": 2269
+      }
+    }
+  ]
+}

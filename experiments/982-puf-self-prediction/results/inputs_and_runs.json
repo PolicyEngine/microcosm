@@ -1,0 +1,151 @@
+{
+ "inputs": {
+  "checkpoints": "~/spm-rebuild-20260908/rollout/codex-continuation-20260912/genuine-build-76325eb7-20260912/base-checkpoints",
+  "donor_frame": "primary_qrf/donor.frame.h5",
+  "recipient_frame": "primary_qrf/recipient.frame.h5",
+  "clone_frame": "002_clone_feature_extraction.frame.h5",
+  "processed_puf": "~/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/puf_2024.h5",
+  "donor_tax_units": 211677
+ },
+ "runs": {
+  "current": {
+   "variant": "current",
+   "n_trees": 8,
+   "predictors": [
+    "puf_predictor_filing_status_code",
+    "puf_predictor_tax_unit_person_count",
+    "puf_predictor_employment_income",
+    "puf_predictor_self_employment_income",
+    "puf_predictor_taxable_interest_income",
+    "puf_predictor_dividend_income",
+    "puf_predictor_short_term_capital_gains",
+    "puf_predictor_long_term_capital_gains"
+   ],
+   "targets": [
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+    "taxable_private_pension_income",
+    "taxable_ira_distributions",
+    "rental_income",
+    "estate_income",
+    "farm_income",
+    "miscellaneous_income",
+    "partnership_income",
+    "s_corp_income"
+   ],
+   "seconds": 2047,
+   "rows": 231007,
+   "peak_memory_bytes": 26884182800,
+   "recipient_rows_in_output": 231007
+  },
+  "demographic_midrank6": {
+   "variant": "demographic_midrank6",
+   "n_trees": 8,
+   "predictors": [
+    "puf_predictor_filing_status_code",
+    "puf_predictor_tax_unit_person_count",
+    "head_age",
+    "head_male",
+    "spouse_age",
+    "n_dependents",
+    "income_rank_share"
+   ],
+   "targets": [
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+    "taxable_private_pension_income",
+    "taxable_ira_distributions",
+    "rental_income",
+    "estate_income",
+    "farm_income",
+    "miscellaneous_income",
+    "partnership_income",
+    "s_corp_income"
+   ],
+   "seconds": 239,
+   "rows": 231007,
+   "peak_memory_bytes": 18665142912,
+   "recipient_rows_in_output": 231007
+  },
+  "demographic_midrank6_earn": {
+   "variant": "demographic_midrank6_earn",
+   "n_trees": 8,
+   "predictors": [
+    "puf_predictor_filing_status_code",
+    "puf_predictor_tax_unit_person_count",
+    "head_age",
+    "head_male",
+    "spouse_age",
+    "n_dependents",
+    "income_rank_share",
+    "has_earnings"
+   ],
+   "targets": [
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+    "taxable_private_pension_income",
+    "taxable_ira_distributions",
+    "rental_income",
+    "estate_income",
+    "farm_income",
+    "miscellaneous_income",
+    "partnership_income",
+    "s_corp_income"
+   ],
+   "seconds": 157,
+   "rows": 231007,
+   "peak_memory_bytes": 18528516712,
+   "recipient_rows_in_output": 231007
+  },
+  "demographic_stratrank6_earn": {
+   "variant": "demographic_stratrank6_earn",
+   "n_trees": 8,
+   "predictors": [
+    "puf_predictor_filing_status_code",
+    "puf_predictor_tax_unit_person_count",
+    "head_age",
+    "head_male",
+    "spouse_age",
+    "n_dependents",
+    "earnings_group_rank_share",
+    "has_earnings"
+   ],
+   "targets": [
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+    "taxable_private_pension_income",
+    "taxable_ira_distributions",
+    "rental_income",
+    "estate_income",
+    "farm_income",
+    "miscellaneous_income",
+    "partnership_income",
+    "s_corp_income"
+   ],
+   "seconds": 130,
+   "rows": 231007,
+   "peak_memory_bytes": 18261326152,
+   "recipient_rows_in_output": 231007
+  }
+ }
+}

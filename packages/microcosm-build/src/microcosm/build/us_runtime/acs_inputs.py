@@ -20,7 +20,11 @@ import pandas as pd
 
 from microcosm.frame import US_SCHEMA, Frame
 
-__all__ = ["AcsNativeInputResult", "map_acs_native_inputs"]
+__all__ = [
+    "ACS_UNRESOLVED_PARENT_ID_MAPPINGS",
+    "AcsNativeInputResult",
+    "map_acs_native_inputs",
+]
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0
 
@@ -36,6 +40,28 @@ _SPM_TENURE = {
     3: "RENTER",
     4: "RENTER",  # occupied without payment: non-owner housing tenure
 }
+
+#: The ACS spine's value for the ASEC parent pointers, and why.
+#:
+#: ``acs_pums._with_structural_columns`` synthesizes PEPAR1/PEPAR2 from
+#: RELSHIPP: for a biological/adopted/step child of the reference person
+#: (25/26/27) PEPAR1 is always the reference person's line and PEPAR2 always
+#: the spouse's, and every other record — grandchild, foster child, child of a
+#: non-reference adult — gets nothing. That is a reference-person link, not the
+#: ASEC's measured parent pointer, so exporting it under the same name would
+#: conflate two constructions; and an ACS-minted ``person_id`` is renumbered by
+#: the assembly offset after this mapping runs, so a resolved id would be stale
+#: before it reached the pool. The ACS spine therefore reports the pointer as
+#: unknown (0), which is exactly the value PolicyEngine-US reads as "fall back
+#: to the count-based proxy" (microcosm#884, policyengine-us#9404).
+_ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION = (
+    "0 (unknown): the ACS pointer is a synthesized reference-person link, "
+    "not the ASEC measured parent pointer"
+)
+ACS_UNRESOLVED_PARENT_ID_MAPPINGS: tuple[tuple[str, str], ...] = (
+    ("parent_1_id", "PEPAR1"),
+    ("parent_2_id", "PEPAR2"),
+)
 
 _FORMULA_OWNED_AGGREGATES = frozenset(
     {
@@ -112,6 +138,8 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
             register=native,
         )
 
+    _map_usual_hours(person, register=native)
+
     _map_adjusted_person_amount(
         person,
         source="WAGP",
@@ -149,6 +177,18 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         register=native,
     )
 
+    for output, pointer_column in ACS_UNRESOLVED_PARENT_ID_MAPPINGS:
+        if pointer_column in person:
+            _add_native(
+                person,
+                output,
+                np.zeros(len(person), dtype=np.int64),
+                entity="person",
+                source_columns=(pointer_column,),
+                transformation=_ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+                register=native,
+            )
+
     _map_tenure(person, household, spm_unit, register=native)
     _map_housing_amounts(person, household, register=native)
 
@@ -172,6 +212,89 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         metadata=frame.metadata,
     )
     return AcsNativeInputResult(mapped, native)
+
+
+def _map_usual_hours(
+    person: pd.DataFrame, *, register: dict[str, Mapping[str, Any]]
+) -> None:
+    """Use annual usual hours, retaining unresolved blanks for transfer.
+
+    The 2024 FTP dictionary (p. 45) uses blank WKHP for NIU, unlike the
+    Census API's zero code. WKL can confirm past-year nonwork; age below 16
+    only establishes survey-universe absence, not zero work. Current
+    employment status cannot zero annual hours.
+    """
+    if "WKHP" not in person:
+        return
+    hours = _nullable_source_codes(person["WKHP"], minimum=1, maximum=99)
+    worked = (
+        _nullable_source_codes(person["WKL"], minimum=1, maximum=3)
+        if "WKL" in person
+        else pd.Series(np.nan, index=person.index)
+    )
+    age = (
+        pd.to_numeric(person["AGEP"], errors="coerce")
+        if "AGEP" in person
+        else pd.Series(np.nan, index=person.index)
+    )
+    under_sixteen = age.ge(0) & age.lt(16)
+    not_worked = worked.isin([2, 3])
+    if (hours.notna() & (under_sixteen | not_worked)).any() or (
+        under_sixteen & worked.notna()
+    ).any():
+        raise ValueError("ACS WKHP/WKL contradict their age or past-year universe.")
+    structural_zero = hours.isna() & not_worked
+    values = hours.mask(structural_zero, 0.0).to_numpy(dtype=float, na_value=np.nan)
+    allocation = (
+        _nullable_source_codes(person["FWKHP"], minimum=0, maximum=1)
+        if "FWKHP" in person
+        else pd.Series(np.nan, index=person.index)
+    )
+    output = "weekly_hours_worked_before_lsr"
+    _add_native(
+        person,
+        output,
+        values,
+        entity="person",
+        source_columns=tuple(
+            column for column in ("WKHP", "AGEP", "WKL", "FWKHP") if column in person
+        ),
+        transformation="WKHP; zero only for source-confirmed past-year nonwork",
+        register=register,
+    )
+    register[output] = {
+        **register[output],
+        "source_value_rows": int(hours.notna().sum()),
+        "structural_zero_rows": int(structural_zero.sum()),
+        "source_universe_unavailable_rows": int(under_sixteen.sum()),
+        "allocated_value_rows": int((hours.notna() & allocation.eq(1)).sum()),
+        "allocation_unknown_value_rows": int((hours.notna() & allocation.isna()).sum()),
+        "reference": (
+            "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/"
+            "data_dict/PUMS_Data_Dictionary_2024.pdf#page=45"
+        ),
+        "allocation_reference_page": 130,
+    }
+
+
+def _nullable_source_codes(
+    source: pd.Series, *, minimum: int, maximum: int
+) -> pd.Series:
+    blank = source.isna() | source.astype("string").str.strip().eq("").fillna(False)
+    values = pd.to_numeric(source.where(~blank), errors="coerce")
+    numeric = values.to_numpy(dtype=float, na_value=np.nan)
+    valid = (
+        np.isfinite(numeric)
+        & (numeric == np.floor(numeric))
+        & (numeric >= minimum)
+        & (numeric <= maximum)
+    )
+    if (~blank.to_numpy(dtype=bool) & ~valid).any():
+        raise ValueError(
+            f"ACS {source.name} requires blank or integer codes "
+            f"within [{minimum}, {maximum}]."
+        )
+    return values
 
 
 def _map_adjusted_person_amount(

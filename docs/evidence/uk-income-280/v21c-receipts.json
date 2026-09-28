@@ -1,0 +1,1116 @@
+{
+  "run": {
+    "build_id": "uk-frs-calibration-attempt-20260923T140338Z-8d11ab2a",
+    "code": "f6d33a26096ab40afa80bad02ace7522bf0701e5",
+    "release_id": "microcosm-uk-2024-25-national",
+    "release_candidate": null,
+    "calibration_year": 2025
+  },
+  "calibration": {
+    "n_records": 53806,
+    "n_nonzero": 53806,
+    "initial_loss": 0.30719950795173645,
+    "final_loss": 0.009130785444992393,
+    "fraction_within_10pct": 0.9764595103578154,
+    "effective_sample_size": 9192.825005066014
+  },
+  "terminal_gates": {
+    "blocked_at_phase": null,
+    "verdicts": {
+      "uk_aggregate_admin": "passed",
+      "uk_calibration_reference_coverage": "passed",
+      "uk_target_fit": "passed",
+      "uk_weight_ess": "passed",
+      "uk_weight_ratio": "passed",
+      "uk_zero_weight_strata": "passed"
+    },
+    "target_fit_deferrals": {
+      "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025": {
+        "adjudication": "microcosm#280 lane, María's ruling of 2026-09-23 (D6)",
+        "approved_by": "juaristi22",
+        "expires_on": "2026-10-21",
+        "reason": "Calibration-competition residual in the region tier's lowest band, not a data defect: the South East Income Tax liabilities row for total income GBP 12,570 to 15,000 (SPI 2023-24 Table 3.11, uprated to 2025 by HMRC's Table 2.5 growth) fitted at +15.1% on v21 and sits at +30.4% on v21b (target GBP 78.3m, a few hundred pounds of tax a head) once the reserved income band donors (spi_income_band_donors) re-seated the top of the distribution and the solver moved the South East's low-band mass; the region's other bands and the national 12,570-15,000 liabilities row fit within 3%. Deferred four weeks while the low-band regional loss weight is scoped (microcosm#280 lane).",
+        "relative_error": 0.3043737059785765
+      },
+      "hmrc/state_pension_income_band_50_000_to_70_000@2025": {
+        "adjudication": "microcosm#280 lane, María's ruling of 2026-09-23 (D6)",
+        "approved_by": "juaristi22",
+        "expires_on": "2026-10-21",
+        "reason": "Calibration-competition residual, not a data defect: the SPI state-pension amount band for total income GBP 50,000 to 70,000 (2023-24 Table 3.7, uprated by the new State Pension rate the engine pays) fitted at +23.4% on v21 and +27.6% on v21b (target GBP 5.26bn); the state-pension family sums 6.9% over its target because the engine pays every recipient the 2025-26 rate while the taxpayer counts by band fit within 1%, and this band carries the residual after the reserved income band donors moved the surrounding bands. Deferred four weeks while the state-pension amount anchor is scoped (microcosm#280 lane).",
+        "relative_error": 0.2757062219390782
+      }
+    }
+  },
+  "income_anchor_rows": [
+    {
+      "name": "obr.income_tax@2025",
+      "family": null,
+      "target": 325054437305.83215,
+      "estimate": 323831139961.60785,
+      "relative_error": -0.0037633614675850347
+    },
+    {
+      "name": "hmrc/employment_income_income_band_100_000_to_150_000@2025",
+      "family": null,
+      "target": 91081771559.55191,
+      "estimate": 95591853703.99556,
+      "relative_error": 0.04951684697409323
+    },
+    {
+      "name": "hmrc/employment_income_income_band_12_570_to_15_000@2025",
+      "family": null,
+      "target": 18703304244.914062,
+      "estimate": 17339062437.729797,
+      "relative_error": -0.07294121879855746
+    },
+    {
+      "name": "hmrc/employment_income_income_band_15_000_to_20_000@2025",
+      "family": null,
+      "target": 53785833509.04281,
+      "estimate": 41806197118.36481,
+      "relative_error": -0.22272846973104748
+    },
+    {
+      "name": "hmrc/employment_income_income_band_150_000_to_200_000@2025",
+      "family": null,
+      "target": 43382812213.05511,
+      "estimate": 42969493565.37011,
+      "relative_error": -0.00952724423799844
+    },
+    {
+      "name": "hmrc/employment_income_income_band_20_000_to_30_000@2025",
+      "family": null,
+      "target": 190353155628.71118,
+      "estimate": 153576305025.65402,
+      "relative_error": -0.19320326201889382
+    },
+    {
+      "name": "hmrc/employment_income_income_band_200_000_to_300_000@2025",
+      "family": null,
+      "target": 40505380790.760635,
+      "estimate": 44098251451.52006,
+      "relative_error": 0.08870107108285633
+    },
+    {
+      "name": "hmrc/employment_income_income_band_30_000_to_40_000@2025",
+      "family": null,
+      "target": 188139746842.3308,
+      "estimate": 177666228644.76547,
+      "relative_error": -0.05566882263503095
+    },
+    {
+      "name": "hmrc/employment_income_income_band_300_000_to_500_000@2025",
+      "family": null,
+      "target": 32094427402.515255,
+      "estimate": 32022830730.148632,
+      "relative_error": -0.0022308132022013224
+    },
+    {
+      "name": "hmrc/employment_income_income_band_40_000_to_50_000@2025",
+      "family": null,
+      "target": 153831910653.43518,
+      "estimate": 146194953624.92307,
+      "relative_error": -0.04964481683983801
+    },
+    {
+      "name": "hmrc/employment_income_income_band_50_000_to_70_000@2025",
+      "family": null,
+      "target": 192566564415.09152,
+      "estimate": 199484099064.24783,
+      "relative_error": 0.03592282320748607
+    },
+    {
+      "name": "hmrc/employment_income_income_band_500_000_to_1_000_000@2025",
+      "family": null,
+      "target": 25564871482.693188,
+      "estimate": 25440388560.10823,
+      "relative_error": -0.004869295848767678
+    },
+    {
+      "name": "hmrc/employment_income_income_band_70_000_to_100_000@2025",
+      "family": null,
+      "target": 130591118396.44138,
+      "estimate": 133582061475.71411,
+      "relative_error": 0.022903112524030877
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_100_000_to_150_000@2025",
+      "family": null,
+      "target": 5151235856.246702,
+      "estimate": 5166140280.78504,
+      "relative_error": 0.002893368689430847
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_12_570_to_15_000@2025",
+      "family": null,
+      "target": 4975390455.531453,
+      "estimate": 4974647962.584157,
+      "relative_error": -0.00014923310118719762
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_15_000_to_20_000@2025",
+      "family": null,
+      "target": 8306109222.020285,
+      "estimate": 8308058166.387319,
+      "relative_error": 0.00023463986746852808
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_150_000_to_200_000@2025",
+      "family": null,
+      "target": 3775504191.827402,
+      "estimate": 3771174889.57591,
+      "relative_error": -0.0011466818818168427
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_20_000_to_30_000@2025",
+      "family": null,
+      "target": 16239839948.408278,
+      "estimate": 17293730685.802048,
+      "relative_error": 0.06489538940912196
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_200_000_to_300_000@2025",
+      "family": null,
+      "target": 4540948877.293779,
+      "estimate": 4539830986.062832,
+      "relative_error": -0.00024618009608901655
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_30_000_to_40_000@2025",
+      "family": null,
+      "target": 13033247347.13021,
+      "estimate": 14124700945.84957,
+      "relative_error": 0.08374379536038541
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_300_000_to_500_000@2025",
+      "family": null,
+      "target": 5006421996.834145,
+      "estimate": 4984567075.262432,
+      "relative_error": -0.004365377426340138
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_40_000_to_50_000@2025",
+      "family": null,
+      "target": 9030178519.083075,
+      "estimate": 9029533092.644663,
+      "relative_error": -7.147438304212498e-05
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_50_000_to_70_000@2025",
+      "family": null,
+      "target": 8502642316.937327,
+      "estimate": 8585826436.738869,
+      "relative_error": 0.009783325782837875
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_500_000_to_1_000_000@2025",
+      "family": null,
+      "target": 6899346016.298294,
+      "estimate": 6874855972.950902,
+      "relative_error": -0.0035496180782264527
+    },
+    {
+      "name": "hmrc/self_employment_income_income_band_70_000_to_100_000@2025",
+      "family": null,
+      "target": 5544302046.080788,
+      "estimate": 5540096500.003011,
+      "relative_error": -0.0007585348061528805
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_100_000_to_150_000@2025",
+      "family": null,
+      "target": 7437645796.711819,
+      "estimate": 7448272738.403766,
+      "relative_error": 0.0014288044876572573
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_12_570_to_15_000@2025",
+      "family": null,
+      "target": 189459681.86674938,
+      "estimate": 189494809.0033025,
+      "relative_error": 0.0001854069225020872
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_15_000_to_20_000@2025",
+      "family": null,
+      "target": 925645874.2632612,
+      "estimate": 927661591.8192481,
+      "relative_error": 0.0021776335983685214
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_150_000_to_200_000@2025",
+      "family": null,
+      "target": 3735062299.6587734,
+      "estimate": 3736342654.5651045,
+      "relative_error": 0.0003427934539266005
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_20_000_to_30_000@2025",
+      "family": null,
+      "target": 3605147089.2358594,
+      "estimate": 3603972093.1044073,
+      "relative_error": -0.0003259218285324202
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_200_000_to_300_000@2025",
+      "family": null,
+      "target": 4005718988.039844,
+      "estimate": 4019186553.3564377,
+      "relative_error": 0.0033620843990316597
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_30_000_to_40_000@2025",
+      "family": null,
+      "target": 5088345741.564126,
+      "estimate": 5091472810.642601,
+      "relative_error": 0.0006145551496101279
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_300_000_to_500_000@2025",
+      "family": null,
+      "target": 3713409764.588288,
+      "estimate": 3706580734.9078064,
+      "relative_error": -0.0018390186145370306
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_40_000_to_50_000@2025",
+      "family": null,
+      "target": 9094064729.60397,
+      "estimate": 9069534140.531988,
+      "relative_error": -0.0026974284658571692
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_50_000_to_70_000@2025",
+      "family": null,
+      "target": 13532834419.053528,
+      "estimate": 13531135505.156004,
+      "relative_error": -0.00012554013778014585
+    },
+    {
+      "name": "hmrc/dividend_income_income_band_70_000_to_100_000@2025",
+      "family": null,
+      "target": 10219996553.269224,
+      "estimate": 10213203296.872751,
+      "relative_error": -0.000664702415608924
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_100_000_to_150_000@2025",
+      "family": null,
+      "target": 5906164169.251498,
+      "estimate": 5919619227.598572,
+      "relative_error": 0.0022781382233028487
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_12_570_to_15_000@2025",
+      "family": null,
+      "target": 4731457483.654515,
+      "estimate": 4729897102.289639,
+      "relative_error": -0.00032978873217530755
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_15_000_to_20_000@2025",
+      "family": null,
+      "target": 14792602707.517565,
+      "estimate": 11576274592.852877,
+      "relative_error": -0.21742814150143827
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_150_000_to_200_000@2025",
+      "family": null,
+      "target": 1968721389.7504995,
+      "estimate": 1971066502.0159476,
+      "relative_error": 0.00119118544536426
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_20_000_to_30_000@2025",
+      "family": null,
+      "target": 32848279541.693417,
+      "estimate": 31546988972.854588,
+      "relative_error": -0.03961518189064169
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_200_000_to_300_000@2025",
+      "family": null,
+      "target": 1707675459.6178367,
+      "estimate": 1711364535.1664758,
+      "relative_error": 0.002160290778825529
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_30_000_to_40_000@2025",
+      "family": null,
+      "target": 27083515251.26378,
+      "estimate": 27070892637.41883,
+      "relative_error": -0.00046606261143884617
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_300_000_to_500_000@2025",
+      "family": null,
+      "target": 1218214340.6190937,
+      "estimate": 1214966798.6115603,
+      "relative_error": -0.0026658215219194665
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_40_000_to_50_000@2025",
+      "family": null,
+      "target": 18381984246.841682,
+      "estimate": 18359274542.758865,
+      "relative_error": -0.001235432681143711
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_50_000_to_70_000@2025",
+      "family": null,
+      "target": 18925829934.61806,
+      "estimate": 18901176579.553963,
+      "relative_error": -0.0013026300642701978
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_500_000_to_1_000_000@2025",
+      "family": null,
+      "target": 696122480.3537678,
+      "estimate": 693414796.9418468,
+      "relative_error": -0.003889665236130382
+    },
+    {
+      "name": "hmrc/private_pension_income_income_band_70_000_to_100_000@2025",
+      "family": null,
+      "target": 10300437326.484657,
+      "estimate": 10292664084.224302,
+      "relative_error": -0.0007546516729312361
+    },
+    {
+      "name": "hmrc/state_pension_income_band_100_000_to_150_000@2025",
+      "family": null,
+      "target": 956692420.897719,
+      "estimate": 963021073.5957693,
+      "relative_error": 0.006615138324302523
+    },
+    {
+      "name": "hmrc/state_pension_income_band_12_570_to_15_000@2025",
+      "family": null,
+      "target": 13328182487.122885,
+      "estimate": 13332935416.152866,
+      "relative_error": 0.0003566074395045002
+    },
+    {
+      "name": "hmrc/state_pension_income_band_15_000_to_20_000@2025",
+      "family": null,
+      "target": 25075055187.63797,
+      "estimate": 25062220473.961773,
+      "relative_error": -0.0005118518615474306
+    },
+    {
+      "name": "hmrc/state_pension_income_band_150_000_to_200_000@2025",
+      "family": null,
+      "target": 299319352.46504784,
+      "estimate": 299161113.72662294,
+      "relative_error": -0.0005286619028195815
+    },
+    {
+      "name": "hmrc/state_pension_income_band_20_000_to_30_000@2025",
+      "family": null,
+      "target": 28124724061.810158,
+      "estimate": 29886126943.02981,
+      "relative_error": 0.0626282724533969
+    },
+    {
+      "name": "hmrc/state_pension_income_band_200_000_to_300_000@2025",
+      "family": null,
+      "target": 202181751.28771156,
+      "estimate": 202998350.10572827,
+      "relative_error": 0.004038934339106895
+    },
+    {
+      "name": "hmrc/state_pension_income_band_30_000_to_40_000@2025",
+      "family": null,
+      "target": 13892935982.339956,
+      "estimate": 16383206134.91394,
+      "relative_error": 0.17924722000731147
+    },
+    {
+      "name": "hmrc/state_pension_income_band_300_000_to_500_000@2025",
+      "family": null,
+      "target": 108432671.0816777,
+      "estimate": 108384852.43914449,
+      "relative_error": -0.0004409984745021467
+    },
+    {
+      "name": "hmrc/state_pension_income_band_40_000_to_50_000@2025",
+      "family": null,
+      "target": 6799632082.41354,
+      "estimate": 7627968323.512666,
+      "relative_error": 0.12182074427843258
+    },
+    {
+      "name": "hmrc/state_pension_income_band_50_000_to_70_000@2025",
+      "family": null,
+      "target": 5263502575.423105,
+      "estimate": 6714682984.659617,
+      "relative_error": 0.2757062219390782
+    },
+    {
+      "name": "hmrc/state_pension_income_band_500_000_to_1_000_000@2025",
+      "family": null,
+      "target": 48568800.58866814,
+      "estimate": 48201344.37275551,
+      "relative_error": -0.00756568437883884
+    },
+    {
+      "name": "hmrc/state_pension_income_band_70_000_to_100_000@2025",
+      "family": null,
+      "target": 2134768211.9205298,
+      "estimate": 2229667967.0180492,
+      "relative_error": 0.04445436022871236
+    },
+    {
+      "name": "obr.fuel_duties_cars@2025",
+      "family": null,
+      "target": 14400000000.0,
+      "estimate": 11967925395.224606,
+      "relative_error": -0.16889406977606905
+    },
+    {
+      "name": "obr.universal_credit@2025",
+      "family": null,
+      "target": 79286349139.54411,
+      "estimate": 79318470437.16412,
+      "relative_error": 0.00040513023955078114
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_100000_150000@2025",
+      "family": null,
+      "target": 1092500.0,
+      "estimate": 1092623.3097712304,
+      "relative_error": 0.00011286935581734033
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_1000000_2000000@2025",
+      "family": null,
+      "target": 20750.0,
+      "estimate": 20674.67197148005,
+      "relative_error": -0.0036302664346964217
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_12570_15000@2025",
+      "family": null,
+      "target": 2972500.0,
+      "estimate": 2893922.089707136,
+      "relative_error": -0.02643495720533687
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_15000_20000@2025",
+      "family": null,
+      "target": 5412500.0,
+      "estimate": 5359056.327268715,
+      "relative_error": -0.009874119673216625
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_150000_200000@2025",
+      "family": null,
+      "target": 342750.0,
+      "estimate": 342394.7032966614,
+      "relative_error": -0.0010366059907764348
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_20000_30000@2025",
+      "family": null,
+      "target": 10225000.0,
+      "estimate": 10153331.111833103,
+      "relative_error": -0.007009182216811442
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_200000_500000@2025",
+      "family": null,
+      "target": 372500.0,
+      "estimate": 369471.6196937561,
+      "relative_error": -0.008129880016762138
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus@2025",
+      "family": null,
+      "target": 10750.0,
+      "estimate": 10751.779788732529,
+      "relative_error": 0.00016556174256080806
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_30000_50000@2025",
+      "family": null,
+      "target": 12125000.0,
+      "estimate": 12118476.521832451,
+      "relative_error": -0.000538018817942167
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_50000_100000@2025",
+      "family": null,
+      "target": 6950000.0,
+      "estimate": 6904030.306094203,
+      "relative_error": -0.006614344446877246
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_500000_1000000@2025",
+      "family": null,
+      "target": 65500.0,
+      "estimate": 65339.59819507599,
+      "relative_error": -0.0024488825179238356
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_100000_150000@2025",
+      "family": null,
+      "target": 129750000000.0,
+      "estimate": 126603743466.60402,
+      "relative_error": -0.024248605267021047
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_1000000_2000000@2025",
+      "family": null,
+      "target": 28425000000.0,
+      "estimate": 28025331067.519737,
+      "relative_error": -0.014060472558672392
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_12570_15000@2025",
+      "family": null,
+      "target": 40950000000.0,
+      "estimate": 42848377506.409645,
+      "relative_error": 0.0463584250649486
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_15000_20000@2025",
+      "family": null,
+      "target": 94200000000.0,
+      "estimate": 94255298905.94719,
+      "relative_error": 0.000587037218123029
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_150000_200000@2025",
+      "family": null,
+      "target": 58525000000.0,
+      "estimate": 57814979828.90764,
+      "relative_error": -0.012131912363816513
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_20000_30000@2025",
+      "family": null,
+      "target": 253750000000.0,
+      "estimate": 253625518516.308,
+      "relative_error": -0.000490567423416694
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_200000_500000@2025",
+      "family": null,
+      "target": 108250000000.0,
+      "estimate": 105207786301.87158,
+      "relative_error": -0.02810359074483527
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_2000000_plus@2025",
+      "family": null,
+      "target": 55175000000.0,
+      "estimate": 53377385611.64535,
+      "relative_error": -0.03258023359047852
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_30000_50000@2025",
+      "family": null,
+      "target": 465500000000.0,
+      "estimate": 465166788842.29407,
+      "relative_error": -0.0007158134429772989
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_50000_100000@2025",
+      "family": null,
+      "target": 455500000000.0,
+      "estimate": 450260695788.6173,
+      "relative_error": -0.011502314404791856
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_500000_1000000@2025",
+      "family": null,
+      "target": 44350000000.0,
+      "estimate": 43674604918.704216,
+      "relative_error": -0.015228750423805728
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_100000_150000@2025",
+      "family": null,
+      "target": 38000000000.0,
+      "estimate": 38009868557.616974,
+      "relative_error": 0.0002596988846572073
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_1000000_2000000@2025",
+      "family": null,
+      "target": 11550000000.0,
+      "estimate": 12122981677.246922,
+      "relative_error": 0.049608803224841694
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_12570_15000@2025",
+      "family": null,
+      "target": 650750000.0,
+      "estimate": 650134982.6452327,
+      "relative_error": -0.0009450900572682636
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_15000_20000@2025",
+      "family": null,
+      "target": 4532500000.0,
+      "estimate": 4528687061.561512,
+      "relative_error": -0.0008412440018726986
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_150000_200000@2025",
+      "family": null,
+      "target": 20000000000.0,
+      "estimate": 20519152867.456425,
+      "relative_error": 0.025957643372821235
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_20000_30000@2025",
+      "family": null,
+      "target": 23025000000.0,
+      "estimate": 23017801508.428802,
+      "relative_error": -0.0003126380704103153
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_200000_500000@2025",
+      "family": null,
+      "target": 41075000000.0,
+      "estimate": 41167934793.66327,
+      "relative_error": 0.0022625634488927337
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_2000000_plus@2025",
+      "family": null,
+      "target": 21800000000.0,
+      "estimate": 21999977439.704132,
+      "relative_error": 0.00917327705064826
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_30000_50000@2025",
+      "family": null,
+      "target": 57925000000.0,
+      "estimate": 57647676322.6898,
+      "relative_error": -0.004787633617785128
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_50000_100000@2025",
+      "family": null,
+      "target": 86025000000.0,
+      "estimate": 85984563172.19508,
+      "relative_error": -0.00047005902708417767
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_500000_1000000@2025",
+      "family": null,
+      "target": 18100000000.0,
+      "estimate": 18098740586.865463,
+      "relative_error": -6.9580836162251e-05
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000001@2025",
+      "family": null,
+      "target": 1897819856.7041965,
+      "estimate": 1789841350.6436327,
+      "relative_error": -0.05689607771734568
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000002@2025",
+      "family": null,
+      "target": 10577021494.370522,
+      "estimate": 10532667065.442463,
+      "relative_error": -0.004193470624189019
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000003@2025",
+      "family": null,
+      "target": 6225332650.972363,
+      "estimate": 5995491409.44334,
+      "relative_error": -0.03692031485146793
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000004@2025",
+      "family": null,
+      "target": 6551709314.227225,
+      "estimate": 5981107417.744185,
+      "relative_error": -0.08709206546205606
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000005@2025",
+      "family": null,
+      "target": 7893480040.941658,
+      "estimate": 7920131937.344389,
+      "relative_error": 0.0033764443901161097
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000006@2025",
+      "family": null,
+      "target": 23450767656.09007,
+      "estimate": 23453094297.01734,
+      "relative_error": 9.921384926043465e-05
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000007@2025",
+      "family": null,
+      "target": 106495496417.6049,
+      "estimate": 106467818191.18713,
+      "relative_error": -0.0002599004403832692
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000008@2025",
+      "family": null,
+      "target": 48110337768.67963,
+      "estimate": 46768950029.1593,
+      "relative_error": -0.027881486635364744
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@E12000009@2025",
+      "family": null,
+      "target": 10915486182.190378,
+      "estimate": 10120775181.547411,
+      "relative_error": -0.07280582718703006
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@W92000004@2025",
+      "family": null,
+      "target": 2018700102.3541453,
+      "estimate": 1937853341.5552478,
+      "relative_error": -0.0400489209390818
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@S92000003@2025",
+      "family": null,
+      "target": 8606673490.276356,
+      "estimate": 7717193223.928179,
+      "relative_error": -0.10334774141869023
+    },
+    {
+      "name": "hmrc.spi_region.total_income_by_region_200000_plus@N92000002@2025",
+      "family": null,
+      "target": 1680235414.5342884,
+      "estimate": 1600184454.7282195,
+      "relative_error": -0.0476427047743525
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000001@2025",
+      "family": null,
+      "target": 26471186.440677967,
+      "estimate": 26454932.373018324,
+      "relative_error": -0.0006140286796765976
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000002@2025",
+      "family": null,
+      "target": 69486864.40677966,
+      "estimate": 79319469.10211483,
+      "relative_error": 0.14150307082176847
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000003@2025",
+      "family": null,
+      "target": 50736440.6779661,
+      "estimate": 51007902.40601781,
+      "relative_error": 0.005350429088526857
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000004@2025",
+      "family": null,
+      "target": 47427542.37288135,
+      "estimate": 47496825.0648705,
+      "relative_error": 0.0014608113455349817
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000005@2025",
+      "family": null,
+      "target": 55148305.084745765,
+      "estimate": 55250816.65388799,
+      "relative_error": 0.0018588344462208595
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000006@2025",
+      "family": null,
+      "target": 57354237.288135596,
+      "estimate": 57440849.37703686,
+      "relative_error": 0.0015101253716642692
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000007@2025",
+      "family": null,
+      "target": 77207627.11864407,
+      "estimate": 77515148.63953933,
+      "relative_error": 0.003983045877354744
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000008@2025",
+      "family": null,
+      "target": 78310593.22033899,
+      "estimate": 102146278.69619435,
+      "relative_error": 0.3043737059785765
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@E12000009@2025",
+      "family": null,
+      "target": 54045338.983050846,
+      "estimate": 54122656.328780785,
+      "relative_error": 0.0014306015501944973
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@W92000004@2025",
+      "family": null,
+      "target": 30883050.84745763,
+      "estimate": 30921135.781870782,
+      "relative_error": 0.0012331985787695883
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@S92000003@2025",
+      "family": null,
+      "target": 51839406.779661015,
+      "estimate": 51858446.26460237,
+      "relative_error": 0.0003672782179449235
+    },
+    {
+      "name": "hmrc.spi_region.income_tax_by_region_12570_15000@N92000002@2025",
+      "family": null,
+      "target": 16544491.52542373,
+      "estimate": 16600521.9573009,
+      "relative_error": 0.0033866517922940356
+    }
+  ],
+  "pass_2_vs_incumbent": {
+    "candidate_target_wins": 910,
+    "incumbent_target_wins": 32,
+    "candidate_full_loss": 0.010537216920213362,
+    "incumbent_full_loss": 0.2923307491223487,
+    "target_wins_by_family": {
+      "council_tax_stock": {
+        "candidate_target_wins": 97,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dfe_funded_childcare": {
+        "candidate_target_wins": 3,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dft_local_bus": {
+        "candidate_target_wins": 9,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dwp_benefit_cap": {
+        "candidate_target_wins": 4,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "dwp_legacy_benefits": {
+        "candidate_target_wins": 2,
+        "incumbent_target_wins": 1,
+        "ties": 0
+      },
+      "dwp_universal_credit": {
+        "candidate_target_wins": 5,
+        "incumbent_target_wins": 2,
+        "ties": 0
+      },
+      "hmrc_cgt": {
+        "candidate_target_wins": 74,
+        "incumbent_target_wins": 1,
+        "ties": 0
+      },
+      "hmrc_itl": {
+        "candidate_target_wins": 33,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "hmrc_salary_sacrifice": {
+        "candidate_target_wins": 3,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "hmrc_spi": {
+        "candidate_target_wins": 142,
+        "incumbent_target_wins": 15,
+        "ties": 0
+      },
+      "hmrc_spi_region": {
+        "candidate_target_wins": 354,
+        "incumbent_target_wins": 6,
+        "ties": 0
+      },
+      "hmrc_tfc": {
+        "candidate_target_wins": 2,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "isc": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "obr": {
+        "candidate_target_wins": 18,
+        "incumbent_target_wins": 3,
+        "ties": 0
+      },
+      "ons_employment": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "ons_land": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 2,
+        "ties": 0
+      },
+      "ons_national_accounts": {
+        "candidate_target_wins": 2,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "ons_population": {
+        "candidate_target_wins": 148,
+        "incumbent_target_wins": 1,
+        "ties": 0
+      },
+      "orr_rail": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "scotgov_social_security": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "slc_borrowers": {
+        "candidate_target_wins": 1,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "slc_repayments": {
+        "candidate_target_wins": 3,
+        "incumbent_target_wins": 0,
+        "ties": 0
+      },
+      "slc_student_support": {
+        "candidate_target_wins": 5,
+        "incumbent_target_wins": 1,
+        "ties": 0
+      }
+    },
+    "n_scored": 942,
+    "n_pruned": 120
+  },
+  "band_donors": {
+    "spi_income_band_donors": {
+      "bands": [
+        {
+          "carrier_mean_age": 54.03333333333333,
+          "carrier_regions": 12,
+          "carriers": 120,
+          "donor_households": 120,
+          "donor_weight": 2991.6666666666665,
+          "lower_bound": 200000,
+          "published_taxpayers": 359000.0,
+          "weighted_taxpayers": 358999.99999999994
+        },
+        {
+          "carrier_mean_age": 58.55,
+          "carrier_regions": 11,
+          "carriers": 120,
+          "donor_households": 120,
+          "donor_weight": 508.3333333333333,
+          "lower_bound": 500000,
+          "published_taxpayers": 61000.0,
+          "weighted_taxpayers": 60999.999999999985
+        },
+        {
+          "carrier_mean_age": 53.708333333333336,
+          "carrier_regions": 7,
+          "carriers": 120,
+          "donor_households": 120,
+          "donor_weight": 166.66666666666666,
+          "lower_bound": 1000000,
+          "published_taxpayers": 20000.0,
+          "weighted_taxpayers": 20000.0
+        },
+        {
+          "carrier_mean_age": 50.85,
+          "carrier_regions": 3,
+          "carriers": 120,
+          "donor_households": 120,
+          "donor_weight": 83.33333333333333,
+          "lower_bound": 2000000,
+          "published_taxpayers": 10000.0,
+          "weighted_taxpayers": 10000.0
+        }
+      ],
+      "carrier_region_counts": {
+        "EAST_MIDLANDS": 4,
+        "EAST_OF_ENGLAND": 37,
+        "LONDON": 161,
+        "NORTHERN_IRELAND": 10,
+        "NORTH_EAST": 5,
+        "NORTH_WEST": 42,
+        "SCOTLAND": 11,
+        "SOUTH_EAST": 134,
+        "SOUTH_WEST": 33,
+        "WALES": 1,
+        "WEST_MIDLANDS": 11,
+        "YORKSHIRE": 31
+      },
+      "donors_per_band": 120,
+      "propensity": "SPI 2022-23 FACT-weighted band share by region, sex and age band",
+      "propensity_cells": 299,
+      "stage": "spi_income_band_donors",
+      "taxpayer_count_period": 2024,
+      "taxpayer_count_resource": "hmrc_itl_taxpayer_counts.json"
+    },
+    "band_donor_resample": {
+      "carriers": 480,
+      "regional_pool_minimum": 20,
+      "seed": 44,
+      "total_income_basis": "published TEI + TII, 2022-23 terms",
+      "weighting": "FACT",
+      "with_replacement": true,
+      "bands": [
+        {
+          "carriers": 120,
+          "lower_bound": 200000,
+          "pool_composite_records": 126,
+          "pool_records": 25933,
+          "pool_weighted_taxpayers": 276982.951532,
+          "realized_mean_total_income": 278766.0833333333,
+          "regional_matched_carriers": 120
+        },
+        {
+          "carriers": 120,
+          "lower_bound": 500000,
+          "pool_composite_records": 1311,
+          "pool_records": 1670,
+          "pool_weighted_taxpayers": 49400.927788,
+          "realized_mean_total_income": 623205.0833333334,
+          "regional_matched_carriers": 83
+        },
+        {
+          "carriers": 120,
+          "lower_bound": 1000000,
+          "pool_composite_records": 466,
+          "pool_records": 499,
+          "pool_weighted_taxpayers": 16325.1321,
+          "realized_mean_total_income": 1304917.2083333333,
+          "regional_matched_carriers": 0
+        },
+        {
+          "carriers": 120,
+          "lower_bound": 2000000,
+          "pool_composite_records": 261,
+          "pool_records": 269,
+          "pool_weighted_taxpayers": 8811.816200000001,
+          "realized_mean_total_income": 4689961.458333333,
+          "regional_matched_carriers": 0
+        }
+      ]
+    }
+  }
+}

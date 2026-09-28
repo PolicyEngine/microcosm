@@ -36,6 +36,14 @@ uv run pytest            # all packages, incl. behavioral contract tests
 uv run ruff check .
 ```
 
+Packaged country specs load once per process: `load_country_spec("uk")`
+returns the same object on every call. In a notebook or other long-lived
+session, edits to a country package under
+`packages/microcosm-build/src/microcosm/build/<country>/` are not picked up
+until you restart the kernel, load it by path with
+`load_country_spec(Path(...))` (always re-read), or call
+`microcosm.build.country_spec._load_packaged_country_spec.cache_clear()`.
+
 ## Staging build telemetry
 
 US fiscal refresh builds emit pre-release staging telemetry **by default**:
@@ -70,11 +78,12 @@ and `--childcare-attendance-inherit-outside-domain-baseline`); without them the
 build is refused before calibration. See
 [docs/us-childcare-attendance.md](docs/us-childcare-attendance.md).
 
-The UK commands (`tools/build_uk_frs_spine.py`,
-`tools/calibrate_uk_national_dataset.py`, `tools/build_uk_rowwise_candidate.py`)
-stage version 2 telemetry to `policyengine/populace-uk-staging` under the same
-switch. The rowwise candidate command also **stages the finished dataset
-bundle** it built, dense or exact-count, under `staged/<run_id>/` in the
+The UK commands (`tools/build_uk_frs_spine.py` and
+`tools/build_uk_rowwise_candidate.py`, whose `--release-role` builds either
+the national or the dense line) stage version 2 telemetry to
+`policyengine/populace-uk-staging` under the same switch. The rowwise
+candidate command also **stages the finished dataset bundle** it built,
+national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
 it without publishing it: `releases/` and `latest.json` are untouched, the
 release contract is not consulted, and a `releasable: false` size run stages
@@ -122,10 +131,32 @@ AT-RISK only, `0` clean):
    cannot express); a thin selection or a signed leaf whose net sign
    contradicts the probe's `expected_sign` is AT-RISK.
 
+**A new lineage** — a release built on a fresh base with no selection source
+([docs/us-release-build-rule.md](docs/us-release-build-rule.md) §3) — has no
+frozen selection to carry over. Say so explicitly with `--new-lineage` in place
+of `--selection-source-manifest` (the two are refused together; with neither,
+the manifest is required as before):
+
+```bash
+uv run python tools/preflight_us_release_gates.py \
+  --base-h5 out/base/base_populace_us_2024_puf_support.h5 \
+  --new-lineage \
+  --ledger-facts inputs/consumer_facts.jsonl
+```
+
+The report records `selection_carryover` as `SKIPPED` with reason
+`new_lineage`. The one refusal inside that check that belongs to the base
+rather than to a selection — the base must carry the materialized PUF
+capital-gains own-tail, which the release tool also requires on every arm —
+still runs, as `capital_gains_tail_presence`. Every other check runs unchanged
+on the whole base, which is what a release without a selection calibrates. Given
+`--release-manifest`, `--new-lineage` also requires that release to record no
+selection source.
+
 **Run it** at base-build exit, before any release launch, and after any change
 to the selection-source manifest or the target/coverage registry. The
 synthetic-fixture unit tests
-(`packages/microcosm-build/tests/test_us_release_gate_preflight.py`) run in the
+(`packages/microcosm-build/tests/engine_free/us/test_us_release_gate_preflight.py`) run in the
 normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
 
 ## Releasing & alerts
@@ -134,7 +165,17 @@ The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enri
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original
 variables and schema-5 calibration evidence, and requires fresh country/wrapper
 compatibility checks. It has a local candidate builder and uses the regular
-publisher's contract with `--parent-h5` and `--preflight-only`.
+publisher's contract with `--parent-h5` and `--preflight-only`. The same release
+type publishes the [reported-receipt child of the national default](docs/us-reported-receipt-source-enrichment.md)
+as a tag-only donor for the ACS local chain. It is never the `latest.json`
+default.
+
+The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
+calibrates to the SOI `state` surface by default, the 4,459-target contract of
+Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
+opt-ins. See
+[the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
+for what each mode contains and where the build records it.
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
@@ -149,6 +190,45 @@ tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
 chosen from the repo id.
 
+Promotable UK release lines use pointers named `latest-<line>.json`. Publish a
+cut for inspection with `--no-latest --tag-name <cut-tag>`, then promote the
+reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
+only that line pointer; the UK repository-global `latest.json` remains frozen
+on the June 2023 release. Promotion reuses the immutable cut tag the inspect publication created (it checks the tagged manifest is byte-identical) and writes only the pointer commit, so the two-step sequence and a retry after a failed pointer commit both work. A line's registry entry is registered off the default variant until its first promotion; the default flips in a follow-up after the pointer exists.
+
+The publisher uploads only the contract files, the release manifest's
+artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
+its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
+`input_mass_parity.json`, `qrf_tail_concentration.json` and
+`reform_coverage_smoke.json`. Both manifests also record the per-run QRF tail
+register (`qrf_tail_register`) and the export-mass reference, so a waiver
+ships with the release it waives, and a `gate_evidence` block that says of
+each verdict whether it is bound, skipped by flag or never evaluated.
+
+A US release may not store a column that looks like a policyengine-us variable
+(lowercase snake_case) unless the engine it is certified against defines that
+variable or `microcosm.data.stored_inputs.US_STORED_NON_VARIABLE_COLUMNS`
+registers the column with a reviewed reason (microcosm#1026: the engine
+ignores such a column, which is how a renamed WIC take-up input shipped
+unread). Three release seams refuse one, each against the engine the release
+records as built-with:
+
+- the fiscal-refresh tool, in its batched pre-export gates, and it grades the
+  written H5, which must earn the same verdict (the exact-k ladder lane runs
+  this tool);
+- the source-enrichment probe, at certification, validation and publication;
+- the ACS local-area chain's package stage, before it assembles the release
+  directory.
+
+A refusal names each column: rename it to its live input, or add a reviewed
+register entry. The published default, its reported-receipt child and the
+2026-09-23 ACS local-area release built on that child all store two retired
+engine inputs, `would_claim_wic` and `medicare_part_b_premiums` (replaced by
+`takes_up_wic_if_eligible` and `medicare_part_b_premiums_reported`), so each
+would now be refused.
+Check local files from HDF metadata alone with
+`uv run python -m microcosm.data.stored_inputs path/to/populace_us_2024.h5`.
+
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py` with the
 [`childcare_attendance` source configuration](docs/us-childcare-attendance.md#build-and-reproduction)
@@ -160,7 +240,12 @@ main branch. The launcher also forces `--no-staging`, so the build writes neithe
 a production nor a staging pointer. The candidate is therefore available only
 by its explicit release id or tag until a separate promotion updates
 `latest.json`. Because Slack alerts are coupled to that production pointer
-update, tag-only publication sends no release alert.
+update, tag-only publication sends no release alert. The promotion is the
+standard publish of the same release directory, without `--no-latest` and
+`--tag-only`: it reuses the existing release-id tag once the tagged
+`release_manifest.json` is byte-identical to the local one, and writes only the
+main commit that carries `latest.json` (microcosm#450). A tag that describes
+another cut refuses before any commit.
 
 Evidence-tier releases (microcosm#506) are the third lane: the best available
 artifact when terminal gates failed, built with

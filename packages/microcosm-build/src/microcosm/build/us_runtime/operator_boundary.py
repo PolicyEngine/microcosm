@@ -14,6 +14,10 @@ from typing import Any
 
 import pandas as pd
 
+from microcosm.build.us_runtime.acs_inputs import (
+    _ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+    ACS_UNRESOLVED_PARENT_ID_MAPPINGS,
+)
 from microcosm.build.us_runtime.acs_transfer import ACS_DERIVED_TRANSFER_INPUTS
 from microcosm.build.us_runtime.adult_care import US_ADULT_CARE_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.child_support import (
@@ -86,6 +90,9 @@ from microcosm.build.us_runtime.retirement_distributions import (
 from microcosm.build.us_runtime.scf_wealth import (
     US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS,
     US_SCF_NET_WORTH_OUTPUT_COLUMNS,
+)
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.weeks_unemployed import (
     US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
@@ -187,6 +194,14 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
         ("TAXAMT", "ADJHSG", "RELSHIPP"),
         "TAXAMT * ADJHSG / 1_000_000; reference-person carry",
     ),
+    **{
+        output: (
+            "person",
+            (pointer_column,),
+            _ACS_UNRESOLVED_PARENT_POINTER_TRANSFORMATION,
+        )
+        for output, pointer_column in ACS_UNRESOLVED_PARENT_ID_MAPPINGS
+    },
 }
 _CAPITAL_GAINS_TAIL_PROVENANCE_COLUMNS = frozenset(
     {
@@ -260,6 +275,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     },
     "relationship_inputs": {
         "person": frozenset(US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS),
+    },
+    "spm_independence_role": {
+        "person": frozenset(US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS),
     },
     "medicare_take_up": {
         "person": frozenset(US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS),

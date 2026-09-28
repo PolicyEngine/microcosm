@@ -684,6 +684,19 @@ def _capped_weighted_total(
 US_RELEASE_SPM_SELECTION: dict[str, object] = {"geography_kind": "county"}
 
 
+def _released_engine_state(simulation: Any) -> bool:
+    """Release a finished simulation; True if it held engine state to sweep.
+
+    Callers run a full collection after releasing an object with a populations
+    dict (microcosm#456). The release tool's household-batched adapter releases
+    and collects its own batch engines; it and the engine-free recorder expose
+    no populations dict requiring another collection here.
+    """
+    holds_engine_state = isinstance(getattr(simulation, "populations", None), dict)
+    release_engine_simulation(simulation)
+    return holds_engine_state
+
+
 def default_simulate_factory(dataset_path: Path) -> SimulateFn:
     """Build a simulate() that runs a Microsimulation over the release H5."""
 
@@ -768,8 +781,8 @@ def reform_validation_payload(
         try:
             return _weighted_total(transient_simulation, measure, at_period)
         finally:
-            release_engine_simulation(transient_simulation)
-            gc.collect()
+            if _released_engine_state(transient_simulation):
+                gc.collect()
 
     def stacked_obbba_effects() -> dict[str, tuple[float, float, float]]:
         """Score the OBBBA provisions *stacked* in their JCX-35-25 order.
@@ -917,13 +930,21 @@ def reform_validation_payload(
             (np.asarray(values)[mask] * np.asarray(values.weights)[mask]).sum()
         )
 
-    def _person_rate(level: BaselineLevelSpec) -> float:
-        """Weighted share of persons with ``variable`` truthy among the mask
-        population, sliced to ``state`` when set.
+    def _person_rate(level: BaselineLevelSpec) -> float | None:
+        """Weighted share of persons measured as ``variable == 1`` among the
+        *observed* mask population, sliced to ``state`` when set.
 
         Everything is computed at person level: spm_unit/household variables
         broadcast down to persons, and the numeric ``state_fips`` broadcasts
         where the string ``state_code_str`` cannot.
+
+        The indicator is read as nullable. A person whose indicator is
+        missing is neither poor nor non-poor: they leave the numerator *and*
+        the denominator, and a slice with no observed person yields ``None``
+        (serialized as JSON ``null``), never ``0.0``. Under a Boolean
+        indicator -- ``in_poverty`` is ``value_type = bool`` on the pinned
+        engine -- nothing is missing, so this is numerically identical to the
+        previous ``> 0`` share.
         """
         nonlocal baseline
         import numpy as np
@@ -932,8 +953,14 @@ def reform_validation_payload(
             baseline = simulate(None)  # type: ignore[misc]
         values = baseline.calculate(level.variable, level.period, map_to="person")
         weights = np.asarray(values.weights)
-        flags = np.asarray(values) > 0
-        mask = np.ones(len(flags), dtype=bool)
+        # Do not cast the indicator to bool or select on it directly: ``NaN >
+        # 0`` is False, which would silently read an unmeasured person as not
+        # poor. Compare the observed indicator with 1, and keep missingness as
+        # its own mask.
+        raw = np.asarray(values).astype(float)
+        observed = ~np.isnan(raw)
+        flags = raw == 1
+        mask = observed.copy()
         if level.mask_variable:
             mask &= (
                 np.asarray(
@@ -950,10 +977,11 @@ def reform_validation_payload(
             mask &= fips == US_STATE_POSTAL_TO_NUMERIC_FIPS[level.state]
         denominator = float(weights[mask].sum())
         if denominator == 0:
-            return 0.0
+            # No observed person in the slice: the rate is missing, not zero.
+            return None
         return float((flags[mask] * weights[mask]).sum() / denominator)
 
-    def _level_total(level: BaselineLevelSpec) -> float:
+    def _level_total(level: BaselineLevelSpec) -> float | None:
         nonlocal baseline
         if level.statistic == "rate":
             return _person_rate(level)
@@ -1008,9 +1036,10 @@ def reform_validation_payload(
     # microcosm#456: the shared baseline simulation has served every reform row
     # and baseline-level row by now; release it before assembling the payload.
     if baseline is not None:
-        release_engine_simulation(baseline)
+        sweep = _released_engine_state(baseline)
         baseline = None
-        gc.collect()
+        if sweep:
+            gc.collect()
 
     has_out_of_sample = any(not spec.in_sample for spec in specs) or bool(
         baseline_levels

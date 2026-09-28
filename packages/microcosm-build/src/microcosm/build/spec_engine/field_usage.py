@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_387
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_772
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_159
+EXPECTED_AUTHORED_FIELD_COUNT = 32_407
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_780
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_187
 
 
 class FieldUsageError(AssertionError):
@@ -374,12 +374,12 @@ _PINS: dict[str, tuple[int, str]] = {
     ),
     # The NSECE source-extension descriptor adds kind/path/schema_id leaves.
     "country_manifest": (
-        101,
-        "be7cb568758bd3374612d2bcc37ea96a8269ffeac53fe0d10dc62195471b0d2e",
+        107,
+        "2c2099d3d5ef3d664f74a2e732870391022a852cf49d5cf96810c9a984d2b20b",
     ),
     "generated_authorities": (
-        8_606,
-        "3f20975597d93f7313583a944eeb9d6437651c4ff20e67628bf6bf4c5aa9f004",
+        8_614,
+        "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
     ),
     "geography_assignment": (
         28,
@@ -486,8 +486,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_702,
-        "be3e24b53955b9dabccfc7e779212b1e97daf0c0992be3c183e391bf695ed4ee",
+        1_716,
+        "3e808ed9f5a791c0dfb85be0c59adf803366bf6e8c7a9f5a58f92974e044b607",
     ),
     "spine_assembly_household_mass_shares": (
         2,

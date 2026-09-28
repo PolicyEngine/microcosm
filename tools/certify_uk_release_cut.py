@@ -73,15 +73,34 @@ _LEDGER_COMPILE_PARITY_PERIODS = (2023, 2025)
 _LOCAL_COMPILE_PARITY_PERIOD = 2025
 
 
+def _ledger_facts_size(path: Path) -> int:
+    """The consumer facts file's size: the artifact directory holds it."""
+
+    facts = path / "consumer_facts.jsonl" if path.is_dir() else path
+    return facts.stat().st_size
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)
     predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+    # Logbook pin roles carry exactly the digest and the byte size, as the
+    # builds' do; a digest alone refused every real certification up front.
     source_pins = {
-        "candidate_h5": {"sha256": args.candidate_sha256},
-        "ledger_facts": {"sha256": args.ledger_facts_sha256},
+        "candidate_h5": {
+            "sha256": args.candidate_sha256,
+            "size_bytes": args.candidate_h5.stat().st_size,
+        },
+        "ledger_facts": {
+            "sha256": args.ledger_facts_sha256,
+            "size_bytes": _ledger_facts_size(args.ledger_facts),
+        },
+        "spine_h5": {
+            "sha256": args.spine_sha256,
+            "size_bytes": args.spine_h5.stat().st_size,
+        },
     }
     state = AttemptState(
         build_id=f"{_PIPELINE}-attempt-{started_ts.strftime('%Y%m%dT%H%M%SZ')}",
@@ -151,12 +170,29 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _nested(payload: object, *keys: str) -> object:
+    """Walk mapping keys, returning None where the path is absent."""
+
+    current = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
 def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     measured = hashlib.sha256(args.candidate_h5.read_bytes()).hexdigest()
     if measured != args.candidate_sha256:
         raise SystemExit(
             "error: --candidate-h5 sha mismatch: "
             f"measured {measured}, pinned {args.candidate_sha256}"
+        )
+    spine_measured = hashlib.sha256(args.spine_h5.read_bytes()).hexdigest()
+    if spine_measured != args.spine_sha256:
+        raise SystemExit(
+            "error: --spine-h5 sha mismatch: "
+            f"measured {spine_measured}, pinned {args.spine_sha256}"
         )
     sidecar_path = args.spine_h5.with_suffix(".build.json")
     if not sidecar_path.is_file():
@@ -175,6 +211,34 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         raise SystemExit(
             "error: --diagnostics-json bytes do not match the build record's "
             f"binding ({diagnostics_sha} != {recorded_diagnostics})"
+        )
+    # The spine is stage evidence for the family build-state gates, so it
+    # must be the parent the calibration actually consumed: the build record
+    # and the signed diagnostics both carry that parent's digest. A spine
+    # regenerated at the same path after the solve pins fine on its own hash
+    # and would lend another build's receipts to this candidate.
+    recorded_parents = {
+        "build_record.input_posture.sha256": _nested(
+            build_record, "input_posture", "sha256"
+        ),
+        "build_record.source_pins.input_h5.sha256": _nested(
+            build_record, "source_pins", "input_h5", "sha256"
+        ),
+        "diagnostics.build.input_posture.sha256": _nested(
+            diagnostics, "build", "input_posture", "sha256"
+        ),
+    }
+    mismatched = {
+        key: value
+        for key, value in recorded_parents.items()
+        if value != args.spine_sha256
+    }
+    if mismatched:
+        raise SystemExit(
+            "error: --spine-h5 is not the candidate's recorded parent: the "
+            f"calibration recorded {mismatched}, the supplied spine measures "
+            f"{args.spine_sha256}; the family build-state evidence must come "
+            "from the spine this candidate was calibrated from."
         )
     append_phase(state, "inputs_bound")
 
@@ -208,6 +272,9 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     append_phase(state, "registries_compiled")
 
     frame, _provenance = load_uk_national_frame(args.candidate_h5)
+    # The spine frame is the evidence for the stage families' build state
+    # (importance weights, mass receipts); the candidate is calibrated.
+    spine_frame, _spine_provenance = load_uk_national_frame(args.spine_h5)
     engine = PolicyEngineUKCoverageEngine()
     parity_evidence = uk_release_parity_evidence(
         frame,
@@ -228,6 +295,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         fit_weight_records=rehydrate_uk_fit_weight_records(sidecar),
         input_mass_reference=load_uk_input_mass_reference(args.input_mass_reference),
         exclusions_evaluated_on=evaluated_on,
+        spine_frame=spine_frame,
     )
     append_phase(state, "release_cut_gates_evaluated")
     for gate_id, payload in report["gates"].items():
@@ -241,6 +309,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         candidate_name=args.candidate_name,
         candidate_path=args.candidate_h5,
         candidate_sha256=args.candidate_sha256,
+        spine_sha256=args.spine_sha256,
         spine_report_path=spine_report_path,
         seam_report_path=args.seam_gate_report,
         release_cut_report_path=args.release_cut_gate_json,
@@ -274,6 +343,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="The dataset name the certification certifies, e.g. microcosm_uk_2024.",
     )
     parser.add_argument("--spine-h5", required=True, type=Path)
+    parser.add_argument("--spine-sha256", required=True, type=_sha256)
     parser.add_argument("--diagnostics-json", required=True, type=Path)
     parser.add_argument("--build-record-json", required=True, type=Path)
     parser.add_argument("--seam-gate-report", required=True, type=Path)

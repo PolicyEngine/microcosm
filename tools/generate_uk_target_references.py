@@ -605,6 +605,11 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
         metadata = {}
         if measurement.get("observation_basis") is not None:
             metadata["observation_basis"] = str(measurement["observation_basis"])
+        if measurement.get("period_basis") is not None:
+            # A declared exception to the period convention (a fiscal-year
+            # row held at its publication year) rides the spec as metadata,
+            # not as prose alone.
+            metadata["period_basis"] = str(measurement["period_basis"])
         binding = target.get("bindings", {}).get("policyengine", {})
         if binding.get("measurement_period") is not None:
             metadata["measurement_period"] = str(binding["measurement_period"])
@@ -781,6 +786,40 @@ def _add_uk_membership_accounting(
                 "property-income undercount adjustment traced to "
                 f"{_UK_DATA_REPO} PR #311 / issue #230 and HMRC "
                 "Property Rental Income Statistics."
+            ),
+        },
+        {
+            "family": "hmrc_itl",
+            "status": "active_calendar_year_window_anchors",
+            "active_reference_count": fanout_counts.get("hmrc_itl", 0),
+            "signed_rationale": (
+                "The three HMRC Income Tax liabilities statistics targets "
+                "(Income Tax payers, total income and Income Tax liabilities "
+                "by eleven total-income bands, Table 2.5, July 2026) fan out "
+                "by strict total-income-band pins and bind at the calendar-"
+                "2025 window of HMRC's 2024-25 and 2025-26 source projections "
+                "(three twelfths and nine twelfths; PolicyEngine/chronicle#280 lane, "
+                "María's ruling of 2026-09-22). They are the calibration-year "
+                "anchors the SPI component bands lack; the OBR fiscal-year "
+                "receipts row stays bound beside them."
+            ),
+        },
+        {
+            "family": "hmrc_spi_region",
+            "status": "active_region_tier_fanout_uprated",
+            "active_reference_count": fanout_counts.get("hmrc_spi_region", 0),
+            "signed_rationale": (
+                "The thirty SPI 2023-24 Table 3.11 targets (Income Tax payers, "
+                "total income and Income Tax liabilities by ten regional "
+                "total-income bands) fan out over the twelve-area region tier "
+                "(microcosm#905), one reference per area scoped by the "
+                "household-region predicate, each row moved to the calendar-"
+                "2025 calibration period by HMRC's own projected growth for "
+                "the measure in the Table 2.5 band(s) the regional band spans "
+                "(Income Tax liabilities statistics, July 2026; PolicyEngine/chronicle#280 "
+                "lane). The publisher's regional bands stop at 200,000 and "
+                "over, so that row takes the window over the 200k-500k, "
+                "500k-1m, 1m-2m and 2m+ bands together."
             ),
         },
         {

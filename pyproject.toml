@@ -10,7 +10,7 @@ members = ["packages/*"]
 [dependency-groups]
 # openpyxl parses the OMB CBSA delineation workbook and NISRA's published
 # DZ2021-to-PARLCON24 lookup in the US and UK ladder builders.
-dev = ["ruff>=0.8", "openpyxl>=3.1"]
+dev = ["ruff>=0.8", "openpyxl>=3.1", "pytest-xdist>=3.8"]
 
 [tool.ruff]
 line-length = 88
@@ -25,6 +25,10 @@ ignore = ["E501"]
 # defaults before numpy/torch load, which requires statements above the
 # import block.
 "tools/build_us_fiscal_refresh_release.py" = ["E402"]
+# Evidence scripts are frozen receipts of one-off measurements: formatted and
+# import-sorted, but their logic stays exactly as it produced the committed
+# outputs, so style rules that would edit that logic are waived.
+"docs/evidence/*/scripts/*.py" = ["B023", "B905", "E402", "E731", "N806"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so
@@ -40,4 +44,5 @@ markers = [
     "slow: end-to-end tests that require large local source artifacts",
     "requires_us: needs policyengine-us (the us extra); auto-skipped when absent",
     "requires_uk: needs policyengine-uk (the uk extra); auto-skipped when absent",
+    "integration: requires explicit --run-integration collection",
 ]

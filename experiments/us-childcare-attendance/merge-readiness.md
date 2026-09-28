@@ -5,7 +5,90 @@ reach merge-ready quality while retaining draft status. This audit does not
 authorize publication or replacing the default population. Completion is not
 yet established.
 
-## Current audit, September 20, 2026
+## Current audit, September 27, 2026
+
+This update starts from `25a54a4e` and merges upstream main at `9e5b0cee`.
+Maria's [September 22 review](https://github.com/PolicyEngine/microcosm/pull/916#issuecomment-5773509314)
+closes C1, A1, A2, S1 and S2. It retains the household-model concern as A3,
+names the missing raw-source build/certification as C2, and adds A4 for stale
+target-frame and reform-vector caches. S1's requested documentation and paired
+sensitivity work are resolved; empirical transport validity remains unproven.
+
+Main now hashes the staged tables, weights and strata before target
+materialization. The PR additionally verifies the attendance binding after the
+intervening source stages and includes its digest in the checkpoint identity.
+The reform-vector cache already includes that full materializer identity's
+digest. Thus changed attendance values or a changed execution invalidate both
+caches, including a recipe change that produces numerically identical values.
+Regression coverage uses synthetic bound source executions and real on-disk
+checkpoints/reform caches. It checks unchanged reuse, changed-value and
+changed-recipe misses, and refusal of tampered values before lookup.
+
+The merge preserves main's stored-input and batched post-export scoring gates.
+Attendance is persisted and reloaded before the scorer hashes the final H5.
+The attendance tests follow the new environment-specific directory layout,
+with shared synthetic fixtures under `test_support/microcosm_build/`.
+The exact-k runbook now states that multispine ingress does not restore the
+receipt and therefore needs the NSECE source configuration.
+
+The former upstream blockers have changed: #952 (processed ASEC pins), #955
+(labelled bare feed), #948 (SPM preflight), and #959 (SPM source-role stage) are merged and included
+here. #961 and Chronicle #278 remain open as of September 27. The validated
+consumer artifact is needed for the exact-k route; the supplied-base route
+can use the labelled bare feed. Main also supports `--new-lineage` preflight
+without the July frozen selection. The Modal runner currently covers the ACS
+local-release tool, not the full national raw-source/fiscal build required here.
+
+C2 remains open: this update does not carry a from-scratch build/certification
+receipt from its own tree, and no suitable build host has been identified for
+this task. A3 also remains open: the production household model fails 9/15
+provisional screens, and none of the inspected diagnostic alternatives has
+earned adoption. No threshold is relaxed and no development partition is
+relabeled as independent validation. The PR remains draft and
+`production_ready: false`; engineering cache fixes do not resolve these two
+findings or authorize publication.
+
+September 27 verification:
+
+- The 1,454-test affected-suite run finished with 1,448 passes, four failures
+  from stale serializer/export fixtures, and two skips. After the fixture fixes
+  below, all 23 serializer tests and all 17 selected fiscal-builder/cache tests
+  pass in follow-up runs, covering every failure. The two skipped tests require
+  `MICROCOSM_US_CHRONICLE_FACTS` to name the pinned consumer-facts feed; that feed
+  was not supplied to this run. The entire broad suite was not repeated after
+  the test-only fixes. GitHub CI was not monitored.
+- The focused attendance suite passes 145 tests under the US engine. The four
+  engine-free attendance modules also pass all 138 tests, and both cache
+  regressions pass separately, in a locked environment with no country engine
+  installed.
+- Both cache scenarios pass with the fix. A negative control that omits the
+  receipt's effect on identity reproduces the stale recipe-only checkpoint hit;
+  main's staged-value digest still protects the changed-value scenario.
+- All six workspace wheels build and pass the current wheel-content inspection.
+  The regenerated compiler report covers 42,187/42,187 fields and 41/41 inventory
+  checks. CI inventory verifies all 540 test modules in the new directory layout.
+  Repository lint, changed-file formatting and diff whitespace checks pass.
+- Main's SPM role projection and this PR's attendance writer bring the serializer
+  registry to eleven entries. The first broad run exposed the old count of ten;
+  the count and uniqueness assertions now cover all eleven registered writers,
+  and all 23 engine-free serializer checks pass after the correction.
+- The new green-export/stored-input harness from main uses household-only
+  frames and placeholder file bytes. Its attendance boundary doubles now match
+  that fixture design and append receipt bytes before the scorer opens the file.
+  The scorer's digest and release-manifest hashes must agree with those final
+  bytes. Real row, binding and native-reload checks remain in the NSECE tests;
+  no production gate is weakened to accommodate a fake frame.
+- Fresh verification of the existing 166,321-person candidate through both native
+  loaders reproduces `review-fixes-verification.json` byte for byte (SHA256
+  `765ef64f53b7cad45153bc96ffae65b6156f7c23259f004ad722c828edea165e`). Original
+  columns/weights and attendance bindings remain exact; this is integrity
+  evidence, not a new population build or statistical certification.
+
+## Historical audit, September 20, 2026
+
+The following records the earlier tree and its checks. Its dependency and
+latest-review statements are historical; the September 27 audit above governs
+the current status.
 
 The starting PR head is `d2601c7a0749b134822086f4783e03501c750e32`.
 Its 24 GitHub checks passed. The current integration base is

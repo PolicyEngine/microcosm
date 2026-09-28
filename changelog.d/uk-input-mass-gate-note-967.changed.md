@@ -1,0 +1,1 @@
+The `uk_input_mass_parity` gate note no longer describes the retired `charitable_investment_gifts` exclusion as the sole breach; it records the 2026-09-22 retirements and the two genuine breaches the gate names. The note rides the policy digest, so the UK gate-battery policy, manifest and fingerprint pins move with it (data contract and its test, lockstep-checked).

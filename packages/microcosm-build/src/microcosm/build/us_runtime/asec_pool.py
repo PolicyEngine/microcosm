@@ -6,6 +6,13 @@ already been enhanced. This module is the reusable source-side primitive:
 load raw Census CPS ASEC H5 files, make household ids globally unique across
 years, scale each year to an explicit person-population share, and construct
 the Microcosm US unit frame from the pooled person table.
+
+When a source names its pinned complete Census person file
+(``AsecSource.census_person_source``), the reviewed Census person columns its
+H5 lacks are restored from that file by exact ``PERIDNUM`` identity before the
+year is prepared (:mod:`.asec_census_person_columns`, microcosm #720), so the
+relationship recode, unit construction and every later reader see the same
+columns for every vintage.
 """
 
 from __future__ import annotations
@@ -18,6 +25,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.asec_census_person_columns import (
+    restore_asec_census_person_columns,
+)
+from microcosm.build.us_runtime.spm_role_source import AsecSpmRoleSource
 from microcosm.frame import (
     MICROUNIT_REQUIRED_COLUMNS,
     US_SCHEMA,
@@ -47,6 +58,14 @@ class AsecSource:
     path: Path
     share: float | None = None
     max_households: int | None = None
+    #: This income year's pinned complete Census ASEC person file (the
+    #: official archive or its extracted CSV). When set, the reviewed Census
+    #: person columns the H5 lacks are restored from it before anything else
+    #: reads the year (microcosm #720); production build tools always set it.
+    census_person_source: Path | None = None
+    #: Synthetic-test pin override for ``census_person_source``; production
+    #: uses ``spm_role_source.ASEC_SPM_ROLE_SOURCES[year]``.
+    census_person_pin: AsecSpmRoleSource | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +152,7 @@ def pool_asec_sources(
                 "raw_household_rows": int(len(household)),
                 "raw_person_population": raw_person_population,
                 "relationship_recode_source": prepared["relationship_recode_source"],
+                "census_person_columns": prepared["census_person_columns"],
                 "scale": scale,
                 "weighted_person_population": weighted_population,
             }
@@ -238,6 +258,17 @@ def _prepare_year_input(source: AsecSource, *, weight_scale: float) -> dict[str,
     tables = load_asec_h5_tables(source.path)
     person = tables["person"].reset_index(drop=True)
     household = tables["household"].reset_index(drop=True)
+    census_person_columns: dict[str, Any] | None = None
+    if source.census_person_source is not None:
+        # Before the relationship recode (which prefers a source A_EXPRRP) and
+        # before the smoke-household limit, so the PERIDNUM join is checked
+        # against the complete person universe of the Census member.
+        person, census_person_columns = restore_asec_census_person_columns(
+            person,
+            income_year=source.year,
+            source_path=source.census_person_source,
+            pin=source.census_person_pin,
+        )
     person, relationship_source = _with_relationship_recode(person)
     _require_columns(person, ("PH_SEQ", *MICROUNIT_REQUIRED_COLUMNS), label="person")
     _require_columns(household, ("H_SEQ", "HSUP_WGT"), label="household")
@@ -259,6 +290,7 @@ def _prepare_year_input(source: AsecSource, *, weight_scale: float) -> dict[str,
         "household": household.reset_index(drop=True),
         "raw_person_population": float(person_weights.sum()),
         "relationship_recode_source": relationship_source,
+        "census_person_columns": census_person_columns,
     }
 
 

@@ -47,6 +47,42 @@ class UKChronicleFeed:
         return result
 
 
+class UKChronicleFeedPinError(ValueError):
+    """A Ledger artifact is not the committed UK national Chronicle feed."""
+
+
+def require_committed_uk_chronicle_feed_pin(
+    facts_sha256: str,
+    *,
+    manifest_sha256: str | None,
+    allow_unpinned_feed: bool,
+    pin: UKChronicleFeed | None = None,
+) -> UKChronicleFeed:
+    """Refuse a Ledger artifact whose digests are not the committed feed pin.
+
+    Returns the pin the artifact was checked against. ``allow_unpinned_feed``
+    admits a mismatch for an explicitly reviewed diagnostic run; the caller
+    records the override in the run provenance.
+    """
+
+    pin = pin or load_uk_chronicle_feed()
+    mismatches = []
+    for label, loaded, committed in (
+        ("facts", facts_sha256, pin.facts_sha256),
+        ("manifest", manifest_sha256, pin.manifest_sha256),
+    ):
+        if loaded != committed:
+            mismatches.append(f"{label}: loaded {loaded}, committed {committed}")
+    if mismatches and not allow_unpinned_feed:
+        raise UKChronicleFeedPinError(
+            "Chronicle artifact differs from the committed UK national feed pin: "
+            + "; ".join(mismatches)
+            + "; pass --allow-unpinned-feed only for an explicitly reviewed "
+            "diagnostic run"
+        )
+    return pin
+
+
 def _feed_path():
     return files("microcosm.build.uk").joinpath("chronicle_feed.json")
 

@@ -1,0 +1,32 @@
+{
+  "schema": "microcosm-modal-us-stage-plan/1",
+  "tool": "us-acs-local-release",
+  "stage": "materialize",
+  "run_id": "replay-974-materialize",
+  "source": {
+    "commit": "cadaf418097964038ae539a3d5ce5acedaf49912",
+    "branch": "local-acs-hours-rebuild-20260921"
+  },
+  "inputs": {
+    "staging_h5": {
+      "uri": "volume://cas/sha256/f335f5737537b7efbf05840bfadcf84c74caeef15a3b27a0539e3df42cca1637/acs_multispine_staging.h5",
+      "sha256": "f335f5737537b7efbf05840bfadcf84c74caeef15a3b27a0539e3df42cca1637"
+    },
+    "staging_summary": {
+      "uri": "volume://cas/sha256/ebee1ac61811810082936b827a75e6f95ab0db1b139715f1d663bcb812c9e541/acs_multispine_staging.summary.json",
+      "sha256": "ebee1ac61811810082936b827a75e6f95ab0db1b139715f1d663bcb812c9e541"
+    },
+    "feed": {
+      "uri": "volume://cas/sha256/4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f/consumer_facts.jsonl",
+      "sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f"
+    },
+    "ladder": {
+      "uri": "volume://cas/sha256/39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8/us_puma_ladder_2020.npz",
+      "sha256": "39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+    }
+  },
+  "options": {
+    "soi_mode": "totals",
+    "hh_chunk": 20000
+  }
+}

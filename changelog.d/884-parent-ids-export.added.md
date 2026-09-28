@@ -1,0 +1,1 @@
+US person input columns `parent_1_id` and `parent_2_id`: the CPS ASEC `PEPAR1`/`PEPAR2` pointers resolved to a co-resident parent's `person_id` (0 when unknown or absent), so downstream rules can ask whose child a person is rather than only how many children an adult has.

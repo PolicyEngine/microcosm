@@ -7,6 +7,7 @@ those primitives, without importing the incumbent UK data package.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import time
@@ -103,8 +104,24 @@ LAD23_ITL_URL = (
     "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
     "02b4942973374f039ec1d2e7d35c16a9/csv?layers=0"
 )
+# "Local Authority Districts (April 2023) Names and Codes in the United
+# Kingdom" — ONS Open Geography Portal item e8b361ba.... The names source for
+# the engine's ``local_authority`` input (microcosm#953). One file on the
+# April 2023 LAD frame covers all four nations: Scottish council-area and
+# Northern Irish district codes are unchanged since ca_2019 / lgd_2014, so the
+# ladder's three roster vintages resolve through a single lookup.
+LAD23_NAMES_ITEM_ID = "e8b361ba9e98418ba8ff2f892d00c352"
+LAD23_NAMES_URL = (
+    "https://open-geography-portalx-ons.hub.arcgis.com/api/download/v1/items/"
+    f"{LAD23_NAMES_ITEM_ID}/csv?layers=0"
+)
+#: sha256 of the published CSV bytes (361 rows, LAD23CD/LAD23NM/LAD23NMW/
+#: ObjectId). The loader, the names generator and the committed resource all
+#: assert this digest, so a re-published lookup is a reviewed change here.
+LAD23_NAMES_SHA256 = "6c2d811f50756c459c6a1c7c692ae9262fb4d70df3f535958ef7cdbbbd76cc44"
 
 ENGLAND_WALES_OA2021_COUNT = 188_880
+LAD23_COUNT = 361
 SCOTLAND_OA2022_COUNT = 46_363
 NI_DZ2021_COUNT = 3_780
 NI_PARLCON24_COUNT = 18
@@ -1341,6 +1358,65 @@ def _normalise_scotland_population(
         errors="raise",
     )
     return population.reset_index(drop=True)
+
+
+def load_lad23_names_lookup(url: str = LAD23_NAMES_URL) -> pd.DataFrame:
+    """Load the ONS April 2023 local authority names-and-codes lookup.
+
+    Returns ``local_authority_code`` and ``local_authority_name`` for every UK
+    local authority district on the April 2023 frame (361 rows across England,
+    Wales, Scotland and Northern Ireland), after the downloaded bytes match
+    ``LAD23_NAMES_SHA256``. The Welsh-language name column (``LAD23NMW``) is
+    not carried: the engine's ``LocalAuthority`` member names derive from the
+    English display name (microcosm#953).
+    """
+
+    payload = verify_lad23_names_bytes(_read_url_bytes(url))
+    return normalise_lad23_names(pd.read_csv(io.BytesIO(payload), dtype=str))
+
+
+def verify_lad23_names_bytes(payload: bytes) -> bytes:
+    """Return ``payload`` if its sha256 is the pinned ``LAD23_NAMES_SHA256``."""
+
+    observed = hashlib.sha256(payload).hexdigest()
+    if observed != LAD23_NAMES_SHA256:
+        raise ValueError(
+            "LAD23 names lookup digest mismatch: expected "
+            f"{LAD23_NAMES_SHA256}, got {observed}. A re-published lookup "
+            "must be re-pinned in geography_sources.LAD23_NAMES_SHA256 and the "
+            "names resource regenerated (microcosm#953)."
+        )
+    return payload
+
+
+def normalise_lad23_names(frame: pd.DataFrame) -> pd.DataFrame:
+    """Normalise an ONS LAD23 names-and-codes table to code and name columns.
+
+    Refuses a table without ``LAD23CD``/``LAD23NM``, blank codes or names,
+    duplicate codes, and any roster size other than ``LAD23_COUNT``.
+    """
+
+    upper_to_column = {
+        str(column).strip().lstrip("\ufeff").upper(): column for column in frame
+    }
+    code_column = upper_to_column.get("LAD23CD")
+    name_column = upper_to_column.get("LAD23NM")
+    if code_column is None or name_column is None:
+        raise ValueError("LAD23 names lookup is missing LAD23CD or LAD23NM columns.")
+    lookup = pd.DataFrame(
+        {
+            "local_authority_code": frame[code_column],
+            "local_authority_name": frame[name_column],
+        }
+    )
+    return _normalise_code_rows(
+        lookup,
+        label="LAD23 names lookup",
+        unique_column="local_authority_code",
+        expected_count=LAD23_COUNT,
+        unit_label="LAD23",
+        prefixes=("E", "W", "S", "N"),
+    )
 
 
 def _normalise_ew_lad_lookup(frame: pd.DataFrame) -> pd.DataFrame:

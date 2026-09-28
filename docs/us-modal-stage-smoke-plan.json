@@ -1,0 +1,25 @@
+{
+  "schema": "microcosm-modal-us-stage-plan/1",
+  "tool": "runner-smoke",
+  "stage": "smoke",
+  "run_id": "runner-smoke-cadaf418",
+  "source": {
+    "commit": "cadaf418097964038ae539a3d5ce5acedaf49912",
+    "branch": "local-acs-hours-rebuild-20260921"
+  },
+  "inputs": {
+    "ladder": {
+      "uri": "volume://cas/sha256/39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8/us_puma_ladder_2020.npz",
+      "sha256": "39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+    },
+    "staging_summary": {
+      "uri": "volume://cas/sha256/ebee1ac61811810082936b827a75e6f95ab0db1b139715f1d663bcb812c9e541/acs_multispine_staging.summary.json",
+      "sha256": "ebee1ac61811810082936b827a75e6f95ab0db1b139715f1d663bcb812c9e541"
+    },
+    "hub_file": {
+      "uri": "hf://datasets/policyengine/populace-us@85a1ccb0b61e46fede793e3da6d5e4dd2e307374/latest.json",
+      "sha256": "7a5021f34d91ae79961ab93c6d90dc2d1b9322e9cc485606f92994a1ddd60fc7"
+    }
+  },
+  "max_wall_seconds": 600
+}

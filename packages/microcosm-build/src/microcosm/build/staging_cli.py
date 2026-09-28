@@ -21,8 +21,16 @@ def add_staging_arguments(
     parser: argparse.ArgumentParser,
     *,
     repository: StagingRepositoryConfig,
+    default_upload_interval_seconds: float = 30.0,
 ) -> None:
-    """Add staging controls using defaults supplied by a country module."""
+    """Add staging controls using defaults supplied by a country module.
+
+    ``default_upload_interval_seconds`` lets a long-running command choose a
+    slower best-effort upload cadence: the Hub allows about 128 commits per
+    hour per repository and every telemetry cycle is up to eight single-file
+    commits, so a multi-hour solve at the 30-second default exhausts the
+    budget and loses uploads (the UK rowwise driver runs at 300).
+    """
 
     parser.add_argument(
         "--staging-dir",
@@ -48,7 +56,7 @@ def add_staging_arguments(
     parser.add_argument(
         "--staging-upload-interval-seconds",
         type=float,
-        default=30.0,
+        default=float(default_upload_interval_seconds),
         help="Minimum interval between best-effort progress uploads.",
     )
     mode = parser.add_mutually_exclusive_group()

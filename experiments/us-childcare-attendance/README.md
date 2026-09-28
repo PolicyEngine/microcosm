@@ -1,5 +1,11 @@
 # NSECE attendance: review hardening and rebuilt candidate — 2026-09-17
 
+**September 27 status:** see the [current review audit](merge-readiness.md).
+The branch now includes main's test-layout and builder changes and binds target
+checkpoints/reform caches to the verified attendance execution (review A4).
+The source recipe and population estimates below are unchanged. Maria's C2
+(raw build/certification) and A3 (household-model validation) remain open.
+
 **PR #916 remains draft.** A second code review found that the fiscal builder
 could not finish a build with attendance, and that the native receipt path could
 damage or over-share the release file. Those defects are fixed, the noncalendar

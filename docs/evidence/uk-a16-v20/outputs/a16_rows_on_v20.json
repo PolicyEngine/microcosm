@@ -1,0 +1,616 @@
+{
+ "candidate_h5": "/Users/mariajuaristi/Desktop/PolicyEngine/runs/uk-623-first-calibrated/spine-assessment-v20/microcosm_uk_2024.h5",
+ "contract_register": {
+  "path": "/Users/mariajuaristi/Desktop/PolicyEngine/repos/uk-candidate-eval/out/frozen_scoring_register.json",
+  "n_specs": 705
+ },
+ "excluded_entries": 67,
+ "measured": 62,
+ "unresolvable_on_candidate": 5,
+ "within_25pct": 10,
+ "rows": [
+  {
+   "name": "dwp.benefit_cap.capped_households_1000_01_to_1100",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": 0.35345815125125757,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_100_01_to_200",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.4481693760335293,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_1100_01_to_1200",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": 4.715556897615132,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_1200_01_to_1300",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_1300_01_and_above",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": 14.595738461143092,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_200_01_to_300",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.10144728298844963,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_300_01_to_400",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.5473043813418312,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_400_01_to_500",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.037687252078366984,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": true
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_500_01_to_600",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": 0.648402512571231,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_600_01_to_700",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.47596102164859794,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_700_01_to_800",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": 2.3904674461838074,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_800_01_to_900",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": 1.9122029959437359,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.benefit_cap.capped_households_900_01_to_1000",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-12-08",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.hb.households",
+   "tracking": "microcosm#867",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.5623232070339688,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.hb.households_private_rented",
+   "tracking": "microcosm#867",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.6434371885583391,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.hb.households_social_rented",
+   "tracking": "microcosm#867",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.544383524266314,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.jsa_claimants",
+   "tracking": "microcosm#869",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.3869038162500086,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp.uc.households_housing_element",
+   "tracking": "microcosm#882",
+   "expires_on": "2026-10-15",
+   "relative_error": -0.028268421565201853,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": true
+  },
+  {
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.9099841702063353,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800",
+   "tracking": "microcosm#736",
+   "expires_on": "2026-12-08",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000",
+   "tracking": "microcosm#736",
+   "expires_on": "2026-12-08",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_10_800_to_12_000",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.08142506186312688,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": true
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_12_000_to_13_200",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.46236892861033185,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_13_200_to_14_400",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.5944516357917213,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_14_400_to_15_600",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.33940014584956163,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_15_600_to_16_800",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.5269852986018834,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_16_800_to_18_000",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.22678277327011268,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_18_000_to_19_200",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.5062625691621834,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_19_200_to_20_400",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.5112559600656904,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_21_600_to_22_800",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.44527555223077536,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_13_200_to_14_400",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.299546792665799,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_14_400_to_15_600",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.1863542251473777,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_21_600_to_22_800",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": 1.7516978114669297,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_27_600_to_28_800",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": 6.518936973392257,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": 0.22327907268654476,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": false
+  },
+  {
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800",
+   "tracking": "uk-data#452",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.24164051304899195,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
+   "tracking": "microcosm#623",
+   "expires_on": "2026-11-25",
+   "relative_error": null,
+   "unresolvable": "counterfactual_delta",
+   "within_25pct": null,
+   "within_10pct": null
+  },
+  {
+   "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
+   "tracking": "microcosm#623",
+   "expires_on": "2026-11-25",
+   "relative_error": null,
+   "unresolvable": "counterfactual_delta",
+   "within_25pct": null,
+   "within_10pct": null
+  },
+  {
+   "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "tracking": "microcosm#623",
+   "expires_on": "2026-11-25",
+   "relative_error": null,
+   "unresolvable": "counterfactual_delta",
+   "within_25pct": null,
+   "within_10pct": null
+  },
+  {
+   "name": "hmrc.salary_sacrifice.nics_relief_employee",
+   "tracking": "microcosm#623",
+   "expires_on": "2026-11-25",
+   "relative_error": null,
+   "unresolvable": "counterfactual_delta",
+   "within_25pct": null,
+   "within_10pct": null
+  },
+  {
+   "name": "hmrc.salary_sacrifice.nics_relief_employer",
+   "tracking": "microcosm#623",
+   "expires_on": "2026-11-25",
+   "relative_error": null,
+   "unresolvable": "counterfactual_delta",
+   "within_25pct": null,
+   "within_10pct": null
+  },
+  {
+   "name": "hmrc/dividend_income_count_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.4247510888323754,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/employment_income_count_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": 0.1686265697711481,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/employment_income_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.2526732563272649,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/property_income_count_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/property_income_count_income_band_500_000_to_1_000_000",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": 0.8612986896221454,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/self_employment_income_count_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.28272758345170457,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/self_employment_income_count_income_band_500_000_to_1_000_000",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": 0.00012426687876383464,
+   "unresolvable": null,
+   "within_25pct": true,
+   "within_10pct": true
+  },
+  {
+   "name": "hmrc/self_employment_income_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.3926640883194083,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": 11.270578982597055,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": 2.31990580083485,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "mhclg.council_tax_stock.band_h@E12000001",
+   "tracking": "microcosm#796",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "mhclg.council_tax_stock.band_h@E12000002",
+   "tracking": "microcosm#796",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "mhclg.council_tax_stock.band_h@E12000003",
+   "tracking": "microcosm#796",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "obr.housing_benefit",
+   "tracking": "microcosm#867",
+   "expires_on": "2026-12-08",
+   "relative_error": -0.6030554418834341,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "obr.universal_credit_in_cap",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.9686001602613119,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "obr.universal_credit_outside_cap",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": 4.991470053051877,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "ons.savings_interest_income",
+   "tracking": "microcosm#866",
+   "expires_on": "2026-10-03",
+   "relative_error": -0.8212790831838676,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "slc.borrowers.plan_2_above_threshold",
+   "tracking": "microcosm#868",
+   "expires_on": "2026-10-03",
+   "relative_error": -0.6382088891683673,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "slc.borrowers.plan_2_liable",
+   "tracking": "microcosm#868",
+   "expires_on": "2026-10-03",
+   "relative_error": -0.5974809773570987,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "slc.borrowers.plan_5_liable",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.830589799167799,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "slc.repayments.england_plan_5",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -0.9410493483613644,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  },
+  {
+   "name": "slc.repayments.england_postgraduate",
+   "tracking": "microcosm#757",
+   "expires_on": "2026-11-26",
+   "relative_error": -1.0,
+   "unresolvable": null,
+   "within_25pct": false,
+   "within_10pct": false
+  }
+ ]
+}

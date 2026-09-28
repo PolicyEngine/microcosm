@@ -213,6 +213,14 @@ input with existing under-13 attendance and no production receipt is rejected,
 including all-zero columns; use the original unmodified parent. The lower-level
 observed-cell imputer remains available for separately sourced observations.
 
+Immediately before target materialization, the builder revalidates attendance
+and adds its `binding_sha256` to the target-frame checkpoint identity. This
+binds the execution as well as the values covered by main's staged-frame digest.
+The reform-vector cache includes the complete materializer identity digest, so
+both caches miss when attendance values or their source execution change, even
+with the same parent H5, seed and engine version. An unchanged verified execution
+can reuse its checkpoint; tampered attendance is refused before cache lookup.
+
 Calibration weights and row selection/order may change without invalidating
 retained people. Changed IDs, membership, ages or attendance require a new source
 execution. The final fiscal export checks every row for completeness, bounds,
@@ -259,8 +267,11 @@ Add this object alongside `pool`, `ladder`, `targets`, `calibration`, and
 against the config file. Both TSVs and an explicit boolean outside-domain policy
 are required when the object is present; the ASEC cache is optional. The launcher
 checks the TSVs against the packaged source hashes before invoking the builder,
-and the source stage checks them again when loading. Omit the object only when
-the input already carries attendance accepted by the production receipt checks.
+and the source stage checks them again when loading. The authenticated multispine
+pool ingress does not restore an attendance receipt. Supply this object for
+that route even if an earlier local file held attendance. Omitting it is only
+supported on a receipt-aware ingress that preserves a production-valid binding;
+the fiscal builder otherwise refuses before calibration.
 This wiring does not qualify a new survey origin or replace the full fiscal
 build and population validation.
 

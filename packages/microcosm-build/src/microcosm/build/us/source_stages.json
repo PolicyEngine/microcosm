@@ -2065,6 +2065,33 @@
       "notes": "Exact measured ASEC mappings from archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 1069-1075 and 1209-1221: is_household_head <- P_SEQ == 1; is_separated <- A_MARITL == 6; is_surviving_spouse <- A_MARITL == 4. Nothing is imputed. The stage fails unless every frame household has exactly one P_SEQ == 1 record (PH_SEQ before support cloning, person_household_id after cloning)."
     },
     {
+      "stage": "spm_independence_role",
+      "survey": "Census CPS ASEC",
+      "source": "https://www.census.gov/programs-surveys/cps.html",
+      "grain": "person",
+      "artifacts": [
+        {
+          "kind": "public_microdata",
+          "format": "census_asec",
+          "vintage": "2022-2024 pooled",
+          "locator": "SHA-pinned complete Census CPS ASEC public-use person files pppub23.csv, pppub24.csv and pppub25.csv (survey years 2023-2025, income years 2022-2024): SPM unit head flag (SPM_HEAD), family type (A_FAMTYP) and family relationship (A_FAMREL), joined to each pooled person by income year and exact 22-digit PERIDNUM"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_table",
+          "table": "person"
+        },
+        {
+          "kind": "derive_spm_independence_role"
+        }
+      ],
+      "outputs": [
+        "is_spm_independent_minor_role"
+      ],
+      "notes": "The one dataset source input policyengine_us.spm.DATASET_SOURCE_INPUTS declares. No frozen census_cps input carries SPM_HEAD and only the 2024 vintage carries A_FAMTYP/A_FAMREL, so the role is restored from the pinned complete Census person CSVs through microcosm.build.us_runtime.spm_role_source.derive_spm_role_source: is_spm_independent_minor_role <- SPM_HEAD == 1 OR (A_FAMTYP in {1,4} AND A_FAMREL in {1,2}), stored before any age gate. The stage fails unless every person joins exactly one pinned Census row, every native SPM unit is one complete source unit with exactly one SPM_HEAD, derived adult/child/person counts reproduce SPM_NUMADULTS/SPM_NUMKIDS/SPM_NUMPER, and no SPM unit is left without a classified adult (age >= 18 OR (age >= 15 AND role)). Nothing is imputed; no weight is used; no age is changed."
+    },
+    {
       "stage": "medicare_take_up_input",
       "survey": "Census CPS ASEC",
       "source": "https://www.census.gov/programs-surveys/cps.html",
@@ -2200,13 +2227,17 @@
         "is_blind",
         "is_full_time_college_student",
         "own_children_in_household",
+        "parent_1_id",
+        "parent_2_id",
         "veterans_benefits"
       ],
       "nonnegative_outputs": [
         "own_children_in_household",
+        "parent_1_id",
+        "parent_2_id",
         "veterans_benefits"
       ],
-      "notes": "Direct mappings of measured ASEC demographic variables reproducing the retired enhanced-CPS pipeline's constructions (each cited to the retired pipeline's source files in the stage module): is_disabled <- any PEDIS* difficulty item == 1, aligned with reported SSI (under-65 SSI_VAL > 0 implies disabled \u2014 the retired align_reported_ssi_disability rule from datasets/cps/takeup.py, applied to is_disabled in cps.py); is_blind <- PEDISEYE == 1; is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1 (the retired primary branch; census_cps.py loads A_FTPT, so the published surface ran the strict form \u2014 the A_HSCOL-only fallback for loads without A_FTPT is not reproduced); own_children_in_household <- count of household members whose PEPAR1/PEPAR2 parent pointers resolve to the person within PH_SEQ; veterans_benefits <- VET_VAL. Nothing is imputed. Without this stage every input takes its engine default (False/0), erasing SNAP disability, student, parent/child, and veteran exemption channels (microcosm #244/#248). is_veteran is formula-owned in PolicyEngine-US (derived from veterans_benefits) and is deliberately not exported (microcosm #24)."
+      "notes": "Direct mappings of measured ASEC demographic variables reproducing the retired enhanced-CPS pipeline's constructions (each cited to the retired pipeline's source files in the stage module): is_disabled <- any PEDIS* difficulty item == 1, aligned with reported SSI (under-65 SSI_VAL > 0 implies disabled \u2014 the retired align_reported_ssi_disability rule from datasets/cps/takeup.py, applied to is_disabled in cps.py); is_blind <- PEDISEYE == 1; is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1 (the retired primary branch; census_cps.py loads A_FTPT, so the published surface ran the strict form \u2014 the A_HSCOL-only fallback for loads without A_FTPT is not reproduced); own_children_in_household <- count of household members whose PEPAR1/PEPAR2 parent pointers resolve to the person within PH_SEQ; parent_1_id/parent_2_id <- the person_id of the co-resident member the person's PEPAR1/PEPAR2 pointer names within PH_SEQ, 0 when the pointer is absent or resolves to no co-resident line (microcosm#884; the relation behind the count, consumed by policyengine-us#9404); veterans_benefits <- VET_VAL. Nothing is imputed. Without this stage every input takes its engine default (False/0), erasing SNAP disability, student, parent/child, and veteran exemption channels (microcosm #244/#248). is_veteran is formula-owned in PolicyEngine-US (derived from veterans_benefits) and is deliberately not exported (microcosm #24)."
     },
     {
       "stage": "pregnancy",

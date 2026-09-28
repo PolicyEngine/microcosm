@@ -1,0 +1,51 @@
+{
+  "base_h5": "/Users/maxghenis/PolicyEngine/_buildq-runtime/out/base-q3/base_populace_us_2024_puf_support.h5",
+  "households": 352932,
+  "persons": 907382,
+  "spm_units": 367306,
+  "defect": {
+    "units_without_member_aged_18_or_over": 238,
+    "units_without_classified_adult": 222,
+    "offending_units_containing_a_15_to_17_year_old": 238,
+    "members_aged_15_to_17_in_offending_units": 242,
+    "offending_unit_sizes": {
+      "1": 228,
+      "2": 8,
+      "4": 2
+    },
+    "offending_member_channels": {
+      "asec": 126,
+      "puf_tax_detail": 126
+    }
+  },
+  "fallback": {
+    "is_household_head_present": true,
+    "is_household_spouse_present": false,
+    "is_spm_independent_minor_role_present": false
+  },
+  "raw_rule_leg": {
+    "SPM_HEAD_present": false,
+    "A_FAMTYP_null_share": 0.6687249691970967,
+    "persons_flagged_by_famtyp_famrel_leg": 138901,
+    "offending_teens_flagged_by_leg": 10,
+    "units_unresolved_by_leg_alone": 230
+  },
+  "asec_origin": {
+    "persons_with_22_digit_source_person_id": 907382,
+    "spm_units_with_no_asec_origin_member": 0,
+    "distinct_source_persons": 338736,
+    "max_repeats_of_one_source_person_within_one_spm_unit": 1
+  },
+  "derive_spm_role_source_preconditions": {
+    "missing_required_columns": [],
+    "source_years": [
+      2022,
+      2023,
+      2024
+    ],
+    "person_id_unique": true,
+    "spm_unit_id_unique": true,
+    "membership_exactly_covers_spm_table": true,
+    "no_source_person_repeats_within_a_unit": true
+  }
+}

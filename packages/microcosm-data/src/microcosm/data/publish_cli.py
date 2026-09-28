@@ -196,6 +196,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Optional tag name override; defaults to the release id.",
     )
     parser.add_argument(
+        "--promote-line",
+        metavar="LINE",
+        help=(
+            "Promote the release through latest-<line>.json. Requires "
+            "--tag-name and never writes latest.json."
+        ),
+    )
+    parser.add_argument(
         "--extra-file",
         action="append",
         default=[],
@@ -255,6 +263,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.promote_line is not None:
+        if args.no_latest:
+            parser.error("--promote-line cannot be combined with --no-latest.")
+        if args.tag_only:
+            parser.error("--promote-line cannot be combined with --tag-only.")
+        if args.evidence:
+            parser.error("--promote-line cannot be combined with --evidence.")
+        if not args.tag_name:
+            parser.error("--promote-line requires --tag-name.")
     if args.tag_only and not args.no_latest:
         parser.error("--tag-only requires --no-latest.")
     if args.tag_only and not args.create_tag:
@@ -306,6 +323,7 @@ def main(argv: list[str] | None = None) -> int:
         update_latest=not args.no_latest,
         tag_only=args.tag_only,
         evidence=args.evidence,
+        line=args.promote_line,
     )
     from microcosm.data.source_enrichment import recorded_narrowed_claims
 
