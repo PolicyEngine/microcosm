@@ -251,6 +251,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Block -> congressional-district plan registry: artifact assembly,
+        # validating loader and 2010->2020 plan crosswalk. Assigns no
+        # households and applies no population treatment.
+        "cd_plan_registry.py",
         # Reviewed Chronicle feed pin loader; no population treatment. Remains
         # subject to the all-runtime source-identity scan.
         "chronicle_feed.py",

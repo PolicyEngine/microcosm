@@ -167,6 +167,7 @@ from microcosm.build.uk_runtime.staging import (
     UK_STAGING_REPOSITORY,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.diagnostics import DiagnosticsWriteFailure
 from microcosm.frame import Frame, MassChangeRecord
 
 BOUND_TARGET_FAMILIES = ("census_households/constituency",)
@@ -3731,7 +3732,7 @@ def _write_output_bundle(
             ),
         )
         local_registry.to_json(staged["local_registry"])
-        write_uk_calibration_diagnostics(
+        diagnostics_outcome = write_uk_calibration_diagnostics(
             solve.calibration_result,
             staged["calibration_diagnostics"],
             solve.frame,
@@ -3744,8 +3745,14 @@ def _write_output_bundle(
                 "candidate_scope": "adjudicated_partial",
             },
         )
+        if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):
+            raise RuntimeError(
+                "UK candidate assembly requires calibration diagnostics, but their "
+                f"canonical write failed [{diagnostics_outcome.error_code}]: "
+                f"{diagnostics_outcome.message}"
+            )
         calibration_diagnostics = json.loads(
-            staged["calibration_diagnostics"].read_text(encoding="utf-8")
+            diagnostics_outcome.path.read_text(encoding="utf-8")
         )
         args._weakest_areas_by_fit = calibration_diagnostics["uk_diagnostics"][
             "weakest_areas_by_fit"

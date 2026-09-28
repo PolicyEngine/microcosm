@@ -15,6 +15,7 @@ dependencies = [
     "microcosm-graph>=0.1,<0.2",
     "microcosm-fit>=0.1,<0.2",
     "microcosm-calibrate>=0.1,<0.2",
+    "microcosm-diagnostics>=0.1,<0.2",
     # Parquet is the artifact format for the us_trade margin and entry
     # tables; pandas>=3 pulls pyarrow anyway, but the dependency is real.
     "pyarrow>=15",
@@ -71,4 +72,5 @@ microcosm-frame = { workspace = true }
 microcosm-graph = { workspace = true }
 microcosm-fit = { workspace = true }
 microcosm-calibrate = { workspace = true }
+microcosm-diagnostics = { workspace = true }
 microcosm-data = { workspace = true }

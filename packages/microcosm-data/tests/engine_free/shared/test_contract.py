@@ -117,13 +117,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "77c39b24d445a1c71ae4a2eee370442dff00d03154041fa97941343f846c8d8c"
+    "d0090b7214ade3fc64d2e4b78cbf8027031997d48bfb1ee1f94c3f4917d1a562"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a9f73615aa7fe6c9e7a9b0edca82933d766ff3eaa20b39995426e6958b2ca800"
+    "c795750a8cf244ef21d02661459ba6d4cd7e015df1b82f891db25f261272537e"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "150e7a8f0100cd1127cde8f1d79396a2dbf2acf7be440a058e4860bf36e7cb0e"
+    "83fb2c65ff3c5858b148bb6982d4d2b2fe8f92ce44bfa2b88a44f45adc64c7c3"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -553,6 +553,60 @@ def _calibration_diagnostics() -> dict:
             ),
         ],
     }
+
+
+def _schema_8_calibration_diagnostics() -> dict:
+    diagnostics = _calibration_diagnostics()
+    targets = diagnostics["targets"]
+    diagnostics.update(
+        schema_version=8,
+        l0_lambda=0.0,
+        n_nonzero=2,
+        n_records=2,
+        initial_loss=1.0,
+        final_loss=0.5,
+        fraction_within_10pct=1.0,
+        effective_sample_size=2.0,
+        realized_max_weight_ratio=1.0,
+        top_1pct_weight_share=0.5,
+        past_cap_census=None,
+        diagnostic_warnings=[],
+    )
+    diagnostics["target_surface"]["n_targets"] = len(targets)
+    diagnostics["target_surface"]["constraint_matrix"] = {
+        "rows": len(targets),
+        "columns": 2,
+        "nnz": len(targets),
+    }
+    diagnostics["target_registry"]["n_specs"] = len(targets)
+    for row in targets:
+        row["registry"].update(se=None, signed=False, notes="")
+        row["hierarchy"] = {
+            "provider": {"id": "fixture", "label": "Fixture provider"},
+            "category": {
+                "id": "fixture.population",
+                "label": "Population",
+                "provider_id": "fixture",
+            },
+            "geography": {
+                "id": "0100000US",
+                "label": "United States",
+                "level": "country",
+            },
+            "dimensions": [
+                {
+                    "id": "sex",
+                    "label": "Sex",
+                    "value_id": "female",
+                    "value_label": "Female",
+                }
+            ],
+            "target": {
+                "id": row["target_name"],
+                "label": "Fixture target",
+            },
+        }
+    return diagnostics
 
 
 def additional_critical_credit_rows() -> list[dict]:
@@ -3767,34 +3821,7 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
 
 
 def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
-    diagnostics = _calibration_diagnostics()
-    diagnostics["schema_version"] = 8
-    for row in diagnostics["targets"]:
-        row["hierarchy"] = {
-            "provider": {"id": "fixture", "label": "Fixture provider"},
-            "category": {
-                "id": "fixture.population",
-                "label": "Population",
-                "provider_id": "fixture",
-            },
-            "geography": {
-                "id": "0100000US",
-                "label": "United States",
-                "level": "country",
-            },
-            "dimensions": [
-                {
-                    "id": "sex",
-                    "label": "Sex",
-                    "value_id": "female",
-                    "value_label": "Female",
-                }
-            ],
-            "target": {
-                "id": row["target_name"],
-                "label": "Fixture target",
-            },
-        }
+    diagnostics = _schema_8_calibration_diagnostics()
     _write_json_and_refresh_manifest_hash(
         release_dir,
         filename="calibration_diagnostics.json",
@@ -3805,25 +3832,28 @@ def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
     validate_release_dir(release_dir)
 
 
-def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
-    diagnostics = _calibration_diagnostics()
-    diagnostics["schema_version"] = 8
+def test_explicit_diagnostics_failure_does_not_block_national_release(
+    release_dir: Path,
+) -> None:
+    (release_dir / "calibration_diagnostics.json").unlink()
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"].pop("calibration_diagnostics")
+    manifest["calibration_diagnostics"] = {
+        "status": "failed",
+        "expected_schema_version": 8,
+        "error_code": "validation_error",
+        "message": "Target hierarchy is incomplete.",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+
+    validate_release_dir(release_dir)
+
+
+def test_schema_8_always_uses_shared_validation(release_dir: Path) -> None:
+    diagnostics = _schema_8_calibration_diagnostics()
     for row in diagnostics["targets"]:
-        row["hierarchy"] = {
-            "provider": {"id": "fixture", "label": "Fixture provider"},
-            "category": {
-                "id": "fixture.population",
-                "label": "",
-                "provider_id": "another-provider",
-            },
-            "geography": {
-                "id": "0100000US",
-                "label": "United States",
-                "level": "country",
-            },
-            "dimensions": [],
-            "target": {"id": "wrong", "label": "Fixture target"},
-        }
+        row["hierarchy"]["category"]["label"] = " "
     _write_json_and_refresh_manifest_hash(
         release_dir,
         filename="calibration_diagnostics.json",
@@ -3835,9 +3865,9 @@ def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
         validate_release_dir(release_dir)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "hierarchy.category.label must be a non-empty string" in failures
-    assert "hierarchy.category.provider_id must equal" in failures
-    assert "hierarchy.target.id must equal" in failures
+    assert "does not satisfy the shared schema" in failures
+    assert "hierarchy.category.label" in failures
+    assert "non-whitespace" in failures
 
 
 def test_schema_7_rejects_an_empty_target_label(release_dir: Path) -> None:
