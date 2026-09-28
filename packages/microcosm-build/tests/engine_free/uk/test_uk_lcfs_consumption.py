@@ -391,6 +391,8 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
     energy = lcfs_energy_pricing(stage)
     assert energy is not None
     assert energy.gas_connected == "published_meter_share"
+    assert energy.disconnect_rule == "identity_uniform_order"
+    assert energy.disconnect_seed == 0
     rng = np.random.default_rng(3)
     n = 2400
     household = pd.DataFrame(
@@ -416,7 +418,10 @@ def test_post_imputation_rake_fits_all_four_need_margins_in_kwh() -> None:
         accommodation=accommodation,
         weights=weights,
         iterations=50,
+        identity=np.arange(1, n + 1),
     )
+    assert receipt["gas_connection"]["disconnect_rule"] == "identity_uniform_order"
+    assert receipt["gas_connection"]["seed"] == 0
     elec = raked["electricity_consumption"].to_numpy(dtype=float)
     gas = raked["gas_consumption"].to_numpy(dtype=float)
     factor = receipt["level_factor"]

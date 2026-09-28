@@ -437,3 +437,73 @@ class TestE9Receipt:
         assert receipt["benunits_recomputed"] == 1
         assert receipt["benunits_excluded_as_copies"] == 2
         assert receipt["matches_stored_columns"] is True
+
+
+class TestRosterOrderedScoping:
+    """E5/E6 run after the SPI stack and before the CGT layers."""
+
+    def test_only_layers_stacked_after_a_stage_are_stripped(self) -> None:
+        tool = _load_tool()
+        household = pd.DataFrame(
+            {
+                "household_is_spi_synthetic": [False],
+                "household_is_capital_gains_clone": [False],
+                "household_is_cgt_band_donor": [False],
+            }
+        )
+        expected_later = [
+            "household_is_capital_gains_clone",
+            "household_is_cgt_band_donor",
+        ]
+        assert tool._flags_stacked_after("was_wealth", household) == expected_later
+        assert tool._flags_stacked_after("nts_bus_travel", household) == (
+            expected_later
+        )
+        # The E4 draws still precede every stacking layer.
+        assert tool._flags_stacked_after("frs_take_up", household) == [
+            "household_is_spi_synthetic",
+            *expected_later,
+        ]
+
+    def test_e5_receipt_covers_the_spi_rows_the_stage_imputed(self) -> None:
+        from microcosm.build.uk_runtime.regional_uprating import (
+            uprate_household_property_by_region,
+        )
+
+        tool = _load_tool()
+        resource = {
+            "values": [{"region": "LONDON", "avg_house_price": 400.0, "dwellings": 1}]
+        }
+        household = pd.DataFrame(
+            {
+                "household_id": [100, 200, 300],
+                "region": ["LONDON", "LONDON", "LONDON"],
+                "household_support_channel": ["frs", "frs", "spi"],
+                "household_is_spi_synthetic": [False, False, True],
+                "main_residence_value": [100.0, 300.0, 1_000.0],
+                "property_wealth": [100.0, 300.0, 1_000.0],
+            }
+        )
+        stored = uprate_household_property_by_region(household, resource)
+        frame = uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": [1, 2, 3],
+                    "person_benunit_id": [10, 20, 30],
+                    "person_household_id": [100, 200, 300],
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": [10, 20, 30]}),
+            household=stored,
+            time_period="2024",
+            weight_kind=WeightKind.IMPORTANCE,
+            household_weights=np.array([10.0, 10.0, 20.0]),
+        )
+
+        scoped = tool._frame_as_stage_saw(frame, "was_wealth")
+        assert scoped.table("household")["household_id"].tolist() == [100, 200, 300]
+        receipt = tool.e5_identity_receipt(
+            scoped, regional_resource=resource, permutation_seed=7
+        )
+        assert receipt["identical_under_permutation"] is True
+        assert receipt["matches_stored_columns"] is True

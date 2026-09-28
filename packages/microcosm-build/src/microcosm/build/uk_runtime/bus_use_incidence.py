@@ -8,7 +8,7 @@ Survey frequency-of-use shares (NTS0313 for all ages, NTS0621 for people aged
 
 * each person is assigned a frequency band by an identity-keyed uniform draw
   from the age-specific band shares (under-60 shares are derived from the two
-  published series and the frame's design-weighted 60-and-over population
+  published series and the frame's prior-weighted 60-and-over population
   share, since DfT publishes no other breakdown);
 * a household uses local buses when any member is in a user band (the declared
   ``user_definition``, at least once a year);
@@ -221,7 +221,7 @@ def under_threshold_shares(
 ) -> dict[str, float]:
     """Derive the under-threshold band shares from the two published series.
 
-    p_all = s * p_older + (1 - s) * p_under, with s the design-weighted share
+    p_all = s * p_older + (1 - s) * p_under, with s the prior-weighted share
     of people at or above the age threshold on the frame being drawn; DfT
     publishes no under-60 table. Refuses a derived share outside [0, 1].
     """

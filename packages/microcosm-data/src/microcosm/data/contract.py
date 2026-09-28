@@ -417,13 +417,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "77c39b24d445a1c71ae4a2eee370442dff00d03154041fa97941343f846c8d8c"
+    "d0090b7214ade3fc64d2e4b78cbf8027031997d48bfb1ee1f94c3f4917d1a562"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a9f73615aa7fe6c9e7a9b0edca82933d766ff3eaa20b39995426e6958b2ca800"
+    "c795750a8cf244ef21d02661459ba6d4cd7e015df1b82f891db25f261272537e"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "150e7a8f0100cd1127cde8f1d79396a2dbf2acf7be440a058e4860bf36e7cb0e"
+    "83fb2c65ff3c5858b148bb6982d4d2b2fe8f92ce44bfa2b88a44f45adc64c7c3"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -834,15 +834,15 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "9b1984fc699ce1be2efa4d65456a277ecc2b0256eb43292bd5f80421b6e0b045"
+            "786d755f5f78be1300402a613188918faeab1c4c900d3795b030c7e1cd9cab78"
         ),
         "policy_sha256": (
-            "3c08258a6eba824287b50300b3438b4a2b241757457e8a9a8388349dbf227e7a"
+            "5cbb030aec6012d425500dadd7b58df1a933e2e5fffe0363aa95ea55f2a1f67a"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "35ab5136b190ea514e6d0b346d0d27e3c202576f74e3c7e2725abdea33f95cf9"
+            "ba096ae37c4879fa844c02f40cf886b78bf0e7efdb8852536d6e592fc5ab24ff"
         ),
         "policy_sha256": (
             "5a78ad115f958eb20247534ff9fd52e5d5d4f277b608d55ad4251d48a7232049"
@@ -850,7 +850,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "5f9681b56b64156c1fba9119b253416952cc35bd798dcc71fc2ffae4e79d386d"
+            "2df5dfef9323cc69865c3dd9ca128ab4b25ed3f903aa5b6fdf380f9f3c9b87a3"
         ),
         "policy_sha256": (
             "ab39a3466feca64067a3b37106c2125196f7d53b1eb448f0415a5e6846379de8"
