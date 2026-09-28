@@ -367,7 +367,7 @@ def test_dense_run_projects_the_rowwise_candidate_manifest(tmp_path):
     assert Path(manifest["outputs"]["local_gate_report"]["path"]).name == (
         f"{STEM}.local_gates.json"
     )
-    assert manifest["graph"]["epoch_rows"] == "dense_solve_only"
+    assert manifest["graph"]["epoch_rows"] == "dense_solve,size_search,size_refit"
     assert "uk.full.problem" in manifest["graph"]["artifacts"]
     # The staged bundle is every registered output plus the manifest; each
     # registered file is on disk beside it with its recorded digest.
@@ -623,8 +623,10 @@ def test_main_stages_the_bundle_locally_with_staging_local_only(
     assert run_manifest["operation_id"] == "uk_rowwise_candidate"
     assert run_manifest["pipeline"]["id"] == "uk-local-candidate"
     assert run_manifest["non_release"] is True
-    # The candidate tool wrote ``sample == {"mode": "full"}``; the graph driver
-    # sets no sample block (receipts R5, residual gap for a ruling).
+    # The f100 rung stages the contract's one sampling statement, as the
+    # candidate tool wrote after its sampling step (receipts R5, row 18).
+    assert run_manifest["sample"] == {"mode": "full"}
+    assert bundle["progress"]["sample"] == {"mode": "full"}
     assert run_manifest["delivery"]["mode"] == "local_only"
     assert run_manifest["delivery"]["upload_attempts"] == 0
     assert {a["logical_name"] for a in run_manifest["artifacts"]} == {
@@ -677,6 +679,49 @@ def test_main_stages_the_bundle_locally_with_staging_local_only(
     # The sidecars are evidence about the outputs, never outputs themselves.
     assert "sha256sums" not in manifest["outputs"]
     assert "staged_manifest" not in manifest["outputs"]
+
+
+def test_sampled_run_stages_a_null_sample_block(tmp_path, monkeypatch):
+    """A rung below f100 stages ``sample: null``, as the candidate tool did.
+
+    The contract's only sampling statement is ``{"mode": "full"}``. The driver
+    judges the rung on the effective fraction (pool times source spine), read
+    from the prepared build's configuration, so a ``--sample-fraction 0.1``
+    pool over a full spine stages no sample block while its Logbook row
+    carries the f010 rung.
+    """
+
+    pytest.importorskip("tables")
+    from microcosm.build.staging_v2 import validate_v2_bundle
+
+    arguments(tmp_path)  # writes the stand-ins the prepared build pins
+    build = prepared(tmp_path)
+    sampled = replace(
+        build,
+        full=replace(
+            build.full, config=replace(build.full.config, sample_fraction=0.1)
+        ),
+    )
+    assert sampled.full.config.effective_sample_fraction == 0.1
+    staging_dir = tmp_path / "staging-bundle"
+    status, out = run_dense_main(
+        tmp_path,
+        monkeypatch,
+        "--sample-fraction",
+        "0.1",
+        "--staging-dir",
+        str(staging_dir),
+        staging="--staging-local-only",
+        build=sampled,
+    )
+    assert status == 0
+    runs = sorted(path.name for path in (staging_dir / "runs").iterdir())
+    assert len(runs) == 1
+    bundle = validate_v2_bundle(staging_dir, runs[0])
+    assert bundle["progress"]["status"] == "completed"
+    assert bundle["run_manifest"]["sample"] is None
+    assert bundle["progress"]["sample"] is None
+    assert spool_rows(out)[0].rung == "f010"
 
 
 # ---------------------------------------------------------------------------

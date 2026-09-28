@@ -19,8 +19,10 @@ is built by this one command.
 A non-dry dense run is wrapped in the rowwise tool's operational envelope:
 the Logbook attempt (a spooled row under ``<out>/logbook-spool`` on every
 terminal outcome, an error receipt on failure), the version 2 staging
-telemetry with stage events around each graph phase and per-epoch rows from
-the dense solve, and the staged-dataset delivery of the published bundle.
+telemetry with the run's sampling evidence, stage events around each graph
+phase and per-epoch rows from the dense solve and, with
+``--dataset-households``, the size search and refit (rows tagged with their
+``phase``), and the staged-dataset delivery of the published bundle.
 The bundle carries ``rowwise_candidate_manifest.json`` projected from the
 graph's stored artifacts
 (:func:`~microcosm.build.uk_runtime.graph_terminal.rowwise_candidate_manifest_from_graph`),
@@ -141,6 +143,7 @@ from .rowwise_staging import (
     replace_manifest,
     stage,
     stage_dataset,
+    stage_sample,
     staging_delivery,
     staging_epoch_every,
     thinned_epochs,
@@ -437,7 +440,12 @@ def _stderr_progress(line: str) -> None:
 
 
 def _solve_observer(args: argparse.Namespace, telemetry):
-    """Readable stderr lines plus the thinned staging rows of the dense solve."""
+    """Readable stderr lines plus the thinned staging rows of every solve.
+
+    The dense solve, the informed size search and the refit share this one
+    observer; the size events carry the ``phase`` the stderr line names and
+    the staging row records.
+    """
     from .solve_progress import uk_solve_progress_callback
 
     sinks = [uk_solve_progress_callback(_stderr_progress)]
@@ -846,6 +854,12 @@ def execute_full_build(
         return _execute_full_build(prepared, args)
     from microcosm.build.artifact_files import publish_staged_bundle
 
+    # The rung is known once the source spine's own sampling has been read
+    # (preparation); it is staged before any graph phase, where the rowwise
+    # tool staged it after its sampling step.
+    stage_sample(
+        telemetry, sample_fraction=prepared.full.config.effective_sample_fraction
+    )
     output, graph_store = _output_locations(prepared, args)
     output.parent.mkdir(parents=True, exist_ok=True)
     # Operational attempt identity never enters a scientific node/cache key.

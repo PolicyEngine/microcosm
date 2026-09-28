@@ -345,8 +345,10 @@ def register_uk_full_kernels(
 ) -> KernelRegistry:
     """Extend the existing UK source/stage registry with the full build.
 
-    ``progress_callback`` is an operational observer of the dense solve's
-    epochs (staging telemetry, stderr progress); it never enters a node key.
+    ``progress_callback`` is an operational observer of the solves' epochs
+    (staging telemetry, stderr progress): the dense solve and, with a
+    ``dataset_households`` request, the size search and refit, whose events
+    carry their ``phase``; it never enters a node key.
     """
 
     # Source graph registries already contain these primitive kernels.

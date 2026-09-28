@@ -241,6 +241,23 @@ def stage(
 _stage = stage
 
 
+def stage_sample(
+    telemetry: StagingTelemetryV2 | None, *, sample_fraction: float
+) -> None:
+    """Record the run's sampling evidence on the staging telemetry.
+
+    The contract's only sampling statement is ``{"mode": "full"}``, the f100
+    rung; a rung below f100 stages a null sample, as the spine builder does.
+    The national seam and the dense graph driver both call this once their
+    rung is known (for the graph, the pool fraction times the source spine's
+    own fraction), so the two release roles stage the same evidence.
+    """
+
+    if telemetry is None or float(sample_fraction) != 1.0:
+        return
+    telemetry.set_sample({"mode": "full"})
+
+
 def staging_epoch_every(args: argparse.Namespace) -> int:
     """The epoch stride that keeps the forwarded rows under the row budget.
 

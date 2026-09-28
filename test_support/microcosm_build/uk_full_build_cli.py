@@ -568,18 +568,21 @@ def run_dense_main(
     staging="--no-staging",
     failed=None,
     on_prepare=None,
+    build=None,
 ) -> tuple[int, Path]:
     """Run the synthetic dense build through ``main``; return its status and bundle.
 
     ``failed`` fails those gates on the synthetic evidence nodes (see
     :func:`failure_lines`); ``on_prepare(args, telemetry)`` runs inside the
     patched preparation, where the driver's own solve observer can be driven
-    with synthetic epochs (the synthetic graph has no calibration kernel).
+    with synthetic epochs (the synthetic graph has no calibration kernel);
+    ``build`` replaces the synthetic prepared build (a :func:`prepared` with
+    an altered configuration, say).
     """
     monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
     patch_certification(monkeypatch)
     args = arguments(tmp_path, *extra, staging=staging)
-    build = prepared(tmp_path, failed)
+    build = prepared(tmp_path, failed) if build is None else build
 
     def prepare(args, *, telemetry=None, attempt=None):
         if on_prepare is not None:

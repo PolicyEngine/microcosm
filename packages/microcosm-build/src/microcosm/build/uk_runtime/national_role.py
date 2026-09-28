@@ -83,6 +83,7 @@ from microcosm.build.uk_runtime.rowwise_staging import (
     replace_manifest,
     stage,
     stage_dataset,
+    stage_sample,
     staging_delivery,
     staging_epoch_every,
     thinned_epochs,
@@ -328,8 +329,7 @@ def _run_national_attempt(
         "completed",
         dataset_sha256=input_artifact["sha256"],
     )
-    if telemetry is not None:
-        telemetry.set_sample({"mode": "full"})
+    stage_sample(telemetry, sample_fraction=args.sample_fraction)
     frs_release = load_uk_frs_release()
     calibration_year = int(frs_release.calibration_year)
     args._calibration_year = calibration_year

@@ -432,3 +432,79 @@ def test_blocking_preflight_refuses_before_dense_or_checkpoint_work(imported):
         artifacts["imported_dense"] = SimpleNamespace(payload=b"must not read")
     with pytest.raises(ValueError, match="refused by the source preflight"):
         UKDenseSolveKernel().run(SimpleNamespace(artifacts=artifacts))
+
+
+def test_size_kernels_forward_phased_epochs_to_the_registered_observer(
+    tmp_path, monkeypatch
+):
+    """One observer sees the dense, search and refit epochs, tagged by phase.
+
+    Restores the candidate tool's ``size_candidate_stages_the_search_and_refit_phases``
+    contract on the graph (receipts R5, row 19): the size search and refit
+    kernels forward their epochs through the callback
+    ``register_uk_calibration_kernels`` registers, tagged ``size_search`` and
+    ``size_refit`` by ``dataset_size``, after the dense solve's untagged
+    epochs, and the driver's stderr line names the phase. The observer is
+    instance state: the implementation hashes are an unobserved registry's,
+    and the observed run replays under one without executing a kernel.
+    """
+    from microcosm.build.uk_runtime.solve_progress import uk_solve_progress_callback
+
+    events: list[dict] = []
+    observer = events.append
+    observed = KernelRegistry()
+    observed.register(Source())
+    register_uk_calibration_kernels(observed, progress_callback=observer)
+    unobserved = registry()
+    for ref in ("uk.full.dense@1", "uk.full.size_search@1", "uk.full.size_refit@1"):
+        assert observed.get(ref).progress_callback is observer
+        assert unobserved.get(ref).progress_callback is None
+        assert (
+            observed.get(ref).implementation_hash()
+            == unobserved.get(ref).implementation_hash()
+        )
+    graph, endpoints = compiled(2)
+    fixture = tmp_path / "fixture"
+    fixture.write_bytes(b"fixture")
+    store = ContentStore(tmp_path / "store")
+    first = run_graph(
+        graph, sources={"fixture": fixture}, store=store, kernels=observed
+    )
+    assert not first.node("uk.full.size_search").hit
+    epochs = [event for event in events if event["kind"] == "calibration_epoch"]
+    assert list(dict.fromkeys(event.get("phase") for event in epochs)) == [
+        None,
+        "size_search",
+        "size_refit",
+    ]
+    for event in epochs:
+        assert 1 <= int(event["epoch"]) <= int(event["epochs"]) == 2
+        assert "loss" in event
+    # Only the size search reports anything but epochs (probes, the stop).
+    assert {
+        event["kind"] for event in events if event.get("phase") != "size_search"
+    } == {"calibration_epoch"}
+    lines: list[str] = []
+    render = uk_solve_progress_callback(lines.append, every=1)
+    for event in events:
+        render(event)
+    assert any(" dense solve: epoch " in line for line in lines)
+    assert any(" search: epoch " in line or " probe " in line for line in lines)
+    assert any(" refit: epoch " in line for line in lines)
+    # The observer never entered a node key: the observed run replays under
+    # an unobserved registry without executing a kernel.
+    for kernel in unobserved.as_mapping().values():
+        monkeypatch.setattr(
+            kernel, "run", lambda *a, **kw: pytest.fail("replay executed")
+        )
+    replay = run_graph(
+        graph,
+        sources={"fixture": fixture},
+        store=store,
+        kernels=unobserved,
+        resume="require",
+    )
+    np.testing.assert_array_equal(
+        replay.population(endpoints.population).weights_for("household").values,
+        first.population(endpoints.population).weights_for("household").values,
+    )

@@ -324,21 +324,29 @@ class UKSizeCheckpointImportKernel(_CalibrationKernel):
         )
 
 
-class UKDenseSolveKernel(_CalibrationKernel):
+class _ObservedSolveKernel(_CalibrationKernel):
+    """A solving kernel whose epochs an operational observer may watch.
+
+    ``progress_callback`` receives the calibrator's progress events (progress
+    lines, staging telemetry rows). It is registered like the gate kernels'
+    coverage engine: instance state, never part of the node key or the
+    implementation hash, so an observed and an unobserved solve share one
+    cache entry. The size kernels' events carry the ``phase``
+    (``size_search``, ``size_refit``) that :mod:`.dataset_size` tags; the
+    dense solve's carry none.
+    """
+
+    def __init__(self, *, progress_callback=None):
+        self.progress_callback = progress_callback
+
+
+class UKDenseSolveKernel(_ObservedSolveKernel):
     ref = "uk.full.dense@1"
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
         seed_source=SeedSource.PARAM,
         dependencies=_DEPENDENCIES,
     )
-
-    def __init__(self, *, progress_callback=None):
-        # An operational observer of the solve's epochs (progress lines,
-        # staging telemetry rows). It is registered like the gate kernels'
-        # coverage engine: instance state, never part of the node key or
-        # the implementation hash, so an observed and an unobserved solve
-        # share one cache entry.
-        self.progress_callback = progress_callback
 
     def run(self, context):
         from .graph_terminal import decode_full_gate_report
@@ -413,7 +421,7 @@ def _full_pool(frame, context):
     return k == frame.n("household")
 
 
-class UKSizeSearchKernel(_CalibrationKernel):
+class UKSizeSearchKernel(_ObservedSolveKernel):
     ref = "uk.full.size_search@1"
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
@@ -441,7 +449,10 @@ class UKSizeSearchKernel(_CalibrationKernel):
             result_payload = context.artifacts["dense"].payload
         else:
             selection = dataset_size.select_uk_dataset_size(
-                frame, dense, **dict(context.params)
+                frame,
+                dense,
+                progress_callback=self.progress_callback,
+                **dict(context.params),
             )
             metadata = {
                 "method": "contribution_informed_l0",
@@ -523,7 +534,7 @@ class UKSizeDrawKernel(_CalibrationKernel):
         )
 
 
-class UKSizeRefitKernel(_CalibrationKernel):
+class UKSizeRefitKernel(_ObservedSolveKernel):
     ref = "uk.full.size_refit@1"
     capabilities = Capabilities(
         Determinism.DETERMINISTIC,
@@ -558,7 +569,12 @@ class UKSizeRefitKernel(_CalibrationKernel):
                 }
             )
         compact = dataset_size.refit_uk_dataset_size(
-            frame, dense, selection=selection, draw=cached_draw, **dict(context.params)
+            frame,
+            dense,
+            selection=selection,
+            draw=cached_draw,
+            progress_callback=self.progress_callback,
+            **dict(context.params),
         )
         result = compact.result
         ids = _axis(result.frame)
@@ -860,12 +876,17 @@ def uk_calibration_nodes(
 def register_uk_calibration_kernels(
     registry: KernelRegistry, *, progress_callback=None
 ) -> KernelRegistry:
-    registry.register(UKDenseSolveKernel(progress_callback=progress_callback))
+    """Register the calibration kernels; ``progress_callback`` observes every solve.
+
+    The one observer is handed to the dense solve, the size search and the
+    refit (see :class:`_ObservedSolveKernel`); the import, draw, filter and
+    install kernels solve nothing and take none.
+    """
+    for kernel in (UKDenseSolveKernel, UKSizeSearchKernel, UKSizeRefitKernel):
+        registry.register(kernel(progress_callback=progress_callback))
     for kernel in (
         UKSizeCheckpointImportKernel,
-        UKSizeSearchKernel,
         UKSizeDrawKernel,
-        UKSizeRefitKernel,
         UKSizeFilterKernel,
         UKInstallCalibrationKernel,
     ):

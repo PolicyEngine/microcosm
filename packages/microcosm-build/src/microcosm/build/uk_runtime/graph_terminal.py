@@ -1132,11 +1132,11 @@ def materialize_uk_terminal_artifacts(
 # necessity: main's ``_manifest`` cannot run without the live objects. The
 # projection adds one ``graph`` block naming the artifacts it stood on.
 #
-# Per-epoch ``calibration_progress`` rows: the dense solve node forwards its
-# epochs through the observer registered on ``UKDenseSolveKernel``; the size
-# search and refit nodes solve through ``dataset_size`` without an observer,
-# so a size run stages no epoch rows for those two phases (recorded in the
-# manifest's ``graph.epoch_rows`` field).
+# Per-epoch ``calibration_progress`` rows: the dense solve, size search and
+# size refit nodes forward their epochs through the one observer registered
+# on the calibration kernels (``register_uk_calibration_kernels``), the size
+# rows tagged with their ``phase``; the manifest's ``graph.epoch_rows`` field
+# names the three solves whose rows a size run stages.
 
 _LADDER_TARGET_PREFIX = "ons.census.households@"
 _NATIONAL_MATERIALIZATION = "uk_national_measure"
@@ -1581,6 +1581,6 @@ def rowwise_candidate_manifest_from_graph(
                 key: dict(value) for key, value in terminal_files.items()
             },
             "enforcement": enforcement,
-            "epoch_rows": "dense_solve_only",
+            "epoch_rows": "dense_solve,size_search,size_refit",
         },
     }

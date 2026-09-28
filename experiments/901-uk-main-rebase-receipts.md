@@ -76,7 +76,6 @@ sampling; `--no-staging`; checkpoints on. Script and outputs:
   through `prepare_uk_full_solve`. Both behaviours pinned by
   `test_uk_local_rowwise.py::test_rowwise_binding_refuses_an_empty_declaration_unless_allowed`
   and `test_uk_full_solve_scope.py::test_zero_local_scope_uses_same_solver_and_has_no_fake_holdout`.
-- Per-epoch `calibration_progress` staging rows come from the dense solve only.
 - The HMRC family names `spi_income_band_donors` (#1006) as a predecessor and admits its two
   operation kinds; the contract otherwise refused the drifted operation order.
 - `tools/build_uk_rowwise_dataset.py` stays main's (its tests load it by path; it still serves
@@ -99,11 +98,12 @@ each retired test is either restored on `full_build_cli.main` over the synthetic
 (`test_support/microcosm_build/uk_full_build_cli.py`: `run_dense_main`, multi-gate
 `gate_payload`, `_FakeHub` from the rowwise helper, patches on `rowwise_staging`) or shown
 covered by a named test. Unqualified `::` names below are in
-`packages/microcosm-build/tests/engine_free/uk/test_uk_full_build_cli.py`. Totals: 14 rows
-restored (rows 3, 8, 9, 10, 12, 14, 15, 18, 20 to 25, through 11 new test functions and one
-extended test; rows 9 and 10 live inside row 8's test), 10 rows covered by named tests (1, 2, 4,
-5, 6, 7, 11, 13, 16, 17), 1 row superseded by a documented behaviour change (19, R3). Residual
-gaps are named on their rows; rows 18 and 19 carry the two for a ruling.
+`packages/microcosm-build/tests/engine_free/uk/test_uk_full_build_cli.py`. Totals: 15 rows
+restored (rows 3, 8, 9, 10, 12, 14, 15, 18, 19, 20 to 25, through 13 new test functions and
+one extended test; rows 9 and 10 live inside row 8's test), 10 rows covered by named tests (1,
+2, 4, 5, 6, 7, 11, 13, 16, 17). Residual gaps are named on their rows; the two gaps rows 18 and
+19 carried for a ruling (the run manifest's `sample` block, the size phases' epoch rows) were
+closed on 2026-09-28 by restoring the tool's behaviour on the driver.
 
 1. `candidate_build_writes_calibrated_h5_and_evidence`: covered. Manifest projection (schema 4,
    dense role and release id, doctrine block, identity pins, solve, weights, output digests,
@@ -192,14 +192,22 @@ gaps are named on their rows; rows 18 and 19 carry the two for a ruling.
     `::test_main_stages_the_bundle_locally_with_staging_local_only` with the retired inventory
     assertions (stdout manifest equals the on-disk one, run id equals build id, operation and
     pipeline ids, artifacts, fit summary, staged files with digests, sha256sums, sidecar
-    inventory, sidecars never outputs, stage sequence). Residual for a ruling: the run manifest's
-    `sample` block is unset on the graph driver where the tool wrote `{"mode": "full"}`; per-epoch
-    rows are the dense solve's only (R3).
-19. `size_candidate_stages_the_search_and_refit_phases`: superseded by design (R3: per-epoch
-    staging rows come from the dense solve only; the search and refit forward no epochs), pinned
-    by `::test_dense_run_projects_the_rowwise_candidate_manifest` (`graph.epoch_rows ==
-    "dense_solve_only"`); the size-run manifest claims are rows 16 and 17. Not restorable as
-    written; flagged for a ruling with row 18.
+    inventory, sidecars never outputs, stage sequence) and the run manifest's `sample` block:
+    `{"mode": "full"}` on the f100 rung, written through `rowwise_staging.stage_sample`, the
+    one helper the national seam and the dense driver now share (the driver judges the rung on
+    the effective fraction, pool times source spine); a rung below f100 stages a null sample,
+    as the tool did, pinned by `::test_sampled_run_stages_a_null_sample_block`.
+19. `size_candidate_stages_the_search_and_refit_phases`: restored as
+    `test_uk_full_calibration_graph.py::test_size_kernels_forward_phased_epochs_to_the_registered_observer`:
+    the size search and refit kernels forward their epochs, tagged `size_search` and
+    `size_refit` by `dataset_size`, through the one observer
+    `register_uk_calibration_kernels(progress_callback=)` registers (the driver's
+    `_solve_observer`, so the staging rows and the stderr lines carry the phase); the observer is
+    instance state, so the implementation hashes are those of an unobserved registry and the
+    observed run replays under one without execution. The manifest projection records
+    `graph.epoch_rows == "dense_solve,size_search,size_refit"` (pinned by
+    `::test_dense_run_projects_the_rowwise_candidate_manifest`); the size-run manifest claims
+    are rows 16 and 17.
 20. `telemetry_content_refusal_never_aborts_the_solve`: restored as
     `::test_telemetry_content_refusal_never_aborts_the_solve` (drives the driver's own
     `_solve_observer` with synthetic epochs).
