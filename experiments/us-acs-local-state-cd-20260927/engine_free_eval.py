@@ -123,40 +123,38 @@ def staging_origin(household_ids: np.ndarray) -> pd.DataFrame:
     return households
 
 
-def records_for(tool, names, values, specs_by_name):
-    records = []
+def roles_and_specs_for(tool, names, values, specs_by_name):
+    """The 09-23 targets as registry specs (the recompiled feed's) and roles."""
+
+    roles, specs, pop_names, pop_values = [], [], [], []
     for name, value in zip(names, values, strict=True):
         spec = specs_by_name.get(name)
         if spec is not None:
-            record = tool.cd_surface.target_record(spec)
-            if abs(record["value"] - value) > 1e-9 * max(1.0, abs(value)):
-                raise SystemExit(
-                    f"{name}: 09-23 value {value} != compile {record['value']}"
-                )
-        elif name.startswith("pop_state_"):
-            record = {
-                "name": name,
-                "value": float(value),
-                "source": "us_puma_ladder_2020",
-                "family": "census_population_ladder",
-                "geography_level": "state",
-                "state_fips": name[-2:],
-                "congressional_district_geoid": None,
-            }
-        elif name.startswith("pop_cd_"):
-            record = {
-                "name": name,
-                "value": float(value),
-                "source": "us_puma_ladder_2020",
-                "family": "census_population_ladder",
-                "geography_level": "congressional_district",
-                "state_fips": name[-4:-2],
-                "congressional_district_geoid": name[-4:],
-            }
+            if abs(spec.value - value) > 1e-9 * max(1.0, abs(value)):
+                raise SystemExit(f"{name}: 09-23 value {value} != compile {spec.value}")
+            roles.append(tool.cd_surface.target_record(spec))
+            specs.append(spec)
+        elif name.startswith(("pop_state_", "pop_cd_")):
+            pop_names.append(name)
+            pop_values.append(float(value))
+            is_cd = name.startswith("pop_cd_")
+            roles.append(
+                {
+                    "name": name,
+                    "value": float(value),
+                    "source": "us_puma_ladder_2020",
+                    "family": "census_population_ladder",
+                    "geography_level": "congressional_district" if is_cd else "state",
+                    "state_fips": name[-4:-2] if is_cd else name[-2:],
+                    "congressional_district_geoid": name[-4:] if is_cd else None,
+                }
+            )
+            specs.append(None)
         else:
             raise SystemExit(f"09-23 target {name} is not on the recompiled surface")
-        records.append(record)
-    return records
+    pop_specs = iter(tool.population_target_specs(pop_names, pop_values))
+    specs = [spec if spec is not None else next(pop_specs) for spec in specs]
+    return roles, specs
 
 
 def stage_convert(tool, out: Path) -> None:
@@ -182,21 +180,21 @@ def stage_convert(tool, out: Path) -> None:
         FEED, ["snap", "medicaid", "soi"], soi_mode="state_cd"
     )
     specs_by_name = {spec.name: spec for spec in surface.registry.specs}
-    records = records_for(
+    roles, specs = roles_and_specs_for(
         tool,
         [target["name"] for target in dense_targets],
         [target["value"] for target in dense_targets],
         specs_by_name,
     )
-    tool.cd_surface.assign_target_roles(records, fraction=0.0)
+    tool.cd_surface.assign_target_roles(roles, fraction=0.0)
     struct_tables = {
         "household_struct": struct,
         "person": person,
         "groups": groups,
         "weights": weights,
     }
-    _path, _records, matrix_sha = tool.write_lean_checkpoint(
-        struct_tables, matrix, records, out / "state"
+    _path, _registry, digests = tool.write_lean_checkpoint(
+        struct_tables, matrix, specs, roles, out / "state"
     )
     import pickle
 
@@ -211,8 +209,7 @@ def stage_convert(tool, out: Path) -> None:
                 "source_checkpoint": str(DENSE_CHECKPOINT),
                 "dense_matrix_nnz": int(matrix.nnz),
                 "published_matrix_nnz": 24_773_532,
-                "target_matrix_sha256": matrix_sha,
-                "targets_sha256": tool._sha256(out / "state" / "targets.json"),
+                **digests,
                 "households": int(len(struct)),
             },
             indent=2,
@@ -222,23 +219,54 @@ def stage_convert(tool, out: Path) -> None:
 
 
 def calibrate_and_save(tool, checkpoint: Path, label: str):
-    frame, design, records, matrix = tool.load_checkpoint_surface(checkpoint)
+    """Calibrate a checkpoint through the tool's own functions and record it."""
+
+    from microcosm.calibrate import write_calibration_diagnostics
+
+    frame, design, registry, roles, matrix = tool.load_checkpoint_surface(checkpoint)
+    target_set = tool.cd_surface.calibration_target_set(
+        roles, matrix, frame.n("household"), specs=registry.specs
+    )
     started = time.time()
-    result, _done = tool.calibrate_surface(frame, records, matrix, **SETTINGS)
-    diagnostics = tool.calibration_diagnostics(
+    result, _done = tool.calibrate_surface(frame, target_set, **SETTINGS)
+    weights = np.asarray(result.weights, dtype=np.float64)
+    summary = {
+        "soi_mode": label,
+        **SETTINGS,
+        "n_targets": result.problem.n_targets,
+        "matrix_format": result.options["matrix_format"],
+        "matrix_nnz": int(result.problem.matrix.nnz),
+        "initial_loss": round(result.initial_loss, 6),
+        "final_loss": round(result.final_loss, 6),
+        "fraction_within_10pct": round(result.fraction_within_10pct, 4),
+        "effective_sample_size": round(result.effective_sample_size, 1),
+        "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
+        "mass_conserved_ratio": round(float(weights.sum()) / float(design.sum()), 6),
+        **tool.calibration_evidence(
+            frame=frame,
+            roles=roles,
+            matrix=matrix,
+            design_weights=design,
+            weights=weights,
+            target_loss_cap=SETTINGS["target_loss_cap"],
+        ),
+        "total_wall_seconds": round(time.time() - started, 1),
+        "peak_rss_gb": round(tool.rss(), 3),
+    }
+    outcome = write_calibration_diagnostics(
         result,
-        frame=frame,
-        targets=records,
-        matrix=matrix,
-        design_weights=design,
-        settings={**SETTINGS, "soi_mode": label},
+        checkpoint / "calibration_diagnostics.json",
+        target_registry=registry,
+        build={"soi_mode": label, "experiment": "engine_free_eval"},
     )
-    diagnostics["total_wall_seconds"] = round(time.time() - started, 1)
-    np.savez(checkpoint / "weights.npz", weights=result.weights, design=design)
-    (checkpoint / "calibration_diagnostics.json").write_text(
-        json.dumps(diagnostics, indent=1)
-    )
-    return diagnostics, result.weights, design, records, matrix, frame
+    summary["calibration_diagnostics"] = {
+        "status": outcome.status,
+        "schema_version": getattr(outcome, "schema_version", None),
+        "message": getattr(outcome, "message", None),
+    }
+    np.savez(checkpoint / "weights.npz", weights=weights, design=design)
+    (checkpoint / "calibration_summary.json").write_text(json.dumps(summary, indent=1))
+    return summary, weights, design, roles, matrix, frame
 
 
 def stage_state(tool, out: Path) -> None:
@@ -264,12 +292,14 @@ def stage_state(tool, out: Path) -> None:
     print(json.dumps(comparison, indent=2))
 
 
-def stage_state_cd(tool, out: Path, fraction: float) -> None:
+def stage_state_cd(
+    tool, out: Path, fraction: float, state_weights_path: Path | None = None
+) -> None:
     import pickle
 
     cd = tool.cd_surface
-    frame, design, state_records, state_matrix = tool.load_checkpoint_surface(
-        out / "state"
+    frame, design, state_registry, state_records, state_matrix = (
+        tool.load_checkpoint_surface(out / "state")
     )
     households = frame.table("household")
     hh_state = pd.to_numeric(households["state_fips"]).to_numpy(np.int64)
@@ -316,8 +346,12 @@ def stage_state_cd(tool, out: Path, fraction: float) -> None:
     tool._attach_pro_rata_populations(records, populations["cd"])
     holdout = cd.assign_target_roles(records, fraction=fraction)
     struct_tables = tool.extract_struct_tables(frame)
-    _path, _records, matrix_sha = tool.write_lean_checkpoint(
-        struct_tables, matrix, records, out / "state_cd"
+    _path, _registry, digests = tool.write_lean_checkpoint(
+        struct_tables,
+        matrix,
+        (*state_registry.specs, *district_specs),
+        records,
+        out / "state_cd",
     )
     (out / "state_cd" / "surface.json").write_text(
         json.dumps(
@@ -330,7 +364,7 @@ def stage_state_cd(tool, out: Path, fraction: float) -> None:
                 "skipped_examples": skipped[:5],
                 "holdout": holdout,
                 "surface_receipt_counts": surface["receipt"]["counts"],
-                "target_matrix_sha256": matrix_sha,
+                **digests,
             },
             indent=1,
         )
@@ -340,7 +374,9 @@ def stage_state_cd(tool, out: Path, fraction: float) -> None:
     diagnostics, weights, design, records, matrix, _frame = calibrate_and_save(
         tool, out / "state_cd", "state_cd"
     )
-    state_weights = np.load(out / "state" / "weights.npz")["weights"]
+    state_weights = np.load(state_weights_path or out / "state" / "weights.npz")[
+        "weights"
+    ]
     same_held = cd.score_cd_holdout(
         records,
         matrix,
@@ -382,6 +418,13 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--holdout-fraction", type=float, default=0.1)
     parser.add_argument("--threads", type=int, default=4)
+    parser.add_argument(
+        "--state-weights",
+        type=Path,
+        default=None,
+        help="state-only calibrated weights to score the holdout under "
+        "(default <out>/state/weights.npz)",
+    )
     args = parser.parse_args()
     import torch
 
@@ -396,7 +439,7 @@ def main() -> int:
         elif stage == "state":
             stage_state(tool, args.out)
         else:
-            stage_state_cd(tool, args.out, args.holdout_fraction)
+            stage_state_cd(tool, args.out, args.holdout_fraction, args.state_weights)
         print(f"peak RSS {tool.rss():.2f} GB", flush=True)
     return 0
 

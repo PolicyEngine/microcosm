@@ -195,7 +195,6 @@ records the full table under `soi_surface.rebase_factor_by_measure`.
 | District `tax_filer_individual_count` | 436 | No state parent in either vintage, so it could not nest in a bound state target |
 | District rows of states with one district on the 117th plan (AK, DE, DC, MT, ND, SD, VT, WY) | 459 | The SOI file has no sub-state rows there. These rows are the state total copied, or for Montana split by population, so they carry no district information |
 | Historic Table 2 rows copied to at-large districts | 360 | The same copies from the other vintage |
-| North Carolina's district rows | 714 | The packaged 117th→119th crosswalk was built from NC's 2016 plan, not the 2019 plan the 117th Congress used; a crosswalk built from the block plan registry (#1041) maps 37.0% of NC's population to a different 119th district. They return when #1043 (the registry-built crosswalk) merges; a test pins the crosswalk digest this exclusion was reviewed against |
 | District-file state rows for concepts Historic Table 2 carries | 2,295 | Second vintage of a state concept |
 
 PR #1040 (awaiting a ruling) excludes the same SALT and PTC columns in the
@@ -205,6 +204,14 @@ shares of Historic Table 2, which a national factor does not move, so their
 level changes only when Historic Table 2's own capital-gains rows do
 (#1036).
 
+North Carolina's district rows are bound. Before #1043 the packaged
+117th→119th crosswalk was built from NC's 2016 plan rather than the 2019 plan
+the 117th Congress used, and 37.0% of NC's population mapped to a different
+119th district than the block plan registry (#1041) puts it in. #1043 rebuilt
+the crosswalk from the registry. `STATE_CD_EXCLUDED_CD_STATES` is empty, and a
+test pins the crosswalk digest it was reviewed against, so a later crosswalk
+change forces the same review.
+
 ### Counts on the pinned feed
 
 | Family | `state_cd` |
@@ -213,13 +220,13 @@ level changes only when Historic Table 2's own capital-gains rows do
 | `cms_medicaid` (enrollment) | 51 |
 | `irs_soi` state, Historic Table 2 | 3,819 |
 | `irs_soi` state, district file (district-file-only measures) | 306 |
-| `irs_soi` district (413 districts x 51 measures) | 21,063 |
-| **Admin specs** | **25,341** |
+| `irs_soi` district (427 districts x 51 measures) | 21,777 |
+| **Admin specs** | **26,055** |
 
-Of the 21,063 district rows, 18,585 are rebased to a Historic Table 2 parent
-and 2,478 keep a district-file parent. The 2,142 (state, concept) district
+Of the 21,777 district rows, 19,215 are rebased to a Historic Table 2 parent
+and 2,562 keep a district-file parent. The 2,193 (state, concept) district
 blocks each sum to their parent within 1e-9. Adding the 487 population
-marginals gives 25,828 targets, before the holdout. The feed-gated test
+marginals gives 26,542 targets, before the holdout. The feed-gated test
 `test_pinned_feed_state_cd_surface_matches_its_contract` pins these counts
 and the reconciliation.
 
@@ -228,17 +235,20 @@ and the reconciliation.
 The SOI district file is tabulated on the 117th-Congress plan and the
 households carry 119th-plan districts (drawn within their PUMA from the
 ladder). The compiler maps the 117th rows onto the 119th plan with the
-packaged 2020-block population crosswalk; `state_cd` uses that mapping as is
-and records the crosswalk's sha256. The block plan registry (#1041) and a
-household column on the 117th plan (the location v1 block draw) would let
-these targets bind as exact block sums with no crosswalk; the district rows
-are materialized against one named household column, so that change is a
-parameter, not a rewrite.
+packaged 2020-block population crosswalk, which #1043 builds from the block
+plan registry (#1041); `state_cd` uses that mapping as is and records the
+crosswalk's sha256. The mapping assumes returns spread with population inside
+each 117th/119th intersection. A household column on the 117th plan
+(`congressional_district_geoid__117th_congress`, written by the location v1
+block draw once the registry is attached) would let these targets bind as
+exact block sums with no crosswalk; the district rows are materialized
+against one named household column, so that change is a parameter, not a
+rewrite.
 
 ### Sigma
 
 No fact in the pinned feed carries an uncertainty field, and IRS SOI tables
-are administrative. `targets.json` records `sigma` for every target (`null`,
+are administrative. `target_roles.json` records `sigma` for every target (`null`,
 `sigma_basis: "not_provided_by_feed"`), so a feed that supplies standard
 errors surfaces them. The calibration loss is unchanged: fixed-scale capped
 relative error.
@@ -268,7 +278,7 @@ targets are never built into the calibrator's `TargetSet`
 **The baseline** allocates each held target's state parent by population:
 `parent x district population / state population`, both from the PUMA
 ladder's 119th-plan district overlap populations, so a held block's baseline
-sums to its parent exactly. `calibration_diagnostics.json` → `cd_holdout`
+sums to its parent exactly. `calibration_summary.json` → `cd_holdout`
 scores the held targets under the design weights, the calibrated weights and
 the baseline (mean, median and p90 absolute relative error, share within 10%,
 the capped loss the solve minimizes, per family, and the share of targets
@@ -276,7 +286,7 @@ where the calibration beats the baseline). It is report-only.
 
 ## Effective sample size and weight by origin
 
-`calibration_diagnostics.json` → `weight_origin` records, at the design and at
+`calibration_summary.json` → `weight_origin` records, at the design and at
 the calibrated weights:
 
 - Kish ESS over rows, overall and per spine;
@@ -300,14 +310,17 @@ engine pass and the solve, not the load.
 
 ## Target matrix storage
 
-The materialize stage writes three files:
+The materialize stage writes four files:
 
 - `target_frame_lean.h5`: structure only (household id, geography, spine,
   source id, design weight; person memberships; group ids).
+- `target_registry.json`: every target as a `TargetSpec` with its
+  calibration hierarchy, held-out targets included.
 - `target_matrix.npz`: a (targets x households) CSR matrix with float32
-  values, row *i* of which is `targets.json[i]`.
-- `targets.json`: name, value, family, geography, role (train or holdout),
-  sigma, and for district rows their state parent and pro-rata populations.
+  values, row *i* of which is registry spec *i*.
+- `target_roles.json`, row-aligned with both: role (train or holdout),
+  holdout unit, geography, sigma, and for district rows their state parent
+  and pro-rata populations.
 
 No dense households x targets matrix exists at any point. Each engine chunk's
 columns go straight into the CSR. District SOI rows are not materialized one
@@ -318,9 +331,11 @@ materialization, because the SOI slice masks a tax unit by its household's
 state and district; the first chunk of every run also materializes one
 district row per carrier directly and refuses any difference
 (`materialize_rss.json` → `carrier_check`). The calibrate stage builds
-the training rows as callable measures over the CSR, so the calibrate
-kernel's own `build_constraint_matrix` compiles them one row at a time,
-unchanged.
+each training target from its registry spec (value, metadata, hierarchy)
+with a callable measure that reads its CSR row, so the calibrate kernel's own
+`build_constraint_matrix` compiles them one row at a time, unchanged, and the
+schema-8 `calibration_diagnostics.json` names each measure by its matrix row
+(`target_matrix_row[i]`).
 
 A differential test materializes the fixture both ways: dense float32
 columns compiled by the kernel from frame columns, and the carrier-split CSR
@@ -344,10 +359,15 @@ record one of the four modes, before any release directory exists.
 
 `state_cd` runs also record:
 
-- `run_identity.json`: the target matrix's sha256, shape and nnz; the CD
-  holdout (unit, salt, fraction, held units and targets); the sampling rung.
-  Later stages refuse a `targets.json` or `target_matrix.npz` whose bytes
-  changed, and `--resume` refuses weights calibrated to a different surface.
+- `run_identity.json`: the sha256 of `target_registry.json`,
+  `target_roles.json` and `target_matrix.npz` (with its shape and nnz); the
+  CD holdout (unit, salt, fraction, held units and targets); the sampling
+  rung. Later stages refuse any of the three files whose bytes changed, and
+  `--resume` refuses weights calibrated to a different surface, holdout or
+  sample.
+- `calibration_summary.json`: `cd_holdout`, `weight_origin`,
+  `n_holdout_targets` and the checkpoint matrix's shape and nnz, beside the
+  fit summary.
 - `materialize_rss.json`: the full SOI surface receipt (`soi_surface`: counts,
   every drop reason, rebase factors, crosswalk digest, sigma), the holdout
   receipt with every held unit, and the carrier check.
