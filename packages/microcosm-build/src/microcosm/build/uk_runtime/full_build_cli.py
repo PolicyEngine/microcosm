@@ -504,7 +504,7 @@ def prepare_full_build(
         time_period = str(frame.metadata["time_period"])
         source_fraction = float((sidecar.get("sampling") or {}).get("fraction", 1.0))
         stages = tuple(sidecar["stages"])
-        engine = _rules_engine()
+        _rules_engine()  # the uk extra must be installed; the identity is provenance
         engine_identity = hashlib.sha256(
             canonical_json(_rules_engine_provenance())
         ).hexdigest()
@@ -542,7 +542,7 @@ def prepare_full_build(
         time_period = prepared.frs_release.time_period
         source_fraction = raw.sample_fraction
         stages = prepared.stage_names
-        engine, engine_identity = prepared.engine, prepared.engine_identity
+        engine_identity = prepared.engine_identity
         inputs["dataset"] = {
             "path": None,
             "sha256": None,
@@ -701,8 +701,17 @@ def prepare_full_build(
         kernels,
         progress_callback=None if args.dry_run else _solve_observer(args, telemetry),
     )
+    # The gate batteries take the coverage engine, as the release-cut producer
+    # hands them (tools/certify_uk_release_cut.py): its variables() enumerates
+    # the loadable inputs the coverage manifest is checked against, whereas the
+    # spine adapter's enumerates the frame's non-computed columns (found by the
+    # first licensed graph build: sixteen live inputs reported as drift).
+    from .release_input_coverage import PolicyEngineUKCoverageEngine
+
     register_uk_full_gate_kernels(
-        kernels, coverage_engine=engine, engine_identity=engine_identity
+        kernels,
+        coverage_engine=PolicyEngineUKCoverageEngine(),
+        engine_identity=engine_identity,
     )
     register_uk_terminal_kernels(kernels)
     register_uk_full_certification_kernel(kernels)
