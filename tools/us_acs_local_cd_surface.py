@@ -622,6 +622,15 @@ def state_cd_soi_surface(
 
     cd_specs = tuple(rebased[spec.name] for spec in cd_rows if spec.name in rebased)
     specs = (*ht2_state, *kept_cd_file_state, *cd_specs)
+    # Fail closed on the invariant the whole surface rests on.
+    unreconciled = [
+        block for block in state_parent_reconciliation(specs) if not block["ok"]
+    ]
+    if unreconciled:
+        raise ValueError(
+            f"{len(unreconciled)} district block(s) do not add up to a bound "
+            f"state parent, e.g. {unreconciled[:2]}."
+        )
     with_sigma = sum(1 for spec in specs if getattr(spec, "se", None) is not None)
     receipt = {
         "vintage_rule": STATE_CD_VINTAGE_RULE,

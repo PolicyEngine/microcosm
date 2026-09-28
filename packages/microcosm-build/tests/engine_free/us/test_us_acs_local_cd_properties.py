@@ -378,6 +378,29 @@ def test_an_incomplete_or_unabsorbable_district_block_is_refused() -> None:
             state_surface_predicate=predicate,
             crosswalk=crosswalk,
         )
+    # The builder re-checks its own output: a block that failed to add up
+    # (here reported so by a stubbed reconciliation) is refused, not bound.
+    surface = _CD.state_cd_soi_surface(
+        [parent, district(1, 5.0), district(2, 15.0)],
+        state_surface_predicate=predicate,
+        crosswalk=crosswalk,
+    )
+    assert [
+        block["ok"] for block in _CD.state_parent_reconciliation(surface.specs)
+    ] == [True]
+    real = _CD.state_parent_reconciliation
+    try:
+        _CD.state_parent_reconciliation = lambda specs: [
+            {**block, "ok": False} for block in real(specs)
+        ]
+        with pytest.raises(ValueError, match="do not add up"):
+            _CD.state_cd_soi_surface(
+                [parent, district(1, 5.0), district(2, 15.0)],
+                state_surface_predicate=predicate,
+                crosswalk=crosswalk,
+            )
+    finally:
+        _CD.state_parent_reconciliation = real
 
 
 @st.composite
