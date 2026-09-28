@@ -179,8 +179,18 @@ _DERIVE_IMMIGRATION_STATUS_PARAMETER_KEYS = frozenset(
     }
 )
 
+#: Kernel SSN code -> PolicyEngine-US ``SSNCardType`` member name.
+_SSN_CODE_TO_NAME: Mapping[int, str] = {
+    0: "NONE",
+    1: "CITIZEN",
+    2: "NON_CITIZEN_VALID_EAD",
+    3: "OTHER_NON_CITIZEN",
+}
+
 #: PEINUSYR codes that mean arrival before 1982 (IRCA amnesty eligible).
 _PRE_1982_ARRIVAL_CODES = (1, 2, 3, 4, 5, 6, 7)
+#: First arrival year outside the IRCA cohort, for exact (not binned) years.
+_IRCA_COHORT_END_YEAR = 1982
 
 #: PEINUSYR code → arrival-year midpoint (Census ASEC codebook intervals).
 _ARRIVAL_YEAR_MIDPOINTS: Mapping[int, int] = {
@@ -357,13 +367,9 @@ def derive_us_immigration_status_from_manifest(
         ssn_codes,
         time_period=int(context.config.target_year),
     )
-    code_to_name = {
-        0: "NONE",
-        1: "CITIZEN",
-        2: "NON_CITIZEN_VALID_EAD",
-        3: "OTHER_NON_CITIZEN",
-    }
-    result["ssn_card_type"] = pd.Series(ssn_codes, index=result.index).map(code_to_name)
+    result["ssn_card_type"] = pd.Series(ssn_codes, index=result.index).map(
+        _SSN_CODE_TO_NAME
+    )
     result["immigration_status_str"] = status
     return result
 
@@ -412,6 +418,23 @@ def _controls_from_parameters(params: Mapping[str, object]) -> UndocumentedContr
     )
 
 
+def _packaged_controls() -> UndocumentedControls:
+    """The cited controls of the packaged ``immigration_status`` stage."""
+
+    stage = us_immigration_stage_spec()
+    derive = [
+        operation
+        for operation in stage.operations
+        if operation.kind == "derive_immigration_status"
+    ]
+    if len(derive) != 1:
+        raise ValueError(
+            "US immigration stage must declare exactly one "
+            "derive_immigration_status operation."
+        )
+    return _controls_from_parameters(derive[0].parameters)
+
+
 def _integer_column(person: pd.DataFrame, column: str) -> np.ndarray:
     return (
         pd.to_numeric(person[column], errors="coerce")
@@ -428,16 +451,31 @@ def _float_column(person: pd.DataFrame, column: str) -> np.ndarray:
     )
 
 
-def _stable_person_draws(person: pd.DataFrame, *, seed: int, salt: str) -> np.ndarray:
+def _stable_person_draws(
+    person: pd.DataFrame,
+    *,
+    seed: int,
+    salt: str,
+    keys: pd.Series | None = None,
+) -> np.ndarray:
     """Deterministic uniform draws keyed by stable person identity.
 
     Support-channel clones carry their source person's ``source_year`` /
     ``source_person_id``, so keying on those gives every clone of one source
     person the same draw; frames without source ids fall back to
-    ``person_id``.
+    ``person_id``. A caller whose source ids are not unique per person (the
+    ACS ``SPORDER`` repeats in every household) passes explicit ``keys``, one
+    per row.
     """
 
-    if {"source_year", "source_person_id"}.issubset(person.columns):
+    if keys is not None:
+        if len(keys) != len(person):
+            raise ValueError(
+                f"Explicit draw keys cover {len(keys)} row(s); the person "
+                f"table has {len(person)}."
+            )
+        keys = pd.Series(keys).astype(str)
+    elif {"source_year", "source_person_id"}.issubset(person.columns):
         keys = (
             person["source_year"].astype(str)
             + ":"
@@ -500,13 +538,64 @@ def _select_weight_to_target(
     return selected
 
 
+def _arrival_indicators(
+    person: pd.DataFrame,
+    *,
+    arrival_year: np.ndarray | None,
+    time_period: int | None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """IRCA-cohort, five-plus-year and three-plus-year arrival indicators.
+
+    With ``arrival_year`` absent they come from the ASEC ``PEINUSYR`` bins
+    exactly as before (codes 1-7 arrived before 1982; codes 8-26 and 8-27 are
+    the five- and three-plus-year windows of the 2024 codebook). A survey with
+    an exact entry year (the ACS ``YOEP``) passes it instead, NaN for people
+    with no entry year, and the same windows are measured against
+    ``time_period``.
+    """
+
+    if arrival_year is None:
+        arrival_code = _integer_column(person, "PEINUSYR")
+        return (
+            np.isin(arrival_code, _PRE_1982_ARRIVAL_CODES),
+            np.isin(arrival_code, list(range(8, 27))),
+            np.isin(arrival_code, list(range(8, 28))),
+        )
+    if time_period is None:
+        raise ValueError("An exact arrival year requires the time period.")
+    year = np.asarray(arrival_year, dtype=np.float64)
+    if year.shape != (len(person),):
+        raise ValueError(
+            f"Arrival years cover {year.shape} row(s); the person table has "
+            f"{len(person)}."
+        )
+    entered = np.isfinite(year)
+    filled = np.where(entered, year, np.inf)
+    after_irca = entered & (filled >= _IRCA_COHORT_END_YEAR)
+    return (
+        entered & (filled < _IRCA_COHORT_END_YEAR),
+        after_irca & (filled <= time_period - 5),
+        after_irca & (filled <= time_period - 3),
+    )
+
+
 def _assign_ssn_card_codes(
     person: pd.DataFrame,
     weights: np.ndarray,
     *,
     seed: int,
     controls: UndocumentedControls,
+    arrival_year: np.ndarray | None = None,
+    time_period: int | None = None,
+    draw_keys: pd.Series | None = None,
 ) -> np.ndarray:
+    """SSN card codes (0 NONE, 1 CITIZEN, 2 EAD, 3 OTHER) for CPS-named rows.
+
+    ``arrival_year``/``time_period`` replace the ``PEINUSYR`` bins with an
+    exact entry year, and ``draw_keys`` replaces the source-identity draw
+    keys; left unset, the ASEC behaviour is unchanged.
+    """
+
     citizenship = _integer_column(person, "PRCITSHP")
     unknown = ~np.isin(citizenship, [1, 2, 3, 4, 5])
     if unknown.any():
@@ -522,14 +611,13 @@ def _assign_ssn_card_codes(
 
     # ASEC-UA legal-status indicators (Van Hook et al., SSRN 4662801): any
     # one of them moves a non-citizen out of the likely-undocumented pool.
-    arrival_code = _integer_column(person, "PEINUSYR")
-    arrived_before_1982 = np.isin(arrival_code, _PRE_1982_ARRIVAL_CODES)
+    arrived_before_1982, has_five_plus_years, has_three_plus_years = (
+        _arrival_indicators(person, arrival_year=arrival_year, time_period=time_period)
+    )
     age = _integer_column(person, "A_AGE")
     marital = _integer_column(person, "A_MARITL")
     spouse = _integer_column(person, "A_SPOUSE")
     is_naturalized = citizenship == 4
-    has_five_plus_years = np.isin(arrival_code, list(range(8, 27)))
-    has_three_plus_years = np.isin(arrival_code, list(range(8, 28)))
     is_married = np.isin(marital, [1, 2]) & (spouse > 0)
     eligible_naturalized = (
         is_naturalized
@@ -581,7 +669,7 @@ def _assign_ssn_card_codes(
     worker_candidates = (ssn_codes == 0) & noncitizens & is_worker
     worker_excess = float(weights[worker_candidates].sum()) - controls.workers
     worker_draws = _stable_person_draws(
-        person, seed=seed, salt="immigration:ead_workers"
+        person, seed=seed, salt="immigration:ead_workers", keys=draw_keys
     )
     ssn_codes[
         _select_weight_to_target(
@@ -592,7 +680,7 @@ def _assign_ssn_card_codes(
     student_candidates = (ssn_codes == 0) & noncitizens & is_student
     student_excess = float(weights[student_candidates].sum()) - controls.students
     student_draws = _stable_person_draws(
-        person, seed=seed, salt="immigration:ead_students"
+        person, seed=seed, salt="immigration:ead_students", keys=draw_keys
     )
     ssn_codes[
         _select_weight_to_target(
@@ -602,16 +690,40 @@ def _assign_ssn_card_codes(
     return ssn_codes
 
 
+def _asec_arrival_year(person: pd.DataFrame, *, time_period: int) -> np.ndarray:
+    """Arrival year per person from the ASEC ``PEINUSYR`` bins.
+
+    Each code maps to its :data:`_ARRIVAL_YEAR_MIDPOINTS` value: the later
+    year of a two-year bin (code 8, 1982-1983, maps to 1983) and the middle of
+    the wider pre-1980 bins. Code 0 (native-born) or any unknown code maps to
+    ``time_period``, i.e. zero years in the US.
+    """
+
+    arrival_code = _integer_column(person, "PEINUSYR")
+    arrival_year = np.full(len(person), time_period, dtype=np.int64)
+    for code, midpoint in _ARRIVAL_YEAR_MIDPOINTS.items():
+        arrival_year[arrival_code == code] = midpoint
+    return arrival_year
+
+
 def _derive_immigration_status(
     person: pd.DataFrame,
     ssn_codes: np.ndarray,
     *,
     time_period: int,
+    arrival_year: np.ndarray | None = None,
 ) -> np.ndarray:
-    arrival_code = _integer_column(person, "PEINUSYR")
-    arrival_year = np.full(len(person), time_period, dtype=np.int64)
-    for code, midpoint in _ARRIVAL_YEAR_MIDPOINTS.items():
-        arrival_year[arrival_code == code] = midpoint
+    """Immigration status per person; ``arrival_year`` replaces the bins.
+
+    An exact ``arrival_year`` (NaN where there is none) is read the way the
+    ASEC bins are: no entry year means ``time_period``.
+    """
+
+    if arrival_year is None:
+        arrival_year = _asec_arrival_year(person, time_period=time_period)
+    else:
+        exact = np.asarray(arrival_year, dtype=np.float64)
+        arrival_year = np.where(np.isfinite(exact), exact, time_period).astype(np.int64)
     years_in_us = time_period - arrival_year
     age = _integer_column(person, "A_AGE")
     age_at_entry = np.maximum(0, age - years_in_us)
@@ -759,18 +871,7 @@ def us_immigration_composition_gate(
     """
 
     if controls is None:
-        stage = us_immigration_stage_spec()
-        derive = [
-            operation
-            for operation in stage.operations
-            if operation.kind == "derive_immigration_status"
-        ]
-        if len(derive) != 1:
-            raise ValueError(
-                "US immigration stage must declare exactly one "
-                "derive_immigration_status operation."
-            )
-        controls = _controls_from_parameters(derive[0].parameters)
+        controls = _packaged_controls()
 
     person = frame.table("person")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
