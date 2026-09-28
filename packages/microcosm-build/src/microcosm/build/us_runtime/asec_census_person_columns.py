@@ -115,8 +115,9 @@ _MICROUNIT_OPTIONAL_READER = (
 )
 
 #: The reviewed restoration set, in the order columns are appended. Domains are
-#: the Census codes observed in all three pinned person members (pppub23/24/25,
-#: 2026-09-23); ``A_EXPRRP`` has no code 6 in the Census codebook or the data.
+#: the Census codes observed in the pinned person members pppub23/24/25
+#: (2026-09-23); pppub26 (income year 2025) falls inside every one of them
+#: (2026-09-27). ``A_EXPRRP`` has no code 6 in the Census codebook or the data.
 ASEC_CENSUS_PERSON_COLUMNS: tuple[AsecCensusPersonColumn, ...] = (
     AsecCensusPersonColumn(
         "NOW_MCAID",

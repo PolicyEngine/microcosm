@@ -1,0 +1,800 @@
+{
+ "purpose": "source_construction and pre_clone_enrichment of tools/build_us_puf_support_base.py on the default pool, fully pinned, 2026-09-27",
+ "run_config": {
+  "asec_h5": [
+   "2023=~/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/census_cps_2023.h5",
+   "2024=~/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/census_cps_2024.h5",
+   "2025=~/.cache/microcosm/asec/census_cps_2025.h5"
+  ],
+  "asec_h5_sha256": {
+   "2023": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+   "2024": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+   "2025": "4c5a32188b6acfbcfbeb9f5d719d3847873887b72ebdbb19bc402c16e0a64e58"
+  },
+  "asec_education_source": {
+   "2023": "~/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub24csv.zip",
+   "2024": "~/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub25csv.zip",
+   "2025": "~/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub26csv.zip"
+  },
+  "target_year": 2024,
+  "acs_h5": "~/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/acs_2022.h5",
+  "seed": 0
+ },
+ "stage_profile": {
+  "pre_clone_enrichment": {
+   "entry_rss_bytes": 1970290688,
+   "error": null,
+   "exit_rss_bytes": 10873683968,
+   "peak_rss_bytes": 13574078464,
+   "rss_sample_count": 129,
+   "sampling_error": null,
+   "stage": "pre_clone_enrichment",
+   "status": "succeeded",
+   "wall_seconds": 38.22470487502869
+  },
+  "source_construction": {
+   "entry_rss_bytes": 1971683328,
+   "error": null,
+   "exit_rss_bytes": 9930113024,
+   "peak_rss_bytes": 10964992000,
+   "rss_sample_count": 202,
+   "sampling_error": null,
+   "stage": "source_construction",
+   "status": "succeeded",
+   "wall_seconds": 63.66323954198742
+  }
+ },
+ "row_counts": [
+  {
+   "rows": 421119,
+   "table": "person"
+  },
+  {
+   "rows": 165357,
+   "table": "household"
+  },
+  {
+   "rows": 221390,
+   "table": "tax_unit"
+  },
+  {
+   "rows": 172259,
+   "table": "spm_unit"
+  },
+  {
+   "rows": 184978,
+   "table": "family"
+  },
+  {
+   "rows": 336355,
+   "table": "marital_unit"
+  }
+ ],
+ "pooled_sources": [
+  {
+   "census_person_columns": {
+    "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+    "columns_added": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "columns_verified_equal": [],
+    "h5_person_rows": 144265,
+    "identity_columns_verified_equal": [
+     "PH_SEQ",
+     "P_SEQ",
+     "A_LINENO",
+     "A_AGE"
+    ],
+    "income_year": 2023,
+    "join_key": "PERIDNUM (exact 22-digit string), one-to-one and total",
+    "joined_person_rows": 144265,
+    "member": "pppub24.csv",
+    "member_person_rows": 144265,
+    "member_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+    "member_size_bytes": 277250415,
+    "member_values": {
+     "A_ENRLW": {
+      "0": 72991,
+      "1": 11620,
+      "2": 59654
+     },
+     "A_EXPRRP": {
+      "1": 37875,
+      "10": 2763,
+      "11": 147,
+      "12": 1752,
+      "13": 4387,
+      "14": 968,
+      "2": 18376,
+      "3": 11652,
+      "4": 16147,
+      "5": 42756,
+      "7": 2661,
+      "8": 2854,
+      "9": 1927
+     },
+     "A_FTPT": {
+      "0": 132645,
+      "1": 10174,
+      "2": 1446
+     },
+     "NOW_CHAMPVA": {
+      "1": 335,
+      "2": 143930
+     },
+     "NOW_IHSFLG": {
+      "1": 651,
+      "2": 143614
+     },
+     "NOW_MCAID": {
+      "1": 26367,
+      "2": 117898
+     },
+     "NOW_MIL": {
+      "1": 4318,
+      "2": 139947
+     },
+     "NOW_NONM": {
+      "1": 8435,
+      "2": 135830
+     },
+     "NOW_OTHMT": {
+      "1": 331,
+      "2": 143934
+     },
+     "NOW_VACARE": {
+      "1": 1178,
+      "2": 143087
+     },
+     "PTOTVAL": {
+      "negative_rows": 59,
+      "nonzero_rows": 102389
+     }
+    },
+    "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip",
+    "operation": "exact_source_join",
+    "reviewed_columns": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "source_form": "archive",
+    "source_path": "~/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub24csv.zip",
+    "survey_year": 2024
+   },
+   "raw_household_rows": 56251,
+   "raw_person_population": 320890854.43000007,
+   "raw_person_rows": 144265,
+   "relationship_recode_source": "source:A_EXPRRP",
+   "scale": 0.3385911071839787,
+   "share": 0.3333333333333333,
+   "source_file": "census_cps_2023.h5",
+   "weighted_person_population": 108650789.68666664,
+   "year": 2023
+  },
+  {
+   "census_person_columns": {
+    "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+    "columns_added": [],
+    "columns_verified_equal": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "h5_person_rows": 142125,
+    "identity_columns_verified_equal": [
+     "PH_SEQ",
+     "P_SEQ",
+     "A_LINENO",
+     "A_AGE"
+    ],
+    "income_year": 2024,
+    "join_key": "PERIDNUM (exact 22-digit string), one-to-one and total",
+    "joined_person_rows": 142125,
+    "member": "pppub25.csv",
+    "member_person_rows": 142125,
+    "member_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+    "member_size_bytes": 277882549,
+    "member_values": {
+     "A_ENRLW": {
+      "0": 72079,
+      "1": 11445,
+      "2": 58601
+     },
+     "A_EXPRRP": {
+      "1": 37382,
+      "10": 2659,
+      "11": 134,
+      "12": 1734,
+      "13": 4257,
+      "14": 844,
+      "2": 18380,
+      "3": 11334,
+      "4": 15918,
+      "5": 42053,
+      "7": 2570,
+      "8": 2876,
+      "9": 1984
+     },
+     "A_FTPT": {
+      "0": 130680,
+      "1": 10014,
+      "2": 1431
+     },
+     "NOW_CHAMPVA": {
+      "1": 368,
+      "2": 141757
+     },
+     "NOW_IHSFLG": {
+      "1": 685,
+      "2": 141440
+     },
+     "NOW_MCAID": {
+      "1": 24844,
+      "2": 117281
+     },
+     "NOW_MIL": {
+      "1": 4413,
+      "2": 137712
+     },
+     "NOW_NONM": {
+      "1": 8486,
+      "2": 133639
+     },
+     "NOW_OTHMT": {
+      "1": 312,
+      "2": 141813
+     },
+     "NOW_VACARE": {
+      "1": 1270,
+      "2": 140855
+     },
+     "PTOTVAL": {
+      "negative_rows": 75,
+      "nonzero_rows": 101163
+     }
+    },
+    "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
+    "operation": "exact_source_join",
+    "reviewed_columns": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "source_form": "archive",
+    "source_path": "~/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub25csv.zip",
+    "survey_year": 2025
+   },
+   "raw_household_rows": 55762,
+   "raw_person_population": 325952369.06,
+   "raw_person_rows": 142125,
+   "relationship_recode_source": "source:A_EXPRRP",
+   "scale": 0.3333333333333333,
+   "share": 0.3333333333333333,
+   "source_file": "census_cps_2024.h5",
+   "weighted_person_population": 108650789.68666667,
+   "year": 2024
+  },
+  {
+   "census_person_columns": {
+    "archive_sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93",
+    "columns_added": [],
+    "columns_verified_equal": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "h5_person_rows": 134729,
+    "identity_columns_verified_equal": [
+     "PH_SEQ",
+     "P_SEQ",
+     "A_LINENO",
+     "A_AGE"
+    ],
+    "income_year": 2025,
+    "join_key": "PERIDNUM (exact 22-digit string), one-to-one and total",
+    "joined_person_rows": 134729,
+    "member": "pppub26.csv",
+    "member_person_rows": 134729,
+    "member_sha256": "f78920699bf671cc211cb720ff8c6274392524a22138aedaf9e3954f91ba4334",
+    "member_size_bytes": 259887437,
+    "member_values": {
+     "A_ENRLW": {
+      "0": 69572,
+      "1": 10761,
+      "2": 54396
+     },
+     "A_EXPRRP": {
+      "1": 35882,
+      "10": 2404,
+      "11": 97,
+      "12": 1408,
+      "13": 3816,
+      "14": 800,
+      "2": 17462,
+      "3": 10808,
+      "4": 15562,
+      "5": 39531,
+      "7": 2452,
+      "8": 2717,
+      "9": 1790
+     },
+     "A_FTPT": {
+      "0": 123968,
+      "1": 9470,
+      "2": 1291
+     },
+     "NOW_CHAMPVA": {
+      "1": 414,
+      "2": 134315
+     },
+     "NOW_IHSFLG": {
+      "1": 661,
+      "2": 134068
+     },
+     "NOW_MCAID": {
+      "1": 22688,
+      "2": 112041
+     },
+     "NOW_MIL": {
+      "1": 3994,
+      "2": 130735
+     },
+     "NOW_NONM": {
+      "1": 8102,
+      "2": 126627
+     },
+     "NOW_OTHMT": {
+      "1": 235,
+      "2": 134494
+     },
+     "NOW_VACARE": {
+      "1": 1377,
+      "2": 133352
+     },
+     "PTOTVAL": {
+      "negative_rows": 64,
+      "nonzero_rows": 96720
+     }
+    },
+    "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2026/march/asecpub26csv.zip",
+    "operation": "exact_source_join",
+    "reviewed_columns": [
+     "NOW_MCAID",
+     "NOW_NONM",
+     "NOW_CHAMPVA",
+     "NOW_MIL",
+     "NOW_VACARE",
+     "NOW_OTHMT",
+     "NOW_IHSFLG",
+     "A_EXPRRP",
+     "PTOTVAL",
+     "A_ENRLW",
+     "A_FTPT"
+    ],
+    "source_form": "archive",
+    "source_path": "~/PolicyEngine/_buildm-runtime/inputs/asec_education/asecpub26csv.zip",
+    "survey_year": 2026
+   },
+   "raw_household_rows": 53344,
+   "raw_person_population": 329518151.84999996,
+   "raw_person_rows": 134729,
+   "relationship_recode_source": "source:A_EXPRRP",
+   "scale": 0.3297262656902908,
+   "share": 0.3333333333333333,
+   "source_file": "census_cps_2025.h5",
+   "weighted_person_population": 108650789.68666668,
+   "year": 2025
+  }
+ ],
+ "anchor_year": 2024,
+ "signals": {
+  "eligibility_inputs_signal": {
+   "details": {
+    "any_parent_id_resolved_share": 0.3089212009129508,
+    "disabled_share": 0.11166887475103247,
+    "disabled_share_band": [
+     0.05,
+     0.2
+    ],
+    "full_time_college_student_share": 0.036407549887310355,
+    "full_time_student_share_band": [
+     0.01,
+     0.08
+    ],
+    "parent_1_id_resolved_share": 0.2889970942615618,
+    "parent_2_id_resolved_share": 0.22796556014051636,
+    "parent_share": 0.28569636476386817,
+    "parent_share_band": [
+     0.12,
+     0.4
+    ],
+    "pointers_unnameable_at_person_id_zero": 0,
+    "unique_counts": {
+     "is_blind": 2,
+     "is_disabled": 2,
+     "is_full_time_college_student": 2,
+     "own_children_in_household": 14,
+     "parent_1_id": 72202,
+     "parent_2_id": 56390,
+     "veterans_benefits": 1127
+    },
+    "veterans_benefits_share": 0.016930529740286363,
+    "veterans_benefits_share_band": [
+     0.002,
+     0.04
+    ]
+   },
+   "failures": [],
+   "passed": true
+  },
+  "housing_inputs_signal": {
+   "details": {
+    "has_spm_support_channel_metadata": false,
+    "household_tenure_values": [
+     "NONE",
+     "OWNED_WITH_MORTGAGE",
+     "RENTED"
+    ],
+    "housing_assistance_positive_by_support_channel": {},
+    "housing_assistance_receipt_invalid_count": 0,
+    "housing_assistance_receipt_missing_count": 0,
+    "housing_assistance_share": 0.035399810204329224,
+    "housing_assistance_share_band": [
+     0.005,
+     0.08
+    ],
+    "housing_assistance_share_by_support_channel": {},
+    "housing_assistance_take_up_invalid_count": 0,
+    "housing_assistance_take_up_missing_count": 0,
+    "housing_assistance_take_up_source_mismatch_count": 0,
+    "negative_rent": 0,
+    "nonfinite_rent": 0,
+    "positive_rent_nonhead": 0,
+    "positive_rent_nonrenter": 30838,
+    "pre_subsidy_rent_share": 0.1337012964806105,
+    "pre_subsidy_rent_share_band": [
+     0.05,
+     0.25
+    ],
+    "pre_subsidy_rent_total": 660061913741.3123,
+    "pre_subsidy_rent_unweighted_total": 772002575.613394,
+    "spm_tenure_values": [
+     "OWNER_WITHOUT_MORTGAGE",
+     "OWNER_WITH_MORTGAGE",
+     "RENTER"
+    ],
+    "unknown_household_tenure_values": [],
+    "unknown_spm_tenure_values": []
+   },
+   "failures": [],
+   "passed": true
+  },
+  "medicare_take_up_input_signal": {
+   "details": {
+    "missing_count": 0,
+    "positive_count": 80041,
+    "source_mismatch_count": 0,
+    "source_rows": 421119,
+    "unique_count": 2,
+    "weighted_enrolled_share": 0.2001841056589198,
+    "weighted_enrolled_share_band": [
+     0.15,
+     0.24
+    ]
+   },
+   "failures": [],
+   "passed": true
+  },
+  "pregnancy_signal": {
+   "details": {
+    "clone_disagreement_source_persons": 0,
+    "malformed_source_id_rows": 0,
+    "missing_rows": 0,
+    "non_boolean_rows": 0,
+    "pregnant_female_outside_age_range_rows": 0,
+    "pregnant_ineligible_rows": 0,
+    "pregnant_nonfemale_rows": 0,
+    "pregnant_share": 0.008103994246385747,
+    "pregnant_share_band": [
+     0.002,
+     0.02
+    ],
+    "source_persons_checked": 0,
+    "unique_count": 2
+   },
+   "failures": [],
+   "passed": true
+  },
+  "relationship_inputs_signal": {
+   "details": {
+    "household_head_share": 0.414256876345531,
+    "household_head_share_band": [
+     0.3,
+     0.55
+    ],
+    "households_without_exactly_one_head": 0,
+    "separated_and_surviving": 0,
+    "separated_share": 0.013732140150035821,
+    "separated_share_band": [
+     0.003,
+     0.04
+    ],
+    "surviving_spouse_share": 0.04759139559033301,
+    "surviving_spouse_share_band": [
+     0.02,
+     0.08
+    ],
+    "unique_counts": {
+     "is_household_head": 2,
+     "is_separated": 2,
+     "is_surviving_spouse": 2
+    }
+   },
+   "failures": [],
+   "passed": true
+  },
+  "spm_independence_role_signal": {
+   "details": {
+    "derivation": {
+     "adult_child_person_count_mismatch_units": 0,
+     "adult_rule": "age >= 18 OR (age >= 15 AND is_spm_independent_minor_role)",
+     "ages_changed": false,
+     "all_rows_equal_source_columns": [
+      "A_AGE",
+      "A_LINENO",
+      "P_SEQ",
+      "SPM_HAGE",
+      "SPM_NUMADULTS",
+      "SPM_NUMKIDS",
+      "SPM_NUMPER"
+     ],
+     "classification_changed_units_vs_age_only": 304,
+     "complete_source_membership_units": 172259,
+     "dataset_sha256": "d0e362ece441a25bf62ee9c21fb2fed22fbf29a100acb875f2c8ca967aab6d14",
+     "evidence_column": "is_spm_independence_role",
+     "evidence_status": "Inference from documented primitive relationships, reconciled against every SPM count in pinned complete Census ASEC sources; Census production program not retrieved.",
+     "frame_projection_columns": [
+      "person_id",
+      "person_spm_unit_id",
+      "source_year",
+      "PERIDNUM",
+      "age",
+      "source_household_id",
+      "source_person_id",
+      "source_row_id",
+      "A_AGE",
+      "A_LINENO",
+      "P_SEQ",
+      "SPM_HAGE",
+      "SPM_NUMADULTS",
+      "SPM_NUMKIDS",
+      "SPM_NUMPER",
+      "A_FAMTYP",
+      "A_FAMREL",
+      "A_SPOUSE",
+      "PECOHAB"
+     ],
+     "frame_projection_sha256": "d0e362ece441a25bf62ee9c21fb2fed22fbf29a100acb875f2c8ca967aab6d14",
+     "independent_minor_persons": 306,
+     "minor_only_units_resolved": 108,
+     "native_spm_units": 172259,
+     "nonmissing_optional_raw_fields_checked": {
+      "A_FAMREL": 276854,
+      "A_FAMTYP": 276854,
+      "A_SPOUSE": 421119,
+      "PECOHAB": 276854
+     },
+     "period_handling": "Store the role before the age gate; model age supplies the requested period.",
+     "person_role_binding_sha256": "f115f114c5a6fb0cd2471061aa55c7849665ad912e46b77e2aa66d45d19fb729",
+     "persons_joined": 421119,
+     "primitive_column": "is_spm_independent_minor_role",
+     "primitive_rule": "SPM_HEAD == 1 OR (A_FAMTYP in {1,4} AND A_FAMREL in {1,2})",
+     "source_checks": [
+      {
+       "adult_child_person_count_mismatch_units": 0,
+       "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+       "csv_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+       "csv_size_bytes": 277250415,
+       "extra_independent_minor_people_vs_head_only": 1,
+       "extra_independent_minor_units_vs_head_only": 1,
+       "income_year": 2023,
+       "member": "pppub24.csv",
+       "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip",
+       "persons": 144265,
+       "survey_year": 2024,
+       "units": 58711
+      },
+      {
+       "adult_child_person_count_mismatch_units": 0,
+       "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+       "csv_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+       "csv_size_bytes": 277882549,
+       "extra_independent_minor_people_vs_head_only": 6,
+       "extra_independent_minor_units_vs_head_only": 5,
+       "income_year": 2024,
+       "member": "pppub25.csv",
+       "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
+       "persons": 142125,
+       "survey_year": 2025,
+       "units": 58147
+      },
+      {
+       "adult_child_person_count_mismatch_units": 0,
+       "archive_sha256": "fe819d0d2fc4470c282e76c247b8aa8b6054811619730307e9f2fe6186707d93",
+       "csv_sha256": "f78920699bf671cc211cb720ff8c6274392524a22138aedaf9e3954f91ba4334",
+       "csv_size_bytes": 259887437,
+       "extra_independent_minor_people_vs_head_only": 0,
+       "extra_independent_minor_units_vs_head_only": 0,
+       "income_year": 2025,
+       "member": "pppub26.csv",
+       "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2026/march/asecpub26csv.zip",
+       "persons": 134729,
+       "survey_year": 2026,
+       "units": 55401
+      }
+     ],
+     "source_join": [
+      "source_year (income year)",
+      "PERIDNUM (exact 22-digit string)"
+     ],
+     "table_key": [
+      "person_id",
+      "person_spm_unit_id"
+     ],
+     "table_order": "exact original HDF person order; verified",
+     "table_rows": 421119,
+     "total_source_people": 421119,
+     "total_source_units": 172259,
+     "true_role_persons": 254095,
+     "unmatched_persons": 0,
+     "weights_used": false
+    },
+    "independent_minor_persons": 306,
+    "minor_role_share": 0.01811345214849585,
+    "minor_role_share_band": [
+     0.003,
+     0.06
+    ],
+    "persons_aged_15_to_17": 18756,
+    "role_missing_values": 0,
+    "role_share": 0.6280602193192539,
+    "role_share_band": [
+     0.4,
+     0.75
+    ],
+    "spm_composition": {
+     "n_units": 172259,
+     "n_units_without_classified_adult": 0,
+     "n_units_without_member_aged_18_or_over": 108,
+     "role_source": "source_column",
+     "status": "PASS"
+    },
+    "unique_counts": {
+     "is_spm_independent_minor_role": 2
+    }
+   },
+   "failures": [],
+   "passed": true
+  },
+  "wic_claim_signal": {
+   "details": {
+    "breastfeeding_rate_validated_but_unassigned": 0.663,
+    "breastfeeding_source_available": false,
+    "category_assignment_order": [
+     "pregnant",
+     "postpartum",
+     "infant",
+     "child",
+     "none"
+    ],
+    "category_counts": {
+     "child": 19618,
+     "infant": 3526,
+     "none": 391255,
+     "postpartum": 3345,
+     "pregnant": 3375
+    },
+    "category_rates": {
+     "breastfeeding": 0.663,
+     "child": 0.46,
+     "infant": 0.784,
+     "none": 0.0,
+     "postpartum": 0.689,
+     "pregnant": 0.456
+    },
+    "category_weighted_claim_share_bands": {
+     "child": [
+      0.3,
+      0.63
+     ],
+     "infant": [
+      0.55,
+      0.96
+     ],
+     "none": [
+      0.0,
+      0.0
+     ],
+     "postpartum": [
+      0.45,
+      0.9
+     ],
+     "pregnant": [
+      0.25,
+      0.67
+     ]
+    },
+    "category_weighted_claim_shares": {
+     "child": 0.4601764063841181,
+     "infant": 0.7848720896732944,
+     "none": 0.0,
+     "postpartum": 0.7007073175751649,
+     "pregnant": 0.44336213531053303
+    },
+    "category_weights": {
+     "child": 13961478.734755214,
+     "infant": 2774160.0335391797,
+     "none": 303951373.98828775,
+     "postpartum": 2623840.1799597978,
+     "pregnant": 2641516.1234580437
+    },
+    "clone_category_mismatch_count": 0,
+    "clone_claim_mismatch_count": 0,
+    "clone_group_count": 0,
+    "missing_count": 0,
+    "positive_count": 15613,
+    "unique_count": 2,
+    "weighted_claim_share": 0.03562421151061383,
+    "weighted_claim_share_band": [
+     0.015,
+     0.06
+    ]
+   },
+   "failures": [],
+   "passed": true
+  }
+ }
+}

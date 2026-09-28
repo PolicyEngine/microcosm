@@ -51,8 +51,8 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.us_runtime.asec_sources import ASEC_DEFAULT_POOL_INCOME_YEARS
 from microcosm.build.us_runtime.education_assistance_source import (
-    ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
     fetch_asec_education_assistance_source,
 )
 from microcosm.build.us_runtime.spm_composition import check_spm_composition
@@ -163,7 +163,7 @@ def us_spm_independence_role_stage_spec() -> SourceStageSpec:
 def resolve_asec_spm_role_source_paths(
     paths: Mapping[int, str | Path] | None,
     *,
-    income_years: tuple[int, ...] = ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
+    income_years: tuple[int, ...] = ASEC_DEFAULT_POOL_INCOME_YEARS,
 ) -> dict[int, Path]:
     """Return one pinned complete person source path per pooled income year.
 

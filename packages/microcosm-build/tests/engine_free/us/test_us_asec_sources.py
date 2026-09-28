@@ -1,12 +1,14 @@
 """Pinned CPS ASEC source coordinates and the base builder's digest check.
 
 ``microcosm.build.us_runtime.asec_sources`` owns the immutable coordinates of
-the three processed ASEC inputs. ``tools/build_us_puf_support_base.py
---asec-h5-sha256`` refuses an input whose bytes differ from its declared
-digest before any stage runs, and ``tools/fetch_us_asec_sources.py`` resolves
-the pinned files and prints those arguments. These tests pin all three, and
-pin the module's digests to the hermetic-input evidence already recorded in
-``ecps_parity_known_gaps.json`` so there is one roster.
+the four processed ASEC inputs and the default pool (the newest three).
+``tools/build_us_puf_support_base.py --asec-h5-sha256`` refuses an input whose
+bytes differ from its declared digest before any stage runs, and
+``tools/fetch_us_asec_sources.py`` resolves the pinned files and prints those
+arguments. These tests pin all four, hold the income-2022..2024 coordinates to
+their 2026-09-18 values so historical builds stay byte-reproducible, and bind
+the module's digests to the hermetic-input evidence already recorded in
+``ecps_parity_known_gaps.json`` wherever both name a year.
 """
 
 from __future__ import annotations
@@ -20,20 +22,33 @@ from pathlib import Path
 from types import MappingProxyType, SimpleNamespace
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from microcosm.build.us_runtime import asec_sources
 from microcosm.build.us_runtime.asec_sources import (
+    ASEC_DEFAULT_POOL_INCOME_YEARS,
+    ASEC_DEFAULT_POOL_SIZE,
     ASEC_SOURCE_ARTIFACTS,
     ASEC_SOURCE_REPOSITORY_ID,
     ASEC_SOURCE_REPOSITORY_TYPE,
     ASEC_SOURCE_REVISION,
+    ASEC_SOURCE_REVISION_2025,
     AsecSourceArtifact,
     asec_source_artifact,
     fetch_asec_source,
+    newest_pinned_income_years,
+)
+from microcosm.build.us_runtime.education_assistance_source import (
+    ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
 )
 from microcosm.build.us_runtime.parity_reference import (
     ECPS_PARITY_KNOWN_GAPS_RESOURCE,
 )
+from microcosm.build.us_runtime.public_assistance_type_source import (
+    ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS,
+)
+from microcosm.build.us_runtime.spm_role_source import ASEC_SPM_ROLE_SOURCES
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -141,8 +156,11 @@ def _hermetic_asec_digests() -> dict[int, set[str]]:
 
 
 def test_pins_agree_with_the_hermetic_input_evidence() -> None:
+    # The evidence records the historical Build J inputs (income 2022-2024);
+    # every year it names must carry exactly the pinned digest.
     evidence = _hermetic_asec_digests()
-    assert set(evidence) == set(ASEC_SOURCE_ARTIFACTS) == {2022, 2023, 2024}
+    assert set(evidence) == {2022, 2023, 2024}
+    assert set(evidence) <= set(ASEC_SOURCE_ARTIFACTS)
     for year, digests in evidence.items():
         assert digests == {ASEC_SOURCE_ARTIFACTS[year].sha256}, year
 
@@ -150,21 +168,119 @@ def test_pins_agree_with_the_hermetic_input_evidence() -> None:
 def test_coordinates_are_well_formed_and_immutable() -> None:
     assert ASEC_SOURCE_REPOSITORY_ID == "policyengine/microcosm-us-sources"
     assert ASEC_SOURCE_REPOSITORY_TYPE == "dataset"
-    assert re.fullmatch(r"[0-9a-f]{40}", ASEC_SOURCE_REVISION)
+    assert set(ASEC_SOURCE_ARTIFACTS) == {2022, 2023, 2024, 2025}
     for year, artifact in ASEC_SOURCE_ARTIFACTS.items():
         assert artifact.income_year == year
         assert artifact.filename == f"census_cps_{year}.h5"
         assert re.fullmatch(r"[0-9a-f]{64}", artifact.sha256)
+        assert re.fullmatch(r"[0-9a-f]{40}", artifact.revision)
         assert artifact.size_bytes > 0
         assert artifact.url == (
             "https://huggingface.co/datasets/policyengine/microcosm-us-sources"
-            f"/resolve/{ASEC_SOURCE_REVISION}/census_cps_{year}.h5"
+            f"/resolve/{artifact.revision}/census_cps_{year}.h5"
         )
-    assert len({artifact.sha256 for artifact in ASEC_SOURCE_ARTIFACTS.values()}) == 3
+    assert len({artifact.sha256 for artifact in ASEC_SOURCE_ARTIFACTS.values()}) == (
+        len(ASEC_SOURCE_ARTIFACTS)
+    )
     with pytest.raises(TypeError):
-        ASEC_SOURCE_ARTIFACTS[2025] = _fixture_artifact(2025)  # type: ignore[index]
+        ASEC_SOURCE_ARTIFACTS[2026] = _fixture_artifact(2026)  # type: ignore[index]
     with pytest.raises(dataclasses.FrozenInstanceError):
         ASEC_SOURCE_ARTIFACTS[2022].sha256 = _WRONG_SHA256  # type: ignore[misc]
+
+
+def test_historical_coordinates_are_unchanged() -> None:
+    # A historical income-2022..2024 build resolves exactly what it resolved
+    # when the files were first mirrored: same revision, URL, digest and size.
+    # Adding a year uploads a new revision and never moves these.
+    assert ASEC_SOURCE_REVISION == "78acc83ea8b099a97cb0d658bbed91ea75aae8b0"
+    assert {
+        year: (artifact.revision, artifact.sha256, artifact.size_bytes)
+        for year, artifact in ASEC_SOURCE_ARTIFACTS.items()
+        if year <= 2024
+    } == {
+        2022: (
+            ASEC_SOURCE_REVISION,
+            "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+            301_129_278,
+        ),
+        2023: (
+            ASEC_SOURCE_REVISION,
+            "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+            299_036_610,
+        ),
+        2024: (
+            ASEC_SOURCE_REVISION,
+            "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+            323_994_739,
+        ),
+    }
+
+
+def test_income_year_2025_is_pinned_at_its_own_upload() -> None:
+    artifact = asec_source_artifact(2025)
+    assert artifact.revision == ASEC_SOURCE_REVISION_2025
+    assert ASEC_SOURCE_REVISION_2025 != ASEC_SOURCE_REVISION
+    assert artifact.sha256 == (
+        "4c5a32188b6acfbcfbeb9f5d719d3847873887b72ebdbb19bc402c16e0a64e58"
+    )
+    assert artifact.size_bytes == 304_753_967
+
+
+def test_default_pool_is_the_newest_three_pinned_years() -> None:
+    assert ASEC_DEFAULT_POOL_SIZE == 3
+    assert ASEC_DEFAULT_POOL_INCOME_YEARS == (2023, 2024, 2025)
+    assert ASEC_DEFAULT_POOL_INCOME_YEARS == tuple(
+        sorted(ASEC_SOURCE_ARTIFACTS)[-ASEC_DEFAULT_POOL_SIZE:]
+    )
+    # 2022 leaves the default but stays pinned and resolvable.
+    assert 2022 not in ASEC_DEFAULT_POOL_INCOME_YEARS
+    assert asec_source_artifact(2022).filename == "census_cps_2022.h5"
+
+
+@given(
+    years=st.sets(st.integers(min_value=1990, max_value=2100), min_size=1, max_size=12),
+    size=st.integers(min_value=-2, max_value=14),
+)
+def test_newest_pinned_income_years_properties(years: set[int], size: int) -> None:
+    artifacts = {year: _fixture_artifact(year) for year in years}
+    if size < 1 or size > len(years):
+        with pytest.raises(ValueError):
+            newest_pinned_income_years(size, artifacts)
+        return
+    pool = newest_pinned_income_years(size, artifacts)
+    assert len(pool) == size
+    assert list(pool) == sorted(pool)
+    assert set(pool) <= years
+    # Every pinned year outside the pool is older than every pooled year.
+    assert all(other < min(pool) for other in years - set(pool))
+    # Pinning a newer year shifts the pool by exactly one year.
+    newer = max(years) + 1
+    shifted = newest_pinned_income_years(
+        size, {**artifacts, newer: _fixture_artifact(newer)}
+    )
+    assert shifted == (*pool[1:], newer)
+
+
+def test_every_pinned_year_is_pinned_in_every_year_keyed_registry() -> None:
+    # A pooled year needs its processed H5 and its Census survey archive
+    # (education and PAW_TYP sidecars, SPM role, #720 person columns). If any
+    # registry lacked a pinned year, a build of that year would refuse
+    # mid-construction instead of here.
+    pinned = set(ASEC_SOURCE_ARTIFACTS)
+    assert set(ASEC_EDUCATION_ASSISTANCE_ARCHIVES) == pinned
+    assert set(ASEC_SPM_ROLE_SOURCES) == pinned
+    assert set(ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS) == pinned
+    assert set(ASEC_DEFAULT_POOL_INCOME_YEARS) <= pinned
+    for year in pinned:
+        archive = ASEC_EDUCATION_ASSISTANCE_ARCHIVES[year]
+        assert archive.survey_year == year + 1
+        assert archive.member == f"pppub{(year + 1) % 100:02d}.csv"
+        assert archive.zip_url == (
+            "https://www2.census.gov/programs-surveys/cps/datasets/"
+            f"{year + 1}/march/asecpub{(year + 1) % 100:02d}csv.zip"
+        )
+        assert ASEC_PUBLIC_ASSISTANCE_TYPE_AUDIT_PINS[year].rows == archive.rows
+        assert ASEC_SPM_ROLE_SOURCES[year].persons == archive.rows
 
 
 def test_unknown_year_refuses_before_any_transfer(
@@ -173,7 +289,9 @@ def test_unknown_year_refuses_before_any_transfer(
     _forbid_download(monkeypatch)
     with pytest.raises(ValueError, match=r"No pinned ASEC source for income year 2019"):
         asec_source_artifact(2019)
-    with pytest.raises(ValueError, match=r"pinned years are \[2022, 2023, 2024\]"):
+    with pytest.raises(
+        ValueError, match=r"pinned years are \[2022, 2023, 2024, 2025\]"
+    ):
         fetch_asec_source(2019)
 
 
@@ -230,6 +348,29 @@ def test_fetch_skips_a_cached_file_of_the_wrong_size(
     cached.write_bytes(_FIXTURE_BYTES + b"!")
     calls = _fake_download(monkeypatch, _FIXTURE_BYTES, home)
     assert fetch_asec_source(2022) == home / "hub" / "census_cps_2022.h5"
+    assert calls["revision"] == ASEC_SOURCE_REVISION
+
+
+def test_fetch_downloads_each_year_at_its_own_revision(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    newer = AsecSourceArtifact(
+        income_year=2025,
+        filename="census_cps_2025.h5",
+        sha256=_FIXTURE_SHA256,
+        size_bytes=len(_FIXTURE_BYTES),
+        revision=ASEC_SOURCE_REVISION_2025,
+    )
+    monkeypatch.setattr(
+        asec_sources,
+        "ASEC_SOURCE_ARTIFACTS",
+        MappingProxyType({2022: _fixture_artifact(), 2025: newer}),
+    )
+    calls = _fake_download(monkeypatch, _FIXTURE_BYTES, tmp_path)
+    fetch_asec_source(2025, tmp_path / "hf-cache")
+    assert calls["revision"] == ASEC_SOURCE_REVISION_2025
+    fetch_asec_source(2022, tmp_path / "hf-cache")
     assert calls["revision"] == ASEC_SOURCE_REVISION
 
 
@@ -533,7 +674,7 @@ def test_main_refuses_a_wrong_digest_before_dispatching_any_stage(
         )
 
 
-def test_fetch_tool_prints_builder_arguments_for_every_pinned_year(
+def test_fetch_tool_prints_builder_arguments_for_the_default_pool(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -547,12 +688,33 @@ def test_fetch_tool_prints_builder_arguments_for_every_pinned_year(
 
     monkeypatch.setattr(tool, "fetch_asec_source", fake_fetch)
     assert tool.main([]) == 0
-    assert seen == [(2022, None), (2023, None), (2024, None)]
+    assert seen == [(2023, None), (2024, None), (2025, None)]
     assert capsys.readouterr().out.splitlines() == [
         f"--asec-h5 {year}={tmp_path / f'census_cps_{year}.h5'} "
         f"--asec-h5-sha256 {year}={ASEC_SOURCE_ARTIFACTS[year].sha256}"
-        for year in (2022, 2023, 2024)
+        for year in ASEC_DEFAULT_POOL_INCOME_YEARS
     ]
+
+
+def test_fetch_tool_resolves_every_pinned_year_on_request(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tool = _load_tool_module("fetch_us_asec_sources")
+    seen: list[int] = []
+
+    def fake_fetch(year: int, cache_dir=None) -> Path:
+        seen.append(year)
+        return tmp_path / f"census_cps_{year}.h5"
+
+    monkeypatch.setattr(tool, "fetch_asec_source", fake_fetch)
+    assert tool.main(["--all-pinned"]) == 0
+    assert seen == [2022, 2023, 2024, 2025]
+    assert tool.main(["2022", "2023", "2024"]) == 0
+    assert seen[4:] == [2022, 2023, 2024]
+    with pytest.raises(SystemExit):
+        tool.main(["--all-pinned", "2022"])
 
 
 def test_fetch_tool_takes_years_and_a_cache_dir(
