@@ -174,11 +174,15 @@ changed dtype.
 ## Pipeline smoke on the default pool
 
 [`receipts/pipeline_smoke_2023_2025.json`](receipts/pipeline_smoke_2023_2025.json).
-The run used `tools/build_us_puf_support_base.py` with `--stage
-source_construction`, then `--stage pre_clone_enrichment`. It passed
-`--asec-h5` and `--asec-h5-sha256` for 2023, 2024 and 2025, the three local
-Census archives, and `PYTHONHASHSEED=0`. Both stages succeeded: 64 s and 11.0
-GB peak, then 38 s and 13.6 GB.
+The run used `tools/build_us_puf_support_base.py` at commit `e96165359` (clean
+tree) with `--stage source_construction`, then `--stage pre_clone_enrichment`.
+It passed `--asec-h5` and `--asec-h5-sha256` for 2023, 2024 and 2025, the
+three local Census archives, and `PYTHONHASHSEED=0`. Both stages succeeded: 63
+s and 10.9 GB peak, then 60 s and 13.5 GB.
+
+An earlier run from the uncommitted working tree gave byte-identical checkpoints
+for both stages and identical signal values. The one differing field was the
+digest of the SPM-role stage's intermediate projection file.
 
 - **Pins.** All three `--asec-h5-sha256` pins were verified before either stage
   ran; the 2025 pin now has a canonical value to match.

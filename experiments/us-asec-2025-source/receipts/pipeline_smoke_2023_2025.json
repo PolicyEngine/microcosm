@@ -1,5 +1,9 @@
 {
- "purpose": "source_construction and pre_clone_enrichment of tools/build_us_puf_support_base.py on the default pool, fully pinned, 2026-09-27",
+ "purpose": "source_construction and pre_clone_enrichment of tools/build_us_puf_support_base.py on the default pool, fully pinned",
+ "microcosm_commit": "e96165359b690cce7745bbec3854ca003cd91ae7",
+ "microcosm_worktree_dirty": false,
+ "run_date": "2026-09-28",
+ "environment": "PYTHONHASHSEED=0; uv sync --all-packages --locked --extra us",
  "run_config": {
   "asec_h5": [
    "2023=~/PolicyEngine/policyengine-us-data/policyengine_us_data/storage/census_cps_2023.h5",
@@ -22,27 +26,31 @@
  },
  "stage_profile": {
   "pre_clone_enrichment": {
-   "entry_rss_bytes": 1970290688,
+   "entry_rss_bytes": 2030764032,
    "error": null,
-   "exit_rss_bytes": 10873683968,
-   "peak_rss_bytes": 13574078464,
-   "rss_sample_count": 129,
+   "exit_rss_bytes": 10943578112,
+   "peak_rss_bytes": 13504036864,
+   "rss_sample_count": 210,
    "sampling_error": null,
    "stage": "pre_clone_enrichment",
    "status": "succeeded",
-   "wall_seconds": 38.22470487502869
+   "wall_seconds": 60.14432191697415
   },
   "source_construction": {
-   "entry_rss_bytes": 1971683328,
+   "entry_rss_bytes": 2030878720,
    "error": null,
-   "exit_rss_bytes": 9930113024,
-   "peak_rss_bytes": 10964992000,
-   "rss_sample_count": 202,
+   "exit_rss_bytes": 10335617024,
+   "peak_rss_bytes": 10880221184,
+   "rss_sample_count": 197,
    "sampling_error": null,
    "stage": "source_construction",
    "status": "succeeded",
-   "wall_seconds": 63.66323954198742
+   "wall_seconds": 62.91089479095535
   }
+ },
+ "checkpoint_sha256": {
+  "source_construction": "e0776a293b40cedb2f3dc865d4bf55a45cc9bfe31f0a6ad5e583049bda3f78d0",
+  "pre_clone_enrichment": "ae91435fce01006522c43ec3b327712f48005a314efbfd6881c17d1c9effa31d"
  },
  "row_counts": [
   {
@@ -593,7 +601,7 @@
      ],
      "classification_changed_units_vs_age_only": 304,
      "complete_source_membership_units": 172259,
-     "dataset_sha256": "d0e362ece441a25bf62ee9c21fb2fed22fbf29a100acb875f2c8ca967aab6d14",
+     "dataset_sha256": "3f75dcec42791d923a8611b1c8c3a4a341d7198e05052b83900448b1ff1edeaa",
      "evidence_column": "is_spm_independence_role",
      "evidence_status": "Inference from documented primitive relationships, reconciled against every SPM count in pinned complete Census ASEC sources; Census production program not retrieved.",
      "frame_projection_columns": [
@@ -617,7 +625,7 @@
       "A_SPOUSE",
       "PECOHAB"
      ],
-     "frame_projection_sha256": "d0e362ece441a25bf62ee9c21fb2fed22fbf29a100acb875f2c8ca967aab6d14",
+     "frame_projection_sha256": "3f75dcec42791d923a8611b1c8c3a4a341d7198e05052b83900448b1ff1edeaa",
      "independent_minor_persons": 306,
      "minor_only_units_resolved": 108,
      "native_spm_units": 172259,
@@ -796,5 +804,6 @@
    "failures": [],
    "passed": true
   }
- }
+ },
+ "reproducibility_note": "An earlier run of the same two stages on 2026-09-27, from the working tree before these commits, produced byte-identical stage checkpoints (source_construction and pre_clone_enrichment checkpoint_sha256 equal) and identical signal values. The only differing field is spm_independence_role_signal.details.derivation.dataset_sha256 / frame_projection_sha256, the digest of the stage's intermediate projection file."
 }
