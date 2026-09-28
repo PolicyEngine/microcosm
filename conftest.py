@@ -15,6 +15,12 @@ _ROOT = str(Path(__file__).resolve().parent)
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+from tools.ci_test_plan import (  # noqa: E402
+    TEST_GROUPS,
+    TestGroup,
+    group_name_for_collection_path,
+)
+
 
 def pytest_addoption(parser) -> None:
     parser.addoption(
@@ -25,36 +31,26 @@ def pytest_addoption(parser) -> None:
     )
 
 
-def _test_category(path: Path) -> tuple[str, str] | None:
-    """Return the execution environment and scope encoded in a test path."""
+def _test_group(path: Path) -> TestGroup | None:
+    """Return registry metadata for the group containing a collection path."""
 
-    parts = path.parts
-    try:
-        tests_index = parts.index("tests")
-        return parts[tests_index + 1], parts[tests_index + 2]
-    except (ValueError, IndexError):
-        return None
+    group = group_name_for_collection_path(path)
+    return TEST_GROUPS.get(group) if group is not None else None
 
 
 def pytest_ignore_collect(collection_path: Path, config) -> bool | None:
     """Exclude unavailable test environments before importing their modules."""
 
-    category = _test_category(Path(collection_path))
-    if category is None:
+    group = _test_group(Path(collection_path))
+    if group is None:
         return None
-    environment, scope = category
-    if environment == "integration" and not config.getoption("--run-integration"):
+    if group.integration and not config.getoption("--run-integration"):
         return True
-    if environment in {
-        "engine",
-        "engine_contract",
-        "engine_scenario",
-        "engine_workflow",
-        "integration",
-    }:
-        module_name = {"us": "policyengine_us", "uk": "policyengine_uk"}.get(scope)
-        if module_name is not None and importlib.util.find_spec(module_name) is None:
-            return True
+    if (
+        group.engine_module is not None
+        and importlib.util.find_spec(group.engine_module) is None
+    ):
+        return True
     return None
 
 
@@ -62,17 +58,10 @@ def pytest_collection_modifyitems(items) -> None:
     """Expose directory-derived country requirements as pytest markers."""
 
     for item in items:
-        category = _test_category(Path(item.path))
-        if category is None:
+        group = _test_group(Path(item.path))
+        if group is None:
             continue
-        environment, scope = category
-        if environment == "integration":
+        if group.integration:
             item.add_marker("integration")
-        if environment in {
-            "engine",
-            "engine_contract",
-            "engine_scenario",
-            "engine_workflow",
-            "integration",
-        } and scope in {"us", "uk"}:
-            item.add_marker(f"requires_{scope}")
+        if group.engine_module is not None:
+            item.add_marker(f"requires_{group.country}")

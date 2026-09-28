@@ -1,4 +1,3 @@
 # Microcosm agent instructions
 
-Follow [CLAUDE.md](CLAUDE.md) — commands, shard layout, the PR-CI vs
-certification boundary, and the root-journal conventions all live there.
+The canonical instructions for every coding agent are in [docs/agent-guide.md](docs/agent-guide.md).

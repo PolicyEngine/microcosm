@@ -3,7 +3,7 @@ set -euo pipefail
 
 files=()
 while IFS= read -r file; do files+=("$file"); done < <(
-  uv run --no-sync python tools/ci_test_groups.py --list engine-uk
+  uv run --no-sync python tools/ci_test_plan.py list-job engine-uk
 )
 
 # Keep country-engine execution serial so each process stays within its

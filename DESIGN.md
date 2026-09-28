@@ -1,7 +1,7 @@
 # The Microcosm stack: design charter
 
 **Status:** founding document, updated 2026-08-06. Decisions here were agreed
-between Max and Claude after building and scoring the first Microcosm
+between Max and an AI assistant after building and scoring the first Microcosm
 population candidate, which surfaced every failure mode this design exists to
 prevent.
 

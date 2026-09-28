@@ -13,14 +13,10 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from tools.ci_test_groups import selected_files
+from tools.ci_test_plan import reporting_groups_for_job, selected_files
 from tools.pytest_timing import TIMING_PREFIX
 
-CATEGORY_GROUPS = {
-    "contract": "engine-contract-us",
-    "scenario": "engine-scenario-us",
-    "workflow": "engine-workflow-us",
-}
+CATEGORY_GROUPS = reporting_groups_for_job("engine-us")
 PYTEST_ARGUMENTS = (
     "-v",
     "--tb=short",

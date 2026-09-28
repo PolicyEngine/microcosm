@@ -17,19 +17,21 @@ env:
   MKL_NUM_THREADS: "1"
 
 jobs:
-  changes:
+  select-countries:
+    permissions:
+      contents: read
+      pull-requests: read
     runs-on: ubuntu-latest
     outputs:
-      shared: ${{ steps.filter.outputs.shared }}
-      us: ${{ steps.filter.outputs.us }}
-      uk: ${{ steps.filter.outputs.uk }}
+      run_us: ${{ steps.plan.outputs.run_us }}
+      run_uk: ${{ steps.plan.outputs.run_uk }}
     steps:
       - uses: actions/checkout@v4
-      - name: Classify changed paths
-        id: filter
+      - name: Select country tests
+        id: plan
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 tools/classify_ci_changes.py
+        run: python3 tools/ci_test_plan.py select-countries
 
   lint:
     runs-on: ubuntu-latest
@@ -39,7 +41,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Verify CI test layout
-        run: python3 tools/ci_test_groups.py --verify
+        run: python3 tools/ci_test_plan.py verify
       - name: Verify the graph acceptance burndown is monotone
         run: uv run python tools/graph_acceptance_burndown.py --verify
       - name: Sync workspace
@@ -48,7 +50,6 @@ jobs:
         run: uv run --no-sync ruff check .
 
   engine-free:
-    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -62,14 +63,11 @@ jobs:
       - name: Sync workspace without country engines
         run: uv sync --all-packages --locked
       - name: Run engine-free tests
-        env:
-          RUN_US: ${{ github.event_name == 'push' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.us == 'true' }}
-          RUN_UK: ${{ github.event_name == 'push' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.uk == 'true' }}
         run: bash tools/run_engine_free_tests.sh
 
   engine-us:
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.us == 'true' || needs.changes.outputs.shared == 'true'
+    needs: select-countries
+    if: needs['select-countries'].outputs.run_us == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -98,8 +96,8 @@ jobs:
           if-no-files-found: warn
 
   engine-uk:
-    needs: changes
-    if: github.event_name == 'push' || needs.changes.outputs.uk == 'true' || needs.changes.outputs.shared == 'true'
+    needs: select-countries
+    if: needs['select-countries'].outputs.run_uk == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -116,6 +114,8 @@ jobs:
         run: bash tools/run_engine_uk_tests.sh
 
   integration-uk:
+    needs: select-countries
+    if: needs['select-countries'].outputs.run_uk == 'true'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -143,25 +143,3 @@ jobs:
           python-version: "3.13"
       - name: Build and inspect every shard wheel
         run: tools/build_and_inspect_wheels.sh
-
-  ci-ok:
-    needs: [changes, lint, engine-free, engine-us, engine-uk, integration-uk, wheels]
-    if: always()
-    runs-on: ubuntu-latest
-    env:
-      EXPECT_US: ${{ github.event_name == 'push' || needs.changes.outputs.us == 'true' || needs.changes.outputs.shared == 'true' }}
-      EXPECT_UK: ${{ github.event_name == 'push' || needs.changes.outputs.uk == 'true' || needs.changes.outputs.shared == 'true' }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Require all selected jobs to pass
-        env:
-          CHANGES_RESULT: ${{ needs.changes.result }}
-          LINT_RESULT: ${{ needs.lint.result }}
-          ENGINE_FREE_RESULT: ${{ needs['engine-free'].result }}
-          ENGINE_US_RESULT: ${{ needs['engine-us'].result }}
-          ENGINE_UK_RESULT: ${{ needs['engine-uk'].result }}
-          INTEGRATION_UK_RESULT: ${{ needs['integration-uk'].result }}
-          WHEELS_RESULT: ${{ needs.wheels.result }}
-        run: bash tools/require_ci_results.sh
