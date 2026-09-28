@@ -6428,8 +6428,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
         def table(self, entity):
             if terminal_mode == "spm_missing_pool" and entity == "person":
+                # A prepared pool carries its immigration statuses; only the
+                # SPM source role is missing.
                 return pd.DataFrame(
-                    {"person_id": [1, 2, 3, 4], "age": [30, 40, 16, 17]}
+                    {
+                        "person_id": [1, 2, 3, 4],
+                        "age": [30, 40, 16, 17],
+                        "immigration_status_str": [
+                            "REFUGEE",
+                            "LEGAL_PERMANENT_RESIDENT",
+                            "ASYLEE",
+                            "LEGAL_PERMANENT_RESIDENT",
+                        ],
+                    }
                 )
             if entity not in self.schema.entities:
                 raise ValueError(
@@ -8515,10 +8526,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             )
             assert "SSI take-up delivery failed:" not in message
         elif terminal_mode == "immigration_drift":
+            # The drift leads; the only other line is the SPM composition
+            # gate's degraded-mode refusal on the household/person-only fake
+            # export frame, which this cofailure contract expects.
             assert message == (
                 "Release gates failed: Immigration composition failed: weighted "
                 "humanitarian status share drifted from 0.500000 to 0.255319 "
-                "after calibration [final-immigration-sentinel]"
+                "after calibration [final-immigration-sentinel]; SPM measurement "
+                "composition failed (export frame): the export frame cannot be "
+                "classified, so the rule the engine applies to it cannot be "
+                "checked: Unknown entity 'spm_unit'; schema declares "
+                "['person', 'household']."
             )
         elif clean_run:
             # The register mismatch is the run's only terminal failure, yet
