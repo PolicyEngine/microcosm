@@ -260,3 +260,106 @@ the first run's output directory; the helper now parses through the real parser 
   heads and CI. Restored from main's 585-line file with the branch's own hunk (the dense-line mirror
   reads `UK_ROWWISE_DENSE_POSTURE.gate_policy_suffix` instead of loading the retired tool by path);
   20 passed on this tree, no digest moved.
+
+## R7. Licensed 10 % dense smoke run before merge (2026-09-28, María's ask)
+
+Question put: has a dense licensed run been made end to end, and what does a full dense run cost
+on the graph driver? Neither had been done (R4). Method: two measurement-only worktrees at main
+937aca4ec (`repos/populace-main-1012`, main's tool) and at this branch (`repos/populace-901-measure`),
+both carrying the #1014 lane's PLAN_5 relaxation patch uncommitted so a spine can be built at all;
+harness and outputs under `data/ukds/acceptance/901-dense-10pct/` (`run_dense_10pct.sh`, the chain
+scripts, `phase_timeline.py`, `compare_ab.sh`). Smoke settings ruled by María: K=2 clones, 250
+epochs, `--sample-fraction 0.1 --sample-seed 7`, seed 42, staging local-only (phase timings, no
+upload); never a release. Reference: the runbook's 3.5 h / 10 GB at K=15, 1,500 epochs on the
+rowwise tool; the graph driver had never been timed.
+
+- Spine A (main's tool, full data, no sampling): 413 s wall, 9.7 GB peak, 26/26 gates passed under
+  the measurement patch, H5 188 MB (`spine-a/`).
+- A = main's tool on spine-a (`tool-10pct/`): exit 0, 581 s wall, 7.4 GB peak. f010 rung: 5,278
+  households → K=2 → 10,556 rows, 18,729 targets; 250 epochs, loss 0.699 → 0.354; 4 of 6 local
+  gates fail (area support, per-family fit, target fit, weight ratio), `releasable: false`.
+  Phases: target_compilation 494 s, cloning 4 s, surface_resolution 10 s, calibration 10 s,
+  gate_battery 1 s, holdout 39 s, output_bundle 10 s.
+- B = the graph driver on spine-a, same flags: exit 1 by the calibrated battery's verdict, 1,086 s wall, 7.7 GB peak (`graph-10pct/`). Every
+  node through the calibrated gate battery ran: the same f010 sample (10,556 rows, 18,729 targets),
+  the dense solve, the rotated holdout, the calibrated population and the 26-gate calibrated battery;
+  the battery classed nine national/source checks as structural stops (as the full-build enforcement
+  rule declares below f100: only the five local fit/support/weight checks are excused), so no export,
+  package or certification node ran. Phases: target_compilation 997 s (the graph's node also carries
+  the surface, the cross-grain reconciliation, the measures, the problem, the geography gate and the
+  preflight battery, which the tool splits over compile 494 s + cloning 4 s + surface 10 s),
+  calibration 76 s (dense 15.5 s, holdout 38.5 s, calibrated 2.2 s, battery 13.3 s; the tool: 10 s
+  solve + 39 s holdout + 1 s battery + 10 s bundle).
+- B2 = the graph driver end to end (`--spine-request`, the graph builds the spine): exit 1 by the same battery verdict, 1,445 s wall, 9.9 GB peak (`graph-spine-request-10pct/`). The graph
+  built the 34-stage spine itself with the two gate nodes (assembled after `frs_brma`, transferred at the
+  endpoint): the 26 spine gates carry the same ids and the same outcomes as main's tool report on
+  spine-a (all passed), the same `gates_manifest_sha256`; the sampled pool and the solve are bit-identical to
+  the input-H5 rung and to main's tool (final loss 0.3535366112843803 again), which is the full-H5
+  spine parity R1 left owed, established through the solve rather than a payload compare (the graph
+  materialises no spine H5 below the export). Node wall times: the 50 spine nodes sum to 296 s against
+  the tool's 413 s spine build; `uk.full.target_compilation` 860 s; preflight battery 72 s; measures
+  12.6 s; problem 7.3 s; dense 15.3 s; holdout 39.5 s; calibrated battery 14.4 s.
+- Parity A vs B: bit-identical where both sides produce the same object: initial loss 0.6991022825241089 and final
+  loss 0.3535366112843803 on both drivers, 18,729 target rows, 10,556 non-zero households, the same six
+  local gate outcomes (four failed, two passed), the same rotated holdout (mean 0.7248643006468352, worst
+  0.7320742950761016, five folds). The H5 payload compare waits on the export rung below.
+- B3 = the graph driver on spine-a with a measurement-only export exception (below f100 the national
+  checks are recorded without enforcement, as the tool's sampled rungs behave; `export-exception-measurement.patch`,
+  applied in the measurement worktree only): exit 0, 1,143 s wall, 8.6 GB peak (`graph-10pct-export/`). The whole
+  line ran: export, readback, package, certification readiness (`ready_for_external_review: false` at f010, as it
+  must be), the schema-4 manifest, `sha256sums.txt`, the local bundle. H5 payload against A
+  (`tools/compare_uk_h5_payload.py`, receipt `ab_payload_compare.json`): same 40,238,817 bytes, keys equal,
+  `person`, `benunit` and `time_period` payload-identical, `household` identical in rows, column order and
+  every value, with eleven geography code columns stored as pandas `string` on the graph against `str` on
+  the tool (the file digests differ for that alone); the six local gates agree.
+- Full-run proxy: the solve path is byte-identical (same losses to the last digit at every rung), so the per-epoch
+  and per-row costs are the tool's; the graph adds a fixed cost per run, at this rung about 500 s
+  (target_compilation 860–997 s against the tool's 494 s compile + 14 s cloning and surface, of
+  which the historical validation-period registry compile and the preflight battery are the
+  identifiable parts) plus about 15 s across the calibration segment. Against the runbook's
+  3.5 h / 10 GB reference at K=15 and 1,500 epochs on the tool, a full graph run projects to about
+  3.7 h; peak memory 7.7 GB (input-H5) and 9.9 GB (spine-request) at this rung against the tool's
+  7.4 GB. Not exploding; the fixed overhead is the target-compilation node, which is the one place
+  worth profiling before a full run.
+
+Defects the run surfaced, none visible to the unit suites or CI:
+
+1. Main (#971, merged 2026-09-23, not this branch): every real full-UK ladder is refused at the
+   locations step because `draw_uk_ladder_locations` compares the ladder's composite
+   local-authority vintage (`ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd`, the only
+   vintage the artifact tool writes) with the EW-only names-resource constant; the fixture ladders
+   carry the plain string, so the tests pass. Both drivers hit it. Measured with a second
+   uncommitted patch (`la-vintage-measurement.patch`) in both trees; fix drafted for main
+   (`repos/uk-971-ladder-vintage-defect-draft.md`).
+2. This branch, fixed (1214fb616): `full_targets` compiled the national register for {2023, 2025,
+   calibration year} fail-closed; the pinned feed carries OBR facts from fiscal 2024 onward only,
+   so the build refused at `uk.full.target_compilation`. Historical validation periods are now
+   best-effort and recorded in `register_completeness`; the calibration year stays fail-closed.
+3. This branch, fixed (265f8acf4): on the raw-spine path the sample node's transferred-gate
+   admission lacked `spine_gate_synthetic_smoke`, so the first end-to-end build failed at
+   `uk.full.sample` after the whole spine had run.
+4. This branch, fixed (cd6829a71): the joint-surface helpers filtered the national register to
+   country rows (pre-#906), leaving the region legs unparented in the cross-grain reconciliation;
+   they now pass the whole register as the rowwise tool does.
+5. This branch, fixed (da9b2472a): the local surface crosses the target_compilation → problem
+   boundary as JSON, so each spec's schema-8 hierarchy came back as a mapping and the problem
+   assembly refused it; the stored surface is now decoded the way ``TargetSpec.from_dict`` does.
+6. This branch, fixed (f9562fc01): the driver handed the gate batteries the spine adapter as the
+   coverage engine, whose ``variables()`` enumerates the frame's non-computed columns, so the
+   release input-coverage gate read sixteen live inputs as manifest drift; the batteries now get
+   ``PolicyEngineUKCoverageEngine`` as the release-cut producer hands it.
+7. This branch, fixed (7003aaee3): the preflight parity gate for production 2023 reads the 2023
+   registry, which fix 2 had skipped; a validation period now keeps its partial registry, as the
+   release-cut producer does, with the unsupported references recorded.
+8. This branch, fixed (86137886d): the calibration segment ran for the first time on real data and the
+   executor refused the holdout report at the calibrated gate battery and the certification node
+   (amendment 19: a platform-bitwise artifact needs a platform-bitwise consumer); the holdout kernel
+   alone declared that class while the dense solve it rotates declares the default; it now matches,
+   and a test walks every typed edge of the composed graph on the synthetic spec.
+9. This branch, fixed (055591b54): the dense solve ran (250 epochs, loss 0.35355 against main's
+   0.35354 on the same spine), the holdout and the calibrated population followed, and the
+   calibrated battery refused in its receipt: it handed the diagnostics the selected registry, wider
+   than the solved one below f100 (the rung drops cells unreachable in the sample), so the
+   local-authority UC rows were neither compiled nor skipped; it now partitions the specs that entered
+   the solve, as the rowwise tool's diagnostics registry does, and the driver names a battery's recorded
+   exception instead of tripping on the missing artifact.
