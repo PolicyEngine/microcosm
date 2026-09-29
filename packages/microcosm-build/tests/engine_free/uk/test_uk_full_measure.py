@@ -77,6 +77,11 @@ def test_full_measure_reuses_one_resolver(
         "national_inputs": 0,
         "local_metrics": {"constituency": 1, "la": 1},
         "blocks": 1,
+        "target_materialization": {
+            "prepared_count": 0,
+            "skipped_count": 0,
+            "skipped": [],
+        },
         "cgt_period_contract": cgt_period_contract,
     }
     assert set(local_metrics) == {"constituency", "la"}
@@ -241,7 +246,10 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
         assert "region" in adapter.tables["person"]
         table = adapter.tables["household"]
         table["prepared_count"] = table["raw_engine_input"].to_numpy()
-        return SimpleNamespace(skipped=())
+        return SimpleNamespace(
+            skipped=(),
+            report=lambda: {"prepared_count": 0, "skipped_count": 0, "skipped": []},
+        )
 
     monkeypatch.setattr(full_measure, "materialize_uk_ledger_targets", materialize)
     prepared, restore, national, metrics, receipt = (

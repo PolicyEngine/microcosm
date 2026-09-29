@@ -354,7 +354,14 @@ def bound_spine_graph(frame: Frame) -> Graph:
                 params={
                     "spine_gate_digests": canonical_json(
                         calibration_run.uk_spine_checkpoint_gate_digests()
-                    ).decode()
+                    ).decode(),
+                    # The checkpoint keeps the H5's own period: the CREATE
+                    # normaliser would otherwise default it to the FRS
+                    # vintage's, and a bound frame from another period (the
+                    # seam fixtures, a historical checkpoint) would be
+                    # re-dated on admission (found by the national line's
+                    # projection fence, which declares the frame's period).
+                    "time_period": str(frame.metadata["time_period"]),
                 },
                 outputs=outputs,
                 artifact_outputs=(

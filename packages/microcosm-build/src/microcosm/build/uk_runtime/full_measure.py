@@ -242,6 +242,7 @@ def resolve_uk_full_measures(
             for area_type, metrics in local_metrics.items()
         },
         "blocks": blocks,
+        "target_materialization": materialized.report(),
     }
     if cgt_period_contract is not None:
         receipt["cgt_period_contract"] = cgt_period_contract
