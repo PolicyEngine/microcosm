@@ -153,7 +153,11 @@ data and credentials, and cannot run from forks. Release publication is a
 deliberate human step (`tools/publish_release.sh` →
 `microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
 reviewed line promotion is a separate deliberate call to the same CLI with
-`--promote-line`. See README "Releasing & alerts". Publication also refuses a
+`--promote-line`. See README "Releasing & alerts". Before launching a US
+release, dry-run it with `tools/dry_run_us_release_gates.py` (or the release
+tool's `--dry-run-gates-report`). It replays the release's own input stages and
+grades every waiver register on the staged frame before the solve; see README
+"Dry-running the release's registers". Publication also refuses a
 release whose build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
 publishes without the flag. Never publish or promote artifacts as a side

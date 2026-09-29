@@ -299,6 +299,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "reform_validation.py",
         "register_consistency.py",
         "relationship_inputs.py",
+        # The release dry run's certainty model and report; no population
+        # treatment (the gates it grades live in the release tool).
+        "release_gate_dry_run.py",
         "release_gate_preflight.py",
         "release_input_coverage.py",
         "release_target_parity.py",
