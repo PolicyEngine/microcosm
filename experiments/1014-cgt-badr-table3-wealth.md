@@ -7,7 +7,9 @@ every new row sits in `hmrc_cgt`; one PR carries all three work packages, with w
 last commits so its effect is measured on its own. Worktree `repos/populace-1014`, branch
 `uk-cgt-badr-table3-1014`. The commits were built and measured on main `2bce66156`, rebased onto main
 `9e5b0cee2` (#998's test layout and CI, no UK source change), then onto main `937aca4ec`, which merges
-#1012 (the SPI-first order and the SPI housing shell). The commit hashes below are the pre-rebase ones.
+#1012 (the SPI-first order and the SPI housing shell), then onto main `6a70cd4ee`, which merges #901 (the UK
+full-build graph: the spine driver moves into the package and two inert HMRC tail stages retire, 36 to 34
+stages) and #1007 (typed calibration diagnostics). The commit hashes below are the pre-rebase ones.
 Parts A to D measure c1 to c4 against main before #1012; Part E records how they carry over onto
 #1012's base. Licensed evidence lives under `data/ukds/acceptance/1014-cgt-badr/` (aggregates only).
 
@@ -205,3 +207,8 @@ differs only in the PLAN_5 top-up: 19 rows instead of the draw's two): loss 0.00
 effective sample size 5,165 against 5,173, CGT liability GBP 23.30bn against 23.33bn, the
 worst tax-by-age row 7.5 against 7.7 percent, Table 3 within 0.4 and Table 4.1
 within 2.6 percent, and the entrants fence 129,293 against 129,433.
+
+On main `6a70cd4ee` the spine at the rebased head (`spine-m901`, built under #901's driver with no
+relaxation) passes all 26 gates; its datasets are identical to `spine-fix1049`'s (the file differs only
+in provenance bytes), and its calibration reads loss 0.0084 against 0.0084, effective sample size 5,165
+against 5,165, liability GBP 23.30bn against 23.30bn and the entrants fence 129,293 against 129,293.
