@@ -238,6 +238,8 @@ def load_uk_national_target_inputs(
     calibration_year: int | None = None,
     exclusions_evaluated_on: date | None = None,
     allow_unpinned_feed: bool = False,
+    expected_facts_sha256: str | None = None,
+    expected_manifest_sha256: str | None = None,
 ) -> dict[str, Any]:
     """The national role's target surface: the pinned Ledger artifact, compiled.
 
@@ -250,7 +252,11 @@ def load_uk_national_target_inputs(
     one. No local registry and no ladder: the national line has neither.
     """
 
-    artifact = load_ledger_consumer_artifact(Path(facts_path))
+    artifact = load_ledger_consumer_artifact(
+        Path(facts_path),
+        expected_facts_sha256=expected_facts_sha256,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
     pin = require_committed_uk_chronicle_feed_pin(
         artifact.facts_sha256,
         manifest_sha256=artifact.manifest_sha256,

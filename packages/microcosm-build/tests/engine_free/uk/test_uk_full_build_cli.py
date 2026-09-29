@@ -1,6 +1,8 @@
 """The canonical CLI restores declared files and preserves failure/scope semantics."""
 
 # ruff: noqa: F403, F405
+from types import SimpleNamespace
+
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
@@ -163,12 +165,13 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
     cli.validate_cli_args(cli.parse_args(request))
 
 
-def test_national_role_is_validated_then_dispatched_to_the_seam(tmp_path, monkeypatch):
-    """The national line never prepares a graph (microcosm#901 phase 4).
+def test_national_role_is_validated_then_built_through_the_graph(tmp_path, monkeypatch):
+    """The national line prepares the national graph, never the dense one.
 
-    The validated request goes to ``national_role.run_national_role`` after
-    the role tables have run; the seam's own pre-flight, Logbook, staging
-    and manifest live behind that call.
+    The validated request goes to ``prepare_national_build`` /
+    ``execute_national_build`` after the role tables have run; the seam's
+    attempt id, the Hub pre-flight, the Logbook and the staging telemetry
+    live in the driver's national envelope.
     """
     argv = _national_argv(tmp_path)
     national = cli.parse_args(argv)
@@ -178,58 +181,89 @@ def test_national_role_is_validated_then_dispatched_to_the_seam(tmp_path, monkey
     cli.validate_cli_args(national)
     served = []
     monkeypatch.setattr(
-        cli.national_role, "run_national_role", lambda args: served.append(args) or 7
+        cli, "preflight_staged_dataset", lambda args: served.append("preflight")
     )
     monkeypatch.setattr(
         cli,
-        "prepare_full_build",
-        lambda *a, **k: pytest.fail("the national role prepared a graph"),
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: served.append(args) or "prepared",
     )
     monkeypatch.setattr(
         cli,
-        "preflight_staged_dataset",
-        lambda args: pytest.fail("the driver pre-flighted before dispatching"),
-    )
-    assert cli.main(argv) == 7
-    (args,) = served
-    assert args.release_role == "national"
-    assert args._posture is national._posture
-    assert not (tmp_path / "out").exists()
-    # The dense refusal table still applies before the dispatch.
-    with pytest.raises(ValueError, match="--release-role national refuses"):
-        cli.main([*argv, "--ladder", str(tmp_path / "ladder.npz")])
-    assert served == [args]
-
-
-def test_national_dry_run_dispatches_to_the_seam_plan(tmp_path, monkeypatch, capsys):
-    """``--dry-run`` on the national role plans through ``national_dry_run``:
-    no graph, no staged-dataset pre-flight, nothing written."""
-    monkeypatch.setattr(
-        cli.national_role,
-        "national_dry_run",
-        lambda args: (
-            print(json.dumps({"dry_run": args.dry_run, "role": args.release_role})) or 0
+        "execute_national_build",
+        lambda prepared, args, *, telemetry=None, attempt=None: (
+            served.append(prepared) or 7
         ),
     )
     monkeypatch.setattr(
         cli,
         "prepare_full_build",
-        lambda *a, **k: pytest.fail("the national dry run prepared a graph"),
+        lambda *a, **k: pytest.fail("the national role prepared the dense graph"),
     )
+    assert cli.main(argv) == 7
+    assert served[0] == "preflight"
+    args = served[1]
+    assert args.release_role == "national"
+    assert args._posture is national._posture
+    assert served[2] == "prepared"
+    # The dense refusal table still applies before anything is prepared.
+    with pytest.raises(ValueError, match="--release-role national refuses"):
+        cli.main([*argv, "--ladder", str(tmp_path / "ladder.npz")])
+    assert len(served) == 3
+
+
+def test_national_dry_run_plans_with_the_graph_inventory(tmp_path, monkeypatch, capsys):
+    """``--dry-run`` on the national role plans through ``national_dry_run``
+    with the compiled graph's inventory: no solve, no staged-dataset
+    pre-flight, nothing written."""
     monkeypatch.setattr(
         cli.national_role,
+        "national_dry_run",
+        lambda args, *, operation_inventory=None: (
+            print(
+                json.dumps(
+                    {
+                        "dry_run": args.dry_run,
+                        "role": args.release_role,
+                        "graph": operation_inventory(),
+                    }
+                )
+            )
+            or 0
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: SimpleNamespace(
+            national=SimpleNamespace(
+                operation_inventory=lambda: {"nodes": ["uk.full.national_problem"]}
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "prepare_full_build",
+        lambda *a, **k: pytest.fail("the national dry run prepared the dense graph"),
+    )
+    monkeypatch.setattr(
+        cli,
         "preflight_staged_dataset",
         lambda args: pytest.fail("a dry run reached the Hub pre-flight"),
     )
     assert cli.main(_national_argv(tmp_path, "--dry-run")) == 0
-    assert json.loads(capsys.readouterr().out) == {"dry_run": True, "role": "national"}
+    assert json.loads(capsys.readouterr().out) == {
+        "dry_run": True,
+        "role": "national",
+        "graph": {"nodes": ["uk.full.national_problem"]},
+    }
     assert not (tmp_path / "out").exists()
 
 
 def test_national_role_refuses_a_spine_request(tmp_path, monkeypatch):
-    """The seam engine reads a bound spine; ``--spine-request`` is dense-only."""
+    """The national line solves a bound spine; ``--spine-request`` is dense-only."""
     monkeypatch.setattr(
-        cli.national_role,
+        cli,
         "preflight_staged_dataset",
         lambda args: pytest.fail("the refusal must precede the Hub pre-flight"),
     )

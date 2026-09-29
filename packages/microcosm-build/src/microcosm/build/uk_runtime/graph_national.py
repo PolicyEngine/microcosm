@@ -267,6 +267,7 @@ def uk_national_graph(
     optional_target_sources: tuple[str, ...] = (),
     review_date: str | None = None,
     posture: UKRowwisePosture = UK_ROWWISE_NATIONAL_POSTURE,
+    ledger_pins: Mapping[str, str | None] | None = None,
 ) -> UKNationalGraph:
     """Append the national line to a bound spine checkpoint graph.
 
@@ -314,6 +315,11 @@ def uk_national_graph(
                 "review_date": review_date,
                 "country_contract_sha256": contract_identity,
                 "allow_unpinned_feed": bool(config.allow_unpinned_feed),
+                # The request's Ledger pins: the artifact must measure them,
+                # as the seam's loader required (the source identity binds
+                # the bytes; the pins bind what the operator asked for).
+                "ledger_facts_sha256": (ledger_pins or {}).get("facts_sha256"),
+                "ledger_manifest_sha256": (ledger_pins or {}).get("manifest_sha256"),
             },
             artifact_outputs=(ArtifactOutput("registry", NATIONAL_TARGET_TYPE),),
             description="Compile the pinned national register, its exclusions and band edges.",
@@ -478,6 +484,8 @@ class UKNationalTargetKernel(_NationalKernel):
                 str(context.params["review_date"])
             ),
             allow_unpinned_feed=bool(context.params["allow_unpinned_feed"]),
+            expected_facts_sha256=context.params.get("ledger_facts_sha256"),
+            expected_manifest_sha256=context.params.get("ledger_manifest_sha256"),
         )
         payload = {
             "schema_version": 1,
@@ -961,11 +969,20 @@ class UKNationalReadbackKernel(KernelBase):
         )
 
 
+#: "The module's engine resolver at registration time": the default the
+#: driver registers with, resolved when the registry is built so a hermetic
+#: suite that stands the resolver in (or out, ``None``) on this module is
+#: honoured, as the seam's tests stood theirs in on the role module.
+ENGINE_RESOLVER = object()
+
+
 def register_uk_national_kernels(
-    registry: KernelRegistry, *, resolver_factory=UKMeasureResolver
+    registry: KernelRegistry, *, resolver_factory=ENGINE_RESOLVER
 ) -> KernelRegistry:
     """Register the national kernels beside the shared ones the graph binds."""
 
+    if resolver_factory is ENGINE_RESOLVER:
+        resolver_factory = UKMeasureResolver
     register_uk_source_codecs()
     for kernel in (
         UKNationalTargetKernel(),
@@ -978,3 +995,185 @@ def register_uk_national_kernels(
         except KeyError:
             registry.register(kernel)
     return registry
+
+
+# ---------------------------------------------------------------------------
+# Driver-side projections: the seam-shaped files from the stored artifacts
+# ---------------------------------------------------------------------------
+
+
+def graph_payload(manifest, store, node: str, artifact: str) -> bytes:
+    return store.load_bytes(manifest.nodes[node].opaque_artifacts[artifact])
+
+
+def national_result_from_manifest(manifest, store, *, frame: Frame):
+    """The dense result and its ordered problem, rebound to the calibrated frame."""
+
+    problem = decode_problem(
+        graph_payload(manifest, store, NATIONAL_PROBLEM_NODE, "problem")
+    )
+    dense = manifest.nodes["uk.full.dense"].opaque_artifacts
+    solution = decode_solution(
+        store.load_bytes(dense["solution"]),
+        problem_sha256=problem.sha256,
+        entity_ids=_axis(frame),
+    )
+    initial_frame = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {"household": problem.problem.initial_weights},
+        frame.strata,
+        metadata=frame.metadata,
+    )
+    result = decode_calibration_result(
+        store.load_bytes(dense["result"]), frame=initial_frame, problem=problem
+    )
+    if not np.array_equal(result.weights, solution.weights):
+        raise ValueError("Stored national result differs from the installed solution.")
+    if not np.array_equal(frame.weights_for("household").values, solution.weights):
+        raise ValueError(
+            "Calibrated national population does not carry the bound solution weights."
+        )
+    return replace(result, frame=frame), problem
+
+
+def replay_uk_national_gate_battery(
+    report_document: Mapping[str, Any],
+    *,
+    report_path: Path,
+    release_id: str,
+    diagnostics_sha256: str,
+    posture: UKRowwisePosture = UK_ROWWISE_NATIONAL_POSTURE,
+) -> dict[str, object]:
+    """Persist, enforce and sign the seam battery from the graph's phase report.
+
+    The graph evaluated the gates once (``uk.full.gates.calibrated``); the
+    battery is replayed from that stored phase report through the same
+    write-then-block boundary the seam used (``GateBatteryRun.record_phase``,
+    microcosm#901), the diagnostics digest measured from the written file
+    rides its attestation, and the scoped trio is grafted and signed exactly
+    as the seam signed it. A blocking outcome raises
+    :class:`~microcosm.build.gate_battery.GateBatteryBlockedError` after the
+    report, block included, is on disk.
+    """
+
+    from microcosm.build.gate_battery import (
+        BlockingMode,
+        GateBatteryRun,
+        gate_phase_report_from_payload,
+    )
+
+    if (
+        report_document.get("kind") != "uk_national_gate_report"
+        or report_document.get("schema_version") != 1
+    ):
+        raise ValueError("Unsupported UK national gate report artifact.")
+    gates = uk_scoped_gate_manifest(
+        tuple(posture.gate_scope),
+        phases=("terminal",),
+        policy_suffix=posture.gate_policy_suffix,
+    )
+    if report_document.get("policy_suffix") != posture.gate_policy_suffix:
+        raise ValueError("UK national gate report was evaluated under another scope.")
+    report = gate_phase_report_from_payload(report_document["report"], gates=gates)
+    battery = GateBatteryRun(
+        gates,
+        release_id=release_id,
+        report_path=report_path,
+        # The seam never runs release-candidate posture: its scoped battery
+        # covers the seven entries and must never sign a shippability claim;
+        # shippability comes only from the release-cut certification.
+        release_candidate=False,
+        registry=UK_GATE_REGISTRY,
+        release_evidence={"calibration_diagnostics_sha256": diagnostics_sha256},
+    )
+    battery.record_phase(report)
+    battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+    payload = battery.report_payload()
+    calibration_run.finalize_uk_scoped_gate_report(
+        payload,
+        posture=str(report_document["posture"]),
+        scope_exclusions=dict(report_document["scope_exclusions"]),
+        aggregate_admin_measurement=report_document["aggregate_admin_measurement"],
+    )
+    calibration_run._write_json(report_path, payload)
+    return payload
+
+
+def national_run_config(
+    *,
+    posture: UKRowwisePosture,
+    config: UKNationalBuildConfig,
+    registry_document: Mapping[str, Any],
+    driver_parameters: Mapping[str, Any],
+) -> dict[str, object]:
+    """The seam's ``run_config``: the attempt identity every record carries."""
+
+    return {
+        "pipeline": posture.pipeline,
+        "release_id": posture.release_id,
+        "register_sha256": registry_document["national_registry"]
+        and registry_from_payload(registry_document["national_registry"]).version,
+        "calibration_year": int(config.calibration_year),
+        "doctrine": national_doctrine_payload(config.doctrine),
+        "doctrine_overrides": dict(config.doctrine_overrides),
+        "ledger": dict(registry_document["ledger_provenance"]),
+        "release_role": posture.role,
+        "allow_unpinned_feed": bool(config.allow_unpinned_feed),
+        "chronicle_feed_pin": dict(registry_document["chronicle_feed_pin"]),
+        "rowwise_driver_parameters": dict(driver_parameters),
+        "band_edge_register_sha256": registry_from_payload(
+            registry_document["band_edge_registry"]
+        ).version,
+    }
+
+
+def national_build_record(
+    *,
+    posture: UKRowwisePosture,
+    build_id: str,
+    run_config: Mapping[str, object],
+    source_pins: Mapping[str, Mapping[str, object]],
+    input_posture: Mapping[str, object],
+    spine_provenance: Mapping[str, object],
+    register: Mapping[str, object],
+    calibration: Mapping[str, object],
+    gate_report: Mapping[str, object],
+    artifacts: Mapping[str, Mapping[str, object]],
+    staging_delivery: Mapping[str, object] | None,
+    graph: Mapping[str, object],
+) -> dict[str, object]:
+    """The seam-shaped ``build_record.json`` the release-cut certifier reads."""
+
+    from microcosm.build.logbook_adoption import role_pins_digest
+    from microcosm.build.staging_v2 import validate_staging_delivery
+
+    record: dict[str, object] = {
+        "schema_version": 1,
+        "pipeline": posture.pipeline,
+        "build_id": build_id,
+        "run_config": dict(run_config),
+        "source_pins": {k: dict(v) for k, v in source_pins.items()},
+        "role_pins_digest": role_pins_digest(source_pins),
+        "input_posture": dict(input_posture),
+        "spine_provenance": dict(spine_provenance),
+        "register": dict(register),
+        "calibration": dict(calibration),
+        "gate_summary": calibration_run._gate_summary(gate_report),
+        # No shippability claim lives here: the calibration-scoped battery
+        # covers seven of the declared gate entries. The release verdict is
+        # the release-cut certification's, produced over this record.
+        "certification": {
+            "expected_artifact": str(
+                Path(str(artifacts["staging_h5"]["path"])).with_suffix(
+                    ".release_certification.json"
+                )
+            ),
+            "producer": "tools/certify_uk_release_cut.py",
+        },
+        "artifacts": {k: dict(v) for k, v in artifacts.items()},
+        "graph": dict(graph),
+    }
+    if staging_delivery is not None:
+        record["staging_delivery"] = validate_staging_delivery(staging_delivery)
+    return record
