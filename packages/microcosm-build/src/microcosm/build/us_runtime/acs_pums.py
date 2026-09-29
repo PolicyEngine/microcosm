@@ -63,9 +63,12 @@ _HOUSEHOLD_REQUIRED = (
 _HOUSEHOLD_STATE_COLUMNS = ("ST", "STATE")
 # SNAP recipiency in the past 12 months (1 yes, 2 no), a housing-unit item the
 # ACS local lane reads as its native reported-receipt anchor (microcosm#1022,
-# acs_local_receipt_anchors). Like the optional person columns below, an
-# absent column stays absent and a Census blank stays missing.
-_HOUSEHOLD_OPTIONAL: tuple[str, ...] = ("FS",)
+# acs_local_receipt_anchors), and vehicles available (0-6, 6 meaning six or
+# more), the housing-unit item its take-up stage writes as the household
+# vehicle count (microcosm#1022, acs_local_vehicles_head_start). Neither is a
+# transfer predictor. Like the optional person columns below, an absent column
+# stays absent and a Census blank stays missing.
+_HOUSEHOLD_OPTIONAL: tuple[str, ...] = ("FS", "VEH")
 _HOUSEHOLD_FRAME_COLUMNS = (
     "NP",
     "ADJHSG",

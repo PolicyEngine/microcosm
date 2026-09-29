@@ -1,6 +1,6 @@
 """ACS-row SNAP/TANF take-up (microcosm#1019) and the engine-free
-discretionary-exemption, housing-receipt and Medicare fills (microcosm#1022)
-for the retained ACS local lane."""
+discretionary-exemption, housing-receipt, Medicare, vehicle-count and Head
+Start fills (microcosm#1022) for the retained ACS local lane."""
 
 from __future__ import annotations
 
@@ -37,6 +37,8 @@ DISCRETIONARY = "is_snap_abawd_discretionary_exempt"
 HOUSING = "receives_housing_assistance"
 HOUSING_TAKE_UP = "takes_up_housing_assistance_if_eligible"
 MEDICARE = "takes_up_medicare_if_eligible"
+VEHICLES = "household_vehicles_owned"
+HEAD_START = "takes_up_head_start_if_eligible"
 
 
 def _manifest_snap_rate() -> float:
@@ -57,10 +59,12 @@ def _frame(
 ) -> Frame:
     """ASEC rows carry donor flags; ACS rows carry NaN flags and no source ids.
 
-    One person per household and unit. ACS households carry ``SERIALNO`` and
-    ``TYPEHUGQ`` (every tenth one group quarters), ACS persons ``SPORDER`` 1
-    and a native ``HINS3``; the housing take-up flag is transferred on both
-    spines.
+    One person per household and unit. ACS households carry ``SERIALNO``,
+    ``TYPEHUGQ`` (every tenth one group quarters) and ``VEH`` (blank in group
+    quarters), ACS persons ``SPORDER`` 1 and a native ``HINS3``; the housing
+    take-up flag is transferred on both spines. Donor households carry a
+    vehicle count, and donor positions 100-129 are children aged 3-5, a few
+    of them taking up Head Start.
     """
 
     n = n_asec + n_acs
@@ -100,8 +104,19 @@ def _frame(
     household["TYPEHUGQ"] = np.where(
         asec, np.nan, np.where(position % 10 == 3, 2.0, 1.0)
     )
+    # A separate stream, so the draws above and below are unchanged.
+    vehicle_rng = np.random.default_rng(17)
+    group_quarters = ~asec & (position % 10 == 3)
+    household["VEH"] = np.where(
+        asec | group_quarters, np.nan, vehicle_rng.integers(0, 7, n)
+    )
+    household[VEHICLES] = pd.Series(vehicle_rng.integers(0, 4, n).astype(float)).where(
+        asec, np.nan
+    )
     person[PERSON_TAG] = spm_unit[TAG].to_numpy()
     age = rng.integers(0, 91, n).astype(float)
+    children = asec & (position >= 100) & (position < 130)
+    age[children] = np.resize([3.0, 4.0, 5.0], int(children.sum()))
     person["age"] = age
     person["SPORDER"] = np.where(asec, np.nan, 1.0)
     covered_65 = rng.random(n) < 0.94
@@ -113,6 +128,9 @@ def _frame(
         (age >= 18) & (age <= 64) & (position < 30), dtype=object
     ).where(asec, np.nan)
     person[MEDICARE] = pd.Series(position < 40, dtype=object).where(asec, np.nan)
+    person[HEAD_START] = pd.Series(children & (position % 8 == 0), dtype=object).where(
+        asec, np.nan
+    )
     for column in drop:
         for table in tables.values():
             if column in table:
@@ -242,7 +260,17 @@ def test_gate_passes_on_the_seeded_surface_and_ignores_other_flags() -> None:
     assert gate.name == ACS_LOCAL_TAKE_UP_GATE_NAME
     acs = gate.details["per_spine"][ACS_2024_1YR_SPINE]["columns"]
     assert acs[SNAP]["reporters_not_taking_up"] == 0
-    assert set(acs) == {SNAP, TANF, DISCRETIONARY, HOUSING, MEDICARE}
+    assert set(acs) == {
+        SNAP,
+        TANF,
+        DISCRETIONARY,
+        HOUSING,
+        MEDICARE,
+        VEHICLES,
+        HEAD_START,
+    }
+    assert acs[VEHICLES]["differs_from_native_veh"] == 0
+    assert acs[HEAD_START]["take_up_outside_ages"] == 0
     assert acs[HOUSING]["disagrees_with_take_up"] == 0
     assert acs[MEDICARE]["differs_from_native_coverage"] == 0
 
@@ -561,11 +589,28 @@ def test_engine_free_fills_are_deterministic_and_digested() -> None:
 
 
 @pytest.mark.parametrize(
-    "column", [DISCRETIONARY, MEDICARE, "age", "HINS3", HOUSING, HOUSING_TAKE_UP]
+    "column",
+    [
+        DISCRETIONARY,
+        MEDICARE,
+        "age",
+        "HINS3",
+        HOUSING,
+        HOUSING_TAKE_UP,
+        VEHICLES,
+        HEAD_START,
+        "VEH",
+        "TYPEHUGQ",
+    ],
 )
 def test_missing_engine_free_inputs_are_refused(column: str) -> None:
     with pytest.raises(ValueError, match="microcosm#1022"):
         with_acs_local_take_up_inputs(_frame(drop=(column,)), seed=0)
+
+
+def test_a_staging_frame_without_veh_is_sent_back_to_staging() -> None:
+    with pytest.raises(ValueError, match="VEH comes from staging"):
+        with_acs_local_take_up_inputs(_frame(drop=("VEH",)), seed=0)
 
 
 def _gate_failures(frame: Frame) -> str:
@@ -667,3 +712,133 @@ def test_gate_fails_on_missing_person_tags() -> None:
     person[PERSON_TAG] = person[PERSON_TAG].where(person.index > 0)
     gate = acs_local_take_up_signal_gate(_with_table(frame, "person", person))
     assert gate.failures == (f"Missing person origin tags: {PERSON_TAG}.",)
+
+
+# ---------------------------------------------------------------------------
+# microcosm#1022: vehicle count and Head Start take-up
+# ---------------------------------------------------------------------------
+
+
+def _acs_households(frame: Frame) -> np.ndarray:
+    return (
+        frame.table("household")[spine_column("household")]
+        .eq(ACS_2024_1YR_SPINE)
+        .to_numpy()
+    )
+
+
+def test_stage_fills_vehicle_counts_and_head_start_on_acs_rows_only() -> None:
+    frame = _frame()
+    result, receipt = with_acs_local_take_up_inputs(frame, seed=0)
+    households = _acs_households(frame)
+    persons = _acs_persons(frame)
+    before = frame.table("household")
+    owned = result.table("household")[VEHICLES]
+    assert owned.dtype == np.int64
+    kinds = before["TYPEHUGQ"].to_numpy()
+    housing_units = households & (kinds == 1)
+    assert np.array_equal(owned[housing_units], before["VEH"][housing_units])
+    assert (owned[households & (kinds == 2)] == 0).all()
+    assert np.array_equal(owned[~households], before[VEHICLES][~households])
+    head_start = result.table("person")[HEAD_START]
+    assert head_start.dtype == bool
+    assert np.array_equal(
+        head_start[~persons].to_numpy(dtype=bool),
+        frame.table("person")[HEAD_START][~persons].to_numpy(dtype=bool),
+    )
+    age = frame.table("person")["age"].to_numpy()
+    assert not head_start[persons & ((age < 3) | (age > 5))].any()
+    assert head_start[persons & (age >= 3) & (age <= 5)].any()
+    columns = receipt["engine_free_fills"]["columns"]
+    assert receipt["engine_free_fills"]["acs_households"] == int(households.sum())
+    assert columns[VEHICLES]["filled_rows"] == int(households.sum())
+    assert columns[HEAD_START]["filled_rows"] == int(persons.sum())
+    assert 0.0 < columns[HEAD_START]["rate"] < 0.25
+    # The input frame is not mutated.
+    assert before[VEHICLES].isna().sum() == int(households.sum())
+
+
+def test_stage_digest_covers_vehicle_counts_and_head_start() -> None:
+    first, receipt = with_acs_local_take_up_inputs(_frame(), seed=4)
+    again, again_receipt = with_acs_local_take_up_inputs(_frame(), seed=4)
+    assert again_receipt == receipt
+    assert first.table("person")[HEAD_START].equals(again.table("person")[HEAD_START])
+    household = first.table("household").copy()
+    row = int(np.flatnonzero(_acs_households(first))[0])
+    household.loc[row, VEHICLES] = household.loc[row, VEHICLES] + 1
+    _, flipped = with_acs_local_take_up_inputs(
+        _with_table(first, "household", household), seed=4
+    )
+    assert flipped["assigned_sha256"] != receipt["assigned_sha256"]
+    person = first.table("person").copy()
+    row = int(np.flatnonzero(_acs_persons(first))[0])
+    person.loc[row, HEAD_START] = not bool(person.loc[row, HEAD_START])
+    _, flipped = with_acs_local_take_up_inputs(
+        _with_table(first, "person", person), seed=4
+    )
+    assert flipped["assigned_sha256"] != receipt["assigned_sha256"]
+
+
+def test_stage_refuses_a_head_start_draw_without_its_key() -> None:
+    frame = _frame()
+    person = frame.table("person").copy()
+    age = person["age"].to_numpy()
+    child = int(np.flatnonzero(_acs_persons(frame) & (age >= 3) & (age <= 5))[0])
+    # Discretionary draws key only ages 18-64 once filled; store theirs so
+    # the Head Start draw is the one that needs this child's key.
+    person[DISCRETIONARY] = person[DISCRETIONARY].where(~_acs_persons(frame), False)
+    person.loc[child, "SPORDER"] = np.nan
+    with pytest.raises(ValueError, match="Head Start take-up draws needs"):
+        with_acs_local_take_up_inputs(_with_table(frame, "person", person), seed=0)
+
+
+def test_gate_fails_on_the_vehicle_and_head_start_default_signature() -> None:
+    """The release before this change: no ACS vehicle, universal Head Start."""
+
+    frame = _filled()
+    household = frame.table("household").copy()
+    household[VEHICLES] = household[VEHICLES].where(~_acs_households(frame), 0)
+    person = frame.table("person").copy()
+    person[HEAD_START] = person[HEAD_START].where(~_acs_persons(frame), True)
+    failures = _gate_failures(
+        _with_table(_with_table(frame, "household", household), "person", person)
+    )
+    assert f"{ACS_2024_1YR_SPINE}: {VEHICLES} is constant" in failures
+    assert f"{VEHICLES} differs from ACS VEH" in failures
+    assert f"{ACS_2024_1YR_SPINE}: {HEAD_START} is constant" in failures
+    assert "outside ages 3-5 carry" in failures
+    assert ASEC_PUF_DONOR_SPINE not in failures
+
+
+def test_gate_fails_on_missing_household_tags_or_vehicle_cells() -> None:
+    frame = _filled()
+    household = frame.table("household").copy()
+    tag = spine_column("household")
+    household[tag] = household[tag].where(household.index > 0)
+    gate = acs_local_take_up_signal_gate(_with_table(frame, "household", household))
+    assert gate.failures == (f"Missing household origin tags: {tag}.",)
+    household = frame.table("household").copy()
+    household[VEHICLES] = household[VEHICLES].astype(float)
+    household.loc[int(np.flatnonzero(_acs_households(frame))[0]), VEHICLES] = np.nan
+    failures = _gate_failures(_with_table(frame, "household", household))
+    assert f"{ACS_2024_1YR_SPINE}: {VEHICLES} has missing rows" in failures
+
+
+def test_gate_reports_but_does_not_grade_donor_vehicles_or_head_start() -> None:
+    frame = _filled()
+    household = frame.table("household").copy()
+    donor = int(np.flatnonzero(~_acs_households(frame))[0])
+    # Donor households carry no VEH; any count is theirs.
+    household.loc[donor, VEHICLES] = 5
+    person = frame.table("person").copy()
+    adult = int(
+        np.flatnonzero(~_acs_persons(frame) & (person["age"] >= 18).to_numpy())[0]
+    )
+    person.loc[adult, HEAD_START] = True
+    gate = acs_local_take_up_signal_gate(
+        _with_table(_with_table(frame, "household", household), "person", person)
+    )
+    assert gate.passed, gate.failures
+    donor_columns = gate.details["per_spine"][ASEC_PUF_DONOR_SPINE]["columns"]
+    assert donor_columns[HEAD_START]["take_up_outside_ages"] == 1
+    assert "differs_from_native_veh" not in donor_columns[VEHICLES]

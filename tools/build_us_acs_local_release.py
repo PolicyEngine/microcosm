@@ -23,7 +23,8 @@ package; each is separately resumable):
                 disability-criteria stage (microcosm#1022), seed
                 ACS-row SNAP/TANF take-up (microcosm#1019) and fill
                 the ACS rows' discretionary ABAWD exemption, housing-
-                assistance receipt and Medicare take-up without the engine
+                assistance receipt, Medicare take-up, vehicle count (native
+                VEH) and Head Start take-up without the engine
                 (microcosm#1022; the consumer export re-derives the same
                 values), assign the ACS rows' SSI and Medicaid take-up
                 after a household-batched engine pre-pass over the ACS
@@ -129,6 +130,9 @@ from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_TAKE_UP_GATE_NAME,
     acs_local_take_up_signal_gate,
     with_acs_local_take_up_inputs,
+)
+from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
+    US_VEHICLES_VALUE_COLUMN,
 )
 from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_LOCAL_DISABILITY_COLUMNS,
@@ -464,8 +468,9 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
         )
         for column in ACS_LOCAL_DISABILITY_COLUMNS
     },
-    # microcosm#1022: each default biases SNAP on ACS rows; this tool's ACS
-    # take-up stage fills them first, without the engine.
+    # microcosm#1022: the first three defaults bias SNAP on ACS rows and the
+    # last two ignore measured or donor evidence; this tool's ACS take-up
+    # stage fills them first, without the engine.
     **{
         key: f"{reason} ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); run the ACS local "
         "take-up stage first"
@@ -478,6 +483,10 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
                 "recipient the transferred take-up flag records",
                 "the engine default True enrolls every Medicare-eligible ACS "
                 "person regardless of measured HINS3 coverage",
+                "the engine default 0 gives every ACS household no vehicle "
+                "although ACS VEH counts them",
+                "the engine default True enrolls every Head Start-eligible ACS "
+                "child aged 3-5",
             ),
             strict=True,
         )
@@ -1161,7 +1170,9 @@ def _recorded_take_up(identity: dict) -> dict:
     The consumer export re-derives the flags with the recorded seed and must
     reproduce the recorded digest, so both engine passes see the same flags.
     A receipt without the engine-free fills is a pre-#1022 checkpoint, whose
-    ACS rows reached the engine pass with three SNAP-relevant defaults.
+    ACS rows reached the engine pass with three SNAP-relevant defaults; one
+    whose fills omit a column (the vehicle count or Head Start take-up)
+    predates that fill.
     """
 
     receipt = identity.get("acs_local_take_up")
@@ -1187,6 +1198,17 @@ def _recorded_take_up(identity: dict) -> dict:
             "materialized with every ACS row's discretionary ABAWD exemption, "
             "housing-assistance receipt and Medicare take-up at the engine "
             "default. Re-run --stage materialize."
+        )
+    columns = fills.get("columns")
+    if not isinstance(columns, dict) or any(
+        column not in columns for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS
+    ):
+        raise SystemExit(
+            "run_identity.json records ACS engine-free fills without the vehicle "
+            f"count and Head Start take-up ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}): "
+            "the checkpoint was materialized with no ACS household owning a "
+            "vehicle and every Head Start-eligible ACS child taking Head Start "
+            "up. Re-run --stage materialize."
         )
     return receipt
 
@@ -2088,13 +2110,14 @@ def finalize_reviewed_limitations(
                 "runtime and gated by acs_local_take_up_signal "
                 "(microcosm#1019; its SNAP reporters are the native household "
                 "FS anchor, acs_snap_receipt_anchor), Medicare take-up is "
-                "native ACS HINS3 "
+                "native ACS HINS3 and Head Start take-up a keyed draw at the "
+                "donor spine's share among ages 3-5 "
                 "(acs_engine_free_default_fills), and SSI and Medicaid "
                 "take-up are assigned after an engine pre-pass "
                 "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
-                "takes_up_* flags (EITC, ACA, Head Start and the rest) are "
-                "neither transferred nor seeded on ACS rows, so they ship at "
-                "the engine default, universal take-up."
+                "takes_up_* flags (EITC, ACA, Early Head Start and the rest) "
+                "are neither transferred nor seeded on ACS rows, so they ship "
+                "at the engine default, universal take-up."
             ),
             "treatment": "Tracked via microcosm#1022.",
             "calibration_blocker": False,
@@ -2105,9 +2128,10 @@ def finalize_reviewed_limitations(
             "affected_spines": ["acs_2024_1yr"],
             "columns": [column for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS],
             "reason": (
-                "Three SNAP-relevant inputs are filled on ACS rows without the "
-                f"engine ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}) instead of taking "
-                "their engine defaults. is_snap_abawd_discretionary_exempt "
+                "Five inputs are filled on ACS rows without the engine "
+                f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}) instead of taking their "
+                "engine defaults; the first three bias SNAP. "
+                "is_snap_abawd_discretionary_exempt "
                 "mirrors the donor seeding: every person aged 18-64 draws "
                 "against the snap_abawd_discretionary_exemption manifest rate "
                 "(the statutory cap), keyed on acs_2024_1yr:SERIALNO:SPORDER. "
@@ -2119,14 +2143,62 @@ def finalize_reviewed_limitations(
                 "group quarters, whose transferred take-up flag microcosm#975 "
                 "owns. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
                 "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
-                "blank HINS3 reads as not covered."
+                "blank HINS3 reads as not covered. household_vehicles_owned is "
+                "ACS VEH, the cars, vans and trucks kept at home for household "
+                "use (0-6, 6 meaning six or more), which also counts leased and "
+                "employer-provided vehicles the donor's SIPP TVEH_NUM (vehicles "
+                "owned) leaves out; it is 0 in group quarters, outside the "
+                "item's universe, and household_vehicles_value keeps its "
+                "default (acs_household_vehicle_value_default). "
+                "takes_up_head_start_if_eligible is True for a person aged 3-5 "
+                "whose stable draw, keyed on acs_2024_1yr:SERIALNO:SPORDER, "
+                "falls below the donor spine's weighted take-up share at those "
+                "ages, the output of the donor's measured SIPP model "
+                "(sipp_head_start) at its population rate but without its "
+                "household and earnings conditioning; it is False at every "
+                "other age, as on the donor, and the engine applies Head Start "
+                "eligibility."
             ),
             "treatment": (
                 "Filled by the release tool before both reviewed-null fills, "
                 "digested in run_identity.json and re-derived at export; gated "
                 "by acs_local_take_up_signal (exempt share of ages 18-64 around "
                 "the manifest rate, receipt equal to the transferred take-up, "
-                "Medicare equal to HINS3 with a high share at 65+)."
+                "Medicare equal to HINS3 with a high share at 65+, vehicle "
+                "counts equal to VEH and 0 in group quarters, Head Start "
+                "take-up only at ages 3-5 and within half to one and a half "
+                "times the donor spine's share there)."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_household_vehicle_value_default",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [US_VEHICLES_VALUE_COLUMN],
+            "reason": (
+                "The ACS asks how many vehicles a household keeps (VEH, the ACS "
+                "rows' household_vehicles_owned) but not what they are worth, "
+                f"so {US_VEHICLES_VALUE_COLUMN} stays at the reviewed engine "
+                f"default, 0, on ACS rows ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}). "
+                "In policyengine-us 2.2.1 its only SNAP consumer is Texas's "
+                "broad-based categorical eligibility asset test "
+                "(meets_tanf_non_cash_asset_test), which counts vehicle value "
+                "above $22,500 for the first vehicle and $8,700 for each other "
+                "against a $5,000 limit; SNAP's own asset test reads no vehicle. "
+                "It also feeds the TANF resource tests of Texas, Washington, "
+                "Montana, Tennessee, California and Wisconsin (TANF is SNAP "
+                "unearned income), Illinois AABD, California CAPI and "
+                "California county general assistance. A zero value counts no "
+                "vehicle equity, so those tests pass more often on ACS rows "
+                "than on donor rows, whose value is the SIPP model's "
+                "(sipp_vehicles)."
+            ),
+            "treatment": (
+                "Reviewed-null fill to 0, recorded in the consumer fill "
+                "manifest. If the Texas asset test matters, the follow-up is "
+                "the donor stage's SIPP value model run at staging on the ACS "
+                "rows with the native VEH count in place of its predicted count."
             ),
             "calibration_blocker": False,
         },
@@ -2897,11 +2969,16 @@ def do_finalize(args) -> None:
                 "same stage fills the ACS rows' discretionary ABAWD exemption "
                 "(the donor's seeded 18-64 draw at the manifest rate), "
                 "housing-assistance receipt (the transferred housing take-up "
-                "flag; False in group quarters) and Medicare take-up (native "
-                "HINS3) without the engine, gated by the same gate "
+                "flag; False in group quarters), Medicare take-up (native "
+                "HINS3), vehicle count (native VEH; 0 in group quarters) and "
+                "Head Start take-up (a keyed draw at the donor spine's share "
+                "among ages 3-5) without the engine, gated by the same gate "
                 f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}; reviewed limitation "
-                "acs_engine_free_default_fills); the other ACS take-up flags "
-                "are the reviewed limitation acs_take_up_engine_defaults. "
+                "acs_engine_free_default_fills); the ACS vehicle value keeps "
+                "its default (reviewed limitation "
+                "acs_household_vehicle_value_default), and the other ACS "
+                "take-up flags are the reviewed limitation "
+                "acs_take_up_engine_defaults. "
                 "Immigration "
                 "labels are not transferred either: staging derives ACS "
                 "ssn_card_type/immigration_status_str from native ACS fields "

@@ -217,6 +217,7 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "acs_local_ssi_medicaid_take_up",
         "acs_spm_unit_adult_nonrelatives",
         "acs_snap_receipt_anchor",
+        "acs_household_vehicle_value_default",
     ):
         assert required in by_id, required
         assert by_id[required]["calibration_blocker"] is False
@@ -263,10 +264,36 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "is_snap_abawd_discretionary_exempt",
         "receives_housing_assistance",
         "takes_up_medicare_if_eligible",
+        "household_vehicles_owned",
+        "takes_up_head_start_if_eligible",
     }
     assert "acs_local_take_up_signal" in fills["treatment"]
-    for fragment in ("SERIALNO:SPORDER", "microcosm#975", "HINS3 == 1"):
+    for fragment in (
+        "SERIALNO:SPORDER",
+        "microcosm#975",
+        "HINS3 == 1",
+        "ACS VEH",
+        "TVEH_NUM",
+        "sipp_head_start",
+        "acs_household_vehicle_value_default",
+    ):
         assert fragment in fills["reason"]
+    assert "Head Start take-up only at ages 3-5" in fills["treatment"]
+    # microcosm#1022: the ACS vehicle value keeps its default, documented.
+    value = by_id["acs_household_vehicle_value_default"]
+    assert value["status"] == "reviewed_modeling_decision"
+    assert value["calibration_blocker"] is False
+    assert value["affected_spines"] == ["acs_2024_1yr"]
+    assert value["columns"] == ["household_vehicles_value"]
+    for fragment in (
+        "microcosm#1022",
+        "meets_tanf_non_cash_asset_test",
+        "$22,500",
+        "SNAP's own asset test reads no vehicle",
+        "TANF is SNAP unearned income",
+    ):
+        assert fragment in value["reason"], fragment
+    assert "native VEH count" in value["treatment"]
     # microcosm#1022: the ACS SSI disability criteria are a reviewed method,
     # and SSI take-up is assigned against them.
     ssi = by_id["acs_local_ssi_disability_criteria"]
@@ -277,8 +304,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in ("PEDIS*", "SERIALNO:SPORDER", "acs_local_ssi_medicaid_take_up"):
         assert fragment in ssi["reason"]
     defaults = by_id["acs_take_up_engine_defaults"]["reason"]
-    assert "EITC, ACA, Head Start" in defaults
+    assert "EITC, ACA, Early Head Start" in defaults
     assert "Medicare take-up is native ACS HINS3" in defaults
+    assert "Head Start take-up a keyed draw" in defaults
     assert "acs_local_ssi_medicaid_take_up" in defaults
     for stale in ("Medicaid, SSI", "SSI, Head Start"):
         assert stale not in defaults
@@ -484,11 +512,22 @@ def test_reviewed_null_fill_refuses_to_default_fill_take_up(tmp_path) -> None:
     assert spm_unit["takes_up_snap_if_eligible"].isna().sum() == 2
 
 
+_ENGINE_FREE_FILLS = (
+    ("person", "is_snap_abawd_discretionary_exempt"),
+    ("spm_unit", "receives_housing_assistance"),
+    ("person", "takes_up_medicare_if_eligible"),
+    ("household", "household_vehicles_owned"),
+    ("person", "takes_up_head_start_if_eligible"),
+)
+
 #: A current (post-#1022) materialize receipt, as run_identity.json records it.
 _TAKE_UP_RECEIPT = {
     "seed": 0,
     "assigned_sha256": "a" * 64,
-    "engine_free_fills": {"issue": "microcosm#1022"},
+    "engine_free_fills": {
+        "issue": "microcosm#1022",
+        "columns": {column: {} for _, column in _ENGINE_FREE_FILLS},
+    },
 }
 
 
@@ -520,20 +559,32 @@ def test_take_up_consumers_refuse_a_pre_1022_checkpoint(fills) -> None:
         module._recorded_take_up({"acs_local_take_up": receipt})
 
 
-_ENGINE_FREE_FILLS = (
-    ("person", "is_snap_abawd_discretionary_exempt"),
-    ("spm_unit", "receives_housing_assistance"),
-    ("person", "takes_up_medicare_if_eligible"),
+@pytest.mark.parametrize(
+    "missing", ["household_vehicles_owned", "takes_up_head_start_if_eligible"]
 )
+def test_take_up_consumers_refuse_a_checkpoint_before_the_vehicle_and_head_start_fills(
+    missing,
+) -> None:
+    """A checkpoint whose engine-free fills omit the vehicle count or Head
+    Start take-up calibrated against their engine defaults."""
+
+    module = _load_tool_module()
+    fills = dict(_TAKE_UP_RECEIPT["engine_free_fills"])
+    fills["columns"] = {column: {} for column in fills["columns"] if column != missing}
+    receipt = {**_TAKE_UP_RECEIPT, "engine_free_fills": fills}
+    with pytest.raises(SystemExit, match=r"vehicle count and Head Start take-up"):
+        module._recorded_take_up({"acs_local_take_up": receipt})
 
 
 def test_engine_free_fills_are_never_default_filled() -> None:
-    """microcosm#1022: each engine default biases SNAP on ACS rows."""
+    """microcosm#1022: each engine default ignores measured or donor evidence
+    on ACS rows; the vehicle value keeps its reviewed default."""
 
     module = _load_tool_module()
     for key in _ENGINE_FREE_FILLS:
         assert key in module.NEVER_DEFAULT_FILLED
         assert "microcosm#1022" in module._NEVER_DEFAULT_FILLED_REASONS[key]
+    assert ("household", "household_vehicles_value") not in module.NEVER_DEFAULT_FILLED
 
 
 @pytest.mark.parametrize("entity,column", _ENGINE_FREE_FILLS)
@@ -3011,11 +3062,19 @@ def _take_up_gate_frame(*, spm_columns=(), person_columns=()):
             "HINS3": [np.nan] * 4 + [2, 1, 2, 2],
             "is_snap_abawd_discretionary_exempt": [True, False, False, False] * 2,
             "takes_up_medicare_if_eligible": [False, True, False, False] * 2,
+            # Varies on the donor spine (ungraded there); no one is aged 3-5.
+            "takes_up_head_start_if_eligible": [False, False, False, True]
+            + [False] * 4,
             **dict(person_columns),
         }
     )
     household = frame.table("household").assign(
-        **{spine_column("household"): spines, "TYPEHUGQ": [np.nan] * 4 + [1.0] * 4}
+        **{
+            spine_column("household"): spines,
+            "TYPEHUGQ": [np.nan] * 4 + [1.0] * 4,
+            "VEH": [np.nan] * 4 + [1.0, 0.0, 2.0, 1.0],
+            "household_vehicles_owned": [1, 2, 0, 1, 1, 0, 2, 1],
+        }
     )
     replaced = {"spm_unit": spm_unit, "person": person, "household": household}
     return Frame(

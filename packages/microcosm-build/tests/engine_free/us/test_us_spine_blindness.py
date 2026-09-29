@@ -281,6 +281,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane native FS receipt anchor and release gate (#1022);
         # outside the registry.
         "acs_local_receipt_anchors.py",
+        # Legacy local-lane native vehicle-count and Head Start take-up fill
+        # and grade helpers (#1022); tag-free, the take-up stage passes the
+        # spine masks. Outside the registry.
+        "acs_local_vehicles_head_start.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
@@ -3473,9 +3477,11 @@ def test_acs_local_hours_provenance_is_limited_to_reviewed_boundaries() -> None:
 def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> None:
     """Pin the ACS-row take-up fill and per-origin take-up gate (#1019).
 
-    Each boundary reads exactly two origin tags, spm_unit and person: the
-    engine-free fills (#1022) are person- and SPM-unit-level. Their helpers
-    receive the resulting masks and read no tag themselves.
+    Each boundary reads exactly three origin tags, spm_unit, person and
+    household: the engine-free fills (#1022) are person-, SPM-unit- and (the
+    vehicle count) household-level. Their helpers, including the tag-free
+    acs_local_vehicles_head_start module, receive the resulting masks and
+    read no tag themselves.
     """
 
     source = (_US_RUNTIME / "acs_local_take_up.py").read_text()
@@ -3485,7 +3491,7 @@ def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> Non
     )
     assert tuple(
         sorted(caller for caller, _line in _function_callers(source, "spine_column"))
-    ) == tuple(sorted(boundaries * 2))
+    ) == tuple(sorted(boundaries * 3))
     tree = ast.parse(source)
     remaining = ast.Module(
         body=[
@@ -3499,6 +3505,9 @@ def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> Non
         type_ignores=[],
     )
     assert not _source_spine_accesses(ast.unparse(remaining))
+    helpers = (_US_RUNTIME / "acs_local_vehicles_head_start.py").read_text()
+    assert not _function_callers(helpers, "spine_column")
+    assert not _source_spine_accesses(helpers)
 
 
 def test_acs_local_immigration_provenance_is_limited_to_reviewed_boundaries() -> None:
