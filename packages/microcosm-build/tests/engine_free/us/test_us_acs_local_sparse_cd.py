@@ -470,6 +470,76 @@ def test_a_later_chunk_that_breaks_a_parent_is_refused(monkeypatch, tmp_path) ->
         )
 
 
+def _unparented_surface_specs(fixtures) -> tuple:
+    """Another mode's shape: district rows name no parent, and state rows of
+    the same concept sit beside them (as the district file's totals do)."""
+
+    states = tuple(
+        fixtures._soi(f"state_{state}_agi", "adjusted_gross_income", state_fips=state)
+        for state in ("06", "36")
+    )
+    return (*_cd_surface_specs(fixtures), *states)
+
+
+def test_other_modes_check_each_district_row_against_a_same_concept_state_row(
+    monkeypatch, tmp_path
+) -> None:
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixtures = _load_fixtures()
+    specs = _unparented_surface_specs(fixtures)
+    materialized = _materialize(
+        module, fixtures, release, monkeypatch, tmp_path, specs, hh_chunk=2
+    )
+    check = materialized.carrier_check
+    # The four CA and NY AGI district rows, in each of three chunks.
+    assert check["fallback_rows_checked"] == 4 * 3
+    assert check["fallback_row_nonzero_households"] >= 4
+    assert check["parent_blocks_checked"] == 0
+    # Every other district row has no same-concept state row to check against.
+    assert check["rows_without_parent_check"] == check["district_rows"] - 4
+
+    assembler = module.cd_surface.SparseTargetAssembler
+    real_add_masked = assembler.add_masked
+
+    def corrupting_later_chunks(self, row, low, carrier, positions, *, name):
+        corrupted = np.asarray(carrier, dtype=np.float64).copy()
+        if low > 0:
+            corrupted[positions] += 1.0
+        return real_add_masked(self, row, low, corrupted, positions, name=name)
+
+    monkeypatch.setattr(assembler, "add_masked", corrupting_later_chunks)
+    with pytest.raises(RuntimeError, match="differs from its same-concept state"):
+        _materialize(
+            module, fixtures, release, monkeypatch, tmp_path, specs, hh_chunk=2
+        )
+
+
+def test_a_state_cd_row_without_a_compiled_parent_is_refused() -> None:
+    """Otherwise its per-chunk check would silently check nothing."""
+
+    module = _load_tool_module()
+    fixtures = _load_fixtures()
+    specs = []
+    for spec in _parented_surface_specs(fixtures):
+        if spec.name == "cd_0601_agi":
+            spec = dataclasses.replace(
+                spec,
+                metadata={**spec.metadata, "state_cd_vintage_rule": "fixture"},
+            )
+        specs.append(spec)
+    plan = module.cd_surface.plan_carriers(specs)
+    compiled = {spec.name for spec in plan.engine_specs}
+    parents, _unchecked = module.cd_surface.district_row_parents(plan, compiled)
+    index = next(
+        i for i, spec in enumerate(plan.declared) if spec.name == "cd_0601_agi"
+    )
+    assert parents[index] == ("state_06_agi", True)
+    with pytest.raises(ValueError, match="no compiled state parent"):
+        module.cd_surface.district_row_parents(plan, compiled - {"state_06_agi"})
+
+
 def test_district_rows_without_baseline_populations_are_refused() -> None:
     module = _load_tool_module()
     targets = [
@@ -1036,35 +1106,49 @@ def test_calibration_outputs_are_bound_to_the_materialization(tmp_path) -> None:
         "consumer_reviewed_null_fills.json",
         "spine_qa.json",
     }
-    # The calibrated H5 and its evidence are bound too.
+    # The calibrated H5 and its evidence are bound too: to the materialization,
+    # to the summary's weights, and QA to the H5's bytes. Not to a path.
     h5 = tmp_path / "out.h5"
     h5.write_bytes(b"artifact")
+    h5_sha = module._sha256(h5)
+    weights = np.array([1.0, 2.5, 3.0])
+    weights_sha = module._weights_digest(weights)
+    assert weights_sha == module._weights_digest(weights.astype(np.float64).copy())
+    assert weights_sha != module._weights_digest(weights * (1 + 1e-12))
     export = {
         "run_identity_sha256": stamp,
-        "out_h5": str(h5.resolve()),
-        "out_h5_sha256": module._sha256(h5),
+        "out_h5": str(tmp_path / "elsewhere" / "out.h5"),
+        "out_h5_sha256": h5_sha,
+        "weights_sha256": weights_sha,
     }
+    summary = {"run_identity_sha256": stamp, "weights_sha256": weights_sha}
+    qa = {"run_identity_sha256": stamp, "artifact_sha256": h5_sha}
     module._require_current_artifact(
         identity,
         consumer_export=export,
-        spine_qa={"run_identity_sha256": stamp},
+        summary=summary,
+        spine_qa=qa,
         out_h5=h5,
-        out_h5_sha256=module._sha256(h5),
+        out_h5_sha256=h5_sha,
         stage="package",
     )
-    for bad_export, bad_qa, message in (
-        ({**export, "run_identity_sha256": "old"}, None, "consumer_export.json"),
-        ({**export, "out_h5_sha256": "0" * 64}, None, "is not the calibrated H5"),
-        ({**export, "out_h5": str(tmp_path / "other.h5")}, None, "is not the"),
-        (export, {"run_identity_sha256": "old"}, "spine_qa.json"),
+    for bad_export, bad_summary, bad_qa, message in (
+        ({**export, "run_identity_sha256": "old"}, summary, None, "consumer_export"),
+        ({**export, "out_h5_sha256": "0" * 64}, summary, None, "is not the calibrated"),
+        # An interrupted recalibration: new H5 and export, the old summary.
+        (export, {**summary, "weights_sha256": "old"}, None, "different weights"),
+        ({**export, "weights_sha256": None}, summary, None, "different weights"),
+        (export, summary, {**qa, "run_identity_sha256": "old"}, "another material"),
+        (export, summary, {**qa, "artifact_sha256": "0" * 64}, "certifies other"),
     ):
         with pytest.raises(SystemExit, match=message):
             module._require_current_artifact(
                 identity,
                 consumer_export=bad_export,
+                summary=bad_summary,
                 spine_qa=bad_qa,
                 out_h5=h5,
-                out_h5_sha256=module._sha256(h5),
+                out_h5_sha256=h5_sha,
                 stage="package",
             )
 
@@ -1138,3 +1222,26 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
     )
     with pytest.raises(SystemExit, match="belongs to another materialization"):
         module.do_calibrate(args)
+    # ... including its solver settings.
+    (checkpoint / "calibration_summary.json").write_text(
+        json.dumps(
+            {
+                "run_identity_sha256": module._run_identity_digest(identity),
+                "solver_settings": {**settings, "seed": 1},
+            }
+        )
+    )
+    with pytest.raises(SystemExit, match="or solver settings"):
+        module.do_calibrate(args)
+    # A solve deletes every previous calibration output before it starts, so
+    # one that stops part way leaves no evidence describing other weights.
+    for name in module.CALIBRATION_OUTPUT_FILENAMES:
+        (checkpoint / name).write_text("{}")
+
+    def interrupted(*_args, **_kwargs):
+        raise RuntimeError("solver interrupted")
+
+    monkeypatch.setattr(module, "calibrate_surface", interrupted)
+    with pytest.raises(RuntimeError, match="interrupted"):
+        module.do_calibrate(SimpleNamespace(**{**vars(args), "resume": False}))
+    assert sorted(path.name for path in checkpoint.iterdir()) == ["weights_latest.npz"]

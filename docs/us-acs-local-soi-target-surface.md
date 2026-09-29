@@ -206,11 +206,24 @@ bridge built on that sibling is trusted there:
 
 - a rebase block out of band loses its district rows
   (`rebase_out_of_band:<measure>`); its Historic Table 2 state row stays;
-- a bridge whose sibling ratio is out of band loses the bridged state row
-  and its district rows (`level_bridge_out_of_band:<measure>`).
+- a bridge is distrusted if either verdict on its sibling fails: the
+  sibling's two state levels (Historic Table 2 over the district file's state
+  row, against the median over every state carrying both), or, where the
+  sibling has district rows, the rebase of its own district block (against
+  the median over the states with district blocks). The two medians can
+  differ, because at-large states count only in the first. A distrusted
+  bridge loses the bridged state row and its district rows
+  (`level_bridge_out_of_band:<measure>`).
 
-Every such (state, concept) is recorded in the receipt under
-`factor_band.out_of_band` with its ratio, the median and the relative gap.
+Every failing verdict is recorded in the receipt under
+`factor_band.out_of_band` with the verdict, its ratio, the median and the
+relative gap. The band only judges finite positive ratios: a sibling whose
+two levels differ in sign is a data defect and is refused outright. So is a
+district file that disagrees with itself: wherever the file carries a state
+row beside its district rows, the two must agree to 1e-6
+(`STATE_CD_INTERNAL_RTOL`), since no median absorbs a column or crosswalk
+defect inside the file. On the pinned feed they agree to float precision.
+
 On the pinned feed the band drops eight:
 
 | State | Measure | Basis | Ratio | Median | Relative |
@@ -227,7 +240,8 @@ bridged state rows (Wyoming and South Dakota are at-large, so they had no
 district rows). The largest gaps the band keeps are 1.22x (Wisconsin
 partnership and S-corporation income, West Virginia capital gains) and 1.20x
 (Mississippi capital gains); every other kept block is within 1.17x. So on
-this feed any tolerance between 1.22 and 1.31 drops the same eight. The band
+this feed any tolerance above the largest kept gap (1.220) and below Utah's
+(1.316) drops the same eight. The band
 is a reviewed tolerance, not an estimate; changing it moves the contract
 counts below, which a feed-gated test pins.
 
@@ -426,13 +440,24 @@ materialization, because the SOI slice masks a tax unit by its household's
 state and district; the first chunk of every run also materializes one
 district row per carrier directly and compares it with the row the assembler
 actually stored for it, refusing any difference. That check covers one row
-per carrier in one chunk, which could miss the households a concept touches.
-So every chunk also rebuilds each state parent from its block's stored
-district rows: the district rows of a block partition the parent's state,
-so laid side by side they must equal the parent's directly materialized
-column on every household of the chunk, bit for bit, or materialize refuses
-(`materialize_rss.json` → `carrier_check`, with the blocks and nonzero
-households checked). The calibrate stage builds
+per carrier in one chunk, which could miss the households a concept touches,
+so every chunk also checks the stored district rows against a state row
+materialized directly in the same pass (`cd_surface.district_row_parents`):
+
+- In `state_cd`, each district row names its state parent, and a block's
+  rows partition the parent's state. Laid side by side, they must equal the
+  parent's column on every household of the chunk, bit for bit, and every
+  block is checked in every chunk. A `state_cd` row without a compiled parent
+  is refused, so the check cannot silently skip it.
+- In the other modes, a district row is checked against a state row of the
+  same materializer semantics in the same state (in `full`, the district
+  file's own state total), on the row's own households, since those blocks
+  need not cover the state. A row with no such state row is counted as
+  unchecked.
+
+`materialize_rss.json` → `carrier_check` records the blocks and rows checked,
+the nonzero households they covered, and the unchecked rows. The calibrate
+stage builds
 each training target from its registry spec (value, metadata, hierarchy)
 with a callable measure that reads its CSR row, so the calibrate kernel's own
 `build_constraint_matrix` compiles them one row at a time, unchanged, and the
@@ -474,11 +499,17 @@ record one of the four modes, before any release directory exists.
   sample) or other settings; finalize and package refuse a summary from
   another materialization.
 - `consumer_export.json` (written with the calibrated H5) records the H5's
-  path and sha256 and the run-identity digest; `spine_qa.json` records the
-  digest too. Finalize and package refuse an H5 that is not the one the
-  current calibration wrote, or QA evidence from another materialization,
-  before any release directory exists. A new materialize deletes the previous
-  calibration outputs, consumer export, spine QA and gate report.
+  sha256, the run-identity digest, the solver settings and a digest of the
+  calibrated weights, which `calibration_summary.json` also records;
+  `spine_qa.json` records the run-identity digest and the sha256 of the bytes
+  it loaded. Before any release directory exists, finalize and package
+  refuse an H5 whose bytes are not the export's, an export and summary that
+  describe different weights (a recalibration that stopped part way), and QA
+  evidence from another materialization or of other bytes. The H5's path is
+  not compared; its sha binds the bytes wherever they are reached from.
+- A new materialize deletes the previous calibration outputs, consumer
+  export, spine QA and gate report, and a solve deletes every output but the
+  resume weights before it starts.
 - Materialize refuses a district row without a positive ladder district and
   state population, since the pro-rata baseline could not score it.
 - `calibration_summary.json`: `cd_holdout`, `weight_origin` (ESS nationally,

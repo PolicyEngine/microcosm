@@ -584,28 +584,42 @@ class MaterializedSurface:
         return [spec.measure for spec in self.compiled_specs]
 
 
-def _check_district_blocks_rebuild_parents(
-    plan, captured, target_households, compiled_names, *, n_chunk: int, tally: dict
+def _check_district_rows_against_parents(
+    parents, captured, target_households, measure_of, *, n_chunk: int, tally: dict
 ) -> None:
-    """Every chunk: each state block's stored district rows rebuild its parent.
+    """Every chunk: each stored district row against its state parent's column.
 
-    A ``state_cd`` district row names its state parent
-    (``state_cd_parent_target_name``), which the engine pass materializes
-    directly with the same semantics apart from geography. The district rows
-    of a block partition the parent's state, so the float32 values stored for
-    them, laid side by side, must equal the parent's own column exactly on
-    every household of the chunk. Unlike the first-chunk row check this
-    cannot be vacuous: it covers every household the concept touches.
+    ``parents`` comes from ``cd_surface.district_row_parents``. A strict
+    (``state_cd``) block's district rows partition the parent's state, so the
+    float32 values stored for them, laid side by side, must equal the parent's
+    directly materialized column on every household of the chunk, bit for bit.
+    A fallback parent (another mode's same-concept state row) is compared on
+    the row's own households. Unlike the first-chunk row check, this covers
+    every household each concept touches, so it cannot be vacuous.
     """
 
-    children: dict[str, list[int]] = defaultdict(list)
-    for index, *_rest in plan.split:
-        parent = plan.declared[index].metadata.get("state_cd_parent_target_name")
-        if parent in compiled_names and index in captured:
-            children[parent].append(index)
-    by_name = {spec.name: spec for spec in plan.declared}
+    strict_blocks: dict[str, list[int]] = defaultdict(list)
+    fallback_rows = fallback_nonzero = 0
+    for index in sorted(captured):
+        if index not in parents:
+            continue
+        parent_name, strict = parents[index]
+        if strict:
+            strict_blocks[parent_name].append(index)
+            continue
+        positions, values = captured[index]
+        direct = target_households[measure_of[parent_name]].to_numpy(dtype=np.float32)
+        if not np.array_equal(values, direct[positions]):
+            differing = int((values != direct[positions]).sum())
+            raise RuntimeError(
+                f"A stored district row differs from its same-concept state "
+                f"row {parent_name} on {differing} of its household(s); the "
+                "carrier split is not exact for this surface."
+            )
+        fallback_rows += 1
+        fallback_nonzero += int(np.count_nonzero(values))
     checked = nonzero = 0
-    for parent_name, rows in children.items():
+    for parent_name, rows in strict_blocks.items():
         rebuilt = np.zeros(n_chunk, dtype=np.float32)
         written = np.zeros(n_chunk, dtype=bool)
         for index in rows:
@@ -616,9 +630,7 @@ def _check_district_blocks_rebuild_parents(
                 )
             written[positions] = True
             rebuilt[positions] = values
-        direct = target_households[by_name[parent_name].measure].to_numpy(
-            dtype=np.float32
-        )
+        direct = target_households[measure_of[parent_name]].to_numpy(dtype=np.float32)
         if not np.array_equal(rebuilt, direct):
             differing = int((rebuilt != direct).sum())
             raise RuntimeError(
@@ -628,10 +640,21 @@ def _check_district_blocks_rebuild_parents(
             )
         checked += 1
         nonzero += int(np.count_nonzero(direct))
-    tally["parent_blocks_checked"] = tally.get("parent_blocks_checked", 0) + checked
-    tally["parent_block_nonzero_households"] = (
-        tally.get("parent_block_nonzero_households", 0) + nonzero
-    )
+    # Every chunk stores every materialized district row (possibly empty), so
+    # every strict block must be checked in every chunk.
+    expected = len({parent for parent, strict in parents.values() if strict})
+    if checked != expected:
+        raise RuntimeError(
+            f"Checked {checked} of {expected} state_cd parent blocks in this "
+            "chunk; every block must be checked in every chunk."
+        )
+    for key, value in (
+        ("parent_blocks_checked", checked),
+        ("parent_block_nonzero_households", nonzero),
+        ("fallback_rows_checked", fallback_rows),
+        ("fallback_row_nonzero_households", fallback_nonzero),
+    ):
+        tally[key] = tally.get(key, 0) + value
 
 
 def _household_codes(release_tool, households, column: str) -> np.ndarray:
@@ -719,6 +742,7 @@ def materialize_chunked(
     assembler = cd_surface.SparseTargetAssembler(plan.n_rows, n_households)
     compiled_names: set[str] | None = None
     carrier_check: dict[str, object] = {"district_rows": len(plan.split)}
+    parents: dict[int, tuple[str, bool]] | None = None
     chunk_stats = []
     n_chunks = (n_households + hh_chunk - 1) // hh_chunk
     if n_chunks > 1:
@@ -797,11 +821,16 @@ def materialize_chunked(
                 district_codes=district_codes,
                 capture=frozenset(index for index, *_rest in split),
             )
-            _check_district_blocks_rebuild_parents(
-                plan,
+            if parents is None:
+                parents, unchecked = cd_surface.district_row_parents(
+                    plan, compiled_names
+                )
+                carrier_check["rows_without_parent_check"] = len(unchecked)
+            _check_district_rows_against_parents(
+                parents,
                 captured,
                 target_households,
-                compiled_names,
+                {name: by_name[name].measure for name, _strict in parents.values()},
                 n_chunk=high - low,
                 tally=carrier_check,
             )
@@ -1444,19 +1473,33 @@ CALIBRATION_OUTPUT_FILENAMES = (
 )
 
 
+#: The fixed solver settings, shared by the solve and the stamp describing it.
+SOLVER_METHOD = "adam"
+SOLVER_LEARNING_RATE = 0.02
+SOLVER_MASS = "conserve"
+
+
 def _solver_settings(args) -> dict:
     """The calibrate-stage settings a resume or reuse must share."""
 
     return {
-        "method": "adam",
-        "learning_rate": 0.02,
-        "mass": "conserve",
+        "method": SOLVER_METHOD,
+        "learning_rate": SOLVER_LEARNING_RATE,
+        "mass": SOLVER_MASS,
         "max_weight_ratio": args.max_weight_ratio,
         "target_loss_cap": args.target_loss_cap,
         "l2_lambda": args.l2_lambda,
         "seed": args.seed,
         "epoch_batch": args.epoch_batch,
     }
+
+
+def _weights_digest(weights) -> str:
+    """Digest of a calibrated household weight vector (float64 bytes)."""
+
+    return hashlib.sha256(
+        np.ascontiguousarray(weights, dtype=np.float64).tobytes()
+    ).hexdigest()
 
 
 def _run_identity_digest(identity: dict) -> str:
@@ -1498,12 +1541,20 @@ def _require_current_artifact(
     identity: dict,
     *,
     consumer_export: dict,
+    summary: dict,
     spine_qa: dict | None,
     out_h5: Path,
     out_h5_sha256: str,
     stage: str,
 ) -> None:
-    """Refuse a calibrated H5 or its evidence from another materialization."""
+    """Refuse a calibrated H5, or evidence about it, from another calibration.
+
+    The H5's bytes must be the ones ``consumer_export.json`` records; that
+    export and the calibration summary must name the same materialization and
+    the same weights; and QA evidence, when given, must be of these bytes and
+    this materialization. The path is not compared: the sha binds the bytes
+    wherever they are reached from.
+    """
 
     if "target_roles_sha256" not in identity:
         return
@@ -1513,18 +1564,31 @@ def _require_current_artifact(
             "consumer_export.json was written for another materialization "
             f"(or records none); re-run --stage calibrate before --stage {stage}."
         )
-    if Path(str(consumer_export.get("out_h5"))) != Path(out_h5).resolve() or (
-        consumer_export.get("out_h5_sha256") != out_h5_sha256
-    ):
+    if consumer_export.get("out_h5_sha256") != out_h5_sha256:
         raise SystemExit(
             f"{out_h5} is not the calibrated H5 this checkpoint's calibrate stage "
             f"wrote; re-run --stage calibrate before --stage {stage}."
         )
-    if spine_qa is not None and spine_qa.get("run_identity_sha256") != digest:
+    weights_sha = consumer_export.get("weights_sha256")
+    if weights_sha is None or summary.get("weights_sha256") != weights_sha:
         raise SystemExit(
-            "spine_qa.json was written for another materialization; re-run "
-            f"--stage qa before --stage {stage}."
+            "The calibrated H5 and calibration_summary.json describe different "
+            "weights (an interrupted recalibration?); re-run --stage calibrate "
+            f"before --stage {stage}."
         )
+    if spine_qa is not None:
+        if spine_qa.get("run_identity_sha256") != digest:
+            raise SystemExit(
+                "spine_qa.json was written for another materialization; re-run "
+                f"--stage qa before --stage {stage}."
+            )
+        if spine_qa.get("artifact_sha256") != out_h5_sha256:
+            raise SystemExit(
+                "spine_qa.json certifies other bytes than the calibrated H5 "
+                f"({str(spine_qa.get('artifact_sha256'))[:12]}… vs "
+                f"{out_h5_sha256[:12]}…); re-run --stage qa before --stage "
+                f"{stage}."
+            )
 
 
 def _require_current_calibration(identity: dict, summary: dict, *, stage: str) -> None:
@@ -1625,10 +1689,10 @@ def calibrate_surface(
             frame,
             target_set,
             weight_entity="household",
-            method="adam",
+            method=SOLVER_METHOD,
             epochs=this_batch,
-            learning_rate=0.02,
-            mass="conserve",
+            learning_rate=SOLVER_LEARNING_RATE,
+            mass=SOLVER_MASS,
             max_weight_ratio=max_weight_ratio,
             target_loss_cap=target_loss_cap,
             l2_lambda=l2_lambda,
@@ -1764,7 +1828,7 @@ def do_calibrate(args) -> None:
                 "weights_latest.npz to recalibrate)."
             )
             _write_calibrated_artifact(
-                args, np.asarray(warm, dtype=np.float64), identity
+                args, np.asarray(warm, dtype=np.float64), identity, settings
             )
             return
         raise SystemExit(
@@ -1773,6 +1837,12 @@ def do_calibrate(args) -> None:
             "belongs to another materialization or solver settings. Delete "
             "the checkpoint to recalibrate, or raise --epochs."
         )
+
+    # A solve replaces every output describing the calibration: none of the
+    # previous ones may outlive it if this run stops part way.
+    for name in CALIBRATION_OUTPUT_FILENAMES:
+        if name != "weights_latest.npz":
+            (args.checkpoint_dir / name).unlink(missing_ok=True)
 
     def save(weights: np.ndarray, epochs_done: int) -> None:
         np.savez(
@@ -1810,6 +1880,7 @@ def do_calibrate(args) -> None:
     summary = {
         "run_identity_sha256": stamp,
         "solver_settings": settings,
+        "weights_sha256": _weights_digest(result.weights),
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
@@ -1846,7 +1917,7 @@ def do_calibrate(args) -> None:
         "peak_rss_gb": round(rss(), 3),
     }
     _write_calibrated_artifact(
-        args, np.asarray(result.weights, dtype=np.float64), identity
+        args, np.asarray(result.weights, dtype=np.float64), identity, settings
     )
 
     holdout = summary["cd_holdout"]
@@ -1926,7 +1997,9 @@ def _resample_like_materialize(frame, identity: dict):
     return sampled
 
 
-def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> None:
+def _write_calibrated_artifact(
+    args, weights: np.ndarray, identity: dict, settings: dict
+) -> None:
     """Write the consumer-ready calibrated H5 with verified attachment.
 
     The weights attach by verified household-id vector equality between the
@@ -1991,6 +2064,8 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
                 "out_h5": str(Path(args.out_h5).resolve()),
                 "out_h5_sha256": _sha256(args.out_h5),
                 "run_identity_sha256": _run_identity_digest(identity),
+                "weights_sha256": _weights_digest(weights),
+                "solver_settings": settings,
                 "staging_sha256": identity.get("staging_sha256"),
                 "held_back_formula_owned": dropped,
                 "held_back_total": sum(len(v) for v in dropped.values()),
@@ -2117,7 +2192,8 @@ def do_qa(args) -> None:
             if entry["person_weight"]
             else 0.0
         )
-    qa_identity = _verify_run_identity(args, require=False)
+    # Recorded, not re-verified: finalize and package verify the identity.
+    qa_identity = _load_json(args.checkpoint_dir / "run_identity.json")
     payload = {
         "run_identity_sha256": (
             _run_identity_digest(qa_identity) if qa_identity else None
@@ -2446,6 +2522,7 @@ def do_finalize(args) -> None:
     _require_current_artifact(
         identity,
         consumer_export=consumer_export,
+        summary=diagnostics,
         spine_qa=spine_qa or None,
         out_h5=args.out_h5,
         out_h5_sha256=hours_artifact_sha,
@@ -2826,21 +2903,6 @@ def do_package(args) -> dict:
     h5_sha = _sha256(calibrated_h5)
     # The H5 and its evidence must come from this checkpoint's calibration;
     # a refused artifact leaves no release directory behind.
-    _require_current_artifact(
-        identity,
-        consumer_export=consumer_export,
-        spine_qa=spine_qa,
-        out_h5=calibrated_h5,
-        out_h5_sha256=h5_sha,
-        stage="package",
-    )
-
-    code = _repo_code_identity(args.allow_dirty)
-    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
-    release_dir = args.out / "releases" / release_id
-    release_dir.mkdir(parents=True, exist_ok=True)
-
     # The gate report certifies specific artifact bytes: the QA probe
     # recorded the sha it loaded plain. Packaging different bytes (a
     # recalibrate without re-running qa+finalize) is refused.
@@ -2871,6 +2933,22 @@ def do_package(args) -> dict:
             f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
             "--stage qa and --stage finalize against the current artifact."
         )
+    _require_current_artifact(
+        identity,
+        consumer_export=consumer_export,
+        summary=diagnostics,
+        spine_qa=spine_qa,
+        out_h5=calibrated_h5,
+        out_h5_sha256=h5_sha,
+        stage="package",
+    )
+
+    code = _repo_code_identity(args.allow_dirty)
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
+    release_dir = args.out / "releases" / release_id
+    release_dir.mkdir(parents=True, exist_ok=True)
+
     gates = gate_report.get("gates")
     hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
     if not isinstance(hours_gate, dict) or hours_gate.get("passed") is not True:

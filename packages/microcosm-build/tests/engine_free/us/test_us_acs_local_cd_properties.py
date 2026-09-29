@@ -17,6 +17,7 @@ Invariants, each for every input Hypothesis draws:
 
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import math
 
@@ -225,22 +226,26 @@ def _state_cd_inputs(draw):
                         state=state,
                     )
                 )
+            district_values = [draw(positive) for _district in districts]
+            # The district file's own state total is the sum of its districts
+            # (it is on the pinned feed); an at-large state has no sub-state
+            # rows, so its total is free.
             specs.append(
                 _soi_spec(
                     f"cdfile.{state}_total.{measure}",
                     measure,
-                    draw(positive),
+                    draw(positive) if len(source) == 1 else math.fsum(district_values),
                     level="state",
                     record_set=_CD_FILE,
                     state=state,
                 )
             )
-            for district in districts:
+            for district, value in zip(districts, district_values, strict=True):
                 specs.append(
                     _soi_spec(
                         f"cdfile.{district}.{measure}",
                         measure,
-                        draw(positive),
+                        value,
                         level="congressional_district",
                         record_set=_CD_FILE,
                         state=state,
@@ -676,3 +681,172 @@ def test_blocks_off_their_concepts_median_ratio_are_dropped_and_recorded(
         for spec in surface.specs
         if spec.metadata["ledger_geography_level"] == "state"
     } == {f"{10 + index:02d}" for index in range(len(jitters))}
+
+
+def _bridge_world(ratios: dict[str, float], at_large: dict[str, float]):
+    """States whose Historic Table 2 return count is ``ratio`` x the file's.
+
+    Every state carries ``return_count`` in both files and ``charitable_amount``
+    only in the district file (bridged by ``return_count``). States in
+    ``ratios`` have two districts; states in ``at_large`` one source district.
+    """
+
+    specs, crosswalk = [], []
+    for state, ratio in {**ratios, **at_large}.items():
+        split = state in ratios
+        districts = [f"{state}01", f"{state}02"] if split else [f"{state}01"]
+        for district in districts:
+            crosswalk.append(
+                {
+                    "source_geography_id": f"5001700US{district if split else state + '00'}",
+                    "target_geography_id": f"5001900US{district}",
+                }
+            )
+        for measure, total, ht2 in (
+            ("return_count", 100.0, 100.0 * ratio),
+            ("charitable_amount", 10.0, None),
+        ):
+            if ht2 is not None:
+                specs.append(
+                    _soi_spec(
+                        f"ht2.{state}.{measure}",
+                        measure,
+                        ht2,
+                        level="state",
+                        record_set=_HT2,
+                        state=state,
+                    )
+                )
+            specs.append(
+                _soi_spec(
+                    f"cdfile.{state}_total.{measure}",
+                    measure,
+                    total,
+                    level="state",
+                    record_set=_CD_FILE,
+                    state=state,
+                )
+            )
+            if split:
+                for district, share in zip(districts, (0.4, 0.6), strict=True):
+                    specs.append(
+                        _soi_spec(
+                            f"cdfile.{district}.{measure}",
+                            measure,
+                            total * share,
+                            level="congressional_district",
+                            record_set=_CD_FILE,
+                            state=state,
+                            district=district,
+                        )
+                    )
+    return specs, pd.DataFrame(crosswalk)
+
+
+def _bridge_surface(ratios, at_large=None):
+    specs, crosswalk = _bridge_world(ratios, at_large or {})
+    return _CD.state_cd_soi_surface(
+        specs,
+        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+        crosswalk=crosswalk,
+        level_bridges={"charitable_amount": "return_count"},
+    )
+
+
+def _bound(surface, state, measure, level):
+    return [
+        spec.name
+        for spec in surface.specs
+        if spec.metadata["state_fips"] == state
+        and spec.metadata["source_measure_id"] == measure
+        and spec.metadata["ledger_geography_level"] == level
+    ]
+
+
+def test_a_bridge_through_an_out_of_band_sibling_drops_its_state_and_districts() -> (
+    None
+):
+    """Either band verdict on the sibling distrusts the bridge in that state."""
+
+    # 1. State 14's two levels disagree 2x: both verdicts fail there.
+    surface = _bridge_surface({"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 2.0})
+    verdicts = {
+        (row["state_fips"], row["measure"], row["verdict"])
+        for row in surface.receipt["factor_band"]["out_of_band"]
+    }
+    assert verdicts == {
+        ("14", "return_count", "rebase_factor"),
+        ("14", "charitable_amount", "sibling_vintage_ratio"),
+        ("14", "charitable_amount", "sibling_rebase_factor"),
+    }
+    assert not _bound(surface, "14", "charitable_amount", "state")
+    assert not _bound(surface, "14", "charitable_amount", "congressional_district")
+    assert not _bound(surface, "14", "return_count", "congressional_district")
+    assert _bound(surface, "14", "return_count", "state")  # Historic Table 2 stays
+    for state in ("10", "11", "12", "13"):
+        assert (
+            len(_bound(surface, state, "charitable_amount", "congressional_district"))
+            == 2
+        )
+    assert surface.receipt["dropped"]["level_bridge_out_of_band:charitable_amount"] == 3
+
+    # 2. The two verdicts can split: at-large states pull the vintage median
+    # to 1.2, so state 14's ratio of 1.3 passes it, but among the states with
+    # district blocks the median is 1.0 and its block fails. The bridge is
+    # distrusted by the sibling's rebase verdict alone.
+    surface = _bridge_surface(
+        {"10": 1.0, "11": 1.0, "12": 1.0, "13": 1.0, "14": 1.3},
+        {f"{20 + index}": 1.2 for index in range(8)},
+    )
+    verdicts = {
+        (row["state_fips"], row["measure"], row["verdict"])
+        for row in surface.receipt["factor_band"]["out_of_band"]
+    }
+    assert verdicts == {
+        ("14", "return_count", "rebase_factor"),
+        ("14", "charitable_amount", "sibling_rebase_factor"),
+    }
+    assert not _bound(surface, "14", "charitable_amount", "state")
+    assert not _bound(surface, "14", "charitable_amount", "congressional_district")
+    # At-large states keep their bridged state rows; they have no districts.
+    assert _bound(surface, "20", "charitable_amount", "state")
+
+
+def test_a_sign_conflict_or_a_self_contradicting_district_file_is_refused() -> None:
+    """Defects inside the data are refused, not dropped as level gaps."""
+
+    specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": -1.0}, {})
+    with pytest.raises(ValueError, match="has factor"):
+        _CD.state_cd_soi_surface(
+            specs,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+    specs, crosswalk = _bridge_world({"10": 1.0, "11": 1.0, "12": 1.0}, {})
+    broken = [
+        dataclasses.replace(spec, value=spec.value * (1 + 1e-4))
+        if spec.name == "cdfile.1101.return_count"
+        else spec
+        for spec in specs
+    ]
+    with pytest.raises(ValueError, match="differs from the sum of its district"):
+        _CD.state_cd_soi_surface(
+            broken,
+            state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+            crosswalk=crosswalk,
+            level_bridges={"charitable_amount": "return_count"},
+        )
+    # Inside the tolerance (float noise) it is accepted.
+    nudged = [
+        dataclasses.replace(spec, value=spec.value * (1 + 1e-9))
+        if spec.name == "cdfile.1101.return_count"
+        else spec
+        for spec in specs
+    ]
+    _CD.state_cd_soi_surface(
+        nudged,
+        state_surface_predicate=_TOOL.soi_surface_predicate("state"),
+        crosswalk=crosswalk,
+        level_bridges={"charitable_amount": "return_count"},
+    )
