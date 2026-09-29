@@ -4295,7 +4295,7 @@
       "non_residential_property_value"
      ],
      "selection": "within each income band walk households in investable wealth descending, household_id ascending, accumulating positive household weight until the cumulative weight reaches the band's support mass; whole households; an exhausted pool is recorded, not refused",
-     "maximum_copy_weight": 60.0,
+     "maximum_copy_weight": 80.0,
      "copy_rule": "copies = ceil(household weight / maximum_copy_weight); every copy carries weight / copies",
      "id_remapping": "id_multiplier_for_values; copy k takes every entity id + k x multiplier",
      "flag_column": "household_is_cgt_support_copy",

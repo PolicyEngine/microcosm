@@ -240,7 +240,7 @@ a deterministic stage before the incidence clone, walks each Table 3 income colu
 wealth until the cumulative weight reaches twice the headroom (2.0) times the published count of gainers at
 or above GBP 250,000 in that column (17,000 / 5,000 / 11,000 / 3,000 / 6,000 / 16,000, so 68,000 / 20,000 /
 44,000 / 12,000 / 24,000 / 64,000 before the clone, 232,000 in all, 0.8 percent of household mass) and splits
-each selected household into ceil(weight / 60) copies at equal weight, ids offset by the clone stage's own
+each selected household into ceil(weight / 80) copies at equal weight (60 on the first arm, `ch1`; raised to 80 after its weight-ratio receipt, see below), ids offset by the clone stage's own
 multiplier scheme, every other column unchanged; the graph policy is `conserve`, the coverage family
 `mass_conserving`, and the stage has no draw, seed or salt. The graph kernel's lineage rule recovers copy k
 from `id + k x offset`; the anchor's pairing needs only the clone flag; `mass_increasing_support` loses its

@@ -409,7 +409,7 @@ def _support_split_receipt() -> dict[str, object]:
         "parameters": {
             "clone_split_factor": 2,
             "headroom": 2.0,
-            "maximum_copy_weight": 60.0,
+            "maximum_copy_weight": 80.0,
         },
     }
 
@@ -419,7 +419,7 @@ _SUPPORT_SPLIT_PARAMETERS = {
     "check": "cgt_support_split",
     "clone_split_factor": 2,
     "headroom": 2.0,
-    "maximum_copy_weight": 60.0,
+    "maximum_copy_weight": 80.0,
     "maximum_relative_mass_deviation": 1e-9,
 }
 
@@ -476,7 +476,7 @@ def test_cgt_support_split_gate_tolerates_a_recorded_exhausted_column() -> None:
             "mass deviation",
         ),
         (
-            lambda e: e["bands"][0].__setitem__("heaviest_copy_weight", 60.5),
+            lambda e: e["bands"][0].__setitem__("heaviest_copy_weight", 80.5),
             "exceeds the maximum",
         ),
         (

@@ -10,7 +10,7 @@ created mass: within each Table 3 taxable-income band it walks households in
 descending investable wealth until their weight covers the band's support
 mass (the published count of gainers at or above GBP 250,000 in that income
 column, doubled for the clone split and doubled again for headroom) and
-divides every selected household into ``ceil(weight / 60)`` identical copies
+divides every selected household into ``ceil(weight / 80)`` identical copies
 at equal weight. No value moves, no draw is made, and every household's mass
 and the total household mass are conserved exactly; the clone stage then
 gives each copy's clone its own identity-keyed prior, and the redraw's
@@ -80,7 +80,7 @@ CGT_SUPPORT_CLONE_SPLIT_FACTOR = 2
 CGT_SUPPORT_HEADROOM = 2.0
 #: A copy weighs at most this before the clone (half of it after), so the
 #: GBP 5m+ band seats at least a hundred rows.
-CGT_SUPPORT_MAXIMUM_COPY_WEIGHT = 60.0
+CGT_SUPPORT_MAXIMUM_COPY_WEIGHT = 80.0
 #: The Table 3 bands of gains the support is sized on.
 CGT_SUPPORT_MINIMUM_GAIN_BAND_LOWER = 250_000
 #: The redraw's income bands, so classification matches its walk.
@@ -418,11 +418,12 @@ def split_cgt_support_households(
     *,
     distribution: HMRCCapitalGainsJointDistribution,
     parameters: UKCGTPolicyParameters,
+    maximum_copy_weight: float = CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
 ) -> UKCGTSupportSplitResult:
     """Split the wealthiest households of each income band into light copies.
 
     Deterministic and mass-conserving: no draw, no seed, no salt. Each
-    selected household of weight ``w`` becomes ``n = ceil(w / 60)`` copies at
+    selected household of weight ``w`` becomes ``n = ceil(w / 80)`` copies at
     ``w / n``; the root keeps its ids, copy ``k`` takes every entity id plus
     ``k`` times the frame's id multiplier and a full copy of the household's
     person and benefit-unit rows. The exact-total correction lands on the
@@ -466,9 +467,7 @@ def split_cgt_support_households(
         household_ids, weights, income_band, wealth, support_by_band
     )
     copies = np.ones(len(household), dtype="int64")
-    copies[selected] = cgt_support_copy_counts(
-        weights[selected], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
-    )
+    copies[selected] = cgt_support_copy_counts(weights[selected], maximum_copy_weight)
     multiplier = id_multiplier_for_values(
         person["person_id"],
         person["person_household_id"],
@@ -565,6 +564,7 @@ def split_cgt_support_households(
     else:
         frs_selected = spi_selected = 0
     return UKCGTSupportSplitResult(
+        maximum_copy_weight=maximum_copy_weight,
         frame=result,
         band_rows=tuple(band_rows),
         published_top_band_taxpayers=float(

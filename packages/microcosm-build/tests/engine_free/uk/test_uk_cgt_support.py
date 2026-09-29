@@ -88,6 +88,10 @@ SCENARIO_TOP_CELLS = {
     37_700: {250_000: 10.0},
 }
 SCENARIO_SUPPORT = {0: 240.0, 37_700: 40.0}
+#: The reference scenario's arithmetic (three, three and two copies; the
+#: rounding drift that makes the exact-total correction land on id 5) was
+#: tuned to a cap of 60; the packaged cap is asserted separately.
+SCENARIO_CAP = 60.0
 
 
 def _scenario_frame(**overrides):
@@ -106,6 +110,7 @@ def _scenario_split(**overrides):
         _scenario_frame(**overrides),
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        maximum_copy_weight=SCENARIO_CAP,
     )
 
 
@@ -494,6 +499,7 @@ def test_split_offsets_every_entity_id_by_k_times_the_multiplier():
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        maximum_copy_weight=SCENARIO_CAP,
     )
     out_person = result.frame.table("person")
     out_benunit = result.frame.table("benunit")
@@ -580,6 +586,7 @@ def test_split_copies_every_column_and_membership_unchanged():
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        maximum_copy_weight=SCENARIO_CAP,
     )
     person = result.frame.table("person")
     benunit = result.frame.table("benunit")
@@ -667,6 +674,7 @@ def test_split_records_pool_exhaustion_and_empty_bands_without_refusing():
             {0: {250_000: 1_000.0}, 125_140: {250_000: 10.0}}
         ),
         parameters=PARAMETERS,
+        maximum_copy_weight=SCENARIO_CAP,
     )
     bands = {row["income_lower_bound"]: row for row in result.band_rows}
 
@@ -705,6 +713,7 @@ def test_split_falls_back_when_every_incumbent_is_selected():
         frame,
         distribution=support_distribution({0: {250_000: 1_000.0}}),
         parameters=PARAMETERS,
+        maximum_copy_weight=SCENARIO_CAP,
     )
 
     assert result.households_selected == 2
@@ -818,7 +827,7 @@ def test_evidence_is_json_serialisable_with_plain_scalars():
     assert evidence["parameters"] == {
         "clone_split_factor": 2,
         "headroom": 2.0,
-        "maximum_copy_weight": 60.0,
+        "maximum_copy_weight": SCENARIO_CAP,
     }
     assert evidence["support_channel_split"] == {"frs": 2, "spi": 1}
     assert [row["income_lower_bound"] for row in evidence["bands"]] == list(
@@ -891,7 +900,7 @@ def test_operation_dictionary_restates_the_reviewed_design():
     assert payload["investable_wealth_columns"] == list(
         UK_CGT_INVESTABLE_WEALTH_COLUMNS
     )
-    assert payload["maximum_copy_weight"] == 60.0
+    assert payload["maximum_copy_weight"] == 80.0
     assert payload["flag_column"] == HOUSEHOLD_IS_CGT_SUPPORT_COPY
     assert payload["copies_column"] == CGT_SUPPORT_COPIES_COLUMN
     assert payload["weight_kind_out"] == "importance"
@@ -1047,7 +1056,9 @@ def test_transform_binds_the_stage_and_exposes_the_receipt() -> None:
     evidence = transform.checkpoint_metadata()["evidence"]
     assert evidence == transform.last_result.evidence()
     assert evidence["stage"] == CGT_SUPPORT_SPLIT_STAGE_NAME
-    assert evidence["totals"]["copies_created"] == 5
+    # The packaged cap of 80 divides id 2 (130) and id 3 (121) in two and
+    # leaves id 6 (61) whole: two copies.
+    assert evidence["totals"]["copies_created"] == 2
     # A default distribution is the vendored joint: nothing on this small
     # frame reaches the published support masses, so every band exhausts.
     default = UKCGTSupportSplitStageTransform(stage=stage, parameters=PARAMETERS)

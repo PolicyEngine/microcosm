@@ -443,7 +443,7 @@
         "check": "cgt_support_split",
         "clone_split_factor": 2,
         "headroom": 2.0,
-        "maximum_copy_weight": 60.0,
+        "maximum_copy_weight": 80.0,
         "maximum_relative_mass_deviation": 1e-09
       },
       "notes": "Stage-time gate over the CGT support split receipt (microcosm#1045). Total household mass is conserved to the declared deviation; every copy weighs at most the declared maximum; each income column's support mass equals clone_split_factor x headroom x the published count of gainers at or above GBP 250,000 in that column; the selected mass covers the support mass unless the column's pool is exhausted, in which case the whole pool is selected and the exhaustion is recorded rather than refused (five of six columns exhaust on the synthetic smoke fixture). The split supplies row support at the top of the gains distribution for the Table 3 redraw and assigns no value, so it holds no distributional threshold."
