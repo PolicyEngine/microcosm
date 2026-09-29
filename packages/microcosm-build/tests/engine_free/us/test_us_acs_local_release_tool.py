@@ -236,8 +236,15 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "takes_up_medicare_if_eligible",
     }
     assert "acs_local_take_up_signal" in fills["treatment"]
-    for fragment in ("SERIALNO:SPORDER", "microcosm#975", "HINS3 == 1"):
+    for fragment in (
+        "SERIALNO:SPORDER",
+        "microcosm#975",
+        "HINS3 == 1",
+        "cap-based proxy, not an observed exemption assignment",
+        "upper-bound propensity",
+    ):
         assert fragment in fills["reason"]
+    assert "Blank and invalid HINS3 counts" in fills["treatment"]
     defaults = by_id["acs_take_up_engine_defaults"]["reason"]
     assert "SSI, Head Start" in defaults
     assert "Medicare take-up is native ACS HINS3" in defaults
