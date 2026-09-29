@@ -213,3 +213,47 @@ On main `6a70cd4ee` the spine at the rebased head (`spine-m901`, built under #90
 relaxation) passes all 26 gates; its datasets are identical to `spine-fix1049`'s (the file differs only
 in provenance bytes), and its calibration reads loss 0.0084 against 0.0084, effective sample size 5,165
 against 5,165, liability GBP 23.30bn against 23.30bn and the entrants fence 129,293 against 129,293.
+
+## Part G: the support split replaces the band donors (c7, c8)
+
+Every licensed spine of this line failed `uk_cgt_projection_entrants` (98,600 to 129,300 against 73,000), and
+the receipts placed the whole excess on one mechanism. `cgt_band_donors` stacked 30 copied households per
+retained Table 2.1a band at published taxpayers over 30, so the four heavy bands' rows weighed 2,033 to 3,267
+people against about 500 for a liable clone; the Table 3 redraw walks each income, age and region cell in
+rank order placing whole rows, its second pass never runs on these spines (pass 1 overshoots every income
+band), and every row a cell cannot place falls to the sub-exempt remainder, where the mapping hands the largest
+priors the top stratum just under GBP 3,000. On `spine-wp3final` 204 of the 270 donors were demoted, carrying
+333,833 of the 375,093 sub-exempt mass and 101,033 of the 108,563 crossing mass at design weights (92,371 of
+98,611 calibrated); the clones contributed 6,000 to 7,500 on every arm. A replay of the redraw shows that
+placement is a wealth cliff rather than a weight problem: the placed share of clone gainer mass is zero below
+the eighth investable-wealth decile in every income band, 6 to 32 percent in the ninth and 32 to 45 percent in
+the tenth, and c5's wealth-blended rank key raised donor demotion from 120 (m901) to 204 because a donor's
+wealth is its source's. A mass-conserving redesign of the stack drawn by income propensity (the design first
+approved on 2026-09-29) was therefore predicted to demote 300,000 to 360,000 and fail the fence again, and
+María's ruling was to retire the stage.
+
+The redraw owns every gain amount (the Table 3 joint, the Table 2.1a size bands, the age and region margins,
+wealth rank within cells) and the calibration binds the twelve Table 2.1a bands at final weights, so the
+donors' band-mean values were notional and their one remaining function was row support at the top of the
+distribution. c7 supplies that support from the households the redraw already places: `cgt_support_split`,
+a deterministic stage before the incidence clone, walks each Table 3 income column in descending investable
+wealth until the cumulative weight reaches twice the headroom (2.0) times the published count of gainers at
+or above GBP 250,000 in that column (17,000 / 5,000 / 11,000 / 3,000 / 6,000 / 16,000, so 68,000 / 20,000 /
+44,000 / 12,000 / 24,000 / 64,000 before the clone, 232,000 in all, 0.8 percent of household mass) and splits
+each selected household into ceil(weight / 60) copies at equal weight, ids offset by the clone stage's own
+multiplier scheme, every other column unchanged; the graph policy is `conserve`, the coverage family
+`mass_conserving`, and the stage has no draw, seed or salt. The graph kernel's lineage rule recovers copy k
+from `id + k x offset`; the anchor's pairing needs only the clone flag; `mass_increasing_support` loses its
+only user (the SPI income-band donors follow in microcosm#1063). On the H2 fixture the split seats one
+household into 167 copies (444 households before the clone, 888 after, 34 stages as before) and the smoke
+build runs in 35 seconds of stage time with the split at 0.5 seconds. c8 adds placement receipts to the
+redraw, keyed by row type (support family or plain): rows placed and demoted per gain band, the heaviest row
+placed per cell and per band, the pass-1 overshoot per income band and the open band against its published
+count and gains; it holds no threshold, so the first licensed build measures the design with the redraw and
+the anchor unchanged in code.
+
+_Licensed arm `ch1` (c8 head): to be filled from the build and calibration receipts (fence at design and
+calibrated weights by row type, demoted support-copy mass, rows per band, heaviest placed row per band,
+open-band achieved against 3,000 and GBP 48.47bn, loss, ESS, liability, Table 3 and 4.1 fit, weight ratio,
+identity-tool receipt)._
+
