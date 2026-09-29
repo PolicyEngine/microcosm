@@ -93,6 +93,12 @@ from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_TRANSFER_ISSUE,
     acs_local_income_transfer_signal_gate,
 )
+from microcosm.build.us_runtime.acs_local_receipt_anchors import (
+    ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
+    ACS_LOCAL_RECEIPT_ANCHOR_ISSUE,
+    ACS_LOCAL_RECEIPT_ANCHOR_METHOD,
+    acs_local_receipt_anchor_signal_gate,
+)
 from microcosm.build.us_runtime.acs_local_spm_units import (
     ACS_LOCAL_SPM_UNIT_GATE_NAME,
     ACS_LOCAL_SPM_UNIT_ISSUE,
@@ -1391,12 +1397,14 @@ def do_materialize(args) -> None:
         )
     staging_summary = _load_json(summary_path)
     # microcosm#1020/#1021/#1022/#1023: refuse a pre-change staging run
-    # before hashing or loading.
+    # (including one without the native SNAP receipt anchor) before hashing
+    # or loading.
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
     _require_local_spm_units(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
     ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
@@ -1568,6 +1576,7 @@ def do_calibrate(args) -> None:
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
     _require_local_spm_units(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
     # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
     # take-up the export must apply.
     _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
@@ -1770,6 +1779,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
     _require_local_spm_units(staging_summary)
+    _require_local_receipt_anchors(staging_summary)
     ssi_medicaid, ssi_medicaid_path = _recorded_ssi_medicaid_take_up(
         identity, args.checkpoint_dir
     )
@@ -2076,7 +2086,9 @@ def finalize_reviewed_limitations(
             "reason": (
                 "SNAP and TANF take-up on ACS rows are seeded by the local "
                 "runtime and gated by acs_local_take_up_signal "
-                "(microcosm#1019), Medicare take-up is native ACS HINS3 "
+                "(microcosm#1019; its SNAP reporters are the native household "
+                "FS anchor, acs_snap_receipt_anchor), Medicare take-up is "
+                "native ACS HINS3 "
                 "(acs_engine_free_default_fills), and SSI and Medicaid "
                 "take-up are assigned after an engine pre-pass "
                 "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
@@ -2318,6 +2330,43 @@ def finalize_reviewed_limitations(
                 "the reference person, the ACS partition is exactly the "
                 "rule, ACS tax units nest in SPM units, and the staging "
                 "receipt moved as many people as the packaged ACS rows hold."
+            ),
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_snap_receipt_anchor",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": ["receives_snap", "receives_tanf"],
+            "reason": (
+                "receives_snap on ACS rows is native household FS (anyone in "
+                "the household received SNAP in the past 12 months), not the "
+                "QRF transfer, whose predictors carry no receipt signal "
+                f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}). FS names the housing "
+                "unit, not the SNAP household: FS == 1 marks every SPM unit of "
+                "the household, including the one-person units of adult "
+                "nonrelatives, as the donor's SPM_SNAPSUB > 0 does (Census "
+                "prorates the household SNAP amount to every SPM unit); FS == "
+                "2 marks none; group quarters, outside the FS universe, are "
+                "False. A roommate who buys and prepares food apart is thus "
+                "anchored with the reference family's receipt. FS under-"
+                "reports administrative SNAP, so the anchor is a floor the "
+                "take-up draw (microcosm#1019) fills to the FNS rate. "
+                "receives_tanf keeps its QRF transfer: ACS PAP covers TANF and "
+                "general assistance together, and PAP > 0 is not TANF receipt "
+                "(microcosm#591); PAP is loaded and its overlap with the "
+                "transferred receives_tanf is recorded, not applied."
+            ),
+            "treatment": (
+                "Applied at staging after the transfer, whose declared plan "
+                "is unchanged, and before pooling, so donor rows keep their "
+                "ASEC receipt. Gated by acs_local_receipt_anchor_signal at "
+                "staging and finalize: receives_snap is exactly the FS rule "
+                "on every ACS SPM unit, every ACS housing unit carries FS 1 "
+                "or 2, and the staging receipt counts the households, units, "
+                "anchors and PAP recipients the packaged ACS rows hold. The "
+                "weighted FS == 1 share of ACS housing units is reported "
+                "against the 2023 ACS figure (12.2%), not graded."
             ),
             "calibration_blocker": False,
         },
@@ -2568,6 +2617,37 @@ def _require_local_spm_units(staging_summary: dict) -> dict:
     return receipt
 
 
+def _require_local_receipt_anchors(staging_summary: dict) -> dict:
+    """The staging ACS receipt-anchor receipt (microcosm#1022), or refuse it.
+
+    Staging replaces the transferred ``receives_snap`` on every ACS SPM unit
+    with native household ``FS`` and gates it before writing the H5. A summary
+    without a passing receipt and gate is a pre-change staging run, whose ACS
+    SNAP reporters are the QRF transfer's.
+    """
+
+    receipt = staging_summary.get("acs_local_receipt_anchors")
+    gate = staging_summary.get("acs_local_receipt_anchors_gate")
+    snap = receipt.get("snap") if isinstance(receipt, dict) else None
+    counted = isinstance(snap, dict) and all(
+        type(snap.get(key)) is int for key in ("fs_yes_households", "units_anchored")
+    )
+    if (
+        not counted
+        or receipt.get("issue") != ACS_LOCAL_RECEIPT_ANCHOR_ISSUE
+        or receipt.get("method") != ACS_LOCAL_RECEIPT_ANCHOR_METHOD
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing native SNAP receipt anchor "
+            f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}): the ACS rows' receives_snap "
+            "would be the QRF transfer, not household FS. Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    return receipt
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -2672,6 +2752,12 @@ def do_finalize(args) -> None:
     spm_unit_gate = acs_local_spm_unit_signal_gate(
         frame, receipt=staging_summary.get("acs_local_spm_units")
     )
+    # microcosm#1022: refuse ACS SNAP reporters that are not the native
+    # household FS on the packaged bytes, or a staging receipt that counts
+    # other households, units or anchors.
+    receipt_anchor_gate = acs_local_receipt_anchor_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_receipt_anchors")
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -2758,6 +2844,12 @@ def do_finalize(args) -> None:
             "passed": bool(spm_unit_gate.passed),
             "failures": list(spm_unit_gate.failures),
             "detail": dict(spm_unit_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME: {
+            "passed": bool(receipt_anchor_gate.passed),
+            "failures": list(receipt_anchor_gate.failures),
+            "detail": dict(receipt_anchor_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
@@ -2847,7 +2939,12 @@ def do_finalize(args) -> None:
                 "and other nonrelative aged 15 or over an SPM unit of their "
                 "own before the transfer, gated by acs_local_spm_unit_signal "
                 f"({ACS_LOCAL_SPM_UNIT_ISSUE}; reviewed limitation "
-                "acs_spm_unit_adult_nonrelatives)."
+                "acs_spm_unit_adult_nonrelatives). ACS receives_snap is not "
+                "the transfer's either: staging replaces it with native "
+                "household FS on every ACS SPM unit before pooling, gated by "
+                "acs_local_receipt_anchor_signal "
+                f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}; reviewed limitation "
+                "acs_snap_receipt_anchor)."
             ),
         },
         "spine_composition": {
@@ -2902,6 +2999,7 @@ def do_finalize(args) -> None:
             ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
             ACS_LOCAL_SPM_UNIT_GATE_NAME,
+            ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -3163,6 +3261,9 @@ def do_package(args) -> dict:
     # microcosm#1023: nor, before the SPM-unit gate existed, for the packaged
     # ACS SPM units.
     _require_bound_finalize_gate(gates, ACS_LOCAL_SPM_UNIT_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the receipt-anchor gate existed, for the
+    # packaged ACS SNAP reporters.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME, h5_sha)
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report

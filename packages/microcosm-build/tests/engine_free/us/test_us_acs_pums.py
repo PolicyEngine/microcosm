@@ -291,6 +291,68 @@ def test_acs_loader_leaves_absent_work_disability_sources_absent(
         assert column not in tables["person"]
 
 
+def _receipt_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "receipt-hh.zip"
+    person_zip = tmp_path / "receipt-person.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("rcpt1", NP=2, FS=1),
+                # Group quarters: FS is a housing-unit item, blank here.
+                _household("rcpt2", NP=1, WGTP=0, TYPEHUGQ=3, TEN=None, FS=None),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("rcpt1", 1, 20, MAR=5, PAP=2_400),
+                # Under 15: PAP is a Census blank.
+                _person("rcpt1", 2, 25, AGEP=9, MAR=5, WAGP=None, PAP=None),
+                _person("rcpt2", 1, 38, MAR=5, PAP=0),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_snap_recipiency_and_public_assistance(
+    tmp_path: Path,
+) -> None:
+    """microcosm#1022: the local lane anchors receives_snap on household FS and
+    records person PAP; blanks stay blank."""
+
+    tables, _ = load_acs_pums_tables(_receipt_source(tmp_path))
+    household = tables["household"]
+    assert household["FS"].iloc[0] == 1
+    assert pd.isna(household["FS"].iloc[1])
+    person = tables["person"]
+    assert person["PAP"].iloc[0] == 2_400
+    assert pd.isna(person["PAP"].iloc[1])
+    assert person["PAP"].iloc[2] == 0
+    for column in ("receives_snap", "receives_tanf"):
+        assert column not in household
+        assert column not in person
+
+
+def test_built_acs_frame_carries_fs_on_the_household_table(tmp_path: Path) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(_receipt_source(tmp_path))
+    household = frame.table("household")
+    assert household["FS"].iloc[0] == 1
+    assert pd.isna(household["FS"].iloc[1])
+    assert "FS" not in frame.table("person")
+    assert "receives_snap" not in frame.table("spm_unit")
+
+
+def test_acs_loader_leaves_absent_receipt_sources_absent(tmp_path: Path) -> None:
+    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    assert "FS" not in tables["household"]
+    assert "PAP" not in tables["person"]
+
+
 def test_built_acs_frame_carries_the_immigration_sources(tmp_path: Path) -> None:
     pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     frame, _metadata = build_acs_pums_unit_frame(_immigration_source(tmp_path))
