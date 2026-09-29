@@ -66,7 +66,8 @@ IMAGE_VENV = "/opt/venv"
 # manifest); the image matches the minor version. It is the standard (GIL)
 # build on Linux x86_64, so a replay of a local run on free-threaded 3.14 on
 # macOS arm64 (Route A's base) differs by interpreter build and platform
-# too; compare-lineage checks what that changes.
+# too. compare-lineage checks the outputs the local run left (its first two
+# outer stages), not the stages after them.
 IMAGE_PYTHON_VERSION = "3.14"
 IMAGE_UV_VERSION = "0.11.7"
 RUNNER_HF_HUB_VERSION = "1.18.0"
@@ -136,12 +137,37 @@ def is_credential_env_key(key: str) -> bool:
 
 @dataclass(frozen=True)
 class Resources:
-    """One Modal resource class: a fixed request per decorated function."""
+    """One Modal resource class: a fixed request per decorated function.
+
+    ``cpu_limit`` is an explicit CPU limit (``cpu=(request, limit)`` on the
+    function). Without one, Modal's default soft CPU limit is 16 physical
+    cores above the request, the host throttles CPU use above the limit, and
+    CPU and memory are billed at the higher of the request and actual use
+    (modal.com/docs/guide/resources, read 2026-09-29). So a class without a
+    limit can bill CPU above its request, and :meth:`estimated_usd` is then a
+    floor; a class whose limit equals its request cannot, as far as those
+    docs describe the limit. Memory has no limit in any class: use above the
+    request is billed at use.
+    """
 
     name: str
     cpu: float
     memory_mib: int
     timeout_s: int
+    cpu_limit: float | None = None
+
+    def __post_init__(self) -> None:
+        if self.cpu_limit is not None and self.cpu_limit < self.cpu:
+            raise ValueError(
+                f"class {self.name!r}: CPU limit {self.cpu_limit} is below "
+                f"the request {self.cpu}"
+            )
+
+    @property
+    def modal_cpu(self) -> float | tuple[float, float]:
+        """The ``cpu`` argument of the class's Modal functions."""
+
+        return self.cpu if self.cpu_limit is None else (self.cpu, self.cpu_limit)
 
     @property
     def memory_gib(self) -> float:
@@ -176,23 +202,45 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 # $14.63 with 112 GiB. Four cores: the base used 6,238 CPU-s in 2,788 s of
 # wall locally, 2.2 cores on average.
 #
-# The timeout is the hard ceiling, and it is set so that ceiling stays inside
-# the cap: Modal's timeout bounds a function's execution time
-# (modal.com/docs/guide/timeouts, read 2026-09-29), and 16,500 s of this
-# class lists at $14.90 non-preemptible. That is the 4-hour tool budget, the
-# 30-minute runner reserve and 5 minutes for staging. The runner also keeps
-# the tool inside the timeout: it stops the tool no later than the timeout
-# less the reserve (container_tool_seconds), so time spent before the tool
-# (pulling state, staging inputs) comes out of the tool's time, never out of
-# the reserve for hashing, mirroring and the receipt. No ephemeral_disk
-# request: Modal gives each container a disk quota of 512 GiB by default
-# (modal.com/docs/guide/resources, read 2026-09-29) and the base writes about
-# 50 GB; StageSpec.min_free_disk_gib checks the disk before anything is staged.
-BASE = Resources("base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500)
+# The CPU limit equals the request. Without it Modal's default soft limit
+# would be 20 cores, and Modal bills the higher of request and use
+# (modal.com/docs/guide/resources, read 2026-09-29). The pinned tool sizes
+# its primary-QRF predict pool from os.cpu_count() and fits with n_jobs=-1
+# when POPULACE_FIT_PREDICT_WORKERS and POPULACE_FIT_N_JOBS are unset, as
+# they were in the local run (4b57d15a2 microcosm-fit qrf.py _fit_n_jobs and
+# _predict_workers). Without the limit the container could therefore be
+# billed above the 4-core request: at 20 cores for the whole timeout one
+# attempt would list at $25.28. The limit
+# may lengthen phases that used more than 4 cores locally; it does not
+# change what the tool computes. The plan does not pin those two variables,
+# because the tool binds them into its locked run config and the Modal run
+# would then diverge from the local run's.
+#
+# The timeout sets the ceiling at the request, and it is chosen so that
+# ceiling stays inside the cap: Modal's timeout bounds a function's
+# execution time (modal.com/docs/guide/timeouts, read 2026-09-29), and
+# 16,500 s of this class's request lists at $14.90 non-preemptible. That is
+# the 4-hour tool budget, the 30-minute runner reserve and 5 minutes for
+# staging. The one way past it is memory: there is no memory limit, so use
+# above 112 GiB is billed at use (about $0.024 per GiB-hour non-preemptible).
+# A limit at the request would turn that into an OOM kill of the whole
+# container, which would lose the attempt with no receipt and no mirrored
+# state. The runner also keeps the tool inside the timeout: it stops the
+# tool no later than the timeout less the reserve (container_tool_seconds),
+# so time spent before the tool (pulling state, staging inputs) comes out of
+# the tool's time, never out of the reserve for hashing, mirroring and the
+# receipt. No ephemeral_disk request: Modal gives each container a disk
+# quota of 512 GiB by default (modal.com/docs/guide/resources, read
+# 2026-09-29) and the base writes about 50 GB; StageSpec.min_free_disk_gib
+# checks the disk before anything is staged.
+BASE = Resources(
+    "base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500, cpu_limit=4.0
+)
 RESOURCE_CLASSES = {item.name: item for item in (CHECK, HEAVY, LIGHT, BASE)}
 #: Max's cap for the base run (2026-09-29: non-preemptible, 4 hours, "about
-#: $15"). The base class's hard ceiling (its timeout, non-preemptible, at list
-#: price) must not exceed it; a test holds this.
+#: $15"). The base class's ceiling at its request (its timeout,
+#: non-preemptible, at list price) must not exceed it; a test holds this.
+#: The runbook reads "4 hours" as the tool's wall, not the container's.
 BASE_COST_CAP_USD = 15.0
 
 # Time the container keeps for staging inputs, hashing and mirroring state,
@@ -219,6 +267,11 @@ BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
 BASE_MIRRORED_STATE_GIB = 50
 # How long the runner waits after SIGTERM before SIGKILL (stop_process_group).
 STOP_GRACE_SECONDS = 60
+# Of the runner's reserve, the part kept after the mirror for the runner's
+# identity, the receipt write and the attempt's final record and commit. The
+# write probe does not count it as mirror time (write_probe_verdict). An
+# allowance, not a measurement.
+RECEIPT_RESERVE_SECONDS = 120
 # The check's container-to-volume write probe (write_probe_verdict).
 WRITE_PROBE_BYTES = 1024**3
 
@@ -288,6 +341,29 @@ class StageSpec:
     # set, the check probes the runs volume's write rate and refuses if that
     # much state could not be written inside the runner's reserve.
     mirrored_state_gib: float | None = None
+    # State paths (a file, or a directory and everything under it) that the
+    # push copies to the runs volume before any other file, in this order:
+    # the stage's output and the evidence for it, so that a push cut short
+    # by the class timeout has written those first.
+    mirror_first: tuple[str, ...] = ()
+    # True when every state file outside mirror_first exists only so that a
+    # stopped stage can resume (the base's frame checkpoints). After a clean
+    # exit (return code 0, not stopped at the budget) the push then copies
+    # only mirror_first, and hashes the rest into the receipt without copying
+    # it (the receipt's outputs_not_mirrored); see push_copy_only.
+    rest_is_resume_state: bool = False
+
+    def __post_init__(self) -> None:
+        for path in self.mirror_first:
+            if any(part in {"", ".", ".."} for part in path.split("/")):
+                raise ValueError(
+                    f"stage {self.name!r}: mirror_first path {path!r} must be a "
+                    "clean relative path"
+                )
+        if self.rest_is_resume_state and not self.mirror_first:
+            raise ValueError(
+                f"stage {self.name!r}: rest_is_resume_state needs mirror_first"
+            )
 
 
 @dataclass(frozen=True)
@@ -484,29 +560,44 @@ RUNNER_SMOKE = ToolSpec(
 #   base-out/          the base H5, its summary JSON and the capital-gains
 #                      tail manifest; the release reads this directory
 #
-# The checkpoints are mirrored deliberately. `--stage all` runs each outer
-# stage in a fresh interpreter and resumes from the completed prefix
-# (_run_staged_all), with its whole run config (input paths and digests,
-# settings, code identity, thread variables) locked in
-# stage_run_context.json; a resume whose config differs is refused. Every
-# path the tool records is the same in every attempt of a run
-# (/work/inputs/..., /work/state/...), and so are the image, the plan's
+# After a stop or a failure the checkpoints are mirrored, deliberately.
+# `--stage all` runs each outer stage in a fresh interpreter and resumes
+# from the completed prefix (_run_staged_all), with its whole run config
+# (input paths and digests, settings, code identity, thread variables)
+# locked in stage_run_context.json; a resume whose config differs is
+# refused. Every path the tool records is the same in every attempt of a
+# run (/work/inputs/..., /work/state/...), and so are the image, the plan's
 # environment and the class, so a later attempt of the same run_id should
-# resume where the last one stopped. The placement is
-# non-preemptible, so what this protects against is mostly the budget: at
+# resume where the last one stopped. The placement is non-preemptible, so
+# what this protects against is mostly the budget: at
 # the per-chunk slowdowns the runbook measured for materialize's engine pass
 # on Modal (3.3 to 7.6 times the build machine), the 2,788-second local base
 # would take 2.6 to 5.9 hours, and a stop at the 4-hour budget without the
 # checkpoints would throw the whole run away. (The runner stops the tool's
 # whole process group at the budget, so a stage child cannot outlive its
 # parent and hold the stop past the budget; see stop_process_group.) The cost
-# is one copy of about 44 GB, hashed as it is copied, when the tool exits
+# is one copy of about 44 GB, hashed as it is copied, when the tool stops
 # (BASE_RUNNER_OVERHEAD_SECONDS); a resuming attempt pulls it back, hashed
 # and verified in the same pass, and that pull comes out of its tool time
 # (container_tool_seconds); and the volume storage until the checkpoints are
 # deleted after the release.
+#
+# Every push copies PUF_SUPPORT_BASE_MIRROR_FIRST before anything else: the
+# output, the logs, the run context and profile, and the two checkpoints
+# compare-lineage checks against the local run. After a clean exit nothing
+# else is copied: a completed `--stage all` has nothing to resume, so the
+# other checkpoints (about 42 GB) are hashed into the receipt and left in the
+# container (rest_is_resume_state). That push is about 4 GB, not about 50.
 PUF_SUPPORT_BASE_CHECKPOINTS = "base-checkpoints"
 PUF_SUPPORT_BASE_OUT = "base-out"
+PUF_SUPPORT_BASE_MIRROR_FIRST = (
+    PUF_SUPPORT_BASE_OUT,
+    "logs",
+    f"{PUF_SUPPORT_BASE_CHECKPOINTS}/stage_run_context.json",
+    f"{PUF_SUPPORT_BASE_CHECKPOINTS}/stage_profile.json",
+    f"{PUF_SUPPORT_BASE_CHECKPOINTS}/000_source_construction.frame.h5",
+    f"{PUF_SUPPORT_BASE_CHECKPOINTS}/001_pre_clone_enrichment.frame.h5",
+)
 PUF_SUPPORT_BASE_ARTIFACT = "base_populace_us_2024_puf_support.h5"
 PUF_SUPPORT_BASE_TARGET_YEAR = 2024
 # The pooled ASEC order is Route A's: the tool hands the --asec-h5 values to
@@ -655,6 +746,8 @@ US_PUF_SUPPORT_BASE = ToolSpec(
             # the 2023 archive with its extracted member, plus headroom.
             min_free_disk_gib=70,
             mirrored_state_gib=BASE_MIRRORED_STATE_GIB,
+            mirror_first=PUF_SUPPORT_BASE_MIRROR_FIRST,
+            rest_is_resume_state=True,
         )
     },
     options={},
@@ -1404,13 +1497,39 @@ def copy_hashed(src: Path | str, dst: Path | str) -> tuple[str, int]:
 KnownHashes = Mapping[str, tuple[int, int, str]]
 
 
+def under_state_path(rel: str, path: str) -> bool:
+    """Whether state file ``rel`` is ``path`` or lies in directory ``path``."""
+
+    path = path.rstrip("/")
+    return rel == path or rel.startswith(path + "/")
+
+
+def push_order(paths: Iterable[str], first: Sequence[str] = ()) -> list[str]:
+    """``paths`` in the order the push copies them.
+
+    The files under ``first[0]``, then those under ``first[1]`` and so on,
+    each group sorted, then every other file, sorted. Each file appears once.
+    """
+
+    remaining = sorted(paths)
+    ordered: list[str] = []
+    for prefix in first:
+        group = [rel for rel in remaining if under_state_path(rel, prefix)]
+        ordered += group
+        taken = set(group)
+        remaining = [rel for rel in remaining if rel not in taken]
+    return ordered + remaining
+
+
 def _mirror(
     source: Path,
     destination: Path,
     *,
     hash_every_file: bool,
     known: KnownHashes | None = None,
-) -> tuple[list[dict[str, object]], dict[str, int]]:
+    first: Sequence[str] = (),
+    copy_only: Sequence[str] | None = None,
+) -> tuple[list[dict[str, object]], dict[str, int], list[str]]:
     partials = (
         sorted(destination.rglob(f"*{MIRROR_PARTIAL_SUFFIX}"))
         if destination.exists()
@@ -1422,17 +1541,40 @@ def _mirror(
     copy, delete = mirror_actions(listing, tree_listing(destination))
     to_copy = set(copy)
     known = known or {}
-    outputs: list[dict[str, object]] = []
-    counts = {"copied": 0, "hashed_in_place": 0, "hashes_reused": 0}
-    for rel, meta in listing.items():
+    hashed: dict[str, dict[str, object]] = {}
+    not_mirrored: list[str] = []
+    counts = {
+        "copied": 0,
+        "hashed_in_place": 0,
+        "hashes_reused": 0,
+        "hashed_not_copied": 0,
+        "stale_removed": 0,
+    }
+    for rel in push_order(listing, first):
+        meta = listing[rel]
         entry = known.get(rel)
-        if rel in to_copy:
+        if rel in to_copy and (
+            copy_only is None or any(under_state_path(rel, p) for p in copy_only)
+        ):
             target = destination / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             tmp = target.with_name(f".{target.name}{MIRROR_PARTIAL_SUFFIX}")
             sha, size = copy_hashed(source / rel, tmp)
             os.replace(tmp, target)
             counts["copied"] += 1
+        elif rel in to_copy:
+            # Not copied (copy_only): hashed for the receipt. An older copy
+            # on the destination would not match the receipt, so it goes.
+            stale = destination / rel
+            if stale.is_file() or stale.is_symlink():
+                stale.unlink()
+                counts["stale_removed"] += 1
+            if entry is not None and (entry[0], entry[1]) == meta:
+                sha, size = entry[2], meta[0]
+            else:
+                sha, size = sha256_file(source / rel)
+            counts["hashed_not_copied"] += 1
+            not_mirrored.append(rel)
         elif not hash_every_file:
             continue
         elif entry is not None and (entry[0], entry[1]) == meta:
@@ -1442,11 +1584,13 @@ def _mirror(
         else:
             sha, size = sha256_file(source / rel)
             counts["hashed_in_place"] += 1
-        outputs.append({"path": rel, "bytes": size, "sha256": sha})
+        hashed[rel] = {"path": rel, "bytes": size, "sha256": sha}
     for rel in delete:
         (destination / rel).unlink()
     counts.update(deleted=len(delete), partials_removed=len(partials))
-    return outputs, counts
+    # The listing's order, whatever order the files were copied in.
+    outputs = [hashed[rel] for rel in listing if rel in hashed]
+    return outputs, counts, sorted(not_mirrored)
 
 
 def mirror_tree(source: Path | str, destination: Path | str) -> dict[str, int]:
@@ -1459,7 +1603,7 @@ def mirror_tree(source: Path | str, destination: Path | str) -> dict[str, int]:
     the latest receipt refuses that mix.
     """
 
-    _, counts = _mirror(Path(source), Path(destination), hash_every_file=False)
+    _, counts, _ = _mirror(Path(source), Path(destination), hash_every_file=False)
     return {
         "copied": counts["copied"],
         "deleted": counts["deleted"],
@@ -1484,7 +1628,59 @@ def mirror_tree_hashed(
     read once to hash it.
     """
 
-    return _mirror(Path(source), Path(destination), hash_every_file=True, known=known)
+    outputs, counts, _ = _mirror(
+        Path(source), Path(destination), hash_every_file=True, known=known
+    )
+    for key in ("hashed_not_copied", "stale_removed"):
+        del counts[key]  # always 0 without copy_only
+    return outputs, counts
+
+
+def push_copy_only(
+    stage: StageSpec, *, returncode: int, stopped_at_budget: bool
+) -> tuple[str, ...] | None:
+    """The only state paths a push copies, or None to copy the whole state.
+
+    A stage that declares ``rest_is_resume_state`` copies only its
+    ``mirror_first`` paths after a clean exit (return code 0, not stopped at
+    the budget): the rest of its state exists to resume a stopped stage, and
+    a finished stage has nothing to resume. After a stop or a failure the
+    whole state is copied, so the next attempt can resume.
+    """
+
+    if stage.rest_is_resume_state and returncode == 0 and not stopped_at_budget:
+        return stage.mirror_first
+    return None
+
+
+def push_state(
+    source: Path | str,
+    destination: Path | str,
+    *,
+    known: KnownHashes | None = None,
+    first: Sequence[str] = (),
+    copy_only: Sequence[str] | None = None,
+) -> tuple[list[dict[str, object]], dict[str, int], list[str]]:
+    """The runner's push: :func:`mirror_tree_hashed` in a set order.
+
+    Files under ``first`` are copied before any other (:func:`push_order`),
+    so a push that the class timeout cuts short has written them. With
+    ``copy_only`` (:func:`push_copy_only`), a changed file outside those
+    paths is hashed but not copied, and an older copy of it on the
+    destination is removed, since it would not match the receipt. Returns
+    the source tree hashed exactly as :func:`hash_tree` lists it (whatever
+    was copied), the counts, and the sorted paths hashed but not copied (the
+    receipt's ``outputs_not_mirrored``).
+    """
+
+    return _mirror(
+        Path(source),
+        Path(destination),
+        hash_every_file=True,
+        known=known,
+        first=first,
+        copy_only=copy_only,
+    )
 
 
 def known_hashes(
@@ -1533,6 +1729,7 @@ def build_receipt(
     budget_seconds: int | None = None,
     attempt_id: str | None = None,
     prior_state_verified_against: str | None = None,
+    outputs_not_mirrored: Sequence[str] = (),
 ) -> dict[str, object]:
     resources = plan.resources
     # The tool's wall leaves out staging the inputs, hashing the state tree
@@ -1572,6 +1769,7 @@ def build_receipt(
         "resources": {
             "class": resources.name,
             "cpu": resources.cpu,
+            "cpu_limit": resources.cpu_limit,
             "memory_mib": resources.memory_mib,
             "timeout_s": resources.timeout_s,
             "nonpreemptible": plan.nonpreemptible,
@@ -1595,11 +1793,26 @@ def build_receipt(
         "prior_receipts": [dict(item) for item in prior_receipts],
         "prior_state_verified_against": prior_state_verified_against,
         "outputs": [dict(item) for item in outputs],
+        # Outputs hashed in the container but not copied to the runs volume
+        # (push_copy_only): the receipt lists their digests, the volume does
+        # not hold them.
+        "outputs_not_mirrored": sorted(outputs_not_mirrored),
     }
 
 
 def _under_prefix(rel: str, prefix: str | None) -> bool:
     return prefix is None or rel.startswith(prefix.rstrip("/") + "/")
+
+
+def _missing_problem(receipt: Mapping, rel: str) -> str:
+    """The problem for an output the receipt lists that is not there."""
+
+    if rel in set(receipt.get("outputs_not_mirrored") or ()):
+        return (
+            f"missing: {rel} (outputs_not_mirrored: hashed in the container, "
+            "never copied to the runs volume)"
+        )
+    return f"missing: {rel}"
 
 
 def receipt_status_problems(receipt: Mapping) -> list[str]:
@@ -1663,7 +1876,7 @@ def verify_receipt(
         declared.add(rel)
         path = root / rel
         if not path.is_file():
-            problems.append(f"missing: {rel}")
+            problems.append(_missing_problem(receipt, rel))
             continue
         sha, size = sha256_file(path)
         if size != item["bytes"]:
@@ -1745,7 +1958,7 @@ def receipt_outputs_problems(
         declared.add(rel)
         seen = observed.get(rel)
         if seen is None:
-            problems.append(f"missing: {rel}")
+            problems.append(_missing_problem(receipt, rel))
         elif seen["bytes"] != item["bytes"]:
             problems.append(
                 f"size mismatch: {rel} is {seen['bytes']} bytes, receipt {item['bytes']}"
@@ -2045,9 +2258,11 @@ def write_probe_verdict(
 
     The check copies ``probe_bytes`` to the runs volume and commits it,
     timed as ``probe_seconds``. Extrapolated to the stage's
-    ``mirrored_state_gib``, that is the time mirroring its state would take
-    after the tool. The runner keeps ``runner_overhead_seconds`` after the
-    tool's deadline, of which the stop may take STOP_GRACE_SECONDS; if the
+    ``mirrored_state_gib``, that is the time mirroring its whole state would
+    take after the tool (the push after a stop, which copies everything). The
+    runner keeps ``runner_overhead_seconds`` after the tool's deadline, of
+    which the stop may take STOP_GRACE_SECONDS and the runner's identity, the
+    receipt and the attempt's final commit RECEIPT_RESERVE_SECONDS; if the
     extrapolated mirror does not fit in the rest, a stop at the budget would
     run into the class timeout mid-mirror and leave no receipt, so the check
     reports a problem. One small probe from the check container is a hint,
@@ -2058,21 +2273,24 @@ def write_probe_verdict(
         return {"skipped": f"stage {stage.name!r} declares no mirrored state size"}
     rate = probe_bytes / max(probe_seconds, 1e-6)
     needed = stage.mirrored_state_gib * 1024**3 / rate
-    reserve = stage.runner_overhead_seconds - STOP_GRACE_SECONDS
+    reserve = (
+        stage.runner_overhead_seconds - STOP_GRACE_SECONDS - RECEIPT_RESERVE_SECONDS
+    )
     verdict: dict[str, object] = {
         "bytes": probe_bytes,
         "seconds": round(probe_seconds, 2),
         "mb_per_s": round(rate / 1e6, 1),
         "mirrored_state_gib": stage.mirrored_state_gib,
         "implied_mirror_seconds": round(needed),
-        "post_tool_reserve_seconds": reserve,
+        "mirror_reserve_seconds": reserve,
+        "receipt_reserve_seconds": RECEIPT_RESERVE_SECONDS,
     }
     if needed > reserve:
         verdict["problem"] = (
             f"the runs volume took {probe_seconds:.1f}s for {probe_bytes} bytes "
             f"({rate / 1e6:.1f} MB/s); {stage.mirrored_state_gib} GiB of state "
             f"would take about {needed:.0f}s to mirror, more than the "
-            f"{reserve}s the runner keeps after the tool"
+            f"{reserve}s the runner keeps for the mirror after the tool"
         )
     return verdict
 
@@ -2089,11 +2307,18 @@ def estimated_usd_at_max_wall(plan: Plan) -> float | None:
 
 
 def estimated_usd_at_timeout(plan: Plan) -> float:
-    """List-price cost of the class timeout: the hard ceiling of one attempt.
+    """List-price cost of the class's request held for its whole timeout.
 
     Modal's timeout bounds a function's execution time
-    (modal.com/docs/guide/timeouts). Scheduling and container start are
-    outside it; Modal's billing report is the billed figure.
+    (modal.com/docs/guide/timeouts). This is the ceiling of one attempt at
+    the request: it holds for CPU only when the class sets a CPU limit equal
+    to its request (``Resources.cpu_limit``), and never for memory used
+    above the request, which is billed at use
+    (modal.com/docs/guide/resources). Scheduling is outside the timeout,
+    container startup is timed separately (``startup_timeout``), and a
+    function may run a handful of seconds past its timeout
+    (modal.com/docs/guide/timeouts); Modal's billing report is the billed
+    figure.
     """
 
     return plan.resources.estimated_usd(plan.resources.timeout_s, plan.price_multiplier)
@@ -2112,6 +2337,7 @@ def summarize(plan: Plan) -> dict[str, object]:
         "resources": {
             "class": resources.name,
             "cpu": resources.cpu,
+            "cpu_limit": resources.cpu_limit,
             "memory_gib": resources.memory_gib,
             "timeout_h": resources.timeout_s / 3600,
             "timeout_s": resources.timeout_s,
@@ -2119,6 +2345,8 @@ def summarize(plan: Plan) -> dict[str, object]:
             "runner_overhead_seconds": stage_spec.runner_overhead_seconds,
             "min_free_disk_gib": stage_spec.min_free_disk_gib,
             "mirrored_state_gib": stage_spec.mirrored_state_gib,
+            "mirror_first": list(stage_spec.mirror_first),
+            "rest_is_resume_state": stage_spec.rest_is_resume_state,
         },
         "max_wall_seconds": plan.max_wall_seconds,
         "env": dict(plan.env),
@@ -2148,7 +2376,8 @@ def summarize(plan: Plan) -> dict[str, object]:
         )
     if plan.max_wall_seconds is not None:
         summary["estimated_usd_at_max_wall"] = estimated_usd_at_max_wall(plan)
-    # The hard ceiling of one attempt: the class timeout at list price.
+    # The ceiling of one attempt at the request: the class timeout at list
+    # price (see estimated_usd_at_timeout for what it does not bound).
     summary["estimated_usd_at_timeout"] = estimated_usd_at_timeout(plan)
     return summary
 
@@ -2247,12 +2476,17 @@ def lineage_problems(
 
     ``reference`` (``microcosm-modal-us-stage-local-reference/1``) records
     what the local run wrote: the sha256 of deterministic outputs (the base's
-    frame checkpoints, written without HDF5 timestamps) and the builder code
-    identity its run context locked. The receipt must list the same bytes
-    for each output, and ``run_context`` (the Modal run's own file, whose
-    sha256 must be the one the receipt lists) must lock the same source
-    digest and dependency versions. The interpreter and platform differ by
-    design and are only reported.
+    frame checkpoints, written without HDF5 timestamps), the outer-stage
+    pipeline its run context locked, and the builder code identity. The
+    receipt must list the same bytes for each output, and ``run_context``
+    (the Modal run's own file, whose sha256 must be the one the receipt
+    lists) must lock the same pipeline, source digest and dependency
+    versions. The interpreter and platform differ by design and are only
+    reported.
+
+    No problems means the compared outputs match, not that the run
+    reproduced the local one: the reference covers only the stages whose
+    outputs it lists (``stages_compared``; see :func:`lineage_scope`).
     """
 
     if reference.get("schema") != LOCAL_REFERENCE_SCHEMA:
@@ -2289,6 +2523,12 @@ def lineage_problems(
             f"{context_path}: the file given is sha256 {run_context_sha256}, "
             f"the receipt lists {item['sha256']}"
         )
+    pipeline_sha256 = (run_context or {}).get("pipeline_sha256")
+    if pipeline_sha256 != reference.get("pipeline_sha256"):
+        problems.append(
+            f"pipeline_sha256: Modal {pipeline_sha256!r}, local "
+            f"{reference.get('pipeline_sha256')!r} (a different outer-stage list)"
+        )
     identity = ((run_context or {}).get("run_config") or {}).get(
         "builder_code_identity"
     ) or {}
@@ -2300,6 +2540,27 @@ def lineage_problems(
                 f"local {expected.get(key)!r}"
             )
     return problems
+
+
+def lineage_scope(reference: Mapping) -> dict[str, object]:
+    """Which of the local run's outer stages the reference lets a run compare.
+
+    The reference lists the checkpoints of ``stages_compared`` only (Route
+    A's local base stopped after two). Every later stage of ``pipeline`` has
+    no local output to compare with, so a match says nothing about them.
+    """
+
+    stages = [
+        str(stage["name"])
+        for stage in ((reference.get("pipeline") or {}).get("stages") or [])
+    ]
+    compared = [str(name) for name in reference.get("stages_compared") or []]
+    return {
+        "stages_compared": len(compared),
+        "stages_total": len(stages),
+        "stages_compared_names": compared,
+        "stages_not_compared": [name for name in stages if name not in compared],
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -2426,9 +2687,12 @@ def main(argv: list[str] | None = None) -> int:
         print(
             json.dumps(
                 {
-                    "reproduced": not problems,
+                    # Only the reference's outputs are compared; the stages
+                    # after them have no local output (lineage_scope).
+                    "compared_outputs_match": not problems,
                     "problems": len(problems),
                     "outputs_compared": sorted(reference.get("outputs", {})),
+                    **lineage_scope(reference),
                     "python": {
                         "modal": identity.get("python"),
                         "local": (reference.get("local_platform") or {}).get("python"),

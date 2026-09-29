@@ -428,12 +428,15 @@ def test_receipt_records_plan_source_outputs_and_cost(tmp_path: Path) -> None:
     assert receipt["resources"] == {
         "class": "heavy",
         "cpu": 4.0,
+        "cpu_limit": None,
         "memory_mib": 131072,
         "timeout_s": 28800,
         "nonpreemptible": False,
     }
     paths = [item["path"] for item in receipt["outputs"]]
     assert paths == ["checkpoints/run_identity.json", "populace_us_2024_acs_local.h5"]
+    # Every output is on the volume (only a resume-state stage leaves some).
+    assert receipt["outputs_not_mirrored"] == []
     h5 = receipt["outputs"][1]
     assert h5["sha256"] == hashlib.sha256(b"\x89HDF" * 100).hexdigest()
     # 4 cores + 128 GiB at list price for the measured materialize wall.
@@ -1237,12 +1240,22 @@ def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None
         resources = plan_lib.RESOURCE_CLASSES[name]
         options = runner.modal_options
         assert (options["cpu"], options["memory"], options["timeout"]) == (
-            resources.cpu,
+            resources.modal_cpu,
             resources.memory_mib,
             resources.timeout_s,
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
+        # Memory is a request everywhere (an int, never a (request, limit)).
+        assert isinstance(options["memory"], int)
+    # The base caps its CPU at its request, so Modal cannot bill it for more
+    # cores than the $15 ceiling counts; the ACS classes keep request-only.
+    for nonpreemptible in (False, True):
+        assert app.RUNNERS[("base", nonpreemptible)].modal_options["cpu"] == (
+            4.0,
+            4.0,
+        )
+    assert app.RUNNERS[("heavy", True)].modal_options["cpu"] == 4.0
     # The check never asks for non-preemptible placement.
     assert "nonpreemptible" not in app.check_stage.modal_options
 
@@ -1455,6 +1468,113 @@ def test_a_pull_hashes_once_and_a_push_reuses_the_untouched_digests(
     }
 
 
+_PUSH_FIRST = st.lists(
+    st.sampled_from(["a", "a/b", "c", "zz.h5", "a/x.json", "c/q.npz"]),
+    max_size=3,
+    unique=True,
+)
+
+
+@_TREE_SETTINGS
+@given(old=_TREE, new=_TREE, first=_PUSH_FIRST, clean_exit=st.booleans())
+def test_push_state_copies_first_paths_first_and_after_a_clean_exit_only_them(
+    tmp_path: Path,
+    old: dict[str, bytes],
+    new: dict[str, bytes],
+    first: list[str],
+    clean_exit: bool,
+) -> None:
+    # Properties of the runner's push, from any prior destination state:
+    # the receipt always lists the whole source tree as hash_tree does; the
+    # copies follow push_order (the first paths' files, in their order,
+    # before every other file); without copy_only the destination mirrors
+    # the source; with it the destination holds every first-path file and
+    # nothing that differs from the source, and the files it lacks are
+    # exactly the ones reported as not mirrored, which verify_receipt names.
+    root = _fresh(tmp_path)
+    src, dst = root / "src", root / "dst"
+    src.mkdir()
+    dst.mkdir()
+    _write_tree(src, old)
+    plan_lib.mirror_tree(src, dst)
+    _write_tree(src, new)
+    copy_only = tuple(first) if clean_exit and first else None
+    copied: list[str] = []
+    real = plan_lib.copy_hashed
+
+    def spy(source, target):
+        copied.append(Path(source).relative_to(src).as_posix())
+        return real(source, target)
+
+    plan_lib.copy_hashed = spy
+    try:
+        outputs, counts, not_mirrored = plan_lib.push_state(
+            src, dst, first=first, copy_only=copy_only
+        )
+    finally:
+        plan_lib.copy_hashed = real
+    assert outputs == plan_lib.hash_tree(src)
+    order = plan_lib.push_order(plan_lib.tree_listing(src), first)
+    assert sorted(order) == sorted(new) and len(order) == len(set(order))
+    in_first = [
+        any(plan_lib.under_state_path(rel, path) for path in first) for rel in order
+    ]
+    # Every first-path file comes before every other file.
+    assert in_first == sorted(in_first, reverse=True)
+    assert copied == [rel for rel in order if rel in set(copied)]
+    on_dst = _contents(dst)
+    if copy_only is None:
+        assert on_dst == new and not_mirrored == []
+    else:
+        assert all(new.get(rel) == payload for rel, payload in on_dst.items())
+        assert all(
+            on_dst.get(rel) == new[rel]
+            for rel, flag in zip(order, in_first, strict=True)
+            if flag
+        )
+        assert not_mirrored == sorted(set(new) - set(on_dst))
+        assert counts["hashed_not_copied"] == len(not_mirrored)
+    receipt = {
+        "schema": plan_lib.RECEIPT_SCHEMA,
+        "outputs": outputs,
+        "outputs_not_mirrored": not_mirrored,
+    }
+    assert plan_lib.verify_receipt(receipt, dst, strict=True) == [
+        f"missing: {item['path']} (outputs_not_mirrored: hashed in the container, "
+        "never copied to the runs volume)"
+        for item in outputs
+        if item["path"] in not_mirrored
+    ]
+
+
+def test_push_copy_only_applies_to_a_clean_exit_of_a_resume_state_stage() -> None:
+    resources = plan_lib.CHECK
+    resumable = plan_lib.StageSpec(
+        "run", resources, (), mirror_first=("out",), rest_is_resume_state=True
+    )
+    for returncode, stopped, expected in (
+        (0, False, ("out",)),
+        (0, True, None),
+        (1, False, None),
+        (-9, True, None),
+    ):
+        assert (
+            plan_lib.push_copy_only(
+                resumable, returncode=returncode, stopped_at_budget=stopped
+            )
+            == expected
+        )
+    ordered_only = plan_lib.StageSpec("run", resources, (), mirror_first=("out",))
+    assert (
+        plan_lib.push_copy_only(ordered_only, returncode=0, stopped_at_budget=False)
+        is None
+    )
+    with pytest.raises(ValueError, match="needs mirror_first"):
+        plan_lib.StageSpec("run", resources, (), rest_is_resume_state=True)
+    with pytest.raises(ValueError, match="clean relative path"):
+        plan_lib.StageSpec("run", resources, (), mirror_first=("../out",))
+
+
 # --------------------------------------------------------------------------- #
 # The run path end to end, against local directories                          #
 # --------------------------------------------------------------------------- #
@@ -1478,7 +1598,9 @@ _FAKE_PAYLOAD = b"fake input"
 _FAKE_SHA = hashlib.sha256(_FAKE_PAYLOAD).hexdigest()
 
 
-def _fake_tool(timeout_s: int = 3600, overhead: int = 60) -> plan_lib.ToolSpec:
+def _fake_tool(
+    timeout_s: int = 3600, overhead: int = 60, **stage: object
+) -> plan_lib.ToolSpec:
     resources = plan_lib.Resources("check", 2.0, 8 * 1024, timeout_s=timeout_s)
     return plan_lib.ToolSpec(
         name="fake-stage",
@@ -1486,7 +1608,11 @@ def _fake_tool(timeout_s: int = 3600, overhead: int = 60) -> plan_lib.ToolSpec:
         inputs=("data",),
         stages={
             "run": plan_lib.StageSpec(
-                "run", resources, ("data",), runner_overhead_seconds=overhead
+                "run",
+                resources,
+                ("data",),
+                runner_overhead_seconds=overhead,
+                **stage,  # type: ignore[arg-type]
             )
         },
         options={},
@@ -1648,3 +1774,80 @@ def test_a_container_left_without_tool_time_refuses_to_start_the_tool(
     ]
     assert (outcome, finished) == ("error", False)
     assert not (tmp_path / "runs" / "runs" / "fake-run" / "receipts").exists()
+
+
+def test_a_clean_exit_pushes_only_the_stage_s_first_paths_end_to_end(
+    fake_runner, tmp_path: Path
+) -> None:
+    # A stage whose other state only serves a resume (the base's frame
+    # checkpoints): after a clean exit the checkpoint is hashed into the
+    # receipt but not copied, the output and the log are on the volume and
+    # verify, and the finished run cannot be resumed.
+    app = fake_runner(
+        _fake_tool(mirror_first=("out", "logs"), rest_is_resume_state=True)
+    )
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600))
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("COMPLETED", False)
+    assert receipt["outputs_not_mirrored"] == ["ckpt/step1.bin"]
+    listed = {item["path"]: item for item in receipt["outputs"]}
+    assert listed["ckpt/step1.bin"]["sha256"] == (
+        hashlib.sha256(_FAKE_PAYLOAD * 3).hexdigest()
+    )
+    assert not (volume_state / "ckpt").exists()
+    pushed = receipt["runner"]["state_pushed"]
+    assert (pushed["copied"], pushed["hashed_not_copied"]) == (2, 1)
+    for prefix in ("out", "logs"):
+        assert (
+            plan_lib.verify_receipt(
+                receipt,
+                volume_state,
+                prefix=prefix,
+                strict=True,
+                require_completed=True,
+            )
+            == []
+        )
+    assert plan_lib.verify_receipt(receipt, volume_state, strict=True) == [
+        "missing: ckpt/step1.bin (outputs_not_mirrored: hashed in the container, "
+        "never copied to the runs volume)"
+    ]
+    _new_container(tmp_path)
+    with pytest.raises(
+        plan_lib.PlanError, match="that receipt kept outputs off the volume"
+    ):
+        app._run_stage(_fake_plan(max_wall_seconds=600))
+
+
+def test_a_stopped_stage_pushes_its_whole_state_first_paths_first(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # Stopped at the container deadline, the same stage copies everything
+    # (the next attempt resumes from it), the output and log first.
+    monkeypatch.setattr(plan_lib, "MIN_ATTEMPT_SECONDS", 1)
+    app = fake_runner(
+        _fake_tool(
+            timeout_s=8,
+            overhead=5,
+            mirror_first=("out", "logs"),
+            rest_is_resume_state=True,
+        )
+    )
+    work_state = tmp_path / "work" / "state"
+    copied: list[str] = []
+    real = plan_lib.copy_hashed
+
+    def spy(source, target):
+        copied.append(Path(source).relative_to(work_state).as_posix())
+        return real(source, target)
+
+    monkeypatch.setattr(plan_lib, "copy_hashed", spy)
+    receipt = app._run_stage(_fake_plan(env={"MICROCOSM_FAKE_SLEEP": "60"}))
+    assert (receipt["status"], receipt["stopped_at_budget"]) == ("FAILED", True)
+    assert receipt["outputs_not_mirrored"] == []
+    assert len(copied) == 3
+    assert copied[0] == "out/result.txt"
+    assert copied[1].startswith("logs/")
+    assert copied[2] == "ckpt/step1.bin"
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    assert receipt["outputs"] == plan_lib.hash_tree(volume_state)

@@ -10,9 +10,10 @@ through the pinned tool's own parser and per-stage child commands (loaded
 from 4b57d15a2's source; skipped, visibly, in a clone without that commit),
 Hypothesis properties of the argv builder, the plan refusals, the budget
 stop of a multi-process tool, the home-cache seed, the pinned tree file, the
-disk guard, the cost ceiling, the refusal of unfinished receipts, the
-comparison with the local run's checkpoints, the upload commands and the
-write probe. Nothing here needs Modal, a country engine or the network.
+disk guard, the cost ceiling and CPU limit, the refusal of unfinished
+receipts, the comparison with the local run's checkpoints and its scope
+(two of 24 outer stages), the push order, the upload commands and the write
+probe. Nothing here needs Modal, a country engine or the network.
 """
 
 from __future__ import annotations
@@ -710,20 +711,43 @@ def test_the_plan_s_estimate_at_its_budget_is_within_max_s_cap() -> None:
     assert plan_lib.HEAVY.estimated_usd(14_400 + 1_800, 3.0) > 15.0
 
 
-def test_the_class_timeout_keeps_the_hard_ceiling_inside_max_s_cap() -> None:
+def test_the_class_timeout_keeps_the_ceiling_at_the_request_inside_max_s_cap() -> None:
     # The timeout bounds the function's execution time, so the class's
-    # timeout at the non-preemptible list price is the most one attempt can
-    # list at, whatever the plan's budget, a hung stop or a slow mirror do.
+    # request held for its whole timeout, at the non-preemptible list price,
+    # is the most one attempt can list at while it stays inside its request,
+    # whatever the plan's budget, a hung stop or a slow mirror do. Modal bills
+    # the higher of request and use, so this holds for CPU only because the
+    # class's CPU limit equals its request (the host throttles above the
+    # limit), and not for memory used above 112 GiB, which has no limit.
     ceiling = plan_lib.BASE.estimated_usd(
         plan_lib.BASE.timeout_s, plan_lib.NONPREEMPTIBLE_PRICE_MULTIPLIER
     )
     assert ceiling <= plan_lib.BASE_COST_CAP_USD == 15.0
     assert ceiling == pytest.approx(14.90, abs=0.01)
+    assert plan_lib.BASE.cpu_limit == plan_lib.BASE.cpu == 4.0
     plan = _committed_plan()
     assert plan_lib.estimated_usd_at_timeout(plan) == ceiling
     assert plan_lib.summarize(plan)["estimated_usd_at_timeout"] == ceiling
     # The old 6-hour timeout would have listed at $19.51, over the cap.
     assert plan_lib.BASE.estimated_usd(6 * 3600, 3.0) > plan_lib.BASE_COST_CAP_USD
+    # Without the limit, Modal's default soft limit (the request plus 16
+    # cores) held for the whole timeout would list at $25.28.
+    unlimited = dataclasses.replace(plan_lib.BASE, cpu=4.0 + 16, cpu_limit=None)
+    assert unlimited.estimated_usd(plan_lib.BASE.timeout_s, 3.0) == pytest.approx(
+        25.28, abs=0.01
+    )
+    # Memory is the one cost path above the ceiling: each GiB-hour over the
+    # request lists at about $0.024 non-preemptible.
+    assert plan_lib.MEMORY_USD_PER_GIB_SECOND * 3600 * 3.0 == pytest.approx(
+        0.024, abs=0.0005
+    )
+
+
+def test_a_cpu_limit_below_the_request_is_refused() -> None:
+    with pytest.raises(ValueError, match="below the request"):
+        plan_lib.Resources("x", cpu=4.0, memory_mib=1024, timeout_s=60, cpu_limit=2.0)
+    assert plan_lib.HEAVY.modal_cpu == 4.0
+    assert plan_lib.BASE.modal_cpu == (4.0, 4.0)
 
 
 @_PROPERTY_SETTINGS
@@ -774,6 +798,7 @@ def test_validate_cli_prints_the_base_argv_class_and_estimate(capsys) -> None:
     assert summary["resources"] == {
         "class": "base",
         "cpu": 4.0,
+        "cpu_limit": 4.0,
         "memory_gib": 112.0,
         "timeout_h": 16_500 / 3600,
         "timeout_s": 16_500,
@@ -781,6 +806,8 @@ def test_validate_cli_prints_the_base_argv_class_and_estimate(capsys) -> None:
         "runner_overhead_seconds": 1800,
         "min_free_disk_gib": 70,
         "mirrored_state_gib": 50,
+        "mirror_first": list(plan_lib.PUF_SUPPORT_BASE_MIRROR_FIRST),
+        "rest_is_resume_state": True,
     }
     assert summary["estimated_usd_at_max_wall"] == pytest.approx(14.63, abs=0.01)
     assert summary["estimated_usd_at_timeout"] == pytest.approx(14.90, abs=0.01)
@@ -816,8 +843,9 @@ def test_the_base_runs_on_its_own_modal_functions(app) -> None:
     for nonpreemptible in (False, True):
         runner = app.RUNNERS[("base", nonpreemptible)]
         options = runner.modal_options
+        # CPU is (request, limit): the limit keeps the bill at the request.
         assert (options["cpu"], options["memory"], options["timeout"]) == (
-            4.0,
+            (4.0, 4.0),
             112 * 1024,
             16_500,
         )
@@ -1239,6 +1267,38 @@ def test_the_local_reference_matches_the_plan_and_the_fixture() -> None:
         f"{checkpoints}/001_pre_clone_enrichment.frame.h5",
     ]
     assert reference["run_context_path"] == f"{checkpoints}/stage_run_context.json"
+    # The pipeline is the local run's 24 outer stages, and its digest is the
+    # tool's (canonical JSON of the ordered names and descriptions,
+    # outer_stage_runtime._mapping_sha256 at 4b57d15a2).
+    pipeline = reference["pipeline"]
+    canonical = json.dumps(
+        pipeline,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    assert (
+        hashlib.sha256(canonical.encode()).hexdigest() == reference["pipeline_sha256"]
+    )
+    names = [stage["name"] for stage in pipeline["stages"]]
+    assert len(names) == 24
+    assert names[0] == "source_construction" and names[-1] == "final_export"
+    assert "primary_qrf_chain" in names
+    # The compared outputs are exactly the checkpoints of the compared
+    # stages, which are the pipeline's first two, named as the tool names
+    # them (NNN_<stage>.frame.h5).
+    compared = reference["stages_compared"]
+    assert compared == names[:2]
+    assert sorted(reference["outputs"]) == [
+        f"{checkpoints}/{index:03d}_{name}.frame.h5"
+        for index, name in enumerate(compared)
+    ]
+    # Every file compare-lineage reads is pushed first, and survives a clean
+    # exit's push, which copies only those paths.
+    stage = BASE.stages["all"]
+    for rel in [*reference["outputs"], reference["run_context_path"]]:
+        assert any(plan_lib.under_state_path(rel, p) for p in stage.mirror_first)
     # The six distributions the tool fingerprints, pinned once each.
     assert set(reference["builder_code_identity"]["dependency_versions"]) == {
         "h5py",
@@ -1257,12 +1317,13 @@ def _modal_run(
 
     reference = _reference()
     context = {
+        "pipeline_sha256": reference["pipeline_sha256"],
         "run_config": {
             "builder_code_identity": {
                 "python": "3.14.2 (main) [GCC]",
                 **(identity or {}),
             }
-        }
+        },
     }
     context_bytes = json.dumps(context).encode()
     outputs = [
@@ -1308,9 +1369,42 @@ def test_compare_lineage_passes_a_modal_run_that_reproduces_the_local_bytes(
     receipt_path, context_path = _modal_run(tmp_path, identity=identity)
     assert plan_lib.main(_lineage(receipt_path, context_path)) == 0
     out = json.loads(capsys.readouterr().out)
-    assert (out["reproduced"], out["problems"]) == (True, 0)
+    # A match covers the compared outputs only: two of 24 outer stages.
+    assert "reproduced" not in out
+    assert (out["compared_outputs_match"], out["problems"]) == (True, 0)
+    assert (out["stages_compared"], out["stages_total"]) == (2, 24)
+    assert out["stages_compared_names"] == [
+        "source_construction",
+        "pre_clone_enrichment",
+    ]
+    assert len(out["stages_not_compared"]) == 22
+    assert out["stages_not_compared"][0] == "clone_feature_extraction"
+    assert "primary_qrf_chain" in out["stages_not_compared"]
+    assert out["stages_not_compared"][-1] == "final_export"
     assert out["python"]["local"].startswith("3.14.7 free-threading build")
     assert out["python"]["modal"] == "3.14.2 (main) [GCC]"
+
+
+def test_compare_lineage_refuses_a_run_with_another_pipeline(
+    tmp_path: Path, capsys
+) -> None:
+    # The stage counts are the local pipeline's, so a Modal run whose tool
+    # locked a different outer-stage list is refused.
+    identity = _reference()["builder_code_identity"]
+    receipt_path, context_path = _modal_run(tmp_path, identity=identity)
+    context = json.loads(context_path.read_text())
+    context["pipeline_sha256"] = "2" * 64
+    context_bytes = json.dumps(context).encode()
+    context_path.write_bytes(context_bytes)
+    receipt = json.loads(receipt_path.read_text())
+    for item in receipt["outputs"]:
+        if item["path"] == _reference()["run_context_path"]:
+            item["sha256"] = hashlib.sha256(context_bytes).hexdigest()
+    receipt_path.write_text(json.dumps(receipt))
+    assert plan_lib.main(_lineage(receipt_path, context_path)) == 1
+    captured = capsys.readouterr()
+    assert captured.err.startswith("pipeline_sha256: Modal '2222")
+    assert json.loads(captured.out)["compared_outputs_match"] is False
 
 
 def test_compare_lineage_reports_every_departure(tmp_path: Path, capsys) -> None:
@@ -1438,6 +1532,102 @@ def test_upload_commands_refuse_a_file_the_plan_does_not_pin(
 
 
 # --------------------------------------------------------------------------- #
+# The push: the output first, and only the evidence after a clean exit        #
+# --------------------------------------------------------------------------- #
+
+# The base's state as the tool leaves it (4b57d15a2): a frame checkpoint per
+# outer stage, the primary-QRF target checkpoints, the final checkpoint's
+# alias, the run context and profile, the output and the runner's log.
+_BASE_STATE = (
+    "base-checkpoints/000_source_construction.frame.h5",
+    "base-checkpoints/001_pre_clone_enrichment.frame.h5",
+    "base-checkpoints/002_clone_feature_extraction.frame.h5",
+    "base-checkpoints/asec_raw_stage.checkpoint.h5",
+    "base-checkpoints/primary_qrf/targets/001__x.h5",
+    "base-checkpoints/stage_all.frame.h5",
+    "base-checkpoints/stage_profile.json",
+    "base-checkpoints/stage_run_context.json",
+    "base-out/base_populace_us_2024_puf_support.h5",
+    "base-out/base_populace_us_2024_puf_support.summary.json",
+    "logs/all-2026-10-01T000000Z.log",
+)
+
+
+def _base_push(tmp_path: Path, *, returncode: int, stopped: bool):
+    state, volume = tmp_path / "state", tmp_path / "volume"
+    for rel in _BASE_STATE:
+        (state / rel).parent.mkdir(parents=True, exist_ok=True)
+        (state / rel).write_bytes(rel.encode())
+    volume.mkdir()
+    stage = BASE.stages["all"]
+    copied: list[str] = []
+    real = plan_lib.copy_hashed
+
+    def spy(source, target):
+        copied.append(Path(source).relative_to(state).as_posix())
+        return real(source, target)
+
+    plan_lib.copy_hashed = spy
+    try:
+        outputs, counts, not_mirrored = plan_lib.push_state(
+            state,
+            volume,
+            first=stage.mirror_first,
+            copy_only=plan_lib.push_copy_only(
+                stage, returncode=returncode, stopped_at_budget=stopped
+            ),
+        )
+    finally:
+        plan_lib.copy_hashed = real
+    assert outputs == plan_lib.hash_tree(state)
+    return copied, not_mirrored, volume
+
+
+_BASE_EVIDENCE_ORDER = [
+    "base-out/base_populace_us_2024_puf_support.h5",
+    "base-out/base_populace_us_2024_puf_support.summary.json",
+    "logs/all-2026-10-01T000000Z.log",
+    "base-checkpoints/stage_run_context.json",
+    "base-checkpoints/stage_profile.json",
+    "base-checkpoints/000_source_construction.frame.h5",
+    "base-checkpoints/001_pre_clone_enrichment.frame.h5",
+]
+
+
+def test_a_stopped_base_pushes_its_output_before_its_checkpoints(
+    tmp_path: Path,
+) -> None:
+    # A push the class timeout cuts short has written the output and the
+    # evidence first; the checkpoints the resume needs follow.
+    copied, not_mirrored, _ = _base_push(tmp_path, returncode=-15, stopped=True)
+    assert copied == [
+        *_BASE_EVIDENCE_ORDER,
+        "base-checkpoints/002_clone_feature_extraction.frame.h5",
+        "base-checkpoints/asec_raw_stage.checkpoint.h5",
+        "base-checkpoints/primary_qrf/targets/001__x.h5",
+        "base-checkpoints/stage_all.frame.h5",
+    ]
+    assert not_mirrored == []
+
+
+def test_a_finished_base_pushes_only_its_output_and_evidence(tmp_path: Path) -> None:
+    # A completed --stage all has nothing to resume: the other checkpoints
+    # (about 42 GB) are hashed into the receipt and not copied.
+    copied, not_mirrored, volume = _base_push(tmp_path, returncode=0, stopped=False)
+    assert copied == _BASE_EVIDENCE_ORDER
+    assert not_mirrored == [
+        "base-checkpoints/002_clone_feature_extraction.frame.h5",
+        "base-checkpoints/asec_raw_stage.checkpoint.h5",
+        "base-checkpoints/primary_qrf/targets/001__x.h5",
+        "base-checkpoints/stage_all.frame.h5",
+    ]
+    assert sorted(plan_lib.tree_listing(volume)) == sorted(_BASE_EVIDENCE_ORDER)
+    # A tool that exits 0 after a budget stop is still a stop: all is copied.
+    _, not_mirrored, _ = _base_push(tmp_path / "stop0", returncode=0, stopped=True)
+    assert not_mirrored == []
+
+
+# --------------------------------------------------------------------------- #
 # The runs volume's write rate against the runner's reserve                    #
 # --------------------------------------------------------------------------- #
 
@@ -1445,14 +1635,22 @@ def test_upload_commands_refuse_a_file_the_plan_does_not_pin(
 def test_write_probe_verdict_sizes_the_mirror_against_the_reserve() -> None:
     stage = BASE.stages["all"]
     gib = 1024**3
-    reserve = plan_lib.BASE_RUNNER_OVERHEAD_SECONDS - plan_lib.STOP_GRACE_SECONDS
-    # The slowest rate that still mirrors 50 GiB inside the reserve.
+    # The reserve less the stop's grace and the time kept after the mirror
+    # for the runner identity, the receipt and the final commit.
+    reserve = (
+        plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
+        - plan_lib.STOP_GRACE_SECONDS
+        - plan_lib.RECEIPT_RESERVE_SECONDS
+    )
+    # The slowest rate that still mirrors 50 GiB inside that (about 33 MB/s).
     floor = 50 * gib / reserve
+    assert floor / 1e6 == pytest.approx(33.1, abs=0.1)
     fast = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 1.01))
     assert "problem" not in fast
-    assert fast["post_tool_reserve_seconds"] == reserve == 1740
+    assert fast["mirror_reserve_seconds"] == reserve == 1620
+    assert fast["receipt_reserve_seconds"] == 120
     slow = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 0.99))
-    assert "more than the 1740s the runner keeps" in slow["problem"]
+    assert "more than the 1620s the runner keeps for the mirror" in slow["problem"]
     # The runbook's one measured volume rate (reads, at least 58 MB/s) fits.
     assert "problem" not in plan_lib.write_probe_verdict(stage, 58_000_000, 1.0)
     acs = plan_lib.US_ACS_LOCAL_RELEASE.stages["materialize"]

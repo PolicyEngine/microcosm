@@ -1,6 +1,6 @@
 {
   "schema": "microcosm-modal-us-stage-local-reference/1",
-  "description": "What Route A's local base run for commit 4b57d15a2 wrote before it stopped, for comparing the Modal base with it (tools/modal_us_stage_plan.py compare-lineage; runbook, Route A's base stage, step 6). The local run (route_a.sh section 4, run directory run-4b57d15a287c, 2026-09-28) completed its first two outer stages and was then stopped by its supervisor's disk floor (base-sup.failed-1790651711/RESULT.json: refusal DISK_FLOOR, returncode -9). Its base-checkpoints/stage_run_context.json records both completed stages with these checkpoint sha256, and the files hashed to the same values on 2026-09-29. The frame checkpoint writer sets track_times=False on every HDF5 object (packages/microcosm-build/src/microcosm/build/frame_checkpoint.py at 4b57d15a2), and neither file contains the machine's paths, interpreter or platform strings, so equal inputs and equal numerics give equal bytes. source_sha256 equals microcosm.build.code_identity's digest recomputed over the committed tree of 4b57d15a2, so a clean clone of that commit gives the same value.",
+  "description": "What Route A's local base run for commit 4b57d15a2 wrote before it stopped, for comparing the Modal base with it (tools/modal_us_stage_plan.py compare-lineage; runbook, Route A's base stage, step 6). The local run (route_a.sh section 4, run directory run-4b57d15a287c, 2026-09-28) completed its first two outer stages and was then stopped by its supervisor's disk floor (base-sup.failed-1790651711/RESULT.json: refusal DISK_FLOOR, returncode -9). Its base-checkpoints/stage_run_context.json records both completed stages with these checkpoint sha256, and the files hashed to the same values on 2026-09-29. The frame checkpoint writer sets track_times=False on every HDF5 object (packages/microcosm-build/src/microcosm/build/frame_checkpoint.py at 4b57d15a2), and neither file contains the machine's paths, interpreter or platform strings, so equal inputs and equal numerics give equal bytes. source_sha256 equals microcosm.build.code_identity's digest recomputed over the committed tree of 4b57d15a2, so a clean clone of that commit gives the same value. The local run's pipeline (24 outer stages, pipeline_sha256 906c9c02...) is copied from that stage_run_context.json. Only its first two stages (stages_compared) have outputs here: a Modal run that matches them reproduced source construction and pre-clone enrichment byte for byte, and stages 002 onward (clone_feature_extraction through final_export, the primary PUF QRF chain included) have no local output to compare with.",
   "tool": "us-puf-support-base",
   "stage": "all",
   "commit": "4b57d15a287c4a1729bad362a2f6d57c4de9059e",
@@ -8,7 +8,112 @@
     "base-checkpoints/000_source_construction.frame.h5": "be8c268930ff90a46af5225cc95244cc3db9f66ff37b26211d7515b75d2338cf",
     "base-checkpoints/001_pre_clone_enrichment.frame.h5": "5a52f337a44aa8fdfbcf4ce36b391f1b59a246ce82dd736f25e0d4ca8051ce9f"
   },
+  "stages_compared": [
+    "source_construction",
+    "pre_clone_enrichment"
+  ],
   "run_context_path": "base-checkpoints/stage_run_context.json",
+  "pipeline_sha256": "906c9c022de6d154771d8250897a77430b0f457371b3d76a6bd046bceaccd266",
+  "pipeline": {
+    "stages": [
+      {
+        "description": "_load_base_frame_from_args",
+        "name": "source_construction"
+      },
+      {
+        "description": "derive_us_cps_carried_inputs -> with_us_prior_year_income_inputs -> with_us_relationship_inputs -> with_us_spm_independence_role -> with_us_medicare_take_up_input -> with_us_housing_inputs[includes_acs_rent_in_current_order] -> with_us_eligibility_inputs -> with_us_pregnancy_inputs -> with_us_wic_claim_input -> with_us_child_support_inputs -> with_us_disability_benefits -> with_us_workers_compensation -> with_us_weeks_unemployed -> with_us_childcare_inputs -> with_us_energy_subsidy_input -> with_us_retirement_contribution_inputs -> with_us_retirement_distribution_inputs -> with_us_immigration_inputs",
+        "name": "pre_clone_enrichment"
+      },
+      {
+        "description": "clone_us_frame_for_puf_support -> puf_tax_unit_donor_from_arrays -> initialize_primary_puf_qrf_chain",
+        "name": "clone_feature_extraction"
+      },
+      {
+        "description": "run_primary_puf_qrf_chain[target_subprocesses]",
+        "name": "primary_qrf_chain"
+      },
+      {
+        "description": "finalize_primary_puf_qrf_chain",
+        "name": "qrf_finalization"
+      },
+      {
+        "description": "transfer_puf_capital_gains_tail",
+        "name": "capital_gains_tail_transfer"
+      },
+      {
+        "description": "run_source_stage[capital_gain_distributions]",
+        "name": "capital_gain_distributions"
+      },
+      {
+        "description": "with_us_qbi_input_reconciliation",
+        "name": "qbi_reconciliation"
+      },
+      {
+        "description": "with_us_wic_claim_input",
+        "name": "wic_post_clone"
+      },
+      {
+        "description": "impute_us_housing_assistance_to_puf_support",
+        "name": "housing_assistance"
+      },
+      {
+        "description": "with_us_prior_year_income_inputs",
+        "name": "prior_year_income_post_clone"
+      },
+      {
+        "description": "with_us_child_support_inputs",
+        "name": "child_support_post_clone"
+      },
+      {
+        "description": "with_us_disability_benefits",
+        "name": "disability_benefits_post_clone"
+      },
+      {
+        "description": "with_us_workers_compensation",
+        "name": "workers_compensation_post_clone"
+      },
+      {
+        "description": "with_us_weeks_unemployed",
+        "name": "weeks_unemployed_post_clone"
+      },
+      {
+        "description": "with_us_childcare_inputs",
+        "name": "childcare_post_clone"
+      },
+      {
+        "description": "with_us_adult_care_inputs",
+        "name": "adult_care_post_clone"
+      },
+      {
+        "description": "with_us_energy_subsidy_input",
+        "name": "energy_subsidy_post_clone"
+      },
+      {
+        "description": "with_us_retirement_contribution_inputs",
+        "name": "retirement_contributions_post_clone"
+      },
+      {
+        "description": "with_us_retirement_distribution_inputs",
+        "name": "retirement_distributions_post_clone"
+      },
+      {
+        "description": "with_us_education_inputs",
+        "name": "education_inputs_post_clone"
+      },
+      {
+        "description": "with_household_congressional_districts",
+        "name": "congressional_district_assignment"
+      },
+      {
+        "description": "with_household_us_geography_ladder",
+        "name": "block_ladder_assignment"
+      },
+      {
+        "description": "PolicyEngineUSEngine.write_dataset",
+        "name": "final_export"
+      }
+    ]
+  },
   "builder_code_identity": {
     "source_sha256": "c02fd0576a158da00951c15ad505d022174e321f30bf36ebd664bb199c6604ec",
     "dependency_versions": {

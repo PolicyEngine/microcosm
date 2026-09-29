@@ -201,13 +201,17 @@ def _verify_branch(plan: plan_lib.Plan) -> dict[str, object]:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
-def _runner_identity() -> dict[str, object]:
-    identity: dict[str, object] = {
-        "python": sys.version.split()[0],
-        # Platform and CPU visibility, for comparing a Modal run with a local
-        # one: BLAS and OpenMP size their thread pools from what they see.
-        "platform": platform.platform(),
-        "machine": platform.machine(),
+def _cpu_visibility() -> dict[str, object]:
+    """What this container shows a tool that sizes its pools from the CPUs.
+
+    The base's pinned tool sizes its primary-QRF predict pool from
+    ``os.cpu_count()`` when POPULACE_FIT_PREDICT_WORKERS is unset (4b57d15a2
+    microcosm-fit qrf.py ``_predict_workers``), and BLAS and OpenMP read the
+    ``*_NUM_THREADS`` variables. ``nproc`` is no measure of the first: GNU
+    nproc takes OMP_NUM_THREADS as its minimum.
+    """
+
+    return {
         "os_cpu_count": os.cpu_count(),
         "cpu_affinity": len(os.sched_getaffinity(0))
         if hasattr(os, "sched_getaffinity")
@@ -217,6 +221,18 @@ def _runner_identity() -> dict[str, object]:
             for key, value in sorted(os.environ.items())
             if key.endswith("_NUM_THREADS")
         },
+    }
+
+
+def _runner_identity() -> dict[str, object]:
+    identity: dict[str, object] = {
+        "python": sys.version.split()[0],
+        # Platform and CPU visibility, for comparing a Modal run with a local
+        # one: BLAS, OpenMP and the base's QRF pool size their thread pools
+        # from what they see.
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        **_cpu_visibility(),
     }
     for name, path in {
         "modal_us_stage_plan.py": PLAN_MODULE_REMOTE,
@@ -559,7 +575,7 @@ def _load_json(path: Path) -> dict | None:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.CHECK.cpu,
+    cpu=plan_lib.CHECK.modal_cpu,
     memory=plan_lib.CHECK.memory_mib,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
@@ -587,6 +603,10 @@ def check_stage(plan_data: dict) -> dict:
         for row in git["tree_files"]
         if "problem" in row
     ]
+    # What this (check-class) container shows a tool of its CPUs. The stage
+    # runs in its own class, whose receipt records the same fields
+    # (runner.os_cpu_count, cpu_affinity, thread_env); this is an early hint.
+    report["check_container_cpu"] = _cpu_visibility()
     # What this (check-class) container's work disk reports. The stage's own
     # container checks its own disk before staging; this is an early hint.
     work.mkdir(parents=True, exist_ok=True)
@@ -808,10 +828,16 @@ def _attempt_stage(
     )
     problems = plan_lib.pulled_outputs_problems(pulled_outputs, latest)
     if problems:
+        why = (
+            "because that receipt kept outputs off the volume "
+            "(outputs_not_mirrored: a finished stage with nothing to resume)"
+            if latest and latest[1].get("outputs_not_mirrored")
+            else "so a stage was cut short after changing it"
+        )
         raise plan_lib.PlanError(
             f"run {plan.run_id!r}: its state on {plan_lib.RUNS_VOLUME} is not what "
-            "its latest receipt lists, so a stage was cut short after changing it; "
-            "use a new run_id. " + "; ".join(problems[:10])
+            f"its latest receipt lists, {why}; use a new run_id. "
+            + "; ".join(problems[:10])
         )
     # The pulled files' digests, so the push does not read them again when
     # the tool leaves them untouched.
@@ -881,9 +907,23 @@ def _attempt_stage(
 
     # 7. Outputs: mirror the state tree to the volume, hashing each file as it
     #    is copied (a file pulled and left untouched keeps its verified
-    #    digest), then the receipt. The heartbeat keeps running, so this is
-    #    charged too.
-    outputs, pushed = plan_lib.mirror_tree_hashed(state, run_dir / "state", known=known)
+    #    digest), then the receipt. The stage's mirror_first paths (the base's
+    #    output and the evidence for it) go first, so a push the class
+    #    timeout cuts short has written them. After a clean exit a stage
+    #    whose other state only serves a resume copies just those paths and
+    #    hashes the rest (push_copy_only). The heartbeat keeps running, so
+    #    this is charged too.
+    copy_only = plan_lib.push_copy_only(
+        plan.stage_spec, returncode=returncode, stopped_at_budget=budget.fired
+    )
+    outputs, pushed, not_mirrored = plan_lib.push_state(
+        state,
+        run_dir / "state",
+        known=known,
+        first=plan.stage_spec.mirror_first,
+        copy_only=copy_only,
+    )
+    print(f"PUSH: {pushed}", flush=True)
     receipt = plan_lib.build_receipt(
         plan,
         plan_data,
@@ -913,6 +953,7 @@ def _attempt_stage(
         budget_seconds=budget_seconds,
         attempt_id=attempt.attempt_id,
         prior_state_verified_against=latest[0] if latest else None,
+        outputs_not_mirrored=not_mirrored,
     )
     receipts_dir = run_dir / "receipts"
     receipts_dir.mkdir(parents=True, exist_ok=True)
@@ -930,7 +971,7 @@ def _attempt_stage(
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.HEAVY.cpu,
+    cpu=plan_lib.HEAVY.modal_cpu,
     memory=plan_lib.HEAVY.memory_mib,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
@@ -943,7 +984,7 @@ def run_stage_heavy(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.HEAVY.cpu,
+    cpu=plan_lib.HEAVY.modal_cpu,
     memory=plan_lib.HEAVY.memory_mib,
     timeout=plan_lib.HEAVY.timeout_s,
     retries=0,
@@ -957,7 +998,7 @@ def run_stage_heavy_nonpreemptible(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.LIGHT.cpu,
+    cpu=plan_lib.LIGHT.modal_cpu,
     memory=plan_lib.LIGHT.memory_mib,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
@@ -970,7 +1011,7 @@ def run_stage_light(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.LIGHT.cpu,
+    cpu=plan_lib.LIGHT.modal_cpu,
     memory=plan_lib.LIGHT.memory_mib,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
@@ -984,7 +1025,7 @@ def run_stage_light_nonpreemptible(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.CHECK.cpu,
+    cpu=plan_lib.CHECK.modal_cpu,
     memory=plan_lib.CHECK.memory_mib,
     timeout=plan_lib.CHECK.timeout_s,
     retries=0,
@@ -993,14 +1034,19 @@ def run_stage_small(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
-# The PUF-support base's class. No ephemeral_disk: the default per-container
-# quota (512 GiB, modal.com/docs/guide/resources) holds its ~50 GB, and the
-# stage checks its free space before staging (StageSpec.min_free_disk_gib).
+# The PUF-support base's class. Its CPU limit equals its request
+# (plan_lib.BASE.modal_cpu is (4.0, 4.0)): without it Modal's default soft
+# limit is 16 cores above the request and use above the request is billed
+# (modal.com/docs/guide/resources), and the pinned tool sizes its QRF pools
+# from the CPUs it sees. Memory stays request-only (see plan_lib.BASE). No
+# ephemeral_disk: the default per-container quota (512 GiB, same page) holds
+# its ~50 GB, and the stage checks its free space before staging
+# (StageSpec.min_free_disk_gib).
 @app.function(
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.BASE.cpu,
+    cpu=plan_lib.BASE.modal_cpu,
     memory=plan_lib.BASE.memory_mib,
     timeout=plan_lib.BASE.timeout_s,
     retries=0,
@@ -1013,7 +1059,7 @@ def run_stage_base(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
-    cpu=plan_lib.BASE.cpu,
+    cpu=plan_lib.BASE.modal_cpu,
     memory=plan_lib.BASE.memory_mib,
     timeout=plan_lib.BASE.timeout_s,
     retries=0,
