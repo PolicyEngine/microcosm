@@ -800,7 +800,7 @@ history of `main` (so the pinned-commit tests run):
 #    upload-commands re-hashes each file and refuses the whole set if any
 #    file's sha256 is not the plan's; the script it writes uploads each
 #    file to cas/sha256/<digest>/<name> unless the volume already has it.
-S=$HOME/PolicyEngine/policyengine-us-data/policyengine_us_data/storage
+S=${STORAGE:?set STORAGE to route_a.sh STORAGE, the processed ASEC, PUF and ACS H5 directory}
 E=$HOME/PolicyEngine/_buildm-runtime/inputs/asec_education
 python3 tools/modal_us_stage_plan.py upload-commands --shell \
   docs/us-modal-stage-route-a-base-plan.json \
