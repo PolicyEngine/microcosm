@@ -260,7 +260,7 @@ def classify_national_rows(
 def classify_local_rows(
     fixture_rows: Iterable[Mapping[str, Any]],
     *,
-    metric_target_ids: Mapping[str, str],
+    metric_target_ids: Mapping[str, str | Mapping[str, str]],
     membership: Mapping[str, Any],
     our_metric_names: Mapping[str, Iterable[str]],
     bound_names: set[str],
@@ -268,7 +268,9 @@ def classify_local_rows(
 ) -> pd.DataFrame:
     """Map incumbent local rows to our metrics and attach our per-cell status.
 
-    ``metric_target_ids`` maps our metric name to the contract target id;
+    ``metric_target_ids`` maps our metric name to the contract target id, or
+    to ``{gss_prefix: target_id}`` for a metric that nation-scoped families
+    share (the council-tax stock by_area rows, microcosm#929);
     ``membership`` is ``local_target_reference_membership.json``;
     ``our_metric_names`` maps grain (``constituency`` / ``la``) to the declared
     metric names; ``unmapped_concern`` maps an incumbent metric with no
@@ -297,8 +299,19 @@ def classify_local_rows(
         metric = str(r["metric"])
         our_metric = INCUMBENT_LOCAL_METRIC_ALIASES.get(metric, metric)
         declared = our_metric in set(our_metric_names.get(grain, ()))
-        target_id = metric_target_ids.get(our_metric) if declared else None
         area = str(r["geography_id"])
+        mapped = metric_target_ids.get(our_metric) if declared else None
+        if isinstance(mapped, Mapping):
+            target_id = next(
+                (
+                    candidate
+                    for prefix, candidate in mapped.items()
+                    if area.startswith(str(prefix))
+                ),
+                None,
+            )
+        else:
+            target_id = mapped
         key = (str(target_id), level, area)
         if not declared:
             status, concern = unmapped_concern.get(metric, ("not_ported", ""))

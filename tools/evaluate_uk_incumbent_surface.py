@@ -83,6 +83,24 @@ def _parse_args(argv):
     return p.parse_args(argv)
 
 
+def _check_candidate_chronicle_identity(
+    manifest: dict, expected_identity: dict[str, str | None]
+) -> None:
+    """Require the candidate's Chronicle target pins to match the evaluation."""
+
+    try:
+        chronicle = manifest["identity"]["targets"]["chronicle"]
+    except (KeyError, TypeError) as error:
+        raise ValueError(
+            "candidate manifest identity.targets.chronicle is missing"
+        ) from error
+    for key in ("facts_sha256", "manifest_sha256"):
+        if chronicle.get(key) != expected_identity[f"ledger_{key}"]:
+            raise ValueError(
+                f"candidate manifest Chronicle {key} does not match evaluation input"
+            )
+
+
 def main(argv=None) -> int:
     args = _parse_args(argv)
     driver = _driver()
@@ -165,11 +183,7 @@ def main(argv=None) -> int:
             raise ValueError(
                 f"candidate manifest {key} digest does not match measured bytes"
             )
-    for key in ("facts_sha256", "manifest_sha256"):
-        if manifest["identity"]["ledger"][key] != identity[f"ledger_{key}"]:
-            raise ValueError(
-                f"candidate manifest Ledger {key} does not match evaluation input"
-            )
+    _check_candidate_chronicle_identity(manifest, identity)
     if args.incumbent_manifest is not None:
         incumbent_manifest = json.loads(args.incumbent_manifest.read_text())
         for key in ("metrics", "weights"):

@@ -19,9 +19,11 @@ so a published ladder is by construction a loadable ladder.
 Scotland and Northern Ireland vintages were pinned on microcosm#495
 (increment 3): both Scotland ladder-only layers come from the NRS Census
 2022 index zip, NI households from the NISRA table builder, and the NI ward
-analogue (DEA2014) from the pinned DZ2021 GeoJSON. The assignment still
-refuses a household whose region is absent from the ladder, so a partial
-build cannot silently ship.
+analogue (DEA2014) from the pinned DZ2021 GeoJSON. NI constituency assignment
+uses NISRA's published DZ2021-to-PARLCON24 administrative lookup and verifies
+its SDZ/LGD/DEA nesting against that GeoJSON. The assignment still refuses a
+household whose region is absent from the ladder, so a partial build cannot
+silently ship.
 
 Example:
     uv run python tools/build_uk_oa_ladder_artifact.py \
@@ -52,20 +54,18 @@ from microcosm.build.uk_runtime import (
     LAD23_ITL_URL,
     NI_DZ_GEOJSON_ZIP_URL,
     NI_DZ_HOUSEHOLDS_CSV_URL,
+    NI_DZ_PARLCON24_LOOKUP_XLSX_URL,
     NI_DZ_POPULATION_CSV_URL,
     SCOTLAND_CENSUS_INDEX_ZIP_URL,
     SCOTLAND_OA_CONSTITUENCY_URL,
     SCOTLAND_OA_DZ_IZ_URL,
     SCOTLAND_OA_LAU_ITL_URL,
     SCOTLAND_OA_POPULATION_URL,
-    UK_POSTCODE_OA_MAY25_ZIP_URL,
-    UK_POSTCODE_PCON_MAY24_ZIP_URL,
     assemble_uk_oa_ladder,
     build_england_wales_crosswalk,
     build_northern_ireland_crosswalk,
     build_scotland_crosswalk,
     concat_uk_ladder_frames,
-    infer_ni_dz_constituencies_from_postcodes,
     join_uk_oa_ladder_layers,
     load_england_lad_region_lookup,
     load_england_wales_oa_constituencies,
@@ -77,6 +77,7 @@ from microcosm.build.uk_runtime import (
     load_lad_itl_lookup,
     load_ni_dz_hierarchy,
     load_ni_dz_households,
+    load_ni_dz_parlcon24_lookup,
     load_ni_dz_population,
     load_ni_dz_ward_lookup,
     load_scotland_oa_constituencies,
@@ -86,8 +87,6 @@ from microcosm.build.uk_runtime import (
     load_scotland_oa_population,
     load_scotland_oa_ward_lookup,
     load_uk_oa_ladder,
-    load_uk_postcode_constituency_lookup,
-    load_uk_postcode_oa_lookup,
 )
 
 #: Per-source provenance: cache filename, download URL, and the layer(s) it
@@ -221,17 +220,14 @@ UK_EXTRA_SOURCES = {
         "vintage": "2021_census",
         "citation": "NISRA Census 2021 table builder, households by DZ21",
     },
-    "postcode_oa": {
-        "url": UK_POSTCODE_OA_MAY25_ZIP_URL,
-        "name": "uk_postcode_oa21_may25.zip",
-        "vintage": "2025_may_postcodes",
-        "citation": "ONS, UK postcode to OA (2021) lookup (May 2025)",
-    },
-    "postcode_pcon": {
-        "url": UK_POSTCODE_PCON_MAY24_ZIP_URL,
-        "name": "uk_postcode_pcon24_may24.zip",
+    "ni_parlcon24_lookup": {
+        "url": NI_DZ_PARLCON24_LOOKUP_XLSX_URL,
+        "name": "ni_dz21_sdz21_lookups_v3.xlsx",
         "vintage": "2024_pcon",
-        "citation": "ONS, UK postcode to Westminster constituency (May 2024)",
+        "citation": (
+            "NISRA, Geography Data Zone and Super Data Zone Lookups V3, "
+            "DZ2021 to PARLCON2024 published administrative lookup"
+        ),
     },
 }
 
@@ -363,18 +359,32 @@ def _build_scotland_frame(fetched: dict[str, dict[str, str]]) -> pd.DataFrame:
 def _build_ni_frame(fetched: dict[str, dict[str, str]]) -> pd.DataFrame:
     """Join Northern Ireland's DZ21-grain ladder frame from NISRA sources."""
 
+    hierarchy = load_ni_dz_hierarchy(_file_url(fetched, "ni_geojson"))
+    lookup = load_ni_dz_parlcon24_lookup(_file_url(fetched, "ni_parlcon24_lookup"))
+    ward_lookup = load_ni_dz_ward_lookup(_file_url(fetched, "ni_geojson"))
+    ward_comparison = ward_lookup.merge(
+        lookup[["oa_code", "ward_code"]],
+        on="oa_code",
+        suffixes=("_geojson", "_lookup"),
+        validate="one_to_one",
+    )
+    mismatch = ward_comparison[
+        ward_comparison["ward_code_geojson"] != ward_comparison["ward_code_lookup"]
+    ]
+    if not mismatch.empty:
+        raise ValueError(
+            "NI published DZ lookup DEA codes disagree with the GeoJSON; "
+            f"DZ code(s): {mismatch['oa_code'].tolist()[:5]}."
+        )
     base = build_northern_ireland_crosswalk(
-        load_ni_dz_hierarchy(_file_url(fetched, "ni_geojson")),
+        hierarchy,
         load_ni_dz_population(_file_url(fetched, "ni_population")),
-        infer_ni_dz_constituencies_from_postcodes(
-            load_uk_postcode_oa_lookup(_file_url(fetched, "postcode_oa")),
-            load_uk_postcode_constituency_lookup(_file_url(fetched, "postcode_pcon")),
-        ),
+        lookup,
     )
     return join_uk_oa_ladder_layers(
         base,
         oa_households=load_ni_dz_households(_file_url(fetched, "ni_households")),
-        oa_ward=load_ni_dz_ward_lookup(_file_url(fetched, "ni_geojson")),
+        oa_ward=ward_lookup,
         lad_itl=load_lad_itl_lookup(_file_url(fetched, "lad_itl")),
     )
 
@@ -401,8 +411,6 @@ def _uk_layer_metadata(
         scotland_key: str,
         ni_key: str,
         vintage: str,
-        *,
-        ni_entry: dict[str, object] | None = None,
     ) -> dict[str, object]:
         # No top-level url/sha256 on composite layers: a single conventional
         # identity would go stale when only Scotland/NI inputs change. The
@@ -417,33 +425,17 @@ def _uk_layer_metadata(
             "countries": {
                 "england_and_wales": ew[layer],
                 "scotland": country_entry(scotland_key),
-                "northern_ireland": (
-                    country_entry(ni_key) if ni_entry is None else ni_entry
-                ),
+                "northern_ireland": country_entry(ni_key),
             },
         }
         return entry
 
-    ni_constituency_entry = {
-        "vintage": "2024_pcon",
-        "source": (
-            "Reviewed active-postcode modal inference "
-            "(infer_ni_dz_constituencies_from_postcodes) joining the ONS "
-            "postcode->OA (May 2025) and postcode->PCON24 (May 2024) lookups; "
-            "fenced by the max-unmatched-active-postcode share."
-        ),
-        "sources": {
-            "postcode_oa": country_entry("postcode_oa"),
-            "postcode_constituency": country_entry("postcode_pcon"),
-        },
-    }
     return {
         "constituency": composite(
             "constituency",
             "scotland_constituency",
-            "postcode_pcon",
+            "ni_parlcon24_lookup",
             "2024_pcon",
-            ni_entry=ni_constituency_entry,
         ),
         "lsoa": composite(
             "lsoa",

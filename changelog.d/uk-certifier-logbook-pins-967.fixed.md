@@ -1,0 +1,1 @@
+`tools/certify_uk_release_cut.py` no longer refuses every certification up front: its Logbook pin roles now carry the byte size beside the digest, the shape `role_pins_digest` requires, so the release-cut battery actually runs on a real candidate.

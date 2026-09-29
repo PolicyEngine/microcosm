@@ -24,6 +24,7 @@ import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -151,6 +152,44 @@ class UKRowwiseDoctrineSolve:
     national_past_cap_census: Mapping[str, Any]
     all_past_cap_census: Mapping[str, Any]
     binding_adjudications: Mapping[str, Any]
+    selected_support: np.ndarray | None = None
+    size_receipt: Mapping[str, Any] | None = None
+    dense_reference: UKRowwiseDenseReference | None = None
+
+
+@dataclass(frozen=True)
+class UKRowwiseDenseReference:
+    """The dense joint solve a size selection started from, kept as evidence.
+
+    A ``dataset_households`` solve replaces its calibration product with the
+    compact refit; the full-pool solve it was cut from is byte-identical to
+    a standalone dense run on the same inputs, seed and epochs, so keeping
+    its evidence lets a size candidate be compared with its own dense
+    reference without a second run. Same vocabulary as the solve product:
+    labelled local and national diagnostics on the doctrine's scale rule,
+    the microcosm#492 past-cap censuses, the closing loss.
+    """
+
+    weights: np.ndarray
+    initial_weights: np.ndarray
+    diagnostics: pd.DataFrame
+    national_diagnostics: pd.DataFrame
+    initial_loss: float
+    final_loss: float
+    n_nonzero: int
+    past_cap_census: Mapping[str, Any]
+    national_past_cap_census: Mapping[str, Any]
+    all_past_cap_census: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class _DoctrineSolveEvidence:
+    diagnostics: pd.DataFrame
+    national_diagnostics: pd.DataFrame
+    past_cap_census: Mapping[str, Any]
+    national_past_cap_census: Mapping[str, Any]
+    all_past_cap_census: Mapping[str, Any]
+    initial_loss: float
 
 
 def past_cap_census(
@@ -963,6 +1002,14 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
     targets = []
     for row in problem.target_frame.itertuples(index=False):
         area_type = str(row.area_type)
+        target_name = str(
+            row.target_name
+            if "target_name" in problem.target_frame.columns
+            else f"{row.area_type}/{row.area_code}/{row.metric}"
+        )
+        hierarchy = (
+            row.hierarchy if "hierarchy" in problem.target_frame.columns else None
+        )
         metadata = {
             "area_type": area_type,
             "area_code": str(row.area_code),
@@ -975,11 +1022,7 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
                     metadata[column] = str(value)
         targets.append(
             Target(
-                name=str(
-                    row.target_name
-                    if "target_name" in problem.target_frame.columns
-                    else f"{row.area_type}/{row.area_code}/{row.metric}"
-                ),
+                name=target_name,
                 entity="household",
                 measure=_constant_vector(metric_columns[(area_type, str(row.metric))]),
                 value=float(row.value),
@@ -991,9 +1034,37 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
                     else "uk_rowwise_local_surface"
                 ),
                 metadata=metadata,
+                hierarchy=hierarchy,
             )
         )
     return TargetSet(targets)
+
+
+def _progress_fan_out(
+    progress: Callable[[str], None] | None,
+    progress_events: Callable[[dict[str, object]], None] | None,
+) -> Callable[[dict[str, object]], None] | None:
+    """One calibrator callback that feeds the line sink and the event sink."""
+
+    sinks: list[Callable[[dict[str, object]], None]] = []
+    if progress is not None:
+        from microcosm.build.uk_runtime.solve_progress import (
+            uk_solve_progress_callback,
+        )
+
+        sinks.append(uk_solve_progress_callback(progress))
+    if progress_events is not None:
+        sinks.append(progress_events)
+    if not sinks:
+        return None
+    if len(sinks) == 1:
+        return sinks[0]
+
+    def callback(event: dict[str, object]) -> None:
+        for sink in sinks:
+            sink(event)
+
+    return callback
 
 
 def solve_uk_rowwise_weights_under_doctrine(
@@ -1008,11 +1079,48 @@ def solve_uk_rowwise_weights_under_doctrine(
     learning_rate: float = 0.15,
     conserve_mass: bool = False,
     target_records: int | None = None,
+    dataset_households: int | None = None,
     l0_lambda: float = 0.0,
     budget_iters: int = 10,
     seed: int = 0,
+    selection_seed: int | None = None,
+    selection_pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
+    size_checkpoint_dir: Path | None = None,
+    resume_size_checkpoint: Path | None = None,
+    checkpoint_identity: Mapping[str, Any] | None = None,
+    checkpoint_provenance: Mapping[str, Any] | None = None,
+    progress: Callable[[str], None] | None = None,
+    progress_events: Callable[[dict[str, object]], None] | None = None,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
+
+    ``progress`` receives readable lines (every 100 epochs, each probe, the
+    search stop); ``progress_events`` receives every raw calibrator event as a
+    dict (``calibration_epoch``, ``budget_probe``, ``budget_search_done``),
+    phase-tagged by the size machinery, so a build driver can publish staging
+    telemetry without changing the lines a log reader follows.
+
+    ``selection_seed`` (default ``seed``) seeds only the size selection —
+    the informed L0 search, the exact-count draw and the refit — so two
+    selections can be compared on one pool and one dense reference.
+
+    ``size_checkpoint_dir`` persists the dense solve and the informed L0
+    search of a ``dataset_households`` solve before the exact-count draw
+    (:mod:`microcosm.build.uk_runtime.size_checkpoint`), stamped with
+    ``checkpoint_identity``; ``resume_size_checkpoint`` restores such a
+    checkpoint instead of solving and searching again, refusing when the
+    identity, the pool or the target surface differ. The draw's threshold
+    (``selection_pi_hi``) may differ from the one the search stopped on; the
+    size receipt records both. ``baseline_pi_floor`` trims the refit's
+    Horvitz–Thompson baseline (see
+    :func:`~microcosm.build.uk_runtime.dataset_size.refit_uk_dataset_size`);
+    it is a refit setting, so a resumed checkpoint may use a different one.
+
+    ``progress`` receives one readable line per hundred epochs of the dense
+    solve, of every budget probe and of the refit, one line per finished
+    probe with its drawability verdict, and one when the search stops
+    (:func:`~microcosm.build.uk_runtime.solve_progress.uk_solve_progress_callback`).
 
     Structurally knob-free like before the ``calibrate()`` migration: no
     per-target parameters and no doctrine parameter — the bounds always come
@@ -1126,22 +1234,287 @@ def solve_uk_rowwise_weights_under_doctrine(
         grain_labels,
         rule=target_weight_rule,
     )
-    result = calibrate(
-        frame,
-        target_set,
-        weight_entity="household",
-        epochs=epochs,
-        learning_rate=learning_rate,
-        mass=CONSERVE_MASS if conserve_mass else FREE_MASS,
-        mass_reason=None if conserve_mass else mass_reason,
-        max_weight_ratio=doctrine.max_weight_ratio,
-        target_records=target_records,
-        l0_lambda=l0_lambda,
-        budget_iters=budget_iters,
-        seed=seed,
+    if (size_checkpoint_dir is not None or resume_size_checkpoint is not None) and (
+        dataset_households is None
+    ):
+        raise ValueError("size checkpoints apply to a dataset_households solve.")
+    if size_checkpoint_dir is not None and resume_size_checkpoint is not None:
+        raise ValueError("a resumed solve does not write a second checkpoint.")
+    progress_callback = _progress_fan_out(progress, progress_events)
+    restored = None
+    if resume_size_checkpoint is not None:
+        from microcosm.build.uk_runtime.size_checkpoint import load_uk_size_checkpoint
+
+        restored = load_uk_size_checkpoint(
+            resume_size_checkpoint,
+            frame=frame,
+            target_set=target_set,
+            identity={} if checkpoint_identity is None else checkpoint_identity,
+        )
+        result = restored.dense
+        # The checkpoint's identity carries the doctrine it was solved under;
+        # this is the second lock: the restored options must equal today's.
+        expected_options = {
+            "max_weight_ratio": doctrine.max_weight_ratio,
+            "mass": CONSERVE_MASS if conserve_mass else FREE_MASS,
+        }
+        drift = sorted(
+            f"{key}: checkpoint {result.options.get(key)!r} != doctrine {value!r}"
+            for key, value in expected_options.items()
+            if result.options.get(key) != value
+        )
+        if result.target_loss_cap != doctrine.target_loss_cap:
+            drift.append(
+                f"target_loss_cap: checkpoint {result.target_loss_cap!r} != doctrine "
+                f"{doctrine.target_loss_cap!r}"
+            )
+        if drift:
+            raise ValueError(
+                "resumed size checkpoint was solved under a different doctrine: "
+                + "; ".join(drift)
+                + "."
+            )
+    else:
+        result = calibrate(
+            frame,
+            target_set,
+            weight_entity="household",
+            epochs=epochs,
+            learning_rate=learning_rate,
+            mass=CONSERVE_MASS if conserve_mass else FREE_MASS,
+            mass_reason=None if conserve_mass else mass_reason,
+            max_weight_ratio=doctrine.max_weight_ratio,
+            target_records=target_records,
+            l0_lambda=l0_lambda,
+            budget_iters=budget_iters,
+            seed=seed,
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=doctrine.target_loss_cap,
+            progress_callback=progress_callback,
+        )
+    selected_support = None
+    size_receipt = None
+    dense_result = None
+    if dataset_households is not None:
+        if target_records is not None or l0_lambda != 0:
+            raise ValueError(
+                "dataset_households requires an unpruned dense reference solve."
+            )
+        from microcosm.build.uk_runtime.dataset_size import (
+            refit_uk_dataset_size,
+            select_uk_dataset_size,
+        )
+
+        size_seed = seed if selection_seed is None else selection_seed
+        checkpoint_receipt: dict[str, Any] | None = None
+        if restored is not None:
+            size_selection = restored.selection
+            checkpoint_receipt = {"resumed_from": restored.receipt}
+        else:
+            size_selection = select_uk_dataset_size(
+                frame,
+                result,
+                households=dataset_households,
+                epochs=epochs,
+                learning_rate=learning_rate,
+                seed=size_seed,
+                pi_hi=selection_pi_hi,
+                progress_callback=progress_callback,
+            )
+            if size_checkpoint_dir is not None:
+                from microcosm.build.uk_runtime.size_checkpoint import (
+                    write_uk_size_checkpoint,
+                )
+
+                checkpoint_receipt = {
+                    "written": write_uk_size_checkpoint(
+                        size_checkpoint_dir,
+                        frame=frame,
+                        dense=result,
+                        selection=size_selection,
+                        identity=(
+                            {} if checkpoint_identity is None else checkpoint_identity
+                        ),
+                        provenance=checkpoint_provenance,
+                    )
+                }
+        sized = refit_uk_dataset_size(
+            frame,
+            result,
+            households=dataset_households,
+            epochs=epochs,
+            learning_rate=learning_rate,
+            seed=size_seed,
+            pi_hi=selection_pi_hi,
+            baseline_pi_floor=baseline_pi_floor,
+            selection=size_selection,
+            progress_callback=progress_callback,
+        )
+        dense_result = result
+        result = sized.result
+        selected_support = sized.support
+        size_receipt = dict(sized.receipt)
+        # At this level "reused" means restored from a checkpoint: the solve
+        # always hands the refit the selection it just searched or restored.
+        size_receipt["selection_reused"] = restored is not None
+        size_receipt["checkpoint"] = checkpoint_receipt
+    evidence = _doctrine_solve_evidence(
+        result,
+        target_set=target_set,
+        problem=problem,
+        national_rows=national_rows,
+        local_count=local_count,
         target_loss_weights=target_loss_weights,
-        target_loss_cap=doctrine.target_loss_cap,
+        doctrine=doctrine,
     )
+    diagnostics = evidence.diagnostics
+    national_diagnostics = evidence.national_diagnostics
+    census = evidence.past_cap_census
+    national_census = evidence.national_past_cap_census
+    all_census = evidence.all_past_cap_census
+    initial_loss = evidence.initial_loss
+    dense_reference = None
+    if dense_result is not None:
+        dense_evidence = _doctrine_solve_evidence(
+            dense_result,
+            target_set=target_set,
+            problem=problem,
+            national_rows=national_rows,
+            local_count=local_count,
+            target_loss_weights=target_loss_weights,
+            doctrine=doctrine,
+        )
+        dense_reference = UKRowwiseDenseReference(
+            weights=np.asarray(dense_result.weights, dtype=np.float64),
+            initial_weights=np.asarray(dense_result.initial_weights, dtype=np.float64),
+            diagnostics=dense_evidence.diagnostics,
+            national_diagnostics=dense_evidence.national_diagnostics,
+            initial_loss=dense_evidence.initial_loss,
+            final_loss=float(dense_result.final_loss),
+            n_nonzero=int(dense_result.n_nonzero),
+            past_cap_census=dense_evidence.past_cap_census,
+            national_past_cap_census=dense_evidence.national_past_cap_census,
+            all_past_cap_census=dense_evidence.all_past_cap_census,
+        )
+
+    # The UK carrier persists the weight column, and the kernel product is
+    # immutable with no table-refresh operation, so the finished frame is
+    # *rebuilt* through the canonical assembler from the kernel product's
+    # tables, mass log, and period. A rebuild can silently drop kernel
+    # surfaces the assembler does not carry, so the guards below refuse to
+    # ship if the kernel product held strata or metadata the rebuilt frame
+    # lost (both trivially equal today; the guard is the boundary marker
+    # for the day they are not).
+    if selected_support is None:
+        clean_result = result.frame if restore is None else restore(result.frame)
+        expected_ids = problem.household_ids
+    else:
+        # Restore the full prepared carrier before selecting: legacy restorers
+        # retain full original tables and cannot accept compact weight arrays.
+        clean_pool = frame if restore is None else restore(frame)
+        expected_ids = tuple(problem.household_ids[i] for i in selected_support)
+        clean_subset = clean_pool.select(
+            clean_pool.table("person")["person_household_id"]
+            .isin(expected_ids)
+            .to_numpy()
+        )
+        clean_result = Frame(
+            {entity: clean_subset.table(entity) for entity in clean_subset.entities},
+            clean_subset.schema,
+            {
+                entity: result.frame.weights_for(entity)
+                for entity in result.frame.weighted_entities
+            },
+            clean_subset.strata,
+            mass_log=result.frame.mass_log,
+            metadata=result.frame.metadata,
+        )
+    restored_ids = tuple(clean_result.table("household")["household_id"].tolist())
+    if restored_ids != expected_ids:
+        raise ValueError(
+            "restore returned households that do not match the problem's rows "
+            "(same ids, same order); weights are written back by position, so a "
+            "reordering restore would misattribute them silently."
+        )
+    slash_columns = {
+        entity: [
+            str(column)
+            for column in clean_result.table(entity).columns
+            if "/" in str(column)
+        ]
+        for entity in clean_result.entities
+    }
+    slash_columns = {
+        entity: columns for entity, columns in slash_columns.items() if columns
+    }
+    if slash_columns:
+        raise ValueError(
+            "prepared slash-named measure columns survived the rowwise solve "
+            f"restore and cannot reach an H5 writer: {slash_columns}."
+        )
+    calibrated_household = clean_result.table("household").copy()
+    calibrated_household["household_weight"] = np.asarray(
+        result.weights, dtype=np.float64
+    )
+    finished = uk_national_frame(
+        person=clean_result.table("person"),
+        benunit=clean_result.table("benunit"),
+        household=calibrated_household,
+        time_period=uk_time_period(clean_result),
+        weight_kind=WeightKind.CALIBRATED,
+        mass_log=clean_result.mass_log,
+    )
+    validate_uk_national_frame(finished)
+    if not clean_result.strata.equals(finished.strata):
+        raise ValueError(
+            "the calibrated frame carries strata the rebuilt UK national "
+            "frame would drop; extend uk_national_frame to carry them "
+            "before shipping a strata-bearing local solve."
+        )
+    if dict(clean_result.metadata) != dict(finished.metadata):
+        raise ValueError(
+            "the calibrated frame carries metadata beyond the UK time "
+            "period; the rebuild would drop it, so the solve refuses "
+            "instead."
+        )
+    return UKRowwiseDoctrineSolve(
+        frame=finished,
+        calibration_result=result,
+        weights=np.asarray(result.weights, dtype=np.float64),
+        initial_weights=np.asarray(result.initial_weights, dtype=np.float64),
+        diagnostics=diagnostics,
+        national_diagnostics=national_diagnostics,
+        loss_trajectory=np.asarray(result.loss_trajectory, dtype=np.float64),
+        initial_loss=initial_loss,
+        final_loss=float(result.final_loss),
+        n_nonzero=int(result.n_nonzero),
+        past_cap_census=census,
+        national_past_cap_census=national_census,
+        all_past_cap_census=all_census,
+        binding_adjudications=binding_adjudications,
+        selected_support=selected_support,
+        size_receipt=size_receipt,
+        dense_reference=dense_reference,
+    )
+
+
+def _doctrine_solve_evidence(
+    result: CalibrationResult,
+    *,
+    target_set: TargetSet,
+    problem: UKRowwiseLocalMatrix,
+    national_rows: UKRowwiseNationalRows | None,
+    local_count: int,
+    target_loss_weights: np.ndarray,
+    doctrine: Any,
+) -> _DoctrineSolveEvidence:
+    """Label one front-door result against the declared joint surface.
+
+    Shared by the shipped solve and, on a size run, the dense reference it
+    was cut from: both must compile the whole surface, align by name, and
+    reproduce the declared target values exactly.
+    """
+
     if result.skipped:
         reasons = [
             f"{skipped.target.name}: {skipped.reason}" for skipped in result.skipped[:5]
@@ -1271,79 +1644,13 @@ def solve_uk_rowwise_weights_under_doctrine(
             target_loss_cap=doctrine.target_loss_cap,
         )
     )
-
-    # The UK carrier persists the weight column, and the kernel product is
-    # immutable with no table-refresh operation, so the finished frame is
-    # *rebuilt* through the canonical assembler from the kernel product's
-    # tables, mass log, and period. A rebuild can silently drop kernel
-    # surfaces the assembler does not carry, so the guards below refuse to
-    # ship if the kernel product held strata or metadata the rebuilt frame
-    # lost (both trivially equal today; the guard is the boundary marker
-    # for the day they are not).
-    clean_result = result.frame if restore is None else restore(result.frame)
-    restored_ids = tuple(clean_result.table("household")["household_id"].tolist())
-    if restored_ids != problem.household_ids:
-        raise ValueError(
-            "restore returned households that do not match the problem's rows "
-            "(same ids, same order); weights are written back by position, so a "
-            "reordering restore would misattribute them silently."
-        )
-    slash_columns = {
-        entity: [
-            str(column)
-            for column in clean_result.table(entity).columns
-            if "/" in str(column)
-        ]
-        for entity in clean_result.entities
-    }
-    slash_columns = {
-        entity: columns for entity, columns in slash_columns.items() if columns
-    }
-    if slash_columns:
-        raise ValueError(
-            "prepared slash-named measure columns survived the rowwise solve "
-            f"restore and cannot reach an H5 writer: {slash_columns}."
-        )
-    calibrated_household = clean_result.table("household").copy()
-    calibrated_household["household_weight"] = np.asarray(
-        result.weights, dtype=np.float64
-    )
-    finished = uk_national_frame(
-        person=clean_result.table("person"),
-        benunit=clean_result.table("benunit"),
-        household=calibrated_household,
-        time_period=uk_time_period(clean_result),
-        weight_kind=WeightKind.CALIBRATED,
-        mass_log=clean_result.mass_log,
-    )
-    validate_uk_national_frame(finished)
-    if not clean_result.strata.equals(finished.strata):
-        raise ValueError(
-            "the calibrated frame carries strata the rebuilt UK national "
-            "frame would drop; extend uk_national_frame to carry them "
-            "before shipping a strata-bearing local solve."
-        )
-    if dict(clean_result.metadata) != dict(finished.metadata):
-        raise ValueError(
-            "the calibrated frame carries metadata beyond the UK time "
-            "period; the rebuild would drop it, so the solve refuses "
-            "instead."
-        )
-    return UKRowwiseDoctrineSolve(
-        frame=finished,
-        calibration_result=result,
-        weights=np.asarray(result.weights, dtype=np.float64),
-        initial_weights=np.asarray(result.initial_weights, dtype=np.float64),
+    return _DoctrineSolveEvidence(
         diagnostics=diagnostics,
         national_diagnostics=national_diagnostics,
-        loss_trajectory=np.asarray(result.loss_trajectory, dtype=np.float64),
-        initial_loss=initial_loss,
-        final_loss=float(result.final_loss),
-        n_nonzero=int(result.n_nonzero),
         past_cap_census=census,
         national_past_cap_census=national_census,
         all_past_cap_census=all_census,
-        binding_adjudications=binding_adjudications,
+        initial_loss=initial_loss,
     )
 
 
@@ -1380,9 +1687,13 @@ def rotated_uk_local_holdout(
     learning_rate: float = 0.15,
     conserve_mass: bool = False,
     target_records: int | None = None,
+    dataset_households: int | None = None,
     l0_lambda: float = 0.0,
     budget_iters: int = 10,
     solve_seed: int = 0,
+    selection_seed: int | None = None,
+    selection_pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training."""
 
@@ -1424,13 +1735,23 @@ def rotated_uk_local_holdout(
             learning_rate=learning_rate,
             conserve_mass=conserve_mass,
             target_records=target_records,
+            dataset_households=dataset_households,
             l0_lambda=l0_lambda,
             budget_iters=budget_iters,
             seed=solve_seed,
+            selection_seed=selection_seed,
+            selection_pi_hi=selection_pi_hi,
+            baseline_pi_floor=baseline_pi_floor,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(
-            problem.matrix[holdout_indices] @ train_solve.weights,
+            problem.matrix[holdout_indices][
+                :,
+                np.arange(problem.n_households)
+                if train_solve.selected_support is None
+                else train_solve.selected_support,
+            ]
+            @ train_solve.weights,
             dtype=np.float64,
         ).reshape(-1)
         held_weights = uk_local_target_loss_weights(

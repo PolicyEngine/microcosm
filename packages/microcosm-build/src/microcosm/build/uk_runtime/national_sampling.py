@@ -141,19 +141,35 @@ def uk_spine_source_family_units(frame: Frame) -> tuple[np.ndarray, np.ndarray]:
     """
 
     household = frame.table("household")
-    required = {
-        "household_id",
+    household_id_column = "household_id"
+    lineage_columns = {
         _SPINE_SOURCE_HOUSEHOLD_ID_COLUMN,
         _SPINE_SUPPORT_CLONE_INDEX_COLUMN,
         HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
         _CAPITAL_GAINS_CLONE_COLUMN,
         _SPINE_CGT_BAND_DONOR_COLUMN,
-        _REGION_COLUMN,
     }
+    required = {household_id_column, _REGION_COLUMN, *lineage_columns}
     missing = sorted(required - set(household.columns))
+    present_lineage = lineage_columns & set(household.columns)
+    if not present_lineage:
+        raw_required = {household_id_column, _REGION_COLUMN}
+        raw_missing = sorted(raw_required - set(household.columns))
+        if raw_missing:
+            raise ValueError(
+                "UK spine sample requires household identity and region columns; "
+                f"household is missing {raw_missing}."
+            )
+        household_ids = _int_column(
+            household[household_id_column], label=household_id_column
+        )
+        regions = _str_column(household[_REGION_COLUMN], label=_REGION_COLUMN)
+        return household_ids, np.asarray(
+            [f"region={region}" for region in regions], dtype=object
+        )
     if missing:
         raise ValueError(
-            "UK spine sample requires explicit lineage and channel columns; "
+            "UK spine sample has a partial lineage surface; "
             f"household is missing {missing}."
         )
 

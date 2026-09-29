@@ -41,6 +41,11 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE,
 )
+from microcosm.build.uk_runtime.spi_band_donors import (
+    PERSON_IS_SPI_INCOME_BAND_CARRIER,
+    SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
+    SPI_INCOME_BAND_DONOR_LOWER_BOUNDS,
+)
 from microcosm.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     SPI_DONOR_INCOME_YEAR,
@@ -85,6 +90,12 @@ UK_FRS_HMRC_SPINE_LEAVES_STAGE_NAME = "frs_hmrc_spine_leaves"
 UK_HMRC_SPI_INCOME_SPINE_STAGE_NAME = "hmrc_spi_income_spine"
 EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN = "employer_pension_contributions"
 UK_HMRC_SPI_SPINE_REPLAY_REPORT_KIND = "uk_hmrc_spi_income_spine_208_fact_replay"
+#: The reserved band carriers' pool: the full prepared tape by published band.
+SPI_SPINE_BAND_DONOR_POOL = (
+    "full prepared donor tape by published total income band (TEI + TII), "
+    "narrowed to the carrier's region where that pool holds the minimum"
+)
+SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM = 20
 
 UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS = (
     *FRS_HMRC_RETAINED_LEAF_COLUMNS,
@@ -240,6 +251,7 @@ class UKSPIIncomeSpineResult:
             "recipient_minimum_age": SPI_MINIMUM_RECIPIENT_AGE,
             "pension_receipt_bridge": self.imputation.pension_receipt_bridge,
             "income_uprating": self.imputation.income_uprating,
+            "band_donor_resample": self.imputation.band_donor_resample,
             "targets": {
                 "count": len(self.source_targets.targets),
                 "classification": dict(self.replay_report.summary),
@@ -523,6 +535,20 @@ class UKSPIIncomeSpineStageTransform:
         support = _support_result_from_frame(frame, tables)
         stage1_op = _operation(self.stage, "fit_weighted_qrf_stage1")
         redraw_op = _operation(self.stage, "redraw_columns_from_fitted_qrf")
+        resample_op = _optional_operation(self.stage, "resample_band_donor_leaves")
+        band_donor_resample = (
+            None
+            if resample_op is None
+            else {
+                "lower_bounds": tuple(
+                    int(value) for value in resample_op.parameters["band_lower_bounds"]
+                ),
+                "regional_pool_minimum": int(
+                    resample_op.parameters["regional_pool_minimum"]
+                ),
+                "seed": int(resample_op.parameters["seed"]),
+            }
+        )
         imputation = impute_uk_spi_income_support(
             support,
             self.spi_tab_path,
@@ -545,6 +571,7 @@ class UKSPIIncomeSpineStageTransform:
                     "predictors"
                 ]
             ),
+            band_donor_resample=band_donor_resample,
         )
         result_frame = uk_national_frame(
             person=imputation.person,
@@ -919,6 +946,30 @@ def _assert_income_stage_parameters(
         != SPI_SYNTHETIC_SUPPORT_CHANNEL
     ):
         raise ValueError("SPI income effective-mass support channel drifted.")
+    resample = _optional_operation(stage, "resample_band_donor_leaves")
+    if resample is not None:
+        expected = {
+            "carrier_column": PERSON_IS_SPI_INCOME_BAND_CARRIER,
+            "band_column": SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
+            "band_lower_bounds": list(SPI_INCOME_BAND_DONOR_LOWER_BOUNDS),
+            "pool": SPI_SPINE_BAND_DONOR_POOL,
+            "regional_pool_minimum": SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM,
+            "weighting": "FACT",
+            "with_replacement": True,
+            "outputs": "stage-1 outputs, uprated as the stage-1 draws",
+            "seed": seed + 2,
+        }
+        actual = dict(resample.parameters)
+        if actual != expected:
+            drifted = sorted(
+                key
+                for key in {*actual, *expected}
+                if actual.get(key) != expected.get(key)
+            )
+            raise ValueError(
+                "SPI income resample_band_donor_leaves declaration drifted from "
+                f"the reviewed mapping on parameter(s) {drifted}."
+            )
 
 
 def _operation(stage: SourceStageSpec, kind: str):
@@ -928,6 +979,15 @@ def _operation(stage: SourceStageSpec, kind: str):
             f"Stage {stage.stage!r} must declare exactly one {kind!r} operation."
         )
     return matches[0]
+
+
+def _optional_operation(stage: SourceStageSpec, kind: str):
+    matches = [operation for operation in stage.operations if operation.kind == kind]
+    if len(matches) > 1:
+        raise ValueError(
+            f"Stage {stage.stage!r} must declare at most one {kind!r} operation."
+        )
+    return matches[0] if matches else None
 
 
 def _artifact_by_table(

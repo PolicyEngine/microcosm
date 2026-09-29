@@ -391,7 +391,7 @@ def _burndown_data(node_count: int, unrelated_edit_misses: int) -> dict[str, obj
             {
                 "id": identifier,
                 "test": "visual review surface",
-                "file": "packages/microcosm-graph/tests/test_graph_explain.py",
+                "file": "packages/microcosm-graph/tests/engine_free/shared/test_graph_explain.py",
                 "state": "green",
                 "reasons": [],
             }

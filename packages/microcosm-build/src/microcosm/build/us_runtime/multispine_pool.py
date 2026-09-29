@@ -44,6 +44,7 @@ from microcosm.build.us_runtime.disability_benefits import (
 )
 from microcosm.build.us_runtime.education_inputs import with_us_education_inputs
 from microcosm.build.us_runtime.eligibility_inputs import (
+    US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
     with_us_eligibility_inputs,
 )
 from microcosm.build.us_runtime.energy_subsidy import (
@@ -97,6 +98,9 @@ from microcosm.build.us_runtime.spine_agreement import (
     spine_agreement_gate,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_assembly_receipt,
@@ -140,6 +144,8 @@ __all__ = [
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
     "POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256",
+    "POOL_PROJECTION_INPUT_PROVISION_COUNTS",
+    "POOL_SSI_INPUT_PROVISION_COUNTS",
     "POOL_SSI_DEPENDENCY_CONTRACT",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
     "POOL_POST_CLONE_SOURCE_OPERATOR_ORDER",
@@ -326,28 +332,60 @@ class PoolEngineInputProjectionContract:
 
 
 POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
-    engine_version="1.819.0",
+    engine_version="2.2.1",
     root="ssi",
-    input_leaf_count=55,
+    input_leaf_count=54,
     formula_node_count=63,
     edge_count=187,
-    sha256="e0a23d961c36526a10e56d80d51ca46760e92b4ea3653734014469da2394f702",
+    sha256="200ca39e784511e9ede685261f5e0840198ec2b9c4292a522c0fc504c535b31c",
 )
 """Exact static graph consumed by the terminal SSI agreement simulation."""
 
 POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
-    engine_version="1.819.0",
-    input_count=924,
-    default_count=924,
-    sha256="b4b2041d221b6322a3143dd2d54dc95eb1b20d5f33f4a60908055d735ba07930",
-    defaults_sha256="8718854d455ca536dba2e712aed3b2010becf909b8c61210f0456bcf732ec68c",
+    engine_version="2.2.1",
+    input_count=926,
+    default_count=925,
+    sha256="cefb137f164c6629589a887bbb56831ebc463cd46909a72ead4dbe0557961e61",
+    defaults_sha256="f938af6506623f453ca55922cf4a8ba6443d5f780f85e4381b777083a90396a0",
 )
 """Exact installed input registry scanned by the disposable projection."""
 
-POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "98231086a18676778346fc3219bb9450f7eb85eb77791640598cba7a5ae66ef6"
+POOL_SSI_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
+    ("assembled_native_person_input", 1),
+    ("declared_absent_engine_input", 18),
+    ("declared_deferred_null_input", 3),
+    ("materialized_pool_input_surface", 31),
+    ("seed_stage_program_contract", 1),
 )
-"""Pinned content digest of all 1,058 post-transfer consumer/input rows."""
+"""How each SSI input leaf is provisioned, by count.
+
+Hoisted out of the manifest builder so that every engine-pinned quantity this
+module carries is re-derived by one tool
+(``tools/repin_us_pool_engine_contracts.py``) rather than hand-edited where it
+is asserted.
+"""
+
+POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
+    ("assembled_native_engine_input", 5),
+    ("declared_absent_engine_input", 763),
+    ("declared_deferred_null_input", 3),
+    ("derived_schedule_d_input", 1),
+    ("frame_structural_engine_input", 10),
+    ("materialized_pool_input_surface", 122),
+    ("preserved_stacked_engine_input", 4),
+    ("seed_stage_program_contract", 17),
+    ("unprovisioned_source_input", 1),
+)
+"""How every installed engine input is provisioned, by count.
+
+Hoisted for the same reason as :data:`POOL_SSI_INPUT_PROVISION_COUNTS`: one
+tool re-derives every engine-pinned quantity this module carries.
+"""
+
+POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
+    "0a84565a659a6404cb17715dda36f094a87431c713c7a37bf65a936b16937325"
+)
+"""Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -638,6 +676,15 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
             "age",
             "is_female",
             "is_household_head",
+            # The parent ids are complete on both arms without a transfer:
+            # the eligibility operator resolves them on the CPS projection
+            # and ``map_acs_native_inputs`` writes the ACS spine's declared
+            # 0. They must never enter the QRF plan — parent_1_id is not a
+            # PolicyEngine-US variable, so ``_target_encoding`` would treat
+            # it as continuous and hand an ACS child a fractional
+            # interpolation between two unrelated ASEC person ids
+            # (microcosm#884).
+            *US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
         }
     ),
     "household": frozenset({"tenure_type"}),
@@ -861,9 +908,8 @@ def _resolve_take_up_program_bindings(
             for program in load_take_up_contract().programs
         )
     for index, binding in enumerate(bindings):
-        if (
-            len(binding) != 3
-            or not all(isinstance(value, str) and value for value in binding)
+        if len(binding) != 3 or not all(
+            isinstance(value, str) and value for value in binding
         ):
             raise ValueError(
                 "Take-up manifest program binding must contain three non-empty "
@@ -1053,7 +1099,7 @@ def _pool_engine_input_projection(
 def pool_engine_input_projection_receipt(
     engine: _PoolRulesEngine | None = None,
 ) -> dict[str, object]:
-    """Validate every installed simulation input and its declared default."""
+    """Validate defaults, keeping required source observations without a default."""
 
     rules_engine = engine
     if rules_engine is None:
@@ -1062,18 +1108,26 @@ def pool_engine_input_projection_receipt(
         rules_engine = PolicyEngineUSEngine()
     variables = list(rules_engine.variables())
     defaults = dict(rules_engine.default_values(variables))
-    missing_defaults = sorted(set(variables) - set(defaults))
+    required_source_inputs = set(US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS)
+    missing_defaults = sorted(set(variables) - set(defaults) - required_source_inputs)
     extra_defaults = sorted(set(defaults) - set(variables))
-    if missing_defaults or extra_defaults:
+    defaulted_sources = sorted(required_source_inputs & set(defaults))
+    missing_sources = sorted(required_source_inputs - set(variables))
+    if missing_defaults or extra_defaults or defaulted_sources or missing_sources:
         raise ValueError(
             "PolicyEngine-US simulation input default surface is not exact; "
-            f"missing={missing_defaults}, extra={extra_defaults}."
+            f"missing={missing_defaults}, extra={extra_defaults}, "
+            f"defaulted_sources={defaulted_sources}, missing_sources={missing_sources}."
         )
     rows = [
         {
             "entity": rules_engine.variable_metadata(variable).entity,
             "variable": variable,
-            "default": defaults[variable],
+            **(
+                {"source_required": True}
+                if variable in required_source_inputs
+                else {"default": defaults[variable]}
+            ),
         }
         for variable in variables
     ]
@@ -1333,9 +1387,7 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
-            available_by=(
-                "transferred" if variable in transfer_owned else "seeded"
-            ),
+            available_by=("transferred" if variable in transfer_owned else "seeded"),
             fallback=fallback,
         )
 
@@ -1457,17 +1509,11 @@ def pool_remaining_stage_input_manifest(
             fallback=fallback,
         )
 
-    expected_ssi_provisions = {
-        "assembled_native_person_input": 1,
-        "materialized_pool_input_surface": 32,
-        "seed_stage_program_contract": 1,
-        "declared_deferred_null_input": 3,
-        "declared_absent_engine_input": 18,
-    }
-    if ssi_provisions != expected_ssi_provisions:
+    if ssi_provisions != dict(POOL_SSI_INPUT_PROVISION_COUNTS):
         raise ValueError(
             "SSI input-leaf provisioning drifted; "
-            f"expected={expected_ssi_provisions}, observed={ssi_provisions}."
+            f"expected={dict(POOL_SSI_INPUT_PROVISION_COUNTS)}, "
+            f"observed={ssi_provisions}."
         )
 
     for group in US_SCHEMA.group_entities:
@@ -1526,7 +1572,11 @@ def pool_remaining_stage_input_manifest(
         fallback: str | None = (
             "ephemeral_simulation_projection_engine_default_if_present_null"
         )
-        if variable in POOL_DEFERRED_TRANSFER_INPUTS:
+        if variable in US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS:
+            provision = "unprovisioned_source_input"
+            available_by = "release"
+            fallback = "refuse_null_if_present_no_default"
+        elif variable in POOL_DEFERRED_TRANSFER_INPUTS:
             provision = "declared_deferred_null_input"
             available_by = "transferred"
             fallback = "ephemeral_simulation_projection_engine_default"
@@ -1568,20 +1618,10 @@ def pool_remaining_stage_input_manifest(
             fallback=fallback,
         )
 
-    expected_projection_provisions = {
-        "materialized_pool_input_surface": 122,
-        "seed_stage_program_contract": 17,
-        "declared_deferred_null_input": 3,
-        "assembled_native_engine_input": 5,
-        "frame_structural_engine_input": 10,
-        "preserved_stacked_engine_input": 4,
-        "derived_schedule_d_input": 1,
-        "declared_absent_engine_input": 762,
-    }
-    if projection_provisions != expected_projection_provisions:
+    if projection_provisions != dict(POOL_PROJECTION_INPUT_PROVISION_COUNTS):
         raise ValueError(
             "Simulation input-projection provisioning drifted; "
-            f"expected={expected_projection_provisions}, "
+            f"expected={dict(POOL_PROJECTION_INPUT_PROVISION_COUNTS)}, "
             f"observed={projection_provisions}."
         )
 

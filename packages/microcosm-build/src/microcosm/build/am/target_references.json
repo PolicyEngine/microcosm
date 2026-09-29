@@ -1,7 +1,9 @@
 {
   "country": "am",
   "description": "Engine-free Armenia v1 calibration authoring contracts. Observed quantities live only in the future ledger-am fact package. These series-level rows use the closed Ledger selector vocabulary and cover only count or deterministic indicator candidates. Chronicle must generate cell-level references and bindings from each harvested multi-cell table before runtime activation; identity resolution deliberately refuses an unexpanded table. Amount, income-diagnostic, and national-accounts validation facts are harvested outside this solver manifest.",
-  "allowed_value_operations": ["identity"],
+  "allowed_value_operations": [
+    "identity"
+  ],
   "target_references": [
     {
       "name": "armstat_population_by_age_sex_marz",
@@ -23,7 +25,8 @@
         "publisher": "ArmStat",
         "target_role": "calibration"
       },
-      "notes": "Primary age x sex x marz margin from the Statbank PxWeb endpoint. Chronicle must fan the harvested table into one dimension- and geography-pinned reference per selected cell; this row is not a scalar table total. The release profile projects the 2022-census-vintage series to 2024 in Ledger, and this package carries no level."
+      "notes": "Primary age x sex x marz margin from the Statbank PxWeb endpoint. Chronicle must fan the harvested table into one dimension- and geography-pinned reference per selected cell; this row is not a scalar table total. The release profile projects the 2022-census-vintage series to 2024 in Ledger, and this package carries no level.",
+      "category_id": "armstat.demography"
     },
     {
       "name": "armstat_ilcs_households_by_size_marz",
@@ -44,7 +47,8 @@
         "publisher": "ArmStat",
         "target_role": "calibration"
       },
-      "notes": "Raw household structure derived from the public ILCS household file with official weights. Chronicle must generate a distinct direct/pre-built binding for every selected household-size x marz cell. Exact variable codes, bands, and current sample size are harvest items."
+      "notes": "Raw household structure derived from the public ILCS household file with official weights. Chronicle must generate a distinct direct/pre-built binding for every selected household-size x marz cell. Exact variable codes, bands, and current sample size are harvest items.",
+      "category_id": "armstat.household_structure"
     },
     {
       "name": "armstat_ilcs_households_by_consumption_band_marz",
@@ -66,7 +70,8 @@
         "publisher": "ArmStat",
         "target_role": "calibration"
       },
-      "notes": "Consumption is ArmStat's official welfare measure. Chronicle must replace the generic authoring filter with a reviewed pre-built indicator binding for every selected consumption-band x marz cell. A band is eligible only if it is scale-free with a matching authenticated donor indicator or uses an approved AMD-compatible pre-built bridge; raw US-dollar values may not be tested against AMD cutoffs. The bands describe raw consumption, not poverty classifications or survey-derived tax-benefit quantities."
+      "notes": "Consumption is ArmStat's official welfare measure. Chronicle must replace the generic authoring filter with a reviewed pre-built indicator binding for every selected consumption-band x marz cell. A band is eligible only if it is scale-free with a matching authenticated donor indicator or uses an approved AMD-compatible pre-built bridge; raw US-dollar values may not be tested against AMD cutoffs. The bands describe raw consumption, not poverty classifications or survey-derived tax-benefit quantities.",
+      "category_id": "armstat.consumption"
     },
     {
       "name": "armstat_lfs_employed_by_age_sex_marz",
@@ -87,7 +92,8 @@
         "publisher": "ArmStat",
         "target_role": "calibration"
       },
-      "notes": "Raw employment-status counts derived from the public 2024 LFS member microdata. Chronicle must generate dimension-pinned references and direct/pre-built bindings for selected age x sex x marz cells. Exact questionnaire codes and weighting fields are harvest items."
+      "notes": "Raw employment-status counts derived from the public 2024 LFS member microdata. Chronicle must generate dimension-pinned references and direct/pre-built bindings for selected age x sex x marz cells. Exact questionnaire codes and weighting fields are harvest items.",
+      "category_id": "armstat.labour"
     },
     {
       "name": "armstat_lfs_employees_by_industry_sex_marz",
@@ -108,7 +114,8 @@
         "publisher": "ArmStat",
         "target_role": "calibration"
       },
-      "notes": "Employee counts use direct labour-status and industry columns. Chronicle must generate dimension-pinned references and direct/pre-built bindings for selected industry x sex x marz cells; no Armenian tax or benefit engine output is involved."
+      "notes": "Employee counts use direct labour-status and industry columns. Chronicle must generate dimension-pinned references and direct/pre-built bindings for selected industry x sex x marz cells; no Armenian tax or benefit engine output is involved.",
+      "category_id": "armstat.labour"
     },
     {
       "name": "armstat_src_payroll_employees_by_industry_sex_marz",
@@ -129,7 +136,8 @@
         "publisher": "ArmStat / State Revenue Committee",
         "target_role": "calibration"
       },
-      "notes": "Administrative payroll-employee counts from the SRC-register series published by ArmStat. Chronicle must identify the exact one of nine published datasets, then generate selected industry x sex x marz cell references and bindings."
+      "notes": "Administrative payroll-employee counts from the SRC-register series published by ArmStat. Chronicle must identify the exact one of nine published datasets, then generate selected industry x sex x marz cell references and bindings.",
+      "category_id": "armstat.earnings"
     },
     {
       "name": "armstat_pensioner_caseload",
@@ -150,7 +158,8 @@
         "publisher": "ArmStat",
         "target_role": "calibration"
       },
-      "notes": "Harvest a current 2024 caseload and pin its exact fact identity. The supplied January 2022 count is stale evidence only and must not silently populate this reference."
+      "notes": "Harvest a current 2024 caseload and pin its exact fact identity. The supplied January 2022 count is stale evidence only and must not silently populate this reference.",
+      "category_id": "armstat.pensions"
     },
     {
       "name": "armstat_family_social_benefit_families",
@@ -171,11 +180,50 @@
         "publisher": "ArmStat",
         "target_role": "calibration"
       },
-      "notes": "Harvest and pin the current ArmStat caseload for families receiving family and social benefits. Benefit-rule amounts and eligibility are not used in engine-free v1."
+      "notes": "Harvest and pin the current ArmStat caseload for families receiving family and social benefits. Benefit-rule amounts and eligibility are not used in engine-free v1.",
+      "category_id": "armstat.family_benefit"
     }
   ],
   "target_profile": {
     "schema_version": 1,
     "hierarchy_reconciliations": []
+  },
+  "schema_version": 2,
+  "hierarchy": {
+    "providers": {
+      "armstat": {
+        "label": "Statistical Committee of Armenia"
+      }
+    },
+    "categories": {
+      "armstat.demography": {
+        "provider_id": "armstat",
+        "label": "Demography"
+      },
+      "armstat.household_structure": {
+        "provider_id": "armstat",
+        "label": "Household structure"
+      },
+      "armstat.consumption": {
+        "provider_id": "armstat",
+        "label": "Household consumption"
+      },
+      "armstat.labour": {
+        "provider_id": "armstat",
+        "label": "Labour"
+      },
+      "armstat.earnings": {
+        "provider_id": "armstat",
+        "label": "Earnings"
+      },
+      "armstat.pensions": {
+        "provider_id": "armstat",
+        "label": "Pensions"
+      },
+      "armstat.family_benefit": {
+        "provider_id": "armstat",
+        "label": "Family benefit"
+      }
+    }
   }
 }

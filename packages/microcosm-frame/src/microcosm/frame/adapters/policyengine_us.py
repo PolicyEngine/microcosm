@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, distribution
+from numbers import Integral
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -46,8 +47,10 @@ from microcosm.frame.materialize import (
     read_frame_table,
 )
 from microcosm.frame.rules import ExportContract
+from microcosm.frame.scaling import ScaleFactor, apply_scale
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 from microcosm.frame.units import US_SCHEMA
+from microcosm.frame.weights import Weights
 
 __all__ = [
     "ConsumerReceipt",
@@ -114,69 +117,123 @@ _DTYPE_KIND_BY_VALUE_TYPE: dict[type, str] = {
 # (``"eternity"``, ``"day"``) is point-in-time state.
 _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 
-# PolicyEngine-US 1.819.0 creates 110 default-system variables outside ordinary
-# top-level ``class ...(Variable)`` declarations. Keep the compact metadata
-# snapshot tied to every source/activation surface that produced it: a changed
-# wheel must fail closed until this audit is refreshed, never silently omit a
-# newly generated formula-owned output.
-_GENERATED_SOURCE_VERSION = "1.819.0"
+# --- BEGIN GENERATED VARIABLE AUDIT ---
+# Regenerate with:
+#   uv run python tools/refresh_us_generated_variable_audit.py
+# The block below is generated from the installed wheels; never edit a
+# digest or a name by hand. 119 default-system variables are
+# created outside ordinary top-level ``class ...(Variable)``
+# declarations, so the snapshot is tied to every source and activation
+# surface that produced it: a changed wheel fails closed until this
+# audit is refreshed, and never silently omits a newly generated
+# formula-owned output. A name policyengine_us.spm.DATASET_SOURCE_INPUTS
+# declares source-deliverable is recorded as an input leaf despite its
+# fallback formula; spm.py is pinned so that declaration cannot drift.
+_GENERATED_SOURCE_VERSION = "2.2.1"
 _GENERATED_SOURCE_SHA256: dict[str, str] = {
     "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
-    "variables/household/demographic/geographic/state/in_state.py": (
-        "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
+    "reforms/reforms.py": (
+        "b4077ecee0342080f9a738422f2275479f1b8923366700aece79ef92c64baa61"
     ),
+    "reforms/states/mi/surtax.py": (
+        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+    ),
+    "spm.py": "baa69c0d1163bdc55f7dc9ac85645c2b75e5519c8b72ec54fd57787a22164d5a",
+    "system.py": "1c8539dcb8aeba4973823887895f5cd42bb9a2ee1270b0a947c9e7c185571302",
     "variables/gov/puf.py": (
         "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
     ),
     "variables/gov/states/tax/income/_generate_state_mfs_variables.py": (
         "a0c9decd81b6eb76ac7edcddfc913d89ee86e0f18d8c51702bcb2a015dc2fabe"
     ),
-    "reforms/states/mi/surtax.py": (
-        "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
+    "variables/household/demographic/geographic/state/in_state.py": (
+        "a3792c642387b652752461c85c03e5a9cb39fab55b4e038270374dd7e7d8aa60"
     ),
-    "reforms/reforms.py": (
-        "9846915c2b03e776dc37cdd6d92566de117f6eebafbf5508179e196fce28d474"
-    ),
-    "system.py": "820dadeb7d22ef14d9cb2c34607f2afe68ba5fae616e05e634c2319e61eb457d",
 }
-_GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, bool], ...] = (
+_GENERATED_SPM_SOURCE_VERSION = "1.0.0"
+_GENERATED_SPM_SOURCE_SHA256: dict[str, str] = {
+    "policyengine_adapter.py": (
+        "aa5c20cd94abd3287bec097e6f3544f1c822d708cf63cf34c9ce294c3a1e85f7"
+    ),
+}
+_GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, str, bool], ...] = (
     (
-        tuple(
-            "AL AK AZ AR CA CO CT DC DE FL GA HI ID IL IN IA KS KY LA ME MD MA "
-            "MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX "
-            "UT VT VA WA WV WI WY PR VI".split()
-        ),
-        "household",
-        "bool",
+        ("mi_surtax",),
+        "tax_unit",
+        "float",
+        "year",
         True,
     ),
     (
         tuple(
-            "e02000 e26270 e19200 e18500 e19800 e20400 e20100 e00700 e03270 "
-            "e24515 e03300 e07300 e62900 e32800 e87530 e03240 e01100 e01200 "
-            "e24518 e09900 e27200 e03290 e58990 e03230 e11200 e07260 e07240 "
-            "e03220 p08000 e03400 e09800 e09700 e03500 e87521".split()
+            "e00700 e01100 e01200 e02000 e03220 e03230 e03240 e03270 "
+            "e03290 e03300 e03400 e03500 e07240 e07260 e07300 e09700 "
+            "e09800 e09900 e11200 e18500 e19200 e19800 e20100 e20400 "
+            "e24515 e24518 e26270 e27200 e32800 e58990 e62900 e87521 "
+            "e87530 p08000".split()
         ),
         "person",
         "float",
+        "year",
         False,
     ),
     (
         tuple(
-            "ar_standard_deduction ar_itemized_deductions ar_taxable_income ar_agi "
-            "dc_taxable_income de_standard_deduction de_itemized_deductions "
-            "de_taxable_income de_agi ia_standard_deduction ia_itemized_deductions "
-            "ia_taxable_income ia_agi ky_standard_deduction ky_itemized_deductions "
-            "ky_taxable_income ms_standard_deduction ms_itemized_deductions "
-            "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
+            "ar_agi ar_itemized_deductions ar_standard_deduction "
+            "ar_taxable_income dc_taxable_income de_agi "
+            "de_itemized_deductions de_standard_deduction "
+            "de_taxable_income ia_agi ia_itemized_deductions "
+            "ia_standard_deduction ia_taxable_income "
+            "ky_itemized_deductions ky_standard_deduction "
+            "ky_taxable_income ms_itemized_deductions "
+            "ms_standard_deduction ms_taxable_income "
+            "mt_itemized_deductions mt_standard_deduction "
             "mt_taxable_income".split()
         ),
         "tax_unit",
         "float",
+        "year",
         True,
     ),
-    (("mi_surtax",), "tax_unit", "float", True),
+    (
+        tuple(
+            "AK AL AR AZ CA CO CT DC DE FL GA HI IA ID IL IN KS KY LA MA "
+            "MD ME MI MN MO MS MT NC ND NE NH NJ NM NV NY OH OK OR PA PR "
+            "RI SC SD TN TX UT VA VI VT WA WI WV WY".split()
+        ),
+        "household",
+        "bool",
+        "year",
+        True,
+    ),
+    (
+        tuple("is_household_spouse is_spm_independent_minor_role".split()),
+        "person",
+        "bool",
+        "point",
+        False,
+    ),
+    (
+        tuple(
+            "spm_unit_geographic_adjustment "
+            "spm_unit_reference_spm_threshold spm_unit_spm_threshold "
+            "spm_unit_spm_threshold_housing_portion "
+            "spm_unit_unadjusted_spm_threshold".split()
+        ),
+        "spm_unit",
+        "float",
+        "year",
+        True,
+    ),
+    (
+        tuple("spm_measurement_adults spm_measurement_children".split()),
+        "spm_unit",
+        "int",
+        "year",
+        True,
+    ),
 )
+# --- END GENERATED VARIABLE AUDIT ---
 
 
 def _index_policyengine_us_sources(
@@ -200,26 +257,30 @@ def _index_policyengine_us_variable_sources(
     return _index_policyengine_us_sources(variables_root).definitions
 
 
-def _index_policyengine_us_generated_variable_sources(
+def _audit_pinned_sources(
+    label: str,
     package_root: Path,
-    *,
     version: str,
-) -> Mapping[str, _SourceVariableDefinition]:
-    """Return the audited generated-variable snapshot or fail closed."""
+    *,
+    expected_version: str,
+    digests: Mapping[str, str],
+) -> None:
+    """Fail closed unless the installed distribution is the audited one."""
 
-    if version != _GENERATED_SOURCE_VERSION:
+    if version != expected_version:
         raise RuntimeError(
-            "PolicyEngine-US generated-variable metadata has not been audited for "
-            f"installed version {version!r}; expected {_GENERATED_SOURCE_VERSION!r}."
+            "PolicyEngine-US generated-variable metadata has not been audited "
+            f"for installed {label} version {version!r}; expected "
+            f"{expected_version!r}."
         )
-    for relative_path, expected_digest in _GENERATED_SOURCE_SHA256.items():
+    for relative_path, expected_digest in digests.items():
         source_path = package_root / relative_path
         try:
             actual_digest = sha256(source_path.read_bytes()).hexdigest()
         except OSError as exc:
             raise RuntimeError(
-                f"Required PolicyEngine-US generated-variable source is unavailable: "
-                f"{source_path}."
+                f"Required PolicyEngine-US generated-variable source is "
+                f"unavailable: {source_path}."
             ) from exc
         if actual_digest != expected_digest:
             raise RuntimeError(
@@ -227,8 +288,41 @@ def _index_policyengine_us_generated_variable_sources(
                 f"metadata audit: {source_path}."
             )
 
+
+def _index_policyengine_us_generated_variable_sources(
+    package_root: Path,
+    *,
+    version: str,
+    spm_package_root: Path,
+    spm_version: str,
+) -> Mapping[str, _SourceVariableDefinition]:
+    """Return the audited generated-variable snapshot or fail closed.
+
+    Two distributions produce the default system's generated variables:
+    policyengine-us itself (the 50-state flags, the PUF leaves, the state MFS
+    factory and the Michigan surtax reform) and spm-calculator, whose
+    ``build_policyengine_variables`` ``system.py`` calls to install the SPM
+    measurement thresholds and independence roles. Both are pinned, because a
+    new spm-calculator alone can add a formula-owned output.
+    """
+
+    _audit_pinned_sources(
+        "policyengine-us",
+        package_root,
+        version,
+        expected_version=_GENERATED_SOURCE_VERSION,
+        digests=_GENERATED_SOURCE_SHA256,
+    )
+    _audit_pinned_sources(
+        "spm-calculator",
+        spm_package_root,
+        spm_version,
+        expected_version=_GENERATED_SPM_SOURCE_VERSION,
+        digests=_GENERATED_SPM_SOURCE_SHA256,
+    )
+
     definitions: dict[str, _SourceVariableDefinition] = {}
-    for names, entity, dtype, formula_owned in _GENERATED_VARIABLE_GROUPS:
+    for names, entity, dtype, period, formula_owned in _GENERATED_VARIABLE_GROUPS:
         for name in names:
             if name in definitions:
                 raise RuntimeError(
@@ -239,7 +333,7 @@ def _index_policyengine_us_generated_variable_sources(
                     name=name,
                     entity=entity,
                     dtype=dtype,
-                    period="year",
+                    period=period,
                 ),
                 always_computed=formula_owned,
                 formula_starts=(),
@@ -263,9 +357,20 @@ def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
             "The installed PolicyEngine-US variable source tree is unavailable "
             f"at {variables_root}."
         )
+    try:
+        spm_package = distribution("spm-calculator")
+    except PackageNotFoundError as exc:
+        raise ImportError(
+            "The PolicyEngine-US metadata index requires the 'spm-calculator' "
+            "package, which policyengine-us 2.x installs to generate the SPM "
+            "measurement variables. Install it with "
+            "'microcosm-frame[policyengine]'."
+        ) from exc
     generated = _index_policyengine_us_generated_variable_sources(
         package_root,
         version=package.version,
+        spm_package_root=Path(spm_package.locate_file("spm_calculator")),
+        spm_version=spm_package.version,
     )
     source_index = _index_policyengine_us_sources(
         variables_root,
@@ -417,6 +522,49 @@ class PolicyEngineUSVariableMetadataIndex:
         }
 
 
+def _engine_dataset_source_inputs(policyengine_us: Any) -> frozenset[str]:
+    """The engine's declared dataset source inputs, read off the engine itself.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` names the variables a
+    population producer must deliver from the source even though the engine
+    carries a fallback formula for them ("A population producer must retain
+    its observed boolean instead of treating the fallback formula as
+    ownership of the input"). The formula's presence is therefore not
+    ownership, and this adapter classifies such a name as an input leaf. The
+    declaration must be a non-empty frozenset of variable names disjoint from
+    ``REJECTED_DATASET_INPUTS``; anything else fails closed rather than
+    letting a malformed upstream declaration widen the persisted surface.
+    """
+
+    import importlib
+
+    module_name = f"{policyengine_us.__name__}.spm"
+    spm = importlib.import_module(module_name)
+    declared = getattr(spm, "DATASET_SOURCE_INPUTS", None)
+    rejected = getattr(spm, "REJECTED_DATASET_INPUTS", None)
+    if (
+        not isinstance(declared, frozenset)
+        or not declared
+        or not all(isinstance(name, str) and name for name in declared)
+    ):
+        raise RuntimeError(
+            f"{module_name}.DATASET_SOURCE_INPUTS must be a non-empty frozenset "
+            f"of variable names; got {declared!r}."
+        )
+    if not isinstance(rejected, frozenset):
+        raise RuntimeError(
+            f"{module_name}.REJECTED_DATASET_INPUTS must be a frozenset; got "
+            f"{type(rejected).__name__}."
+        )
+    overlap = sorted(declared & rejected)
+    if overlap:
+        raise RuntimeError(
+            f"{module_name} declares {overlap} both as dataset source inputs and "
+            "as rejected dataset inputs; the adapter cannot classify them."
+        )
+    return frozenset(declared)
+
+
 def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:
     """Return whether a PolicyEngine variable is computed by a formula.
 
@@ -511,9 +659,22 @@ class PolicyEngineUSEngine:
         self,
         contract: ExportContract | None = None,
         defaults: Mapping[str, object] | None = None,
+        spm: Mapping[str, object] | None = None,
     ) -> None:
         self._contract = contract if contract is not None else ExportContract.empty()
         self._defaults = dict(defaults or {})
+        # Explicit SPM measurement selection, forwarded verbatim to the engine
+        # as ``Microsimulation(spm=...)``.  PolicyEngine-US 2.0.0 stopped
+        # inferring SPM geography from an absent county: an SPM-dependent
+        # variable now raises ``SPMInputError(SPM_GEOGRAPHY_REQUIRED)`` unless
+        # the caller supplies five-digit string county FIPS or selects
+        # ``{"geography_kind": "national"}`` (or a fixed ``"metro"`` area with
+        # its ``geography_id``).  ``None`` keeps the engine default, which is
+        # county measurement, so a Frame that already carries ``county_fips``
+        # is measured on its own counties exactly as before.  A stage that runs
+        # before geography assignment must pass the national selection rather
+        # than let the default raise.
+        self._spm = None if spm is None else dict(spm)
         self._system: Any = None
 
     # ------------------------------------------------------------------
@@ -552,11 +713,12 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         system_variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         return sorted(
             name
             for name, variable in system_variables.items()
             if name not in _FORMULA_OWNED_COMPAT_COLUMNS
-            and not _is_engine_computed(variable)
+            and (name in source_inputs or not _is_engine_computed(variable))
         )
 
     def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
@@ -582,10 +744,13 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         flagged: set[str] = set()
         for name in names:
             if name in _FORMULA_OWNED_COMPAT_COLUMNS:
                 flagged.add(name)
+                continue
+            if name in source_inputs:
                 continue
             variable = variables.get(name)
             if variable is not None and _is_engine_computed(variable):
@@ -689,17 +854,24 @@ class PolicyEngineUSEngine:
         Only names the tax-benefit system knows as non-formula input
         variables with a declared default are returned; unknown names and
         formula-owned variables are silently omitted, so callers can pass a
-        whole export surface. Enum defaults are normalized to their stored
+        whole export surface. Declared dataset source inputs are also omitted:
+        permission to store an observation is not permission to invent one.
+        Enum defaults are normalized to their stored
         member name (the representation datasets persist).
 
         Raises:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         defaults: dict[str, object] = {}
         for name in names:
             variable = variables.get(name)
-            if variable is None or _is_engine_computed(variable):
+            if (
+                variable is None
+                or name in source_inputs
+                or _is_engine_computed(variable)
+            ):
                 continue
             default = getattr(variable, "default_value", None)
             if default is None:
@@ -755,7 +927,10 @@ class PolicyEngineUSEngine:
         microsimulation_class = self._import_policyengine_us().Microsimulation
         tables = self._engine_tables(bundle)
         dataset = self._build_dataset(tables, period)
-        simulation = microsimulation_class(dataset=dataset)
+        simulation = microsimulation_class(
+            dataset=dataset,
+            **({"spm": dict(self._spm)} if self._spm is not None else {}),
+        )
         results: dict[str, np.ndarray] = {}
         for name in variables:
             entity = self._entity_of(name)
@@ -865,6 +1040,15 @@ class PolicyEngineUSEngine:
     # Lazy engine plumbing
     # ------------------------------------------------------------------
 
+    def _dataset_source_inputs(self) -> frozenset[str]:
+        """Names the engine declares source-deliverable despite a fallback formula."""
+
+        cached = getattr(self, "_dataset_source_inputs_cache", None)
+        if cached is None:
+            cached = _engine_dataset_source_inputs(self._import_policyengine_us())
+            self._dataset_source_inputs_cache = cached
+        return cached
+
     def _import_policyengine_us(self) -> Any:
         try:
             import policyengine_us
@@ -948,12 +1132,14 @@ class PolicyEngineUSEngine:
         writer is called, after checking aggregate deltas.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         present = {column for frame in tables.values() for column in frame.columns}
         structural = self._structural_columns()
         return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
             column
             for column in present
             if column not in structural
+            and column not in source_inputs
             and column in variables
             and _is_engine_computed(variables[column], period=period)
         }
@@ -1087,3 +1273,173 @@ class PolicyEngineUSEngine:
                 "Export round-trip verification failed; dtype changed on "
                 f"reload: {sorted(dtype_mismatches)}."
             )
+
+
+# ----------------------------------------------------------------------
+# Static aging support: the series PolicyEngine-US uprates by, and the
+# multi-year dataset a projected frame exports to.
+# ----------------------------------------------------------------------
+
+_POPULATION_SERIES = "calibration.gov.census.populations.total"
+_PER_CAPITA_SUFFIX = "_per_capita"
+_NATIONAL_TOTAL_PREFIXES = ("calibration.gov.cbo.", "calibration.gov.irs.soi.")
+
+
+def _dataset_uprating_path(system: Any, column: str) -> str | None:
+    """Use the same override precedence as PolicyEngine's dataset extension."""
+    from policyengine_us.data.economic_assumptions import MICRODATA_UPRATING_OVERRIDES
+
+    variable = system.variables.get(column)
+    if variable is None:
+        return None
+    return MICRODATA_UPRATING_OVERRIDES.get(column) or getattr(
+        variable, "uprating", None
+    )
+
+
+def _is_national_total(path: str) -> bool:
+    return path.startswith(_NATIONAL_TOTAL_PREFIXES) and not path.endswith(
+        _PER_CAPITA_SUFFIX
+    )
+
+
+def uprating_series(
+    columns: Iterable[str],
+    years: Iterable[int],
+    *,
+    system: Any | None = None,
+) -> tuple[dict[str, dict[int, float]], dict[str, dict[int, float]], dict[str, str]]:
+    """The series PolicyEngine-US uprates ``columns`` by, evaluated at ``years``.
+
+    Reads the dataset-extension override, then the variable's ``uprating``
+    parameter path. A CBO or IRS SOI path that names a national total (directly,
+    or through a ``<total>_per_capita`` series PolicyEngine-US derives) is returned as a
+    total, so static aging can solve its factor against the reweighted frame.
+    Any other path is a per-person rate or a price index and is returned as
+    an index. The population series that uprates the weights is skipped:
+    static aging carries the weights itself.
+
+    Args:
+        columns: Variable names to look up; unknown names and variables
+            without an uprating are skipped.
+        years: Years to evaluate every series at (include the base year).
+        system: A ``CountryTaxBenefitSystem``; the adapter's cached system
+            when ``None``.
+
+    Returns:
+        ``(totals, indices, column_series)``: two ``series -> {year: value}``
+        mappings and the ``column -> series`` mapping that uses them.
+    """
+    if system is None:
+        system = PolicyEngineUSEngine()._tax_benefit_system()
+    from policyengine_core.parameters.operations.get_parameter import get_parameter
+
+    years = tuple(int(year) for year in years)
+    totals: dict[str, dict[int, float]] = {}
+    indices: dict[str, dict[int, float]] = {}
+    column_series: dict[str, str] = {}
+    for column in columns:
+        path = _dataset_uprating_path(system, column)
+        if not path or path == _POPULATION_SERIES:
+            continue
+        parameter = get_parameter(system.parameters, path)
+        derived_from = getattr(parameter, "metadata", {}).get("derived_from")
+        if derived_from and _is_national_total(derived_from):
+            series_path, is_total = derived_from, True
+        elif _is_national_total(path):
+            series_path, is_total = path, True
+        else:
+            series_path, is_total = path, False
+        table = totals if is_total else indices
+        if series_path not in table:
+            series_parameter = get_parameter(system.parameters, series_path)
+            table[series_path] = {
+                year: float(series_parameter(f"{year}-01-01")) for year in years
+            }
+        column_series[column] = series_path
+    return totals, indices, column_series
+
+
+def multi_year_dataset(
+    bundle: Frame,
+    base_year: int,
+    years: Mapping[int, tuple[np.ndarray, Mapping[str, ScaleFactor]]],
+) -> Any:
+    """Build a ``USMultiYearDataset`` from a base-year bundle and its
+    projected years.
+
+    Args:
+        bundle: The base-year US-schema bundle.
+        base_year: The bundle's year.
+        years: ``year -> (household weights, column factors)`` for each
+            projected year after ``base_year``, as static aging produces them.
+            Factors may target numeric columns with a dataset uprating rule;
+            identifiers, memberships, weights and demographics remain fixed.
+            A ``SignedScale`` applies separate positive factors to positive
+            and negative base-year amounts, preserving each record's sign.
+
+    Returns:
+        A ``policyengine_us.data.USMultiYearDataset`` holding the base year
+        and every projected year, with each year's household weights and
+        factored columns. The engine reads it as already extended and applies
+        no uprating of its own.
+    """
+    from policyengine_us.data import USMultiYearDataset
+
+    if any(not isinstance(year, Integral) or year <= base_year for year in years):
+        raise ValueError(
+            f"Projection years must be integers after base year {base_year}."
+        )
+    engine = PolicyEngineUSEngine()
+    base_tables = engine._engine_tables(bundle)
+    protected_columns = (
+        {bundle.schema.entity_id_column(entity) for entity in bundle.entities}
+        | {
+            bundle.schema.membership_column(group)
+            for group in bundle.schema.group_entities
+        }
+        | {f"{entity}_weight" for entity in bundle.entities}
+    )
+    datasets = [engine._build_dataset(base_tables, base_year)]
+    for year in sorted(years):
+        weights, factors = years[year]
+        try:
+            weights = Weights(
+                values=weights, kind=bundle.weights_for("household").kind
+            ).values
+        except ValueError as exc:
+            raise ValueError(f"{year}: invalid household weights: {exc}") from exc
+        if len(weights) != len(base_tables["household"]):
+            raise ValueError(
+                f"{year}: {len(weights)} household weights for "
+                f"{len(base_tables['household'])} households."
+            )
+        tables = {name: table.copy() for name, table in base_tables.items()}
+        tables["household"]["household_weight"] = weights
+        for column, factor in factors.items():
+            owner = next(
+                (name for name, table in tables.items() if column in table.columns),
+                None,
+            )
+            if owner is None:
+                raise ValueError(
+                    f"{year}: factored column {column!r} is not in the bundle."
+                )
+            if (
+                column in protected_columns
+                or not _dataset_uprating_path(engine._tax_benefit_system(), column)
+                or engine.variable_metadata(column).dtype not in ("float", "int")
+                or pd.api.types.is_bool_dtype(tables[owner][column].dtype)
+            ):
+                raise ValueError(f"{year}: column {column!r} cannot be factored.")
+            try:
+                values = apply_scale(
+                    tables[owner][column].to_numpy(dtype=float), factor
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"{year}: cannot scale column {column!r}: {exc}"
+                ) from exc
+            tables[owner][column] = values
+        datasets.append(engine._build_dataset(tables, year))
+    return USMultiYearDataset(datasets=datasets)

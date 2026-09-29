@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "description": "Reviewed UK local-area support-floor exclusions. The register ships empty in PR A; each future entry must carry measured shortfalls and an in-force adjudication.",
+  "schema_version": 3,
+  "description": "Reviewed UK local-area support-floor exclusions and signed families that bind despite those floors. Every entry carries measured evidence and an in-force adjudication.",
   "exclusions": {
     "local_authority/E06000053": {
       "reason": "Reviewed exclusion of the local-authority support floor for Isles of Scilly (E06000053): population-proportional ladder assignment gives the area 24 positive-weight rows at the ruled K=15 (ESS 8.1 on the R17 release candidate; 7 rows at K=4 and 17 at K=10, microcosm#761 receipts section R1, identical on spine-i and spine-k), so the 50-row / ESS-50 / 50-source floor is unreachable by clone count. The area stays in the solve with its measured support and is flagged support_below_floor in area_support_summary.csv; consumers must treat its estimates as unsupported. Re-measured on every candidate; a passing area retires this entry (a stale exclusion fails the gate). Per microcosm#762 A14 the authority's own local-authority cells are signed-deferred (`local_authority_support_floor_excluded`).",
@@ -15,6 +15,15 @@
       "adjudication": "microcosm#762 (A4, ruling 2026-09-02)",
       "approved_on": "2026-09-02",
       "expires_on": "2026-12-02"
+    }
+  },
+  "bound_despite_support_floor": {
+    "census_households": {
+      "reason": "The 1,011-cell ons.census.households family is the per-grain A15 denominator. Deferring E06000053 or E09000001 would open the 361-cell local-authority surface and move its factor; those areas remain support-floor-excluded for every other family.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#887 (review round 1, 2026-09-10)",
+      "approved_on": "2026-09-10",
+      "expires_on": "2026-12-10"
     }
   }
 }

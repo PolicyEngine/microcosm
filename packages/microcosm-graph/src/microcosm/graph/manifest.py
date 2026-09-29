@@ -13,6 +13,13 @@ from typing import TYPE_CHECKING, ClassVar, Self
 
 from microcosm.frame import Frame
 
+from .artifact_edges import require_compatible_scope, value_from_descriptor
+from .availability import (
+    execution_state,
+    has_execution,
+    unavailable_artifacts,
+    validate_execution,
+)
 from .canonical import canonical_json, sha256_domain
 from .decl import GATE_OUTCOMES, StructuralDelta
 from .errors import NodeRejectedError, StoreCorruptError
@@ -34,6 +41,8 @@ if TYPE_CHECKING:
 __all__ = ["Decision", "NodeReceipt", "PopulationView", "RunManifest"]
 
 _SCHEMA_VERSION = 2
+_TYPED_SCHEMA_VERSION = 3
+_EXCEPTION_SCHEMA_VERSION = 4
 _LEGACY_SCHEMA_VERSION = 1
 _CERTIFYING_GATE_OUTCOMES = frozenset({"pass", "not_applicable"})
 
@@ -220,6 +229,7 @@ class NodeReceipt:
     weight_key: str | None = None
     opaque_artifacts: Mapping[str, str] = field(default_factory=dict)
     legacy_capabilities: bool = field(default=False, kw_only=True)
+    typed_artifacts: Mapping[str, object] = field(default_factory=dict, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.key, str):
@@ -244,6 +254,26 @@ class NodeReceipt:
             object.__setattr__(self, "hit", False)
         elif not isinstance(self.capabilities, Capabilities):
             raise TypeError("NodeReceipt.capabilities must be Capabilities")
+        typed = _freeze_json(self.typed_artifacts)
+        if not isinstance(typed, Mapping):
+            raise TypeError("NodeReceipt.typed_artifacts must be a mapping.")
+        if typed:
+            if set(typed) != {"inputs", "outputs"} or any(
+                not isinstance(typed[name], Mapping) for name in typed
+            ):
+                raise ValueError(
+                    "Typed artifact provenance requires input/output mappings."
+                )
+            for bindings in typed.values():
+                for alias, entry in bindings.items():
+                    if not isinstance(alias, str) or not alias:
+                        raise ValueError(
+                            "Typed artifact aliases must be nonempty strings."
+                        )
+                    value_from_descriptor(b"", entry)
+            if self.legacy_capabilities:
+                raise ValueError("Legacy capabilities cannot describe typed artifacts.")
+        object.__setattr__(self, "typed_artifacts", typed)
         frozen_receipt = _freeze_json(self.receipt)
         if not isinstance(frozen_receipt, Mapping):
             raise TypeError("NodeReceipt.receipt must be a mapping")
@@ -277,6 +307,21 @@ class NodeReceipt:
                 raise TypeError("NodeReceipt.opaque_artifacts values must be strings")
             opaque_artifacts[name] = key
         object.__setattr__(self, "opaque_artifacts", MappingProxyType(opaque_artifacts))
+
+        if has_execution(self.receipt):
+            if self.legacy_capabilities:
+                raise ValueError("Legacy receipts cannot carry executor outcomes.")
+            validate_execution(
+                self.receipt,
+                self.capabilities,
+                self.typed_artifacts.get("outputs", {}),
+                self.opaque_artifacts,
+                has_products=bool(
+                    self.artifacts
+                    or self.frame_key is not None
+                    or self.weight_key is not None
+                ),
+            )
 
         wall_time = float(self.wall_time)
         if not math.isfinite(wall_time) or wall_time < 0:
@@ -347,6 +392,11 @@ class NodeReceipt:
             "frame_key": self.frame_key,
             "weight_key": self.weight_key,
             "opaque_artifacts": self.opaque_artifacts,
+            **(
+                {"typed_artifacts": self.typed_artifacts}
+                if self.typed_artifacts
+                else {}
+            ),
             "wall_time": self.wall_time,
         }
 
@@ -393,6 +443,23 @@ class RunManifest:
     timestamps, and attached ``Frame`` instances are also outside the
     content-addressed body. Computational reuse continues to use node keys,
     not this run-manifest identity.
+
+    :attr:`source_identities` is attached in the same way: the executor's
+    run-end re-derivation of every declared source's content key, recorded so a
+    reader can see which bytes the run actually finished against. Like
+    ``populations`` and ``mass_ledgers`` it is outside :attr:`key`, outside
+    ``to_json``, and outside every node receipt and cache record.
+
+    :attr:`verification_epoch` is attached the same way again: counts a caller
+    that scoped its own source verification around this run hands in, so a
+    reader can see how many validations the run actually performed rather than
+    inferring it. It is the caller's own mapping and is kept as a live view of
+    it, not a copy, because such a record is finalised when that scope closes --
+    after ``run_graph`` returns and before the caller receives this manifest.
+    That holds for any mapping, not only a ``dict``: the caller's object is
+    wrapped in a read-only proxy over itself, and a mapping type that cannot be
+    wrapped is refused rather than copied into a snapshot that would look live
+    and not be. It holds counts and labels only: no key, digest or path.
     """
 
     country: str
@@ -407,6 +474,12 @@ class RunManifest:
     mass_ledgers: Mapping[str, tuple[MassRecord, ...]] = field(
         default_factory=dict, repr=False, compare=False
     )
+    source_identities: Mapping[str, str] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    verification_epoch: Mapping[str, object] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.country, str):
@@ -419,6 +492,7 @@ class RunManifest:
                 raise TypeError("RunManifest.nodes values must be NodeReceipt")
             nodes[node_id] = receipt
         object.__setattr__(self, "nodes", MappingProxyType(nodes))
+        _validate_typed_ancestry(nodes)
 
         decisions = tuple(
             decision
@@ -456,6 +530,50 @@ class RunManifest:
                 )
             mass_ledgers[version_id] = frozen_records
         object.__setattr__(self, "mass_ledgers", MappingProxyType(mass_ledgers))
+        source_identities: dict[str, str] = {}
+        for name, identity in self.source_identities.items():
+            if not isinstance(name, str):
+                raise TypeError("RunManifest.source_identities keys must be strings")
+            if not isinstance(identity, str):
+                raise TypeError("RunManifest.source_identities values must be strings")
+            source_identities[name] = identity
+        object.__setattr__(
+            self, "source_identities", MappingProxyType(source_identities)
+        )
+        verification_epoch = self.verification_epoch
+        if not isinstance(verification_epoch, Mapping):
+            raise TypeError("RunManifest.verification_epoch must be a mapping")
+        for name, value in verification_epoch.items():
+            if not isinstance(name, str):
+                raise TypeError("RunManifest.verification_epoch keys must be strings")
+            if not isinstance(value, (int, str)):
+                raise TypeError(
+                    "RunManifest.verification_epoch values must be integers or strings"
+                )
+        # A live view of the caller's record, deliberately not a copy: see the
+        # class docstring. Values are checked once, here.
+        #
+        # Every mapping is wrapped, not only a dict. `MappingProxyType` takes
+        # any object with the mapping protocol, so wrapping a caller's own
+        # `Mapping` subclass keeps the reference the contract promises, where
+        # `dict(...)` would have taken a snapshot and dropped exactly the
+        # counts the scope finalises after `run_graph` returns. An already
+        # read-only proxy is kept as it is rather than wrapped again.
+        if isinstance(verification_epoch, MappingProxyType):
+            record: Mapping[str, object] = verification_epoch
+        else:
+            try:
+                record = MappingProxyType(verification_epoch)
+            except TypeError as error:
+                # A type registered as a Mapping without implementing the
+                # protocol cannot be held live, and a copy would be a silent
+                # snapshot, so it is refused rather than accepted as one.
+                raise TypeError(
+                    "RunManifest.verification_epoch must be a mapping that "
+                    "supports MappingProxyType, so the manifest can hold it "
+                    "as a live view rather than a copy"
+                ) from error
+        object.__setattr__(self, "verification_epoch", record)
 
     @property
     def content_addressed(self) -> Mapping[str, object]:
@@ -592,7 +710,11 @@ class RunManifest:
         """Serialize the complete portable provenance as canonical JSON."""
 
         payload = {
-            "schema_version": _SCHEMA_VERSION,
+            "schema_version": _EXCEPTION_SCHEMA_VERSION
+            if any(execution_state(node.receipt) for node in self.nodes.values())
+            else _TYPED_SCHEMA_VERSION
+            if any(node.typed_artifacts for node in self.nodes.values())
+            else _SCHEMA_VERSION,
             "key": self.key,
             "tier": self.tier,
             "known_failures": self.known_failures,
@@ -633,6 +755,8 @@ class RunManifest:
         if type(schema_version) is not int or schema_version not in {
             _LEGACY_SCHEMA_VERSION,
             _SCHEMA_VERSION,
+            _TYPED_SCHEMA_VERSION,
+            _EXCEPTION_SCHEMA_VERSION,
         }:
             raise ValueError(f"unsupported manifest schema version {schema_version!r}")
 
@@ -657,6 +781,14 @@ class RunManifest:
             finished_at=_string_field(raw, "finished_at"),
             host=_string_field(raw, "host"),
         )
+        if schema_version == _TYPED_SCHEMA_VERSION and not any(
+            node.typed_artifacts for node in nodes.values()
+        ):
+            raise ValueError("Schema-v3 manifest must carry typed artifact provenance.")
+        if schema_version == _EXCEPTION_SCHEMA_VERSION and not any(
+            execution_state(node.receipt) for node in nodes.values()
+        ):
+            raise ValueError("Schema-v4 manifest must carry executor outcomes.")
         body = raw.get("content_addressed")
         if not isinstance(body, Mapping):
             raise ValueError("manifest content-addressed body must be an object")
@@ -678,7 +810,7 @@ class RunManifest:
             raise ValueError(
                 "manifest content key mismatch: serialized provenance was altered"
             )
-        if schema_version == _SCHEMA_VERSION and serialized_key != manifest.key:
+        if schema_version != _LEGACY_SCHEMA_VERSION and serialized_key != manifest.key:
             raise ValueError(
                 "manifest content key mismatch: serialized key differs from "
                 "reconstructed portable provenance"
@@ -1090,6 +1222,18 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
     frame_key = value.get("frame_key")
     weight_key = value.get("weight_key")
     opaque_artifacts = value.get("opaque_artifacts", {})
+    typed_artifacts = value.get("typed_artifacts", {})
+    if (
+        isinstance(receipt, Mapping)
+        and has_execution(receipt)
+        and schema_version != _EXCEPTION_SCHEMA_VERSION
+    ):
+        raise ValueError("Executor exceptional outcomes require manifest schema 4.")
+    if "typed_artifacts" in value and schema_version not in {
+        _TYPED_SCHEMA_VERSION,
+        _EXCEPTION_SCHEMA_VERSION,
+    }:
+        raise ValueError("Typed artifact provenance requires manifest schema 3 or 4.")
     capabilities_payload = value.get("capabilities")
     if schema_version == _LEGACY_SCHEMA_VERSION:
         # Every schema-v1 receipt is legacy: v1 never recorded a tolerance, so
@@ -1163,4 +1307,154 @@ def _node_receipt_from_payload(value: object, *, schema_version: int) -> NodeRec
         weight_key=weight_key,
         opaque_artifacts=opaque_artifacts,
         legacy_capabilities=legacy_capabilities,
+        typed_artifacts=typed_artifacts,
     )
+
+
+def _validate_typed_ancestry(nodes: Mapping[str, NodeReceipt]) -> None:
+    """Authenticate every typed artifact edge recorded in a manifest.
+
+    A descriptor is portable provenance, so a manifest must stand on its own:
+    each recorded output names its own node and key, each recorded input
+    resolves to a producer whose output descriptor is byte-identical, the
+    producer's numeric scope is the one its capabilities declare and one the
+    consumer may read, and the edges form a DAG. A release's gate ancestry
+    covers gates reached through byte edges too, so amendment 19 cannot open
+    a path around charter F2 (amendment 19).
+    """
+
+    edges: dict[str, set[str]] = {node_id: set() for node_id in nodes}
+    for node_id, node in nodes.items():
+        if not node.typed_artifacts:
+            continue
+        for name, entry in node.typed_artifacts["outputs"].items():
+            value = value_from_descriptor(b"", entry)
+            if (
+                entry["producer"] != node_id
+                or entry["artifact"] != name
+                or value.producer_key != node.key
+                or (
+                    # A gate exception recorded the output as unavailable, so
+                    # no stored identity exists for it; every other output
+                    # must resolve to its stored bytes.
+                    name
+                    not in unavailable_artifacts(
+                        node.receipt, node.typed_artifacts["outputs"]
+                    )
+                    and node.opaque_artifacts.get(name) != value.key
+                )
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact output provenance mismatch."
+                )
+            if (
+                value.numerics.numeric is not node.capabilities.numeric
+                or value.numerics.tolerance != node.capabilities.tolerance
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact numeric contract mismatch."
+                )
+        for entry in node.typed_artifacts["inputs"].values():
+            value = value_from_descriptor(b"", entry)
+            producer_id = entry["producer"]
+            producer = nodes.get(producer_id)
+            if producer is None or producer.key != value.producer_key:
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact producer is missing or "
+                    "inconsistent."
+                )
+            if (
+                producer.typed_artifacts.get("outputs", {}).get(entry["artifact"])
+                != entry
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact does not match its producer "
+                    "output."
+                )
+            try:
+                require_compatible_scope(value.numerics, node.capabilities)
+            except NodeRejectedError as error:
+                # Inside a manifest this is malformed provenance, not a live
+                # node rejection: `RunManifest.load` converts ValueError into
+                # StoreCorruptError, and a corrupt manifest must surface as
+                # StoreCorruptError like every other one.
+                raise ValueError(
+                    f"Node {node_id!r} typed artifact carries a numeric scope its "
+                    f"consumer may not read: {error}"
+                ) from error
+            if entry["artifact"] in unavailable_artifacts(
+                producer.receipt, producer.typed_artifacts.get("outputs", {})
+            ) and (
+                execution_state(node.receipt) != "unreached"
+                or producer_id not in node.receipt["execution"]["blocked_by"]
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} consumes an unavailable artifact but is not "
+                    "unreached by its producer."
+                )
+            edges[node_id].add(producer_id)
+
+    for node_id, node in nodes.items():
+        if execution_state(node.receipt) != "unreached":
+            continue
+        for parent_id, parent_key in node.receipt["execution"]["blocked_by"].items():
+            parent = nodes.get(parent_id)
+            if parent is None or parent.key != parent_key:
+                raise ValueError(
+                    f"Node {node_id!r} unreached blocker {parent_id!r} is missing or "
+                    "has a different key."
+                )
+            if execution_state(parent.receipt) not in {"gate_exception", "unreached"}:
+                raise ValueError(
+                    f"Node {node_id!r} unreached blocker {parent_id!r} has no "
+                    "unavailable outputs."
+                )
+            if execution_state(parent.receipt) == "gate_exception" and not any(
+                entry["producer"] == parent_id
+                for entry in node.typed_artifacts.get("inputs", {}).values()
+            ):
+                raise ValueError(
+                    f"Node {node_id!r} names a gate exception blocker that is not "
+                    "one of its declared typed inputs."
+                )
+            edges[node_id].add(parent_id)
+
+    memo: dict[str, frozenset[str]] = {}
+
+    def visit(node_id: str, trail: frozenset[str]) -> frozenset[str]:
+        if node_id in trail:
+            raise ValueError("Typed artifact ancestry contains a cycle.")
+        if node_id in memo:
+            return memo[node_id]
+        ancestors = set(edges[node_id])
+        for parent in edges[node_id]:
+            ancestors.update(visit(parent, trail | {node_id}))
+        memo[node_id] = frozenset(ancestors)
+        return memo[node_id]
+
+    for node_id, node in nodes.items():
+        ancestors = visit(node_id, frozenset())
+        if _capability_role(node) is not KernelRole.RELEASE:
+            continue
+        artifact_gates = {
+            parent
+            for parent in ancestors
+            if _capability_role(nodes[parent]) is KernelRole.GATE
+        }
+        # Only look at `gate_ancestry` when a byte edge actually reached a
+        # gate. Otherwise `RunManifest.tier` keeps sole ownership of that
+        # field's validation and its precise diagnostic. When a byte edge did
+        # reach a gate, the shape is checked here first, with the same
+        # diagnostic `tier` gives, so a malformed value from a foreign
+        # manifest never surfaces as a bare TypeError from `set()`.
+        if not artifact_gates:
+            continue
+        gate_ancestry = node.receipt.get("gate_ancestry", ())
+        if not isinstance(gate_ancestry, tuple) or any(
+            not isinstance(gate_id, str) or not gate_id for gate_id in gate_ancestry
+        ):
+            raise ValueError(
+                f"release node {node_id!r} has invalid gate ancestry {gate_ancestry!r}"
+            )
+        if not artifact_gates.issubset(set(gate_ancestry)):
+            raise ValueError("Release omitted a typed artifact gate ancestor.")

@@ -1,0 +1,1310 @@
+{
+ "issue": "microcosm#905",
+ "pr": "microcosm#906",
+ "arm": {
+  "tool": "tools/calibrate_uk_national_dataset.py",
+  "input_h5": "spine-q.h5 (sha256 cf1f9dda198a06819241ed3358f68dd99c675eb7ca45fa766a3ed4b07eb0337f, the 2026-09-10 spine-q national pool)",
+  "chronicle_feed": "c6f9361 (facts 45bda3ae730d4ae3\u2026)",
+  "doctrine_overrides": {
+   "epochs": 1500,
+   "target_weight_rule": "family_equal",
+   "learning_rate": 0.02
+  },
+  "measure_exclusions": "packaged register at the branch point a256c880 (50 entries: the 47 on main after #903 retired three ons.household_composition.* entries, plus those three, still present at a256c880) \u2014 the three band-H region-cell exclusions signed on 2026-09-14 did not exist yet, which is why the candidate arm carried 545 targets (595 - 50) and the terminal gate blocked on the band-H cells; under the HEAD register the baseline arm would carry 377 (424 - 47) and the candidate 542 (595 - 53).",
+  "baseline": "PR #904 head a256c880 register (424 references, 374 after exclusions), run from the same code line with the same overrides",
+  "candidate": "this branch (595 references, 545 after exclusions)",
+  "run_date": "2026-09-11"
+ },
+ "summary": {
+  "new": {
+   "final_loss": 0.012833430074165722,
+   "fraction_within_10pct": 0.9651376146788991,
+   "effective_sample_size": 10469.196661388754,
+   "n_nonzero": 52846,
+   "n_targets": 545,
+   "epochs": 1500,
+   "lr": 0.02,
+   "rule": "family_equal"
+  },
+  "base": {
+   "final_loss": 0.011201580832300414,
+   "fraction_within_10pct": 0.9572192513368984,
+   "effective_sample_size": 10350.410607719752,
+   "n_nonzero": 52846,
+   "n_targets": 374,
+   "epochs": 1500,
+   "lr": 0.02,
+   "rule": "family_equal"
+  }
+ },
+ "region_cells": {
+  "ons_population": {
+   "count": 108,
+   "bands": {
+    "within_5pct": 108
+   },
+   "median_abs_relative_error": 0.0008058624515383759,
+   "max_abs_relative_error": 0.0053138121847288
+  },
+  "council_tax_stock": {
+   "count": 81,
+   "bands": {
+    "within_5pct": 78,
+    "outside_25pct": 3
+   },
+   "median_abs_relative_error": 0.0008923704864915138,
+   "max_abs_relative_error": 1.0
+  }
+ },
+ "region_cells_outside_bound": [
+  {
+   "name": "voa.council_tax_stock.band_h@E12000001@2025",
+   "target": 1570.0,
+   "final_estimate": 0.0,
+   "relative_error": -1.0
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000002@2025",
+   "target": 7350.0,
+   "final_estimate": 0.0,
+   "relative_error": -1.0
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000003@2025",
+   "target": 3770.0,
+   "final_estimate": 0.0,
+   "relative_error": -1.0
+  }
+ ],
+ "common_rows": {
+  "count": 356,
+  "abs_relative_error_bands": {
+   "base": {
+    "\u22645%": 332,
+    "\u226425%": 16,
+    "\u226410%": 8
+   },
+   "new": {
+    "\u22645%": 329,
+    "\u226425%": 15,
+    "\u226410%": 11,
+    ">25%": 1
+   }
+  },
+  "largest_movers": [
+   {
+    "name": "obr.fuel_duties_cars@2025",
+    "baseline_relative_error": -0.14874191635126816,
+    "candidate_relative_error": -0.2387073236943142
+   },
+   {
+    "name": "dwp.uc.households_children_2@2025",
+    "baseline_relative_error": -0.07423798754008737,
+    "candidate_relative_error": -0.11569793290357122
+   },
+   {
+    "name": "hmrc/self_employment_income_income_band_50_000_to_70_000@2025",
+    "baseline_relative_error": 0.10902101291923244,
+    "candidate_relative_error": 0.07925852300729519
+   },
+   {
+    "name": "hmrc/state_pension_income_band_50_000_to_70_000@2025",
+    "baseline_relative_error": 0.04892218279337719,
+    "candidate_relative_error": 0.07014864401180938
+   },
+   {
+    "name": "hmrc/employment_income_income_band_50_000_to_70_000@2025",
+    "baseline_relative_error": 0.005328092560829776,
+    "candidate_relative_error": 0.02569959647002753
+   },
+   {
+    "name": "dwp.uc.households_children_1@2025",
+    "baseline_relative_error": -0.1808694470241334,
+    "candidate_relative_error": -0.1624071771211329
+   },
+   {
+    "name": "hmrc/employment_income_count_income_band_50_000_to_70_000@2025",
+    "baseline_relative_error": 0.006782008244633626,
+    "candidate_relative_error": 0.02216570303239588
+   },
+   {
+    "name": "hmrc/self_employment_income_income_band_20_000_to_30_000@2025",
+    "baseline_relative_error": 0.23605705188216192,
+    "candidate_relative_error": 0.25002720010212287
+   },
+   {
+    "name": "hmrc/state_pension_count_income_band_50_000_to_70_000@2025",
+    "baseline_relative_error": -0.018344147739413747,
+    "candidate_relative_error": -0.0047736985374449556
+   },
+   {
+    "name": "obr.child_benefit@2025",
+    "baseline_relative_error": 0.17894631373311598,
+    "candidate_relative_error": 0.1916386692045426
+   },
+   {
+    "name": "hmrc/state_pension_income_band_30_000_to_40_000@2025",
+    "baseline_relative_error": 0.13063666449127925,
+    "candidate_relative_error": 0.14228621539638722
+   },
+   {
+    "name": "hmrc/private_pension_income_income_band_300_000_to_500_000@2025",
+    "baseline_relative_error": -0.1018267139192942,
+    "candidate_relative_error": -0.11249834732979813
+   }
+  ]
+ },
+ "terminal_gate_messages": {
+  "candidate": [
+   "microcosm_uk_2024: voa.council_tax_stock.band_h@E12000001@2025 relative error -100.0% exceeds 25%.",
+   "microcosm_uk_2024: voa.council_tax_stock.band_h@E12000002@2025 relative error -100.0% exceeds 25%.",
+   "microcosm_uk_2024: voa.council_tax_stock.band_h@E12000003@2025 relative error -100.0% exceeds 25%.",
+   "microcosm_uk_2024: hmrc/self_employment_income_income_band_20_000_to_30_000@2025 relative error +25.0% exceeds 25%.",
+   "Stale reviewed target-fit exclusions are back inside the bound; remove them: ['obr.fuel_duties_cars@2025']."
+  ],
+  "baseline": []
+ },
+ "reading": [
+  "Every ONS region cell and 78 of 81 VOA cells fit within 5%; the tier binds as published.",
+  "The three band-H cells at -100% (North East, North West, Yorkshire and the Humber) have no band-H household on the spine (spine-m carried 170 band-H households from 49 raw FRS households, none in those regions; microcosm#762 A14), the class already signed for the local band-H family; they need a reviewed measure exclusion or a spine vintage with broader band-H support (microcosm#796).",
+  "Common-row fit is unchanged within run noise (332->329 within 5%, 16->15 within 25%); hmrc/self_employment_income_income_band_20_000_to_30_000 sits at the 25% bound (+23.6% -> +25.0%) and obr.fuel_duties_cars moves -14.9% -> -23.9%, inside the 25% bound (#904 retired its reviewed target-fit exclusion; the gate message about a stale exclusion in this run reflects the a256c880 register); both rows belong to the #890/PR-S lane.",
+  "The baseline run refused to stage for want of MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY (an unsigned full-scale run under the #904 round-2 runner); its solve and diagnostics completed.",
+  "Register vintage: see arm.measure_exclusions \u2014 the runs predate the band-H signing and the #903 retirements, so their exclusion counts are not reproducible from HEAD."
+ ],
+ "region_cell_rows": [
+  {
+   "name": "ons.population.age_0_9_by_region@E12000001@2025",
+   "target": 285165.0,
+   "final_estimate": 285503.6717033386,
+   "relative_error": 0.0011876341884124034
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000002@2025",
+   "target": 865892.0,
+   "final_estimate": 866269.0863260374,
+   "relative_error": 0.0004354888670150748
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000003@2025",
+   "target": 626938.0,
+   "final_estimate": 627769.9211111069,
+   "relative_error": 0.0013269591428608132
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000004@2025",
+   "target": 543004.0,
+   "final_estimate": 543452.6816167831,
+   "relative_error": 0.0008262952331532403
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000005@2025",
+   "target": 718837.0,
+   "final_estimate": 719058.727563858,
+   "relative_error": 0.0003084531873818852
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000006@2025",
+   "target": 744698.0,
+   "final_estimate": 745749.9893870722,
+   "relative_error": 0.001412638931583215
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000007@2025",
+   "target": 1054493.0,
+   "final_estimate": 1054461.0709514618,
+   "relative_error": -3.0279052149429163e-05
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000008@2025",
+   "target": 1059434.0,
+   "final_estimate": 1059683.762228012,
+   "relative_error": 0.0002357506253453117
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@E12000009@2025",
+   "target": 575506.0,
+   "final_estimate": 575860.0710201263,
+   "relative_error": 0.0006152342810089604
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@W92000004@2025",
+   "target": 321552.0,
+   "final_estimate": 321505.325094223,
+   "relative_error": -0.0001451550784227047
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@S92000003@2025",
+   "target": 527989.0,
+   "final_estimate": 528191.4859447479,
+   "relative_error": 0.00038350409714582085
+  },
+  {
+   "name": "ons.population.age_0_9_by_region@N92000002@2025",
+   "target": 229505.0,
+   "final_estimate": 230063.32855772972,
+   "relative_error": 0.0024327511719993947
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000001@2025",
+   "target": 326306.0,
+   "final_estimate": 326587.9696941376,
+   "relative_error": 0.0008641265993808672
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000002@2025",
+   "target": 952864.0,
+   "final_estimate": 953203.7975921631,
+   "relative_error": 0.0003566066009032621
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000003@2025",
+   "target": 696780.0,
+   "final_estimate": 696736.0747246742,
+   "relative_error": -6.304037906624063e-05
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000004@2025",
+   "target": 615630.0,
+   "final_estimate": 616242.5096559525,
+   "relative_error": 0.0009949314620022638
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000005@2025",
+   "target": 785062.0,
+   "final_estimate": 784612.4041187649,
+   "relative_error": -0.0005726883752303478
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000006@2025",
+   "target": 785091.0,
+   "final_estimate": 785450.1543215238,
+   "relative_error": 0.0004574683973244489
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000007@2025",
+   "target": 1068691.0,
+   "final_estimate": 1069357.7120399475,
+   "relative_error": 0.0006238585708567862
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000008@2025",
+   "target": 1183235.0,
+   "final_estimate": 1183354.6526260376,
+   "relative_error": 0.00010112329844671401
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@E12000009@2025",
+   "target": 677228.0,
+   "final_estimate": 676662.3395547867,
+   "relative_error": -0.0008352585026214478
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@W92000004@2025",
+   "target": 374851.0,
+   "final_estimate": 374520.50541210175,
+   "relative_error": -0.0008816692176311505
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@S92000003@2025",
+   "target": 612935.0,
+   "final_estimate": 612301.4511246243,
+   "relative_error": -0.0010336314215628913
+  },
+  {
+   "name": "ons.population.age_10_19_by_region@N92000002@2025",
+   "target": 252764.0,
+   "final_estimate": 253121.90686798096,
+   "relative_error": 0.0014159724801829257
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000001@2025",
+   "target": 343015.0,
+   "final_estimate": 343298.21336364746,
+   "relative_error": 0.0008256588302186812
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000002@2025",
+   "target": 986590.0,
+   "final_estimate": 986167.8848876953,
+   "relative_error": -0.00042785261588368774
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000003@2025",
+   "target": 717479.0,
+   "final_estimate": 717730.1658706665,
+   "relative_error": 0.0003500672084709154
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000004@2025",
+   "target": 612108.0,
+   "final_estimate": 612938.680683136,
+   "relative_error": 0.0013570818926333039
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000005@2025",
+   "target": 766058.0,
+   "final_estimate": 766312.226764679,
+   "relative_error": 0.00033186359868176443
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000006@2025",
+   "target": 727218.0,
+   "final_estimate": 727559.2016601562,
+   "relative_error": 0.0004691875890809221
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000007@2025",
+   "target": 1508607.0,
+   "final_estimate": 1510816.1218609917,
+   "relative_error": 0.001464345492889598
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000008@2025",
+   "target": 1066121.0,
+   "final_estimate": 1068449.0147972107,
+   "relative_error": 0.0021836309360857664
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@E12000009@2025",
+   "target": 684393.0,
+   "final_estimate": 684963.9525032043,
+   "relative_error": 0.0008342465560056074
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@W92000004@2025",
+   "target": 380557.0,
+   "final_estimate": 380159.77042007446,
+   "relative_error": -0.0010438109926385196
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@S92000003@2025",
+   "target": 703554.0,
+   "final_estimate": 703981.9755580189,
+   "relative_error": 0.0006083052019019065
+  },
+  {
+   "name": "ons.population.age_20_29_by_region@N92000002@2025",
+   "target": 219525.0,
+   "final_estimate": 219936.16009140015,
+   "relative_error": 0.0018729533829866599
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000001@2025",
+   "target": 363357.0,
+   "final_estimate": 364567.0047531128,
+   "relative_error": 0.003330071398412011
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000002@2025",
+   "target": 1064968.0,
+   "final_estimate": 1066027.3056228848,
+   "relative_error": 0.0009946830542183153
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000003@2025",
+   "target": 770809.0,
+   "final_estimate": 771402.2469630241,
+   "relative_error": 0.0007696419774861729
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000004@2025",
+   "target": 676709.0,
+   "final_estimate": 677005.1930160522,
+   "relative_error": 0.0004376962860731069
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000005@2025",
+   "target": 839114.0,
+   "final_estimate": 840639.6241629766,
+   "relative_error": 0.0018181369432241983
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000006@2025",
+   "target": 895639.0,
+   "final_estimate": 896961.1368701642,
+   "relative_error": 0.0014761939466282636
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000007@2025",
+   "target": 1537372.0,
+   "final_estimate": 1538795.013685714,
+   "relative_error": 0.0009256144158433923
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000008@2025",
+   "target": 1284552.0,
+   "final_estimate": 1284663.5725822449,
+   "relative_error": 8.685719398270606e-05
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@E12000009@2025",
+   "target": 742082.0,
+   "final_estimate": 742972.1592845917,
+   "relative_error": 0.0011995430216494604
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@W92000004@2025",
+   "target": 410248.0,
+   "final_estimate": 410132.7368373871,
+   "relative_error": -0.00028095971854321056
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@S92000003@2025",
+   "target": 733480.0,
+   "final_estimate": 733564.972164154,
+   "relative_error": 0.00011584796334467571
+  },
+  {
+   "name": "ons.population.age_30_39_by_region@N92000002@2025",
+   "target": 254067.0,
+   "final_estimate": 254869.61031079292,
+   "relative_error": 0.0031590498206887276
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000001@2025",
+   "target": 320860.0,
+   "final_estimate": 320975.78416252136,
+   "relative_error": 0.0003608557081635676
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000002@2025",
+   "target": 930967.0,
+   "final_estimate": 931396.6014080048,
+   "relative_error": 0.00046145718162379627
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000003@2025",
+   "target": 674349.0,
+   "final_estimate": 674647.2358136177,
+   "relative_error": 0.0004422573676504396
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000004@2025",
+   "target": 610611.0,
+   "final_estimate": 611337.200507164,
+   "relative_error": 0.001189301383637048
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000005@2025",
+   "target": 746341.0,
+   "final_estimate": 746218.2220117175,
+   "relative_error": -0.00016450655703290851
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000006@2025",
+   "target": 838578.0,
+   "final_estimate": 839668.7938147325,
+   "relative_error": 0.0013007660763011434
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000007@2025",
+   "target": 1268973.0,
+   "final_estimate": 1270481.8430976868,
+   "relative_error": 0.0011890269514692334
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000008@2025",
+   "target": 1255951.0,
+   "final_estimate": 1256642.5409812927,
+   "relative_error": 0.0005506114341186278
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@E12000009@2025",
+   "target": 688417.0,
+   "final_estimate": 688900.0536308289,
+   "relative_error": 0.0007016875394257512
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@W92000004@2025",
+   "target": 365951.0,
+   "final_estimate": 365862.95921230316,
+   "relative_error": -0.00024058080917073154
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@S92000003@2025",
+   "target": 675368.0,
+   "final_estimate": 675214.5873394012,
+   "relative_error": -0.00022715417461110815
+  },
+  {
+   "name": "ons.population.age_40_49_by_region@N92000002@2025",
+   "target": 246140.0,
+   "final_estimate": 246747.6231725216,
+   "relative_error": 0.0024686079975688273
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000001@2025",
+   "target": 360074.0,
+   "final_estimate": 359825.19343185425,
+   "relative_error": -0.0006909873196780438
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000002@2025",
+   "target": 995810.0,
+   "final_estimate": 994948.3113002777,
+   "relative_error": -0.0008653143669196835
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000003@2025",
+   "target": 736903.0,
+   "final_estimate": 735827.5324363708,
+   "relative_error": -0.001459442509569306
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000004@2025",
+   "target": 676307.0,
+   "final_estimate": 675744.0666751862,
+   "relative_error": -0.0008323635934772859
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000005@2025",
+   "target": 794143.0,
+   "final_estimate": 793910.0475769043,
+   "relative_error": -0.000293338130658714
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000006@2025",
+   "target": 866946.0,
+   "final_estimate": 866431.3785972595,
+   "relative_error": -0.0005936026035537144
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000007@2025",
+   "target": 1087518.0,
+   "final_estimate": 1087629.167104721,
+   "relative_error": 0.00010222093309818259
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000008@2025",
+   "target": 1287719.0,
+   "final_estimate": 1287543.7127552032,
+   "relative_error": -0.00013612227884868744
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@E12000009@2025",
+   "target": 784718.0,
+   "final_estimate": 784617.0222520828,
+   "relative_error": -0.00012868030033359154
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@W92000004@2025",
+   "target": 424694.0,
+   "final_estimate": 424227.1545767784,
+   "relative_error": -0.0010992512802667053
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@S92000003@2025",
+   "target": 766715.0,
+   "final_estimate": 767274.7197431207,
+   "relative_error": 0.0007300232069552792
+  },
+  {
+   "name": "ons.population.age_50_59_by_region@N92000002@2025",
+   "target": 255269.0,
+   "final_estimate": 255798.89809417725,
+   "relative_error": 0.0020758419321470533
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000001@2025",
+   "target": 349719.0,
+   "final_estimate": 348729.34380340576,
+   "relative_error": -0.0028298611073297084
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000002@2025",
+   "target": 884043.0,
+   "final_estimate": 882292.1419252501,
+   "relative_error": -0.0019805123447048803
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000003@2025",
+   "target": 652931.0,
+   "final_estimate": 651494.4082927704,
+   "relative_error": -0.0022002197892727017
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000004@2025",
+   "target": 591429.0,
+   "final_estimate": 591306.7802658081,
+   "relative_error": -0.0002066515747315308
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000005@2025",
+   "target": 677922.0,
+   "final_estimate": 677424.5865535736,
+   "relative_error": -0.0007337325627821366
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000006@2025",
+   "target": 744651.0,
+   "final_estimate": 744065.6551127802,
+   "relative_error": -0.0007860660728580706
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000007@2025",
+   "target": 787666.0,
+   "final_estimate": 787745.8823032379,
+   "relative_error": 0.0001014164674340584
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000008@2025",
+   "target": 1089421.0,
+   "final_estimate": 1087074.4476203918,
+   "relative_error": -0.0021539445077781265
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@E12000009@2025",
+   "target": 736639.0,
+   "final_estimate": 735123.1935815811,
+   "relative_error": -0.002057733052986448
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@W92000004@2025",
+   "target": 401775.0,
+   "final_estimate": 401460.9463453293,
+   "relative_error": -0.0007816654960381192
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@S92000003@2025",
+   "target": 721727.0,
+   "final_estimate": 722740.1344937405,
+   "relative_error": 0.0014037641570018972
+  },
+  {
+   "name": "ons.population.age_60_69_by_region@N92000002@2025",
+   "target": 223111.0,
+   "final_estimate": 224101.41501760483,
+   "relative_error": 0.004439113345396811
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000001@2025",
+   "target": 265573.0,
+   "final_estimate": 265280.5176811218,
+   "relative_error": -0.001101325507028854
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000002@2025",
+   "target": 669277.0,
+   "final_estimate": 668989.6631317139,
+   "relative_error": -0.0004293242831983361
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000003@2025",
+   "target": 504131.0,
+   "final_estimate": 503835.57861709595,
+   "relative_error": -0.0005860012236979133
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000004@2025",
+   "target": 466530.0,
+   "final_estimate": 466326.4743976593,
+   "relative_error": -0.000436254050844958
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000005@2025",
+   "target": 528207.0,
+   "final_estimate": 528311.2268753052,
+   "relative_error": 0.0001973220258443674
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000006@2025",
+   "target": 599882.0,
+   "final_estimate": 599961.2317267198,
+   "relative_error": 0.00013207885337410523
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000007@2025",
+   "target": 485057.0,
+   "final_estimate": 485003.3707332611,
+   "relative_error": -0.00011056281372888465
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000008@2025",
+   "target": 865392.0,
+   "final_estimate": 864743.6456069946,
+   "relative_error": -0.0007492031276061843
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@E12000009@2025",
+   "target": 618254.0,
+   "final_estimate": 618299.5177974701,
+   "relative_error": 7.362313461796086e-05
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@W92000004@2025",
+   "target": 321668.0,
+   "final_estimate": 322086.0869140625,
+   "relative_error": 0.001299746676892013
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@S92000003@2025",
+   "target": 519252.0,
+   "final_estimate": 518412.3359107971,
+   "relative_error": -0.0016170647184852074
+  },
+  {
+   "name": "ons.population.age_70_79_by_region@N92000002@2025",
+   "target": 155382.0,
+   "final_estimate": 156030.98895168304,
+   "relative_error": 0.004176731871664958
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000001@2025",
+   "target": 122118.0,
+   "final_estimate": 122116.24346160889,
+   "relative_error": -1.4383943326235946e-05
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000002@2025",
+   "target": 324141.0,
+   "final_estimate": 325005.86228695966,
+   "relative_error": 0.0026681668994655364
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000003@2025",
+   "target": 243274.0,
+   "final_estimate": 243290.26535224915,
+   "relative_error": 6.686021625469844e-05
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000004@2025",
+   "target": 225626.0,
+   "final_estimate": 225324.1164894104,
+   "relative_error": -0.0013379819284550522
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000005@2025",
+   "target": 275030.0,
+   "final_estimate": 275270.5272216797,
+   "relative_error": 0.0008745490371220867
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000006@2025",
+   "target": 305691.0,
+   "final_estimate": 305619.07409477234,
+   "relative_error": -0.00023528957420290795
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000007@2025",
+   "target": 237061.0,
+   "final_estimate": 236716.1509409168,
+   "relative_error": -0.0014546849084548195
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000008@2025",
+   "target": 447958.0,
+   "final_estimate": 447086.0356311798,
+   "relative_error": -0.001946531524875525
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@E12000009@2025",
+   "target": 313605.0,
+   "final_estimate": 312918.1152534485,
+   "relative_error": -0.002190286336479054
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@W92000004@2025",
+   "target": 154319.0,
+   "final_estimate": 154446.5887966156,
+   "relative_error": 0.0008267860510734296
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@S92000003@2025",
+   "target": 238904.0,
+   "final_estimate": 239228.98740386963,
+   "relative_error": 0.001360326339741607
+  },
+  {
+   "name": "ons.population.age_80_89_by_region@N92000002@2025",
+   "target": 77441.0,
+   "final_estimate": 77852.50692939758,
+   "relative_error": 0.0053138121847288
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000001@2025",
+   "target": 667540.0,
+   "final_estimate": 668483.2188777924,
+   "relative_error": 0.0014129773164040483
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000002@2025",
+   "target": 1386260.0,
+   "final_estimate": 1386668.9609966278,
+   "relative_error": 0.00029501031309264324
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000003@2025",
+   "target": 1070830.0,
+   "final_estimate": 1071106.2345056534,
+   "relative_error": 0.00025796298726537485
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000004@2025",
+   "target": 804340.0,
+   "final_estimate": 804955.8544216156,
+   "relative_error": 0.0007656642982017562
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000005@2025",
+   "target": 786010.0,
+   "final_estimate": 785828.5106182098,
+   "relative_error": -0.00023089958370779142
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000006@2025",
+   "target": 403180.0,
+   "final_estimate": 403643.102900285,
+   "relative_error": 0.0011486256765836172
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000007@2025",
+   "target": 144550.0,
+   "final_estimate": 144528.54875183105,
+   "relative_error": -0.00014840019487336777
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000008@2025",
+   "target": 367610.0,
+   "final_estimate": 367448.1831378937,
+   "relative_error": -0.00044018623570175793
+  },
+  {
+   "name": "voa.council_tax_stock.band_a@E12000009@2025",
+   "target": 473020.0,
+   "final_estimate": 472912.6387939453,
+   "relative_error": -0.0002269696969571847
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000001@2025",
+   "target": 206790.0,
+   "final_estimate": 207272.93676757812,
+   "relative_error": 0.0023353971061372647
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000002@2025",
+   "target": 705450.0,
+   "final_estimate": 706093.857217227,
+   "relative_error": 0.0009126900804124918
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000003@2025",
+   "target": 514190.0,
+   "final_estimate": 513757.2696018219,
+   "relative_error": -0.0008415768454814379
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000004@2025",
+   "target": 505610.0,
+   "final_estimate": 505420.2009305954,
+   "relative_error": -0.00037538630447301685
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000005@2025",
+   "target": 654140.0,
+   "final_estimate": 654350.6381837451,
+   "relative_error": 0.00032200780222137453
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000006@2025",
+   "target": 598950.0,
+   "final_estimate": 598901.5974283218,
+   "relative_error": -8.081237445222743e-05
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000007@2025",
+   "target": 499130.0,
+   "final_estimate": 499755.10285949707,
+   "relative_error": 0.0012523848686656189
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000008@2025",
+   "target": 687430.0,
+   "final_estimate": 686701.6530418396,
+   "relative_error": -0.0010595216358907822
+  },
+  {
+   "name": "voa.council_tax_stock.band_b@E12000009@2025",
+   "target": 644890.0,
+   "final_estimate": 644656.4423274994,
+   "relative_error": -0.00036216668346634366
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000001@2025",
+   "target": 196180.0,
+   "final_estimate": 195561.16912078857,
+   "relative_error": -0.0031544035029637363
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000002@2025",
+   "target": 616070.0,
+   "final_estimate": 615056.9691366301,
+   "relative_error": -0.0016443437651077499
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000003@2025",
+   "target": 432290.0,
+   "final_estimate": 432190.8517436981,
+   "relative_error": -0.00022935588679330978
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000004@2025",
+   "target": 403840.0,
+   "final_estimate": 403513.7962150574,
+   "relative_error": -0.0008077550142200549
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000005@2025",
+   "target": 526260.0,
+   "final_estimate": 526829.0571471017,
+   "relative_error": 0.0010813231997524645
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000006@2025",
+   "target": 739570.0,
+   "final_estimate": 738989.6436042786,
+   "relative_error": -0.0007847213863751038
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000007@2025",
+   "target": 1040280.0,
+   "final_estimate": 1040911.5495267023,
+   "relative_error": 0.0006070957114452487
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000008@2025",
+   "target": 1075940.0,
+   "final_estimate": 1076367.3417282104,
+   "relative_error": 0.0003971798875499091
+  },
+  {
+   "name": "voa.council_tax_stock.band_c@E12000009@2025",
+   "target": 624030.0,
+   "final_estimate": 623910.069527626,
+   "relative_error": -0.00019218703006900693
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000001@2025",
+   "target": 113460.0,
+   "final_estimate": 113535.91244125366,
+   "relative_error": 0.0006690678763763627
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000002@2025",
+   "target": 363970.0,
+   "final_estimate": 364172.2722206116,
+   "relative_error": 0.000555738716409518
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000003@2025",
+   "target": 249530.0,
+   "final_estimate": 249682.00863170624,
+   "relative_error": 0.0006091797848204136
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000004@2025",
+   "target": 247850.0,
+   "final_estimate": 248075.7066001892,
+   "relative_error": 0.0009106580600734677
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000005@2025",
+   "target": 302500.0,
+   "final_estimate": 302494.9650115967,
+   "relative_error": -1.6644589763042356e-05
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000006@2025",
+   "target": 506540.0,
+   "final_estimate": 507094.8383417863,
+   "relative_error": 0.0010953495119561995
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000007@2025",
+   "target": 975750.0,
+   "final_estimate": 975893.4482135773,
+   "relative_error": 0.00014701328575687472
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000008@2025",
+   "target": 843560.0,
+   "final_estimate": 843906.1500854492,
+   "relative_error": 0.0004103443565949295
+  },
+  {
+   "name": "voa.council_tax_stock.band_d@E12000009@2025",
+   "target": 432070.0,
+   "final_estimate": 431523.3204908371,
+   "relative_error": -0.0012652568083016706
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000001@2025",
+   "target": 61090.0,
+   "final_estimate": 60841.29301071167,
+   "relative_error": -0.004071157133546081
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000002@2025",
+   "target": 216990.0,
+   "final_estimate": 217100.37469482422,
+   "relative_error": 0.000508662587327613
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000003@2025",
+   "target": 158600.0,
+   "final_estimate": 158287.07346630096,
+   "relative_error": -0.0019730550674592414
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000004@2025",
+   "target": 154970.0,
+   "final_estimate": 154614.54171562195,
+   "relative_error": -0.002293723200477846
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000005@2025",
+   "target": 193700.0,
+   "final_estimate": 193850.2388496399,
+   "relative_error": 0.0007756264823949023
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000006@2025",
+   "target": 313840.0,
+   "final_estimate": 313707.998315371,
+   "relative_error": -0.00042060185007968746
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000007@2025",
+   "target": 585130.0,
+   "final_estimate": 586220.793222915,
+   "relative_error": 0.0018641895355135303
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000008@2025",
+   "target": 551730.0,
+   "final_estimate": 551237.652431488,
+   "relative_error": -0.0008923704864915138
+  },
+  {
+   "name": "voa.council_tax_stock.band_e@E12000009@2025",
+   "target": 292090.0,
+   "final_estimate": 292151.2358722687,
+   "relative_error": 0.000209647274020599
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000001@2025",
+   "target": 26600.0,
+   "final_estimate": 26478.172035217285,
+   "relative_error": -0.004579998676041912
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000002@2025",
+   "target": 104330.0,
+   "final_estimate": 104026.50525665283,
+   "relative_error": -0.0029089882425684653
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000003@2025",
+   "target": 75690.0,
+   "final_estimate": 75540.59925603867,
+   "relative_error": -0.0019738504949310906
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000004@2025",
+   "target": 73920.0,
+   "final_estimate": 73899.63159942627,
+   "relative_error": -0.00027554654455804205
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000005@2025",
+   "target": 105630.0,
+   "final_estimate": 105265.54351615906,
+   "relative_error": -0.0034503122582688855
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000006@2025",
+   "target": 172960.0,
+   "final_estimate": 172699.23252487183,
+   "relative_error": -0.0015076750412128458
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000007@2025",
+   "target": 298920.0,
+   "final_estimate": 298466.0869884491,
+   "relative_error": -0.001518510007864657
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000008@2025",
+   "target": 337260.0,
+   "final_estimate": 336325.5570526123,
+   "relative_error": -0.002770690112636231
+  },
+  {
+   "name": "voa.council_tax_stock.band_f@E12000009@2025",
+   "target": 147920.0,
+   "final_estimate": 148004.26309013367,
+   "relative_error": 0.0005696531242135411
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000001@2025",
+   "target": 14600.0,
+   "final_estimate": 14568.463012695312,
+   "relative_error": -0.0021600676236087327
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000002@2025",
+   "target": 65750.0,
+   "final_estimate": 65524.22173118591,
+   "relative_error": -0.003433890019986113
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000003@2025",
+   "target": 42180.0,
+   "final_estimate": 42097.12434768677,
+   "relative_error": -0.0019648092060984453
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000004@2025",
+   "target": 39400.0,
+   "final_estimate": 39448.5912399292,
+   "relative_error": 0.001233280201248711
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000005@2025",
+   "target": 62780.0,
+   "final_estimate": 62430.973487854004,
+   "relative_error": -0.005559517555686462
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000006@2025",
+   "target": 113720.0,
+   "final_estimate": 113626.11828231812,
+   "relative_error": -0.0008255515096894545
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000007@2025",
+   "target": 225170.0,
+   "final_estimate": 225394.21272850037,
+   "relative_error": 0.000995748672116029
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000008@2025",
+   "target": 265610.0,
+   "final_estimate": 265154.20303344727,
+   "relative_error": -0.0017160384268391038
+  },
+  {
+   "name": "voa.council_tax_stock.band_g@E12000009@2025",
+   "target": 81960.0,
+   "final_estimate": 81830.3019065857,
+   "relative_error": -0.0015824559957821698
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000001@2025",
+   "target": 1570.0,
+   "final_estimate": 0.0,
+   "relative_error": -1.0
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000002@2025",
+   "target": 7350.0,
+   "final_estimate": 0.0,
+   "relative_error": -1.0
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000003@2025",
+   "target": 3770.0,
+   "final_estimate": 0.0,
+   "relative_error": -1.0
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000004@2025",
+   "target": 3480.0,
+   "final_estimate": 3481.85693359375,
+   "relative_error": 0.0005336016073994253
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000005@2025",
+   "target": 6170.0,
+   "final_estimate": 6156.091949462891,
+   "relative_error": -0.0022541410919139993
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000006@2025",
+   "target": 14830.0,
+   "final_estimate": 14852.746398925781,
+   "relative_error": 0.001533809772473449
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000007@2025",
+   "target": 68500.0,
+   "final_estimate": 68412.60824584961,
+   "relative_error": -0.0012757920313925639
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000008@2025",
+   "target": 40390.0,
+   "final_estimate": 40385.87062072754,
+   "relative_error": -0.0001022376645818504
+  },
+  {
+   "name": "voa.council_tax_stock.band_h@E12000009@2025",
+   "target": 8430.0,
+   "final_estimate": 8410.222473144531,
+   "relative_error": -0.0023460885949547748
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000001@2025",
+   "target": 1287830.0,
+   "final_estimate": 1286741.165266037,
+   "relative_error": -0.0008454801751496803
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000002@2025",
+   "target": 3466140.0,
+   "final_estimate": 3458643.1612537596,
+   "relative_error": -0.002162878229454195
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000003@2025",
+   "target": 2547080.0,
+   "final_estimate": 2542661.161552906,
+   "relative_error": -0.0017348644122265353
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000004@2025",
+   "target": 2233400.0,
+   "final_estimate": 2233410.1796560287,
+   "relative_error": 4.5579188809651465e-06
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000005@2025",
+   "target": 2637190.0,
+   "final_estimate": 2637206.0187637694,
+   "relative_error": 6.074178868196073e-06
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000006@2025",
+   "target": 2863600.0,
+   "final_estimate": 2863515.277796158,
+   "relative_error": -2.958590719440515e-05
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000007@2025",
+   "target": 3837430.0,
+   "final_estimate": 3839582.350537322,
+   "relative_error": 0.0005608833352848119
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000008@2025",
+   "target": 4169520.0,
+   "final_estimate": 4167526.611131668,
+   "relative_error": -0.0004780859351512666
+  },
+  {
+   "name": "voa.council_tax_stock.total@E12000009@2025",
+   "target": 2704390.0,
+   "final_estimate": 2703398.4944820404,
+   "relative_error": -0.0003666281556874544
+  }
+ ]
+}

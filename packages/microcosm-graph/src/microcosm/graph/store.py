@@ -23,7 +23,8 @@ import re
 import shutil
 import struct
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
@@ -39,6 +40,7 @@ from microcosm.frame import (
     Weights,
     nullable_boolean_values_and_mask,
 )
+from microcosm.frame.bundle import _freeze_metadata_value
 
 from .errors import (
     GraphRuntimeError,
@@ -62,7 +64,7 @@ __all__ = [
 type ResumePolicy = Literal["auto", "require", "forbid"]
 
 _STORE_FORMAT = "microcosm-graph-content-store-v1"
-_FRAME_FORMAT = "microcosm-graph-frame-v1"
+_FRAME_FORMAT = "microcosm-graph-frame-v2"
 _KEY = re.compile(r"[0-9a-f]{64}\Z")
 
 _ENCODING_NUMPY = "numpy-v1"
@@ -194,10 +196,32 @@ def _require_key(key: str) -> str:
     return key
 
 
+def _reject_non_finite_constant(token: str) -> float:
+    """Refuse the ``NaN``/``Infinity`` literals ``json`` accepts by default."""
+    raise ValueError(f"Stored JSON carries the non-finite constant {token}.")
+
+
+def _finite_json_number(token: str) -> float:
+    """Refuse numeric literals that overflow to an infinity (e.g. ``1e999``)."""
+    value = float(token)
+    if not math.isfinite(value):
+        raise ValueError(f"Stored JSON carries the non-finite number {token}.")
+    return value
+
+
 def _load_json_file(path: Path, *, label: str) -> Any:
+    # ``_canonical_json`` writes every store JSON with ``allow_nan=False``, so
+    # no valid payload can carry a non-finite value and the decode boundary is
+    # the right place to refuse one.  Without these hooks a corrupt frame
+    # manifest survives the load and only fails later inside the canonical
+    # re-encode, which escapes as TypeError instead of StoreCorrupt.
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return json.loads(
+            path.read_text(encoding="utf-8"),
+            parse_constant=_reject_non_finite_constant,
+            parse_float=_finite_json_number,
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as error:
         raise StoreCorrupt(f"Stored {label} is not readable canonical JSON.") from error
 
 
@@ -329,6 +353,13 @@ def _encode_object_scalar(value: object) -> bytes:
         return bytes([_TAG_PD_NAT])
     if isinstance(value, (bool, np.bool_)):
         return bytes([_TAG_TRUE if bool(value) else _TAG_FALSE])
+    if isinstance(value, (np.timedelta64, np.datetime64)):
+        # timedelta64 subclasses signedinteger at runtime; letting it reach the
+        # integer branch would drop the unit and collide with a plain int.
+        raise TypeError(
+            "Object columns may not carry numpy datetime64 or timedelta64 leaves; "
+            f"found {type(value).__name__}."
+        )
     if isinstance(value, (int, np.integer)):
         return bytes([_TAG_INTEGER]) + str(int(value)).encode("ascii")
     if isinstance(value, (float, np.floating)):
@@ -665,6 +696,7 @@ class ContentStore:
         ):
             raise TypeError("codecs must be a mapping, codec registry, or None.")
         self.codecs = codecs
+        self._write_ledgers: list[set[str]] = []
         self.objects.mkdir(parents=True, exist_ok=True)
         self.tmp.mkdir(parents=True, exist_ok=True)
 
@@ -685,6 +717,72 @@ class ContentStore:
 
     contains = has
 
+    @contextmanager
+    def recording_writes(self) -> Iterator[set[str]]:
+        """Collect the key of every object published while this block is open.
+
+        The set is one caller's record of what it, and nothing before it, put
+        in this store, so it is the set that caller may take back out. A key
+        an object already satisfied is absent from it: that object is not this
+        caller's to remove. A key published over an existing object -- the
+        write-only replacement path -- is present, because the object standing
+        there now is this caller's.
+
+        Blocks nest, and every open block sees every publication under it. The
+        ledger is the store instance's, not a thread's: two callers sharing one
+        instance share its publications, so a block held open across concurrent
+        work collects that work too.
+        """
+
+        written: set[str] = set()
+        self._write_ledgers.append(written)
+        try:
+            yield written
+        finally:
+            # By identity: two ledgers holding the same keys compare equal, and
+            # `list.remove` would take the wrong one.
+            for index in reversed(range(len(self._write_ledgers))):
+                if self._write_ledgers[index] is written:
+                    del self._write_ledgers[index]
+                    break
+
+    def _note_write(self, key: str) -> None:
+        for ledger in self._write_ledgers:
+            ledger.add(key)
+
+    def evict(self, key: str) -> bool:
+        """Remove one object, so this key is a miss again.
+
+        Returns whether an object was there to remove, and removing one that
+        is already gone is not an error: calling this twice on a key leaves
+        the same store as calling it once. The object is renamed out of the
+        tree before anything is deleted, so a reader sees the whole object or
+        no object, never a partial one. The store has no reader lock, so a
+        loader that already opened this object reads on against the renamed
+        directory and one that has not sees the miss.
+
+        This is for a writer taking its own writes back. Every object is
+        content-addressed and derivable, so an eviction costs recomputation
+        and never a wrong answer, but it is still removal: a key another run
+        also published is a miss for that run too.
+        """
+
+        key = _require_key(key)
+        destination = self.object_path(key)
+        if not destination.exists():
+            return False
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        displaced = self.tmp / f"{uuid.uuid4().hex}-evicted"
+        try:
+            os.replace(destination, displaced)
+        except FileNotFoundError:
+            return False
+        _fsync_directory(destination.parent)
+        # The object is already invisible; a tree that will not delete is
+        # tmp-directory litter, not a failed eviction.
+        shutil.rmtree(displaced, ignore_errors=True)
+        return True
+
     def metadata(self, key: str, *, kind: str | None = None) -> Mapping[str, Any]:
         """Return validated object metadata."""
 
@@ -697,12 +795,16 @@ class ContentStore:
         build: Callable[[Path], Mapping[str, object]],
         *,
         verify_existing: bool = True,
+        validate_existing: Callable[[Mapping[str, Any]], None] | None = None,
     ) -> Path:
         key = _require_key(key)
         destination = self.object_path(key)
         if verify_existing and destination.exists():
-            _verified_meta(destination, expected_kind=kind)
+            existing = _verified_meta(destination, expected_kind=kind)
+            if validate_existing is not None:
+                validate_existing(existing)
             return destination
+        published = True
         staging = self.tmp / uuid.uuid4().hex
         staging.mkdir(parents=False, exist_ok=False)
         try:
@@ -729,9 +831,15 @@ class ContentStore:
                 if verify_existing:
                     if not destination.exists():
                         raise
-                    _verified_meta(destination, expected_kind=kind)
+                    existing = _verified_meta(destination, expected_kind=kind)
+                    if validate_existing is not None:
+                        validate_existing(existing)
+                    # The object standing here is the incumbent's, not ours.
+                    published = False
                 else:
                     self._replace_write_only_collision(staging, destination)
+            if published:
+                self._note_write(key)
             _fsync_directory(destination.parent)
             return destination
         finally:
@@ -895,12 +1003,35 @@ class ContentStore:
             raise TypeError(f"frame must be a Frame, got {type(frame).__name__}.")
         frame.revalidate()
         bound_node_key = key if node_key is None else node_key
+        metadata_sha256 = hashlib.sha256(
+            _canonical_json(_encode_frame_metadata(frame.metadata))
+        ).hexdigest()
+
+        def validate_existing(metadata: Mapping[str, Any]) -> None:
+            if metadata.get("frame_format") != _FRAME_FORMAT:
+                raise StoreUnavailable(
+                    "Stored frame predates complete metadata storage."
+                )
+            if metadata.get("frame_metadata_sha256") != metadata_sha256:
+                raise StoreCorrupt(
+                    "The same frame key cannot carry different metadata."
+                )
 
         def build(root: Path) -> Mapping[str, object]:
             _write_frame(root, frame)
-            return {"frame_format": _FRAME_FORMAT, "node_key": bound_node_key}
+            return {
+                "frame_format": _FRAME_FORMAT,
+                "node_key": bound_node_key,
+                "frame_metadata_sha256": metadata_sha256,
+            }
 
-        return self._put(key, "frame", build, verify_existing=verify_existing)
+        return self._put(
+            key,
+            "frame",
+            build,
+            verify_existing=verify_existing,
+            validate_existing=validate_existing,
+        )
 
     write_frame = put_frame
 
@@ -999,6 +1130,67 @@ def _schema_payload(schema: EntitySchema) -> dict[str, object]:
     }
 
 
+def _encode_frame_metadata(value: object) -> object:
+    """Preserve Frame metadata kinds without pickle or lossy scalar coercion."""
+    if isinstance(value, Mapping):
+        return [
+            "mapping",
+            [[key, _encode_frame_metadata(item)] for key, item in value.items()],
+        ]
+    if isinstance(value, tuple):
+        return ["tuple", [_encode_frame_metadata(item) for item in value]]
+    if isinstance(value, frozenset):
+        return [
+            "frozenset",
+            sorted(
+                (_encode_frame_metadata(item) for item in value), key=_canonical_json
+            ),
+        ]
+    if isinstance(value, float):
+        # Binary float bytes preserve signed zero and any allowed NaN payload.
+        return ["float64", struct.pack(">d", value).hex()]
+    if value is None or isinstance(value, (str, int, bool)):
+        return ["scalar", value]
+    raise TypeError(f"Unsupported Frame metadata value {type(value).__name__}.")
+
+
+def _decode_frame_metadata(encoded: object) -> object:
+    try:
+        if not isinstance(encoded, list) or len(encoded) != 2:
+            raise ValueError
+        kind, value = encoded
+        if kind == "mapping" and isinstance(value, list):
+            result = {}
+            for pair in value:
+                if not isinstance(pair, list) or len(pair) != 2:
+                    raise ValueError
+                key, item = pair
+                if not isinstance(key, str) or not key or key in result:
+                    raise ValueError
+                result[key] = _decode_frame_metadata(item)
+            return result
+        if kind in ("tuple", "frozenset") and isinstance(value, list):
+            items = [_decode_frame_metadata(item) for item in value]
+            if kind == "tuple":
+                return tuple(items)
+            # Frame admits hashable frozen mappings, including inside tuple
+            # members. Reapply its recursive freezing before building a set.
+            return frozenset(
+                _freeze_metadata_value(item, path="stored metadata[]") for item in items
+            )
+        if (
+            kind == "float64"
+            and isinstance(value, str)
+            and re.fullmatch(r"[0-9a-f]{16}", value)
+        ):
+            return struct.unpack(">d", bytes.fromhex(value))[0]
+        if kind == "scalar" and (value is None or type(value) in (str, int, bool)):
+            return value
+        raise ValueError
+    except (ValueError, TypeError, KeyError, struct.error) as error:
+        raise StoreCorrupt("Stored Frame metadata is malformed.") from error
+
+
 def _write_frame(root: Path, frame: Frame) -> None:
     _write_json(root / "schema.json", _schema_payload(frame.schema))
     table_specs: list[dict[str, object]] = []
@@ -1053,6 +1245,7 @@ def _write_frame(root: Path, frame: Frame) -> None:
             "weights": weight_specs,
             "strata": strata_spec,
             "mass_log": mass_log,
+            "metadata": _encode_frame_metadata(frame.metadata),
         },
     )
 
@@ -1099,6 +1292,14 @@ def _read_frame(path: Path, metadata: Mapping[str, Any]) -> Frame:
     raw_weights = manifest.get("weights")
     strata_spec = manifest.get("strata")
     raw_mass_log = manifest.get("mass_log")
+    raw_metadata = manifest.get("metadata")
+    if hashlib.sha256(_canonical_json(raw_metadata)).hexdigest() != metadata.get(
+        "frame_metadata_sha256"
+    ):
+        raise StoreCorrupt("Stored Frame metadata identity is missing or incorrect.")
+    frame_metadata = _decode_frame_metadata(raw_metadata)
+    if not isinstance(frame_metadata, Mapping):
+        raise StoreCorrupt("Stored Frame metadata must be a mapping.")
     if not all(
         (
             isinstance(raw_tables, list),
@@ -1238,6 +1439,7 @@ def _read_frame(path: Path, metadata: Mapping[str, Any]) -> Frame:
             weights,
             strata,
             mass_log=tuple(mass_log),
+            metadata=frame_metadata,
         )
     except ImportError as error:
         raise StoreUnavailable(

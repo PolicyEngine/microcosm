@@ -7,7 +7,7 @@ receipt anchor: the hermetic ASEC spine has the age, sex, parent, family, and
 newly seeded pregnancy inputs needed to reproduce the demographic categories,
 while the official CY2022 FNS estimates supply the rates.
 
-PolicyEngine-US 1.819.0 evaluates categories in this order: pregnant,
+PolicyEngine-US 2.2.1 evaluates categories in this order: pregnant,
 breastfeeding mother of an infant, postpartum mother, infant, child, none.
 There is no breastfeeding assessment in the hermetic sources.  Rather than
 invent one, this stage assigns every female parent whose family includes an

@@ -1,3 +1,661 @@
+# US Chronicle feed re-pin (dimension labels)
+
+Lane: `us-chronicle-feed-repin`, off `origin/main` at
+`8c44daa52354b4e28af315a486df0b0c006f26ff`, in the worktree
+`~/PolicyEngine/_worktrees/microcosm-us-feed-repin`. Started 2026-09-18.
+Everything below the `---` rule at the end of this section is prior-lane
+history; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+Done: merged as PR #955 (historicized 22 September 2026; this journal is
+history, not state). See `docs/us-chronicle-feed-repin.md` for the pin and the
+rebuild tool.
+
+## Goal
+
+Re-pin the US release's Chronicle consumer feed from the accumulated
+`consumer_facts_buildn_v9_4.jsonl` (sha `b3c08356…`, arch-era rows without
+dimension labels; main's `_validate_chronicle_hierarchy_labels` refuses it)
+to one reproducible artifact built from Chronicle `c5e5bf8` (labels on every
+row), as auditable as the UK pin (`docs/uk-chronicle-feed-repin.md`,
+`uk/chronicle_feed.json`).
+
+## Done
+
+- Chronicle `origin/main` is `fea61df` (MIT relicense, LICENSE/README only);
+  `c5e5bf8` stays the export commit.
+- Pinned feed inventory: 37,405 rows, 586 record sets, 20 namespaces,
+  37,399 distinct `source_record_id`s (six CBO ty2023 projection pairs are
+  chronicle#119's known duplicate wart (the repository was renamed from ledger)).
+- Whole-bundle exports at `c5e5bf8` for 2022/2023/2024 (US-namespace
+  filter): every one of the 37,334 pinned record ids they cover carries the
+  identical `value`; the 65 pinned ids they lack are all in years still
+  exporting (2020, 2021, 2025, 2026) or in JCT OBBBA fy2027–fy2029.
+- Period rule derived from the package declarations + cross-year value
+  identity: no `artifact_year` → every manifest file year; `artifact_year`
+  and un-templated periods → one build at that year; `artifact_year` and
+  `{year}`-templated periods → genuine per-year columns (CBO, NIPA, NHE, Z1,
+  popproj, OBBBA) at the pinned surface's years, restamping packages (CD,
+  state_2022, BEA regional, IRA, W-2) at the pinned surface's single year.
+- The pinned feed compiles at `05d254aa2` (the last manifest regeneration):
+  32,843 targets; it fails at `6f7571e1a` (observed_only CBO assertion) and
+  on main (labels).
+
+## Next
+
+All three completed in PR #955 (22 September 2026):
+1. `tools/build_us_chronicle_feed.py` + two-run sha equality.
+2. Compile the new artifact on this branch; diff targets vs the `05d254aa2`
+   compile of the pinned feed.
+3. Regenerate the parity manifest/inventory; `us/chronicle_feed.json`;
+   fences for new families; doc; tests; changelog; draft PR.
+
+---
+
+# US engine lock → policyengine-us 2.2.1
+
+Lane: `engine-lock-pe-us-2.2.1`, off `origin/main` at `51c3143829b88382270f5af0714ae28fba14f803`,
+in the worktree `~/PolicyEngine/_worktrees/microcosm-engine-bump`. Started 2026-09-15.
+Everything below the `---` rule at the end of this section is prior-lane
+history; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+In progress. Nothing pushed yet.
+
+## Goal
+
+Move the US engine lock from policyengine-us 1.819.0 / spm-calculator 0.3.1 /
+policyengine-core 3.31.0 to policyengine-us **2.2.1** / spm-calculator **1.0.0** /
+policyengine-core **3.32.5** — the trio inside the certified claim for
+`populace-us-2024-spm-20260915`. Not 2.5.0: the claim names 2.2.1.
+
+Every fail-closed pin re-derived by its own generator; never a hand-edited digest.
+
+## Plan
+
+1. Constraints (`microcosm-build`, `microcosm-data[us]`, `microcosm-frame[policyengine]`)
+   `>=1.745.0,<2` → `>=2.2.1,<3`; relock; verify the trio.
+2. Read policyengine-us CHANGELOG 1.819.0 → 2.2.1; enumerate every entry that
+   touches a variable microcosm reads/writes/seeds/scores.
+3. Re-derive the fail-closed pins: frame adapter generated-source audit, US
+   engine ABI lock, `ENGINE_PUBLIC_PARAMETER_FILES` RECORD digests, take-up
+   contract, per-test `version("policyengine-us")` literals, the release input
+   coverage manifest prose + artifact.
+4. The 2.0.0 SPM-area breaking change: per-call-site explicit selection.
+5. Identity re-pins downstream of the engine, through their generators.
+6. Tests exactly as CI runs them (`tools/ci_test_groups.py` shards) plus the
+   engine-free reproduction.
+7. Changelog fragment.
+8. Push + draft PR (root gates the merge).
+
+## Done
+
+- **Step 1 — constraints and lock** (`6aad4e1bd`). `policyengine-us>=1.745.0,<2`
+  → `>=2.2.1,<3` in `packages/microcosm-build/pyproject.toml`,
+  `packages/microcosm-data/pyproject.toml` (`us` extra) and
+  `packages/microcosm-frame/pyproject.toml` (`policyengine` extra); `uv.lock`
+  relocked. Resolved trio confirmed in the lane venv: policyengine-us 2.2.1,
+  spm-calculator 1.0.0, policyengine-core 3.32.5.
+- **Step 2 — changelog read, 1.819.0 → 2.2.1** (49 releases). Read from
+  `gh api repos/PolicyEngine/policyengine-us/contents/CHANGELOG.md`, not from
+  memory. The entries that touch a variable microcosm reads, writes, seeds or
+  scores:
+  - **2.0.0 (breaking) — SPM geography.** County FIPS required by default, or
+    an explicit national or fixed SPM area selection, for SPM measurement and
+    for resource calculations (household net income, benefits, marginal tax
+    rates) *only where a unit's housing assistance is positive*. Country
+    threshold extrapolation replaced by spm-calculator 1.0.0's canonical
+    2022–2035 amounts; unavailable years fail. Population datasets must supply
+    observed county inputs and source-backed SPM independence roles instead of
+    stored formula-owned SPM outputs, which the loader now rejects.
+  - **2.2.1 — housing-assistance valuation.** General household benefits and
+    CBO means-tested transfers count actual housing assistance rather than its
+    SPM-capped valuation (the cap stays inside SPM resources), so household
+    benefits, household net income, marginal tax rates and CBO transfer
+    aggregates rise for assisted households. Housing assistance and awarded
+    families' tenant contributions are allocated across a household's SPM units
+    by member share before each unit's resource cap, so SPM poverty and deep
+    poverty move for multi-SPM-unit households.
+  - **2.2.1 — loader rejections.** Derived poverty aliases such as `in_poverty`
+    are rejected from stored datasets; a `county_fips` input that is not a
+    five-digit string is rejected however it is spelled; the default dataset
+    content hash is verified.
+  - **1.822.1 + 2.0.6 — heating inputs.** Canonical `heating_type` enum
+    (default `UNSPECIFIED`) with derived `heating_expense`; new `wood_expense`
+    and `other_heating_fuel_expense` inputs; new `has_heating_expense` /
+    `has_cooling_expense` facts read by SNAP utility-allowance incurrence;
+    `heating_expense_person` and `heating_cooling_expense` deprecated as
+    heating-amount inputs; Illinois AABD reads `gas_expense` instead of the
+    deprecated `metered_gas_expense`.
+  - **1.824.5 — federal disability gates.** SNAP elderly-or-disabled member
+    qualifies by SSI receipt rather than the SSI disability criteria flag; SNAP
+    work/ABAWD/student rules recognise disability benefit receipt; the SSI
+    student earned income exclusion uses the SSI disability test; HUD
+    person-with-disabilities status recognises the SSI and SSDI paths.
+  - **1.820.0 — SNAP work-requirement surface.** New `is_snap_abawd_exempt`,
+    `is_subject_to_snap_abawd`, `has_snap_abawd_household_child`.
+  - **2.0.1 — deduction ordering.** Stable deduction order for person-level AGI
+    and student-loan-interest MAGI, removing process-dependent floating-point
+    results; any pinned golden number in that chain may move.
+  - **1.823.0 — removal.** The inert legacy New York `gov/hhs/ccdf` encoding
+    (market rates, county clusters, copay percentages and variables) is gone.
+  - State/parameter corrections with no microcosm input surface (1.820.1–1.825.2
+    Arkansas/NY/Washington/Michigan/Massachusetts/Maine/Minnesota/Montana, the
+    CCDF and CCAP rate tables, SNAP utility-allowance value corrections,
+    Medicaid ABD unit, Texas CEAP, state TANF unearned-income lists) change
+    computed outputs but no leaf microcosm supplies; they are scoring-surface
+    movement, not lock work.
+- **Step 3a — frame-adapter generated-variable audit** (`59608c332`). The
+  `_GENERATED_SOURCE_VERSION` / `_GENERATED_SOURCE_SHA256` audit in
+  `packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py`
+  re-derived through a new generator, `tools/refresh_us_generated_variable_audit.py`,
+  with the import-free AST inventory split out into
+  `adapters/_policyengine_us_source_index.py`.
+- **Step 3b — engine ABI lock and US pool engine contracts** (`4c6bce3d8`).
+  `packages/microcosm-build/src/microcosm/build/us/engine_abi.lock.json`
+  regenerated through `tools/generate_us_bundle_from_constants.py`; the
+  multispine pool contracts re-pinned through a new
+  `tools/repin_us_pool_engine_contracts.py`.
+
+- **Step 3c — `ENGINE_PUBLIC_PARAMETER_FILES` is not on this branch.** The
+  brief's `tools/spec_seed_identity_diagnostics.py` pin set exists only on
+  unmerged branches (first added in `a5a066f90`); `git cat-file -e
+  origin/main:tools/spec_seed_identity_diagnostics.py` fails and
+  `ENGINE_PUBLIC_PARAMETER_FILES` appears nowhere in this tree. The brief was
+  written against the #893 file inventory. No equivalent import-time parameter
+  pin exists on `main`, so this step has no target here and nothing was
+  invented in its place.
+- **Step 3d — take-up contract** (`afaffae26`). `asserted_engine.constraint`
+  → `>=2.2.1,<3`, `inventory_built_against` → `2.2.1`, and the ACA
+  `engine_state_note` version. The repository's own fail-closed check,
+  `assert_take_up_contract_current()`, passes against the installed 2.2.1
+  engine: all seventeen `takes_up_*` flags present, no addition, no removal,
+  no entity/value_type/default/engine_class drift. No new
+  `populace_treatment` decision and no rate was introduced. `aca_take_up_seed`
+  is still absent from the whole 2.2.1 source tree, so the note's claim holds.
+- **Step 3f (partial) — source-stage and parity prose** (`afaffae26`). Each
+  mechanism claim re-verified against 2.2.1 through microcosm's own static
+  consumer index before its version string moved:
+  `is_incapable_of_self_care` 33 receipts (SNAP work registration and general
+  work requirements, federal and AR Medicaid work requirements, CDCC, many
+  state dependent-care deductions); `health_insurance_premiums` read by
+  exactly the five named state/local formulas; the 162(l) chain unchanged;
+  Early Head Start still `age < 3 | is_pregnant`; `uncapped_ssi` still the
+  SSI-eligible current-benefit candidate. Frozen generation-0 digests moved
+  with their files (`source_stages.json` dc58a0d7→7935d891,
+  `take_up_contract.json` a9e70fb3→282dbc4c; `support_spine.json` unchanged);
+  US bundle `spec_sha256` a521bf1934d799beef056a1bb999be91e7a2af5c15b124cf13725a837a100f20.
+
+- **Step 3e/3g — engine-pinned test facts and remaining literals** (`325680a7d`).
+  Every `version("policyengine-us")` literal moved only after its surrounding
+  fact was re-checked and the file run; all twenty-six changed test files pass
+  against 2.2.1. Two pinned quantities genuinely moved, both from 1.824.5's
+  disability-gate realignment (SSI closure input leaves 55 → 54,
+  `materialized_pool_input_surface` 32 → 31) and one from the 2.x input-registry
+  delta (924 → 925). Two `1.819.0` strings deliberately remain: the
+  financial-assistance documentation-drift comment and — until step 5 rewrote
+  it — the multispine pool-tool comment narrating a past re-pin.
+- **Step 3f — release input-coverage manifest** (`93ae078a5`). Prose re-verified
+  through microcosm's own consumer index, then the manifest regenerated by its
+  own tool (163 required, 7 reviewed exclusions, 41 probes — unchanged). The
+  `1.777.0` and `1.764.6` references deliberately stay: they date an artifact
+  and a measurement, not a live mechanism.
+- **Step 4 — SPM-area selection** (`36e6c411b`). Measured, not assumed. Under
+  2.2.1 `household_net_income` and `household_benefits` compute identically with
+  and without `county_fips` on a household with positive housing assistance;
+  only `spm_unit_capped_housing_subsidy`, `spm_unit_spm_threshold` and
+  `in_poverty` raise `SPMInputError(SPM_GEOGRAPHY_REQUIRED)`. **2.0.0's
+  changelog line about resource calculations no longer describes 2.2.1**, whose
+  housing-valuation change moved general household benefits off the SPM-capped
+  path. A second, unlisted fail-closed arm also exists: one SPM unit with no
+  classified adult raises `SPM_COMPOSITION_REQUIRED` for the whole population's
+  SPM measurement. Selections are recorded per call site in the lane report.
+  The county ladder gates now reject a non-text `county_fips`.
+- **Step 5 — identity re-pins** (`78add8f33`, pool pins to follow). Six
+  `EXPECTED_HASHES` values, the loader golden, the frozen generation-0 digests
+  and the multispine pool-tool identities, each recomputed by its documented
+  path. `spec_engine_coverage.py --check` is green at 41/41 inventory checks and
+  42,156/42,156 configuration fields.
+
+## Next
+
+- Finish the CI-faithful test run (all four US engine groups plus `rest`,
+  `shared-spec` and the engine-free reproduction), then push and open the
+  draft PR. The root gates the merge; this lane never marks it ready.
+- Owner questions in the lane report: whether to add a release-H5 precondition
+  gate for `SPM_COMPOSITION_REQUIRED` (zero-adult SPM units), and whether the
+  SNAP elderly-or-disabled population shift from 1.824.5 needs a seeding
+  response.
+
+---
+
+# Publisher compatibility range at source-enrichment certification
+
+Lane: `max/certify-compatible-model-range-20260914`, off `origin/main` at
+`18271b28d`. Started 2026-09-14. Everything below the `---` rule at the end of
+this section is prior-lane history; see "Root journals are history, not state"
+in `CLAUDE.md`.
+
+## State
+
+Pushed as draft PR
+[#928](https://github.com/PolicyEngine/microcosm/pull/928). No publication of
+any kind: this lane changes producer/validator source only, and builds,
+certifies and publishes no artifact.
+
+An adversarial review lane run against this worktree wrote into it while it
+worked: a reviewer checked out `origin/main` copies of the changed files for a
+byte-for-byte default-path comparison, and a `git add -A` in this session
+committed and pushed that reverted tree as `4b0ae3624`, briefly deleting the
+feature from the PR and committing a reviewer's scratch test module. The branch
+was reset to `8f82d0c6a` and the two intended commits reapplied; `git diff
+8f82d0c6a <head>` is now exactly the docs and journal changes, with the feature
+and test files byte-identical to `8f82d0c6a`. Review lanes must run in their own
+worktree, not this one.
+
+## Problem
+
+`certify_source_enrichment` writes
+`compatible_{model,core}_packages = [{"name": pkg, "specifier": "==<tested version>"}]`
+over whatever the candidate manifest held (`source_enrichment.py:940-942`), and
+`_check_compatibility` then requires exactly that list at every later validation,
+including publish preflight (`source_enrichment.py:610-615`). The contract layer
+(`contract.py::_check_compatible_package_entries`) and both consumers (Microcosm
+`loader.py::_package_certification`, policyengine.py
+`provenance/certification.py::validate_release_manifest`) already accept any PEP
+440 specifier set that contains the built-with version — so the exact pin is a
+producer-tooling choice, not a schema limit. The consequence: each country patch
+release moves the binding rather than widening it, and a data release whose H5
+bytes are unchanged still needs re-certification.
+
+## Plan
+
+1. Add a validated publisher claim at certification time, recorded in both
+   `release_manifest.json` and `source_enrichment.json`, with the default path
+   byte-identical to today.
+2. Relax the certification-time equality gate to "equals the default exact pin,
+   or equals the claim the report records", keeping every other guard.
+3. Tests for accept/reject/default/consumer-read.
+4. Docs: when a range is legitimate and when it is not.
+
+## Done
+
+- Read both gates, the contract layer, both consumers and the 2026-09-12 dry-run
+  report that motivated the change.
+- `--compatible-model-specifier` / `--compatibility-claim-declared-by` on the
+  source-enrichment CLI and `certify_source_enrichment`, validated by
+  `parse_compatibility_claim_requirement` (PEP 508, names the built-with
+  package, no URL/extras/marker) and `compatibility_claim_entry` (valid and
+  non-empty PEP 440 set, contains the tested version under the consumers' own
+  containment, bounded above, accountable declarer).
+- The claim recorded in `source_enrichment.json`
+  (`compatibility.publisher_claims.model`) and `release_manifest.json`
+  (`compatible_model_packages[0]`, `basis: publisher_claim`, `declared_by`),
+  cross-checked at every later validation so a manifest widened after
+  certification has no declaration behind it.
+- `contract.py` refuses a `publisher_claim` basis with no declarer, and a
+  declarer with no basis, for every release type.
+- 20 tests across `test_source_enrichment.py` and `test_contract.py`;
+  `packages/microcosm-data/tests/` 550 passed, 2 skipped; `ruff check .` clean;
+  `tools/ci_test_groups.py --verify` ok.
+- Docs: a "Declaring a publisher compatibility range" section in
+  `docs/us-native-spm-role-source-enrichment.md` with when to use a range and
+  when not to, a note in the `microcosm-data` README, and a changelog fragment.
+
+## Second session, 2026-09-14 evening
+
+The lane was re-entered after the first session ended at `a4e7e131c`. Nothing
+was rewritten: the feature and test files are untouched, and this session's job
+was to confirm the branch rather than extend it. Done here:
+
+- `packages/microcosm-data/tests/` re-run from scratch in the lane venv: 565
+  passed, 2 skipped, matching what the PR body claims.
+- A second, independent adversarial pass over the branch, run out of two
+  detached review worktrees so no reviewer could write into this one (the
+  collision recorded above must not repeat): PEP 440 containment parity against
+  both consumers, guard-preservation and bypass, wrapper accept/refuse measured
+  rather than described, mutation testing of every new guard, a claims audit of
+  the PR body and docs, and a blast-radius sweep for anything that reads
+  `compatible_model_packages`.
+
+## Third session, 2026-09-14 — second-pass review, part two
+
+The second-pass review (`review-928-r2.md`, written against `7cb8eae6e`)
+confirmed the six earlier fixes and left five items. This session applies them,
+each with a test that fails before and passes after.
+
+- **M1** — the boundedness guard bounds a claim above and never below, so
+  `policyengine-us<2.1` over a 2.0.1 build is accepted and certifies a consumer
+  running 0.9.0. Add a lower-bound probe.
+- **L1** — `compatibility.narrowed_claims` is written and never read; surface it
+  in the validation/preflight output.
+- **L2** — the "pass the flags" remediation suffix fires even when the flags
+  were passed this run; gate it on the claim being absent.
+- **L3** — the narrowing loop calls a Core pin change a narrowed "claim",
+  although no producer can declare a Core range; reword.
+- **I2** — doc only: a prerelease built-with version cannot carry a range, so
+  the exact default pin is the only option there. (Filed as such; the premise
+  did not survive measurement — see "Done".)
+
+### Done
+
+- **M1.** A third boundedness probe in `compatibility_claim_entry` asks whether
+  the claim still admits `Version(f"{tested.epoch}!0")`. Measured first:
+  `Version("0") in SpecifierSet("<2.1")` is `True`, and `False` for
+  `>=2.0.1,<2.1`, `~=2.0.1`, `==2.0.*` and `>=2.0.1,<3`. `<2.1` and `<=2.0.5`
+  moved from the accepted parameters to the refused ones, a
+  certification-level `policyengine-us<2` case was added, and the next-major
+  error text now cites `'>=2.0.1,<2.1'` instead of the `'<2.1'` the new probe
+  refuses. Four tests failed before, pass after. The probe carries the tested
+  version's epoch because a claim may mix epochs: over a `1!2.0.1` build,
+  `>=2.0.1,<1!2.1` admits `1!0` while excluding a bare `Version("0")`. The
+  first draft justified that backwards — claiming an epoch-0 zero sits outside
+  an epoch-bearing claim, when `Version("0") in SpecifierSet("<1!2.1")` is
+  `True` — and its test survived replacing the probe with a bare
+  `Version("0")`. Corrected after the third pass; the test now uses the
+  mixed-epoch claim and kills that mutant.
+- **L1.** `recorded_narrowed_claims` reads the record back, and both validation
+  (`python -m microcosm.data.source_enrichment` without `--certify`) and
+  `microcosm-publish-release --preflight-only` print `narrowed_claims` beside
+  their verdict when a bundle carries one; publication repeats it on stderr,
+  since reaching publication does not require running the preflight first.
+  It reports rather than gates: an absent or malformed record reads as no
+  record. Three tests failed before.
+- **L2.** The "pass the flags" suffix is gated on `claim_specifier is None`.
+  Both branches tested through a re-certification that tightens a declared
+  range (`>=1.998.0,<2` → `>=1.999.0,<2`): warns, no suffix.
+- **L3.** Message construction moved to `_narrowing_notice`; Core reads "moves
+  the policyengine-core compatibility pin". The Core branch turns out to be
+  unreachable through `certify_source_enrichment` — the input gate re-runs the
+  loader qualification and requires the recorded receipt to equal the runtime,
+  so a moved Core version is refused first. Both the wording and that wall are
+  now pinned by tests.
+- **I2.** The review's premise was wrong and the docs say the accurate thing
+  instead. Installed `packaging` 26.2 matches prereleases by default
+  (`SpecifierSet.contains` documents it; `Version("2.1.0rc1") in
+  SpecifierSet(">=2.0.1,<2.2")` is `True`). The real constraint is ordering: a
+  prerelease sorts below its own release, so `>=2.0.1,<2.1` and `~=2.0.1`
+  exclude a `2.0.1rc1` build while `>=2.0.1rc1,<2.1` and `==2.0.*` reach it and
+  pass all three probes. A characterization test pins all five outcomes; it
+  passes before and after.
+- `packages/microcosm-data/tests/` 611 passed, 2 skipped; the two named files
+  379 passed; `ruff check` and `ruff format --check` clean on
+  `packages/microcosm-data` and on every changed `.py`; repo-wide `ruff check`
+  clean; `tools/ci_test_groups.py --verify` ok.
+
+### Third adversarial pass
+
+Five read-only reviewers over the five changes (guard correctness, reporting
+path, wording and reachability, docs/claims audit, test quality), each finding
+put to an independent refuter: 33 raised, 2 survived. Both are fixed.
+
+- **The epoch rationale was a fabricated mechanism, and its test was inert.**
+  The comment and docstring said an epoch-0 zero sits outside an epoch-bearing
+  claim; `Version("0") in SpecifierSet("<1!2.1")` is `True`. The verifier
+  mutated the probe to a bare `Version("0")` and the whole file stayed green —
+  the test named for the epoch carry survived dropping it. The carry is
+  justified by mixed-epoch claims instead (`>=2.0.1,<1!2.1` over `1!2.0.1`
+  admits `1!0` and not `0`), which is the case the test now uses; the mutant
+  fails it.
+- **The record reached the preflight and not the publish run.** Already closed
+  mid-flight, before the pass reported it: publication repeats it on stderr,
+  since `tools/publish_release.sh` passes its arguments straight through and
+  the runbook's "remove `--preflight-only`" step is a habit, not a gate.
+
+Two refuted findings were worth acting on anyway. The documented probe residue
+is now executable on both sides (`<2.1,!=0` admits `0.9.0` exactly as
+`>=2.0.1,!=3.0.0,!=99999.0.0` admits `5.0`), so the sentence describing the
+guard's limit cannot drift from it. And `--certify` now reports the narrowing
+it caused in its own verdict, with `_narrowed_claims` giving all four verdicts
+one tolerance so none can report a bundle differently from the others.
+
+### Next
+
+- PR CI. Do not merge; do not mark ready.
+
+## Next
+
+- Whole-workspace run and PR CI to finish; hand to human review. Do not merge;
+  do not publish.
+
+---
+
+# Amendment 19 — typed opaque artifacts on the graph interface
+
+Lane: `amend-typed-artifacts`, off `origin/main` at `3094bfe84`. Started
+2026-09-11. Everything below the `---` rule at the end of this section is
+prior-lane history; see "Root journals are history, not state" in
+`CLAUDE.md`.
+
+## State
+
+Landed, reviewed, and re-verified from scratch on `amend-typed-artifacts`. The
+whole-workspace run is the last command outstanding; every gate the brief names
+has been re-run green in this session. Nothing pushed, no PR, no branches
+created, `uv.lock` untouched.
+
+> Historicized 2026-09-12: the branch was pushed as PR #911 on 2026-09-11 and
+> peer-gated; the whole-workspace run above was superseded by the PR's CI. The
+> interface lock is now enforced — `graph-interface-lock-test` merged as #910
+> on 2026-09-11 and this branch passes it. The paragraphs below are the lane's
+> record as written, not current state.
+
+## Scope (what is in, and what is deliberately out)
+
+In, from `git diff origin/main origin/microcosm-us-launch-integration-20260909
+-- packages/microcosm-graph/src`:
+
+- `decl.py`: `ArtifactType`, `ArtifactOutput`, `ArtifactInput`,
+  `Node.artifact_inputs` / `Node.artifact_outputs`, their validation, their
+  elision from the canonical projection when empty, and the artifact-edge
+  arm of `compile_graph`.
+- `kernel.py`: `ArtifactValue` and `KernelContext.artifacts`.
+- `artifact_edges.py` (new): numeric scope payloads, scope compatibility,
+  typed descriptors, `typed_contracts`, `value_from_descriptor`.
+- `keys.py`: `opaque_artifact_key` and the `typed_artifacts` term in
+  `node_key`.
+- `serialize.py`, `view.py`, `manifest.py`, `executor.py`: the minimal
+  support for the executor to honour declared artifact inputs/outputs.
+
+Out, because it is not needed for artifacts (each is its own lane):
+
+- `SeedSource.KEYED` and `randomness.py` (`keyed_uniform`).
+- `availability.py` / execution state / `unreached` / `blocked_by` /
+  `gate_exception` propagation, and manifest schema 4.
+- `attachments.py`, `_PopulationRetention`, lazy populations,
+  `_population_observer`.
+- `store.py` Frame-metadata storage (`microcosm-graph-frame-v2`) and the
+  non-finite JSON decode hooks.
+- `keys.py` `_stream_file` chunked source hashing.
+- `codecs.py` `SourceBytesCodec` / `load_source_bytes`; `schema.py`.
+- The `_write_node` per-coordinate memory refactor.
+
+## Done
+
+- Read `CLAUDE.md`, `docs/graph-acceptance.md`, `DESIGN.md`, and the
+  amendment-17 precedent (`cdbf71888`, `80b63ba14`, `ed36f6cb3`).
+- Measured the branch diff per file and fixed the in/out boundary above.
+- `uv sync --all-packages --locked --extra us --extra uk` → exit 0.
+- Captured the baseline node keys of the three toy acceptance graphs before
+  touching any source, so the node-key answer is measured, not asserted.
+- `68a6ecc4b` (red, exit 2, 4 collection errors) → `e591c52d7`: the frozen
+  declaration interface, `compile_graph`'s artifact edge, the elided
+  canonical projection, `opaque_artifact_key`, serialization, and the view.
+- `a2b6dfb0b`: the acceptance suite's B2 `KernelContext` field set, as its
+  own commit, matching `80b63ba14`.
+- `1cce8eceb` (red, **8 of 8 failing** — the commit message and an earlier
+  version of this line both say 7, which is wrong; see the correction under
+  "Re-verification") → `15f9d2c67`: `artifact_edges.py` and
+  the executor, cache record, and manifest support.
+- `38b9a9e4d`: amendment 19 in the charter, the relock, the changelog
+  fragment. `8c2e7faab`: the graph explorer's receipt payload.
+- Node keys re-measured after the change: byte-identical for all 20 nodes
+  of the three toy graphs.
+- `packages/microcosm-graph/tests` 359 passed, exit 0.
+  `tools/ci_test_groups.py --verify` ok, `tools/spec_engine_coverage.py
+  --check` 42156/42156 + 41/41, `tools/graph_acceptance_burndown.py
+  --verify` ok, `ruff check` and `ruff format --check` clean.
+
+- Ran a five-dimension adversarial review of the extraction against the
+  integration branch (fidelity/minimality, executor paths, identity and
+  store, manifest provenance, charter/lock/changelog), each finding put to
+  two skeptics. Nine findings; seven real and fixed here:
+  `3a0726f93` (a corrupt typed manifest surfaced as `NodeRejectedError`
+  rather than `StoreCorruptError`), `9ebb60e4b` (`ArtifactValue.key`
+  described as a content identity it is not; relock), `402d9a631` (a
+  malformed `gate_ancestry` regressed to a bare `TypeError` on manifests
+  with no artifacts at all; charter graph list corrected; the F2 sentence
+  split into its two mechanisms), `5c4a8efde` (the artifact miss decision
+  moved back inside the recompute fallback), `9018c4420` (the
+  identity-preservation claim corrected, and payloads read only on the path
+  that runs a kernel). Two were the documented decisions and stand.
+- Added coverage the review motivated: manifest ancestry authentication,
+  the F2-over-bytes path, cross-version edges under all three resume
+  policies, every artifact declaration field being normative, A3 through a
+  byte edge, and a cache hit that reads no payload.
+
+## Re-verification, 2026-09-11 (independent of the landing session)
+
+Everything below was re-run from a clean read of the tree, not carried over
+from the landing session's notes.
+
+- The node-key answer re-measured with a script that varies only the
+  graph-kernel code: `microcosm.graph` resolved once from this branch and once
+  from `origin/main`'s sources (shadowed through `PYTHONPATH`, confirmed by the
+  loaded `decl.py` hash `635fef92...` on the main run), with `microcosm.build`
+  identical in both. Six graphs, 5+5+6+9+41+8 = 74 nodes: **all 74 node keys and
+  all 74 canonical projections byte-identical.** The amendment's per-graph counts
+  are each correct.
+- `docs/graph-interface.lock` re-checked against `shasum -a 256` of the two
+  frozen files: both match.
+- Re-run green: `packages/microcosm-graph/tests` 370 passed exit 0; the
+  acceptance subset 113 passed exit 0; `test_graph_kernel_contract.py` 15 passed
+  exit 0; the `KernelContext(` consumers (calibrate/fit/frame `test_kernels.py`
+  plus `test_us_graph.py`, `test_uk_graph.py`) 36 passed exit 0.
+  `tools/ci_test_groups.py --verify` ok, `tools/spec_engine_coverage.py --check`
+  42156/42156 + 41/41, `tools/graph_acceptance_burndown.py --verify` ok,
+  `ruff check .` clean — all exit 0.
+- No consumer constructs `KernelContext` positionally: all five non-test sites
+  use keyword arguments, so the new field's placement could not have broken one.
+- `ruff format --check .` exits 1 on 81 pre-existing files, none of them touched
+  by this lane (all 17 changed Python files pass `ruff format --check`
+  individually). CI's lint lane runs only `ruff check .`, so this is repo drift,
+  not a gate this lane moved.
+- The red commit `1cce8eceb` records "Red: 7 of 8 fail against the executor as
+  it stands", and this journal repeated it. **It was 8 of 8.** Measured by
+  extracting the whole tree at `1cce8eceb` (`git archive | tar -x`), pointing
+  `PYTHONPATH` at that tree's six shard `src` directories (confirmed:
+  `microcosm.graph.executor` resolves into the extract, and
+  `microcosm.graph.artifact_edges` has no spec there, so the executor support
+  genuinely had not landed), and running the commit's own
+  `test_graph_executor.py` against its own sources: **8 failed, 63 passed**, the
+  8 being exactly the amendment-19 tests the commit added. Red-first discipline
+  holds — the commit was redder than claimed — but the count in its message is
+  wrong and stays wrong, because rewriting landed history to fix a tally would
+  be worse than recording the correction here.
+- An adversarial audit line-traced the new module: eleven non-docstring
+  statements of `artifact_edges.py` never executed in the whole graph suite, all
+  on the foreign-provenance parsing surface. Closed in `e3f69a4c4` with three
+  tests through the public `NodeReceipt`/`RunManifest` surface; the trace now
+  reports zero. The same trace showed `run_graph`'s consumer-side receipt
+  comparison is unreachable as a refusal — both skeptics confirmed the charter's
+  wording claims only the check's ordering, which does execute — so the branch
+  is now commented the way this file already marks such guards, rather than
+  chased with a test that cannot be written honestly.
+- `packages/microcosm-build/tests/test_release_target_parity.py` fails two
+  tests locally. **Not this lane, and not CI**: both are guarded by
+  `_feed_or_skip` on a 131 MB pinned feed that lives *outside the repository*
+  (`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`,
+  dated 2026-07-23), so CI skips them; the local artifact predates #855's
+  hierarchy-label requirement. The same two fail identically with `origin/main`'s
+  graph sources swapped in, and `ledger_targets.py` imports no
+  `microcosm.graph`. This is the US twin of the UK instance the #791 lane already
+  recorded in `experiments/791-household-composition-receipts.md:111`.
+
+## Next
+
+- Whole-workspace `uv run pytest` is the only command still running. Every gate
+  the brief names is green at `HEAD`, and the complete set of tests this change
+  can reach — the graph package (373) plus the 8 test files outside it that
+  import `microcosm.graph` directly or through the seven source modules that do
+  (81) — is green at exit 0. The lane report is in `out.md`.
+- For Max, in `out.md` §8: the gate-artifact-output refusal is the one interim
+  ruling this lane made on his behalf; the interface lock had **no automated
+  enforcement** when this was written (the charter's freeze was a human gate,
+  which is how the integration branch changed both frozen files unnoticed) —
+  the sibling branch `graph-interface-lock-test` (`8bd6e05ec`) added the test
+  and merged as #910 on 2026-09-11; this branch passes it, exit 0; plus the pre-existing
+  `ruff format` drift and the stale local `_buildh-runtime` feed.
+
+---
+
+# Issue #907 — population `_storage_parts` hashes object dtype by pointer
+
+Lane: `fix-907-population-stamp-object-storage`, branched from
+`origin/main` at `295130c9f901e08db11457f16dbdee4e2349c5ba` on 2026-09-11.
+Report: `/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/lanes/out-907-build-r1.md`.
+
+## State
+
+Implementation complete on `fix-907-population-stamp-object-storage`; ten
+commits, nothing pushed, no new branch, no stash. `decl.py`, `kernel.py`,
+`docs/graph-interface.lock`, every `test_acceptance_*`, `uv.lock`, spec pins
+and evidence JSON are untouched — `shasum -a 256` on `decl.py`/`kernel.py`
+still matches the lock byte for byte.
+
+## Done
+
+- Read `CLAUDE.md` and `docs/shared-constants.md`; confirmed the lane rules.
+- Reproduced #907 directly, and end to end: two independently constructed
+  equal object-dtype Series give different `_storage_parts` value bytes
+  (PyObject addresses), which on `origin/main` surfaces as a **spurious**
+  `PopulationError: Structural node 'n1' changed carried storage in
+  household.tenure_type` for content that did not change.
+- Landed the red regression in `packages/microcosm-graph/tests/`
+  (`test_graph_population.py`, an already-tracked file, so
+  `tools/ci_test_groups.py` needed no change). Final tests against the pre-fix
+  source: 34 failed, 24 passed, 46 deselected; direct exit 1.
+- Fixed `_storage_parts` by routing any materialized object array through a
+  length-prefixed encoding whose body is `store._encode_object_scalar` — the
+  graph package's existing object-leaf codec, the one `ContentStore` writes
+  and reads back. A second, parallel vocabulary would have left a column
+  unequal to its own persisted-and-reloaded self for `pd.NA`, `pd.NaT` and
+  NumPy scalars. Unsupported leaves raise `PopulationError` under the static
+  code `storage-object-leaf` instead of being `repr()`-ed.
+- Kept the masked, numeric and `StringDtype` branches byte-identical, verified
+  by a pre-fix/post-fix byte diff over 20 dtypes and pinned by hex-literal
+  characterization tests. Only object, Categorical, DatetimeTZ, Period and
+  Interval move — every one of them a dtype whose old bytes were addresses.
+- Documented at `storage_equal` what the parts do and do not seal, with
+  regressions pinning the masked half, the numpy-normalization, the new
+  refusals, and a real `ContentStore` frame round trip.
+- Adversarial review (three lenses) found two real defects, both fixed: the
+  refusal missed `UnicodeEncodeError` from a lone-surrogate `str`, and two
+  deliberate normalizations were undocumented.
+- Green: `pytest packages/microcosm-graph` 399 passed; the nine graph-adjacent
+  build/frame/fit/calibrate files 578 passed; `test_graph_population.py` 119
+  passed; `ruff check .` 0; `ruff format --check` on both changed files 0;
+  `tools/ci_test_groups.py --verify` 0; `tools/spec_engine_coverage.py
+  --check` 0 (42156/42156 fields, 41/41 inventory); `tools/graph_acceptance_
+  burndown.py --verify` 0 (green 41, red 0, missing 0).
+
+## Next
+
+- Human review. One item this lane could not complete: the issue asked for a
+  note at `_population_stamp` in `us_runtime/survey_atomic_geography.py`, a
+  module that exists only at the tip of the unmerged
+  `origin/microcosm-us-launch-integration-20260909`. The verified wording —
+  corrected, because the issue's own phrasing was incomplete — is in the lane
+  report for whoever owns that branch.
+- No pinned digest moves. The three `*_population_sha256` stamps on that
+  branch will take new values once this merges; their old values were process
+  addresses, they are recomputed on both sides of every comparison, and
+  `survey_origin_budget` already excludes them from the persisted identity.
+
+---
+
 # F1 portable worker identity — CI crawl fix
 
 ## State

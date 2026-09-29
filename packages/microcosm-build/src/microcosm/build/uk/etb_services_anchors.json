@@ -14,6 +14,12 @@
     "period": 2023,
     "parameter_path": "gov.dft.rail.fare_index"
   },
+  "rail_fare_index_2024": {
+    "value": 1.165,
+    "period": 2024,
+    "parameter_path": "gov.dft.rail.fare_index",
+    "note": "Denominator for rail_usage once the ETB donor is uprated to FY2024-25 (microcosm#890 PR-S, ruling 2026-09-14): the engine multiplies rail_usage by the 2025 index (1.217), so the residual lift over the held FY2024-25 ORR 7270 fact is 1.217/1.165."
+  },
   "nhs_budget_2025_26": {
     "value": 202000000000,
     "citation": "NHS 2025/26 budget used by incumbent services allocation."

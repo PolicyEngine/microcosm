@@ -12,7 +12,7 @@ jointly replaces the wage and self-employment prior-year amounts on the PUF
 half using eight demographic/income predictors and a 5,000-person training
 cap.  Microcosm preserves that treatment and strengthens it with typed person
 design weights.  ``employment_income_last_year`` is formula-owned in
-PolicyEngine-US 1.819.0 and the retired finalizer explicitly dropped it, so it
+PolicyEngine-US 2.2.1 and the retired finalizer explicitly dropped it, so it
 is retained only through the joint fit and removed from the export-ready
 support frame.  The two persisted input leaves are
 ``self_employment_income_last_year`` and ``previous_year_income_available``.
@@ -40,8 +40,8 @@ from microcosm.build.source_runtime import (
     run_source_stage,
 )
 from microcosm.build.us_runtime.support_provenance import (
-    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_clone_index_column,
     support_role_series,
     without_support_role_metadata,
 )
@@ -793,9 +793,12 @@ def us_prior_year_income_summary(frame: Frame) -> dict[str, object]:
             }
         )
         group_columns = ["_source_id"]
-        if has_support_role_metadata(
-            person, entity="person"
-        ) and not has_assembled_support_metadata(person, entity="person"):
+        # With clone provenance every copy of a source person, the
+        # capital-gains own-tail copy included, must agree. Only channel-only
+        # fixtures, which predate clone indices, pair copies by occurrence.
+        if has_support_role_metadata(person, entity="person") and (
+            support_clone_index_column("person") not in person
+        ):
             clone_work["_role"] = support_role_series(
                 person, entity="person"
             ).to_numpy()

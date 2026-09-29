@@ -36,8 +36,11 @@ silent partial join on mismatched geography vintages is the failure these
 checks exist to forbid (the #205 lesson).
 
 Column names are policyengine-uk household *inputs* where one exists
-(``region`` is the pre-assigned enum input; the ladder never overwrites it),
-and plain data columns otherwise: policyengine-uk has no OA/LSOA/MSOA/ward/
+(``region`` is the pre-assigned enum input; the ladder never overwrites it;
+``local_authority`` is the enum input the ladder itself writes, resolved from
+the assigned April 2023 ONS code through the pinned names resource, see
+:mod:`microcosm.build.uk_runtime.local_authority_input`, microcosm#953), and
+plain data columns otherwise: policyengine-uk has no OA/LSOA/MSOA/ward/
 constituency/ITL input variable, so those ride as ``*_code`` data columns. The
 exported artifact never carries a formula output — ``country`` recomputes from
 ``region`` in the engine, so it is never persisted (the #34 regression).
@@ -87,7 +90,16 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.uk_runtime.local_authority_input import (
+    UK_LOCAL_AUTHORITY_VINTAGE,
+    local_authority_consistency_failures,
+    resolve_local_authority_engine_keys,
+)
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
+from microcosm.calibrate.geography_constants import (
+    UK_LADDER_NATION_REGION_CODES,
+    UK_REGION_TIER,
+)
 
 #: Derived (lookup-sourced) layers the ladder artifact must carry a vintage
 #: for. ITL2 and ITL1 are structural prefixes of the ITL3 code and share the
@@ -104,14 +116,16 @@ UK_OA_LADDER_DERIVED_LAYERS = (
 )
 
 #: Household spine columns the ladder assignment writes, in write order. Every
-#: name is either a policyengine-uk household input (none finer than ``region``
-#: exists, and ``region`` is pre-assigned, so it is not rewritten) or a plain
-#: ``*_code`` data column carrying an ONS GSS code.
+#: name is either a policyengine-uk household input (``local_authority``, the
+#: enum member name resolved from ``local_authority_code``; ``region`` is
+#: pre-assigned, so it is not rewritten) or a plain ``*_code`` data column
+#: carrying an ONS GSS code.
 UK_GEOGRAPHY_LADDER_COLUMNS = (
     "oa_code",
     "lsoa_code",
     "msoa_code",
     "local_authority_code",
+    "local_authority",
     "ward_code",
     "constituency_code",
     "region_code",
@@ -142,6 +156,69 @@ UK_ENGLAND_WALES_REGION_CODES = (
 #: summary (London holds roughly 13% of England & Wales household weight, so a
 #: collapse to zero is caught the way the US ladder catches an NYC collapse).
 UK_LONDON_REGION_CODE = "E12000007"
+
+
+def region_tier_by_area(
+    codes: np.ndarray,
+    regions: np.ndarray,
+    *,
+    level: str,
+) -> dict[str, str]:
+    """Map every area id to the one region-tier code its output areas carry.
+
+    The ladder stamps each OA with a region code (``E12`` for England, the
+    nation pseudo-codes elsewhere). The region tier nests constituencies and
+    authorities exactly, so an area whose OAs disagree is a ladder defect and
+    refuses here rather than becoming a cross-grain leg that belongs to two
+    controls (microcosm#905).
+    """
+
+    tier_codes = {code for _, code in UK_REGION_TIER}
+    region_by_area: dict[str, str] = {}
+    for area_id, region in zip(
+        np.asarray(codes).astype(str).tolist(),
+        np.asarray(regions).astype(str).tolist(),
+        strict=True,
+    ):
+        tier = UK_LADDER_NATION_REGION_CODES.get(region, region)
+        if tier not in tier_codes:
+            raise ValueError(
+                f"UK OA ladder {level} area {area_id!r} carries region code "
+                f"{region!r}, which is outside the region tier."
+            )
+        previous = region_by_area.setdefault(area_id, tier)
+        if previous != tier:
+            raise ValueError(
+                f"UK OA ladder {level} area {area_id!r} spans region-tier codes "
+                f"{previous!r} and {tier!r}; the region tier must nest."
+            )
+    return dict(sorted(region_by_area.items()))
+
+
+def uk_area_region_codes(ladder: Any) -> dict[str, str]:
+    """Constituency and local-authority id -> region-tier code, from a ladder.
+
+    The run's own ladder is the authority for the cross-grain legs of the
+    areas it assigned; the packaged crosswalk carries the same mapping for
+    the pinned ladder and is the fallback when no ladder is in hand.
+    """
+
+    mapping: dict[str, str] = {}
+    for level, column in (
+        ("constituency", "constituency_code"),
+        ("local_authority", "local_authority_code"),
+    ):
+        for area_id, tier in region_tier_by_area(
+            getattr(ladder, column), ladder.region_code, level=level
+        ).items():
+            previous = mapping.setdefault(area_id, tier)
+            if previous != tier:
+                raise ValueError(
+                    f"UK OA ladder area {area_id!r} maps to both {previous!r} "
+                    f"and {tier!r} across levels."
+                )
+    return mapping
+
 
 UK_OA_LADDER_SCHEMA_VERSION = 1
 UK_OA_LADDER_KIND = "uk_oa_ladder"
@@ -364,6 +441,17 @@ def assign_uk_geography_ladder(
                 "match the vintage household constituencies were assigned under "
                 f"({expected_constituency_vintage!r})."
             )
+    # The engine input resolves through the April 2023 names resource, so a
+    # ladder rebuilt on another local authority frame refuses by vintage here
+    # rather than surfacing later as off-roster codes (microcosm#953).
+    local_authority_vintage = ladder.layer_vintages["local_authority"]
+    if local_authority_vintage != UK_LOCAL_AUTHORITY_VINTAGE:
+        raise ValueError(
+            f"UK OA ladder local authority vintage {local_authority_vintage!r} "
+            f"is not {UK_LOCAL_AUTHORITY_VINTAGE!r}, the vintage of the names "
+            "resource that resolves local_authority; regenerate "
+            "local_authority_names.json for the new roster first."
+        )
 
     region_codes = _validated_household_ladder_region_codes(
         household,
@@ -401,6 +489,12 @@ def assign_uk_geography_ladder(
     assigned["local_authority_code"] = ladder.local_authority_code[
         assigned_index
     ].astype(object)
+    # The engine's household enum input, fail closed: a code the April 2023
+    # names resource does not carry raises here rather than falling to the
+    # engine default (microcosm#953).
+    assigned["local_authority"] = resolve_local_authority_engine_keys(
+        assigned["local_authority_code"]
+    )
     assigned["ward_code"] = ladder.ward_code[assigned_index].astype(object)
     assigned["constituency_code"] = ladder.constituency_code[assigned_index].astype(
         object
@@ -453,10 +547,7 @@ def expected_uk_ladder_area_support(
         region_households = float(constituency_weight.sum())
         for constituency_code, household_count in constituency_weight.items():
             expected_rows = (
-                n_clones
-                * int(n_region)
-                * float(household_count)
-                / region_households
+                n_clones * int(n_region) * float(household_count) / region_households
             )
             constituency_key = str(constituency_code)
             constituency_expected[constituency_key] += expected_rows
@@ -504,9 +595,13 @@ def uk_region_mix(
     """Summarize household row and weight shares by normalized UK region."""
 
     if region_column not in household.columns:
-        raise ValueError(f"household table must contain region column {region_column!r}.")
+        raise ValueError(
+            f"household table must contain region column {region_column!r}."
+        )
     if weight_column not in household.columns:
-        raise ValueError(f"household table must contain weight column {weight_column!r}.")
+        raise ValueError(
+            f"household table must contain weight column {weight_column!r}."
+        )
 
     region_codes = _household_region_codes(
         household[region_column],
@@ -518,7 +613,9 @@ def uk_region_mix(
     if not np.isfinite(weights).all() or (weights < 0).any():
         raise ValueError(f"{weight_column} must be finite and non-negative.")
     if len(weights) == 0:
-        raise ValueError("household table must contain at least one row for region mix.")
+        raise ValueError(
+            "household table must contain at least one row for region mix."
+        )
     total_weight = float(weights.sum())
     if total_weight <= 0:
         raise ValueError(f"{weight_column} must carry positive total weight.")
@@ -654,6 +751,11 @@ def uk_geography_ladder_gate(
                 f"{label}: {int(bad.sum())}/{len(values)} row(s) are not valid "
                 f"GSS codes; examples {sorted(set(values[bad]))[:5]}"
             )
+
+    # The engine input must agree with the code it was resolved from on every
+    # row, and every code must sit on the April 2023 roster; reported, not
+    # raised, so the local battery's rerun of this gate yields a verdict.
+    failures.extend(local_authority_consistency_failures(household))
 
     itl3 = household["itl3_code"].astype(str).to_numpy()
     itl2 = household["itl2_code"].astype(str).to_numpy()

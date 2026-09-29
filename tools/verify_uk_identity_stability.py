@@ -30,6 +30,8 @@ from microcosm.build.uk_runtime.frs_person_draws import derive_frs_person_draws
 from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
+    uc_age_eligible_benunits,
+    uk_take_up_population_policy,
 )
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -86,8 +88,13 @@ def e4_identity_receipt(
     count_resource: Mapping[str, object],
     lha_category: Sequence[object],
     permutation_seed: int,
+    population_policy=None,
 ) -> dict[str, object]:
     """Recompute every E4 column in original and permuted row order.
+
+    ``population_policy`` is the engine's working-age bounds the take-up draw
+    used (``uk_take_up_population_policy``); it is read from the engine when
+    not supplied, so a hermetic caller passes one.
 
     Two claims are receipted: a row permutation of the input tables changes
     no assignment per entity id, and the original-order recomputation equals
@@ -97,6 +104,8 @@ def e4_identity_receipt(
     person = frame.table("person")
     benunit = frame.table("benunit").copy()
     household = frame.table("household")
+    if population_policy is None:
+        population_policy = uk_take_up_population_policy(uk_time_period(frame))
     if len(lha_category) != len(benunit):
         raise ValueError("LHA_category materialization must align to benunit rows.")
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
@@ -104,7 +113,14 @@ def e4_identity_receipt(
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
         anchors = aggregate_person_reported_to_benunit(person_t, benunit_t)
-        take_up = derive_frs_take_up(benunit_t, anchors=anchors, contract=contract)
+        take_up = derive_frs_take_up(
+            benunit_t,
+            anchors=anchors,
+            contract=contract,
+            uc_age_eligible=uc_age_eligible_benunits(
+                person_t, benunit_t, population_policy
+            ),
+        )
         take_up.index = benunit_t["benunit_id"].to_numpy()
         person_draws = derive_frs_person_draws(person_t, contract=contract)
         person_draws.index = person_t["person_id"].to_numpy()
@@ -242,21 +258,12 @@ def e5_identity_receipt(
             )
         return {"household": household_out, "person": person}
 
+    # The caller scopes the frame to the population the wealth and uprating
+    # stages saw (``_frame_as_stage_saw``): the SPI support rows run before
+    # them and are imputed there, while the CGT layers are stacked later.
     person = frame.table("person")
     benunit = frame.table("benunit")
     household = frame.table("household")
-    # Scope to the FRS spine rows: the SPI channel stages stack synthetic
-    # households AFTER the E5 stages ran (with their own channel-imputed
-    # property values), so the deterministic-layer identity claims apply
-    # only to the population the wealth and uprating stages actually saw.
-    # The stacked rows are E7's receipt surface, not E5's.
-    if "household_is_spi_synthetic" in household.columns:
-        spine_mask = ~household["household_is_spi_synthetic"].astype(bool)
-        household = household.loc[spine_mask].reset_index(drop=True)
-        spine_household_ids = set(household["household_id"].tolist())
-        person = person.loc[
-            person["person_household_id"].isin(spine_household_ids)
-        ].reset_index(drop=True)
     original = recompute(person, benunit, household)
     rng = np.random.default_rng(permutation_seed)
     permuted = recompute(
@@ -353,10 +360,11 @@ def e6_identity_receipt(
     from microcosm.build.uk_runtime.etb_services import (
         allocate_nhs_by_age_gender,
         load_etb_services_anchors,
+        rail_fare_index_denominator_key,
     )
 
     rail_fare_index = float(
-        load_etb_services_anchors()["rail_fare_index_2023"]["value"]
+        load_etb_services_anchors()[rail_fare_index_denominator_key()]["value"]
     )
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
@@ -403,23 +411,28 @@ def e6_identity_receipt(
     household = frame.table("household").copy()
     household["household_weight"] = frame.weights_for("household").values
     # Scope to the rows the E6 stages actually saw, and restore the grossing
-    # scale they saw them at. Every later stacking stage copies its source
-    # row's consumption/services values onto the new rows, so those rows are
-    # the later stage's receipt surface, not E6's; and every later stage that
-    # redistributes mass leaves these rows carrying a fraction of the weight
-    # E6 normalized against. Three layers stack today (SPI support channel,
-    # capital-gains clone, CGT band donors) and two of them move mass.
-    spine_mask = _unstacked_mask(household)
-    if spine_mask is not None:
+    # scale they saw them at. Every stacking stage that runs after E6 copies
+    # its source row's consumption/services values onto the new rows, so those
+    # rows are the later stage's receipt surface, not E6's; and every later
+    # stage that redistributes mass leaves these rows carrying a fraction of
+    # the weight E6 normalized against. The SPI support rows (and their band
+    # donors) are stacked before E6 and imputed there, so they stay in scope at
+    # their allocated mass. The CGT clone and band donors are stacked after:
+    # their rows are dropped and the clone's mass (equal halves before the #970
+    # anchor, pair-conserving afterwards) is folded back by pair.
+    later_flags = _flags_stacked_after(_E6_FIRST_STAGE, household)
+    if later_flags:
+        household["household_weight"] = _pre_clone_household_weights(frame)
+        spine_mask = ~household[later_flags].astype(bool).any(axis=1)
         household = household.loc[spine_mask].reset_index(drop=True)
         spine_household_ids = set(household["household_id"].tolist())
         person = person.loc[
             person["person_household_id"].isin(spine_household_ids)
         ].reset_index(drop=True)
         applied = tuple(
-            stage
-            for flag, stage in _MASS_STAGE_BY_FLAG.items()
-            if flag in frame.table("household").columns
+            _MASS_STAGE_BY_FLAG[flag]
+            for flag in later_flags
+            if flag in _MASS_STAGE_BY_FLAG
         )
         household["household_weight"] = household["household_weight"].to_numpy(
             dtype=float
@@ -653,6 +666,105 @@ def e7_identity_receipt(
     }
 
 
+def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
+    """Check the clone/original pairs, before or after the #970 anchor.
+
+    Before the anchor both halves carry the same weight. After it (the
+    frame's mass log carries the anchor's record) each pair still sums to
+    its pre-clone weight, the clone side never exceeds the original, and the
+    anchor is recomputed from the reconstructed pre-anchor state (both halves
+    at half the pair sum, the clone stage's split up to rounding) in original
+    and reversed person order and compared with the stored weights.
+    """
+
+    from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_policy_parameters
+    from microcosm.build.uk_runtime.cgt_structure import (
+        CGT_ANCHOR_MASS_CHANGE_REASON,
+        anchor_cgt_incidence,
+        load_advani_summers_distribution,
+        pair_clone_households,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float)
+    anchor_records = [
+        index
+        for index, record in enumerate(frame.mass_log)
+        if record.reason == CGT_ANCHOR_MASS_CHANGE_REASON
+    ]
+    receipt: dict[str, object] = {"anchored": bool(anchor_records)}
+    try:
+        clone_positions, original_positions, _ = pair_clone_households(
+            person, benunit, household
+        )
+    except ValueError as error:
+        problems["clone_pairing"] = str(error)
+        return receipt
+    left = weights[original_positions]
+    right = weights[clone_positions]
+    receipt["pairs"] = int(len(clone_positions))
+    if not anchor_records:
+        if not np.allclose(left, right, rtol=1e-12, atol=1e-6):
+            problems["clone_pair_weights"] = int(
+                (~np.isclose(left, right, rtol=1e-12, atol=1e-6)).sum()
+            )
+        if not np.isclose(left.sum(), right.sum(), rtol=1e-12, atol=1e-6):
+            problems["clone_half_masses"] = [float(left.sum()), float(right.sum())]
+        return receipt
+    exceeds = right > left * (1.0 + 1e-12) + 1e-6
+    if exceeds.any():
+        problems["clone_exceeds_original"] = int(exceeds.sum())
+    pre = weights.copy()
+    halves = 0.5 * (left + right)
+    pre[original_positions] = halves
+    pre[clone_positions] = halves
+    pre_frame = uk_national_frame(
+        person=person.copy(),
+        benunit=benunit.copy(),
+        household=household.copy(),
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=pre,
+        mass_log=tuple(frame.mass_log[: anchor_records[0]]),
+    )
+    distribution = load_advani_summers_distribution()
+    parameters = uk_cgt_policy_parameters(uk_time_period(frame))
+    recomputed = anchor_cgt_incidence(
+        pre_frame, distribution=distribution, parameters=parameters
+    )
+    stored = pd.Series(weights, index=household["household_id"].to_numpy())
+
+    def by_household_id(result) -> np.ndarray:
+        return (
+            pd.Series(
+                result.frame.weights_for("household").values,
+                index=result.frame.table("household")["household_id"].to_numpy(),
+            )
+            .reindex(stored.index)
+            .to_numpy(dtype=float)
+        )
+
+    again = by_household_id(recomputed)
+    close = np.isclose(again, stored.to_numpy(), rtol=1e-9, atol=1e-6)
+    receipt["anchor_max_abs_weight_diff"] = float(np.abs(again - stored).max())
+    receipt["anchor_targets"] = dict(recomputed.targets)
+    receipt["anchor_after"] = dict(recomputed.after)
+    if not close.all():
+        problems["anchor_recompute"] = int((~close).sum())
+    permuted = anchor_cgt_incidence(
+        _reverse_rows(pre_frame), distribution=distribution, parameters=parameters
+    )
+    if not np.array_equal(by_household_id(permuted), again):
+        problems["anchor_permutation"] = True
+    return receipt
+
+
 def e8_identity_receipt(
     frame,
     *,
@@ -661,16 +773,19 @@ def e8_identity_receipt(
     """Receipt E8 deterministic layers under row permutation by entity id.
 
     Covered: (1) the clone-pair structure — the non-donor population splits
-    into equal-count original/clone halves whose paired household weights
-    agree to the exact-total correction tolerance and whose half-masses
-    match; (2) the CGT band-donor selection recomputed from the committed
+    into equal-count original/clone halves paired by the clone stage's id
+    offset; before the #970 anchor their paired weights agree to the
+    exact-total correction tolerance and their half-masses match, after it
+    the clone side never exceeds the original and the anchor recomputed
+    from the reconstructed pre-anchor halves reproduces the stored weights
+    in original and reversed person order; (2) the CGT band-donor selection recomputed from the committed
     resources over id-sorted candidates in original and permuted row order
     (set equality with the flagged donors, 30 donors per band, band-exact
     stored weights and carrier gains); (3) the student-loan plan column
     recomputed in full (identity-keyed top-ups at the release calibration
     year) in original and permuted row order against the stored column.
-    The A&S prior amounts (overwritten by the Table 3 redraw except the
-    sub-AEA remainder), the redraw's seeded within-band draws (covered by
+    The A&S prior amounts (overwritten by the Table 3 redraw and its
+    sub-AEA remainder mapping), the redraw's seeded within-band draws (covered by
     the merged #560 embedded published-surface tests), and the
     salary-sacrifice QRF and conversion (the pre-conversion state is
     consumed by the stage) are covered by twin-build determinism.
@@ -712,15 +827,7 @@ def e8_identity_receipt(
     )
     if len(originals) != len(clones):
         problems["clone_half_counts"] = [len(originals), len(clones)]
-    else:
-        left = originals["household_weight"].to_numpy(dtype=float)
-        right = clones["household_weight"].to_numpy(dtype=float)
-        if not np.allclose(left, right, rtol=1e-12, atol=1e-6):
-            problems["clone_pair_weights"] = int(
-                (~np.isclose(left, right, rtol=1e-12, atol=1e-6)).sum()
-            )
-        if not np.isclose(left.sum(), right.sum(), rtol=1e-12, atol=1e-6):
-            problems["clone_half_masses"] = [float(left.sum()), float(right.sum())]
+    clone_pairs = _e8_clone_pairs(frame, problems)
 
     # (2) Band-donor selection recomputed from the committed resources.
     # Same contract as the E6 NHS check: age_tail now runs immediately after
@@ -854,7 +961,9 @@ def e8_identity_receipt(
         "identical_under_permutation": bool(
             "donor_selection_permutation" not in problems
             and "student_loan_plan_permutation" not in problems
+            and "anchor_permutation" not in problems
         ),
+        "clone_pairs": clone_pairs,
         "permutation_mismatches": {
             key: value
             for key, value in problems.items()
@@ -870,7 +979,9 @@ def e8_identity_receipt(
             if not key.endswith("_permutation")
         },
         "tolerance_policy": (
-            "clone-pair weights and half-masses: rtol 1e-12 / atol 1e-6 "
+            "anchored clone pairs: recomputed #970 anchor weights rtol 1e-9 / "
+            "atol 1e-6, reversed-order recompute exact; unanchored clone-pair "
+            "weights and half-masses: rtol 1e-12 / atol 1e-6 "
             "(the exact-total correction may move single weights by bit "
             "corrections); donor stored weights: rtol 1e-12 bitwise-class "
             "against published band taxpayers / 30; donor selection and "
@@ -886,7 +997,7 @@ def e8_identity_receipt(
         },
         "qrf_draw_columns_scope": (
             "excluded: the A&S prior amounts (overwritten by the Table 3 "
-            "redraw except the sub-AEA remainder), the redraw's seeded "
+            "redraw and its sub-AEA remainder mapping), the redraw's seeded "
             "within-band draws (the merged #560 embedded published-surface "
             "tests cover the amounts logic), and the salary-sacrifice QRF "
             "and conversion (the pre-conversion column state is consumed "
@@ -1061,18 +1172,19 @@ def main() -> int:
             count_resource=load_brma_count_resource(),
             lha_category=lha_category,
             permutation_seed=args.permutation_seed,
+            population_policy=uk_take_up_population_policy(uk_time_period(frame)),
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
         )
     elif args.check == "e5":
-        # E5's wealth stages ran before every stacking layer, and its regional
-        # property uprating scales to a per-region mean over the owner
-        # households in the frame — so a frame carrying stacked rows shifts
-        # the denominator and the recomputation stops matching what the stage
-        # stored. Scope to the population the stage saw.
+        # E5's wealth stages run after the SPI support rows are stacked and
+        # before the CGT layers. The regional property uprating's mean is over
+        # FRS-base owners, so a frame still carrying the later CGT copies
+        # shifts that denominator and the recomputation stops matching what
+        # the stage stored. Scope to the population the stage saw.
         receipt = e5_identity_receipt(
-            _frs_only_frame(frame),
+            _frame_as_stage_saw(frame, _E5_FIRST_STAGE),
             permutation_seed=args.permutation_seed,
         )
         ok = bool(
@@ -1132,11 +1244,18 @@ def main() -> int:
 #: A new stacking stage MUST add its flag here, or these receipts silently
 #: start comparing inherited values against fresh draws and report a spine
 #: defect that is really an instrument defect.
-_STACKED_ROW_FLAGS = (
-    "household_is_spi_synthetic",  # #717 SPI support channel
-    "household_is_capital_gains_clone",  # E8 capital-gains incidence clone
-    "household_is_cgt_band_donor",  # E8 CGT band donors
-)
+_STACKING_STAGE_BY_FLAG = {
+    # #717 SPI support channel; the #1006 income band donors carry the same flag.
+    "household_is_spi_synthetic": "spi_support_channel",
+    "household_is_capital_gains_clone": "cgt_incidence_clone",  # E8 clone
+    "household_is_cgt_band_donor": "cgt_band_donors",  # E8 CGT band donors
+}
+_STACKED_ROW_FLAGS = tuple(_STACKING_STAGE_BY_FLAG)
+
+#: The first stage of each receipted block. A layer stacked before it was part
+#: of the population the block imputed onto; one stacked after it was not.
+_E5_FIRST_STAGE = "was_wealth"
+_E6_FIRST_STAGE = "nts_bus_travel"
 
 #: The stage that stacks each flag, for artifacts that carry it. The weight
 #: restoration is driven by what the *artifact* actually contains rather than
@@ -1145,17 +1264,66 @@ _STACKED_ROW_FLAGS = (
 #: skews the comparison in the opposite direction.
 _MASS_STAGE_BY_FLAG = {
     "household_is_spi_synthetic": "spi_support_channel",
-    "household_is_capital_gains_clone": "cgt_incidence_clone",
 }
 
 
-def _unstacked_mask(household: pd.DataFrame):
-    """Rows that were present when the pre-stacking stages ran, or None."""
+def _pre_clone_household_weights(frame) -> np.ndarray:
+    """Household weights with each clone's mass folded back onto its original.
 
-    flags = [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
-    if not flags:
-        return None
-    return ~household[flags].astype(bool).any(axis=1)
+    Before the #970 anchor both halves carry half the source weight; after it
+    the split varies per pair while the pair sum is still the pre-clone
+    weight (the anchor conserves every pair to rounding). Folding the clone
+    onto its original is therefore exact either way, where a uniform
+    ``mass_split`` divisor would be wrong after the anchor. An artifact
+    without the clone layer is returned unchanged; one with the clone flag
+    but no donor flag is treated as carrying no donors.
+    """
+
+    from microcosm.build.uk_runtime.cgt_structure import (
+        HOUSEHOLD_IS_CGT_BAND_DONOR,
+        HOUSEHOLD_IS_CGT_CLONE,
+        pair_clone_households,
+    )
+
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+    if HOUSEHOLD_IS_CGT_CLONE not in household.columns:
+        return weights
+    if HOUSEHOLD_IS_CGT_BAND_DONOR not in household.columns:
+        household = household.assign(**{HOUSEHOLD_IS_CGT_BAND_DONOR: False})
+    clone_positions, original_positions, _ = pair_clone_households(
+        frame.table("person"), frame.table("benunit"), household
+    )
+    weights[original_positions] += weights[clone_positions]
+    return weights
+
+
+def _roster_positions() -> dict[str, int]:
+    """Stage positions in the committed source-stage roster."""
+
+    from importlib.resources import files as _files
+
+    spec = json.loads(
+        _files("microcosm.build.uk")
+        .joinpath("source_stages.json")
+        .read_text(encoding="utf-8")
+    )
+    return {stage["stage"]: index for index, stage in enumerate(spec["stages"])}
+
+
+def _flags_stacked_after(stage: str, household: pd.DataFrame) -> list[str]:
+    """Stacking flags present in the artifact whose layer runs after ``stage``.
+
+    Presence is read from the artifact, order from the committed roster, so
+    receipt an artifact with the tool at the commit that built it.
+    """
+
+    positions = _roster_positions()
+    return [
+        flag
+        for flag, stacker in _STACKING_STAGE_BY_FLAG.items()
+        if flag in household.columns and positions[stacker] > positions[stage]
+    ]
 
 
 def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
@@ -1168,12 +1336,13 @@ def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
     allocation's budget normalization is absolute, not relative — must divide
     that back out or it compares against a different grossing scale.
 
-    On the E8 roster two stages do this: `spi_support_channel` reserves
-    ``share`` of prior mass for the synthetic channel, and
-    `cgt_incidence_clone` splits each household's weight across its copies by
-    ``mass_split``. Both factors are read from the declared operations rather
-    than hardcoded, so a change to either is picked up automatically; a *new*
-    mass-redistributing op kind still has to be added here.
+    On the E8 roster one stage does this uniformly: `spi_support_channel`
+    reserves ``share`` of prior mass for the synthetic channel. The factor
+    is read from the declared operation rather than hardcoded, so a change
+    is picked up automatically; a *new* uniform mass-redistributing op kind
+    still has to be added here. The capital-gains clone is not uniform once
+    the #970 anchor has run, so its mass is restored by pair sum instead
+    (``_pre_clone_household_weights``).
 
     ``after_stages`` names only the stages that actually ran in the artifact
     under receipt — see ``_MASS_STAGE_BY_FLAG``. Deriving it from the
@@ -1198,8 +1367,6 @@ def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
             kind = operation.get("kind")
             if kind == "allocate_zero_weight_prior_mass":
                 divisor *= 1.0 - float(operation["share"])
-            elif kind == "clone_records":
-                divisor *= float(operation["mass_split"])
     if divisor <= 0.0:
         raise ValueError(
             "stage-time weight divisor collapsed to zero; the declared mass "
@@ -1212,21 +1379,44 @@ def _frs_only_frame(frame):
     """Scope the artifact to the unstacked survey rows (raw FRS only).
 
     On the E8 roster this leaves the 16,288 raw FRS households, which is the
-    population the pre-stacking stages actually drew for.
+    population the pre-stacking stages actually drew for. Their weights fold
+    each clone back onto its original, exact before and after the #970
+    anchor.
     """
 
+    household = frame.table("household")
+    return _drop_stacked_layers(
+        frame, [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
+    )
+
+
+def _frame_as_stage_saw(frame, stage: str):
+    """Scope the artifact to the rows present when ``stage`` ran."""
+
+    return _drop_stacked_layers(
+        frame, _flags_stacked_after(stage, frame.table("household"))
+    )
+
+
+def _drop_stacked_layers(frame, flags: Sequence[str]):
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
         uk_national_frame,
     )
 
     household = frame.table("household")
-    flags = [flag for flag in _STACKED_ROW_FLAGS if flag in household.columns]
+    flags = list(flags)
     if not flags:
         return frame
     stacked = household[flags].astype(bool).any(axis=1)
     keep = ~stacked
-    weights = frame.weights_for("household").values[keep.to_numpy()]
+    # Fold clone mass back only when the clone layer is the one being dropped.
+    all_weights = (
+        _pre_clone_household_weights(frame)
+        if "household_is_capital_gains_clone" in flags
+        else np.asarray(frame.weights_for("household").values, dtype=float)
+    )
+    weights = all_weights[keep.to_numpy()]
     household = household.loc[keep].reset_index(drop=True)
     ids = set(household["household_id"].tolist())
     person = (

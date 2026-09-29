@@ -30,15 +30,30 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pydantic import ValidationError
+
+from microcosm.build.staging_v2 import (
+    StagingContractError,
+    disabled_staging_delivery,
+    validate_staging_delivery,
+)
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 from microcosm.data.contract import (
     _check_uk_incumbent_surface_evaluation,
     validate_release_dir,
 )
+from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    parse_calibration_diagnostics,
+)
 
 _REPO_ID = "policyengine/populace-uk-private"
 _NAMESPACE = "uk_dense"
-_DATASET_KEY = "microcosm_uk_2025_dense"
+# The published dense artifact's key and filename (microcosm#823: every
+# 2024-25 line carries the FRS release vintage in its name). The contract
+# mirrors the filename as ``_UK_DENSE_DATASET_FILENAME``; a lockstep test
+# pins the two.
+_DATASET_KEY = "microcosm_uk_2024_25_dense"
 _DATASET_FILENAME = f"{_DATASET_KEY}.h5"
 _ATTEMPT_SUFFIX = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 _RUNTIME_PACKAGES = ("policyengine-core", "policyengine-uk", "microcosm-data")
@@ -78,6 +93,36 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n")
     temporary.replace(path)
+
+
+def _write_release_diagnostics(
+    path: Path,
+    *,
+    source: Path,
+    diagnostics: Mapping[str, object],
+    measured_source_sha256: str,
+    households: int,
+) -> None:
+    """Copy current diagnostics exactly; adapt only legacy candidate evidence."""
+
+    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        try:
+            parse_calibration_diagnostics(diagnostics)
+        except ValidationError as error:
+            raise SystemExit(
+                "error: candidate calibration diagnostics do not satisfy the "
+                f"canonical schema: {error}"
+            ) from error
+        shutil.copyfile(source, path)
+        return
+
+    shipped_diagnostics = {
+        **diagnostics,
+        "households": households,
+        "n_targets": len(list(diagnostics.get("targets") or [])),
+        "source_diagnostics_sha256": measured_source_sha256,
+    }
+    _write_json(path, shipped_diagnostics)
 
 
 def _clone_file(source: Path, destination: Path) -> None:
@@ -190,8 +235,41 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         candidate_dir / "rowwise_candidate_manifest.json",
         label="rowwise_candidate_manifest.json",
     )
+    if manifest.get("release_role") != "dense":
+        raise SystemExit(
+            f"error: manifest.release_role is {manifest.get('release_role')!r}, "
+            "not 'dense': this assembler covers the dense line only (a "
+            "candidate built before the release role existed is rebuilt)"
+        )
     outputs = _mapping(manifest.get("outputs"), "manifest.outputs")
     identity = _mapping(manifest.get("identity"), "manifest.identity")
+    # The national assembler's rule: a release carries the staging telemetry
+    # receipt of the run it came from, and publication refuses a release
+    # whose run intended to stage and delivered nothing.
+    raw_staging_delivery = manifest.get("staging_delivery")
+    if not isinstance(raw_staging_delivery, Mapping):
+        if not args.allow_missing_staging:
+            raise SystemExit(
+                "error: build record is missing valid staging-delivery evidence "
+                "(a run built before the staging lane needs --allow-missing-staging)"
+            )
+        # An explicit, recorded opt-out mirrors publication's override: the
+        # build manifest then says why no telemetry exists, instead of
+        # nothing at all. Invalid evidence is still refused.
+        manifest = {
+            **manifest,
+            "staging_delivery": disabled_staging_delivery(
+                "assembled with --allow-missing-staging: the run predates "
+                "staging telemetry"
+            ),
+        }
+        raw_staging_delivery = manifest["staging_delivery"]
+    try:
+        validate_staging_delivery(raw_staging_delivery)
+    except StagingContractError as error:
+        raise SystemExit(
+            f"error: invalid staging-delivery evidence: {error}"
+        ) from error
 
     def output_path(key: str) -> Path:
         entry = _mapping(outputs.get(key), f"manifest.outputs.{key}")
@@ -289,13 +367,16 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             ).get("sha256"),
         )
     evaluation = _load_json(surface_path, label="incumbent surface evaluation")
-    ledger = _mapping(identity.get("ledger"), "manifest.identity.ledger")
+    chronicle = _mapping(
+        _mapping(identity.get("targets"), "manifest.identity.targets").get("chronicle"),
+        "manifest.identity.targets.chronicle",
+    )
     expected_surface_identity = {
         "candidate_dataset_sha256": measured["candidate"],
         "candidate_manifest_sha256": measured["candidate manifest"],
         "candidate_diagnostics_sha256": measured["diagnostics"],
-        "ledger_facts_sha256": ledger.get("facts_sha256"),
-        "ledger_manifest_sha256": ledger.get("manifest_sha256"),
+        "ledger_facts_sha256": chronicle.get("facts_sha256"),
+        "ledger_manifest_sha256": chronicle.get("manifest_sha256"),
         "incumbent_manifest_sha256": measured["incumbent manifest"],
         "incumbent_metrics_sha256": _mapping(
             incumbent_outputs.get("metrics"), "incumbent metrics"
@@ -409,20 +490,23 @@ def _stage_and_finalize(
         shutil.copyfile(source, release_dir / name)
     identity = _mapping(manifest.get("identity"), "identity")
     parameters = _mapping(manifest.get("parameters"), "parameters")
+    # Validated once more here so the copy into build_manifest.json is the
+    # normalized version 2 object, whatever the caller handed over.
+    staging_delivery = validate_staging_delivery(
+        _mapping(manifest.get("staging_delivery"), "staging_delivery")
+    )
     solve = _mapping(manifest.get("solve"), "solve")
     fit = _mapping(manifest.get("fit"), "fit")
     weights = _mapping(manifest.get("weights"), "weights")
     n_targets = len(list(diagnostics.get("targets") or []))
     households = int(solve.get("n_households") or diagnostics.get("n_records") or 0)
-    shipped_diagnostics = {
-        **diagnostics,
-        # The local-area contract reads these two; the driver's schema-6
-        # diagnostics carry the same facts under n_records / len(targets).
-        "households": households,
-        "n_targets": n_targets,
-        "source_diagnostics_sha256": measured["diagnostics"],
-    }
-    _write_json(release_dir / "calibration_diagnostics.json", shipped_diagnostics)
+    _write_release_diagnostics(
+        release_dir / "calibration_diagnostics.json",
+        source=source_paths["source_calibration_diagnostics.json"],
+        diagnostics=diagnostics,
+        measured_source_sha256=measured["diagnostics"],
+        households=households,
+    )
     gates = _mapping(report.get("gates"), "report.gates")
     gate_summary = {
         "schema_version": 1,
@@ -451,7 +535,10 @@ def _stage_and_finalize(
     }
     _write_json(release_dir / "gate_summary.json", gate_summary)
     ladder = _mapping(identity.get("ladder"), "identity.ladder")
-    ledger = _mapping(identity.get("ledger"), "identity.ledger")
+    chronicle = _mapping(
+        _mapping(identity.get("targets"), "identity.targets").get("chronicle"),
+        "identity.targets.chronicle",
+    )
     spine = _mapping(identity.get("spine"), "identity.spine")
     coverage = {
         "schema_version": 1,
@@ -474,11 +561,11 @@ def _stage_and_finalize(
             },
         },
         "ledger_artifact": {
-            "path_name": ledger.get("path_name"),
-            "facts_sha256": ledger.get("facts_sha256"),
-            "manifest_sha256": ledger.get("manifest_sha256"),
-            "fact_row_count": ledger.get("fact_row_count"),
-            "schema_version": ledger.get("schema_version"),
+            "path_name": chronicle.get("path_name"),
+            "facts_sha256": chronicle.get("facts_sha256"),
+            "manifest_sha256": chronicle.get("manifest_sha256"),
+            "fact_row_count": chronicle.get("fact_row_count"),
+            "schema_version": chronicle.get("schema_version"),
         },
         "geography_ladder": {
             "sha256": ladder.get("sha256"),
@@ -524,13 +611,12 @@ def _stage_and_finalize(
             ),
         },
         "holdout": dict(_mapping(fit.get("rotated_holdout"), "fit.rotated_holdout")),
-        "uprating": {
-            k: v
-            for k, v in _mapping(
-                manifest.get("ladder_household_uprating"), "ladder_household_uprating"
-            ).items()
-            if k != "reason"
-        },
+        "uprating": dict(
+            _mapping(
+                manifest.get("census_household_uprating"),
+                "census_household_uprating",
+            )
+        ),
         "weights": {
             "calibration_mass_change": weights.get("calibration_mass_change"),
             "realized_max_weight_ratio_vs_design": weights.get(
@@ -584,6 +670,7 @@ def _stage_and_finalize(
         "attempt_id": attempt_id,
         "cut_tag": cut_tag,
         "created_at": created_at,
+        "staging": dict(staging_delivery),
     }
     _write_json(release_dir / "build_manifest.json", build_manifest)
 
@@ -723,6 +810,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="where the published H5 is cloned (default: beside the candidate)",
     )
     parser.add_argument("--cut-tag")
+    parser.add_argument(
+        "--allow-missing-staging",
+        action="store_true",
+        help=(
+            "assemble a run built before staging telemetry existed, recording a "
+            "disabled-staging opt-out with this reason in build_manifest.json"
+        ),
+    )
     return parser.parse_args(argv)
 
 

@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     validate_uk_national_frame,
 )
+from microcosm.build.uk_runtime.uc_relationships import frs_uc_claimant_mask
 from microcosm.frame import Frame, WeightKind
 
 __all__ = [
@@ -150,6 +151,26 @@ BENEFIT_CODES = {
     "pip_dl": 96,
 }
 
+# FRS adult HOURTOT: total hours of care provided per week, a banded derived
+# variable (FRS derived-variable specification). Each code maps to the lower
+# edge of its band in weekly hours; the engine's care_hours input is weekly
+# hours, and its only consumer today tests the 35-hour Carer's Allowance line,
+# which the codes 5, 6, 7 and 10 (35-49, 50-99, 100 or more, varies at 35 or
+# more) reach and the codes 1-4, 8 and 9 do not (#882).
+FRS_CARE_HOURS_BY_BAND = {
+    0: 0.0,  # no care provided
+    1: 0.0,  # 0-4 hours
+    2: 5.0,  # 5-9 hours
+    3: 10.0,  # 10-19 hours
+    4: 20.0,  # 20-34 hours
+    5: 35.0,  # 35-49 hours
+    6: 50.0,  # 50-99 hours
+    7: 100.0,  # 100 hours or more
+    8: 0.0,  # varies, under 20 hours
+    9: 20.0,  # varies, 20-34 hours
+    10: 35.0,  # varies, 35 hours or more
+}
+
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -158,9 +179,11 @@ OUTPUT_COLUMNS = (
     "gender",
     "marital_status",
     "hours_worked",
+    "care_hours",
     "is_household_head",
     "is_benunit_head",
     "is_parent",
+    "is_uc_claimant",
     "employment_income",
     "self_employment_income",
     "private_pension_income",
@@ -198,6 +221,7 @@ OUTPUT_COLUMNS = (
     "dla_m_reported",
     "iidb_reported",
     "carers_allowance_reported",
+    "would_claim_carers_allowance",
     "sda_reported",
     "afcs_reported",
     "ssmg_reported",
@@ -409,6 +433,7 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     pe_person["gender"] = np.where(_number(person, "sex") == 1, "MALE", "FEMALE")
     pe_person["marital_status"] = _map_codes(person, "marital", MARITAL_MAP, "SINGLE")
     pe_person["hours_worked"] = _positive(person, "tothours") * WEEKS_IN_YEAR
+    pe_person["care_hours"] = frs_care_hours(person)
     pe_person["is_household_head"] = _number(person, "hrpid") == 1
     pe_person["is_benunit_head"] = _number(person, "uperson") == 1
     dependent_children = _dependent_children(benunit_raw, frs["child"])
@@ -425,10 +450,20 @@ def _assemble_frame(frs: Mapping[str, pd.DataFrame]) -> Frame:
     _add_accounts(pe_person, person, frs["accounts"])
     _add_person_income(pe_person, person, household, frs["oddjob"])
     _add_benefits(pe_person, person, frs["benefits"])
+    # The engine pays Carer's Allowance on hours or receipt; a dataset keeps it
+    # on reported receipt so that care_hours qualifies carers for the UC carer
+    # element without paying the allowance to every carer (#882).
+    pe_person["would_claim_carers_allowance"] = (
+        pe_person["carers_allowance_reported"] > 0
+    )
     _add_person_expenses(pe_person, person, frs)
 
     pe_benunit["is_married"] = _number(benunit_raw, "famtypb2").isin([5, 7])
     pe_benunit["dependent_children"] = dependent_children
+    # Preserve the FRS claimant/partner roles as a country-model input. Age
+    # does not promote a dependent child to a partner, and legal marriage
+    # alone does not establish that a partner lives in this benefit unit.
+    pe_person["is_uc_claimant"] = frs_uc_claimant_mask(pe_person, pe_benunit)
 
     _add_household_columns(pe_household, household, frs)
 
@@ -831,6 +866,24 @@ def _map_codes(
 ) -> pd.Series:
     values = _number(frame, column).astype("int64", errors="ignore")
     return values.map(mapping).fillna(default).astype(object)
+
+
+def frs_care_hours(person: pd.DataFrame) -> pd.Series:
+    """Weekly care hours from the banded FRS HOURTOT code (lower band edge).
+
+    Blank or non-numeric codes (children, and adults not asked) map to zero;
+    an unknown code is a vintage defect and refuses the build.
+    """
+
+    codes = _raw_number(person, "hourtot").fillna(0)
+    if not np.array_equal(codes.to_numpy(), np.floor(codes.to_numpy())):
+        raise ValueError(
+            "FRS hourtot codes must be integral to build person.care_hours."
+        )
+    unknown = sorted(set(codes.astype(int)) - set(FRS_CARE_HOURS_BY_BAND))
+    if unknown:
+        raise ValueError(f"FRS hourtot carries unknown band code(s) {unknown}.")
+    return codes.astype(int).map(FRS_CARE_HOURS_BY_BAND).astype("float64")
 
 
 def _number(frame: pd.DataFrame, column: str) -> pd.Series:

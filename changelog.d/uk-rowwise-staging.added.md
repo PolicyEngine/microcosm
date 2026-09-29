@@ -1,0 +1,1 @@
+Stage UK rowwise candidate builds (dense and `--dataset-households` runs) like the national command: version 2 telemetry to `runs/<run_id>/` with stage events, thinned per-epoch losses and delivery evidence in the manifest; the driver adopts the shared `--staging-*` options.

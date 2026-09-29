@@ -12,6 +12,7 @@ from microcosm.build.gates import ledger_compile_parity_signed_differences
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
+    align_uk_national_registry_parity_fixture,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
 )
@@ -57,11 +58,139 @@ RECEIPTS = (
     ),
 )
 
-_CGT_GAINS_TOTAL_RATIONALE = (
-    "Ledger carries the HMRC 2023-24 outturn value GBP 65,937,000,000 and "
-    "holds it by identity under the current doctrine; the incumbent Fixture B "
-    "row is GBP 67,727,478,991.60 at 2025 because it carries a forecast/uprated "
-    "value. Signed as a doctrine consequence, not a binding error."
+_SPI_UPRATED_DRIFT_RATIONALE = (
+    "Declared uprating (PolicyEngine/chronicle#280 lane, María's ruling of 2026-09-22): ours "
+    "moves the SPI 2023-24 band value to the 2025 calibration year by the index "
+    "the reference declares (amounts by the pinned engine's per-variable OBR and "
+    "ONS indices between 1 January 2023 and 1 January 2025, the state pension by "
+    "the new State Pension rate the engine pays, counts by HMRC's projected "
+    "taxpayer growth in the containing Table 2.5 band as the calendar-2025 "
+    "window); the frozen incumbent fixture holds the 2023-24 values it projects "
+    "one year forward with its own income-projection ratios."
+)
+
+_INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax "
+    "liabilities Table 2.5 taxpayers, total income and tax by band as the "
+    "calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI "
+    "2023-24 savings-interest rows by band uprated by the household interest "
+    "index; the incumbent registry binds neither (chronicle#282)."
+)
+
+_SPI_REGION_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane, María's ruling of "
+    "2026-09-22 that the regions bind uprated): the SPI 2023-24 Table 3.11 "
+    "Income Tax payers, total income and Income Tax liabilities by ten regional "
+    "total-income bands, one row per region-tier area (microcosm#905), each "
+    "moved to the 2025 calibration year by HMRC's projected growth for the same "
+    "measure in the Table 2.5 band(s) the regional band spans; the incumbent "
+    "registry has no regional SPI band metric (chronicle#282)."
+)
+
+_OBR_WINDOW_DRIFT_RATIONALE = (
+    "Period basis (PolicyEngine/chronicle#280 lane, María's rule of 2026-09-22 that "
+    "fiscal-year facts take only the months to the end of the calibration "
+    "calendar year): ours binds the OBR March 2026 line at the calendar-2025 "
+    "window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on "
+    "the same series; the frozen incumbent fixture holds the FY2025-26 value "
+    "alone."
+)
+
+_ESA_CUBE_DRIFT_RATIONALE = (
+    "Source class (PolicyEngine/chronicle#280 lane): ours binds DWP's Stat-Xplore ESA "
+    "caseload by payment type as the mean of the four quarterly points inside "
+    "calendar 2025 summed over the paid types (credits-only claimants left out; "
+    "dual claimants counted under both types they hold); the incumbent binds the "
+    "August 2025 headline and single-type counts from the benefit statistics "
+    "summary (chronicle#282)."
+)
+
+_ESA_CUBE_ROWS = (
+    "dwp.esa_claimants",
+    "dwp.esa_contrib_claimants",
+    "dwp.esa_income_claimants",
+)
+_INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
+
+_CGT_OBSERVED_RATIONALES = {
+    "hmrc.cgt.gains_total": (
+        "PR #889 selects HMRC FY2024-25 individuals-only observed gains of "
+        "GBP 119,258,000,000, measured in 2024 at calibration index 2025. "
+        "The frozen incumbent fixture retains its historical forecast/uprated "
+        "GBP 67,727,478,991.60 value. This explicit observation-year and "
+        "population-scope change does not rewrite the historical fixture."
+    ),
+    "hmrc.cgt.taxpayers_total": (
+        "PR #889 selects the HMRC FY2024-25 individuals-only observation of "
+        "551,000 taxpayers, measured in 2024 at calibration index 2025. "
+        "The frozen incumbent fixture retains its historical 378,000 count."
+    ),
+    "hmrc.cgt.liability_total": (
+        "PR #889 adds HMRC FY2024-25 individuals-only liability of "
+        "GBP 22,503,000,000 to the observed-year fit. The historical fixture "
+        "has no equivalent liability row; this is a declared ledger-only "
+        "observation, not a cash-receipts reconciliation."
+    ),
+    "obr.capital_gains_tax": (
+        "PR #889 retains the exact March 2026 OBR FY2025-26 cash forecast "
+        "as diagnostic provenance outside the FY2024-25 observation fit. "
+        "The frozen incumbent fixture keeps its fitted cash row, so it is "
+        "fixture-only on the current surface. This scoped change does not "
+        "settle the general liability-to-cash translation tracked by #875."
+    ),
+}
+
+#: The nine incumbent banded CGT names per measure now map onto the Table
+#: 2.1a fan-out (microcosm#467): the incumbent read uk-data's 2023-24
+#: size-of-gain CSV uprated by a national ratio; the current row binds the
+#: published FY2024-25 individuals cell at identity.
+_CGT_BAND_INCUMBENT_PREFIXES = ("hmrc/cgt_taxpayers_band_", "hmrc/capital_gains_band_")
+_CGT_BAND_DRIFT_RATIONALE = (
+    "Vintage and basis class: the incumbent banded CGT row reads uk-data's "
+    "2023-24 HMRC Table 2.1a size-of-gain CSV uprated by a national ratio, "
+    "while the current reference binds the published FY2024-25 individuals "
+    "cell for the same band at identity (Chronicle cgt_size_of_gain_2026), "
+    "measured in 2024 at calibration index 2025 like the national CGT "
+    "observations (microcosm#467, #725). The frozen incumbent fixture keeps "
+    "its historical value."
+)
+_CGT_NEW_ROW_PREFIXES = (
+    "hmrc.cgt.taxpayers_by_age_band.",
+    "hmrc.cgt.gains_by_age_band.",
+    "hmrc.cgt.tax_by_age_band.",
+    "hmrc.cgt.taxpayers_by_region@",
+    "hmrc.cgt.gains_by_region@",
+    "hmrc/cgt_taxpayers_band_3000",
+    "hmrc/cgt_taxpayers_band_6000",
+    "hmrc/cgt_taxpayers_band_10000",
+    "hmrc/capital_gains_band_3000",
+    "hmrc/capital_gains_band_6000",
+    "hmrc/capital_gains_band_10000",
+    "hmrc.cgt.residential_property_taxpayers",
+    "hmrc.cgt.residential_property_gains",
+)
+_CGT_NEW_ROW_LEDGER_ONLY_RATIONALE = (
+    "Declared ledger-only observation: HMRC CGT statistics 2026 release, "
+    "FY2024-25 individual rows by age band (Table 6), by country and region "
+    "on the individuals basis via the Table 1 share (Table 5), and the "
+    "size-of-gain bands the incumbent never carried (Table 2.1a), and the "
+    "residential property taxpayers and gains on the individuals basis via "
+    "the Table 8b share (Table 8a). The frozen incumbent fixture has no "
+    "equivalent row (microcosm#725, #467)."
+)
+
+_UC_PAID_WINDOW_NAMES = frozenset(
+    {"dwp.uc.households"}
+    | {f"dwp.uc.households_children_{i}" for i in (1, 2, 3, 4, "5_or_more")}
+    | {
+        f"dwp.uc.households_{family}"
+        for family in (
+            "couple_no_children",
+            "couple_with_children",
+            "single_no_children",
+            "single_with_children",
+        )
+    }
 )
 
 _ONS_TERMINAL_BAND_RATIONALES = {
@@ -94,17 +223,69 @@ _DEVOLVED_RENT_FIXTURE_ONLY_RATIONALE = (
 )
 
 _COUNCIL_TAX_BAND_DRIFT_RATIONALE = (
-    "Pinned-source snapshot class: Microcosm and the archived incumbent both "
-    "name the VOA 2025 stock publication, but 1,175 of the 2,541 comparable "
-    "band cells differ between the pinned Ledger release and the archived "
-    "committed CSV (delta -380 to +210 dwellings); the other 1,366 cells are "
-    "exact. Microcosm holds the pinned feed at identity."
+    "Signed basis translation (microcosm#929, ruled by María on 2026-09-11 and "
+    "2026-09-15): the incumbent binds the VOA CTSOP valuation-list stock, every "
+    "banded dwelling including exempt, empty and second homes; Microcosm binds "
+    "the MHCLG Council Taxbase return (chronicle#264), CTB line 7 chargeable "
+    "dwellings after the disabled-relief adjustment (band A adds the A- "
+    "column) minus line 11 second homes minus line 15 empty dwellings, the "
+    "dwellings a household file can carry. England's valuation list runs "
+    "6.3 % over the household rows, so the taxbase cells sit below the VOA "
+    "cells by roughly that margin, authority by authority (Westminster band A "
+    "1,660 VOA against 1,328 taxbase). Receipts: "
+    "experiments/929-council-tax-taxbase-receipts.md Parts C and D."
 )
 
 _COUNCIL_TAX_BAND_FIXTURE_ONLY_RATIONALE = (
-    "Signed coverage gap: Scotland and Northern Ireland are absent from the "
-    "pinned local-authority band feed, City of London band A is suppressed, "
-    "and two Welsh band H rows are absent."
+    "Signed deferrals on the taxbase basis (microcosm#929): the incumbent's "
+    "English band-H cells stay deferred under "
+    "council_tax_band_h_spine_support_absent (microcosm#762 A14; 296 "
+    "authorities), and the City of London and Isles of Scilly cells sit under "
+    "the local-authority support floor. Scotland and Wales now bind their own "
+    "returns, so no coverage gap remains on the incumbent's rows."
+)
+
+_COUNCIL_TAX_SCOTLAND_LEDGER_ONLY_RATIONALE = (
+    "No incumbent counterpart: the incumbent bound VOA local rows for England "
+    "only. Microsm binds the 32 Scottish councils' CTAXBASE chargeable "
+    "dwellings by band A-H (chronicle#264, the concept the "
+    "scotgov.council_tax_stock country rows already bind; Shetland band H is "
+    "signed deferred for support), microcosm#929."
+).replace("Microsm", "Microcosm")
+
+_COUNCIL_TAX_WALES_LEDGER_ONLY_RATIONALE = (
+    "No incumbent counterpart: the incumbent bound VOA local rows for England "
+    "only, and Wales alone has a band I. Microcosm binds the 22 Welsh "
+    "authorities' StatsWales CT1 chargeable dwellings by band A-I (a1 minus "
+    "h7 empty minus h8 second homes; chronicle#264), microcosm#929."
+)
+
+_MHCLG_REGION_BASIS_RATIONALE = (
+    "Signed basis translation (microcosm#929): the incumbent's "
+    "voa/council_tax/<REGION>/<band> row is the VOA valuation-list stock, all "
+    "banded dwellings; Microcosm's region cell is composed from the 296 "
+    "billing authorities' MHCLG Council Taxbase rows (CTB line 7 plus A- for "
+    "band A, minus lines 11 and 15: occupied chargeable dwellings, "
+    "chronicle#264) and sums to the publisher's England row to the unit. The "
+    "valuation list runs 6.3 % over England's household rows, so the taxbase "
+    "cell sits below the VOA value (North East band A 667,540 VOA against "
+    "621,096 taxbase). Ruled by María 2026-09-11 / 2026-09-15; receipts "
+    "experiments/929-council-tax-taxbase-receipts.md."
+)
+
+_WELSHGOV_COUNTRY_BASIS_RATIONALE = (
+    "Signed basis translation (microcosm#929): the incumbent's "
+    "voa/council_tax/WALES/<band> row is the VOA valuation-list stock; "
+    "Microcosm binds the StatsWales CT1 2025-26 return's chargeable dwellings "
+    "by band A-I minus h7 empty and h8 second homes (chronicle#264; Wales A "
+    "215,380 VOA against 194,973 taxbase). Ruled by María 2026-09-11 / "
+    "2026-09-15; receipts experiments/929-council-tax-taxbase-receipts.md."
+)
+
+_WELSH_BAND_I_LEDGER_ONLY_RATIONALE = (
+    "No incumbent counterpart: Wales alone has a council tax band I and the "
+    "incumbent's VOA rows stop at band H; Microcosm binds welshgov.council_tax_stock.band_i "
+    "from the StatsWales CT1 return (microcosm#929)."
 )
 
 _COUNCIL_TAX_NET_FIXTURE_ONLY_RATIONALE = (
@@ -123,8 +304,8 @@ _DEVOLVED_RENT_METRICS = frozenset(
 )
 
 _COUNCIL_TAX_BAND_METRICS = frozenset(
-    {f"voa/council_tax/{band}" for band in "ABCDEFGH"}
-    | {f"council_tax/band_{band.lower()}" for band in "ABCDEFGH"}
+    {f"voa/council_tax/{band}" for band in "ABCDEFGHI"}
+    | {f"council_tax/band_{band.lower()}" for band in "ABCDEFGHI"}
 )
 
 _UC_METRICS = frozenset(
@@ -211,6 +392,13 @@ _LEDGER_ONLY_RATIONALE = (
     "review): the incumbent's 360-row LA file carries N09000001-N09000010 "
     "only, omitting N09000011 (Newry, Mourne and Down) entirely - the 361st "
     "crosswalk area is a genuine incumbent roster gap, not a dropped row."
+)
+
+_CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks after microcosm#887: the contract binds the "
+    "published disclosure-controlled census household cell compiled from the "
+    "pinned Chronicle feed; the retired fixture supplied this family from OA-"
+    "ladder sums outside the contract instead."
 )
 
 _LOCAL_DRIFT_RATIONALES = {
@@ -340,19 +528,98 @@ def _aligned_fixture(fixture: dict) -> dict:
     return aligned
 
 
+_REGION_TIER_ONS_DRIFT_RATIONALE = (
+    "Region-tier ONS population cell (microcosm#905): the Ledger row binds the "
+    "ONS mid-year estimate by single year of age at Chronicle's region or "
+    "country stamp, held to the comparison period as identity, while the "
+    "incumbent's regional row is an ONS subnational projection rounded to the "
+    "nearest thousand. The difference is projection-versus-estimate vintage "
+    "and rounding, never area or band definition: the nine English regions "
+    "and three nations sum exactly to the retired UK-wide row of the same "
+    "publication."
+)
+
+
 def _add_signed_rationale_notes(
     report: dict[str, object],
     *,
     fixture_resource: str,
 ) -> None:
-    if fixture_resource != "registry_parity_fixture_2025.json":
+    if fixture_resource not in {
+        "registry_parity_fixture_2025.json",
+        "parity_fixture_production_2023.json",
+    }:
         return
     for row in report.get("differences", ()):
         if not isinstance(row, dict):
             continue
         name = str(row.get("name", ""))
-        if name == "hmrc.cgt.gains_total":
-            row["reason"] = _CGT_GAINS_TOTAL_RATIONALE
+        if name in _UC_PAID_WINDOW_NAMES:
+            baseline = (
+                "2023 production"
+                if fixture_resource == "parity_fixture_production_2023.json"
+                else "2025 incumbent"
+            )
+            inherited_change = (
+                "PR #891 contract with #892 source-window averaging"
+                if name.startswith("dwp.uc.households_children_")
+                else "PR #891 contract"
+            )
+            row["reason"] = (
+                f"Inherited {inherited_change}: current paid-UC counts use the "
+                "explicit January-December 2025 source windows on the ec7169 "
+                f"national feed. This compares that declaration with the frozen {baseline} "
+                "baseline; it does not redatum the observations to the comparison "
+                "year or create a new year ruling."
+            )
+        elif "_by_region@" in name and row.get("kind") == "calibration_drift":
+            row["reason"] = _REGION_TIER_ONS_DRIFT_RATIONALE
+        elif (
+            name.startswith("mhclg.council_tax_stock.")
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _MHCLG_REGION_BASIS_RATIONALE
+        elif (
+            name.startswith("welshgov.council_tax_stock.")
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _WELSHGOV_COUNTRY_BASIS_RATIONALE
+        elif name.startswith("welshgov.council_tax_stock.band_i"):
+            row["reason"] = _WELSH_BAND_I_LEDGER_ONLY_RATIONALE
+        elif fixture_resource != "registry_parity_fixture_2025.json":
+            continue
+        elif name in _CGT_OBSERVED_RATIONALES:
+            row["reason"] = _CGT_OBSERVED_RATIONALES[name]
+        elif (
+            name.startswith("hmrc/")
+            and "_income_band_" in name
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _SPI_UPRATED_DRIFT_RATIONALE
+        elif (
+            name.startswith(_INCOME_ANCHOR_PREFIXES)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE
+        elif name in _ESA_CUBE_ROWS and row.get("kind") == "calibration_drift":
+            row["reason"] = _ESA_CUBE_DRIFT_RATIONALE
+        elif name.startswith("hmrc.spi_region.") and row.get("kind") == "ledger_only":
+            row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
+        elif (
+            name.startswith("obr.")
+            and row.get("kind") == "calibration_drift"
+            and name not in _CGT_OBSERVED_RATIONALES
+        ):
+            row["reason"] = _OBR_WINDOW_DRIFT_RATIONALE
+        elif (
+            name.startswith(_CGT_BAND_INCUMBENT_PREFIXES)
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _CGT_BAND_DRIFT_RATIONALE
+        elif (
+            name.startswith(_CGT_NEW_ROW_PREFIXES) and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _CGT_NEW_ROW_LEDGER_ONLY_RATIONALE
         elif name in _ONS_TERMINAL_BAND_RATIONALES:
             row["reason"] = _ONS_TERMINAL_BAND_RATIONALES[name]
 
@@ -379,12 +646,18 @@ def _add_local_signed_rationale_notes(report: dict[str, object]) -> None:
             row["reason"] = _COUNCIL_TAX_BAND_DRIFT_RATIONALE
         elif kind == "fixture_only" and metric in _COUNCIL_TAX_BAND_METRICS:
             row["reason"] = _COUNCIL_TAX_BAND_FIXTURE_ONLY_RATIONALE
+        elif kind == "ledger_only" and prefix.startswith("scotgov.council_tax_stock."):
+            row["reason"] = _COUNCIL_TAX_SCOTLAND_LEDGER_ONLY_RATIONALE
+        elif kind == "ledger_only" and prefix.startswith("welshgov.council_tax_stock."):
+            row["reason"] = _COUNCIL_TAX_WALES_LEDGER_ONLY_RATIONALE
         elif metric == "housing/council_tax_net":
             row["reason"] = _COUNCIL_TAX_NET_FIXTURE_ONLY_RATIONALE
         elif kind == "calibration_drift" and metric in _LOCAL_DRIFT_RATIONALES:
             row["reason"] = _LOCAL_DRIFT_RATIONALES[metric]
         elif kind == "fixture_only" and metric in _LOCAL_FIXTURE_ONLY_RATIONALES:
             row["reason"] = _LOCAL_FIXTURE_ONLY_RATIONALES[metric]
+        elif kind == "ledger_only" and metric == "households":
+            row["reason"] = _CENSUS_HOUSEHOLDS_LEDGER_ONLY_RATIONALE
         elif kind == "ledger_only":
             row["reason"] = _LEDGER_ONLY_RATIONALE
 
@@ -408,7 +681,7 @@ def _fixture_for_receipt(spec: ParityReceiptSpec) -> dict:
     fixture = _aligned_fixture(_load_fixture(spec.fixture_resource))
     if spec.surface == "local":
         return align_uk_local_registry_parity_fixture(fixture)
-    return fixture
+    return align_uk_national_registry_parity_fixture(fixture)
 
 
 def main() -> None:

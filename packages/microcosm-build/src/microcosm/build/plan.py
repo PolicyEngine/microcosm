@@ -22,15 +22,25 @@ returns it for documentation and the sources diagram.
 
 from __future__ import annotations
 
-import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 
 import pandas as pd
 
+from microcosm.build.observation import (
+    StageObservation,
+    StageObservationRun,
+    StageObserver,
+)
 from microcosm.frame import Frame
 
-__all__ = ["DonorSpec", "Stage", "StagePlan", "StageRecord"]
+__all__ = [
+    "DonorSpec",
+    "Stage",
+    "StageObservation",
+    "StagePlan",
+    "StageRecord",
+]
 
 
 @dataclass(frozen=True)
@@ -174,12 +184,14 @@ class StagePlan:
         frame: Frame,
         *,
         log: Callable[[str], None] = lambda message: None,
+        observer: StageObserver | None = None,
     ) -> tuple[Frame, tuple[StageRecord, ...]]:
         """Execute the plan over ``frame``.
 
         Args:
             frame: The assembled input frame.
             log: Progress sink (one line per stage).
+            observer: Optional aggregate-only stage lifecycle callback.
 
         Returns:
             The final frame and one :class:`StageRecord` per stage.
@@ -193,33 +205,38 @@ class StagePlan:
         records: list[StageRecord] = []
         current = frame
         for stage in self._stages:
-            for column in stage.consumes:
-                try:
-                    current.column_entity(column)
-                except ValueError as error:
-                    raise ValueError(
-                        f"Stage {stage.name!r} consumes {column!r}, which is "
-                        "not on the frame when the stage runs."
-                    ) from error
-            started = time.perf_counter()
-            result = stage.transform(current)
-            elapsed = time.perf_counter() - started
-            if not isinstance(result, Frame):
-                raise TypeError(
-                    f"Stage {stage.name!r} must return a Frame, got "
-                    f"{type(result).__name__}."
-                )
-            shares: dict[str, float] = {}
-            for column in stage.produces:
-                try:
-                    entity = result.column_entity(column)
-                except ValueError as error:
-                    raise ValueError(
-                        f"Stage {stage.name!r} declared it produces "
-                        f"{column!r} but the column is absent after the "
-                        "stage ran."
-                    ) from error
-                shares[column] = _nonzero_share(result.table(entity)[column])
+            with StageObservationRun(
+                stage_id=stage.name,
+                input_frame=current,
+                produced_column_count=len(stage.produces),
+                observer=observer,
+            ) as observation:
+                for column in stage.consumes:
+                    try:
+                        current.column_entity(column)
+                    except ValueError as error:
+                        raise ValueError(
+                            f"Stage {stage.name!r} consumes {column!r}, which is "
+                            "not on the frame when the stage runs."
+                        ) from error
+                result = stage.transform(current)
+                if not isinstance(result, Frame):
+                    raise TypeError(
+                        f"Stage {stage.name!r} must return a Frame, got "
+                        f"{type(result).__name__}."
+                    )
+                shares: dict[str, float] = {}
+                for column in stage.produces:
+                    try:
+                        entity = result.column_entity(column)
+                    except ValueError as error:
+                        raise ValueError(
+                            f"Stage {stage.name!r} declared it produces "
+                            f"{column!r} but the column is absent after the "
+                            "stage ran."
+                        ) from error
+                    shares[column] = _nonzero_share(result.table(entity)[column])
+                elapsed = observation.complete(result)
             current = result
             record = StageRecord(
                 stage=stage.name,

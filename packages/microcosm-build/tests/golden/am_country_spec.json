@@ -1,6 +1,6 @@
 {
   "country": "am",
-  "fingerprint": "64f50fa39e68e9ba6c451e3a47a2f2adeaba5a5ccb147cb80297f942de433ca8",
+  "fingerprint": "f7a97654c879f5c68c24580f9017b02e2684b8c0ae732c500e63c7e98ae49719",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_marz_admin_aggregates",
@@ -44,7 +44,7 @@
     "spec/sources.yaml": "693ca676929491bae25f168ebdcdf9dc10a48403856c0b6efe025abd37785ea6",
     "spec/spine.yaml": "cab78700b112b71a54be7a7750f45aa04a06cda5f1c84486bf9ddc00efab34dc",
     "spec/vintages.yaml": "a45a51bbfb165a0207948f008384b4273e27329adee7aa829ffba722f22014d7",
-    "target_references.json": "b9f1a36cd53d1a8971599b0b668f8f40d14242303c2dbd512a4584fa89549d6f"
+    "target_references.json": "5a41e0d381b28677a4a7867d7ad6e1aface0fe5160200662bb25b6312b0dcffe"
   },
   "resources": [
     "spec/bundle.yaml",

@@ -133,6 +133,9 @@ assembled/transferred/simulated stage boundaries bind the stack manifest,
 fraction, seed, realized counts, and clone controls, so a smaller rung or a
 different draw cannot reuse another build's evidence.
 
+Every bound UK local calibration family compiles from the sha-pinned Chronicle
+consumer feed; geography ladders assign rows and provide diagnostics only.
+
 After gap-fill, one PUF QRF pass and the clone-2 capital-gains-tail operator
 run over both survey origins. Publication is terminally gated by complete
 declared-input coverage and a live-digested, explicit per-column by-origin
@@ -142,6 +145,27 @@ widening tolerances. Every success, failed gate, or exception writes a durable
 Logbook attempt row beside the output before the tool returns. The retiring
 two-spine lineage remains available only through its explicit compatibility
 flag for byte-reproducible historical builds.
+
+## Annual cross-sectional projections
+
+Static aging supplies independent annual cross-sections for budget-window
+estimates. It runs downstream of an accepted base population: demographic
+projections change household weights, and monetary factors preserve projected
+input aggregates under those weights. It preserves the base records, entity
+IDs, and memberships. These repeated IDs identify source records; they do not
+describe individual trajectories.
+
+The US release path exports one single-year H5 per supported year with the
+base dataset's entity-table layout. Each annual artifact records its source
+year, projection year, parent release and dataset hash, model and projection
+inputs, and annual acceptance results. Base-year calibration evidence applies
+to the base population; each projected year requires its own demographic,
+aggregate, and runtime checks. Consumers select a declared annual artifact and
+reject requests outside its published coverage.
+
+The base graph and calibration remain the source of the population. Annual
+projection artifacts retain that source identity and do not certify a new
+base population. See [static aging](docs/static-aging.md) and issue #333.
 
 ## Longitudinal (the social-security-model direction)
 
@@ -221,10 +245,11 @@ never as namespace squatters.
 **Constellation versioning has a mechanism, not just an intent.** Each shard
 pins `microcosm-frame>=X,<X+1` AND asserts kernel compatibility at import (a
 cheap `frame.__version__` check) so pip's looser resolution can't silently
-assemble an incompatible set. CI builds the wheels and installs them **with
-pip** from a local index before running the contract suite — a standing
-regression against the 2026 "pip ignores `[tool.uv.sources]`" incident, which
-had no test.
+assemble an incompatible set. CI builds every shard wheel once and compares
+each archive's package contents with its source tree. Behavioral contracts run
+from the source checkout in separate environment-specific jobs; wheel validation
+does not install the artifacts or repeat behavioral tests. This validates archive
+composition, not dependency resolution or installed import behavior.
 
 ## Sequencing
 

@@ -1,0 +1,1 @@
+The UK spine builder finds each fitting stage's `fit_weight_records` through the telemetry and graph proxies a staged run wraps every stage in, so the sidecar carries the weights-audit evidence again; every telemetry-enabled spine built since the graph driver (2026-09-01) silently lacked the block and the release-cut `uk_weights_audit` gate reported it absent.\n

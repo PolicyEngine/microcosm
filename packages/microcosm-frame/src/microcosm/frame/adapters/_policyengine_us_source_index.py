@@ -977,6 +977,10 @@ class _ExactEvaluator:
             if method == "index" and len(node.args) == 1:
                 needle = self.evaluate(node.args[0], local_env, frame)
                 return self._sequence_index(base, needle, node.lineno)
+            if method == "get" and len(node.args) == 2 and not node.keywords:
+                key = self.evaluate(node.args[0], local_env, frame)
+                default = self.evaluate(node.args[1], local_env, frame)
+                return self._mapping_get(base, key, default, node.lineno)
         # Engine reads and numerical/model-api calls do not themselves produce
         # a string domain; sink scanning authenticates their arguments.
         return _OpaqueValue(function_name or "call")
@@ -1084,6 +1088,51 @@ class _ExactEvaluator:
                     for key, item in alternative.items
                 )
             results.append(_SequenceValue(items))
+        return _make_alternative(tuple(results))
+
+    def _mapping_get(
+        self,
+        base: _ExactValue,
+        key: _ExactValue,
+        default: _ExactValue,
+        line: int,
+    ) -> _ExactValue:
+        """Resolve ``mapping.get(key, default)`` over an exact finite mapping.
+
+        This is :meth:`_subscript`'s mapping arm with the missing-key case
+        replaced by the caller's explicit default instead of an unknown, which
+        is exactly what the two-argument form means.  Only that form is
+        resolved: the one-argument ``get`` yields ``None`` on a miss, a value
+        this lattice does not model, so it keeps falling through to the opaque
+        result that fails closed at a sink.
+
+        PolicyEngine-US 2.2.1 reaches this through
+        ``snap_individual_utility_allowance``, whose loop over the
+        parameter-backed ``utility_types`` list maps each entry through a
+        module-level override table before reading it as an SPM-unit variable
+        (``EXPENSE_VARIABLE_OVERRIDES.get(expense, expense)``).  The loop is
+        unrolled per entry, so every lookup is a single exact key and the
+        recorded consumer set is exact, not an over-approximation.
+        """
+
+        if _contains_unknown(base) or _contains_unknown(key):
+            return _unknown(f"get:{line}")
+        results: list[_ExactValue] = []
+        for base_value in _alternatives(base):
+            for key_value in _alternatives(key):
+                if not (
+                    isinstance(base_value, _MapValue)
+                    and isinstance(key_value, _StringValue)
+                ):
+                    results.append(_unknown(f"get:{line}"))
+                    continue
+                mapping = dict(base_value.items)
+                selected = mapping.get(key_value.value, default)
+                results.append(
+                    _parameter_tainted(selected)
+                    if key_value.parameter_backed
+                    else selected
+                )
         return _make_alternative(tuple(results))
 
     def _change_case(

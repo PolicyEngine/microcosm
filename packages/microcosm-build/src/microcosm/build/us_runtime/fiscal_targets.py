@@ -10,8 +10,9 @@ columns.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
+from functools import cache
 from importlib.resources import files
 from typing import Any, Literal
 
@@ -21,6 +22,8 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     apply_ledger_target_profile,
     compile_ledger_target_references,
+    constraint_bound_shadowing_dimensions,
+    hierarchy_seed_from_catalog,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
@@ -29,7 +32,17 @@ from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+    calibration_provider_label,
+    calibration_variable_label,
+)
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 __all__ = [
     "US_FISCAL_MACRO_REALISM_BANDS",
@@ -39,6 +52,8 @@ __all__ = [
     "US_FISCAL_TARGET_LEDGER_REFERENCES",
     "US_FISCAL_TARGET_REFERENCES",
     "US_FISCAL_TARGET_SUPPORT_EXCLUSIONS",
+    "US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS",
+    "US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES",
     "US_FISCAL_LEDGER_PARITY_REGISTRY",
     "US_FISCAL_LEDGER_PARITY_REPORT",
     "US_JCT_TAX_EXPENDITURE_REFORMS",
@@ -51,65 +66,46 @@ __all__ = [
     "US_STATE_INCOME_TAX_TARGET_REFERENCES",
     "SimpleTaxExpenditureReform",
     "compile_us_fiscal_target_registry",
+    "us_fiscal_target_exclusion_receipt",
 ]
 
 TaxExpenditureReformKind = Literal["neutralize_variable"]
 TaxExpenditureMatrixRow = Literal["reform_minus_baseline_income_tax"]
 
 
-STATE_FIPS_TO_POSTAL: dict[str, str] = {
-    "01": "AL",
-    "02": "AK",
-    "04": "AZ",
-    "05": "AR",
-    "06": "CA",
-    "08": "CO",
-    "09": "CT",
-    "10": "DE",
-    "11": "DC",
-    "12": "FL",
-    "13": "GA",
-    "15": "HI",
-    "16": "ID",
-    "17": "IL",
-    "18": "IN",
-    "19": "IA",
-    "20": "KS",
-    "21": "KY",
-    "22": "LA",
-    "23": "ME",
-    "24": "MD",
-    "25": "MA",
-    "26": "MI",
-    "27": "MN",
-    "28": "MS",
-    "29": "MO",
-    "30": "MT",
-    "31": "NE",
-    "32": "NV",
-    "33": "NH",
-    "34": "NJ",
-    "35": "NM",
-    "36": "NY",
-    "37": "NC",
-    "38": "ND",
-    "39": "OH",
-    "40": "OK",
-    "41": "OR",
-    "42": "PA",
-    "44": "RI",
-    "45": "SC",
-    "46": "SD",
-    "47": "TN",
-    "48": "TX",
-    "49": "UT",
-    "50": "VT",
-    "51": "VA",
-    "53": "WA",
-    "54": "WV",
-    "55": "WI",
-    "56": "WY",
-}
+def _us_hierarchy_seed(
+    provider_id: str,
+    category_id: str,
+    *,
+    category_label: str = "",
+) -> CalibrationHierarchySeed:
+    """Build the explicit provider/category declaration for a selected US row."""
+
+    provider_label = calibration_provider_label("us", provider_id)
+    if provider_label is None:
+        raise ValueError(
+            f"US calibration provider {provider_id!r} has no declared label."
+        )
+    resolved_category_label = category_label or calibration_variable_label(
+        "us", provider_id, category_id
+    )
+    if not resolved_category_label:
+        raise ValueError(
+            f"US calibration category {provider_id!r}/{category_id!r} has no "
+            "declared label."
+        )
+    return CalibrationHierarchySeed(
+        provider=HierarchyNode(provider_id, provider_label),
+        category=HierarchyCategory(
+            f"{provider_id}.{category_id}",
+            resolved_category_label,
+            provider_id,
+        ),
+        # Programmatic US references use the category's reviewed display label
+        # when target compilation changes the period or combines facts. Direct,
+        # unchanged references still take their target label from Chronicle.
+        target_label=resolved_category_label,
+    )
 
 
 SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
@@ -672,7 +668,8 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
         "6.04M-return W-2 Box 7 class, so binding the return-count target "
         "would demand ~600x weight concentration on those carriers. The "
         "dollar-amount target binds first; the count target waits for tip "
-        "support widening (PolicyEngine/microcosm#451 item 3)."
+        "support widening (PolicyEngine/microcosm#451 item 3). Every vintage "
+        "of the cell is excluded (decision d179)."
     ),
     "hhs_acf_tanf.fy2024.cash_assistance.ar.basic_assistance_excluding_relative_foster_care_and_adoption_guardianship.all_funds": (
         "Current 2024 base microdata have zero positive TANF benefit support "
@@ -816,6 +813,46 @@ US_FISCAL_TARGET_SUPPORT_EXCLUSIONS: dict[str, str] = {
     ),
 }
 
+# The register above is keyed by exact source_record_id, and latest-vintage
+# selection activates the newest remaining fact for each target shape, so
+# excluding one vintage of a cell hands its key to the next vintage the feed
+# carries. The 2026-09-18 feed re-pin (docs/us-chronicle-feed-repin.md) added
+# SOI Table 1.4 cells for ty2020-2022, and the ty2022 other-income rows then
+# calibrated in place of the excluded ty2023 rows (microcosm#956). A fact
+# matches an entry here when its source_record_id equals the entry's once
+# period tokens are stripped (_period_free_source_record_id), so each entry
+# drops every vintage of its cell:
+#
+# - the four #564 other-income rows: the Form 4797 concept mismatch does not
+#   depend on the tax year;
+# - the #451 W-2 Box 7 tips return count: tip support is thin at every
+#   vintage, and the ty2020 fact carries the same 6,038,613 returns as the
+#   excluded ty2023 row (the pinned feed's ty2023 W-2 record sets come from
+#   the soi-w2-statistics-2020 package, chronicle_feed_scope.json). The July
+#   feed (consumer_facts_buildn_v9_4, facts b3c0835...) carried only the
+#   ty2020 vintage, so the ty2023-keyed exclusion matched nothing and the
+#   row calibrated (-52% in experiments/replacement_scorecard/
+#   incumbent_48b9d479.md). The pinned feed carries both, latest-vintage
+#   fallback selected ty2020, and #1016 kept it as the one reviewed vintage
+#   bypass until decision d179 ruled to enforce #451 at every vintage.
+US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS: frozenset[str] = frozenset(
+    {
+        "irs_soi.ty2023.table_1_4.all.other_income_net_loss_amount",
+        "irs_soi.ty2023.table_1_4.all.other_income_net_loss_returns",
+        "irs_soi.ty2023.table_1_4.all.other_income_net_income_amount",
+        "irs_soi.ty2023.table_1_4.all.other_income_net_income_returns",
+        "irs_soi.ty2023.form_w2_social_security_tips.box_7_social_security_tips.return_count",
+    }
+)
+
+# Reviewed vintage bypasses. Every other exclusion stays keyed to its exact
+# vintage, and the compile refuses a selected fact that is another vintage of
+# an excluded cell (_check_exclusion_vintage_scope) unless its id is listed
+# here with a reason. Removing an entry is mechanical; adding one needs review.
+# Empty since decision d179 scoped the ty2020 tips return count's exclusion to
+# every vintage.
+US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES: dict[str, str] = {}
+
 
 @dataclass(frozen=True)
 class SimpleTaxExpenditureReform:
@@ -908,7 +945,20 @@ def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
             "US fiscal target references currently permit only identity value "
             f"resolution from Ledger facts; got {sorted(allowed_operations)!r}."
         )
-    return tuple(LedgerTargetReference(**raw) for raw in payload["target_references"])
+    hierarchy = payload.get("hierarchy")
+    if not isinstance(hierarchy, dict):
+        raise ValueError("US fiscal target manifest requires a hierarchy catalog.")
+    references = []
+    for raw in payload["target_references"]:
+        normalized = dict(raw)
+        category_id = str(normalized.pop("category_id", ""))
+        normalized["hierarchy"] = hierarchy_seed_from_catalog(
+            hierarchy,
+            category_id,
+            target_id=str(normalized.get("name") or ""),
+        )
+        references.append(LedgerTargetReference(**normalized))
+    return tuple(references)
 
 
 def _load_us_fiscal_target_profile() -> dict[str, Any]:
@@ -982,6 +1032,7 @@ def compile_us_fiscal_target_registry(
     )
     registry = _uprate_cross_period_eitc_decompositions(registry)
     registry = _with_derived_chip_enrollment_targets(registry)
+    registry = _without_m_chip_state_chip_enrollment_targets(registry)
     registry = _rebase_stale_soi_taxable_interest_distributions(
         registry,
         materialized_facts,
@@ -1017,10 +1068,123 @@ def compile_us_fiscal_target_registry(
     )
 
 
-# Medicaid-expansion-CHIP (M-CHIP) states: CMS total_chip_enrollment counts
-# M-CHIP enrollment the model cannot materialize as separate CHIP, so neither
-# direct rows nor the combined-minus-medicaid derivation can produce a
-# supportable target there (PolicyEngine/microcosm#321).
+def us_fiscal_target_exclusion_receipt(
+    facts: object,
+    *,
+    target_period: int | str = 2024,
+    congressional_district_vintage_crosswalk: object | None = None,
+) -> dict[str, object]:
+    """List the concrete feed facts each exclusion rule drops or allows.
+
+    ``US_FISCAL_TARGET_SUPPORT_EXCLUSIONS``'s keys alone do not say what a
+    compile excluded: a key can be absent from the feed, and before
+    microcosm#956 a release would have listed the ty2023 other-income ids as
+    excluded while calibrating their ty2022 siblings. Each rule records the
+    source_record_ids it acts on in ``facts``:
+
+    - ``reviewed_exclusion``: facts whose id is an exact register key, other
+      than all-vintage entries (dropped).
+    - ``all_vintage_reviewed_exclusion``: every vintage of an
+      ``US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS`` entry, the entry's own
+      vintage included (dropped).
+    - ``m_chip_state_chip_enrollment``: CMS CHIP enrollment facts for an
+      ``_M_CHIP_STATE_FIPS`` state, at every period (dropped).
+    - ``allowlisted_vintage_bypass``: facts latest-vintage selection activates
+      at ``target_period`` that are another vintage of an excluded cell and
+      carry a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES`` entry
+      (allowed).
+
+    It replays the compiler's fact filter and latest-vintage selection, so pass
+    the same ``target_period`` and crosswalk as the compile. Like the compile,
+    it raises on a vintage bypass nobody reviewed.
+    """
+
+    materialized_facts = tuple(facts)
+    if congressional_district_vintage_crosswalk is not None:
+        materialized_facts = translate_congressional_district_facts_to_current_vintage(
+            materialized_facts,
+            congressional_district_vintage_crosswalk,
+        )
+    reviewed: set[str] = set()
+    all_vintage: set[str] = set()
+    m_chip: set[str] = set()
+    for fact in materialized_facts:
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        if _is_all_vintage_support_exclusion(source_record_id):
+            all_vintage.add(source_record_id)
+        elif source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+            reviewed.add(source_record_id)
+        elif _source_name(fact) == "cms_medicaid":
+            reference = _reference_from_ledger_fact(fact, target_period=target_period)
+            if reference is not None and _is_m_chip_state_chip_enrollment(
+                reference.family, reference.metadata
+            ):
+                m_chip.add(source_record_id)
+    selected_ids = [
+        source_record_id
+        for source_record_id, _ in _latest_dynamic_target_references(
+            materialized_facts, target_period=target_period
+        )
+    ]
+    allowed = _check_exclusion_vintage_scope(selected_ids)
+    return {
+        "target_period": str(target_period),
+        "rules": {
+            "reviewed_exclusion": {
+                "action": "dropped",
+                "scope": "exact source_record_id",
+                "source_record_ids": sorted(reviewed),
+            },
+            "all_vintage_reviewed_exclusion": {
+                "action": "dropped",
+                "scope": "every vintage of each entry",
+                "entries": sorted(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS),
+                "source_record_ids": sorted(all_vintage),
+            },
+            "m_chip_state_chip_enrollment": {
+                "action": "dropped",
+                "scope": "CMS CHIP enrollment rows for these states, every period",
+                "state_fips": sorted(_M_CHIP_STATE_FIPS),
+                "source_record_ids": sorted(m_chip),
+            },
+            "allowlisted_vintage_bypass": {
+                "action": "allowed",
+                "scope": "selected at target_period in place of an excluded vintage",
+                "bypasses": [
+                    {
+                        "source_record_id": source_record_id,
+                        "bypassed_exclusions": list(keys),
+                        "reason": US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES[
+                            source_record_id
+                        ],
+                    }
+                    for source_record_id, keys in sorted(allowed.items())
+                ],
+                "source_record_ids": sorted(allowed),
+            },
+        },
+    }
+
+
+# Medicaid-expansion-CHIP (M-CHIP) states whose CMS CHIP enrollment rows never
+# calibrate (PolicyEngine/microcosm#321). PolicyEngine-US 2.2.1 sets
+# gov.hhs.chip.child.income_limit to -inf in all twenty (and in Rhode Island,
+# which sits outside the set), covering their children through the Medicaid
+# child limits, so chip_enrolled there can come only from the pregnant-person
+# paths. The reason differs by state:
+# - AK DC HI NC ND NH NM OH SC VT WY: the child, pregnant and FCEP limits are
+#   all -inf, so the model has no CHIP path and the rows have no support.
+# - CA IL KY MD ME MI NE OK: the CMS count is mostly M-CHIP children (PE-US's
+#   MACPAC enrollment parameters), a concept only a pregnant or FCEP path could
+#   stand in for.
+# - MN: most of its count is separate CHIP (884 M-CHIP vs 4,285 separate in
+#   the same parameters), so the concept argument does not hold; MN is
+#   excluded because it is in the #321 state set.
+# _without_m_chip_state_chip_enrollment_targets drops these states' direct and
+# derived CHIP rows at every period, after latest-vintage selection, and the
+# derivation below never builds a derived row for them.
 _M_CHIP_STATE_FIPS = frozenset(
     {
         "02",
@@ -1088,9 +1252,65 @@ def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetReg
                     combined_spec,
                     medicaid_spec,
                 ),
+                hierarchy=_derived_chip_enrollment_hierarchy(combined_spec),
             )
         )
     return TargetRegistry(specs, country=registry.country)
+
+
+def _without_m_chip_state_chip_enrollment_targets(
+    registry: TargetRegistry,
+) -> TargetRegistry:
+    """Drop every CMS CHIP enrollment row for an M-CHIP state.
+
+    The derivation skip above guards only the combined-minus-Medicaid path, and
+    only while no direct row exists for the key. A direct CMS
+    ``total_chip_enrollment`` fact compiles to the same ``chip_enrolled`` role,
+    so the 2026-09-18 feed re-pin, which added direct rows for exactly the
+    ``_M_CHIP_STATE_FIPS`` states, reopened the #321 fence (microcosm#956).
+    This rule runs on the compiled registry, after latest-vintage selection,
+    so it holds whichever CMS month supplied the row.
+    """
+
+    specs = tuple(
+        spec
+        for spec in registry.specs
+        if not _is_m_chip_state_chip_enrollment(spec.family, spec.metadata)
+    )
+    if len(specs) == len(registry.specs):
+        return registry
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _is_m_chip_state_chip_enrollment(family: str, metadata: Mapping[str, str]) -> bool:
+    return (
+        family == "cms_medicaid"
+        and metadata.get("target_role") == "chip_enrollment"
+        and metadata.get("state_fips") in _M_CHIP_STATE_FIPS
+    )
+
+
+def _derived_chip_enrollment_hierarchy(
+    combined_spec: TargetSpec,
+) -> CalibrationHierarchy:
+    hierarchy = combined_spec.hierarchy
+    if hierarchy is None:
+        raise ValueError(
+            f"CMS source target {combined_spec.name!r} has no hierarchy for "
+            "the derived CHIP enrollment target."
+        )
+    name = _derived_chip_enrollment_name(combined_spec)
+    return CalibrationHierarchy(
+        provider=hierarchy.provider,
+        category=HierarchyCategory(
+            f"{hierarchy.provider.id}.total_chip_enrollment",
+            "Total CHIP enrollment",
+            hierarchy.provider.id,
+        ),
+        geography=hierarchy.geography,
+        dimensions=hierarchy.dimensions,
+        target=HierarchyNode(name, "Total CHIP enrollment"),
+    )
 
 
 def _cms_medicaid_specs_by_key(
@@ -2071,8 +2291,30 @@ def _dynamic_us_fiscal_target_references(
     *,
     target_period: int | str,
 ) -> tuple[LedgerTargetReference, ...]:
+    selected = _latest_dynamic_target_references(facts, target_period=target_period)
+    _check_exclusion_vintage_scope(source_record_id for source_record_id, _ in selected)
+    return tuple(reference for _, reference in selected)
+
+
+def _latest_dynamic_target_references(
+    facts: Iterable[object],
+    *,
+    target_period: int | str,
+) -> tuple[tuple[str, LedgerTargetReference], ...]:
+    """Select one fact per model target shape: the latest eligible period.
+
+    Returns ``(source_record_id, reference)`` pairs so the exclusion vintage
+    guard and receipt can see which fact won each key.
+    """
+
     candidates: list[
-        tuple[tuple[str, ...], tuple[int, int, str], float, LedgerTargetReference]
+        tuple[
+            tuple[str, ...],
+            tuple[int, int, str],
+            float,
+            str,
+            LedgerTargetReference,
+        ]
     ] = []
     for fact in facts:
         reference = _reference_from_ledger_fact(
@@ -2085,17 +2327,19 @@ def _dynamic_us_fiscal_target_references(
                     _dynamic_target_key(fact),
                     _period_key(fact),
                     _numeric_value(fact),
+                    _source_record_id(fact),
                     reference,
                 )
             )
     keys_with_positive_observations = {
-        key for key, _, value, _ in candidates if value > 0
+        key for key, _, value, _, _ in candidates if value > 0
     }
     latest: dict[
-        tuple[str, ...], tuple[tuple[int, int, str], LedgerTargetReference]
+        tuple[str, ...],
+        tuple[tuple[int, int, str], str, LedgerTargetReference],
     ] = {}
     target_period_key = _period_key_from_value(target_period)
-    for key, period_key, value, reference in candidates:
+    for key, period_key, value, source_record_id, reference in candidates:
         if not _not_after_target_period(period_key, target_period_key):
             continue
         if (
@@ -2106,15 +2350,81 @@ def _dynamic_us_fiscal_target_references(
             continue
         current = latest.get(key)
         if current is None:
-            latest[key] = (period_key, reference)
+            latest[key] = (period_key, source_record_id, reference)
             continue
         if _prefer_candidate(
             period_key,
             current[0],
             target_period_key=target_period_key,
         ):
-            latest[key] = (period_key, reference)
-    return tuple(reference for _, reference in latest.values())
+            latest[key] = (period_key, source_record_id, reference)
+    return tuple(
+        (source_record_id, reference)
+        for _, source_record_id, reference in latest.values()
+    )
+
+
+def _exclusion_vintage_bypasses(
+    source_record_ids: Iterable[str],
+) -> dict[str, tuple[str, ...]]:
+    """Map each selected id that is another vintage of an excluded cell.
+
+    The value lists the ``US_FISCAL_TARGET_SUPPORT_EXCLUSIONS`` keys the id
+    matches once period tokens are stripped from both. An id that is itself a
+    key never reaches selection, so every match is a different vintage, older
+    or newer, of a reviewed exclusion.
+    """
+
+    excluded: dict[str, list[str]] = {}
+    for key in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+        excluded.setdefault(_period_free_source_record_id(key), []).append(key)
+    bypasses: dict[str, tuple[str, ...]] = {}
+    for source_record_id in source_record_ids:
+        if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+            continue
+        keys = excluded.get(_period_free_source_record_id(source_record_id))
+        if keys:
+            bypasses[source_record_id] = tuple(sorted(keys))
+    return bypasses
+
+
+def _check_exclusion_vintage_scope(
+    source_record_ids: Iterable[str],
+) -> dict[str, tuple[str, ...]]:
+    """Refuse a selected fact that sidesteps a reviewed exclusion by vintage.
+
+    Latest-vintage selection falls back to whatever other vintage of an
+    excluded cell the feed carries, so an exclusion keyed to one id silently
+    stops excluding when a feed adds vintages (microcosm#956). A match passes
+    only when its id is a reviewed ``US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES``
+    entry; an all-vintage entry never gets here because its facts were dropped
+    before selection. Returns the reviewed bypasses that passed.
+    """
+
+    bypasses = _exclusion_vintage_bypasses(source_record_ids)
+    unreviewed = {
+        source_record_id: keys
+        for source_record_id, keys in bypasses.items()
+        if source_record_id not in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES
+    }
+    if unreviewed:
+        raise ValueError(
+            "Reviewed US fiscal target exclusions bypassed by another source "
+            "vintage: "
+            + "; ".join(
+                f"{source_record_id} would calibrate in place of excluded "
+                + ", ".join(keys)
+                for source_record_id, keys in sorted(unreviewed.items())
+            )
+            + ". Scope the exclusion to every vintage "
+            "(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS) or record a "
+            "reviewed bypass (US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES)."
+        )
+    return {
+        source_record_id: keys
+        for source_record_id, keys in bypasses.items()
+        if source_record_id in US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES
+    }
 
 
 def _zero_value_means_missing_for_latest_selection(
@@ -2193,6 +2503,34 @@ def _normalized_record_set_id(record_set_id: str) -> str:
         return ""
     return ".".join(
         part for part in record_set_id.split(".") if not _is_period_token(part)
+    )
+
+
+def _period_free_source_record_id(source_record_id: str) -> str:
+    """The id with its period tokens stripped, e.g. ``ty2022`` or ``month2024_12``.
+
+    Two vintages of one source cell share this form, which is how the
+    exclusion vintage scope matches them. It reuses the record-set period-token
+    rule of ``_dynamic_target_key``. That rule keys latest-vintage selection
+    only for facts without a direct model target: a mapped fact is selected by
+    ``_model_target_key``, so a sibling fact under a differently named record
+    set that wins an excluded cell's model key is not matched here.
+    """
+
+    return _normalized_record_set_id(source_record_id)
+
+
+def _is_all_vintage_support_exclusion(source_record_id: str) -> bool:
+    return _period_free_source_record_id(source_record_id) in (
+        _period_free_source_record_ids(US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS)
+    )
+
+
+@cache
+def _period_free_source_record_ids(source_record_ids: frozenset[str]) -> frozenset[str]:
+    return frozenset(
+        _period_free_source_record_id(source_record_id)
+        for source_record_id in source_record_ids
     )
 
 
@@ -2291,6 +2629,8 @@ def _reference_from_ledger_fact(
 ) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
     if source_record_id in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS:
+        return None
+    if _is_all_vintage_support_exclusion(source_record_id):
         return None
     source_name = _source_name(fact)
     if source_name == "irs_soi":
@@ -2440,6 +2780,7 @@ def _soi_reference_from_fact(
         family="irs_soi",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed("irs_soi", display_variable),
     )
 
 
@@ -2547,12 +2888,19 @@ def _state_income_tax_reference_from_fact(
         measure=source_record_id,
         period=target_period,
         family="state_income_tax",
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            "individual_income_tax_collections",
+        ),
         metadata={
             "source_measure_id": "collections",
             "source_period": str(_period_value(fact)),
             "target_period": str(target_period),
             "state_fips": state_fips,
             "target_role": "state_income_tax",
+            "materializer": "policyengine_variable",
+            "measure_mode": "sum",
+            "base_variable": "state_income_tax",
         },
     )
 
@@ -2598,6 +2946,7 @@ def _population_age_reference_from_fact(
         "geography_scope": geography_scope,
         "age_lower_bound": lower,
         "age_upper_bound": upper,
+        AGE_BOUND_STAMP_SOURCE_KEY: _age_bound_stamp_source(fact),
     }
     groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
     if groupby_value_id:
@@ -2614,6 +2963,10 @@ def _population_age_reference_from_fact(
         period=target_period,
         family="census_population",
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            "resident_population",
+        ),
     )
 
 
@@ -2779,6 +3132,11 @@ def _ssa_ssi_reference_from_fact(
             measure=source_record_id,
             period=target_period,
             family="ssa",
+            hierarchy=_us_hierarchy_seed(
+                _source_name(fact),
+                "ssi_federal_payment_recipients",
+                category_label="Federal SSI payment recipients",
+            ),
             metadata={
                 "materializer": "policyengine_variable",
                 "measure_mode": "indicator_sum",
@@ -2789,6 +3147,7 @@ def _ssa_ssi_reference_from_fact(
                 "target_period": str(target_period),
                 "age_lower_bound": lower,
                 "age_upper_bound": upper,
+                AGE_BOUND_STAMP_SOURCE_KEY: _age_bound_stamp_source(fact),
             },
         )
 
@@ -2847,6 +3206,10 @@ def _ssa_ssi_reference_from_fact(
         period=target_period,
         family="ssa",
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            ("ssi_recipients" if measure_id == "recipient_count" else "ssi_payments"),
+        ),
     )
 
 
@@ -2939,6 +3302,10 @@ def _bea_reference_from_fact(
         family="bea",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            target_role,
+        ),
     )
 
 
@@ -2998,6 +3365,16 @@ def _direct_reference_from_fact(
         family=family,
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(source_name, family),
+        # These explicitly mapped CBO levels are publisher projections. Keep
+        # their assertion intact without admitting projections for other inputs.
+        assertion_policy=(
+            "allow_source_projection"
+            if source_name == "cbo"
+            and measure_id == "projected_amount"
+            and mapping is not None
+            else "observed_only"
+        ),
     )
 
 
@@ -3133,6 +3510,30 @@ def _agi_bounds(fact: object) -> tuple[str, str]:
     return lower, upper
 
 
+#: Compiled metadata key, on every age-banded spec, that says where the
+#: ``ledger_filter_age_{lower,upper}_bound`` keys ``ledger_targets`` stamps on
+#: the same spec came from. Those keys restate the band :func:`_age_bounds`
+#: compiles, but only a key stamped from a constraint row carries a known
+#: operator (``_lower_bound`` is ``>=``, ``_upper_bound`` is ``<``); a
+#: dimension of the same name, or an ``age`` dimension, can put an
+#: operator-less value there instead (see
+#: :func:`microcosm.build.ledger_targets.constraint_bound_shadowing_dimensions`).
+#: The builder's fatal Ledger-filter guard accepts a restated age bound only
+#: where this key reads :data:`AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS`.
+AGE_BOUND_STAMP_SOURCE_KEY = "age_bound_stamp_source"
+#: :data:`AGE_BOUND_STAMP_SOURCE_KEY` value for a fact with no dimension that
+#: could shadow its age constraint rows. Any other value is
+#: ``dimensions:<names>``, naming the dimensions that could.
+AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS = "constraint_rows"
+
+
+def _age_bound_stamp_source(fact: object) -> str:
+    shadowing = constraint_bound_shadowing_dimensions(fact, "age")
+    if shadowing:
+        return "dimensions:" + ",".join(shadowing)
+    return AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS
+
+
 def _age_bounds(fact: object) -> tuple[str, str]:
     lower = "-inf"
     upper = "inf"
@@ -3178,7 +3579,7 @@ def _state_fips(fact: object) -> str | None:
     if not geoid.startswith("0400000US"):
         return None
     fips = geoid.removeprefix("0400000US")
-    if fips not in STATE_FIPS_TO_POSTAL:
+    if fips not in US_STATE_FIPS_TO_POSTAL:
         return None
     return fips
 
@@ -3196,7 +3597,7 @@ def _congressional_district_geoid(fact: object) -> str | None:
     if not congressional_district_geoid.isdigit():
         return None
     state_fips = congressional_district_geoid[:2]
-    if state_fips not in STATE_FIPS_TO_POSTAL:
+    if state_fips not in US_STATE_FIPS_TO_POSTAL:
         return None
     return congressional_district_geoid
 

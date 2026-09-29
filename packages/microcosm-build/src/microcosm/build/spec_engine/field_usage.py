@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_384
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_770
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_154
+EXPECTED_AUTHORED_FIELD_COUNT = 32_404
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_780
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_184
 
 
 class FieldUsageError(AssertionError):
@@ -249,13 +249,9 @@ def _claim_rows(
         )
 
     if claim.pointer_class == "stacked_geography_source_identity":
-        return [
-            row for row in rows if is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if is_stacked_geography_source_identity(row[0])]
     if claim.pointer_class == "source_validation":
-        return [
-            row for row in rows if not is_stacked_geography_source_identity(row[0])
-        ]
+        return [row for row in rows if not is_stacked_geography_source_identity(row[0])]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -377,12 +373,12 @@ _PINS: dict[str, tuple[int, str]] = {
         "64182b6be1ea6d95bff345b30a2aa046b6fa7e8ee61a282b225dfa49c28fbfdc",
     ),
     "country_manifest": (
-        98,
-        "cbbda6d2d245f04325c0b5a7b986cb71d24d6e3c81a7a3af1544de7f75be2a1f",
+        104,
+        "8a186065f5b8ffc59bc3f62fe927975e6f36bc1e913aa61761652c9a8aa67988",
     ),
     "generated_authorities": (
-        8_606,
-        "3f20975597d93f7313583a944eeb9d6437651c4ff20e67628bf6bf4c5aa9f004",
+        8_614,
+        "66eec1216f404e43f7605fba0016d1cd666e71ebe3e35278d14a944d8b48b619",
     ),
     "geography_assignment": (
         28,
@@ -457,8 +453,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        824,
-        "7537385c3fd399a2dbb7dcd8ed7cf1ff2481ed336db621eafcbfd741d5792f40",
+        826,
+        "7ff2d5d1c2fd8026d17a57244f969dc0e9625a9e47304b693ad15df329041282",
     ),
     "resolved_seed_site_bindings": (
         277,
@@ -489,8 +485,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
     ),
     "source_stages": (
-        1_702,
-        "be3e24b53955b9dabccfc7e779212b1e97daf0c0992be3c183e391bf695ed4ee",
+        1_716,
+        "3e808ed9f5a791c0dfb85be0c59adf803366bf6e8c7a9f5a58f92974e044b607",
     ),
     "spine_assembly_household_mass_shares": (
         2,
@@ -1125,7 +1121,9 @@ def _verify_source_pins(context: _VerificationContext, claim: UsageClaim) -> Non
         if isinstance(row, Mapping) and isinstance(row.get("id"), str)
     ]
     if len(ids) != len(rows) or len(ids) != len(set(ids)):
-        raise FieldUsageError("source_pins: source ids are not an exact unique registry")
+        raise FieldUsageError(
+            "source_pins: source ids are not an exact unique registry"
+        )
 
     expected_refs: set[tuple[str, str, str]] = set()
     for index, value in enumerate(rows):
@@ -1468,9 +1466,7 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "legacy": lambda: _verify_legacy(context, claim),
         "source_pins": lambda: _verify_source_pins(context, claim),
         "spine_channels": lambda: _verify_spine_channels(context, claim),
-        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(
-            context, claim
-        ),
+        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(context, claim),
         "spine_assembly_validation": lambda: _verify_spine_assembly_validation(
             context, claim
         ),

@@ -925,6 +925,12 @@ class QRFChainStepResult:
         state: Chain state after this target, ready for the next subprocess.
         regime: The target's detected :class:`Regime`.
         weight_kind: The resolved donor fit weight kind.
+        fitted: The step's fitted model as a one-target
+            :class:`FittedRegimeGatedQRF` view (predictors = the chained prefix,
+            targets = ``[target]``), so a caller can re-draw this target from
+            caller-owned uniforms (:meth:`FittedRegimeGatedQRF.predict_from_uniforms`,
+            :meth:`FittedRegimeGatedQRF.predict_positive_from_uniforms`) without
+            refitting. ``None`` only for results built before the view existed.
     """
 
     target: str
@@ -932,6 +938,7 @@ class QRFChainStepResult:
     state: QRFChainState
     regime: str
     weight_kind: str
+    fitted: FittedRegimeGatedQRF | None = None
 
 
 @dataclass(frozen=True)
@@ -1031,6 +1038,71 @@ def _draw_target_with_rng(
         values[neg_mask] = model.negative.draw(
             features.loc[neg_mask], quantiles[neg_mask]
         )
+    return values
+
+
+#: Regimes that fit a positive-magnitude forest and can therefore draw an
+#: amount conditional on the target being positive.
+_POSITIVE_FOREST_REGIMES = frozenset(
+    {
+        Regime.THREE_SIGN,
+        Regime.ZERO_INFLATED_POSITIVE,
+        Regime.SIGN_ONLY,
+        Regime.POSITIVE_ONLY,
+    }
+)
+
+
+def _draw_positive_from_uniforms(
+    features: pd.DataFrame,
+    model: _TargetModel,
+    quantiles: np.ndarray,
+    *,
+    target: str,
+) -> np.ndarray:
+    """Draw from the positive-magnitude forest only, bypassing the sign gate.
+
+    The amount is the conditional distribution among donors with a positive
+    value, at each row's quantile. Regimes without a positive forest are
+    refused by name rather than silently drawing zeros.
+    """
+    if model is _RELEASED:
+        raise RuntimeError("This target's fitted forests were released; refit to draw.")
+    if model.regime not in _POSITIVE_FOREST_REGIMES or model.positive is None:
+        raise ValueError(
+            f"Target {target!r} has regime {model.regime!r}, which fits no "
+            "positive-magnitude forest; a conditional-on-positive draw is undefined."
+        )
+    return model.positive.draw(features, quantiles)
+
+
+def _draw_target_from_uniforms(
+    features: pd.DataFrame,
+    model: _TargetModel,
+    quantiles: np.ndarray,
+    sign_uniforms: np.ndarray,
+) -> np.ndarray:
+    """Evaluate a target without consuming or replacing any model RNG state."""
+    if model is _RELEASED:
+        raise RuntimeError("This target's fitted forests were released; refit to draw.")
+    if model.regime == Regime.DEGENERATE_ZERO:
+        return np.zeros(len(features), dtype=np.float64)
+    if model.regime == Regime.POSITIVE_ONLY:
+        return model.positive.draw(features, quantiles)
+    if model.regime == Regime.NEGATIVE_ONLY:
+        return model.negative.draw(features, quantiles)
+    x = features.loc[:, list(model.columns)].to_numpy(dtype=np.float64)
+    cumulative = np.cumsum(model.gate.predict_proba(x), axis=1)
+    # Uniforms occupy [0, 1): strict comparison skips zero-probability classes
+    # even at u=0. Close the final CDF bin against floating-point roundoff.
+    cumulative[:, -1] = 1.0
+    chosen = (cumulative > sign_uniforms[:, None]).argmax(axis=1)
+    signs = np.asarray(model.gate.classes_)[chosen]
+    values = np.zeros(len(features), dtype=np.float64)
+    for sign, forest in ((1, model.positive), (-1, model.negative)):
+        mask = signs == sign
+        if mask.any() and forest is not None:
+            values[mask] = forest.draw(features.loc[mask], quantiles[mask])
     return values
 
 
@@ -1253,12 +1325,26 @@ class RegimeGatedQRF:
             fit_rng_state_json=_rng_state_json(fit_rng),
             draw_rng_state_json=_rng_state_json(draw_rng),
         )
+        # A one-target view of this step's fitted model. Its draw RNG is a
+        # fresh child of the model seed keyed by the target position, so the
+        # view's own ``predict`` is reproducible without touching the chain's
+        # draw stream; caller-owned uniforms are the intended use.
+        fitted_view = FittedRegimeGatedQRF(
+            entity=resolved.entity,
+            predictors=list(chained),
+            targets=[target],
+            target_models={target: target_model},
+            zero_atol=self.zero_atol,
+            draw_seed=np.random.SeedSequence(self.seed, spawn_key=(position + 1,)),
+            weight_kind=resolved.weight_kind,
+        )
         return QRFChainStepResult(
             target=target,
             raw_draw=raw_draw,
             state=advanced,
             regime=target_model.regime,
             weight_kind=resolved.weight_kind,
+            fitted=fitted_view,
         )
 
     def _validate_chain_config(self, state: QRFChainState) -> None:
@@ -1562,6 +1648,126 @@ class FittedRegimeGatedQRF:
             augmented[target] = np.asarray(drawn, dtype=np.float64)
             if release_models:
                 self._target_models[target] = _RELEASED
+        return out
+
+    def predict_from_uniforms(
+        self,
+        frame_or_df: Frame | pd.DataFrame,
+        *,
+        quantiles: Mapping[str, np.ndarray],
+        sign_uniforms: Mapping[str, np.ndarray],
+    ) -> pd.DataFrame:
+        """Draw using caller-supplied per-row uniforms, without advancing RNG.
+
+        Each mapping must contain exactly the fitted targets, with one finite
+        real numeric one-dimensional array in ``[0, 1)`` per target, aligned
+        to input rows. Complex, object and string arrays are refused.
+        Supply both arrays even for single-sign or all-zero targets. Later
+        targets condition on earlier draws, just as in :meth:`predict`.
+
+        Pairing uniforms with stable entity IDs makes results invariant to
+        recipient ordering and batching. Fitted forests remain reusable. The
+        legacy :meth:`predict` stream and its consumption order are unchanged.
+        """
+        features = self._predictor_frame(frame_or_df)
+        arrays = {}
+        for name, supplied in (
+            ("quantiles", quantiles),
+            ("sign_uniforms", sign_uniforms),
+        ):
+            if not isinstance(supplied, Mapping) or set(supplied) != set(self.targets):
+                raise ValueError(f"{name} must contain exactly the fitted targets.")
+            arrays[name] = {}
+            for target in self.targets:
+                raw = np.asarray(supplied[target])
+                if raw.dtype.kind not in "iuf":
+                    raise ValueError(
+                        f"{name}[{target!r}] uniforms must be real numeric arrays."
+                    )
+                values = np.asarray(raw, dtype=np.float64)
+                if values.shape != (len(features),):
+                    raise ValueError(
+                        f"{name}[{target!r}] must have shape ({len(features)},)."
+                    )
+                if (
+                    not np.isfinite(values).all()
+                    or ((values < 0) | (values >= 1)).any()
+                ):
+                    raise ValueError(f"{name}[{target!r}] uniforms must be in [0, 1).")
+                arrays[name][target] = values
+        out = pd.DataFrame(index=features.index)
+        if features.empty:
+            return out.reindex(columns=self.targets).astype(np.float64)
+        augmented = features.copy()
+        for target in self.targets:
+            drawn = _draw_target_from_uniforms(
+                augmented,
+                self._target_models[target],
+                arrays["quantiles"][target],
+                arrays["sign_uniforms"][target],
+            )
+            out[target] = drawn
+            augmented[target] = drawn
+        return out
+
+    def predict_positive_from_uniforms(
+        self,
+        frame_or_df: Frame | pd.DataFrame,
+        *,
+        quantiles: Mapping[str, np.ndarray],
+    ) -> pd.DataFrame:
+        """Draw every target conditional on it being positive, from caller uniforms.
+
+        The sign gate is bypassed: each row's value is the positive-magnitude
+        forest's draw at that row's quantile, i.e. the amount distribution among
+        donors that have the target, given the predictors. Use it when a
+        separate mechanism decides *who* has the target (a take-up style
+        incidence draw) and this model supplies *how much*. ``quantiles`` has
+        the shape :meth:`predict_from_uniforms` requires for its ``quantiles``
+        argument; no sign uniforms are taken because no sign is drawn. Targets
+        whose regime fits no positive forest (negative-only, zero-inflated
+        negative, degenerate zero) are refused by name, as are released
+        models. Later targets condition on the earlier positive draws. No model
+        RNG is consumed.
+        """
+        features = self._predictor_frame(frame_or_df)
+        if not isinstance(quantiles, Mapping) or set(quantiles) != set(self.targets):
+            raise ValueError("quantiles must contain exactly the fitted targets.")
+        arrays: dict[str, np.ndarray] = {}
+        for target in self.targets:
+            raw = np.asarray(quantiles[target])
+            if raw.dtype.kind not in "iuf":
+                raise ValueError(
+                    f"quantiles[{target!r}] uniforms must be real numeric arrays."
+                )
+            values = np.asarray(raw, dtype=np.float64)
+            if values.shape != (len(features),):
+                raise ValueError(
+                    f"quantiles[{target!r}] must have shape ({len(features)},)."
+                )
+            if not np.isfinite(values).all() or ((values < 0) | (values >= 1)).any():
+                raise ValueError(f"quantiles[{target!r}] uniforms must be in [0, 1).")
+            arrays[target] = values
+        for target in self.targets:
+            model = self._target_models[target]
+            if model is not _RELEASED and (
+                model.regime not in _POSITIVE_FOREST_REGIMES or model.positive is None
+            ):
+                raise ValueError(
+                    f"Target {target!r} has regime {model.regime!r}, which fits no "
+                    "positive-magnitude forest; a conditional-on-positive draw is "
+                    "undefined."
+                )
+        out = pd.DataFrame(index=features.index)
+        if features.empty:
+            return out.reindex(columns=self.targets).astype(np.float64)
+        augmented = features.copy()
+        for target in self.targets:
+            drawn = _draw_positive_from_uniforms(
+                augmented, self._target_models[target], arrays[target], target=target
+            )
+            out[target] = drawn
+            augmented[target] = drawn
         return out
 
     def _predictor_frame(self, frame_or_df: Frame | pd.DataFrame) -> pd.DataFrame:

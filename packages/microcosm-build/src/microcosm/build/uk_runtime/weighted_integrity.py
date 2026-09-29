@@ -144,6 +144,7 @@ __all__ = [
     "coerce_reviewed_exclusions",
     "exclusion_evaluation_date",
     "load_uk_input_mass_reference",
+    "load_uk_local_area_support_exclusion_register",
     "load_uk_reference_scoped_exclusion_register",
     "load_uk_reviewed_exclusion_register",
     "uk_default_input_mass_reviewed_exclusions",
@@ -670,6 +671,50 @@ def load_uk_reference_scoped_exclusion_register(
             )
         )
     return dict(sorted(result.items()))
+
+
+def load_uk_local_area_support_exclusion_register(
+    source: str | Path | None,
+    *,
+    resource: str = "local_area_support_exclusions.json",
+) -> dict[str, dict[str, UKReviewedExclusion]]:
+    """Load the schema-3 local-area support register and both approval blocks."""
+
+    payload, label = _read_register_payload(source, resource=resource)
+    expected_fields = {
+        "schema_version",
+        "description",
+        "exclusions",
+        "bound_despite_support_floor",
+    }
+    if set(payload) != expected_fields:
+        raise ValueError(
+            f"{label}: local-area support register fields must be exactly "
+            f"{sorted(expected_fields)}, got {sorted(payload)}."
+        )
+    if (
+        type(payload.get("schema_version")) is not int
+        or payload.get("schema_version") != 3
+    ):
+        raise ValueError(
+            f"{label}: local-area support register schema_version must be 3, "
+            f"got {payload.get('schema_version')!r}."
+        )
+    description = payload.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(
+            f"{label}: local-area support register description must be a "
+            "non-empty string."
+        )
+    result: dict[str, dict[str, UKReviewedExclusion]] = {}
+    for block in ("exclusions", "bound_despite_support_floor"):
+        entries = payload.get(block)
+        if not isinstance(entries, Mapping):
+            raise ValueError(
+                f"{label}: local-area support register must carry a {block!r} object."
+            )
+        result[block] = coerce_reviewed_exclusions(entries, label=f"{label} {block!r}")
+    return result
 
 
 @functools.cache

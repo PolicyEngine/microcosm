@@ -46,6 +46,7 @@ from pathlib import Path
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
+from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
 from microcosm.data.us_critical_targets import (
@@ -57,17 +58,28 @@ from microcosm.data.us_critical_targets import (
 from microcosm.data.us_critical_targets import (
     is_congressional_district_target,
 )
+from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
+    UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_TARGET_GEOGRAPHY_LEVELS,
+    parse_calibration_diagnostics,
+)
 
 __all__ = [
+    "COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS",
     "EVIDENCE_RELEASE_ID_SEGMENT",
     "EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION",
     "LOCAL_AREA_REQUIRED_RELEASE_FILES",
     "NATIONAL_DEFAULT_DATASET_ROLE",
     "NON_DEFAULT_LOCAL_AREA_DATASET_ROLE",
+    "PUBLISHER_CLAIM_BASIS",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
+    "compatibility_claim_declarer_error",
+    "line_for_release_id",
     "release_dataset_role",
     "required_release_files",
     "validate_evidence_release_dir",
@@ -78,6 +90,34 @@ __all__ = [
 #: schema, and keep :func:`validate_release_dir` rejecting drift loudly — the
 #: unversioned 1abddeb-era manifest is exactly the silence this guards against.
 RELEASE_MANIFEST_SCHEMA_VERSION = 1
+#: ``compatible_*_packages`` entries default to the exact version the build
+#: measured. An entry the publisher widened deliberately declares this basis
+#: and the person or process accountable for it.
+PUBLISHER_CLAIM_BASIS = "publisher_claim"
+#: Ceiling on the text naming who declared a publisher claim. Long enough for a
+#: role and an issue reference, short enough that the field stays a name rather
+#: than a place to park prose.
+COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS = 200
+
+
+def compatibility_claim_declarer_error(declared_by: object) -> str | None:
+    """Return why ``declared_by`` cannot name a claim's declarer, or ``None``.
+
+    One rule, two layers. The producer raises on it while certifying
+    (``microcosm.data.source_enrichment.check_compatibility_claim_declarer``)
+    and this contract reports it as a release failure, so a bundle cannot reach
+    publication carrying a declarer certification would have refused.
+    """
+    if not isinstance(declared_by, str) or not declared_by.strip():
+        return "is required"
+    if declared_by != declared_by.strip():
+        return "must not carry leading or trailing whitespace"
+    if len(declared_by) > COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS:
+        return f"must be at most {COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS} characters"
+    if not declared_by.isprintable():
+        return "must be printable text, with no control characters"
+    return None
+
 
 #: The release-manifest schema marker for EVIDENCE-tier releases
 #: (microcosm#506). Deliberately a distinct value, not a superset flag on the
@@ -126,12 +166,9 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
     "donor_release",
 )
 
-# Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 6 = final per-target loss attribution plus warning-only degradation).
-# microcosm-data cannot import
-# microcosm-calibrate (dependency direction), so the builder test suite pins the
-# two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
+_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
+    SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+)
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -142,7 +179,6 @@ _UK_EXACT_K_RELEASE_ID_RE = re.compile(
 _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 _UK_LEGACY_RELEASE_IDS = frozenset({_UK_JUNE_RELEASE_ID})
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
-_UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 _UK_TERMINAL_GATE_SCHEMA_VERSION = 3
 _UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 5
@@ -357,9 +393,6 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     ),
     "support": frozenset({"columns_checked"}),
 }
-_UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
-    {"national", "region", "country", "local_authority", "constituency"}
-)
 
 # ---------------------------------------------------------------------------
 # Schema-4 gate-battery verification. Every constant here mirrors the shared
@@ -383,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "76afdd6e14bb4fc3d7e03fcceac8c2498d235fbbc7b9e996968ddda607992c15"
+    "d0090b7214ade3fc64d2e4b78cbf8027031997d48bfb1ee1f94c3f4917d1a562"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f7460ed01621432d42c900013fe6edcf040cf825e90bc3640f2b507efdccda32"
+    "c795750a8cf244ef21d02661459ba6d4cd7e015df1b82f891db25f261272537e"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "5f17aaeffdbbca96a7db46878ed65ce6229ffb7fe74480a3f0284395866ef90e"
+    "83fb2c65ff3c5858b148bb6982d4d2b2fe8f92ce44bfa2b88a44f45adc64c7c3"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -408,6 +441,8 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_ons_household_type_enum_domain": "enum_domain",
+    "uk_capital_gains_asset_type_enum_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
@@ -432,10 +467,15 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
+    "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
+    "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred"),
     "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
+    "uk_stage_etb_services_support_pricing": ("stage_health", "transferred"),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -447,7 +487,16 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_band_donors_support": ("stage_health", "transferred"),
+    "uk_stage_spi_income_band_donors_support": ("stage_health", "transferred"),
     "uk_stage_hmrc_cgt_gains_spine_summary": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_hmrc_cgt_asset_type_spine_summary": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_cgt_incidence_anchor_composition": (
         "stage_health",
         "transferred",
     ),
@@ -457,6 +506,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_student_loans_realization": ("stage_health", "transferred"),
     "uk_stage_age_tail_targets": ("stage_health", "assembled"),
+    "uk_stage_frs_relationships_composition": ("stage_health", "assembled"),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -475,6 +525,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
+    "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
+    "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
@@ -483,6 +535,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_target_surface": ("target_surface", "terminal"),
     "uk_target_fit": ("target_fit", "terminal"),
+    "uk_cgt_projection_entrants": (
+        "cgt_projection_entrants",
+        "terminal",
+    ),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
     "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
     "uk_local_geography_ladder_post_calibration": (
@@ -510,19 +566,29 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
+        "uk_stage_nts_bus_travel_support",
+        "uk_stage_nts_bus_travel_facts",
         "uk_stage_uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support",
+        "uk_stage_lcfs_consumption_energy_rake",
+        "uk_stage_lcfs_consumption_bus_pricing",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
+        "uk_stage_etb_services_support_pricing",
         "uk_stage_frs_hmrc_spine_leaves_signal",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
         "uk_stage_cgt_incidence_clone_mass",
         "uk_stage_cgt_band_donors_support",
+        "uk_stage_spi_income_band_donors_support",
         "uk_stage_hmrc_cgt_gains_spine_summary",
+        "uk_stage_hmrc_cgt_asset_type_spine_summary",
+        "uk_stage_cgt_incidence_anchor_composition",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
         "uk_stage_age_tail_targets",
+        "uk_stage_frs_relationships_composition",
+        "uk_cgt_projection_entrants",
     }
 )
 # The input-mass binding's evidence payload wraps the reviewed reference
@@ -530,7 +596,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
+    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -559,6 +625,38 @@ _UK_RELEASE_CUT_GATE_REPORT_FILE = "release_cut_gates.json"
 # microcosm.build.uk_runtime.release_identity.UK_NATIONAL_RELEASE_ID (the
 # data shard cannot import the build shard); lockstep-tested.
 _UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+_UK_LOCAL_LINE_RELEASE_ID_RE = re.compile(
+    r"^microcosm-uk-2024-25-local-k(?P<n>[1-9][0-9]*)$"
+)
+
+
+def line_for_release_id(release_id: str) -> str | None:
+    """Return the promotable UK publication line for ``release_id``."""
+    if release_id == _UK_NATIONAL_RELEASE_ID:
+        return "national"
+    match = _UK_LOCAL_LINE_RELEASE_ID_RE.fullmatch(release_id)
+    if match is not None:
+        return f"local-k{match.group('n')}"
+    return None
+
+
+def dataset_role_for_line(line: str) -> str:
+    """The one dataset role a publication line may carry.
+
+    The national line publishes national-default releases; every local-area
+    line publishes non-default local-area releases. The publisher refuses a
+    line promotion whose manifest declares another role, and the loader
+    refuses a manifest that reached a line pointer with the wrong role, so a
+    local-area release can never ride the national pointer (or the reverse)
+    on the strength of its release id alone.
+    """
+    if line == "national":
+        return NATIONAL_DEFAULT_DATASET_ROLE
+    if re.fullmatch(r"local-k[1-9][0-9]*", line):
+        return NON_DEFAULT_LOCAL_AREA_DATASET_ROLE
+    raise ValueError(f"{line!r} is not a publication line.")
+
+
 # The dense joint national + local line (microcosm#762 A18, ruling
 # 2026-09-03): the same constant-id approach, published on the inspect lane
 # under the non-default local-area role. Mirrored from
@@ -568,6 +666,10 @@ _UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
 _UK_DENSE_CUT_TAG_RE = re.compile(
     re.escape(_UK_DENSE_RELEASE_ID) + r"-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}"
 )
+#: The dense line's published microdata filename; mirrors
+#: ``tools/assemble_uk_dense_release_dir.py::_DATASET_FILENAME`` (lockstep test
+#: in the build shard's contract-pin suite).
+_UK_DENSE_DATASET_FILENAME = "microcosm_uk_2024_25_dense.h5"
 _UK_DENSE_GATE_REPORT_FILE = "uk_local_gates.json"
 _UK_DENSE_SCORE_RECEIPT_FILE = "score_vs_incumbent.json"
 _UK_DENSE_SOURCE_COVERAGE_FILE = "uk_source_coverage.json"
@@ -622,6 +724,17 @@ _UK_DENSE_SOURCE_COVERAGE_KEYS = (
 # a hand-edited or stale revision cannot claim a cut the attempt chain never
 # produced.
 _UK_NATIONAL_REVISION_SUFFIX_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
+
+
+def _uk_line_cut_tag_re(release_id: str) -> re.Pattern[str] | None:
+    """Return the immutable cut-tag grammar for a promotable UK line."""
+    if line_for_release_id(release_id) is None:
+        return None
+    return re.compile(
+        re.escape(release_id) + "-" + _UK_NATIONAL_REVISION_SUFFIX_RE.pattern
+    )
+
+
 # The canonical release-dir filenames of the evidence the certification signs
 # (tools/assemble_uk_release_dir.py copies each byte-for-byte). Validation
 # binds every local file to its signed digest: a certification whose evidence
@@ -654,15 +767,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
     "spine": frozenset(
         {
             "uk_brma_enum_domain",
+            "uk_capital_gains_asset_type_enum_domain",
+            "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_band_donors_support",
+            "uk_stage_cgt_incidence_anchor_composition",
+            "uk_stage_spi_income_band_donors_support",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
+            "uk_stage_frs_relationships_composition",
+            "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_bus_pricing",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_nts_bus_travel_facts",
+            "uk_stage_nts_bus_travel_support",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
@@ -674,6 +798,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
         {
             "uk_aggregate_admin",
             "uk_calibration_reference_coverage",
+            "uk_cgt_projection_entrants",
             "uk_target_fit",
             "uk_weight_ess",
             "uk_weight_ratio",
@@ -708,26 +833,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "70a47a57039a236ae67df7d019fc7f8d43cbffab14a47d00a1e3e28dbc83a5a3"
+            "786d755f5f78be1300402a613188918faeab1c4c900d3795b030c7e1cd9cab78"
         ),
         "policy_sha256": (
-            "21e6b68e013cfc33a5bf96e141c42fd6fb23a34a237ae71a9e5f806a958552c8"
+            "5cbb030aec6012d425500dadd7b58df1a933e2e5fffe0363aa95ea55f2a1f67a"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "cb0d7ce17c0cd3cf70bd432d4ba85efce3fa837ebf3caba5f5cf0b5545c5dc61"
+            "ba096ae37c4879fa844c02f40cf886b78bf0e7efdb8852536d6e592fc5ab24ff"
         ),
         "policy_sha256": (
-            "290b1ad240bf4f6412dcaa87c77283dad79d88c817b10b2f402736378fd3d63d"
+            "5a78ad115f958eb20247534ff9fd52e5d5d4f277b608d55ad4251d48a7232049"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "969fd0f1bd4529006af00c9a7a0cdab76489cfc41b5b3f838670fcab52409188"
+            "2df5dfef9323cc69865c3dd9ca128ab4b25ed3f903aa5b6fdf380f9f3c9b87a3"
         ),
         "policy_sha256": (
-            "619dd84ee5748948358a03e2a209f41ab2a170b6dd45ad636a9a47c994d98de0"
+            "ab39a3466feca64067a3b37106c2125196f7d53b1eb448f0415a5e6846379de8"
         ),
     },
 }
@@ -738,6 +863,9 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
         "country",
         "release_id",
         "candidate",
+        # The spine whose stage receipts the release cut measured, bound by
+        # the certifier to the parent the calibration recorded.
+        "parent_spine",
         "parts",
         "spec",
         "doctrine",
@@ -1130,6 +1258,7 @@ def _check_release_manifest(
     failures: list[str],
     *,
     expected_schema_version: object = RELEASE_MANIFEST_SCHEMA_VERSION,
+    annual_revision: str | None = None,
 ) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version is None:
@@ -1205,17 +1334,8 @@ def _check_release_manifest(
             "release_manifest.json must declare a non-empty 'artifacts' mapping."
         )
     else:
-        diagnostics_artifact = artifacts.get("calibration_diagnostics")
-        if not isinstance(diagnostics_artifact, Mapping):
-            failures.append(
-                "release_manifest.json artifacts must include "
-                "'calibration_diagnostics'."
-            )
-        elif diagnostics_artifact.get("path") != "calibration_diagnostics.json":
-            failures.append(
-                "release_manifest.json artifact 'calibration_diagnostics' "
-                "must point to calibration_diagnostics.json."
-            )
+        line_cut_tag_re = _uk_line_cut_tag_re(release_id)
+        _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
             if not isinstance(entry, Mapping):
                 failures.append(
@@ -1228,14 +1348,14 @@ def _check_release_manifest(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
             revision = entry.get("revision")
-            revision_matches_release = revision == release_id or (
-                release_id == _UK_NATIONAL_RELEASE_ID
-                and isinstance(revision, str)
-                and revision.startswith(release_id + "-")
-                and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
-                    revision[len(release_id) + 1 :]
+            revision_matches_release = (
+                revision == release_id
+                or (annual_revision is not None and revision == annual_revision)
+                or (
+                    line_cut_tag_re is not None
+                    and isinstance(revision, str)
+                    and line_cut_tag_re.fullmatch(revision) is not None
                 )
-                is not None
             )
             # A present-but-non-string revision must fail here rather than
             # slide past the isinstance guard: publish collects only string
@@ -1247,7 +1367,7 @@ def _check_release_manifest(
                 expected = (
                     f"the release id {release_id!r} or a "
                     f"'{release_id}-<YYYYMMDDTHHMMSSZ>-<uuid8>' per-cut tag"
-                    if release_id == _UK_NATIONAL_RELEASE_ID
+                    if line_cut_tag_re is not None
                     else f"the release id {release_id!r}"
                 )
                 failures.append(
@@ -1324,6 +1444,99 @@ def _check_release_manifest(
                         f"points to artifact {national!r}, whose kind is "
                         f"{default_artifact.get('kind')!r}, not 'microdata'."
                     )
+
+
+def _calibration_diagnostics_required(manifest: object) -> bool:
+    """Return whether this release must contain the diagnostics document."""
+
+    if not isinstance(manifest, Mapping):
+        return True
+    declaration = manifest.get("calibration_diagnostics")
+    return not (
+        isinstance(declaration, Mapping) and declaration.get("status") == "failed"
+    )
+
+
+def _check_calibration_diagnostics_declaration(
+    manifest: Mapping,
+    artifacts: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate the release-level available/failed diagnostics declaration."""
+
+    declaration = manifest.get("calibration_diagnostics")
+    artifact = artifacts.get("calibration_diagnostics")
+    if declaration is None:
+        if not isinstance(artifact, Mapping):
+            failures.append(
+                "release_manifest.json artifacts must include "
+                "'calibration_diagnostics'."
+            )
+        elif artifact.get("path") != "calibration_diagnostics.json":
+            failures.append(
+                "release_manifest.json artifact 'calibration_diagnostics' "
+                "must point to calibration_diagnostics.json."
+            )
+        return
+    if not isinstance(declaration, Mapping):
+        failures.append(
+            "release_manifest.json 'calibration_diagnostics' must be an object."
+        )
+        return
+    status = declaration.get("status")
+    if status == "available":
+        if declaration.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+            failures.append(
+                "release_manifest.json available calibration diagnostics must "
+                f"declare schema_version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+            )
+        _check_sha256_field(
+            filename="release_manifest.json",
+            owner="calibration_diagnostics.sha256",
+            value=declaration.get("sha256"),
+            failures=failures,
+        )
+        if not isinstance(artifact, Mapping):
+            failures.append(
+                "release_manifest.json available calibration diagnostics require "
+                "the 'calibration_diagnostics' artifact entry."
+            )
+        else:
+            if artifact.get("path") != "calibration_diagnostics.json":
+                failures.append(
+                    "release_manifest.json artifact 'calibration_diagnostics' "
+                    "must point to calibration_diagnostics.json."
+                )
+            if artifact.get("sha256") != declaration.get("sha256"):
+                failures.append(
+                    "release_manifest.json calibration diagnostics status and "
+                    "artifact sha256 values must match."
+                )
+        return
+    if status == "failed":
+        if declaration.get("expected_schema_version") != (
+            CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        ):
+            failures.append(
+                "release_manifest.json failed calibration diagnostics must "
+                "declare the current expected_schema_version."
+            )
+        for field in ("error_code", "message"):
+            if not isinstance(declaration.get(field), str) or not declaration[field]:
+                failures.append(
+                    "release_manifest.json failed calibration diagnostics require "
+                    f"a non-empty {field!r}."
+                )
+        if artifact is not None:
+            failures.append(
+                "release_manifest.json must not declare a calibration diagnostics "
+                "artifact when generation failed."
+            )
+        return
+    failures.append(
+        "release_manifest.json calibration diagnostics status must be "
+        "'available' or 'failed'."
+    )
 
 
 def _check_uk_release_identity(
@@ -1553,6 +1766,27 @@ def _check_compatible_package_entries(
                 f"{owner}.specifier {specifier!r} is not a valid PEP 440 specifier."
             )
             continue
+        # An entry wider than the tested build is a publisher's own claim, so
+        # it says so and says who made it. Silence means the entry records what
+        # the build measured.
+        basis = entry.get("basis")
+        if basis is not None:
+            if basis != PUBLISHER_CLAIM_BASIS:
+                failures.append(
+                    f"{owner}.basis {basis!r} is not a recognised compatibility "
+                    f"basis; the only declared basis is {PUBLISHER_CLAIM_BASIS!r}."
+                )
+            reason = compatibility_claim_declarer_error(entry.get("declared_by"))
+            if reason is not None:
+                failures.append(
+                    f"{owner}.declared_by {reason} for a "
+                    f"{PUBLISHER_CLAIM_BASIS!r} entry."
+                )
+        elif entry.get("declared_by") is not None:
+            failures.append(
+                f"{owner}.declared_by needs the matching "
+                f"'basis': {PUBLISHER_CLAIM_BASIS!r}."
+            )
         if name == expected_name:
             matching_specifiers.append(specifier)
 
@@ -3015,6 +3249,15 @@ def _check_uk_release_certification(
             f"{file} release_id {certification.get('release_id')!r} does not "
             f"match the release under validation ({release_id!r})."
         )
+    parent_spine = certification.get("parent_spine")
+    parent_sha = (
+        parent_spine.get("sha256") if isinstance(parent_spine, Mapping) else None
+    )
+    if not isinstance(parent_sha, str) or not _SHA256_RE.match(parent_sha):
+        failures.append(
+            f"{file} parent_spine.sha256 must be the sha256 hex digest of the "
+            "spine the calibration recorded as its parent."
+        )
 
     parts = certification.get("parts")
     if not isinstance(parts, Mapping) or set(parts) != set(
@@ -3246,6 +3489,17 @@ def _check_calibration_diagnostics(
     """
 
     schema_version = diagnostics.get("schema_version")
+    if not grandfathered_uk_june and schema_version == (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    ):
+        try:
+            parse_calibration_diagnostics(diagnostics)
+        except ValidationError as error:
+            failures.append(
+                "calibration_diagnostics.json does not satisfy the shared "
+                f"schema: {error}"
+            )
+        return
     if schema_version is None:
         failures.append("calibration_diagnostics.json is missing 'schema_version'.")
     elif grandfathered_uk_june and schema_version != 2:
@@ -3253,14 +3507,16 @@ def _check_calibration_diagnostics(
             "calibration_diagnostics.json grandfathered June UK release "
             f"requires legacy schema version 2, got {schema_version!r}."
         )
-    elif (
-        not grandfathered_uk_june
-        and schema_version != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    elif not grandfathered_uk_june and (
+        isinstance(schema_version, bool)
+        or not isinstance(schema_version, int)
+        or schema_version not in _SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
     ):
         failures.append(
             f"calibration_diagnostics.json 'schema_version' is {schema_version!r}; "
-            f"this library publishes version "
-            f"{CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+            "supported versions are "
+            f"{sorted(_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS)} and "
+            f"this library publishes version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
         )
 
     expected_sections = {
@@ -3293,6 +3549,15 @@ def _check_calibration_diagnostics(
     )
 
     targets = diagnostics.get("targets")
+    dimension_definitions = diagnostics.get("dimensions")
+    if schema_version == 7 and not isinstance(dimension_definitions, Mapping):
+        failures.append(
+            "calibration_diagnostics.json schema 7 requires a top-level "
+            "'dimensions' object."
+        )
+        dimension_definitions = {}
+    if schema_version == 7 and isinstance(dimension_definitions, Mapping):
+        _check_diagnostics_dimension_definitions(dimension_definitions, failures)
     if isinstance(targets, list):
         surface = diagnostics.get("target_surface")
         if isinstance(surface, Mapping) and surface.get("n_targets") != len(targets):
@@ -3329,6 +3594,17 @@ def _check_calibration_diagnostics(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing non-empty 'source'."
                 )
+            if schema_version == 7:
+                _check_structured_diagnostics_target(
+                    target,
+                    index=index,
+                    dimension_definitions=(
+                        dimension_definitions
+                        if isinstance(dimension_definitions, Mapping)
+                        else {}
+                    ),
+                    failures=failures,
+                )
             if not grandfathered_uk_june:
                 if not isinstance(target.get("measure"), Mapping):
                     failures.append(
@@ -3346,6 +3622,129 @@ def _check_calibration_diagnostics(
                     "calibration_diagnostics.json target row "
                     f"{index} is missing 'metadata' object."
                 )
+
+
+def _check_diagnostics_dimension_definitions(
+    dimensions: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate the schema-7 dimension dictionary."""
+
+    for dimension_id, definition in dimensions.items():
+        owner = f"calibration_diagnostics.json dimension {dimension_id!r}"
+        if not isinstance(dimension_id, str) or not dimension_id:
+            failures.append(
+                "calibration_diagnostics.json dimension ids must be non-empty strings."
+            )
+            continue
+        if not isinstance(definition, Mapping):
+            failures.append(f"{owner} must be an object.")
+            continue
+        if (
+            not isinstance(definition.get("label"), str)
+            or not str(definition.get("label")).strip()
+        ):
+            failures.append(f"{owner} requires a non-empty string 'label'.")
+        role = definition.get("role")
+        if role not in {None, "geography"}:
+            failures.append(f"{owner} has unsupported role {role!r}.")
+        if role == "geography" and (
+            not isinstance(definition.get("level"), str)
+            or not str(definition.get("level")).strip()
+        ):
+            failures.append(
+                f"{owner} with role 'geography' requires a non-empty string 'level'."
+            )
+        value_labels = definition.get("values")
+        if value_labels is not None and not isinstance(value_labels, Mapping):
+            failures.append(f"{owner} 'values' must be an object when provided.")
+        elif isinstance(value_labels, Mapping):
+            for raw_value, label in value_labels.items():
+                if (
+                    not isinstance(raw_value, str)
+                    or not raw_value
+                    or not isinstance(label, str)
+                    or not label.strip()
+                ):
+                    failures.append(
+                        f"{owner} value labels must map non-empty strings to "
+                        "non-empty strings."
+                    )
+                    break
+        order = definition.get("order")
+        if order is not None and (
+            not isinstance(order, list)
+            or any(not isinstance(value, str) or not value for value in order)
+            or len(set(order)) != len(order)
+        ):
+            failures.append(
+                f"{owner} 'order' must be a list of unique non-empty strings."
+            )
+
+
+def _check_structured_diagnostics_target(
+    target: Mapping,
+    *,
+    index: int,
+    dimension_definitions: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate complete structured identity on one schema-7 target row."""
+
+    owner = f"calibration_diagnostics.json target row {index}"
+    if not isinstance(target.get("label"), str) or not str(target.get("label")).strip():
+        failures.append(f"{owner} schema 7 requires a non-empty string 'label'.")
+    for field in ("source", "variable"):
+        value = target.get(field)
+        if (
+            not isinstance(value, Mapping)
+            or not isinstance(value.get("id"), str)
+            or not str(value.get("id")).strip()
+        ):
+            failures.append(
+                f"{owner} schema 7 requires {field!r} to be an object with a "
+                "non-empty string 'id'."
+            )
+        if (
+            isinstance(value, Mapping)
+            and "label" in value
+            and (
+                not isinstance(value.get("label"), str)
+                or not str(value.get("label")).strip()
+            )
+        ):
+            failures.append(
+                f"{owner} schema 7 {field} 'label' must be a non-empty string "
+                "when provided."
+            )
+    values = target.get("dimensions")
+    if not isinstance(values, Mapping):
+        failures.append(f"{owner} schema 7 requires a 'dimensions' object.")
+        return
+    geography_count = 0
+    for dimension_id, raw_value in values.items():
+        if dimension_id not in dimension_definitions:
+            failures.append(f"{owner} references undefined dimension {dimension_id!r}.")
+            continue
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            failures.append(
+                f"{owner} dimension {dimension_id!r} must have a non-empty "
+                "string value."
+            )
+            continue
+        definition = dimension_definitions.get(dimension_id)
+        if not isinstance(definition, Mapping):
+            continue
+        if definition.get("role") == "geography":
+            geography_count += 1
+            labels = definition.get("values")
+            if isinstance(labels, Mapping) and raw_value not in labels:
+                failures.append(
+                    f"{owner} geography value {raw_value!r} has no label in "
+                    f"dimension {dimension_id!r}."
+                )
+    if geography_count > 1:
+        failures.append(f"{owner} may populate at most one geography-role dimension.")
 
 
 def _uk_non_negative_int(
@@ -3396,11 +3795,11 @@ def _uk_finite_number(
     return number
 
 
-def _check_uk_calibration_diagnostics(
+def _check_legacy_uk_calibration_diagnostics(
     diagnostics: Mapping,
     failures: list[str],
 ) -> None:
-    """Require the versioned UK release diagnostics on canonical exact-k ids."""
+    """Validate the UK extension retained in historical schemas 6 and 7."""
 
     uk = diagnostics.get("uk_diagnostics")
     if not isinstance(uk, Mapping):
@@ -3409,11 +3808,11 @@ def _check_uk_calibration_diagnostics(
             "'uk_diagnostics' object."
         )
         return
-    if uk.get("schema_version") != _UK_DIAGNOSTICS_SCHEMA_VERSION:
+    if uk.get("schema_version") != UK_DIAGNOSTICS_SCHEMA_VERSION:
         failures.append(
             "calibration_diagnostics.json 'uk_diagnostics.schema_version' is "
             f"{uk.get('schema_version')!r}; expected "
-            f"{_UK_DIAGNOSTICS_SCHEMA_VERSION}."
+            f"{UK_DIAGNOSTICS_SCHEMA_VERSION}."
         )
 
     weights = uk.get("weights")
@@ -3685,7 +4084,7 @@ def _check_uk_calibration_diagnostics(
             )
             continue
         level = row.get("geography_level")
-        if not isinstance(level, str) or level not in _UK_TARGET_GEOGRAPHY_LEVELS:
+        if not isinstance(level, str) or level not in UK_TARGET_GEOGRAPHY_LEVELS:
             failures.append(
                 "calibration_diagnostics.json UK geography pass-rate row "
                 f"{index} has unknown level {level!r}."
@@ -3752,7 +4151,7 @@ def _check_uk_calibration_diagnostics(
         total_targets += n_targets
         total_scored += n_scored
         total_skipped += n_skipped
-    missing_levels = sorted(_UK_TARGET_GEOGRAPHY_LEVELS - seen_levels)
+    missing_levels = sorted(set(UK_TARGET_GEOGRAPHY_LEVELS) - seen_levels)
     if missing_levels:
         failures.append(
             "calibration_diagnostics.json UK geography pass rates are missing "
@@ -4120,16 +4519,21 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     """
 
     failures: list[str] = []
-    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
-        if not (release_dir / filename).is_file():
-            failures.append(f"required file {filename!r} is missing.")
-
     release_manifest: Mapping | None = None
     manifest_path = release_dir / "release_manifest.json"
     if manifest_path.is_file():
         release_manifest = _load_json(manifest_path, failures)
     if release_manifest is not None:
         _check_local_area_release_manifest(release_manifest, release_id, failures)
+
+    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(release_manifest)
+        ):
+            continue
+        if not (release_dir / filename).is_file():
+            failures.append(f"required file {filename!r} is missing.")
 
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
@@ -4150,11 +4554,27 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
 
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     if diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
-            _check_local_area_calibration_diagnostics(diagnostics, failures)
+            if "schema_version" in diagnostics:
+                _check_calibration_diagnostics(
+                    diagnostics,
+                    failures,
+                )
+            else:
+                _check_local_area_calibration_diagnostics(diagnostics, failures)
+            if (
+                _is_uk_exact_k_release_id(release_id)
+                and diagnostics.get("schema_version")
+                != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            ):
+                _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
-                _check_uk_calibration_diagnostics(diagnostics, failures)
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
                 )
@@ -4178,7 +4598,18 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                     "--donor-release-manifest)."
                 )
 
-    _check_local_area_checksum_ledger(release_dir, release_manifest, failures)
+    required_checksum_files = tuple(
+        filename
+        for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES
+        if _calibration_diagnostics_required(release_manifest)
+        or filename != "calibration_diagnostics.json"
+    )
+    _check_local_area_checksum_ledger(
+        release_dir,
+        release_manifest,
+        failures,
+        required_files=required_checksum_files,
+    )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
 
     if failures:
@@ -4256,6 +4687,10 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
+            if diagnostics.get("schema_version") == (
+                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            ):
+                _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
@@ -4615,6 +5050,8 @@ def _check_local_area_release_manifest(
             "release_manifest.json must declare a non-empty 'artifacts' map."
         )
         return
+    if manifest.get("calibration_diagnostics") is not None:
+        _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
     microdata = [
         name
         for name, entry in artifacts.items()
@@ -4680,11 +5117,26 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
-    n_targets = diagnostics.get("n_targets")
+    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        target_surface = diagnostics.get("target_surface")
+        n_targets = (
+            target_surface.get("n_targets")
+            if isinstance(target_surface, Mapping)
+            else None
+        )
+        households = diagnostics.get("n_records")
+        n_targets_label = "target_surface.n_targets"
+        households_label = "n_records"
+    else:
+        n_targets = diagnostics.get("n_targets")
+        households = diagnostics.get("households")
+        n_targets_label = "n_targets"
+        households_label = "households"
     targets = diagnostics.get("targets")
     if not isinstance(n_targets, int) or n_targets <= 0:
         failures.append(
-            "calibration_diagnostics.json must carry a positive integer 'n_targets'."
+            "calibration_diagnostics.json must carry a positive integer "
+            f"{n_targets_label!r}."
         )
     if not isinstance(targets, list) or not targets:
         failures.append(
@@ -4734,10 +5186,10 @@ def _check_local_area_calibration_diagnostics(
                     f"calibration_diagnostics.json target row {index} field "
                     f"{field!r} must be a finite number."
                 )
-    households = diagnostics.get("households")
     if not isinstance(households, int) or households <= 0:
         failures.append(
-            "calibration_diagnostics.json must carry a positive integer 'households'."
+            "calibration_diagnostics.json must carry a positive integer "
+            f"{households_label!r}."
         )
     for field in ("final_loss", "fraction_within_10pct"):
         value = diagnostics.get(field)
@@ -4771,7 +5223,13 @@ def release_dataset_role(release_dir: Path | str) -> str:
     return role if isinstance(role, str) and role else NATIONAL_DEFAULT_DATASET_ROLE
 
 
-def validate_release_dir(release_dir: Path | str) -> None:
+def validate_release_dir(
+    release_dir: Path | str,
+    *,
+    parent_h5: Path | str | None = None,
+    artifact_root: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
+) -> None:
     """Check a local release directory against its dataset-role contract.
 
     The directory name is the build id (``populace-us-2024-<sha>-<date>``)
@@ -4788,6 +5246,13 @@ def validate_release_dir(release_dir: Path | str) -> None:
       ``default_datasets`` map, and artifacts pinned to the release id. The
       national critical-target set deliberately does not apply: the artifact
       is calibrated to a local surface by design.
+
+    ``release_type=source_enrichment`` selects the separately reviewed BuildP
+    inheritance contract before role dispatch: exact schema-5 calibration bytes,
+    complete H5 preservation, pinned source role evidence, and replayed native
+    loader checks. It requires ``parent_h5``, ``artifact_root``, and the tested
+    ``compatibility_wheels``. Pending local candidates have a separate validator
+    and cannot pass this publication gate. Ordinary calibration stays on schema 6.
 
     TODO(#578 H5 household-count reconciliation): when the first modern UK
     exact-k release is actually cut, bind these manifest/diagnostic counts to
@@ -4816,11 +5281,49 @@ def validate_release_dir(release_dir: Path | str) -> None:
     # than a silent fallback.
     role: str = NATIONAL_DEFAULT_DATASET_ROLE
     manifest_probe_path = release_dir / "release_manifest.json"
+    manifest_probe: object = None
+    annual_extension = None
     if manifest_probe_path.is_file():
         try:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        if isinstance(manifest_probe, Mapping) and "release_type" in manifest_probe:
+            from microcosm.data.source_enrichment import (
+                SOURCE_ENRICHMENT_RELEASE_TYPE,
+                validate_source_enrichment_candidate,
+            )
+
+            if manifest_probe["release_type"] == SOURCE_ENRICHMENT_RELEASE_TYPE:
+                validate_source_enrichment_candidate(
+                    release_dir,
+                    parent_h5=parent_h5,
+                    artifact_root=artifact_root,
+                    require_compatibility=True,
+                    compatibility_wheels=compatibility_wheels,
+                )
+                return
+            if manifest_probe["release_type"] != "calibration":
+                raise ReleaseContractError(
+                    release_dir,
+                    [
+                        "release_manifest.json declares unknown release_type "
+                        f"{manifest_probe['release_type']!r}."
+                    ],
+                )
+        if isinstance(manifest_probe, Mapping):
+            from microcosm.data.annual_projections import (
+                validate_annual_projection_extension,
+            )
+
+            try:
+                annual_extension = validate_annual_projection_extension(
+                    release_dir, manifest_probe, artifact_root=artifact_root
+                )
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise ReleaseContractError(
+                    release_dir, [f"annual projection extension: {exc}"]
+                ) from exc
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role not in (
@@ -4851,6 +5354,11 @@ def validate_release_dir(release_dir: Path | str) -> None:
     source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(manifest_probe)
+        ):
+            continue
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
@@ -4866,10 +5374,20 @@ def validate_release_dir(release_dir: Path | str) -> None:
         manifest = _load_json(release_manifest_path, failures)
         if manifest is not None:
             release_manifest = manifest
-            _check_release_manifest(manifest, release_id, failures)
+            _check_release_manifest(
+                manifest,
+                release_id,
+                failures,
+                annual_revision=annual_extension.revision if annual_extension else None,
+            )
 
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         calibration_diagnostics_sha256 = _sha256(calibration_diagnostics_path)
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
@@ -4882,8 +5400,10 @@ def validate_release_dir(release_dir: Path | str) -> None:
             if (
                 _is_uk_exact_k_release_id(release_id)
                 or release_id == _UK_NATIONAL_RELEASE_ID
-            ):
-                _check_uk_calibration_diagnostics(diagnostics, failures)
+            ) and diagnostics.get(
+                "schema_version"
+            ) != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+                _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
@@ -5288,11 +5808,20 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         )
 
     manifest_probe_path = release_dir / "release_manifest.json"
+    manifest_probe: object = None
     if manifest_probe_path.is_file():
         try:
             manifest_probe = json.loads(manifest_probe_path.read_text())
         except (OSError, ValueError):
             manifest_probe = None
+        if (
+            isinstance(manifest_probe, Mapping)
+            and manifest_probe.get("release_type", "calibration") != "calibration"
+        ):
+            raise ReleaseContractError(
+                release_dir,
+                ["evidence tier does not accept source-enrichment releases"],
+            )
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role != NATIONAL_DEFAULT_DATASET_ROLE:
@@ -5313,6 +5842,11 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(manifest_probe)
+        ):
+            continue
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
@@ -5339,10 +5873,18 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     recomputed_critical_failures: list[str] = []
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
-            _check_calibration_diagnostics(diagnostics, failures)
+            _check_calibration_diagnostics(
+                diagnostics,
+                failures,
+            )
             # Critical-fit breaches are permitted at the evidence tier — but
             # never silently. Recompute the certified verdicts into a scratch
             # list and require each breach to be acknowledged in
@@ -5827,16 +6369,22 @@ def _check_uk_dense_surface_files(
     candidate = loaded["rowwise_candidate_manifest.json"]
     incumbent = loaded["incumbent_manifest.json"]
     try:
-        ledger = candidate["identity"]["ledger"]
-        dataset = _artifact_by_path(release_manifest, "microcosm_uk_2025_dense.h5")
+        chronicle = candidate["identity"]["targets"]["chronicle"]
+    except (KeyError, TypeError):
+        failures.append(
+            "rowwise_candidate_manifest.json is missing identity.targets.chronicle."
+        )
+        return
+    try:
+        dataset = _artifact_by_path(release_manifest, _UK_DENSE_DATASET_FILENAME)
         expected = {
             "candidate_dataset_sha256": dataset["sha256"],
             "candidate_manifest_sha256": hashes["rowwise_candidate_manifest.json"],
             "candidate_diagnostics_sha256": hashes[
                 "source_calibration_diagnostics.json"
             ],
-            "ledger_facts_sha256": ledger["facts_sha256"],
-            "ledger_manifest_sha256": ledger["manifest_sha256"],
+            "ledger_facts_sha256": chronicle["facts_sha256"],
+            "ledger_manifest_sha256": chronicle["manifest_sha256"],
             "incumbent_manifest_sha256": hashes["incumbent_manifest.json"],
             "incumbent_metrics_sha256": incumbent["outputs"]["metrics"]["sha256"],
             "incumbent_weights_sha256": incumbent["outputs"]["weights"]["sha256"],
@@ -5880,7 +6428,7 @@ def _check_uk_dense_surface_files(
                     "uk_source_coverage.json measure_exclusions do not match the original candidate approvals."
                 )
             for key in ("facts_sha256", "manifest_sha256"):
-                if coverage.get("ledger_artifact", {}).get(key) != ledger[key]:
+                if coverage.get("ledger_artifact", {}).get(key) != chronicle[key]:
                     failures.append(
                         f"uk_source_coverage.json Ledger {key} does not match the evaluated source."
                     )
@@ -5893,20 +6441,37 @@ def _check_uk_dense_surface_files(
         )
         original_diagnostics = loaded["source_calibration_diagnostics.json"]
         if shipped_diagnostics:
-            if (
-                shipped_diagnostics.get("source_diagnostics_sha256")
-                != expected["candidate_diagnostics_sha256"]
+            if original_diagnostics.get("schema_version") == (
+                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
             ):
-                failures.append(
-                    "calibration_diagnostics.json source hash does not match the evaluated source."
-                )
-            if any(
-                shipped_diagnostics.get(key) != value
-                for key, value in original_diagnostics.items()
-            ):
-                failures.append(
-                    "calibration_diagnostics.json changed original evaluated diagnostic values."
-                )
+                shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
+                if shipped_sha256 != expected["candidate_diagnostics_sha256"]:
+                    failures.append(
+                        "calibration_diagnostics.json bytes do not match the "
+                        "evaluated canonical diagnostics."
+                    )
+                if shipped_diagnostics != original_diagnostics:
+                    failures.append(
+                        "calibration_diagnostics.json changed original evaluated "
+                        "diagnostic values."
+                    )
+            else:
+                if (
+                    shipped_diagnostics.get("source_diagnostics_sha256")
+                    != expected["candidate_diagnostics_sha256"]
+                ):
+                    failures.append(
+                        "calibration_diagnostics.json source hash does not match "
+                        "the evaluated source."
+                    )
+                if any(
+                    shipped_diagnostics.get(key) != value
+                    for key, value in original_diagnostics.items()
+                ):
+                    failures.append(
+                        "calibration_diagnostics.json changed original evaluated "
+                        "diagnostic values."
+                    )
         score = _load_json(release_dir / _UK_DENSE_SCORE_RECEIPT_FILE, failures)
         for key, identity_key in (
             ("candidate_diagnostics", "candidate_diagnostics_sha256"),

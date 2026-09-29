@@ -1,0 +1,801 @@
+"""Tests split from packages/microcosm-build/tests/test_uk_release_input_coverage.py."""
+
+# ruff: noqa: F403, F405
+from test_support.microcosm_build.uk_release_input_coverage import *
+
+
+class TestUKReleaseInputCoverageGate:
+    def test_full_required_set_with_signal_passes(self) -> None:
+        frame = _person_frame(
+            {
+                "employment_income": np.asarray([0.0, 52_000.0, 12_000.0]),
+                "dividend_income": np.asarray([0.0, 500.0, 0.0]),
+            }
+        )
+        result = uk_release_input_coverage_gate(
+            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+        )
+        assert result.passed
+        assert result.failures == ()
+        assert result.details["dormant_exclusions"] == ["property_income"]
+
+    def test_missing_required_column_fails_and_names_efrs(self) -> None:
+        frame = _person_frame({"employment_income": np.asarray([0.0, 52_000.0])})
+        result = uk_release_input_coverage_gate(
+            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+        )
+        assert not result.passed
+        assert result.details["missing"] == ["dividend_income"]
+        assert any(
+            "dividend_income" in failure
+            and "enhanced-FRS input column is absent" in failure
+            for failure in result.failures
+        )
+
+    def test_formula_owned_persisted_override_is_a_hard_requirement(self) -> None:
+        contract = _manifest(
+            (UKReleaseInputColumn("state_pension_reported", "required"),)
+        )
+        engine = _StubEngine({"state_pension_reported": 0.0})
+
+        absent = uk_release_input_coverage_gate(
+            _person_frame({"age": np.asarray([40, 70])}),
+            engine,
+            manifest=contract,
+        )
+        default_only = uk_release_input_coverage_gate(
+            _person_frame({"state_pension_reported": np.asarray([0.0, 0.0])}),
+            engine,
+            manifest=contract,
+        )
+        populated = uk_release_input_coverage_gate(
+            _person_frame({"state_pension_reported": np.asarray([0.0, 12_000.0])}),
+            engine,
+            manifest=contract,
+        )
+
+        assert not absent.passed
+        assert not default_only.passed
+        assert populated.passed
+
+    def test_default_only_required_column_fails(self) -> None:
+        frame = _person_frame(
+            {
+                "employment_income": np.asarray([0.0, 52_000.0]),
+                "dividend_income": np.asarray([0.0, 0.0]),
+            }
+        )
+        result = uk_release_input_coverage_gate(
+            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+        )
+        assert not result.passed
+        assert result.details["degenerate_required"] == ["dividend_income"]
+        assert any("every value equals" in failure for failure in result.failures)
+
+    def test_required_column_on_wrong_entity_fails(self) -> None:
+        frame = _person_frame({"dividend_income": np.asarray([500.0])})
+        frame.table("household")["employment_income"] = np.asarray([52_000.0])
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine(_DEFAULTS),
+            manifest=_CONTRACT,
+        )
+
+        assert not result.passed
+        assert result.details["wrong_entity_columns"] == {
+            "employment_income": {"actual": "household", "expected": "person"}
+        }
+        assert any(
+            "same-named column on the wrong table" in failure
+            for failure in result.failures
+        )
+
+    @pytest.mark.parametrize(
+        "values",
+        [
+            np.asarray([np.nan, np.nan]),
+            np.asarray(["", "  "], dtype=object),
+            np.asarray(["", 0.0], dtype=object),
+            np.asarray(["  ", 0.0], dtype=object),
+            np.asarray([b"", 0.0], dtype=object),
+        ],
+    )
+    def test_required_column_without_valid_observations_fails(self, values) -> None:
+        frame = _person_frame(
+            {
+                "employment_income": np.asarray([0.0, 52_000.0]),
+                "dividend_income": values,
+            }
+        )
+        result = uk_release_input_coverage_gate(
+            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+        )
+        assert not result.passed
+        assert result.details["degenerate_required"] == ["dividend_income"]
+
+    def test_stale_reviewed_exclusion_fails(self) -> None:
+        frame = _person_frame(
+            {
+                "employment_income": np.asarray([0.0, 52_000.0]),
+                "dividend_income": np.asarray([0.0, 500.0]),
+                "property_income": np.asarray([0.0, 1_200.0]),
+            }
+        )
+        result = uk_release_input_coverage_gate(
+            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+        )
+        assert not result.passed
+        assert result.details["stale_exclusions"] == ["property_income"]
+        assert any(
+            "Stale reviewed exclusions" in failure for failure in result.failures
+        )
+
+    def test_absent_or_default_only_exclusion_passes(self) -> None:
+        frame = _person_frame(
+            {
+                "employment_income": np.asarray([0.0, 52_000.0]),
+                "dividend_income": np.asarray([0.0, 500.0]),
+                "property_income": np.asarray([0.0, 0.0]),
+            }
+        )
+        result = uk_release_input_coverage_gate(
+            frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
+        )
+        assert result.passed
+        assert result.details["reviewed_exclusions"] == {
+            "property_income": (
+                "not yet ported from enhanced FRS pipeline — pending review"
+            )
+        }
+
+    def test_signal_only_on_zero_weight_rows_fails_effective_mass(self) -> None:
+        contract = _manifest((UKReleaseInputColumn("gift_aid", "required"),))
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert result.details["insufficient_effective_mass"] == ["gift_aid"]
+        diagnostic = result.details["effective_mass_by_column"]["gift_aid"]
+        assert diagnostic["signal_rows"] == 1
+        assert diagnostic["positive_mass_signal_rows"] == 0
+        assert diagnostic["effective_signal_mass_share"] == 0.0
+        assert any("zero-weight support" in failure for failure in result.failures)
+
+    def test_positive_but_dust_mass_below_reviewed_floor_fails(self) -> None:
+        contract = _manifest((UKReleaseInputColumn("gift_aid", "required"),))
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.5, 999_999.5]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert result.details["effective_mass_policy"][
+            "minimum_nondefault_mass_share"
+        ] == pytest.approx(1e-6)
+        assert result.details["effective_mass_by_column"]["gift_aid"][
+            "effective_signal_mass_share"
+        ] == pytest.approx(5e-7)
+
+    def test_signal_above_reviewed_effective_mass_floor_passes(self) -> None:
+        contract = _manifest((UKReleaseInputColumn("gift_aid", "required"),))
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([2.0, 999_998.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["effective_mass_by_column"]["gift_aid"][
+            "effective_signal_mass_share"
+        ] == pytest.approx(2e-6)
+
+    def test_explicit_person_weights_cannot_override_household_mass(self) -> None:
+        ids = np.asarray([1, 2], dtype="int64")
+        frame = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": ids,
+                        "person_benunit_id": ids,
+                        "person_household_id": ids,
+                        "gift_aid": [100.0, 0.0],
+                    }
+                ),
+                "benunit": pd.DataFrame({"benunit_id": ids}),
+                "household": pd.DataFrame({"household_id": ids}),
+            },
+            EntitySchema(group_entities=("benunit", "household")),
+            {
+                "person": Weights(
+                    np.asarray([1_000.0, 0.0]),
+                    WeightKind.IMPORTANCE,
+                ),
+                "household": Weights(
+                    np.asarray([0.0, 1_000.0]),
+                    WeightKind.CALIBRATED,
+                ),
+            },
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=_manifest((UKReleaseInputColumn("gift_aid", "required"),)),
+        )
+
+        assert not result.passed
+        assert (
+            result.details["effective_mass_by_column"]["gift_aid"][
+                "effective_signal_mass_share"
+            ]
+            == 0.0
+        )
+
+    def test_base_signal_cannot_satisfy_spi_distributional_family(self) -> None:
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=_hmrc_family_coverage(),
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([100.0, 0.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert any("base-channel signal does not restore" in f for f in result.failures)
+
+    def test_positive_spi_signal_satisfies_distributional_family(self) -> None:
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=_hmrc_family_coverage(),
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([0.0, 100.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["family_effective_mass"]["hmrc_spi_income"]["gift_aid"][
+            "effective_signal_mass_share"
+        ] == pytest.approx(0.5)
+
+    def test_family_requires_reviewed_weight_kind_and_mass_record(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "output_weight_kind": "calibrated",
+                "required_mass_change_reason": "reviewed SPI allocation",
+            }
+        )
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=family,
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([0.0, 100.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert any("expected reviewed kind" in failure for failure in result.failures)
+        assert any("MassChangeRecord" in failure for failure in result.failures)
+
+    def test_family_accepts_reviewed_calibrated_mass_state(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "output_weight_kind": "calibrated",
+                "required_mass_change_reason": "reviewed SPI allocation",
+            }
+        )
+        contract = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=family,
+        )
+        frame = _weighted_person_frame(
+            {
+                "gift_aid": np.asarray([0.0, 100.0]),
+                "person_support_channel": np.asarray(["frs", "spi"]),
+            },
+            np.asarray([1_000.0, 1_000.0]),
+            weight_kind=WeightKind.CALIBRATED,
+            mass_log=(
+                MassChangeRecord(
+                    entity="household",
+                    old_total=2_000.0,
+                    new_total=2_000.0,
+                    declared_factor=1.0,
+                    reason="reviewed SPI allocation",
+                ),
+            ),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert (
+            result.details["family_build_state"]["hmrc_spi_income"][
+                "valid_mass_change_records"
+            ]
+            == 1
+        )
+
+    def test_integer_encoded_enum_default_is_not_signal(self) -> None:
+        contract = _manifest((UKReleaseInputColumn("gender", "required"),))
+        frame = _weighted_person_frame(
+            {"gender": np.asarray([0, 0], dtype=np.int16)},
+            np.asarray([1.0, 1.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            PolicyEngineUKCoverageEngine(),
+            manifest=contract,
+        )
+
+        assert not result.passed
+        assert result.details["degenerate_required"] == ["gender"]
+
+    def test_zero_mass_signal_does_not_stale_a_reviewed_exclusion(self) -> None:
+        contract = _manifest((_reviewed_gift_aid_exclusion(),))
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["stale_exclusions"] == []
+
+    def test_deferred_family_does_not_enforce_future_distributional_gate(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "status": "deferred_until_restored",
+                "restoration_status": "blocked_pending_reviewed_frs_decomposition",
+            }
+        )
+        contract = _manifest(
+            (_reviewed_gift_aid_exclusion(),),
+            family_coverage=family,
+        )
+        frame = _weighted_person_frame(
+            {"gift_aid": np.asarray([900.0, 0.0])},
+            np.asarray([0.0, 1_000.0]),
+        )
+
+        result = uk_release_input_coverage_gate(
+            frame,
+            _StubEngine({"gift_aid": 0.0}),
+            manifest=contract,
+        )
+
+        assert result.passed
+        assert result.details["family_effective_mass"] == {}
+        assert result.details["family_build_state"] == {}
+
+
+class TestUKManifest:
+    def test_shipped_manifest_is_current(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        assert_uk_release_input_coverage_manifest_current(
+            engine=_StubEngine({}, set(manifest.declared_columns))
+        )
+        assert manifest.required_columns == frozenset(
+            load_efrs_parity_reference().populated_layers
+        )
+        assert manifest.reviewed_exclusions == {}
+        assert load_efrs_parity_known_gaps() == ()
+        assert manifest.required_build_stages == frozenset(
+            {
+                "hmrc_spi_income",
+                "cgt_incidence_clone",
+                "cgt_band_donors",
+                "hmrc_cgt_gains_spine",
+                "hmrc_cgt_asset_type_spine",
+                "cgt_incidence_anchor",
+                "salary_sacrifice",
+                "student_loans",
+                "was_wealth",
+                "regional_property_uprating",
+                "nts_bus_travel",
+                "lcfs_consumption",
+                "etb_vat",
+                "etb_services",
+            }
+        )
+        assert RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS == frozenset(
+            {"charitable_investment_gifts", "gift_aid"}
+        )
+
+    def test_manifest_refuses_empty_columns(self, tmp_path) -> None:
+        bad = tmp_path / "empty.json"
+        bad.write_text(
+            json.dumps(
+                {
+                    "reference": {},
+                    "candidate_evidence": {"tier": "frs"},
+                    "effective_mass_coverage": {
+                        "weight_source": "household_weight",
+                        "minimum_nondefault_mass_share": 1e-6,
+                        "reviewed_on": "2026-07-11",
+                        "rationale": "reviewed test floor",
+                    },
+                    "columns": {},
+                }
+            )
+        )
+        with pytest.raises(ValueError, match="vacuous"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_distributional_family_requires_channel_denominator(self, tmp_path) -> None:
+        source = (
+            _REPO_ROOT
+            / "packages"
+            / "microcosm-build"
+            / "src"
+            / "microcosm"
+            / "build"
+            / "uk"
+            / "release_input_coverage_manifest.json"
+        )
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        requirement = payload["family_coverage"]["hmrc_spi_income"][
+            "effective_mass_requirements"
+        ]["gift_aid"]
+        requirement.pop("mass_share_denominator", None)
+        bad = tmp_path / "missing_family_denominator.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="mass_share_denominator"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    @pytest.mark.parametrize("tier", [None, "public"])
+    def test_candidate_tier_must_be_present_and_ratified(
+        self,
+        tmp_path: Path,
+        tier: str | None,
+    ) -> None:
+        source = (
+            _REPO_ROOT
+            / "packages"
+            / "microcosm-build"
+            / "src"
+            / "microcosm"
+            / "build"
+            / "uk"
+            / "release_input_coverage_manifest.json"
+        )
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        if tier is None:
+            payload["candidate_evidence"].pop("tier", None)
+        else:
+            payload["candidate_evidence"]["tier"] = tier
+        bad = tmp_path / "bad_candidate_tier.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="candidate_evidence.tier"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_receipted_family_requires_a_reason(self, tmp_path) -> None:
+        payload = json.loads(_SHIPPED_MANIFEST.read_text(encoding="utf-8"))
+        family = payload["family_coverage"]["hmrc_spi_income"]
+        # The loader defaults an absent semantics key to mass_conserving.
+        assert family.get("mass_change_semantics", "mass_conserving") == (
+            "mass_conserving"
+        )
+        family.pop("required_mass_change_reason")
+        bad = tmp_path / "receipted_without_reason.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="needs a reviewed"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_deferred_family_requires_restoration_status(self, tmp_path) -> None:
+        payload = json.loads(_SHIPPED_MANIFEST.read_text(encoding="utf-8"))
+        payload["family_coverage"]["hmrc_spi_income"]["status"] = (
+            "deferred_until_restored"
+        )
+        payload["family_coverage"]["hmrc_spi_income"].pop("restoration_status", None)
+        bad = tmp_path / "deferred_without_blocker.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="needs a restoration_status"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_required_family_stage_cannot_be_omitted(self) -> None:
+        manifest = _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=_hmrc_family_coverage(),
+        )
+
+        with pytest.raises(ValueError, match="hmrc_spi_income"):
+            assert_uk_release_input_coverage_build_stages((), manifest=manifest)
+
+        result = assert_uk_release_input_coverage_build_stages(
+            ("hmrc_spi_income",),
+            manifest=manifest,
+        )
+        assert result is None
+
+    def test_spine_posture_satisfies_superseded_required_families(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        spine_stages = tuple(
+            stage
+            for stage in manifest.required_build_stages
+            if stage != "hmrc_spi_income"
+        )
+        result = assert_uk_release_input_coverage_build_stages(
+            (*spine_stages, "hmrc_spi_income_spine"),
+            manifest=manifest,
+        )
+        assert result is None
+        assert (
+            manifest.family_coverage["hmrc_spi_income"]["superseded_by"]["stage"]
+            == "hmrc_spi_income_spine"
+        )
+        assert "hmrc_cgt_gains" not in manifest.family_coverage
+
+    def test_supersession_does_not_hide_a_genuinely_missing_family(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        spine_stages = tuple(
+            stage
+            for stage in manifest.required_build_stages
+            if stage
+            not in {
+                "hmrc_spi_income",
+                "student_loans",
+            }
+        )
+        with pytest.raises(ValueError, match="student_loans"):
+            assert_uk_release_input_coverage_build_stages(
+                (*spine_stages, "hmrc_spi_income_spine"),
+                manifest=manifest,
+            )
+
+    def test_deferred_family_stage_is_not_required(self) -> None:
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "status": "deferred_until_restored",
+                "restoration_status": "blocked_pending_reviewed_frs_decomposition",
+            }
+        )
+        manifest = _manifest(
+            (_reviewed_gift_aid_exclusion(),),
+            family_coverage=family,
+        )
+
+        assert_uk_release_input_coverage_build_stages((), manifest=manifest)
+        assert manifest.required_build_stages == frozenset()
+
+    def test_effective_mass_policy_rejects_zero_floor(self) -> None:
+        with pytest.raises(ValueError, match=r"in \(0, 1\]"):
+            UKEffectiveMassCoveragePolicy(minimum_nondefault_mass_share=0.0)
+
+    def test_reviewed_exclusion_requires_tracking_note(self) -> None:
+        with pytest.raises(ValueError, match="tracking note"):
+            UKReleaseInputColumn(
+                "property_income",
+                "reviewed_exclusion",
+                reason="not yet ported from enhanced FRS pipeline — pending review",
+            )
+
+    def test_engine_graph_drift_is_rejected(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        graph = set(manifest.declared_columns) - {"employment_income"}
+        with pytest.raises(ValueError, match="employment_income"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, graph)
+            )
+
+    def test_engine_entity_drift_is_rejected(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        graph = set(manifest.declared_columns)
+        with pytest.raises(ValueError, match="owning entities disagree"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine(
+                    {},
+                    graph,
+                    entities={"employment_income": "household"},
+                )
+            )
+
+    def test_manifest_cannot_demote_a_column_absent_from_known_gaps(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        columns = tuple(
+            replace(
+                column,
+                status="reviewed_exclusion",
+                reason="not yet ported from enhanced FRS pipeline — pending review",
+                tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
+            )
+            if column.name == "employment_income"
+            else column
+            for column in manifest.columns
+        )
+        demoted = replace(manifest, columns=columns)
+        with pytest.raises(ValueError, match="employment_income.*remain required"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=demoted,
+            )
+
+    def test_manifest_pins_hmrc_source_contract_hash(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        families = {
+            name: dict(family) for name, family in manifest.family_coverage.items()
+        }
+        families["hmrc_spi_income"]["source_manifest_sha256"] = "0" * 64
+        drifted = replace(manifest, family_coverage=families)
+
+        with pytest.raises(ValueError, match="changed without regenerating"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=drifted,
+            )
+
+    def test_manifest_candidate_tier_must_match_hmrc_source_lineage(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        families = {
+            name: dict(family) for name, family in manifest.family_coverage.items()
+        }
+        families["hmrc_spi_income"]["base_candidate_tier"] = "cps-transfer"
+        drifted = replace(manifest, family_coverage=families)
+
+        with pytest.raises(ValueError, match="base_candidate_tier.*disagrees"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=drifted,
+            )
+
+    def test_deferred_family_columns_must_remain_reviewed_exclusions(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        families = {
+            name: dict(family) for name, family in manifest.family_coverage.items()
+        }
+        families["hmrc_spi_income"]["status"] = "deferred_until_restored"
+
+        with pytest.raises(ValueError, match="deferred distributional requirement"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=replace(manifest, family_coverage=families),
+            )
+
+    def test_promoted_family_columns_must_be_required(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        columns = tuple(
+            replace(
+                column,
+                status="reviewed_exclusion",
+                reason="not yet ported from enhanced FRS pipeline — pending review",
+                tracking_note="Tracked in UK_COVERAGE_PROGRESS.md.",
+            )
+            if column.name == "gift_aid"
+            else column
+            for column in manifest.columns
+        )
+
+        with pytest.raises(ValueError, match="required_at_build"):
+            assert_uk_release_input_coverage_manifest_current(
+                engine=_StubEngine({}, set(manifest.declared_columns)),
+                manifest=replace(manifest, columns=columns),
+            )
+
+    def test_loader_aliases_are_hard_covered(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        assert set(UK_LOADER_INPUT_ALIASES) <= set(manifest.required_columns)
+
+    def test_formula_owned_persisted_overrides_are_hard_covered(self) -> None:
+        manifest = load_uk_release_input_coverage_manifest()
+        reference = json.loads(
+            (
+                _REPO_ROOT
+                / "packages"
+                / "microcosm-build"
+                / "src"
+                / "microcosm"
+                / "build"
+                / "uk"
+                / "efrs_parity_reference.json"
+            ).read_text(encoding="utf-8")
+        )
+        overrides = set(
+            reference["engine"]["formula_owned_persisted_overrides_included"]
+        )
+        assert len(overrides) == 13
+        assert overrides <= set(manifest.required_columns)
+
+    def test_live_uk_adapter_recognises_loader_aliases(self) -> None:
+        engine = PolicyEngineUKCoverageEngine()
+        assert set(UK_LOADER_INPUT_ALIASES) <= set(engine.variables())
+        defaults = engine.default_values(UK_LOADER_INPUT_ALIASES)
+        assert defaults == {name: 0 for name in UK_LOADER_INPUT_ALIASES}
+        assert engine.variable_entities(UK_LOADER_INPUT_ALIASES) == {
+            name: "person" for name in UK_LOADER_INPUT_ALIASES
+        }
+
+    def test_live_uk_adapter_recognises_formula_owned_overrides(self) -> None:
+        engine = PolicyEngineUKCoverageEngine()
+        names = ("state_pension_reported", "student_loan_repayments")
+        assert set(names) <= set(engine.variables())
+        assert engine.variable_entities(names) == {
+            "state_pension_reported": "person",
+            "student_loan_repayments": "person",
+        }
+        assert engine.default_values(names) == {
+            "state_pension_reported": 0,
+            "student_loan_repayments": 0,
+        }
+
+
+def test_coverage_engine_resolves_enum_domains_for_the_release_cut() -> None:
+    """The certifier arms this engine; the terminal enum gates read it."""
+
+    from microcosm.build.uk_runtime.release_input_coverage import (
+        PolicyEngineUKCoverageEngine,
+    )
+
+    engine = PolicyEngineUKCoverageEngine()
+    plans = engine.enum_domain("student_loan_plan")
+    combinations = engine.enum_domain("uc_deduction_combination")
+    assert {"NONE", "PLAN_1", "PLAN_2"} <= set(plans.__members__)
+    assert {"NONE", "ADVANCE_ONLY", "ALL_THREE"} <= set(combinations.__members__)
+    with pytest.raises(ValueError, match="Unknown PolicyEngine-UK variable"):
+        engine.enum_domain("not_a_variable")

@@ -221,7 +221,7 @@
    "status": "required"
   },
   "is_incapable_of_self_care": {
-   "note": "Section 21 qualifying-individual flag for the CDCC adult-care leg (PolicyEngine/microcosm#451 item 1), derived from the measured ASEC self-care difficulty item PEDISDRS by the adult_care_inputs base-builder stage. Also read by SNAP/Medicaid work-requirement logic and multiple state dependent-care formulas in PolicyEngine-US 1.819.0. Currently absent — the intended red gate until the next base rebuild carries the stage through.",
+   "note": "Section 21 qualifying-individual flag for the CDCC adult-care leg (PolicyEngine/microcosm#451 item 1), derived from the measured ASEC self-care difficulty item PEDISDRS by the adult_care_inputs base-builder stage. Also read by SNAP/Medicaid work-requirement logic and multiple state dependent-care formulas in PolicyEngine-US 2.2.1. Currently absent — the intended red gate until the next base rebuild carries the stage through.",
    "status": "required"
   },
   "is_military": {
@@ -241,6 +241,10 @@
    "status": "required"
   },
   "is_separated": {
+   "status": "required"
+  },
+  "is_spm_independent_minor_role": {
+   "note": "The one dataset source input policyengine_us.spm.DATASET_SOURCE_INPUTS declares: the measured Census SPM independence role, stored before any age gate, that lets spm-calculator classify a 15-to-17-year-old SPM unit head or spouse as an adult. Without it one such unit refuses the whole population's SPM measurement (SPM_COMPOSITION_REQUIRED) and the 104 state SPM poverty rows cannot be validated. Written by the spm_independence_role base-builder stage from the SHA-pinned complete Census ASEC person files through the certified derive_spm_role_source; the certified default carries it through the Build P source enrichment. Required with NO reviewed exclusion: the anti-rot check would fail an exclusion whose column carries signal, and the certified default's does.",
    "status": "required"
   },
   "is_surviving_spouse": {
@@ -327,6 +331,18 @@
    "status": "required"
   },
   "receives_housing_assistance": {
+   "status": "required"
+  },
+  "receives_snap": {
+   "note": "ASEC reported SNAP receipt (maximum member SPM_SNAPSUB > 0 per SPM unit), carried by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean spm_unit input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#978 option 1: the ACS local-area transfer requires it in its donor, and a local-area release must name a published donor, so a national default that drops it cannot serve the local chain. The published populace-us-2024-spm-20260915 default does not persist it (its Build P parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of PolicyEngine/microcosm#600) — the intended red gate until a national build persists it.",
+   "status": "required"
+  },
+  "receives_tanf": {
+   "note": "ASEC reported TANF receipt (any member with PAW_VAL > 0 and PAW_TYP 1 or 3, per SPM unit), carried by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean spm_unit input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#978 option 1: the ACS local-area transfer requires it in its donor, and a local-area release must name a published donor, so a national default that drops it cannot serve the local chain. The published populace-us-2024-spm-20260915 default does not persist it (its Build P parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of PolicyEngine/microcosm#600) — the intended red gate until a national build persists it.",
+   "status": "required"
+  },
+  "receives_wic": {
+   "note": "ASEC reported WIC receipt (WICYN == 1), stored on the reporting adult as her SPM unit's receipt carrier by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#978 option 1: the ACS local-area transfer requires it in its donor, and a local-area release must name a published donor, so a national default that drops it cannot serve the local chain. The published populace-us-2024-spm-20260915 default does not persist it (its Build P parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of PolicyEngine/microcosm#600) — the intended red gate until a national build persists it.",
    "status": "required"
   },
   "rental_income": {
@@ -427,7 +443,7 @@
   },
   "takes_up_early_head_start_if_eligible": {
    "issue": "PolicyEngine/microcosm#312",
-   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 582-583 and 640-648 does not carry an observed Early Head Start enrollment indicator; it loads a scalar rate and assigns takes_up_early_head_start_if_eligible by an unanchored person-level draw. parameters/take_up/early_head_start.yaml lines 1-9 supplies 0.09 from a NIEER research chart, not an ACF administrative participation fact, and utils/randomness.py lines 5-28 confirms variable-name-seeded randomness. PolicyEngine-US 1.819.0 applies the input to people under age 3 or pregnant. All three SHA-recorded 2022-2024 ASEC H5 inputs and the processed PUF consumed by the hermetic build omit both Head Start take-up flags and any individual Head Start/Early Head Start enrollment indicator. The independently SHA-pinned full 2023 SIPP observes standard Head Start only through a nursery/preschool education item with no reported positives under age 3; its child-care fields cover only ages 2-7, contain no Early Head Start distinction or pregnancy branch, and have a Census-documented universe inconsistency. ACF's exact EHS cumulative-enrollment total includes every participant served during the year and turnover replacements, while its funded enrollment is capacity; neither identifies point-in-time person recipients. Assigning either aggregate to modeled-eligible infants, toddlers, or pregnant people, mapping ambiguous age-2 SIPP Head Start responses to EHS, or replaying the retired 0.09 draw would synthesize the missing person values.",
+   "reason": "SOURCE UNAVAILABILITY WITH EVIDENCE: archived commit 42ed5d45c56df80d754fbe24cce21cfeb8d05cbe datasets/cps/cps.py lines 582-583 and 640-648 does not carry an observed Early Head Start enrollment indicator; it loads a scalar rate and assigns takes_up_early_head_start_if_eligible by an unanchored person-level draw. parameters/take_up/early_head_start.yaml lines 1-9 supplies 0.09 from a NIEER research chart, not an ACF administrative participation fact, and utils/randomness.py lines 5-28 confirms variable-name-seeded randomness. PolicyEngine-US 2.2.1 applies the input to people under age 3 or pregnant. All three SHA-recorded 2022-2024 ASEC H5 inputs and the processed PUF consumed by the hermetic build omit both Head Start take-up flags and any individual Head Start/Early Head Start enrollment indicator. The independently SHA-pinned full 2023 SIPP observes standard Head Start only through a nursery/preschool education item with no reported positives under age 3; its child-care fields cover only ages 2-7, contain no Early Head Start distinction or pregnancy branch, and have a Census-documented universe inconsistency. ACF's exact EHS cumulative-enrollment total includes every participant served during the year and turnover replacements, while its funded enrollment is capacity; neither identifies point-in-time person recipients. Assigning either aggregate to modeled-eligible infants, toddlers, or pregnant people, mapping ambiguous age-2 SIPP Head Start responses to EHS, or replaying the retired 0.09 draw would synthesize the missing person values.",
    "status": "reviewed_exclusion"
   },
   "takes_up_eitc": {
@@ -534,11 +550,11 @@
   }
  },
  "counts": {
-  "required": 163,
+  "required": 167,
   "reviewed_exclusion": 7,
-  "total": 170
+  "total": 174
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {
@@ -565,7 +581,7 @@
    "neutralized_variable": "self_employment_income_last_year",
    "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US adds self_employment_income_last_year to earned_income_last_year and then aggregates it over tax-unit nondependents. The Wyden-Smith ACTC lookback is the downstream policy consumer, but its parameter also reads formula-owned prior-year wages, so neutralizing this one leaf is the unique coverage probe. The SHA-locked strict equal-share 2022-2024 ASEC pool carries $357.24 billion of weighted net source amount; without the adjacent-year carry the neutralization is a structural zero. The distinct previous_year_income_available flag has no formula consumer in PolicyEngine-US 1.819.0 and remains protected by the hard non-default column gate."
+   "reason": "PolicyEngine-US adds self_employment_income_last_year to earned_income_last_year and then aggregates it over tax-unit nondependents. The Wyden-Smith ACTC lookback is the downstream policy consumer, but its parameter also reads formula-owned prior-year wages, so neutralizing this one leaf is the unique coverage probe. The SHA-locked strict equal-share 2022-2024 ASEC pool carries $357.24 billion of weighted net source amount; without the adjacent-year carry the neutralization is a structural zero. The distinct previous_year_income_available flag has no formula consumer in PolicyEngine-US 2.2.1 and remains protected by the hard non-default column gate."
   },
   {
    "binding_inputs": [
@@ -679,7 +695,7 @@
    "neutralized_variable": "spm_unit_energy_subsidy",
    "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US adds this measured LIHEAP resource dollar-for-dollar to spm_unit_benefits. Neutralizing the leaf must therefore lower benefits by its weighted source mass; without the restored SPM_ENGVAL carry, the effect is a structural zero. No OBBBA provision consumes this SPM resource, so the direct neutralization is the uniquely isolating policy-engine probe."
+   "reason": "PolicyEngine-US adds this measured LIHEAP resource dollar-for-dollar to spm_unit_benefits. Neutralizing the leaf must therefore lower benefits by its weighted source mass; without the restored SPM_ENGVAL carry, the effect is a structural zero. No OBBBA provision consumes this SPM resource, so the direct neutralization is the uniquely isolating policy-engine probe. Under PolicyEngine-US 2.x this measure reaches SPM geography: spm_unit_benefits adds spm_unit_capped_housing_subsidy, which consults the calculator's canonical housing portion for housing-assisted units only. Every SPM unit with positive housing assistance must therefore carry a five-digit string county_fips, and every SPM unit evaluated on that path must classify at least one adult; an SPMInputError of SPM_GEOGRAPHY_REQUIRED or SPM_COMPOSITION_REQUIRED here is an SPM input defect, not a LIHEAP coverage failure."
   },
   {
    "binding_inputs": [
@@ -944,7 +960,7 @@
     }
    },
    "period": 2024,
-   "reason": "PolicyEngine-US 1.819.0 excludes the former Section 199 deduction from current-law above-the-line deductions. This probe preserves the exact 2024 list and adds only domestic_production_ald, so baseline-minus-reform income tax must be positive. Without the restored E03240 input, reactivation is a structural zero."
+   "reason": "PolicyEngine-US 2.2.1 excludes the former Section 199 deduction from current-law above-the-line deductions. This probe preserves the exact 2024 list and adds only domestic_production_ald, so baseline-minus-reform income tax must be positive. Without the restored E03240 input, reactivation is a structural zero."
   },
   {
    "binding_inputs": [
@@ -976,7 +992,7 @@
    "neutralized_variable": "salt_refund_income",
    "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US 1.819.0 includes salt_refund_income in the South Carolina, Idaho, and West Virginia subtraction lists. Neutralizing only that leaf removes the state subtraction and raises state income tax, so baseline-minus-reform state income tax must be negative. Without the restored E00700 input the neutralization is a structural zero."
+   "reason": "PolicyEngine-US 2.2.1 includes salt_refund_income in the South Carolina, Idaho, and West Virginia subtraction lists. Neutralizing only that leaf removes the state subtraction and raises state income tax, so baseline-minus-reform state income tax must be negative. Without the restored E00700 input the neutralization is a structural zero."
   },
   {
    "binding_inputs": [
@@ -1025,7 +1041,6 @@
     "gov.usda.snap.income.sources.unearned": {
      "2024-01-01.2024-12-31": [
       "ssi",
-      "tanf",
       "general_assistance",
       "pension_income",
       "veterans_benefits",
@@ -1087,7 +1102,6 @@
     "gov.usda.snap.income.sources.unearned": {
      "2024-01-01.2024-12-31": [
       "ssi",
-      "tanf",
       "general_assistance",
       "pension_income",
       "veterans_benefits",
@@ -1124,7 +1138,6 @@
     "gov.usda.snap.income.sources.unearned": {
      "2024-01-01.2024-12-31": [
       "ssi",
-      "tanf",
       "general_assistance",
       "pension_income",
       "veterans_benefits",
@@ -1144,7 +1157,7 @@
     }
    },
    "period": 2024,
-   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. A production-ingredient 30,000-household smoke scored +$28.26M reform-minus-baseline; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero."
+   "reason": "Removing only workers_compensation from SNAP unearned-income sources lowers countable income and must increase SNAP for some recipients. On the 2026-09-27 Route A export (PolicyEngine-US 2.2.1) the corrected list scored +$277.9M reform-minus-baseline over all 1,708 households carrying the leaf; without the measured WC_VAL carry and PUF-half QRF, the source-list reform is a structural zero. The list must equal the engine's person-level unearned sources minus this leaf: TANF is counted once on unearned_spm_unit and must not be re-added here."
   },
   {
    "binding_inputs": [
@@ -1207,12 +1220,26 @@
    "min_abs_effect": 1000000.0,
    "name": "Alimony expense above-the-line deduction abolition",
    "parameter_changes": {
-    "gov.irs.ald.alimony_expense.divorce_year_threshold[0].amount": {
-     "2024-01-01.2100-12-31": false
+    "gov.irs.ald.deductions": {
+     "2024-01-01.2024-12-31": [
+      "loss_ald",
+      "self_employment_tax_ald",
+      "student_loan_interest_ald",
+      "early_withdrawal_penalty",
+      "educator_expense",
+      "health_savings_account_ald",
+      "self_employed_health_insurance_ald",
+      "self_employed_pension_contribution_ald",
+      "traditional_ira_contributions",
+      "qualified_adoption_assistance_expense",
+      "us_bonds_for_higher_ed",
+      "specified_possession_income",
+      "puerto_rico_income"
+     ]
     }
    },
    "period": 2024,
-   "reason": "The retired export has no nondefault divorce_year input, so PolicyEngine-US applies its default year 0 through the first eligibility bracket. Setting that bracket's amount to false abolishes the alimony-expense above-the-line deduction on the release, so baseline-minus-reform income tax must be negative. With alimony_expense absent or degenerate, the abolition scores exactly $0."
+   "reason": "Removing only alimony_expense_ald from the above-the-line deduction list raises payers' taxable income, so baseline-minus-reform income tax must be negative. The divorce_year_threshold bracket is not used: since PolicyEngine-US a8e8a2e2ab it also gates the recipient-side taxable_alimony_income, so flipping it untaxes receipts too; on the 2026-09-27 Route A export that scored +$1.89B, the wrong sign. On the same export the corrected list scored -$2.52B. With alimony_expense absent or degenerate, the abolition scores exactly $0."
   },
   {
    "binding_inputs": [
@@ -1397,7 +1424,7 @@
    "neutralized_variable": "pre_subsidy_rent",
    "parameter_changes": {},
    "period": 2024,
-   "reason": "PolicyEngine-US includes pre_subsidy_rent in the SNAP shelter deduction. Neutralizing only the restored ACS rent leaf therefore reduces SNAP; on the pinned retired small eCPS artifact under PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is +$11.731 billion. Without nondefault ACS rent, that effect is a structural zero. The other source-mapped housing leaves are enforced by their exact ASEC mappings and signal gate; household tenure_type has no standalone PolicyEngine-US 1.819.0 formula consumer."
+   "reason": "PolicyEngine-US includes pre_subsidy_rent in the SNAP shelter deduction. Neutralizing only the restored ACS rent leaf therefore reduces SNAP; on the pinned retired small eCPS artifact under PolicyEngine-US 1.764.6, baseline-minus-neutralized SNAP is +$11.731 billion. Without nondefault ACS rent, that effect is a structural zero. The other source-mapped housing leaves are enforced by their exact ASEC mappings and signal gate; household tenure_type has no standalone PolicyEngine-US 2.2.1 formula consumer."
   },
   {
    "binding_inputs": [

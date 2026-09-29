@@ -1,0 +1,1 @@
+Pass benefit-unit head and parent roles into the UK source graph's UC capital stage, fixing its scoped execution after the relationship repairs. Extend UC matrix diagnostics with verified comparison controls, original-source concentration and paid-claim joint support, and document the remaining empty and single-source cells.

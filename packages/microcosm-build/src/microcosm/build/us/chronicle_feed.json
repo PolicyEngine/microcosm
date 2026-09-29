@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "country": "us",
+  "scope": "us_fiscal_targets",
+  "source_repo": "PolicyEngine/chronicle",
+  "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
+  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. Bare feed: `chronicle build-consumer-artifact` refuses it at this commit (994 concept_alignment rows lack `authority`); see docs/us-chronicle-feed-repin.md.",
+  "artifact_schema_version": null,
+  "consumer_fact_schema_versions": [
+    "chronicle.consumer_fact.v3"
+  ],
+  "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
+  "fact_row_count": 39158,
+  "facts_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "manifest_sha256": null,
+  "scope_sha256": "b769887d716e90612518788700c5c01dba8b411c5c75f3d47bb8b1273550ddc1"
+}

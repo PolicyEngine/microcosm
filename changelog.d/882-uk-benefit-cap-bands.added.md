@@ -1,0 +1,1 @@
+Bind the fourteen DWP benefit-cap amount bands (Table 4, November 2025) at benefit-unit grain, the up-to-£100 band in the objective and the thirteen others measured on the reviewed exclusion register while the capped tail rests on a few cloned households, with `tools/diagnose_uk_benefit_cap.py` as the tail diagnostic (#882).

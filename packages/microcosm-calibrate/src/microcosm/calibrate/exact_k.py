@@ -49,7 +49,7 @@ from collections.abc import Sequence
 
 import numpy as np
 
-__all__ = ["assert_exact_k_support", "select_exact_k"]
+__all__ = ["assert_exact_k_support", "exact_k_design_feasibility", "select_exact_k"]
 
 SelectionReceipt = dict[str, int | float | str]
 _INDEX_DTYPE = np.dtype("<i8")
@@ -421,27 +421,10 @@ def _draw_boundary(
     )
 
 
-def select_exact_k(
-    pi: Sequence[float] | np.ndarray,
-    k: int,
-    pi_hi: float,
-    seed: int,
-    *,
-    group_ids: np.ndarray | None = None,
-) -> tuple[np.ndarray, SelectionReceipt, np.ndarray]:
-    """Select exactly ``k`` records from hard-concrete open probabilities.
-
-    The result is deterministic for identical ``(pi, k, pi_hi, seed,
-    group_ids)`` inputs and uses a fresh NumPy ``Generator(PCG64(seed))``; global
-    random state is never read or changed. Returned indices are sorted. The
-    third return value contains their aligned first-order inclusion
-    probabilities after the boundary's ulp correction; declared certainty
-    units and deterministic take-all units have probability one. The receipt
-    remains a separate six-scalar mapping suitable for a release manifest.
-
-    See the module docstring for the Sampford design, boundary normalization,
-    and the deliberately minimal ``group_ids`` contract.
-    """
+def _coerce_design(
+    pi: Sequence[float] | np.ndarray, k: int, pi_hi: float
+) -> tuple[np.ndarray, int, float]:
+    """Validate ``(pi, k, pi_hi)`` exactly as :func:`select_exact_k` does."""
     try:
         supplied_probabilities = np.asarray(pi)
     except (TypeError, ValueError):
@@ -476,6 +459,94 @@ def select_exact_k(
         ) from None
     if not np.isfinite(certainty_threshold) or not (0.0 <= certainty_threshold <= 1.0):
         raise ValueError(f"pi_hi must be a finite value in [0, 1], got {pi_hi!r}.")
+    return probabilities, target, certainty_threshold
+
+
+FEASIBLE = "feasible"
+CERTAINTIES_EXCEED_K = "certainties_exceed_k"
+BOUNDARY_SHORT_OF_DRAW = "boundary_short_of_draw"
+BOUNDARY_MASS_SHORT = "boundary_mass_short"
+
+
+def exact_k_design_feasibility(
+    pi: Sequence[float] | np.ndarray, k: int, pi_hi: float
+) -> dict[str, int | float | bool | str]:
+    """Report whether :func:`select_exact_k` would accept ``(pi, k, pi_hi)``.
+
+    The same validation and the same boundary arithmetic as the draw, without
+    drawing. Units with ``pi_i >= pi_hi`` are certainties; the remaining
+    ``m = k - certainties`` places must be covered by positive boundary units
+    whose proportional normalization ``m * pi_i / sum(pi_boundary)`` never
+    exceeds one beyond the ulp tolerance the draw itself allows. ``reason``
+    is ``"feasible"``, ``"certainties_exceed_k"`` (the draw would refuse to
+    drop declared certainties), ``"boundary_short_of_draw"`` (fewer positive
+    boundary units than places) or ``"boundary_mass_short"`` (the largest
+    boundary unit would need an inclusion probability above one, the
+    "degenerate boundary mass" refusal). The verdict is the draw's own
+    inequality, so a budget search that stops on it hands the draw a design
+    that is feasible by construction rather than by the side of the budget
+    band the search happened to land on.
+    """
+    probabilities, target, certainty_threshold = _coerce_design(pi, k, pi_hi)
+    certainty_mask = probabilities >= certainty_threshold
+    certainty_count = int(np.count_nonzero(certainty_mask))
+    boundary = probabilities[~certainty_mask]
+    boundary_draw = target - certainty_count
+    positive = boundary[boundary > 0.0]
+    boundary_mass = float(np.sum(positive, dtype=np.float64)) if positive.size else 0.0
+    boundary_max = float(positive.max()) if positive.size else 0.0
+    max_normalized = 0.0
+    if boundary_draw < 0:
+        feasible, reason = False, CERTAINTIES_EXCEED_K
+    elif boundary_draw == 0 or boundary_draw == len(boundary):
+        feasible, reason = True, FEASIBLE
+    elif positive.size < boundary_draw or boundary_mass <= 0.0:
+        feasible, reason = False, BOUNDARY_SHORT_OF_DRAW
+    else:
+        max_normalized = boundary_max * (boundary_draw / boundary_mass)
+        if max_normalized > 1.0 + _PROBABILITY_ONE_TOLERANCE:
+            feasible, reason = False, BOUNDARY_MASS_SHORT
+        else:
+            feasible, reason = True, FEASIBLE
+    return {
+        "k": target,
+        "pi_hi": certainty_threshold,
+        "pool_size": int(len(probabilities)),
+        "certainty_count": certainty_count,
+        "boundary_draw": int(boundary_draw),
+        "boundary_pool_size": int(len(boundary)),
+        "boundary_positive": int(positive.size),
+        "boundary_mass": boundary_mass,
+        "boundary_max": boundary_max,
+        "max_normalized_probability": float(max_normalized),
+        "feasible": bool(feasible),
+        "reason": reason,
+    }
+
+
+def select_exact_k(
+    pi: Sequence[float] | np.ndarray,
+    k: int,
+    pi_hi: float,
+    seed: int,
+    *,
+    group_ids: np.ndarray | None = None,
+) -> tuple[np.ndarray, SelectionReceipt, np.ndarray]:
+    """Select exactly ``k`` records from hard-concrete open probabilities.
+
+    The result is deterministic for identical ``(pi, k, pi_hi, seed,
+    group_ids)`` inputs and uses a fresh NumPy ``Generator(PCG64(seed))``; global
+    random state is never read or changed. Returned indices are sorted. The
+    third return value contains their aligned first-order inclusion
+    probabilities after the boundary's ulp correction; declared certainty
+    units and deterministic take-all units have probability one. The receipt
+    remains a separate six-scalar mapping suitable for a release manifest.
+
+    See the module docstring for the Sampford design, boundary normalization,
+    and the deliberately minimal ``group_ids`` contract.
+    """
+    probabilities, target, certainty_threshold = _coerce_design(pi, k, pi_hi)
+    pool_size = len(probabilities)
     random_seed = _integer(seed, name="seed")
     _validate_group_ids(group_ids, probabilities.shape)
 

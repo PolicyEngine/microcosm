@@ -35,13 +35,15 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from microcosm.calibrate.hierarchy import CalibrationHierarchy
 from microcosm.calibrate.target import Target, TargetSet
 
 __all__ = ["TargetSpec", "TargetRegistry", "specs_from_pe_surface"]
 
 #: Format marker + revision for the JSON artifact.
 _FORMAT_KEY = "populace_target_registry"
-_FORMAT_VERSION = 2
+_FORMAT_VERSION = 3
+_READABLE_FORMAT_VERSIONS = frozenset((2, 3))
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,7 @@ class TargetSpec:
     tolerance: float | None = None
     notes: str = ""
     metadata: Mapping[str, str] = field(default_factory=dict)
+    hierarchy: CalibrationHierarchy | None = None
 
     def __post_init__(self) -> None:
         # Coerce numerics so the content hash is independent of authoring
@@ -110,6 +113,18 @@ class TargetSpec:
             )
         metadata = {str(key): str(value) for key, value in self.metadata.items()}
         object.__setattr__(self, "metadata", metadata)
+        if self.hierarchy is not None and not isinstance(
+            self.hierarchy, CalibrationHierarchy
+        ):
+            raise TypeError(
+                f"TargetSpec {self.name!r}: hierarchy must be a "
+                "CalibrationHierarchy or None."
+            )
+        if self.hierarchy is not None and self.hierarchy.target.id != self.name:
+            raise ValueError(
+                f"TargetSpec {self.name!r}: hierarchy target id "
+                f"{self.hierarchy.target.id!r} must equal the spec name."
+            )
         if not self.name:
             raise ValueError("TargetSpec.name must be non-empty.")
         if not self.entity:
@@ -177,6 +192,7 @@ class TargetSpec:
             filter=self.filter,
             source=self.source,
             metadata=self.metadata,
+            hierarchy=self.hierarchy,
         )
 
 
@@ -309,19 +325,43 @@ class TargetRegistry:
                 artifact).
         """
         payload = json.loads(Path(path).read_text(encoding="utf-8"))
-        if payload.get(_FORMAT_KEY) != _FORMAT_VERSION:
+        format_version = payload.get(_FORMAT_KEY)
+        if format_version not in _READABLE_FORMAT_VERSIONS:
             raise ValueError(
                 f"{path} is not a microcosm target registry artifact "
-                f"(format revision {_FORMAT_VERSION})."
+                f"(supported format revisions "
+                f"{sorted(_READABLE_FORMAT_VERSIONS)!r})."
             )
-        specs = tuple(TargetSpec(**raw) for raw in payload["specs"])
+        raw_specs = payload["specs"]
+        specs = tuple(
+            TargetSpec(
+                **{
+                    **raw,
+                    "hierarchy": (
+                        CalibrationHierarchy.from_dict(raw["hierarchy"])
+                        if raw.get("hierarchy") is not None
+                        else None
+                    ),
+                }
+            )
+            for raw in raw_specs
+        )
         registry = cls(specs, country=payload["country"])
         stored = payload.get("version")
-        if stored != registry.version:
+        if format_version == 2:
+            canonical = json.dumps(
+                {"country": payload["country"], "specs": raw_specs},
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            expected = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
+        else:
+            expected = registry.version
+        if stored != expected:
             raise ValueError(
                 f"Registry artifact {path} is corrupt: embedded version "
                 f"{stored!r} does not match the recomputed content hash "
-                f"{registry.version!r}. Regenerate the artifact instead of "
+                f"{expected!r}. Regenerate the artifact instead of "
                 "editing it by hand."
             )
         return registry

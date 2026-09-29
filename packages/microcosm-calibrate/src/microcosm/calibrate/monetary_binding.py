@@ -59,6 +59,7 @@ _REFERENCE_KEYS = frozenset(
         "tolerance",
         "notes",
         "metadata",
+        "hierarchy",
         "assertion_policy",
         "period_match_policy",
         "uprating_index",

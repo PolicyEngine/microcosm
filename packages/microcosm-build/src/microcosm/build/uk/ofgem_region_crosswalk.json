@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "Hand-authored crosswalk from the twelve FRS regions to the Ofgem charge-restriction regions whose cap levels price the imputed energy columns (microcosm#890 F). Each FRS region maps to the charge-restriction region covering most of its households (dominant area); Northern Ireland lies outside the GB cap and takes the GB average level. The Ofgem ids are the vendored ofgem_price_cap_facts.json geography ids.",
+  "source": {
+    "citation": "Ofgem energy price cap: charge-restriction regions (fourteen GB distribution areas) against ONS regions; dominant-area mapping reviewed for microcosm#890.",
+    "urls": [
+      "https://www.ofgem.gov.uk/information-consumers/energy-advice-households/get-energy-price-cap-standing-charges-and-unit-rates-region",
+      "https://www.ofgem.gov.uk/energy-price-cap"
+    ]
+  },
+  "gb_geography_id": "K03000001",
+  "mapping": {
+    "NORTH_EAST": "ofgem:northern",
+    "NORTH_WEST": "ofgem:north_west",
+    "YORKSHIRE": "ofgem:yorkshire",
+    "EAST_MIDLANDS": "ofgem:east_midlands",
+    "WEST_MIDLANDS": "ofgem:midlands",
+    "EAST_OF_ENGLAND": "ofgem:eastern",
+    "LONDON": "ofgem:london",
+    "SOUTH_EAST": "ofgem:south_east",
+    "SOUTH_WEST": "ofgem:southern_western",
+    "WALES": "ofgem:south_wales",
+    "SCOTLAND": "ofgem:southern_scotland",
+    "NORTHERN_IRELAND": "K03000001"
+  },
+  "notes": [
+    "North Wales and Merseyside (ofgem:n_wales_and_mersey) and Northern Scotland (ofgem:northern_scotland) are not a dominant area for any FRS region and are unused.",
+    "Standing charges differ materially between areas (2024-Q3 electricity GBP 234 in Yorkshire against GBP 142 in London), which is why pricing is regional rather than the GB average.",
+    "qep_price_region_mapping carries the same dominant-area rule onto the DESNZ Quarterly Energy Prices price regions (the fourteen PES areas under QEP's names, plus northern_ireland for electricity and united_kingdom): NORTH_WEST takes north_west rather than merseyside_north_wales, WALES south_wales, SCOTLAND south_scotland, SOUTH_EAST south_east rather than southern. QEP publishes no Northern Ireland gas row, so Northern Ireland gas is priced at the united_kingdom average (qep_uk_average_id).",
+    "subnational_area_mapping names the DESNZ subnational statistics area (ONS region for England, the country for Wales and Scotland) whose domestic gas and electricity meter counts give each FRS region its published gas-connected share; Northern Ireland has no subnational row (null) and keeps the diary's gas signal, as the stage declares."
+  ],
+  "provenance": {
+    "authored": "2026-09-14",
+    "authored_for": "microcosm#890 (PR-S)",
+    "basis": "Ofgem publishes the price cap by charge-restriction region, the fourteen electricity distribution (DNO) areas; each FRS (ONS) region is mapped to the distribution area that serves most of its population. The mapping is asserted from the published area definitions, not from a published population crosswalk, and stands as a ruling (reviewer question on PR #927).",
+    "area_definitions_url": "https://www.ofgem.gov.uk/information-consumers/energy-advice-households/get-energy-price-cap-standing-charges-and-unit-rates-region",
+    "rationale": {
+      "NORTH_EAST": "Northern Powergrid North East area (ofgem:northern).",
+      "NORTH_WEST": "Electricity North West (ofgem:north_west); Merseyside lies in ofgem:n_wales_and_mersey but Greater Manchester, Lancashire and Cumbria dominate.",
+      "YORKSHIRE": "Northern Powergrid Yorkshire area (ofgem:yorkshire).",
+      "EAST_MIDLANDS": "National Grid East Midlands area (ofgem:east_midlands).",
+      "WEST_MIDLANDS": "National Grid West Midlands area (ofgem:midlands).",
+      "EAST_OF_ENGLAND": "UK Power Networks Eastern area (ofgem:eastern).",
+      "LONDON": "UK Power Networks London area (ofgem:london).",
+      "SOUTH_EAST": "UK Power Networks South Eastern area, Kent, Surrey and Sussex (ofgem:south_east); the Hampshire, Berkshire and Oxfordshire part of the region is SSEN Southern (ofgem:southern), the smaller share.",
+      "SOUTH_WEST": "National Grid South West area (ofgem:southern_western).",
+      "WALES": "National Grid South Wales area (ofgem:south_wales); North Wales lies in ofgem:n_wales_and_mersey, the smaller share of Welsh households.",
+      "SCOTLAND": "SP Distribution central-belt area (ofgem:southern_scotland); the Highlands and islands lie in SSEN North (ofgem:northern_scotland), the smaller share.",
+      "NORTHERN_IRELAND": "Outside the GB cap (Utility Regulator NI); priced at the GB average level (K03000001)."
+    },
+    "area_definitions_note": "Ofgem's regional cap page lists the fourteen charge-restriction regions (the electricity distribution areas) with their standing charges and unit rates; the distribution-network operator serving each ONS region is the basis of the dominant-area mapping in `rationale`."
+  },
+  "qep_price_region_mapping": {
+    "NORTH_EAST": "north_east",
+    "NORTH_WEST": "north_west",
+    "YORKSHIRE": "yorkshire",
+    "EAST_MIDLANDS": "east_midlands",
+    "WEST_MIDLANDS": "west_midlands",
+    "EAST_OF_ENGLAND": "eastern",
+    "LONDON": "london",
+    "SOUTH_EAST": "south_east",
+    "SOUTH_WEST": "south_west",
+    "WALES": "south_wales",
+    "SCOTLAND": "south_scotland",
+    "NORTHERN_IRELAND": "northern_ireland"
+  },
+  "qep_uk_average_id": "united_kingdom",
+  "subnational_area_mapping": {
+    "NORTH_EAST": "E12000001",
+    "NORTH_WEST": "E12000002",
+    "YORKSHIRE": "E12000003",
+    "EAST_MIDLANDS": "E12000004",
+    "WEST_MIDLANDS": "E12000005",
+    "EAST_OF_ENGLAND": "E12000006",
+    "LONDON": "E12000007",
+    "SOUTH_EAST": "E12000008",
+    "SOUTH_WEST": "E12000009",
+    "WALES": "W92000004",
+    "SCOTLAND": "S92000003",
+    "NORTHERN_IRELAND": null
+  }
+}

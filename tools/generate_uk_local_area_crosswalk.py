@@ -11,6 +11,8 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.build.uk_runtime.geography_ladder import region_tier_by_area
+
 DEFAULT_LADDER_ARTIFACT = Path("build/uk/uk_oa_ladder_2021.npz")
 DEFAULT_LADDER_SUMMARY = Path("build/uk/ladder_summary.json")
 DEFAULT_OUTPUT = Path(
@@ -28,6 +30,26 @@ EXPECTED_COUNTS = {
 # lgd_2014. The devolved publishers stamp their own frames. Both labels name
 # the same boundary set, so the compile accepts either; a vintage OUTSIDE the
 # set is a genuinely different boundary frame and still refuses.
+#: Roster areas a publisher recodes after the roster's boundary vintage. The
+#: ladder (and so the roster) is on the April 2023 LAD frame; ONS recoded
+#: Barnsley and Sheffield in the April 2025 LAD layer and MHCLG's 2025 council
+#: taxbase return files them under the new codes (chronicle #264 review). A
+#: consumer selects facts under either spelling and keeps the roster code as
+#: the cell's identity; the alias vintage is accepted for the aliased facts
+#: only. Nothing else about the two authorities changed (microcosm#929).
+LOCAL_AUTHORITY_CODE_ALIASES: dict[str, dict[str, Any]] = {
+    "E08000016": {
+        "alias_codes": ["E08000038"],
+        "alias_vintage": "lad_2025",
+        "note": "Barnsley, recoded E08000038 in the April 2025 ONS LAD layer.",
+    },
+    "E08000019": {
+        "alias_codes": ["E08000039"],
+        "alias_vintage": "lad_2025",
+        "note": "Sheffield, recoded E08000039 in the April 2025 ONS LAD layer.",
+    },
+}
+
 EXPECTED_FACT_VINTAGE = {
     "constituency": ["pcon_2024"],
     "local_authority": {
@@ -131,26 +153,62 @@ def _level_payload(
 ) -> dict[str, Any]:
     if code_column not in payload.files:
         raise ValueError(f"UK OA ladder artifact is missing {code_column!r}.")
-    area_ids = sorted({str(value) for value in np.asarray(payload[code_column])})
+    if "region_code" not in payload.files:
+        raise ValueError("UK OA ladder artifact is missing 'region_code'.")
+    codes = np.asarray(payload[code_column]).astype(str)
+    area_ids = sorted(set(codes))
     expected = EXPECTED_COUNTS[level]
     if len(area_ids) != expected:
         raise ValueError(
             f"UK OA ladder {level} roster has {len(area_ids)} area id(s), "
             f"expected {expected}."
         )
+    region_code_by_area = region_tier_by_area(
+        codes, np.asarray(payload["region_code"]).astype(str), level=level
+    )
     layers = metadata.get("layers") or {}
     layer = layers.get(ladder_layer) or {}
     ladder_vintage = str(layer.get("vintage") or "")
     if not ladder_vintage:
         raise ValueError(f"UK OA ladder metadata is missing {ladder_layer} vintage.")
+    countries = layer.get("countries")
+    if not isinstance(countries, dict) or not countries:
+        raise ValueError(
+            f"UK OA ladder metadata is missing {ladder_layer} country sources."
+        )
+    ladder_layer_sources: dict[str, dict[str, str]] = {}
+    required_source_fields = ("source", "url", "sha256", "vintage")
+    for country, source in sorted(countries.items()):
+        if not isinstance(source, dict):
+            raise ValueError(
+                f"UK OA ladder {ladder_layer} source {country!r} must be an object."
+            )
+        missing = [field for field in required_source_fields if not source.get(field)]
+        if missing:
+            raise ValueError(
+                f"UK OA ladder {ladder_layer} source {country!r} is missing {missing}."
+            )
+        ladder_layer_sources[str(country)] = {
+            field: str(source[field]) for field in required_source_fields
+        }
     return {
         "ledger_geography_level": level,
         "ladder_layer": ladder_layer,
+        "ladder_layer_sources": ladder_layer_sources,
         "ladder_code_column": code_column,
         "ladder_vintage": ladder_vintage,
         "expected_vintage": EXPECTED_FACT_VINTAGE[level],
         "area_count": len(area_ids),
         "area_ids": area_ids,
+        "region_code_by_area": region_code_by_area,
+        "code_aliases": (
+            {
+                code: dict(alias)
+                for code, alias in sorted(LOCAL_AUTHORITY_CODE_ALIASES.items())
+            }
+            if level == "local_authority"
+            else {}
+        ),
     }
 
 

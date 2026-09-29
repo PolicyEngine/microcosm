@@ -58,11 +58,20 @@ from microcosm.build.gates import (
     target_surface_gate,
     weights_audit_gate,
 )
+from microcosm.build.uk_runtime.cgt_projection import (
+    UK_CGT_PROJECTION_ARTIFACT_KEY,
+    UKCGTProjection,
+)
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
+from microcosm.build.uk_runtime.hmrc_capital_gains import (
+    HMRC_CGT_CONDITIONING_RESOURCE,
+    load_hmrc_cgt_conditioning_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
+    align_uk_national_registry_parity_fixture,
 )
 from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
@@ -80,6 +89,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     _household_weights,
     _missing_fit_weight_evidence_gate,
+    uk_cgt_projection_entrants_gate,
     uk_default_degenerate_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
@@ -102,7 +112,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     _input_mass_reference_evidence_sha256,
     coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
-    load_uk_reviewed_exclusion_register,
+    load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
     uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
@@ -212,8 +222,17 @@ def _evaluate_release_input_coverage(
             f"unknown release_input_coverage check {check!r}; the declared "
             "preflight mode is 'manifest_current'."
         )
+    # The release cut supplies the spine frame the stages produced, so the
+    # family build-state half reads importance weights and stage receipts
+    # where they live; the coverage halves read the release frame.
+    spine_frame = context.artifacts.get("spine_frame")
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(context.frame), engine, manifest=manifest
+        _uk_gate_surface(context.frame),
+        engine,
+        manifest=manifest,
+        build_state_frame=None
+        if spine_frame is None
+        else _uk_gate_surface(spine_frame),
     )
 
 
@@ -462,6 +481,28 @@ def _evaluate_take_up_signal(
     return uk_take_up_signal_gate(context.frame, **dict(parameters))
 
 
+def _engine_enum_domain(engine: Any, column: str) -> Any:
+    """Resolve an enum column's domain from whichever engine adapter is armed.
+
+    The public ``enum_domain`` accessor is the contract (both UK adapters
+    carry it); the private ``_variable`` lookup stays as the fallback for an
+    engine that predates it. An adapter with neither names itself in the
+    failure instead of surfacing as an AttributeError that reads like a
+    gate crash — the first release-cut run failed both enum gates that way.
+    """
+
+    accessor = getattr(engine, "enum_domain", None)
+    if callable(accessor):
+        return accessor(column)
+    lookup = getattr(engine, "_variable", None)
+    if callable(lookup):
+        return getattr(lookup(column), "possible_values", None)
+    raise ValueError(
+        f"{column} enum domain could not be resolved: the armed rules engine "
+        f"({type(engine).__name__}) exposes neither enum_domain nor _variable."
+    )
+
+
 def _evaluate_enum_domain(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -471,9 +512,7 @@ def _evaluate_enum_domain(
     column = columns[0]
     domain = context.artifacts.get(f"{column}_enum_domain")
     if domain is None:
-        engine = context.artifacts["rules_engine"]
-        variable = engine._variable(column)
-        domain = getattr(variable, "possible_values", None)
+        domain = _engine_enum_domain(context.artifacts["rules_engine"], column)
     if domain is None:
         raise ValueError(f"{column} enum domain could not be resolved from evidence.")
     matches = [
@@ -508,6 +547,7 @@ def _evaluate_support(
         "etb_vat_support_bounds.json",
         "etb_services_support_bounds.json",
         "uc_deduction_support_bounds.json",
+        "nts_bus_travel_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -562,6 +602,144 @@ def _evaluate_aggregate_admin(
         anchors,
         default_rtol=float(parameters.get("default_rtol", 0.5)),
     )
+
+
+_CGT_PROJECTION_PARAMETER_KEYS = frozenset(
+    {
+        "horizon_year",
+        "gains_growth_parameter",
+        "exempt_amount_parameter",
+        "expected_yoy_growth_by_year",
+        "expected_exempt_amount_by_year",
+        "maximum_growth_drift",
+        "bound_resource",
+        "bound_size_band_lower_bound",
+    }
+)
+
+
+def _evaluate_cgt_projection_entrants(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    """Fence projected sub-exempt entrants against the vendored HMRC band.
+
+    The seam supplies the projection artifact; the binding refuses one that
+    does not match the declared base year (the frame's period), horizon and
+    parameter paths, and takes the bound from the vendored conditioning
+    facts the amounts stage itself is pinned to, never from a literal.
+    """
+
+    unrouted = sorted(set(parameters) - _CGT_PROJECTION_PARAMETER_KEYS)
+    if unrouted:
+        raise ValueError(f"cgt_projection_entrants cannot route {unrouted}.")
+    projection = context.artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY]
+    if not isinstance(projection, UKCGTProjection):
+        raise TypeError(
+            f"{UK_CGT_PROJECTION_ARTIFACT_KEY} artifact must be a UKCGTProjection."
+        )
+    horizon_year = parameters["horizon_year"]
+    if not isinstance(horizon_year, int) or isinstance(horizon_year, bool):
+        raise ValueError("cgt_projection_entrants horizon_year must be an integer.")
+    lower_bound = parameters["bound_size_band_lower_bound"]
+    if not isinstance(lower_bound, int) or isinstance(lower_bound, bool):
+        raise ValueError(
+            "cgt_projection_entrants bound_size_band_lower_bound must be an integer."
+        )
+    bound_resource = str(parameters["bound_resource"])
+    if bound_resource != HMRC_CGT_CONDITIONING_RESOURCE:
+        raise ValueError(
+            f"cgt_projection_entrants bound_resource {bound_resource!r} is not the "
+            f"vendored conditioning resource {HMRC_CGT_CONDITIONING_RESOURCE!r}."
+        )
+    surface = _uk_gate_surface(context.frame)
+    base_year = int(surface.time_period)
+    declared = {
+        "base_year": base_year,
+        "horizon_year": horizon_year,
+        "growth_parameter": str(parameters["gains_growth_parameter"]),
+        "exempt_amount_parameter": str(parameters["exempt_amount_parameter"]),
+    }
+    actual = {
+        "base_year": projection.base_year,
+        "horizon_year": projection.horizon_year,
+        "growth_parameter": projection.growth_parameter,
+        "exempt_amount_parameter": projection.exempt_amount_parameter,
+    }
+    if actual != declared:
+        raise ValueError(
+            "cgt_projection_entrants artifact disagrees with the declared "
+            f"projection: declared {declared}, supplied {actual}."
+        )
+    # The engine's growth path and exempt amount are pinned in the manifest:
+    # an engine bump that moves either fails the gate visibly instead of
+    # moving the verdict silently, and re-pinning is a reviewed change.
+    expected_growth = parameters["expected_yoy_growth_by_year"]
+    if not isinstance(expected_growth, Mapping):
+        raise ValueError(
+            "cgt_projection_entrants expected_yoy_growth_by_year must map years "
+            "to rates."
+        )
+    drift_tolerance = float(parameters["maximum_growth_drift"])
+    expected_exempt = parameters["expected_exempt_amount_by_year"]
+    if not isinstance(expected_exempt, Mapping):
+        raise ValueError(
+            "cgt_projection_entrants expected_exempt_amount_by_year must map years "
+            "to amounts."
+        )
+    drifts: list[str] = []
+    for year in projection.projected_years:
+        pinned = expected_growth.get(str(year))
+        if pinned is None:
+            drifts.append(f"no pinned growth rate for {year}")
+            continue
+        actual_rate = float(projection.yoy_growth_by_year[str(year)])
+        if abs(actual_rate - float(pinned)) > drift_tolerance:
+            drifts.append(f"growth {year}: engine {actual_rate} vs pinned {pinned}")
+    for year, amount in projection.exempt_amount_by_year.items():
+        pinned_amount = expected_exempt.get(str(year))
+        if pinned_amount is None:
+            drifts.append(f"no pinned exempt amount for {year}")
+        elif abs(float(amount) - float(pinned_amount)) > 0.5:
+            drifts.append(
+                f"exempt amount {year}: engine {amount} vs pinned {pinned_amount}"
+            )
+    if drifts:
+        raise ValueError(
+            "cgt_projection_entrants projection drifted from the pinned path "
+            f"({projection.engine}): " + "; ".join(drifts) + "."
+        )
+    facts = load_hmrc_cgt_conditioning_facts(bound_resource)
+    band = facts.size_band(lower_bound)
+    bound_source = (
+        f"{bound_resource}: HMRC Table 2.1a tax year {facts.tax_year}, taxpayers "
+        f"with gains from {band.lower_bound:,} to {band.upper_bound:,}"
+    )
+    household = surface.household
+    household_weights = _household_weights(household)
+    positions = pd.Series(
+        np.arange(len(household)), index=household["household_id"].to_numpy()
+    ).reindex(surface.person["person_household_id"].to_numpy())
+    if positions.isna().any():
+        raise ValueError("cgt_projection_entrants found a person without a household.")
+    person_weights = household_weights[positions.to_numpy(dtype=np.int64)]
+    return uk_cgt_projection_entrants_gate(
+        surface.person,
+        person_weights,
+        projection,
+        bound=float(band.taxpayers),
+        bound_source=bound_source,
+    )
+
+
+def _cgt_projection_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    projection = context.artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY]
+    if not isinstance(projection, UKCGTProjection):
+        raise TypeError(
+            f"{UK_CGT_PROJECTION_ARTIFACT_KEY} artifact must be a UKCGTProjection."
+        )
+    return {UK_CGT_PROJECTION_ARTIFACT_KEY: projection.payload()}
 
 
 def _stage_names_evidence(
@@ -813,16 +991,17 @@ def _evaluate_area_support(
     kwargs = dict(parameters)
     resource = str(kwargs.pop("crosswalk_resource"))
     exclusions_resource = str(kwargs.pop("exclusions_resource"))
-    records = load_uk_reviewed_exclusion_register(
+    register = load_uk_local_area_support_exclusion_register(
         None,
         resource=exclusions_resource,
     )
+    records = register["exclusions"]
     clock = _exclusion_clock(context)
-    invalid = {
-        key: record
-        for key, record in records.items()
-        if record.expired(clock) or record.premature(clock)
-    }
+    invalid = {}
+    for block, entries in register.items():
+        for key, record in entries.items():
+            if record.expired(clock) or record.premature(clock):
+                invalid[f"{block}/{key}"] = record
     if invalid:
         return GateResult(
             name="area_support",
@@ -945,7 +1124,6 @@ def _evaluate_local_default_target_surface(
     crosswalk_resource = str(parameters["crosswalk_resource"])
     membership_resource = str(parameters["membership_resource"])
     reviewed = dict(_local_default_reviewed_exclusions(membership_resource))
-    reviewed.update(_ladder_derived_households_exclusions(crosswalk_resource))
     return target_surface_gate(
         _local_default_candidate_surface(registry),
         _local_default_expected_surface(crosswalk_resource),
@@ -953,32 +1131,6 @@ def _evaluate_local_default_target_surface(
         reference_name="UK local default metric surface",
         reviewed_exclusions=reviewed,
     )
-
-
-_LADDER_DERIVED_HOUSEHOLDS_RATIONALE = (
-    "census_households is ladder-derived: the households column binds from the "
-    "OA-ladder artifact's census household counts (the ladder sha is its "
-    "provenance), never from Chronicle facts, so no ledger reference exists by "
-    "design. See uk_local_target_census.json (source status pinned_in_ladder) "
-    "and microcosm#542, which bound the family from the ladder."
-)
-
-
-def _ladder_derived_households_exclusions(crosswalk_resource: str) -> dict[str, str]:
-    crosswalk = json.loads(
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
-    levels = crosswalk.get("levels")
-    if not isinstance(levels, Mapping):
-        raise ValueError(f"{crosswalk_resource} must expose levels.")
-    reviewed: dict[str, str] = {}
-    for geography_level in ("constituency", "local_authority"):
-        level = levels.get(geography_level)
-        if not isinstance(level, Mapping):
-            raise ValueError(f"{crosswalk_resource} must expose {geography_level!r}.")
-        for area_id in level.get("area_ids", ()):
-            reviewed[f"households@{area_id}"] = _LADDER_DERIVED_HOUSEHOLDS_RATIONALE
-    return reviewed
 
 
 def _target_surface_required_artifacts(
@@ -1068,8 +1220,38 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
                 f"{crosswalk_resource} level {geography_level!r} must expose area_ids."
             )
         for metric_name in metric_names(area_type):
-            expected.update(f"{metric_name}@{area_id}" for area_id in area_ids)
+            scoped = _metric_area_scope(metric_name, geography_level)
+            expected.update(
+                f"{metric_name}@{area_id}"
+                for area_id in area_ids
+                if scoped is None or str(area_id).startswith(scoped)
+            )
     return frozenset(expected)
+
+
+def _metric_area_scope(
+    metric_name: str, geography_level: str
+) -> tuple[str, ...] | None:
+    """GSS prefixes the metric's contract targets cover at this level, or None.
+
+    A metric that nation-scoped targets share (the council-tax stock by_area
+    rows, microcosm#929) has cells only where one of its targets declares an
+    ``area_scope``; the default surface expects nothing elsewhere. A metric
+    with an unscoped target expects every roster area.
+    """
+
+    from microcosm.build.uk_runtime.ledger_targets import _uk_local_metric_targets
+
+    sharers = _uk_local_metric_targets().get(metric_name)
+    if not sharers:
+        return None
+    prefixes: list[str] = []
+    for _, target_prefixes in sharers:
+        if not target_prefixes:
+            return None
+        prefixes.extend(target_prefixes)
+    del geography_level
+    return tuple(dict.fromkeys(prefixes))
 
 
 def _local_default_reviewed_exclusions(
@@ -1282,7 +1464,9 @@ def _load_ledger_compile_parity_fixture(fixture_resource: str) -> dict[str, Any]
     )
     if fixture_resource == LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE:
         return align_uk_local_registry_parity_fixture(fixture)
-    return fixture
+    # The national fixtures spell the incumbent's regional rows their own way;
+    # the receipts are signed against the region-tier names (microcosm#905).
+    return align_uk_national_registry_parity_fixture(fixture)
 
 
 def _ledger_compile_parity_evidence(
@@ -1425,8 +1609,35 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_signal_rows",
                 "structural_zero_columns",
                 "maximum_relative_deviation",
+                # #791 household_composition stage-health check.
+                "max_grid_reciprocity_mismatches",
+                "require_partition_closure",
+                # #725 cgt_asset_type_summary stage-health check.
+                "maximum_gains_sigma",
+                "maximum_solve_relative_error",
                 "support_bounds_resource",
                 "minimum_band_rows",
+                # #970 cgt_incidence_anchor stage-health check.
+                "maximum_relative_composition_error",
+                "maximum_pair_relative_error",
+                "minimum_pair_count",
+                # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
+                # reserved bands and the donors each must carry.
+                "band_lower_bounds",
+                "donors_per_band",
+                # #890 energy_rake check: NEED shape at the DESNZ level at
+                # prior weights, with the published gas-connected share, and
+                # a converged (not truncated) terminal residual (#1012).
+                "margins",
+                "margins_period_value",
+                "maximum_connected_share_deviation",
+                "convergence_window_sweeps",
+                "maximum_residual_change_over_window",
+                # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
+                # trip rates recomputed from the vendored rows.
+                "trip_rates_period_value",
+                "maximum_user_share_deviation",
+                "maximum_trip_rate_deviation",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -1472,6 +1683,13 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         parameter_keys=frozenset(
             {"support_bounds_resource", "support_bounds_resources"}
         ),
+    ),
+    "cgt_projection_entrants": UKGateBinding(
+        name="cgt_projection_entrants",
+        evaluator=_evaluate_cgt_projection_entrants,
+        parameter_keys=_CGT_PROJECTION_PARAMETER_KEYS,
+        artifact_keys=frozenset({UK_CGT_PROJECTION_ARTIFACT_KEY}),
+        evidence=_cgt_projection_evidence,
     ),
     "aggregate_admin": UKGateBinding(
         name="aggregate_admin",

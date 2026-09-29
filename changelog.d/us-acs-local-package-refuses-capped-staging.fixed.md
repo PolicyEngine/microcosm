@@ -1,0 +1,1 @@
+Refuse to package a US ACS local-area release from a staging run capped with --max-households (or one whose summary does not record the cap), before any release directory is created, and record the staging settings in the build manifest.

@@ -50,7 +50,13 @@ UK_SPINE_EXCLUSIONS = frozenset(
 )
 
 UK_SPINE_STRUCTURAL_STAGES = frozenset(
-    {"spi_support_channel", "cgt_incidence_clone", "cgt_band_donors"}
+    {
+        "spi_support_channel",
+        "spi_income_band_donors",
+        "cgt_incidence_clone",
+        "cgt_band_donors",
+        "cgt_incidence_anchor",
+    }
 )
 
 # The executor's mass ledger is weighted *person* mass per stratum
@@ -68,22 +74,34 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
     "spi_support_channel": "declared",
+    # Reserved income rows add their published band mass, as the CGT donors do.
+    "spi_income_band_donors": "free",
     "cgt_incidence_clone": "conserve",
     "cgt_band_donors": "free",
+    "cgt_incidence_anchor": "conserve",
 }
 
 _STRUCTURAL_WEIGHT_KIND = {
     "spi_support_channel": "importance",
+    "spi_income_band_donors": "importance",
     "cgt_incidence_clone": "importance",
     "cgt_band_donors": "importance",
+    "cgt_incidence_anchor": "importance",
 }
 
-# ``hmrc_spi_income_spine`` has an intentionally conservative open input
-# surface.  Opening a version before the following UC rewrite prevents that
-# earlier reader from resolving its incumbent UC cells to the later owner and
-# forming a declaration cycle.
+# Open-surface readers (``_STAGE_CONSUMES`` of ``None``) bind every live cell
+# of their version, including cells a later stage in the same version rewrites.
+# Opening a version before each UC rewrite keeps those earlier readers on the
+# incumbent UC cells instead of the later owner, which would otherwise form a
+# declaration cycle.  ``uc_reporter_redraw`` follows the WAS, LCFS and ETB
+# stages because its engine screen reads the WAS capital proxy for benefit
+# units without an observed FRS capital answer.
 _READER_ISOLATION_BOUNDARIES = frozenset(
     {
+        # The housing shell rewrites root household cells right after the
+        # open-surface SPI income stage, which would otherwise bind them.
+        "spi_housing_shell",
+        "uc_reporter_redraw",
         "uc_capital_coherence",
         # ``frs_education_grant_split`` rewrites the root cell
         # ``education_grants`` that the open-surface ``frs_legacy_proxies``
@@ -101,28 +119,40 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
 
 _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_spine": ("frs",),
+    "frs_relationships": ("frs",),
     "frs_employment": ("frs",),
     "frs_council_tax": ("frs",),
     "frs_education": ("frs",),
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
-    "lcfs_consumption": ("lcfs_household", "lcfs_person", "was"),
+    "nts_bus_travel": (
+        "nts_household",
+        "nts_individual",
+        "nts_trip",
+        "nts_stage",
+        "nts_ticket",
+    ),
+    "lcfs_consumption": ("lcfs_household", "lcfs_person"),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
+    "spi_income_band_donors": ("spi",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
-    "hmrc_cgt_gains_spine": ("hmrc_cgt",),
 }
 
 _SPLIT_SOURCE_DESCRIPTIONS = {
     "frs": "Pinned local FRS table directory.",
     "was": "Pinned local WAS household donor table.",
+    "nts_household": "Pinned local NTS household donor table.",
+    "nts_individual": "Pinned local NTS individual donor table.",
+    "nts_trip": "Pinned local NTS trip donor table.",
+    "nts_stage": "Pinned local NTS stage donor table.",
+    "nts_ticket": "Pinned local NTS ticket donor table.",
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
-    "hmrc_cgt": "Pinned local HMRC capital-gains facts workbook.",
 }
 
 # ``None`` means the implementation genuinely has an open formula/model
@@ -131,6 +161,12 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
 # memberships, weights, and strata are executor-carried context rather than
 # ordinary owned cells.
 _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
+    # The relationship grid is re-read from the pinned adult/child tabs; the
+    # frame reads are the disaggregated age (#785 contract) and the HRP flag
+    # the derivation must agree with.
+    "frs_relationships": frozenset(
+        {("person", "age"), ("person", "is_household_head")}
+    ),
     "frs_employment": frozenset(),
     "frs_council_tax": frozenset(),
     "frs_disability": frozenset(
@@ -168,30 +204,63 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "child_benefit_reported",
             "pension_credit_reported",
             "universal_credit_reported",
+            # The Universal Credit draw's population: units with an adult
+            # under State Pension age (#882).
+            "age",
         )
-    ),
+    )
+    | frozenset({("benunit", "is_married")}),
     "frs_person_draws": frozenset({("person", "age")}),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
     "was_wealth": None,
+    # The factor's mean is taken over FRS-base owners only, so the support
+    # channel is a direct read.
     "regional_property_uprating": frozenset(
         {
             ("household", "region"),
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
+            ("household", "household_support_channel"),
         }
     ),
+    # The NTS band model materializes an engine predictor (household gross
+    # income) over the whole frame, an open surface like the LCFS QRF.
+    "nts_bus_travel": None,
     "lcfs_consumption": None,
     "etb_vat": None,
     "etb_services": None,
     "frs_hmrc_spine_leaves": frozenset({("person", "employee_pension_contributions")}),
     "spi_support_channel": None,
+    "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
+    # Engine-free: the housing predictors and the channel split. The rewritten
+    # housing and benefit cells arrive as the rewrite's incumbents.
+    "spi_housing_shell": frozenset(
+        {
+            ("person", "age"),
+            ("person", "is_household_head"),
+            ("person", "employment_income"),
+            ("person", "self_employment_income"),
+            ("person", "private_pension_income"),
+            ("person", "savings_interest_income"),
+            ("person", "dividend_income"),
+            ("person", "property_income"),
+            ("person", "other_investment_income"),
+            ("person", "state_pension_reported"),
+            ("household", "region"),
+            ("household", "ons_household_type"),
+            ("household", "council_tax_single_adult_raw"),
+            ("household", "household_support_channel"),
+        }
+    ),
     # Runs one temporary engine materialization over the whole frame for its
     # award screen, so its input surface is genuinely open.
     "uc_reporter_redraw": None,
     "uc_capital_coherence": frozenset(
         {
+            ("person", "is_benunit_head"),
+            ("person", "is_parent"),
             ("person", "person_support_channel"),
             ("person", "universal_credit_reported"),
             ("benunit", "benunit_support_channel"),
@@ -204,20 +273,55 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "uc_deduction_attributes": frozenset({("household", "region")}),
     "cgt_incidence_clone": None,
     "cgt_band_donors": None,
+    # The amounts redraw conditions on age and household region as well as
+    # the income proxy (microcosm#725); both are context carriers, declared
+    # here so the ownership record names them.
     "hmrc_cgt_gains_spine": frozenset(
-        ("person", column)
-        for column in (
-            "capital_gains",
-            "employment_income",
-            "self_employment_income",
-            "savings_interest_income",
-            "dividend_income",
-            "miscellaneous_income",
-            "private_pension_income",
-            "property_income",
-            "state_pension_reported",
-            "tax_free_savings_income",
-        )
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "capital_gains",
+                    "employment_income",
+                    "self_employment_income",
+                    "savings_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                    "private_pension_income",
+                    "property_income",
+                    "state_pension_reported",
+                    "tax_free_savings_income",
+                    "age",
+                )
+            ),
+            ("household", "region"),
+        }
+    ),
+    # The asset-type stage classifies the redrawn net gains; the AEA it
+    # gates on is a policy parameter, not a frame column (microcosm#725).
+    "hmrc_cgt_asset_type_spine": frozenset({("person", "capital_gains")}),
+    # The incidence anchor reads the redrawn gains, the carrier income proxy
+    # and the clone/donor flags; it writes no cell and only moves household
+    # weight between paired rows (microcosm#970).
+    "cgt_incidence_anchor": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "capital_gains",
+                    "employment_income",
+                    "self_employment_income",
+                    "state_pension_reported",
+                    "private_pension_income",
+                    "property_income",
+                    "savings_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                )
+            ),
+            ("household", "household_is_capital_gains_clone"),
+            ("household", "household_is_cgt_band_donor"),
+        }
     ),
     "salary_sacrifice": None,
     "student_loans": frozenset(
@@ -264,7 +368,13 @@ class _Cell:
 
 
 _ROOT_PERSON_STRING = {"gender", "marital_status"}
-_ROOT_PERSON_BOOL = {"is_household_head", "is_benunit_head", "is_parent"}
+_ROOT_PERSON_BOOL = {
+    "is_household_head",
+    "is_benunit_head",
+    "is_parent",
+    "is_uc_claimant",
+    "would_claim_carers_allowance",
+}
 _ROOT_PERSON_INT = {"age"}
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
@@ -344,6 +454,12 @@ def _cells(
 
 
 _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
+    "frs_relationships": (
+        _Cell("person", "relationship_to_head", "string"),
+        _Cell("person", "ons_family_role", "string"),
+        _Cell("person", "ons_family_index", "int64"),
+        _Cell("household", "ons_household_type", "string"),
+    ),
     "frs_employment": (
         _Cell("person", "employment_status", "string"),
         _Cell("person", "employment_sector", "string"),
@@ -416,6 +532,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "would_claim_extended_childcare",
                 "would_claim_universal_childcare",
                 "would_claim_targeted_childcare",
+                "would_claim_uc_childcare",
             ),
             "bool",
         ),
@@ -458,6 +575,16 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells("household", ("cash_isa", "stocks_and_shares_isa")),
         *_cells("household", ("mortgage_debt", "consumer_debt")),
         _Cell("person", "student_loan_balance", "float64"),
+    ),
+    "nts_bus_travel": (
+        _Cell("person", "local_bus_use_band", "int64"),
+        *_cells(
+            "person",
+            ("bus_in_london_trips", "other_local_bus_trips", "local_bus_trips"),
+        ),
+        _Cell("person", "bus_pass_eligible", "bool"),
+        _Cell("person", "local_bus_single_fare_share", "float64"),
+        _Cell("household", "household_local_bus_trips", "float64"),
     ),
     "regional_property_uprating": _cells(
         "household", ("main_residence_value", "property_wealth")
@@ -537,7 +664,49 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("household", "household_support_clone_index", "int64"),
         _Cell("household", "household_is_spi_synthetic", "bool"),
     ),
+    # The reserved copies rewrite the support channel's lineage cells (they
+    # join the synthetic channel at clone index 2) and add their own three.
+    "spi_income_band_donors": (
+        _Cell("person", "person_source_id", "int64"),
+        _Cell("person", "person_support_channel", "string"),
+        _Cell("person", "person_support_clone_index", "int64"),
+        _Cell("benunit", "benunit_source_id", "int64"),
+        _Cell("benunit", "benunit_support_channel", "string"),
+        _Cell("benunit", "benunit_support_clone_index", "int64"),
+        _Cell("household", "household_source_id", "int64"),
+        _Cell("household", "household_support_channel", "string"),
+        _Cell("household", "household_support_clone_index", "int64"),
+        _Cell("household", "household_is_spi_synthetic", "bool"),
+        _Cell("household", "household_is_spi_income_band_donor", "bool"),
+        _Cell("household", "spi_income_band_donor_lower_bound", "float64"),
+        _Cell("person", "person_is_spi_income_band_carrier", "bool"),
+    ),
     "hmrc_spi_income_spine": (),  # populated below from typed groups
+    "spi_housing_shell": (
+        *_cells(
+            "household",
+            ("tenure_type", "accommodation_type", "council_tax_band"),
+            "string",
+        ),
+        _Cell("household", "num_bedrooms", "int64"),
+        *_cells(
+            "household",
+            (
+                "council_tax",
+                "council_tax_reported",
+                "rent",
+                "mortgage_interest_repayment",
+                "mortgage_capital_repayment",
+                "structural_insurance_payments",
+                "housing_service_charges",
+                "water_and_sewerage_charges",
+                "domestic_rates",
+                "subrent",
+                "council_tax_rebate",
+            ),
+        ),
+        *_cells("person", ("housing_benefit_reported", "council_tax_benefit_reported")),
+    ),
     "uc_reporter_redraw": (_Cell("person", "universal_credit_reported", "float64"),),
     "uc_capital_coherence": (
         _Cell("benunit", "uc_reported_capital", "float64"),
@@ -559,6 +728,12 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "capital_gains", "float64"),
     ),
     "hmrc_cgt_gains_spine": (_Cell("person", "capital_gains", "float64"),),
+    "hmrc_cgt_asset_type_spine": (
+        _Cell("person", "capital_gains_asset_type", "string"),
+        _Cell("person", "capital_gains_residential_property", "float64"),
+    ),
+    # Weights only: the anchor owns no cell (microcosm#970).
+    "cgt_incidence_anchor": (),
     "salary_sacrifice": _cells(
         "person",
         (
@@ -635,6 +810,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",
+    # #882: the carer take-up flag follows the refilled Carer's Allowance
+    # receipt on the SPI-redrawn rows.
+    "would_claim_carers_allowance",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,
@@ -893,30 +1071,33 @@ def uk_spine_graph(
                     description=f"Run structural UK stage {stage_name}.",
                 )
             )
-            nodes.append(
-                Node(
-                    id=f"{stage_name}.owned",
-                    kernel="uk.claim@1",
-                    outputs=tuple(
-                        cell.owned(rewrite=cell.coordinate in incumbent)
-                        for cell in cells
-                    ),
-                    population=stage_name,
-                    params={
-                        # Amendment 8 projects declared rewrites directly.
-                        # These are only the new cells installed physically by
-                        # the preceding EXPAND node; structural declarations
-                        # still cannot own them (the one remaining interface
-                        # gap from lane F).
-                        "materialized_expand_outputs": tuple(
-                            f"{cell.entity}.{cell.column}"
+            # A weights-only structural stage (the #970 incidence anchor)
+            # materializes no cell, so it has nothing to claim.
+            if cells:
+                nodes.append(
+                    Node(
+                        id=f"{stage_name}.owned",
+                        kernel="uk.claim@1",
+                        outputs=tuple(
+                            cell.owned(rewrite=cell.coordinate in incumbent)
                             for cell in cells
-                            if cell.coordinate not in incumbent
-                        )
-                    },
-                    description=f"Own the cells materialized by {stage_name}.",
+                        ),
+                        population=stage_name,
+                        params={
+                            # Amendment 8 projects declared rewrites directly.
+                            # These are only the new cells installed physically by
+                            # the preceding EXPAND node; structural declarations
+                            # still cannot own them (the one remaining interface
+                            # gap from lane F).
+                            "materialized_expand_outputs": tuple(
+                                f"{cell.entity}.{cell.column}"
+                                for cell in cells
+                                if cell.coordinate not in incumbent
+                            )
+                        },
+                        description=f"Own the cells materialized by {stage_name}.",
+                    )
                 )
-            )
             current_population = stage_name
             version_owned = set(coordinates)
         else:

@@ -1,12 +1,11 @@
 """Standard calibration diagnostics for UK release candidates.
 
 The shared :mod:`microcosm.calibrate.diagnostics` payload is the release
-contract: it carries the target surface, every target row, solver options, and
-the concentration scalars used by US releases.  UK needs a little more release
-evidence without changing that shared schema (and therefore without changing
-US output): the effective-sample-size fraction, shipped-weight concentration,
-zero-weight rows split by their declared support strata, and target fit by UK
-geography level.
+contract: it carries the target surface, every target row, solver options,
+the schema-8 provider/category/geography/dimension/target hierarchy, and the
+concentration scalars used by US releases. UK adds the effective-sample-size
+fraction, shipped-weight concentration, zero-weight rows split by their
+declared support strata, and target fit by UK geography level.
 
 This module wraps the shared payload and places those additions under a
 separately versioned ``uk_diagnostics`` block.  The common top-level
@@ -17,7 +16,6 @@ from __future__ import annotations
 
 import json
 import math
-import uuid
 from collections.abc import Mapping, Sequence
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -25,6 +23,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from pydantic import ValidationError
 
 from microcosm.calibrate import (
     TargetRegistry,
@@ -32,12 +31,23 @@ from microcosm.calibrate import (
     effective_sample_size,
 )
 from microcosm.calibrate.solve import CalibrationResult
+from microcosm.diagnostics import (
+    UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_TARGET_GEOGRAPHY_LEVELS,
+    CalibrationDiagnosticsV8,
+    DiagnosticsWriteOutcome,
+    failed_diagnostics_outcome,
+)
+from microcosm.diagnostics import (
+    write_calibration_diagnostics as write_typed_calibration_diagnostics,
+)
 from microcosm.frame import Frame
 
 __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_fit_by_family",
     "uk_support_limited_misses",
     "uk_target_geography_levels",
     "uk_weakest_areas_by_fit",
@@ -46,20 +56,6 @@ __all__ = [
     "uk_zero_weight_strata",
     "write_uk_calibration_diagnostics",
 ]
-
-#: UK-only extension version nested inside the shared calibration diagnostics.
-UK_DIAGNOSTICS_SCHEMA_VERSION = 1
-
-#: Stable vocabulary used by the UK target registry and future OA-ladder rows.
-#: ``"la"`` is accepted only as an input adapter and is serialized as
-#: ``"local_authority"``.
-UK_TARGET_GEOGRAPHY_LEVELS: tuple[str, ...] = (
-    "national",
-    "region",
-    "country",
-    "local_authority",
-    "constituency",
-)
 
 _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
     "household_is_spi_synthetic",
@@ -476,6 +472,33 @@ def uk_weight_summary(
     }
 
 
+def uk_fit_by_family(
+    diagnostics: pd.DataFrame,
+    *,
+    name_column: str = "target_name",
+) -> list[dict[str, object]]:
+    """Summarize target-fit diagnostics by family."""
+
+    if diagnostics.empty:
+        return []
+    rows = []
+    for family, group in diagnostics.groupby("family", sort=True):
+        errors = group["abs_relative_error"].to_numpy(dtype=np.float64)
+        worst_index = int(np.argmax(errors))
+        worst = group.iloc[worst_index]
+        rows.append(
+            {
+                "family": str(family),
+                "n_targets": len(group),
+                "share_within_10pct": float((errors <= 0.10).mean()),
+                "share_within_25pct": float((errors <= 0.25).mean()),
+                "worst_abs_relative_error": float(errors[worst_index]),
+                "worst_cell": str(worst.get(name_column, worst.get("name", "unknown"))),
+            }
+        )
+    return rows
+
+
 def _json_scalar(value: object, *, column: str) -> object:
     """Normalize one stratum value to strict, stable JSON."""
 
@@ -847,7 +870,10 @@ def uk_calibration_diagnostics_payload(
     if rotated_holdout is not None:
         uk_diagnostics["rotated_holdout"] = dict(rotated_holdout)
     payload["uk_diagnostics"] = uk_diagnostics
-    return payload
+    return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
+        mode="python",
+        exclude_defaults=True,
+    )
 
 
 def write_uk_calibration_diagnostics(
@@ -861,12 +887,12 @@ def write_uk_calibration_diagnostics(
     build: dict[str, Any] | None = None,
     local_area_support: pd.DataFrame | None = None,
     rotated_holdout: Mapping[str, object] | None = None,
-) -> Path:
-    """Atomically write strict shared-plus-UK diagnostics."""
+) -> DiagnosticsWriteOutcome:
+    """Validate and write shared-plus-UK diagnostics through the canonical writer."""
 
     output = Path(path)
-    encoded = json.dumps(
-        uk_calibration_diagnostics_payload(
+    try:
+        payload = uk_calibration_diagnostics_payload(
             result,
             frame,
             target_geography_levels=target_geography_levels,
@@ -875,14 +901,14 @@ def write_uk_calibration_diagnostics(
             build=build,
             local_area_support=local_area_support,
             rotated_holdout=rotated_holdout,
-        ),
-        indent=1,
-        allow_nan=False,
-    )
-    temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        temporary.write_text(encoded, encoding="utf-8")
-        temporary.replace(output)
-    finally:
-        temporary.unlink(missing_ok=True)
-    return output
+        )
+        diagnostics = CalibrationDiagnosticsV8.model_validate(payload)
+    except ValidationError as error:
+        return failed_diagnostics_outcome(
+            error,
+            error_code="validation_error",
+            path=output,
+        )
+    except Exception as error:  # diagnostics must not escape without validation
+        return failed_diagnostics_outcome(error, path=output)
+    return write_typed_calibration_diagnostics(diagnostics, output)

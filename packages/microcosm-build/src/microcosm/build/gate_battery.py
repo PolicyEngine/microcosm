@@ -497,7 +497,9 @@ class GatePhaseReport:
     phase: str
     outcomes: tuple[GateOutcome, ...]
 
-    def blocking_outcomes(self, *, release_candidate: bool) -> tuple[GateOutcome, ...]:
+    def blocking_outcomes(
+        self, *, release_candidate: bool, synthetic_smoke: bool = False
+    ) -> tuple[GateOutcome, ...]:
         """Outcomes that stop the build at this phase boundary.
 
         A failed release-blocking gate always blocks. A release-blocking
@@ -509,7 +511,11 @@ class GatePhaseReport:
         out of that dev-posture leniency: its absence blocks every posture
         (the legacy UK weights-audit strictness, ported during the #654
         schema-3 retirement — "an absent audit is not a passing audit").
-        Diagnostic entries never block.
+        Diagnostic entries never block. A failed entry declaring
+        ``population_fact_check`` does not block a synthetic smoke build
+        (``synthetic_smoke``): the fixture is not the population its facts
+        describe, so the failure is recorded in the report and the build
+        continues; every other posture blocks on it as usual.
         """
 
         blocking = []
@@ -517,6 +523,8 @@ class GatePhaseReport:
             if outcome.entry.criticality != "release_blocking":
                 continue
             if outcome.status is GateStatus.FAILED:
+                if synthetic_smoke and outcome.entry.population_fact_check:
+                    continue
                 blocking.append(outcome)
             elif outcome.status is GateStatus.EVIDENCE_ABSENT and (
                 release_candidate or outcome.entry.evidence_absent_blocks
@@ -790,9 +798,13 @@ class GateBatteryRun:
         release_candidate: bool,
         registry: Mapping[str, GateBinding] = DEFAULT_REGISTRY,
         release_evidence: Mapping[str, str] | None = None,
+        synthetic_smoke: bool = False,
     ) -> None:
         if not isinstance(release_id, str) or not release_id.strip():
             raise ValueError("release_id must be a non-empty string.")
+        if synthetic_smoke and release_candidate:
+            raise ValueError("a synthetic smoke build cannot be a release candidate.")
+        self._synthetic_smoke = bool(synthetic_smoke)
         validate_gate_parameters(gates, registry)
         evidence = dict(release_evidence or {})
         for key, value in evidence.items():
@@ -912,7 +924,10 @@ class GateBatteryRun:
                 f"evaluated so far: {evaluated}."
             )
         report = self._phase_reports[phase]
-        blocking = report.blocking_outcomes(release_candidate=self._release_candidate)
+        blocking = report.blocking_outcomes(
+            release_candidate=self._release_candidate,
+            synthetic_smoke=self._synthetic_smoke,
+        )
         if not blocking:
             return False
         self._blocked_at_phase = phase
@@ -1005,6 +1020,7 @@ class GateBatteryRun:
             "country": self._gates.country,
             "release_id": self._release_id,
             "release_candidate": self._release_candidate,
+            "synthetic_smoke": self._synthetic_smoke,
             "spec_fingerprint": self._spec_fingerprint,
             "gates_manifest_sha256": self._gates_manifest_sha256,
             "policy_sha256": policy_sha256,
@@ -1029,6 +1045,7 @@ class GateBatteryRun:
             "country": self._gates.country,
             "release_id": self._release_id,
             "release_candidate": self._release_candidate,
+            "synthetic_smoke": self._synthetic_smoke,
             "spec_fingerprint": self._spec_fingerprint,
             "gates_manifest_sha256": self._gates_manifest_sha256,
             "phases": list(self._gates.phases),

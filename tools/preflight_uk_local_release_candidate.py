@@ -8,7 +8,8 @@ Two postures, both fail-closed and both printing every failure by name:
 ``--candidate-dir``  after the run: the manifest and the signed gate report
            say what a publishable release candidate must say — release
            posture attested, shippable, every release-blocking gate passed,
-           single-block engine, doctrine values, the A15/A17 uprating and the
+           single-block engine, doctrine values, the A15 census household
+           uprating and A17 tenure application and the
            measure exclusions receipted, holdout measured, Logbook row
            present, artifact digest recorded and matching.
 
@@ -23,6 +24,7 @@ import base64
 import glob
 import hashlib
 import json
+import math
 import os
 import sys
 from datetime import date
@@ -117,6 +119,14 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     if not manifest_path.exists():
         return [f"manifest missing: {manifest_path}"]
     manifest = json.loads(manifest_path.read_text())
+    # The manifest declares its release role (microcosm#823); this pre-flight
+    # is the dense line's and refuses every other role, including a
+    # pre-role candidate, which is rebuilt rather than grandfathered.
+    if manifest.get("release_role") != "dense":
+        return [
+            f"manifest.release_role is {manifest.get('release_role')!r}, not "
+            "'dense': this pre-flight covers the dense line only."
+        ]
     parameters = manifest.get("parameters", {})
     if parameters.get("release_candidate") is not True:
         failures.append("parameters.release_candidate is not true.")
@@ -157,37 +167,55 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
         or holdout.get("mean_holdout_loss") is None
     ):
         failures.append("rotated holdout is not measured with 5 folds.")
-    uprating = manifest.get("ladder_household_uprating", {})
+    uprating = manifest.get("census_household_uprating", {})
     if uprating.get("applied") is not True:
-        failures.append("A15 ladder household uprating not applied.")
-    tenure = uprating.get("tenure_cells", {})
-    if (
-        tenure.get("applied") is not True
-        or not isinstance(tenure.get("cells"), int)
-        or tenure.get("cells", 0) <= 0
-    ):
-        failures.append("A17 tenure-cell uprating not applied or unmeasured.")
-    holds = tenure.get("holds")
-    if not isinstance(holds, list) or not holds:
-        failures.append("A17 tenure-cell hold receipt is missing.")
+        failures.append("A15 census household uprating not applied.")
+    grains = uprating.get("grains")
+    if not isinstance(grains, dict):
+        failures.append("A15 census household uprating grains are missing.")
     else:
+        for grain in ("constituency", "local_authority"):
+            factor = (grains.get(grain) or {}).get("factor")
+            if (
+                not isinstance(factor, (int, float))
+                or isinstance(factor, bool)
+                or not math.isfinite(factor)
+                or factor <= 0
+            ):
+                failures.append(
+                    "A15 census household uprating "
+                    f"grains.{grain}.factor is not positive and finite."
+                )
+    for label, cells in (
+        ("A15 household", uprating.get("household_cells", {})),
+        ("A17 tenure", uprating.get("tenure_cells", {})),
+    ):
+        if (
+            cells.get("applied") is not True
+            or not isinstance(cells.get("cells"), int)
+            or cells.get("cells", 0) <= 0
+        ):
+            failures.append(f"{label}-cell uprating not applied or unmeasured.")
+        holds = cells.get("holds")
+        if not isinstance(holds, list) or not holds:
+            failures.append(f"{label}-cell hold receipt is missing.")
+            continue
         for key, field in (
             ("cells", "applied"),
             ("attempted_cells", "attempted"),
             ("eligible_cells", "eligible"),
             ("skipped_cells", "skipped"),
         ):
-            if tenure.get(key) != sum(r.get(field) is True for r in holds):
-                failures.append(f"A17 tenure-cell {key} does not close over its holds.")
-        if tenure.get("total_cells") != len(holds):
-            failures.append(
-                "A17 tenure-cell total_cells does not close over its holds."
-            )
+            if cells.get(key) != sum(r.get(field) is True for r in holds):
+                failures.append(f"{label}-cell {key} does not close over its holds.")
+        if cells.get("total_cells") != len(holds):
+            failures.append(f"{label}-cell total_cells does not close over its holds.")
         if any(
             r.get("attempted") is True and r.get("applied") is not True for r in holds
         ):
             failures.append(
-                "A17 contains skipped attempted tenure holds; review vintage/reason evidence."
+                f"{label} contains skipped attempted holds; "
+                "review vintage/reason evidence."
             )
     from microcosm.data.contract import _check_uk_measure_exclusions
 

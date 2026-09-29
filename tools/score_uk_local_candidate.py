@@ -1,6 +1,6 @@
 """Score a UK local candidate against incumbent wide-format area weights.
 
-The candidate side is read from its schema-v6 calibration diagnostics.  The
+The candidate side is read from the current calibration diagnostics schema. The
 incumbent side is deliberately explicit: a household-grain metric table and a
 wide weight table with one column per local area.  Both are evaluated on the
 same frozen UK TargetRegistry; no fitted row is allowed to disappear.
@@ -27,7 +27,7 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 19_419
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 20_885
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
@@ -63,7 +63,10 @@ def _candidate_estimates(
     registry: TargetRegistry,
 ) -> tuple[dict[str, float], dict[str, object]]:
     if diagnostics.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
-        raise ValueError("UK local scoring requires schema-v6 candidate diagnostics.")
+        raise ValueError(
+            "UK local scoring requires calibration diagnostics schema "
+            f"{CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+        )
     rows = diagnostics.get("targets")
     if not isinstance(rows, list):
         raise ValueError("candidate diagnostics must contain target rows.")
@@ -99,9 +102,9 @@ def _candidate_estimates(
 def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
     """Read the candidate's measured rotated holdout out of its diagnostics.
 
-    The candidate driver runs the rotation and publishes it in the same
-    schema-v6 payload this scorer already reads, so a receipt that reported
-    ``none_declared`` beside it would be understating what was measured.  The
+    The candidate driver runs the rotation and publishes it in the current
+    diagnostics payload this scorer already reads, so a receipt that reported
+    ``none_declared`` beside it would be understating what was measured. The
     block is required: a candidate whose diagnostics carry no rotation is
     refused rather than scored on its fitted surface alone.
     """

@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
+from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -43,6 +44,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
+from . import bus_use_incidence, uc_relationships
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -62,6 +64,7 @@ __all__ = [
 
 _STAGE_MODULES = {
     "frs_spine": "frs_spine",
+    "frs_relationships": "frs_relationships",
     "frs_employment": "frs_employment",
     "frs_council_tax": "frs_council_tax",
     "frs_disability": "frs_disability",
@@ -73,22 +76,43 @@ _STAGE_MODULES = {
     "frs_household_draws": "frs_household_draws",
     "frs_brma": "frs_brma",
     "was_wealth": "was_wealth",
+    "nts_bus_travel": "nts_bus_travel",
     "regional_property_uprating": "regional_uprating",
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "frs_hmrc_leaves",
     "spi_support_channel": "spi_spine",
+    "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
+    "spi_housing_shell": "spi_housing_shell",
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_band_donors": "cgt_structure",
+    "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
+    "hmrc_cgt_asset_type_spine": "cgt_asset_type",
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
     "age_tail": "age_tail",
+}
+
+# Imported modules are not traversed by ``source_hash``. Bind relationship
+# helpers and the adapter's input-retention checks into every consuming stage.
+_STAGE_HELPER_MODULES = {
+    "frs_spine": (uc_relationships,),
+    "frs_legacy_proxies": (uk_engine_adapter,),
+    "frs_education_grant_split": (uk_engine_adapter,),
+    "frs_brma": (uk_engine_adapter,),
+    "was_wealth": (uk_engine_adapter,),
+    "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
+    "lcfs_consumption": (uk_engine_adapter,),
+    "etb_vat": (uk_engine_adapter,),
+    "etb_services": (uk_engine_adapter,),
+    "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
+    "uc_capital_coherence": (uc_relationships,),
 }
 
 _COMPUTE = Capabilities(
@@ -132,7 +156,9 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     # hermetic registries unhashable and, more importantly, would fail to bind
     # production edits made elsewhere in that stage's module.
     del transform
-    return source_hash(type(kernel), _stage_module(stage))
+    return source_hash(
+        type(kernel), _stage_module(stage), *_STAGE_HELPER_MODULES.get(stage, ())
+    )
 
 
 def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
@@ -247,10 +273,6 @@ def _fixture_cgt_distribution(path: Path):
 
     payload = _json_mapping(path, label="CGT distribution")
     raw_source = dict(_mapping(payload.get("source"), label="CGT source"))
-    local_path = raw_source.get("local_path")
-    if not isinstance(local_path, str):
-        raise ValueError("UK parity fixture CGT source.local_path must be a string.")
-    raw_source["local_path"] = Path(local_path)
 
     def records(name: str) -> list[Mapping[str, object]]:
         raw = payload.get(name)
@@ -270,6 +292,24 @@ def _fixture_cgt_distribution(path: Path):
         source=HMRCCapitalGainsSourceProvenance(**raw_source),
         total_individuals=float(payload["total_individuals"]),
         total_gains=float(payload["total_gains"]),
+    )
+
+
+def _fixture_asset_type_facts(path: Path):
+    from .cgt_asset_type import HMRCCGTAssetTypeFacts, HMRCCGTTable7Type
+
+    payload = dict(_json_mapping(path, label="CGT asset-type facts"))
+    raw_rows = payload.pop("table7_types")
+    if not isinstance(raw_rows, list):
+        raise ValueError(
+            "UK parity fixture CGT asset-type table7_types must be a list."
+        )
+    return HMRCCGTAssetTypeFacts(
+        **payload,
+        table7_types=tuple(
+            HMRCCGTTable7Type(**dict(_mapping(row, label="Table 7 row")))
+            for row in raw_rows
+        ),
     )
 
 
@@ -300,7 +340,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 28-stage spine "
+            "UK parity fixture must describe the current 34-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -312,9 +352,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
+    from .cgt_asset_type import UKCGTAssetTypeStageTransform
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_structure import (
         UKCGTBandDonorStageTransform,
+        UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
     )
     from .etb_services import UKETBServicesStageTransform
@@ -328,10 +370,14 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_household_draws import UKFRSHouseholdDrawsStageTransform
     from .frs_legacy_proxies import UKFRSLegacyProxiesStageTransform
     from .frs_person_draws import UKFRSPersonDrawsStageTransform
+    from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
+    from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
+    from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
+    from .spi_housing_shell import UKSPIHousingShellStageTransform
     from .spi_spine import (
         UKFRSHMRCSpineLeavesStageTransform,
         UKSPIIncomeSpineStageTransform,
@@ -363,12 +409,30 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     etb = pd.read_csv(
         _fixture_input(source, inputs, "etb"), float_precision="round_trip"
     )
+    nts_household = pd.read_csv(
+        _fixture_input(source, inputs, "nts_household"), float_precision="round_trip"
+    )
+    nts_individual = pd.read_csv(
+        _fixture_input(source, inputs, "nts_individual"), float_precision="round_trip"
+    )
+    nts_trip = pd.read_csv(
+        _fixture_input(source, inputs, "nts_trip"), float_precision="round_trip"
+    )
+    nts_stage = pd.read_csv(
+        _fixture_input(source, inputs, "nts_stage"), float_precision="round_trip"
+    )
+    nts_ticket = pd.read_csv(
+        _fixture_input(source, inputs, "nts_ticket"), float_precision="round_trip"
+    )
     spi_path = _fixture_input(source, inputs, "spi_donor")
     spi_donor = pd.read_csv(spi_path, float_precision="round_trip")
     hmrc_targets_path = _fixture_input(source, inputs, "hmrc_income_targets")
     income_targets = _fixture_hmrc_income_targets(hmrc_targets_path)
     cgt_distribution = _fixture_cgt_distribution(
         _fixture_input(source, inputs, "cgt_distribution")
+    )
+    cgt_asset_type_facts = _fixture_asset_type_facts(
+        _fixture_input(source, inputs, "cgt_asset_type_facts")
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
@@ -382,6 +446,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     calibration_year = int(config["student_loans_calibration_year"])
     return MappingProxyType(
         {
+            "frs_relationships": UKFRSRelationshipsStageTransform(
+                raw_dir, stage=stages["frs_relationships"]
+            ),
             "frs_employment": UKFRSEmploymentStageTransform(
                 raw_dir, stage=stages["frs_employment"]
             ),
@@ -417,6 +484,15 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "was_wealth": UKWASWealthStageTransform(
                 stage=stages["was_wealth"], engine=engine, donor=was
             ),
+            "nts_bus_travel": UKNTSBusTravelStageTransform(
+                stage=stages["nts_bus_travel"],
+                engine=engine,
+                nts_household=nts_household,
+                nts_individual=nts_individual,
+                nts_trip=nts_trip,
+                nts_stage=nts_stage,
+                nts_ticket=nts_ticket,
+            ),
             "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
                 stage=stages["regional_property_uprating"]
             ),
@@ -425,7 +501,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 engine=engine,
                 lcfs_household=lcfs_household,
                 lcfs_person=lcfs_person,
-                was_donor=was,
             ),
             "etb_vat": UKETBVATStageTransform(
                 stage=stages["etb_vat"], engine=engine, donor=etb
@@ -440,6 +515,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["spi_support_channel"],
                 sample_fraction=sample_fraction,
             ),
+            "spi_income_band_donors": UKSPIIncomeBandDonorStageTransform(
+                spi_path,
+                stage=stages["spi_income_band_donors"],
+                sample_fraction=sample_fraction,
+                donor_table=spi_donor,
+            ),
             "hmrc_spi_income_spine": UKSPIIncomeSpineStageTransform(
                 spi_path,
                 hmrc_targets_path,
@@ -449,6 +530,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 sampled_rung=True,
                 donor_table=spi_donor,
                 source_targets=income_targets,
+            ),
+            "spi_housing_shell": UKSPIHousingShellStageTransform(
+                stage=stages["spi_housing_shell"], n_estimators=qrf_estimators
             ),
             "uc_reporter_redraw": UKUCReporterRedrawStageTransform(
                 stage=stages["uc_reporter_redraw"], engine=engine
@@ -467,8 +551,16 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
                 stages["hmrc_cgt_gains_spine"],
-                cgt_distribution.source.local_path,
                 distribution=cgt_distribution,
+                parameters=cgt_parameters,
+            ),
+            "hmrc_cgt_asset_type_spine": UKCGTAssetTypeStageTransform(
+                stage=stages["hmrc_cgt_asset_type_spine"],
+                facts=cgt_asset_type_facts,
+                parameters=cgt_parameters,
+            ),
+            "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
+                stage=stages["cgt_incidence_anchor"],
                 parameters=cgt_parameters,
             ),
             "salary_sacrifice": UKSalarySacrificeStageTransform(
@@ -762,6 +854,16 @@ def _source_lineage(
     before_table = before.table(entity)
     after_table = after.table(entity)
     before_ids = pd.Index(before_table[id_column])
+    # A weights-only structural stage (the #970 incidence anchor) adds no
+    # row: every target is an incumbent, so the lineage is empty without
+    # walking the table row by row.
+    if pd.Index(after_table[id_column]).isin(before_ids).all():
+        return pd.Series(
+            [],
+            index=pd.Index([], name=id_column, dtype=before_table[id_column].dtype),
+            dtype=before_table[id_column].dtype,
+            name=id_column,
+        )
     targets: list[object] = []
     values: list[object] = []
     source_column = f"{entity}_source_id"
@@ -959,8 +1061,10 @@ def build_uk_registry(
         transform = implementations.get(stage)
         if stage in {
             "spi_support_channel",
+            "spi_income_band_donors",
             "cgt_incidence_clone",
             "cgt_band_donors",
+            "cgt_incidence_anchor",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:

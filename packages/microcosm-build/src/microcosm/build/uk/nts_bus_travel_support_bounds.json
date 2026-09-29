@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "Disclosure-safe outward-rounded NTS bus travel support bounds generated from pinned licensed donor tabs. Values are rounded outward to one significant figure; exact donor min/max values are not committed.",
+  "source": {
+    "ukds_study_number": 5340,
+    "doi": "10.5255/UKDA-SN-5340-19",
+    "household_tab_sha256": "b70252b606b13c2b7f32e6da09e202e47514f6414045a017e77deb1d2a87ceb7",
+    "individual_tab_sha256": "e8b568497f99aeced2b379d853a1254759cdcb4409acc0b9ff3ea3d95c1f5e8d",
+    "trip_tab_sha256": "878b61c9fdafcbc1a85913f3af4889913bcf73c294f0221e84b3651a404284c4",
+    "stage_tab_sha256": "4a6015ed54abc32b48e45a5af663d44a39e1147c7ff8c2e087aa29828665b64c",
+    "ticket_tab_sha256": "276a99bd30ff4aa3506d2126f6fd269db2f2d0265b5231a55aaefca9212363a0",
+    "sdc_treatment": "Exact donor min/max values are rounded outward to one significant figure before commit."
+  },
+  "bounds": {
+    "bus_in_london_trips": [
+      0.0,
+      2000
+    ],
+    "local_bus_single_fare_share": [
+      0.0,
+      1
+    ],
+    "local_bus_trips": [
+      0.0,
+      2000
+    ],
+    "local_bus_use_band": [
+      0.0,
+      6
+    ],
+    "other_local_bus_trips": [
+      0.0,
+      2000
+    ]
+  },
+  "chronicle": [
+    "Support bounds generated for NTS bus travel from source SHA pins."
+  ]
+}

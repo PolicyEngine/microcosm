@@ -12,8 +12,19 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.bus_support_pricing import (
+    PRICE_BUS_SUPPORT_KIND,
+    bus_support_pricing_operation,
+    price_bus_support,
+)
+from microcosm.build.uk_runtime.donor_uprating import (
+    apply_donor_uprating,
+    donor_uprating_factors,
+    uprating_operation,
+)
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
+    uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -85,6 +96,14 @@ UK_NHS_SPENDING_COMPONENT_COLUMNS = (
 UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS = UK_ETB_SERVICES_OUTPUT_COLUMNS
 UK_ETB_SERVICES_FIT_NAME = "uk_etb_2024_services"
 UK_ETB_SERVICES_STAGE_NAME = "etb_services"
+#: Vendored Chronicle resources the declared donor uprating may read (the vendor
+#: register lists this module as their consumer).
+UK_ETB_SERVICES_VENDORED_RESOURCES = (
+    "orr_rail_facts.json",
+    "dft_bus_value_anchors.json",
+    "devolved_bus_finance.json",
+    "dft_bus_journeys.json",
+)
 
 
 @dataclass
@@ -94,13 +113,26 @@ class UKETBServicesResult:
     frame: Frame
     support_clip: UKSupportClipReceipt
     nhs_cells: dict[str, object] = field(default_factory=dict)
+    donor_uprating: dict[str, object] | None = None
+    bus_support_pricing: dict[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_ETB_SERVICES_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
             "nhs_cells": dict(self.nhs_cells),
         }
+        if self.donor_uprating is not None:
+            evidence["donor_uprating"] = dict(self.donor_uprating)
+        if self.bus_support_pricing is not None:
+            evidence["bus_support_pricing"] = dict(self.bus_support_pricing)
+        return evidence
+
+
+#: The household-mass receipt this stage records (the manifest's
+#: ``record_mass_conservation_receipt`` operation repeats it): the terminal
+#: family gate requires exactly this reason on a valid mass-conserving record.
+UK_ETB_SERVICES_MASS_CONSERVATION_REASON = "ETB public-services imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
 
 
 @dataclass
@@ -133,21 +165,30 @@ class UKETBServicesStageTransform:
                 _require_path(self.etb_tab_path), self.stage.artifacts[0]
             )
         )
+        uprating_factors, uprating_receipt = etb_donor_uprating(self.stage)
         donor = clean_etb_services_table(
             raw,
             year=config["year"],
             weeks_in_year=config["weeks_in_year"],
+            uprating=uprating_factors,
         )
         predictors = recipient_predictors(frame, self.engine)
         draws, records = impute_etb_services(
             donor, predictors, seed=_qrf_seed(self.stage)
         )
-        clip_result = support_clip_to_donor(draws, donor)
-        draws = clip_result.clipped
-        draws["rail_usage"] = (
-            draws["rail_subsidy_spending"] / config["rail_fare_index"]
+        clip_result = support_clip_to_donor(
+            draws, donor, exempt=support_clip_exempt(self.stage)
         )
+        draws = clip_result.clipped
         household = frame.table("household").copy()
+        draws, pricing_receipt = etb_bus_support_pricing(
+            self.stage,
+            draws,
+            frame=frame,
+            household=household,
+            weights=frame.weights_for("household").values,
+        )
+        draws["rail_usage"] = draws["rail_subsidy_spending"] / config["rail_fare_index"]
         for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS:
             household[column] = draws[column].to_numpy()
         person = frame.table("person").copy()
@@ -168,7 +209,12 @@ class UKETBServicesStageTransform:
             time_period=uk_time_period(frame),
             weight_kind=uk_household_weight_kind(frame),
             household_weights=frame.weights_for("household").values,
-            mass_log=frame.mass_log,
+            mass_log=(
+                *frame.mass_log,
+                uk_household_mass_conservation_receipt(
+                    frame, UK_ETB_SERVICES_MASS_CONSERVATION_REASON
+                ),
+            ),
         )
         validate_uk_national_frame(result)
         self.last_fit_weight_records = records
@@ -176,6 +222,8 @@ class UKETBServicesStageTransform:
             frame=result,
             support_clip=clip_result.receipt,
             nhs_cells=nhs_cells,
+            donor_uprating=uprating_receipt,
+            bus_support_pricing=pricing_receipt,
         )
         return result
 
@@ -189,11 +237,33 @@ class UKETBServicesStageTransform:
         return {"evidence": self.last_result.evidence()}
 
 
+def etb_donor_uprating(
+    stage: SourceStageSpec,
+) -> tuple[dict[str, float], dict[str, object] | None]:
+    """The stage's declared donor uprating factors and receipt (none if undeclared)."""
+
+    parameters = uprating_operation(stage)
+    if parameters is None:
+        return {}, None
+    declared = {
+        str(spec.get("resource"))
+        for spec in parameters["columns"].values()
+        if spec.get("resource")
+    }
+    if declared - set(UK_ETB_SERVICES_VENDORED_RESOURCES):
+        raise ValueError(
+            "etb_services uprating may only read "
+            f"{sorted(UK_ETB_SERVICES_VENDORED_RESOURCES)}; declared {sorted(declared)}."
+        )
+    return donor_uprating_factors(parameters)
+
+
 def clean_etb_services_table(
     raw: pd.DataFrame,
     *,
     year: int | str | None = None,
     weeks_in_year: int = ETB_SERVICES_WEEKS_IN_YEAR,
+    uprating: dict[str, float] | None = None,
 ) -> pd.DataFrame:
     data = raw.replace(r"^\s*$", np.nan, regex=True).copy()
     if "year" not in data:
@@ -240,6 +310,8 @@ def clean_etb_services_table(
     train["dfe_education_spending"] = data["educ"] * weeks_in_year
     train["rail_subsidy_spending"] = data["rail"] * weeks_in_year
     train["bus_subsidy_spending"] = data["bussub"] * weeks_in_year
+    if uprating:
+        train = apply_donor_uprating(train, uprating)
     return train
 
 
@@ -255,17 +327,17 @@ def etb_services_configuration(stage: SourceStageSpec | None = None) -> dict:
     """Load service anchors and derive settings from the committed manifest."""
 
     anchors = load_etb_services_anchors()
+    denominator_key = rail_fare_index_denominator_key(stage)
     config = {
         "year": "max",
         "weeks_in_year": ETB_SERVICES_WEEKS_IN_YEAR,
-        "rail_fare_index": float(anchors["rail_fare_index_2023"]["value"]),
+        "rail_fare_index": float(anchors[denominator_key]["value"]),
+        "rail_fare_index_key": denominator_key,
         "nhs_budget": float(anchors["nhs_budget_2025_26"]["value"]),
     }
     if stage is not None:
         derive = next(
-            operation
-            for operation in stage.operations
-            if operation.kind == "derive"
+            operation for operation in stage.operations if operation.kind == "derive"
         )
         if "year" in derive.parameters:
             config["year"] = derive.parameters["year"]
@@ -274,6 +346,32 @@ def etb_services_configuration(stage: SourceStageSpec | None = None) -> dict:
         if config["year"] != "max":
             raise ValueError("ETB services must select the manifest's maximum year.")
     return config
+
+
+def rail_fare_index_denominator_key(stage: SourceStageSpec | None = None) -> str:
+    """The anchor key the declared ``compute_ratio`` divides rail support by.
+
+    The declaration is authoritative; when no stage is given the committed
+    UK manifest's ``etb_services`` stage is read, so tools and receipts that
+    recompute ``rail_usage`` use the same denominator as the build.
+    """
+
+    if stage is None:
+        from microcosm.build.country_spec import load_country_spec
+
+        spec = load_country_spec("uk")
+        assert spec.sources is not None
+        stage = spec.sources.stage_map()[UK_ETB_SERVICES_STAGE_NAME]
+    for operation in stage.operations:
+        if operation.kind == "compute_ratio" and (
+            operation.parameters.get("output") == "rail_usage"
+        ):
+            key = operation.parameters.get("denominator_key")
+            if isinstance(key, str) and key:
+                return key
+    raise ValueError(
+        "etb_services declares no compute_ratio for rail_usage with a denominator_key."
+    )
 
 
 def household_grain_services_predictors(person_level: pd.DataFrame) -> pd.DataFrame:
@@ -352,19 +450,77 @@ def impute_etb_services(
 
 
 def support_clip_to_donor(
-    draws: pd.DataFrame, donor: pd.DataFrame
+    draws: pd.DataFrame, donor: pd.DataFrame, *, exempt: set[str] | None = None
 ) -> UKSupportClipResult:
     return support_clip_to_donor_with_receipt(
         draws,
         donor,
         columns=UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3],
         stage=UK_ETB_SERVICES_STAGE_NAME,
+        exempt=exempt,
     )
 
 
+def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
+    """Columns the declared ``support_clip`` exempts (none since microcosm#930)."""
+
+    for operation in stage.operations:
+        if operation.kind == "support_clip":
+            declared = operation.parameters.get("exempt")
+            if declared:
+                return {str(column) for column in declared}
+    return set()
+
+
+def etb_bus_support_pricing(
+    stage: SourceStageSpec,
+    draws: pd.DataFrame,
+    *,
+    frame: Frame,
+    household: pd.DataFrame,
+    weights: np.ndarray,
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Price bus support from the frame's journeys where declared (microcosm#930).
+
+    The chain's clipped raw draw stands in the declared ``raw_draw_regions``
+    (Wales, Northern Ireland); every other household's ``bus_subsidy_spending``
+    is the published support per boarding times its persons' boardings. The
+    chain drew the column last, so nothing downstream conditioned on it.
+    """
+
+    parameters = bus_support_pricing_operation(stage)
+    if parameters is None:
+        return draws, None
+    column = str(parameters["support_column"])
+    if column not in draws:
+        raise KeyError(
+            f"{PRICE_BUS_SUPPORT_KIND} names {column!r}, not a drawn column."
+        )
+    values, _priced, receipt = price_bus_support(
+        parameters,
+        person=frame.table("person"),
+        household=household,
+        household_weights=np.asarray(weights, dtype=float),
+        raw_support=draws[column].to_numpy(dtype=float),
+        allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
+    priced = draws.copy()
+    priced[column] = values
+    return priced, receipt
+
+
+#: The declared pricing sets bus support from journeys; the committed support
+#: bounds leave the column alone (the clip still bounds the raw draw first).
+UK_ETB_SERVICES_PRICED_COLUMNS = frozenset({"bus_subsidy_spending"})
+
+
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """Donor support per clipped column; the priced column carries no bounds."""
+
     ranges = {}
     for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]:
+        if column in UK_ETB_SERVICES_PRICED_COLUMNS:
+            continue
         values = donor[column]
         finite = values[np.isfinite(values)]
         if not finite.empty:
@@ -473,9 +629,7 @@ def allocate_nhs_by_age_gender(
     household = household.assign(
         household_weight=np.asarray(household_weights, dtype=float)
     )
-    cells = build_nhs_cell_table(
-        nhs_table, person, household, nhs_budget=nhs_budget
-    )
+    cells = build_nhs_cell_table(nhs_table, person, household, nhs_budget=nhs_budget)
     output = pd.DataFrame(0.0, index=person.index, columns=UK_NHS_OUTPUT_COLUMNS)
     service_to_columns = {
         "A&E": ("a_and_e_visits", "nhs_a_and_e_spending"),

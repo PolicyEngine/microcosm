@@ -133,6 +133,20 @@ _CONCEPTS: dict[str, tuple[str, ...]] = {
         "hours_worked_last_week",
         "weeks_worked_last_year",
     ),
+    # Under policyengine-us >= 2.0.0 ``spm_unit_net_income`` requires SPM
+    # geography: it adds spm_unit_benefits, which adds
+    # spm_unit_capped_housing_subsidy, which consults the calculator's housing
+    # portion for housing-assisted units and raises
+    # SPMInputError(SPM_GEOGRAPHY_REQUIRED) without a five-digit string county.
+    # The concept is inert today (it appears only in an F-P waiver's missing
+    # set, never in a predictor block), but lifting that waiver requires either
+    # materializing the predictor after ``block_ladder_assignment`` -- where
+    # county_fips first exists -- or constructing the imputation-stage engine
+    # with ``spm={"geography_kind": "national"}`` through
+    # ``PolicyEngineUSEngine(spm=...)``.  ``household_net_income`` is the
+    # SPM-free candidate under 2.2.1 (measured: it computes without a county
+    # even for a housing-assisted unit), but it is Household-entity while
+    # ``spm_unit_size`` is SPMUnit, so substituting it is not a free swap.
     "household_income_eligibility": (
         "spm_unit_net_income",
         "spm_unit_size",

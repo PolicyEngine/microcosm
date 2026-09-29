@@ -11,7 +11,7 @@ import os
 import platform
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
@@ -44,8 +44,16 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     write_error_receipt,
 )
+from microcosm.build.staging_v2 import validate_staging_delivery
 from microcosm.build.target_materialization import assert_calibration_input_finite
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+from microcosm.build.uk_runtime.cgt_projection import (
+    UK_CGT_PROJECTION_ARTIFACT_KEY,
+    UKCGTProjection,
+    uk_cgt_projection,
+    uk_cgt_projection_from_pins,
+    uk_engine_installed,
+)
 from microcosm.build.uk_runtime.diagnostics import (
     uk_target_geography_levels,
     write_uk_calibration_diagnostics,
@@ -57,16 +65,26 @@ from microcosm.build.uk_runtime.national_calibration import UKNationalCalibratio
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     uk_household_weight_kind,
+    uk_time_period,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.target_support import (
+    write_uk_target_support_sidecars,
+)
 from microcosm.calibrate import TargetRegistry
+from microcosm.diagnostics import DiagnosticsWriteFailure
 from microcosm.frame import Frame
 
 _REPOSITORY = Path(__file__).resolve().parents[6]
 # The FRS line's spine, staging, imputation and calibration stages share one
 # hash chain (logbook/README.md): the dataset token names the base data, not
 # the build mechanism, so calibration derives the ratified `uk/frs` scope.
-_PIPELINE = "uk-frs-calibration"
+#: The national calibration seam's Logbook pipeline and attempt-id prefix;
+#: the rowwise driver's national release role mints ids with them
+#: (microcosm#823) so a run built either way reads as one pipeline.
+UK_CALIBRATION_PIPELINE = "uk-frs-calibration"
+UK_CALIBRATION_ATTEMPT_ID_PREFIX = "uk-frs-calibration-attempt-"
+_PIPELINE = UK_CALIBRATION_PIPELINE
 
 
 @dataclass(frozen=True)
@@ -92,6 +110,10 @@ class UKCalibrationRunResult:
 
 UK_CALIBRATION_GATE_SCOPE = (
     "uk_target_fit",
+    # The projection fence over sub-exempt gainers is a property of the
+    # calibrated frame under the engine's uprating; the seam owns it and the
+    # release cut inherits the seam's verdict (microcosm#970).
+    "uk_cgt_projection_entrants",
     "uk_weight_ratio",
     "uk_weight_ess",
     "uk_zero_weight_strata",
@@ -110,19 +132,35 @@ UK_LOCAL_GATE_SCOPE = (
 
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
+    "uk_stage_nts_bus_travel_support",
+    "uk_stage_nts_bus_travel_facts",
     "uk_stage_uc_deduction_attributes",
     "uk_stage_lcfs_consumption_support",
+    "uk_stage_lcfs_consumption_energy_rake",
+    "uk_stage_lcfs_consumption_bus_pricing",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
+    "uk_stage_etb_services_support_pricing",
     "uk_stage_frs_hmrc_spine_leaves_signal",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
     "uk_stage_cgt_incidence_clone_mass",
     "uk_stage_cgt_band_donors_support",
+    "uk_stage_spi_income_band_donors_support",
     "uk_stage_hmrc_cgt_gains_spine_summary",
+    "uk_stage_hmrc_cgt_asset_type_spine_summary",
+    "uk_stage_cgt_incidence_anchor_composition",
     "uk_stage_salary_sacrifice_realization",
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
+    "uk_stage_frs_relationships_composition",
+    # Weight-independent like the BRMA enum below, and its column exists from
+    # frs_relationships onward (#791).
+    "uk_ons_household_type_enum_domain",
+    # Weight-independent; the column exists only from hmrc_cgt_asset_type_spine
+    # onward, so it is checked at the transferred boundary, and its domain is
+    # declared by the stage module (microcosm#725).
+    "uk_capital_gains_asset_type_enum_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
     # spine checks it at the assembled boundary instead of the release end.
     "uk_brma_enum_domain",
@@ -261,11 +299,34 @@ def run_uk_calibration(
     run_config_extra: Mapping[str, object],
     release_id: str,
     logbook_prev_row_digest: str | None = None,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    event_callback: (Callable[[str, str, Mapping[str, object]], None] | None) = None,
+    staging_delivery: Mapping[str, object] | None = None,
+    staging_finalizer: Callable[[], None] | None = None,
+    staging_delivery_provider: Callable[[], Mapping[str, object]] | None = None,
+    build_id: str | None = None,
 ) -> UKCalibrationRunResult:
-    """Run the UK national calibration seam and write its sidecars."""
+    """Run the UK national calibration seam and write its sidecars.
+
+    ``build_id`` lets a caller that opened staging telemetry before the run
+    (the rowwise driver's national role) mint the attempt id first, so the
+    telemetry run id and the Logbook row agree; it must carry the seam's
+    attempt prefix. Omitted, the seam mints one.
+    """
 
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
+    if build_id is None:
+        build_id = new_uk_calibration_attempt_id(timestamp=started_ts)
+    elif not (
+        isinstance(build_id, str)
+        and build_id.startswith(UK_CALIBRATION_ATTEMPT_ID_PREFIX)
+        and len(build_id) > len(UK_CALIBRATION_ATTEMPT_ID_PREFIX)
+    ):
+        raise ValueError(
+            "a caller-minted calibration attempt id must start with "
+            f"{UK_CALIBRATION_ATTEMPT_ID_PREFIX!r}, got {build_id!r}."
+        )
     # Pure-argument validation precedes every environment probe: an
     # incoherent register/receipt/band-edge triple must refuse identically
     # whether or not a git checkout or Logbook chain is reachable.
@@ -274,6 +335,10 @@ def run_uk_calibration(
         band_edge_registry=band_edge_registry,
         exclusion_receipt=exclusion_receipt,
     )
+    if (staging_finalizer is None) != (staging_delivery_provider is None):
+        raise ValueError(
+            "staging_finalizer and staging_delivery_provider must be supplied together."
+        )
     edge_registry = band_edge_registry
     code_pin = git_code_pin(_REPOSITORY)
     # Predecessor configuration is validated before anything is written: a
@@ -298,7 +363,7 @@ def run_uk_calibration(
     state = AttemptState(
         # Attempts are distinct rows even when they re-run one release: both
         # the local chain and the store refuse a repeated build id.
-        build_id=_new_calibration_attempt_id(timestamp=started_ts),
+        build_id=build_id,
         identity_digest=hashlib.sha256(canonical_json_bytes(run_config)).hexdigest(),
         input_pins_digest=role_pins_digest(source_pins),
         phases_reached=["attempt_started"],
@@ -326,6 +391,11 @@ def run_uk_calibration(
             started_ts=started_ts,
             predecessor=predecessor,
             spool_dir=spool_dir,
+            progress_callback=progress_callback,
+            event_callback=event_callback,
+            staging_delivery=staging_delivery,
+            staging_finalizer=staging_finalizer,
+            staging_delivery_provider=staging_delivery_provider,
         )
     except BaseException as error:
         # Every terminal disposition records a row — successful, failed, or
@@ -345,12 +415,17 @@ def run_uk_calibration(
         raise
 
 
-def _new_calibration_attempt_id(*, timestamp: datetime) -> str:
+def new_uk_calibration_attempt_id(*, timestamp: datetime) -> str:
+    """Mint a calibration attempt id: the seam prefix, the instant, eight hex."""
+
     instant = timestamp.astimezone(UTC)
     return (
-        "uk-frs-calibration-attempt-"
+        f"{UK_CALIBRATION_ATTEMPT_ID_PREFIX}"
         f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     )
+
+
+_new_calibration_attempt_id = new_uk_calibration_attempt_id
 
 
 def _validate_band_edge_registry(
@@ -454,7 +529,13 @@ def _run_uk_calibration_attempt(
     started_ts: datetime,
     predecessor: str | None,
     spool_dir: Path,
+    progress_callback: Callable[[dict[str, object]], None] | None,
+    event_callback: Callable[[str, str, Mapping[str, object]], None] | None,
+    staging_delivery: Mapping[str, object] | None,
+    staging_finalizer: Callable[[], None] | None,
+    staging_delivery_provider: Callable[[], Mapping[str, object]] | None,
 ) -> UKCalibrationRunResult:
+    _notify_run_event(event_callback, "input_loading", "started")
     measured_input_sha = _sha256_file(paths.input_h5)
     if measured_input_sha != input_sha256:
         raise ValueError(
@@ -469,6 +550,14 @@ def _run_uk_calibration_attempt(
     append_phase(state, "input_sidecar_bound")
     assert_calibration_input_finite(frame)
     append_phase(state, "input_finite")
+    _notify_run_event(
+        event_callback,
+        "input_loading",
+        "completed",
+        entity_row_counts={
+            entity: int(len(frame.table(entity))) for entity in frame.entities
+        },
+    )
 
     stage = UKNationalCalibrationStage(
         register_registry,
@@ -479,9 +568,21 @@ def _run_uk_calibration_attempt(
         doctrine=doctrine,
         measure_resolver=measure_resolver,
         band_edge_registry=band_edge_registry,
+        progress_callback=progress_callback,
+        stage_callback=event_callback,
     )
+    _notify_run_event(event_callback, "calibration", "started")
     calibrated = stage(frame)
     append_phase(state, "national_calibration_solved")
+    _notify_run_event(
+        event_callback,
+        "calibration",
+        "completed",
+        target_count=len(stage.registry.specs),
+        entity_row_counts={
+            entity: int(len(calibrated.table(entity))) for entity in calibrated.entities
+        },
+    )
 
     build_block = {
         "build_id": state.build_id,
@@ -512,7 +613,8 @@ def _run_uk_calibration_attempt(
         ),
         "score_vs_enhanced_frs": None,
     }
-    write_uk_calibration_diagnostics(
+    _notify_run_event(event_callback, "diagnostics", "started")
+    diagnostics_outcome = write_uk_calibration_diagnostics(
         stage.solve_result,
         paths.diagnostics_json,
         calibrated,
@@ -520,9 +622,40 @@ def _run_uk_calibration_attempt(
         target_registry=stage.registry,
         build=build_block,
     )
-    diagnostics_sha = _sha256_file(paths.diagnostics_json)
+    if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):
+        raise RuntimeError(
+            "UK release validation requires calibration diagnostics, but their "
+            f"canonical write failed [{diagnostics_outcome.error_code}]: "
+            f"{diagnostics_outcome.message}"
+        )
+    diagnostics_sha = diagnostics_outcome.sha256
     append_phase(state, "diagnostics_written")
+    _notify_run_event(
+        event_callback,
+        "diagnostics",
+        "completed",
+        target_count=len(stage.diagnostics),
+    )
 
+    # The solve's compiled system and both weight vectors are written beside
+    # the diagnostics before the terminal battery runs, so an attempt the
+    # battery blocks still leaves the per-target weight-stretch anatomy
+    # readable (tools/diagnose_uk_target_support.py; microcosm#930, the
+    # #890 acceptance line). Non-release sidecars: the staging H5 posture is
+    # unchanged, nothing here is a shippable artifact.
+    _notify_run_event(event_callback, "target_support_sidecars", "started")
+    sidecars = write_uk_target_support_sidecars(
+        stage.solve_result, paths.diagnostics_json.parent
+    )
+    append_phase(state, "target_support_sidecars_written")
+    _notify_run_event(
+        event_callback,
+        "target_support_sidecars",
+        "completed",
+        files=sorted(str(path.name) for path in sidecars.values()),
+    )
+
+    _notify_run_event(event_callback, "release_check_evaluation", "started")
     gate_report = _run_calibration_gate_battery(
         calibrated,
         stage,
@@ -531,16 +664,30 @@ def _run_uk_calibration_attempt(
         diagnostics_sha256=diagnostics_sha,
     )
     append_phase(state, "calibration_gates_evaluated")
+    _notify_run_event(
+        event_callback,
+        "release_check_evaluation",
+        "completed",
+        check_count=len(gate_report["gates"]),
+    )
     for gate_id, payload in gate_report["gates"].items():
         state.gate_verdicts[gate_id] = {
             "verdict": payload["status"],
             "receipt": f"local://{paths.terminal_gate_json.name}#/gates/{gate_id}",
         }
 
+    _notify_run_event(event_callback, "candidate_h5_creation", "started")
     write_uk_national_frame(calibrated, paths.staging_h5)
     staging_sha = _sha256_file(paths.staging_h5)
     append_phase(state, "staging_h5_written")
+    _notify_run_event(
+        event_callback,
+        "candidate_h5_creation",
+        "completed",
+        size_bytes=paths.staging_h5.stat().st_size,
+    )
 
+    _notify_run_event(event_callback, "build_record_creation", "started")
     record = {
         "schema_version": 1,
         "pipeline": _PIPELINE,
@@ -574,12 +721,30 @@ def _run_uk_calibration_attempt(
             },
         },
     }
+    if staging_delivery is not None:
+        record["staging_delivery"] = validate_staging_delivery(staging_delivery)
     _write_json(paths.build_record_json, record)
     build_record_sha = _sha256_file(paths.build_record_json)
     append_phase(state, "build_record_written")
+    _notify_run_event(
+        event_callback,
+        "build_record_creation",
+        "completed",
+        size_bytes=paths.build_record_json.stat().st_size,
+    )
     state.artifact_location = local_artifact_reference(
         paths.staging_h5, repository_hint=_REPOSITORY
     )
+    if staging_finalizer is not None:
+        assert staging_delivery_provider is not None
+        try:
+            staging_finalizer()
+        finally:
+            record["staging_delivery"] = validate_staging_delivery(
+                staging_delivery_provider()
+            )
+            _write_json(paths.build_record_json, record)
+            build_record_sha = _sha256_file(paths.build_record_json)
     spool = record_terminal_attempt(
         state=state,
         started_at=started_at,
@@ -604,6 +769,16 @@ def _run_uk_calibration_attempt(
     )
 
 
+def _notify_run_event(
+    callback: Callable[[str, str, Mapping[str, object]], None] | None,
+    stage_id: str,
+    status: str,
+    **details: object,
+) -> None:
+    if callback is not None:
+        callback(stage_id, status, details)
+
+
 def _run_calibration_gate_battery(
     frame: Frame,
     stage: UKNationalCalibrationStage,
@@ -614,6 +789,7 @@ def _run_calibration_gate_battery(
 ) -> dict[str, object]:
     manifest = _calibration_gate_manifest()
     admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
+    projection = uk_cgt_projection_artifact(frame, manifest)
     artifacts = {
         "national_calibration": stage.manifest,
         "parity_evidence": SimpleNamespace(
@@ -623,6 +799,7 @@ def _run_calibration_gate_battery(
             }
         ),
         "aggregate_admin": admin_totals,
+        UK_CGT_PROJECTION_ARTIFACT_KEY: projection,
         # The target-fit deferral register is evaluated against the run
         # clock (schema-2 approval windows); the seam supplies today's date
         # exactly as the rowwise candidate build supplies its start date.
@@ -830,6 +1007,61 @@ def uk_scoped_gate_manifest(
 UK_DERIVED_ADMIN_ANCHOR_MEASURES: Mapping[str, tuple[str, ...]] = {
     "nhs_spending": UK_NHS_SPENDING_COMPONENT_COLUMNS,
 }
+
+
+def uk_cgt_projection_artifact(
+    frame: Frame, manifest: GatesManifest
+) -> UKCGTProjection:
+    """Read the projection the declared entrants fence needs, fail-loud.
+
+    The declared entry names the horizon and the two parameter paths; the
+    base year is the calibrated frame's period. Reading from the installed
+    engine keeps the receipt reproducible from the parameter tree alone;
+    without an engine (a data-only build, the secrets-free fast lane) the
+    entry's pinned path is used and the receipt names that source. Either
+    way the binding drift-checks the projection against the pins; the pins
+    label satisfies the gate but the release certifier refuses a seam part
+    that carries it, so an engine-free seam evaluates the fence and never
+    certifies a cut. Availability is decided by ``find_spec``: an engine that
+    is installed but fails to import raises here instead of being mislabelled
+    unavailable.
+    """
+
+    for entry in manifest.gates:
+        if entry.id == "uk_cgt_projection_entrants":
+            parameters = entry.parameters
+            break
+    else:
+        raise ValueError(
+            "The calibration seam declares no uk_cgt_projection_entrants entry; "
+            "refusing to fabricate a projection."
+        )
+    base_year = int(uk_time_period(frame))
+    horizon_year = int(parameters["horizon_year"])
+    growth_parameter = str(parameters["gains_growth_parameter"])
+    exempt_amount_parameter = str(parameters["exempt_amount_parameter"])
+    if not uk_engine_installed():
+        # No engine in this environment (a data-only build, the secrets-free
+        # fast lane): the pins are the reviewed statement of the engine's
+        # path and the receipt names that source. The release certifier
+        # refuses a seam part whose fence carries that label, so this branch
+        # evaluates the gate but can never certify a cut.
+        return uk_cgt_projection_from_pins(
+            base_year,
+            horizon_year,
+            growth_by_year=parameters["expected_yoy_growth_by_year"],
+            exempt_amount_by_year=parameters["expected_exempt_amount_by_year"],
+            growth_parameter=growth_parameter,
+            exempt_amount_parameter=exempt_amount_parameter,
+        )
+    # An installed engine is read; one that is installed but fails to import
+    # raises here rather than being mislabelled unavailable.
+    return uk_cgt_projection(
+        base_year,
+        horizon_year,
+        growth_parameter=growth_parameter,
+        exempt_amount_parameter=exempt_amount_parameter,
+    )
 
 
 def uk_aggregate_admin_totals(

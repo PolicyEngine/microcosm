@@ -1,0 +1,1 @@
+Bind the DWP Universal Credit element counts (LCWRA, carer, housing by tenure, childcare, deductions) on paid claims and an OBR total-UC-expenditure row, with the carer and childcare rows held on the reviewed exclusion register until their model gaps are repaired (#882).

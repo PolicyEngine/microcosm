@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from microcosm.calibrate.hierarchy import CalibrationHierarchy
 from microcosm.frame import Frame
 
 __all__ = ["Target", "TargetSet"]
@@ -82,6 +83,7 @@ class Target:
     filter: str | MeasureFn | None = None
     source: str = ""
     metadata: Mapping[str, str] = field(default_factory=dict)
+    hierarchy: CalibrationHierarchy | None = None
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -122,6 +124,18 @@ class Target:
                 f"non-empty strings; bad keys {bad_metadata}."
             )
         object.__setattr__(self, "metadata", metadata)
+        if self.hierarchy is not None and not isinstance(
+            self.hierarchy, CalibrationHierarchy
+        ):
+            raise TypeError(
+                f"Target {self.name!r}: hierarchy must be a "
+                "CalibrationHierarchy or None."
+            )
+        if self.hierarchy is not None and self.hierarchy.target.id != self.name:
+            raise ValueError(
+                f"Target {self.name!r}: hierarchy target id "
+                f"{self.hierarchy.target.id!r} must equal the target name."
+            )
 
     @property
     def key(self) -> tuple[str, int | str]:

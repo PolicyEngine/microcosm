@@ -1,0 +1,1 @@
+Add `--baseline-pi-floor` to the UK rowwise candidate build: the size refit's Horvitz-Thompson stretch reference divides by max(π, floor), so a handful of near-zero-probability boundary draws no longer hold most of the refit mass; candidate-only, recorded in the size receipt, default 0 keeps the old behaviour (#355).

@@ -14,10 +14,6 @@
       0.0,
       20000
     ],
-    "bus_fare_spending": [
-      0.0,
-      9000
-    ],
     "clothing_and_footwear_consumption": [
       0.0,
       40000
@@ -64,7 +60,7 @@
     ],
     "restaurants_and_hotels_consumption": [
       0.0,
-      60000
+      70000
     ],
     "transport_consumption": [
       0.0,

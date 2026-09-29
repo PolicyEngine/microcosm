@@ -122,7 +122,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -138,7 +139,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -154,7 +156,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -170,7 +173,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -186,7 +190,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -202,7 +207,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -218,7 +224,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -234,7 +241,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.student_loan_interest_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -251,7 +259,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -268,7 +277,8 @@
       },
       "name": "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     },
     {
       "entity": "household",
@@ -285,7 +295,35 @@
       },
       "name": "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss",
       "period": 2024,
-      "value_operation": "identity"
+      "value_operation": "identity",
+      "category_id": "jct.individual_tax_expenditure_revenue_loss"
     }
-  ]
+  ],
+  "schema_version": 2,
+  "hierarchy": {
+    "providers": {
+      "jct": {
+        "label": "Joint Committee on Taxation"
+      }
+    },
+    "categories": {
+      "jct.individual_tax_expenditure_revenue_loss": {
+        "provider_id": "jct",
+        "label": "Individual tax expenditure revenue loss"
+      }
+    },
+    "target_labels": {
+      "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss": "State and local tax deduction revenue loss",
+      "jct.tax_expenditures.cy2024.medical_expense_deduction.revenue_loss": "Medical expense deduction revenue loss",
+      "jct.tax_expenditures.cy2024.charitable_deduction.revenue_loss": "Charitable deduction revenue loss",
+      "jct.tax_expenditures.cy2024.deductible_mortgage_interest.revenue_loss": "Mortgage interest deduction revenue loss",
+      "jct.tax_expenditures.cy2024.qualified_business_income_deduction.revenue_loss": "Qualified business income deduction revenue loss",
+      "jct.tax_expenditures.cy2024.self_employed_health_insurance_deduction.revenue_loss": "Self-employed health insurance deduction revenue loss",
+      "jct.tax_expenditures.cy2024.health_savings_account_deduction.revenue_loss": "Health savings account deduction revenue loss",
+      "jct.tax_expenditures.cy2024.student_loan_interest_deduction.revenue_loss": "Student loan interest deduction revenue loss",
+      "jct.tax_expenditures.cy2024.self_employed_pension_contribution_deduction.revenue_loss": "Self-employed pension contribution deduction revenue loss",
+      "jct.tax_expenditures.cy2024.traditional_ira_deduction.revenue_loss": "Traditional IRA deduction revenue loss",
+      "jct.tax_expenditures.cy2024.cdcc_and_employer_child_care_exclusion.revenue_loss": "Child and dependent care credit and employer child care exclusion revenue loss"
+    }
+  }
 }

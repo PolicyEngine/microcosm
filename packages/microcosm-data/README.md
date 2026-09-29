@@ -23,8 +23,9 @@ sim.calculate("household_net_income", 2024).sum()
 `latest.json`, reads the selected release manifest at the immutable release
 tag, verifies the artifact SHA-256, and refuses model or Core versions outside
 the release's certified compatibility specifiers. `available()` lists
-published `(country, year)` pairs; `available_variants()` lists every published
-`(country, year, variant)`.
+the default-variant `(country, year)` pairs (the ones a bare ``load(country, year)``
+resolves); `available_variants()` lists every published
+`(country, year, variant)`, non-default lines included.
 
 The old mutable-root behavior is available only as an unsafe escape hatch:
 `load("us", 2024, unverified_root=True)`. It emits a runtime warning because it
@@ -68,12 +69,22 @@ benchmark comparisons live outside this package.
 ## Release contract
 
 Published releases live under `releases/<release_id>/` in the Hub dataset repo.
-Each release must include `build_manifest.json`, `release_manifest.json`, and
-`calibration_diagnostics.json`; US releases must also include
-`us_source_coverage.json`. The release manifest records the build environment
+Each release must include `build_manifest.json` and `release_manifest.json`;
+US releases must also include `us_source_coverage.json`. A current release
+manifest contains a typed `calibration_diagnostics` status. `available` binds a
+schema-8 `calibration_diagnostics.json` file and its SHA-256. `failed` records
+the expected schema, error code, and sanitized message and deliberately omits
+the file and artifact entry. Publication logs a warning but continues, because
+the diagnostics document reports a completed calibration and is not an input
+to the dataset itself. Historical manifests without the status retain the old
+required-file behavior. The release manifest records the build environment
 under `build.built_with_*_package` and separately records certified runtime
 compatibility through `compatible_model_packages` and `compatible_core_packages`
-using PEP 440 specifiers.
+using PEP 440 specifiers. By default those entries pin exactly the versions the
+build measured. A model entry the publisher deliberately widened
+instead carries `"basis": "publisher_claim"` and a `declared_by` naming who is
+accountable for the claim; the loader honours any specifier that contains the
+built version, whichever way the entry was produced.
 
 Use `latest.json` to discover the current release and its contract file paths;
 use the release id/tag in artifact revisions when loading an immutable release.

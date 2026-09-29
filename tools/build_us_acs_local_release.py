@@ -14,7 +14,9 @@ package; each is separately resumable):
                 Ledger feed exactly like the production path
                 (``compile_us_fiscal_target_registry`` -> RI Medicaid
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
-                irs_soi}), run the household-chunked engine pass under the
+                irs_soi}; ``--soi-mode state`` by default -- Build O's
+                state-geography SOI contract -- with ``totals`` and ``full``
+                as explicit opt-ins), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
                 reviewed-null fill), add PUMA-ladder population marginals
                 (state + congressional district), and write a lean float32
@@ -33,7 +35,10 @@ package; each is separately resumable):
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
                 sub-PUMA coverage), and flip the summary simulation-ready.
-  package     : assemble releases/<id>/ with the non-default local-area
+  package     : refuse a calibrated H5 that stores a model input the
+                installed policyengine-us does not define (microcosm#1026;
+                ``microcosm.data.stored_inputs``), then
+                assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
                 one-command refresh recipe) + sha256sums. Publication stays
@@ -60,6 +65,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+
 _TOOLS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TOOLS_DIR.parent
 if str(_TOOLS_DIR) not in sys.path:
@@ -81,6 +88,62 @@ LEGACY_STAGING_REFRESH_RECIPE = (
     "--inputs-dir <acs-archive-cache> "
     "--puma-ladder build/us/us_puma_ladder_2020.npz"
 )
+
+#: ``--soi-mode`` values for the state-level ``irs_soi`` surface.
+#:
+#: ``state`` (the default; Max's ruling of 2026-09-22) is the SOI contract every
+#: earlier ACS local-area release was calibrated to, Build O's and Build P's:
+#: every ``irs_soi`` spec at state geography whose Ledger record set is not a
+#: congressional-district file -- on the pinned feed, the three TY2022 Historic
+#: Table 2 state tables (broad totals, AGI bands, EITC by qualifying
+#: children). Build O selected it as ``full`` with congressional-district
+#: targets switched off (``include_congressional_district_targets=False`` at
+#: populace@77e2061); commit b7922b089 removed that switch, so no mode
+#: reproduced it until this one.
+#:
+#: ``totals`` keeps only the specs whose ``target_role`` is not
+#: ``soi_fiscal_distribution`` -- on the pinned feed, ACA premium tax credit
+#: rows and no state AGI, income-tax or EITC total. ``full`` keeps every
+#: state-bearing spec, including the TY2023 congressional-district file, which
+#: needs a dense matrix too large for one 128 GB machine. Both are explicit
+#: opt-ins. docs/us-acs-local-soi-target-surface.md has the measured surfaces.
+SOI_MODE_STATE = "state"
+SOI_MODE_TOTALS = "totals"
+SOI_MODE_FULL = "full"
+SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL)
+DEFAULT_SOI_MODE = SOI_MODE_STATE
+#: Ledger record-set specs from a congressional-district file start with this;
+#: ``state`` mode excludes them, which is what Build O's switch did.
+CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
+
+
+def _require_soi_mode(soi_mode: str) -> str:
+    if soi_mode not in SOI_MODES:
+        raise ValueError(
+            f"soi_mode must be one of {SOI_MODES}, got {soi_mode!r}; an "
+            "unrecognised mode must never fall through to either surface."
+        )
+    return soi_mode
+
+
+def release_refresh_recipe(soi_mode: str) -> str:
+    """The one-command release refresh, pinned to the SOI surface it built.
+
+    The recipe names ``--soi-mode`` explicitly so re-running it reproduces
+    the recorded surface even if the parser default changes again.
+    """
+
+    _require_soi_mode(soi_mode)
+    return (
+        "uv run tools/build_us_acs_local_release.py --stage all "
+        "--staging-h5 <run>/acs_multispine_staging.h5 "
+        "--feed <ledger-facts.jsonl> --feed-sha256 <sha> "
+        f"--soi-mode {soi_mode} "
+        "--ladder build/us/us_puma_ladder_2020.npz "
+        "--checkpoint-dir <run>/checkpoints "
+        "--out-h5 <run>/populace_us_2024_acs_local.h5 "
+        "--out <run>/release"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -135,15 +198,62 @@ def _load_json(path: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "full"):
+def soi_surface_predicate(soi_mode: str):
+    """The ``irs_soi`` spec filter for one ``--soi-mode``.
+
+    Every mode keeps only specs carrying ``state_fips`` (state rows, and the
+    congressional-district rows that also carry their state).
+
+    - ``state`` then keeps a spec only at ``ledger_geography_level ==
+      "state"`` whose ``ledger_layout_record_set_spec_id`` is not a
+      congressional-district file, of any ``target_role`` (AGI-band rows
+      included). A spec missing either key is not selected: the mode cannot
+      tell which contract it belongs to.
+    - ``totals`` drops every ``soi_fiscal_distribution`` spec (the
+      jetsam-safe Option B of the Build L runbook). That role is not only
+      AGI-band slices: every SOI fact without a named role gets it, which at
+      state level includes the all-income-range state and district rows.
+    - ``full`` keeps them all.
+    """
+
+    _require_soi_mode(soi_mode)
+
+    def selected(spec) -> bool:
+        metadata = spec.metadata
+        if "state_fips" not in metadata:
+            return False
+        if soi_mode == SOI_MODE_STATE:
+            record_set_spec = metadata.get("ledger_layout_record_set_spec_id")
+            return (
+                metadata.get("ledger_geography_level") == "state"
+                and isinstance(record_set_spec, str)
+                and bool(record_set_spec)
+                and not record_set_spec.startswith(
+                    CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX
+                )
+            )
+        return (
+            soi_mode == SOI_MODE_FULL
+            or metadata.get("target_role") != "soi_fiscal_distribution"
+        )
+
+    return selected
+
+
+def state_admin_specs(
+    feed: str | Path, families: list[str], soi_mode: str = DEFAULT_SOI_MODE
+):
     """Select the state-level admin surface from the production compile path.
 
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
-    {usda_snap, cms_medicaid[enrollment], irs_soi}. ``soi_mode='totals'``
-    drops the ``soi_fiscal_distribution`` AGI-band slices (the jetsam-safe
-    Option B of the Build L runbook); ``'full'`` keeps them.
+    {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
+    :func:`soi_surface_predicate`: ``state`` (the default), ``totals`` or
+    ``full``.
     """
+
+    # Refuse an unknown mode before loading the feed and compiling the registry.
+    _require_soi_mode(soi_mode)
 
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
     from microcosm.build.us_runtime import (
@@ -186,17 +296,9 @@ def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "fu
             ),
         ).specs
     if "soi" in families:
-        soi_predicate = (
-            state_level
-            if soi_mode == "full"
-            else (
-                lambda spec: (
-                    state_level(spec)
-                    and spec.metadata.get("target_role") != "soi_fiscal_distribution"
-                )
-            )
-        )
-        picked += registry.select(family="irs_soi", predicate=soi_predicate).specs
+        picked += registry.select(
+            family="irs_soi", predicate=soi_surface_predicate(soi_mode)
+        ).specs
     return TargetRegistry(list(picked), country="us"), ri_substitutions
 
 
@@ -464,13 +566,19 @@ def materialize_chunked(
     matrix = None
     chunk_stats = []
     n_chunks = (n_households + hh_chunk - 1) // hh_chunk
+    if n_chunks > 1:
+        release_tool._assert_group_entities_nest_in_households(projected)
+        release_tool._assert_medicaid_claiming_tax_units_local(projected)
     for chunk_index, low in enumerate(range(0, n_households, hh_chunk)):
         high = min(low + hh_chunk, n_households)
         started = time.time()
         mask = (person_position >= low) & (person_position < high)
         sub_frame = projected.select(mask)
         target_frame, compiled_registry, _ = release_tool._materialize_target_frame(
-            sub_frame, tuple(specs), maximum_microsim_batch_size=batch
+            sub_frame,
+            tuple(specs),
+            maximum_microsim_batch_size=batch,
+            refuse_population_aggregates=True if n_chunks > 1 else None,
         )
         names = [spec.measure for spec in compiled_registry.specs]
         if measure_names is None:
@@ -596,6 +704,65 @@ def population_measure_arrays(frame, ladder_populations, geographies: list[str])
     return names, arrays, values, dropped
 
 
+def population_target_specs(names, values):
+    """Declare ladder population targets with the shared diagnostics hierarchy."""
+
+    from microcosm.calibrate import TargetSpec
+    from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+    from microcosm.calibrate.hierarchy import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+    )
+
+    provider = HierarchyNode("census_population", "Census population")
+    category = HierarchyCategory(
+        "census_population.resident_population",
+        "Resident population",
+        provider.id,
+    )
+    specs = []
+    for name, value in zip(names, values, strict=True):
+        if name.startswith("pop_state_"):
+            fips = name.removeprefix("pop_state_")
+            label = US_STATE_FIPS_TO_POSTAL.get(fips, f"State {fips}")
+            geography = HierarchyGeography(f"0400000US{fips}", label, "state")
+        elif name.startswith("pop_cd_"):
+            geoid = name.removeprefix("pop_cd_")
+            state_fips, district = geoid[:2], geoid[2:]
+            state = US_STATE_FIPS_TO_POSTAL.get(state_fips, state_fips)
+            district_label = (
+                "at-large" if district == "00" else f"district {int(district)}"
+            )
+            label = f"{state} congressional {district_label}"
+            geography = HierarchyGeography(
+                f"5001800US{geoid}", label, "congressional_district"
+            )
+        else:  # pragma: no cover - names originate in population_measure_arrays
+            raise ValueError(f"Unknown population target name {name!r}.")
+        specs.append(
+            TargetSpec(
+                name=name,
+                entity="household",
+                measure=name,
+                value=value,
+                period=PERIOD,
+                source="US Census Bureau 2020 PUMA population ladder",
+                family="census_population",
+                metadata={"geography_level": geography.level},
+                hierarchy=CalibrationHierarchy(
+                    provider=provider,
+                    category=category,
+                    geography=geography,
+                    dimensions=(),
+                    target=HierarchyNode(name, f"{label} resident population"),
+                ),
+            )
+        )
+    return tuple(specs)
+
+
 def extract_struct_tables(frame):
     """Small structural/geography copies so the big frame can be freed early."""
 
@@ -628,14 +795,15 @@ def write_lean_checkpoint(
     struct,
     admin_matrix,
     admin_names,
-    admin_targets,
+    admin_specs,
     pop_names,
     pop_arrays,
     pop_values,
     checkpoint_dir: Path,
 ):
-    """Assemble the lean target-frame H5 + targets.json (memory-bounded)."""
+    """Assemble the lean target frame and its versioned target registry."""
 
+    from microcosm.calibrate import TargetRegistry
     from microcosm.frame import put_frame_table
 
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -675,35 +843,17 @@ def write_lean_checkpoint(
                 preferred_format="fixed",
             )
         store.put("_time_period", pd.Series([PERIOD]), format="table")
-    targets = [
-        dict(
-            name=target["name"],
-            entity="household",
-            measure=target["measure"],
-            value=target["value"],
-            period=PERIOD,
-            source=target.get("source", "ledger_feed"),
-        )
-        for target in admin_targets
-    ]
-    targets += [
-        dict(
-            name=name,
-            entity="household",
-            measure=name,
-            value=value,
-            period=PERIOD,
-            source="us_puma_ladder_2020",
-        )
-        for name, value in zip(pop_names, pop_values, strict=True)
-    ]
-    (checkpoint_dir / "targets.json").write_text(json.dumps(targets, indent=2))
+    registry = TargetRegistry(
+        (*admin_specs, *population_target_specs(pop_names, pop_values)),
+        country="us",
+    )
+    registry.to_json(checkpoint_dir / "target_registry.json")
     log(
         f"checkpoint: {checkpoint_h5.name} ({len(lean_households)} hh, "
-        f"{len(admin_names) + len(pop_names)} measures), targets.json "
-        f"({len(targets)} targets)"
+        f"{len(admin_names) + len(pop_names)} measures), target_registry.json "
+        f"({len(registry)} targets)"
     )
-    return checkpoint_h5, targets
+    return checkpoint_h5, registry
 
 
 def load_lean_frame(checkpoint_h5: Path):
@@ -771,6 +921,7 @@ def do_materialize(args) -> None:
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
+    _require_local_hours(frame, _load_json(summary_path))
     log(
         f"loaded staging frame households={frame.n('household')} "
         f"({time.time() - started:.1f}s)"
@@ -800,11 +951,6 @@ def do_materialize(args) -> None:
             f"{len(registry)} specs were declared; admin targets must never "
             "disappear silently between compile and materialization."
         )
-    admin_targets = [
-        dict(name=spec.name, measure=spec.measure, value=spec.value, source=spec.source)
-        for spec in compiled_specs
-    ]
-
     populations = ladder_population(args.ladder, geographies)
     pop_names, pop_arrays, pop_values, pop_dropped = population_measure_arrays(
         frame, populations, geographies
@@ -831,7 +977,7 @@ def do_materialize(args) -> None:
         struct,
         matrix,
         admin_names,
-        admin_targets,
+        compiled_specs,
         pop_names,
         pop_arrays,
         pop_values,
@@ -840,7 +986,7 @@ def do_materialize(args) -> None:
     del matrix, struct, pop_arrays
     gc.collect()
     matrix_path.unlink(missing_ok=True)
-    targets_digest = _sha256(args.checkpoint_dir / "targets.json")
+    registry_digest = _sha256(args.checkpoint_dir / "target_registry.json")
     (args.checkpoint_dir / "run_identity.json").write_text(
         json.dumps(
             {
@@ -849,7 +995,7 @@ def do_materialize(args) -> None:
                 "ladder_sha256": ladder_sha,
                 "households": n_households,
                 "n_targets": len(admin_names) + len(pop_names),
-                "targets_sha256": targets_digest,
+                "target_registry_sha256": registry_digest,
                 "declared_admin_specs": len(registry),
                 "compiled_admin_specs": len(admin_names),
                 "population_cells_dropped": pop_dropped,
@@ -898,18 +1044,22 @@ def _verify_run_identity(args, *, require: bool = True) -> dict:
 
 
 def do_calibrate(args) -> None:
-    from microcosm.calibrate import calibrate
-    from microcosm.calibrate.target import Target, TargetSet
+    from microcosm.calibrate import (
+        TargetRegistry,
+        calibrate,
+        write_calibration_diagnostics,
+    )
 
     identity = _verify_run_identity(args)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
-    targets_json = json.loads((args.checkpoint_dir / "targets.json").read_text())
-    targets_sha = _sha256(args.checkpoint_dir / "targets.json")
-    if targets_sha != identity.get("targets_sha256"):
+    registry_path = args.checkpoint_dir / "target_registry.json"
+    registry_sha = _sha256(registry_path)
+    if registry_sha != identity.get("target_registry_sha256"):
         raise SystemExit(
-            "targets.json changed since materialize; the checkpoint and "
+            "target_registry.json changed since materialize; the checkpoint and "
             "surface no longer agree. Re-run --stage materialize."
         )
+    registry = TargetRegistry.from_json(registry_path)
     frame, design_weights = load_lean_frame(checkpoint_h5)
     n_households = frame.n("household")
     if n_households != identity.get("households"):
@@ -917,19 +1067,7 @@ def do_calibrate(args) -> None:
             f"Lean checkpoint has {n_households} households but the run "
             f"identity pins {identity.get('households')}."
         )
-    target_set = TargetSet(
-        [
-            Target(
-                name=target["name"],
-                entity=target["entity"],
-                measure=target["measure"],
-                value=target["value"],
-                period=target["period"],
-                source=target["source"],
-            )
-            for target in targets_json
-        ]
-    )
+    target_set = registry.to_target_set()
     log(
         f"calibrate: households={n_households}, targets={len(target_set)}, "
         f"design_total={design_weights.sum():,.0f}"
@@ -957,11 +1095,11 @@ def do_calibrate(args) -> None:
             )
         log(f"RESUME from {done} epochs")
     if done >= args.epochs:
-        diagnostics_path = args.checkpoint_dir / "calibration_diagnostics.json"
-        if diagnostics_path.exists():
+        summary_path = args.checkpoint_dir / "calibration_summary.json"
+        if summary_path.exists():
             log(
                 f"calibration already complete at {done} epochs and "
-                "diagnostics exist; nothing to do (delete "
+                "the calibration summary exists; nothing to do (delete "
                 "weights_latest.npz to recalibrate)."
             )
             _write_calibrated_artifact(
@@ -970,7 +1108,7 @@ def do_calibrate(args) -> None:
             return
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
-            f"{args.epochs}) but calibration_diagnostics.json is missing. "
+            f"{args.epochs}) but calibration_summary.json is missing. "
             "Delete the checkpoint to recalibrate, or raise --epochs."
         )
     batch = args.epoch_batch if args.epoch_batch > 0 else args.epochs
@@ -1017,24 +1155,7 @@ def do_calibrate(args) -> None:
             f"(e.g. {skipped[:5]}); the surface silently shrank. Fix the "
             "measures or the targets before shipping."
         )
-    initial_estimates = result.problem.matrix @ design_weights
-    final_estimates = result.problem.matrix @ result.weights
-    per_target = [
-        {
-            "name": target.name,
-            "target": float(target.value),
-            "compiled_target": float(target.value),
-            "initial_estimate": float(initial),
-            "final_estimate": float(final),
-        }
-        for target, initial, final in zip(
-            result.problem.targets,
-            initial_estimates,
-            final_estimates,
-            strict=True,
-        )
-    ]
-    diagnostics = {
+    summary = {
         "households": n_households,
         "n_targets": result.problem.n_targets,
         "families": args.families,
@@ -1058,18 +1179,48 @@ def do_calibrate(args) -> None:
         ),
         "total_wall_seconds": round(time.time() - started, 1),
         "peak_rss_gb": round(rss(), 3),
-        "targets": per_target,
     }
-    (args.checkpoint_dir / "calibration_diagnostics.json").write_text(
-        json.dumps(diagnostics, indent=2)
-    )
-    log(
-        f"calibrate stage complete: loss={diagnostics['final_loss']}, "
-        f"within10%={diagnostics['fraction_within_10pct']:.2%}"
-    )
-
     _write_calibrated_artifact(
         args, np.asarray(result.weights, dtype=np.float64), identity
+    )
+
+    outcome = write_calibration_diagnostics(
+        result,
+        args.checkpoint_dir / "calibration_diagnostics.json",
+        target_registry=registry,
+        build={
+            "dataset_role": "non_default_local_area",
+            "families": args.families,
+            "geographies": args.geographies,
+            "epochs": args.epochs,
+            "epoch_batch": args.epoch_batch,
+            "total_wall_seconds": summary["total_wall_seconds"],
+            "peak_rss_gb": summary["peak_rss_gb"],
+            "ess_fraction": summary["ess_fraction"],
+            "mass_conserved_ratio": summary["mass_conserved_ratio"],
+        },
+    )
+    summary["calibration_diagnostics"] = (
+        {
+            "status": "available",
+            "schema_version": outcome.schema_version,
+            "sha256": outcome.sha256,
+        }
+        if outcome.status == "available"
+        else {
+            "status": "failed",
+            "expected_schema_version": outcome.expected_schema_version,
+            "error_code": outcome.error_code,
+            "message": outcome.message,
+        }
+    )
+    (args.checkpoint_dir / "calibration_summary.json").write_text(
+        json.dumps(summary, indent=2)
+    )
+    log(
+        f"calibrate stage complete: loss={summary['final_loss']}, "
+        f"within10%={summary['fraction_within_10pct']:.2%}, "
+        f"diagnostics={outcome.status}"
     )
 
 
@@ -1093,6 +1244,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     from microcosm.frame import Frame, WeightKind, Weights
 
     frame = _load_staging_frame(args.staging_h5)
+    _require_local_hours(frame, _load_json(_staging_summary_path(args)))
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -1429,17 +1581,35 @@ def finalize_reviewed_limitations(
     return list(deduped.values())
 
 
+def _local_hours_gate(frame, staging_summary: dict):
+    audit = staging_summary.get("reviewed_engine_input_nulls")
+    if not isinstance(audit, list) or not all(isinstance(item, dict) for item in audit):
+        raise SystemExit("Local hours gate requires the staging input-null audit.")
+    return acs_local_hours_signal_gate(frame, source_null_audit=audit)
+
+
+def _require_local_hours(frame, staging_summary: dict) -> None:
+    gate = _local_hours_gate(frame, staging_summary)
+    if not gate.passed:
+        raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
+
+
 def do_finalize(args) -> None:
+    from microcosm.build.us_runtime.hours_worked import (
+        US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+        us_hours_worked_signal_gate,
+    )
     from microcosm.build.us_runtime.puma_ladder import (
         load_us_puma_ladder,
         us_puma_ladder_gate,
     )
+    from microcosm.calibrate import TargetRegistry
 
     staging_summary = _load_json(_staging_summary_path(args))
-    diagnostics = _load_json(args.checkpoint_dir / "calibration_diagnostics.json")
+    diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
     if not diagnostics:
         raise SystemExit(
-            f"No calibration diagnostics under {args.checkpoint_dir}; run "
+            f"No calibration summary under {args.checkpoint_dir}; run "
             "--stage calibrate first."
         )
     identity = _verify_run_identity(args)
@@ -1451,18 +1621,48 @@ def do_finalize(args) -> None:
             f"({str(identity.get('ladder_sha256'))[:12]}…)."
         )
     materialize_rss = _load_json(args.checkpoint_dir / "materialize_rss.json")
-    targets = _load_json(args.checkpoint_dir / "targets.json") or []
+    registry_path = args.checkpoint_dir / "target_registry.json"
+    if registry_path.is_file():
+        registry = TargetRegistry.from_json(registry_path)
+        targets = [
+            {"name": spec.name, "family": spec.family} for spec in registry.specs
+        ]
+    else:
+        # Read-only compatibility for checkpoints created before the target
+        # registry became the materialize-stage artifact. Current materialize
+        # runs always write target_registry.json.
+        targets = _load_json(args.checkpoint_dir / "targets.json") or []
     spine_qa = _load_json(args.checkpoint_dir / "spine_qa.json")
     consumer_export = _load_json(args.checkpoint_dir / "consumer_export.json")
 
+    # The hours gate certifies specific artifact bytes. Hash the calibrated
+    # H5 before loading it, so the binding the package stage checks is the
+    # bytes the gate actually evaluated, and refuse if they moved meanwhile.
+    if not args.out_h5.exists():
+        raise SystemExit(f"Calibrated H5 not found: {args.out_h5}.")
+    hours_artifact_sha = _sha256(args.out_h5)
     frame = _load_staging_frame(args.out_h5)
+    local_hours_gate = _local_hours_gate(frame, staging_summary)
     households = frame.table("household")
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     load_us_puma_ladder(args.ladder)
     ladder_gate = us_puma_ladder_gate(households, weights)
     composition = spine_composition(households, frame.table("person"), weights)
+    # microcosm#765: refuse to package an artifact whose usual-weekly-hours
+    # surface is the engine's constant-40 default (or otherwise out of band),
+    # which silently no-ops SNAP's ABAWD and general work-requirement tests.
+    # weeks_worked is dropped from the pool/ACS surface, so scope the gate to
+    # the two hours columns it carries.
+    hours_gate = us_hours_worked_signal_gate(
+        frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+    )
     del frame
     gc.collect()
+    if _sha256(args.out_h5) != hours_artifact_sha:
+        raise SystemExit(
+            "The calibrated H5 changed during hours_worked_signal validation. "
+            "Re-run --stage qa and --stage finalize against the current artifact."
+        )
 
     breakdown: dict[str, int] = {}
     for target in targets:
@@ -1485,10 +1685,22 @@ def do_finalize(args) -> None:
 
     mass = diagnostics.get("mass_conserved_ratio", 0.0)
     gates = {
+        "acs_local_hours_signal": {
+            "passed": local_hours_gate.passed,
+            "failures": list(local_hours_gate.failures),
+            "detail": dict(local_hours_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "us_puma_ladder_gate": {
             "passed": bool(ladder_gate.passed),
             "failures": list(ladder_gate.failures),
             "detail": dict(ladder_gate.details),
+        },
+        "hours_worked_signal": {
+            "passed": bool(hours_gate.passed),
+            "failures": list(hours_gate.failures),
+            "detail": dict(hours_gate.details),
+            "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
@@ -1573,7 +1785,13 @@ def do_finalize(args) -> None:
     limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
     hard_failures = [
         name
-        for name in ("us_puma_ladder_gate", "calibration", "consumer_ready")
+        for name in (
+            "us_puma_ladder_gate",
+            "hours_worked_signal",
+            "acs_local_hours_signal",
+            "calibration",
+            "consumer_ready",
+        )
         if not gates[name]["passed"]
     ]
     updated_summary = dict(staging_summary)
@@ -1604,8 +1822,112 @@ def do_finalize(args) -> None:
     log(f"finalize stage complete: gates green, {len(limitations)} limitations")
 
 
+#: Staging settings a packaged build manifest records, so a reader can see how
+#: the ACS spine was built without opening the staging summary.
+_STAGING_ORCHESTRATION_KEYS = (
+    "max_households",
+    "n_estimators",
+    "max_targets_per_fit",
+    "acs_share",
+    "chunksize",
+    "seed",
+    "geography_seed",
+    "donor_channel",
+)
+
+
+def _require_uncapped_staging(staging_summary: dict) -> dict[str, object]:
+    """Refuse to package a staging run that was capped, or cannot show it was not.
+
+    ``tools/build_us_acs_multispine_base.py --max-households`` caps the ACS
+    spine for smokes. The donor spine keeps every state and congressional
+    district populated, so a capped run drops no ladder population cell and
+    passes every finalize gate; without this check it packages into a release
+    directory with a publish command and nothing in either manifest says it
+    is a smoke. A summary that does not record the cap cannot establish that
+    the spine is whole, so it is refused too.
+    """
+
+    orchestration = staging_summary.get("orchestration")
+    if not isinstance(orchestration, dict) or "max_households" not in orchestration:
+        raise SystemExit(
+            "The staging summary does not record orchestration.max_households, "
+            "so packaging cannot establish that the ACS spine is uncapped. "
+            "Re-run staging with the current builder; a smoke's output must "
+            "not be packaged."
+        )
+    cap = orchestration["max_households"]
+    if cap is not None:
+        raise SystemExit(
+            f"The staging run was capped at {cap} ACS household(s) "
+            "(--max-households); a smoke's output must not be packaged."
+        )
+    return {key: orchestration.get(key) for key in _STAGING_ORCHESTRATION_KEYS}
+
+
+def _require_recorded_soi_mode(materialize_rss: dict) -> str:
+    """The SOI surface the checkpoint was materialized with, or refuse.
+
+    Later stages never re-select targets, so the mode that counts is the one
+    ``--stage materialize`` recorded, not this invocation's ``--soi-mode``.
+    A checkpoint that does not record a known mode cannot say which surface
+    was calibrated, and its refresh recipe could not reproduce it.
+    """
+
+    soi_mode = materialize_rss.get("soi_mode")
+    if soi_mode not in SOI_MODES:
+        raise SystemExit(
+            f"materialize_rss.json records soi_mode={soi_mode!r}, not one of "
+            f"{SOI_MODES}; packaging cannot record which SOI surface was "
+            "calibrated. Re-run --stage materialize with the current tool."
+        )
+    return soi_mode
+
+
+def _require_stored_inputs(calibrated_h5: Path) -> dict[str, object]:
+    """Refuse an artifact that stores a model input the installed engine lacks.
+
+    microcosm#1026: the ACS local-area release of 2026-09-23 records
+    policyengine-us 2.2.1 as its built-with engine but stores the WIC take-up
+    draw under its retired name, ``would_claim_wic``, which 2.2.1 ignores.
+    :mod:`microcosm.data.stored_inputs` owns the rule and the reviewed register
+    of deliberately non-variable columns. The engine is the installed
+    policyengine-us, the one :func:`do_package` records as
+    ``build.built_with_model_package``. Only HDF metadata is read.
+
+    Returns the gate entry the release's gate summary records.
+    """
+
+    from microcosm.data import stored_inputs
+
+    try:
+        engine = stored_inputs.installed_us_engine()
+    except ImportError as error:
+        raise SystemExit(
+            "Refusing to package: the installed policyengine-us cannot be "
+            "imported, so the artifact cannot be checked against the engine "
+            f"the release records as built-with: {error}"
+        ) from error
+    try:
+        summary = stored_inputs.require_h5_stored_inputs(calibrated_h5, engine=engine)
+    except (
+        stored_inputs.StoredInputRefusalError,
+        stored_inputs.StoredTableLayoutError,
+    ) as error:
+        raise SystemExit(f"Refusing to package: {error}") from error
+    return {"passed": True, "failures": [], "engine": engine.label, **summary}
+
+
 def do_package(args) -> dict:
-    diagnostics = _load_json(args.checkpoint_dir / "calibration_diagnostics.json")
+    diagnostics = _load_json(args.checkpoint_dir / "calibration_summary.json")
+    diagnostics_status = diagnostics.get("calibration_diagnostics")
+    if not isinstance(diagnostics_status, dict) or diagnostics_status.get(
+        "status"
+    ) not in {"available", "failed"}:
+        raise SystemExit(
+            "calibration_summary.json has no valid calibration_diagnostics status; "
+            "run --stage calibrate with the current builder."
+        )
     gate_report = _load_json(args.gate_report)
     staging_summary = _load_json(_staging_summary_path(args))
     final_summary = _load_json(args.out_summary)
@@ -1621,6 +1943,16 @@ def do_package(args) -> dict:
         raise SystemExit(
             "Refusing to package: the finalized summary is not simulation_ready."
         )
+    # Before any release directory exists: a refused smoke leaves nothing.
+    staging_orchestration = _require_uncapped_staging(staging_summary)
+    soi_mode = _require_recorded_soi_mode(materialize_rss)
+    calibrated_h5 = Path(args.out_h5)
+    if not calibrated_h5.exists():
+        raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
+    # microcosm#1026: the manifest below records the installed policyengine-us
+    # as build.built_with_model_package, so the artifact may store no model
+    # input that engine does not define. A refused artifact leaves nothing.
+    stored_inputs_gate = _require_stored_inputs(calibrated_h5)
 
     code = _repo_code_identity(args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -1628,9 +1960,6 @@ def do_package(args) -> dict:
     release_dir = args.out / "releases" / release_id
     release_dir.mkdir(parents=True, exist_ok=True)
 
-    calibrated_h5 = Path(args.out_h5)
-    if not calibrated_h5.exists():
-        raise SystemExit(f"Calibrated H5 not found: {calibrated_h5}.")
     log("hashing calibrated H5 …")
     h5_sha = _sha256(calibrated_h5)
     # The gate report certifies specific artifact bytes: the QA probe
@@ -1663,6 +1992,57 @@ def do_package(args) -> dict:
             f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
             "--stage qa and --stage finalize against the current artifact."
         )
+    gates = gate_report.get("gates")
+    hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
+    if not isinstance(hours_gate, dict) or hours_gate.get("passed") is not True:
+        raise SystemExit(
+            "Packaging requires a present, passing hours_worked_signal gate; "
+            "an old simulation_ready summary is insufficient. Re-run --stage finalize."
+        )
+    if hours_gate.get("artifact_sha256") != h5_sha:
+        raise SystemExit(
+            "The hours_worked_signal gate is missing its artifact binding or "
+            "certifies different H5 bytes. Re-run --stage finalize against the "
+            "current artifact."
+        )
+    # Old summaries can say simulation_ready despite #765. Recheck the
+    # actual artifact and the source-null evidence before packaging it, and
+    # bind that result to the bytes being packaged: the finalize-time report
+    # is copied into the release, so a checkpoint finalized before this gate
+    # existed must not ship as if it had passed it.
+    finalize_hours = gate_report.get("gates", {}).get("acs_local_hours_signal")
+    if not isinstance(finalize_hours, dict) or finalize_hours.get("passed") is not True:
+        raise SystemExit(
+            "The finalize gate report carries no passing acs_local_hours_signal; "
+            "an old simulation_ready summary is insufficient. Re-run --stage "
+            "finalize."
+        )
+    hours_frame = _load_staging_frame(calibrated_h5)
+    package_hours_gate = _local_hours_gate(hours_frame, staging_summary)
+    del hours_frame
+    gc.collect()
+    if not package_hours_gate.passed:
+        raise SystemExit(
+            "Local hours coverage failed: " + "; ".join(package_hours_gate.failures)
+        )
+    gate_report = {
+        **gate_report,
+        "gates": {
+            **gate_report.get("gates", {}),
+            "acs_local_hours_signal": {
+                "passed": True,
+                "failures": [],
+                "detail": dict(package_hours_gate.details),
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+            "stored_inputs": {
+                **stored_inputs_gate,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+        },
+    }
     dropped_cells = identity.get("population_cells_dropped") or []
     if dropped_cells:
         raise SystemExit(
@@ -1689,15 +2069,7 @@ def do_package(args) -> dict:
             "unchanged."
         ),
         "staging": LEGACY_STAGING_REFRESH_RECIPE,
-        "release": (
-            "uv run tools/build_us_acs_local_release.py --stage all "
-            "--staging-h5 <run>/acs_multispine_staging.h5 "
-            "--feed <ledger facts.jsonl> --feed-sha256 <sha> "
-            "--ladder build/us/us_puma_ladder_2020.npz "
-            "--checkpoint-dir <run>/checkpoints "
-            "--out-h5 <run>/populace_us_2024_acs_local.h5 "
-            "--out <run>/release"
-        ),
+        "release": release_refresh_recipe(soi_mode),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
             f"--artifact-root <run> --repo-id {HF_REPO_ID}"
@@ -1745,6 +2117,7 @@ def do_package(args) -> dict:
             )
         },
         "materialize": {
+            "soi_mode": soi_mode,
             "peak_rss_gb": materialize_rss.get("materialize_peak_rss_gb"),
             "hh_chunk": materialize_rss.get("hh_chunk"),
             "engine_pass": (
@@ -1755,6 +2128,7 @@ def do_package(args) -> dict:
         },
         "gates": gate_report.get("gates", {}),
         "run_identity": identity,
+        "staging_orchestration": staging_orchestration,
         "refresh_recipe": refresh_recipe,
     }
 
@@ -1770,7 +2144,6 @@ def do_package(args) -> dict:
 
     contract_files = {
         "build_manifest.json": build_manifest,
-        "calibration_diagnostics.json": diagnostics,
         "us_source_coverage.json": source_coverage,
         "gate_summary.json": gate_report,
         "held_back_columns.json": held_back,
@@ -1791,6 +2164,19 @@ def do_package(args) -> dict:
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
+    if diagnostics_status["status"] == "available":
+        source_diagnostics = args.checkpoint_dir / "calibration_diagnostics.json"
+        if not source_diagnostics.is_file():
+            raise SystemExit(
+                "calibration_summary.json declares available diagnostics but "
+                "calibration_diagnostics.json is missing."
+            )
+        if _sha256(source_diagnostics) != diagnostics_status.get("sha256"):
+            raise SystemExit(
+                "calibration_diagnostics.json no longer matches the validated "
+                "digest recorded by the calibration stage."
+            )
+        shutil.copy2(source_diagnostics, release_dir / "calibration_diagnostics.json")
 
     def _artifact(path_name: str, kind: str, local: Path) -> dict:
         return {
@@ -1800,6 +2186,32 @@ def do_package(args) -> dict:
             "revision": release_id,
             "sha256": _sha256(local),
         }
+
+    artifacts = {
+        ARTIFACT_NAME: {
+            "kind": "microdata",
+            "path": ARTIFACT_FILENAME,
+            "repo_id": HF_REPO_ID,
+            "revision": release_id,
+            "sha256": h5_sha,
+        },
+        "gate_summary": _artifact(
+            "gate_summary.json",
+            "diagnostics",
+            release_dir / "gate_summary.json",
+        ),
+        "us_source_coverage": _artifact(
+            "us_source_coverage.json",
+            "diagnostics",
+            release_dir / "us_source_coverage.json",
+        ),
+    }
+    if diagnostics_status["status"] == "available":
+        artifacts["calibration_diagnostics"] = _artifact(
+            "calibration_diagnostics.json",
+            "diagnostics",
+            release_dir / "calibration_diagnostics.json",
+        )
 
     release_manifest = {
         "schema_version": 1,
@@ -1823,30 +2235,8 @@ def do_package(args) -> dict:
                 "version": _version("policyengine-us"),
             },
         },
-        "artifacts": {
-            ARTIFACT_NAME: {
-                "kind": "microdata",
-                "path": ARTIFACT_FILENAME,
-                "repo_id": HF_REPO_ID,
-                "revision": release_id,
-                "sha256": h5_sha,
-            },
-            "calibration_diagnostics": _artifact(
-                "calibration_diagnostics.json",
-                "diagnostics",
-                release_dir / "calibration_diagnostics.json",
-            ),
-            "gate_summary": _artifact(
-                "gate_summary.json",
-                "diagnostics",
-                release_dir / "gate_summary.json",
-            ),
-            "us_source_coverage": _artifact(
-                "us_source_coverage.json",
-                "diagnostics",
-                release_dir / "us_source_coverage.json",
-            ),
-        },
+        "calibration_diagnostics": diagnostics_status,
+        "artifacts": artifacts,
         "reviewed_limitations": gate_report.get("reviewed_limitations", []),
         "donor_release": donor_release,
         "refresh_recipe": refresh_recipe,
@@ -1867,6 +2257,16 @@ def do_package(args) -> dict:
         if not root_copy.exists() or _sha256(root_copy) != h5_sha:
             log(f"copying calibrated H5 to artifact root {root_copy} …")
             shutil.copy2(calibrated_h5, root_copy)
+    # Check the actual final artifact, including a reused copy or the no-copy
+    # path. A changed source/copy must not inherit the earlier hours verdict.
+    if _sha256(root_copy) != h5_sha:
+        if root_copy.resolve() != calibrated_h5.resolve():
+            # A refused copy must not sit where a good package puts its artifact.
+            root_copy.unlink(missing_ok=True)
+        raise SystemExit(
+            "The packaged H5 no longer matches the hours_worked_signal artifact "
+            "binding. Re-run --stage qa and --stage finalize against stable bytes."
+        )
 
     result = {
         "release_id": release_id,
@@ -1920,7 +2320,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--families", default="snap,medicaid,soi")
     parser.add_argument("--geographies", default="state,cd")
-    parser.add_argument("--soi-mode", choices=["full", "totals"], default="full")
+    parser.add_argument(
+        "--soi-mode",
+        choices=SOI_MODES,
+        default=DEFAULT_SOI_MODE,
+        help=(
+            "State SOI target surface for --stage materialize. 'state' "
+            "(default) is Build O's contract: every state-geography SOI spec "
+            "outside the congressional-district file. 'totals' drops every "
+            "soi_fiscal_distribution spec (no state AGI, income-tax or EITC "
+            "total); 'full' keeps every state-bearing spec, including the "
+            "district file, and needs a much larger dense admin matrix "
+            "(contents and sizes in docs/us-acs-local-soi-target-surface.md). "
+            "Later stages use the mode the checkpoint recorded."
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=800)
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
