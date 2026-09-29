@@ -278,11 +278,16 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in (
         "HINS4 == 1",
         "SSIP",
-        "share of the frame",
+        "after the donor rows' pooled recipients",
+        "count minus contribution",
+        "probability residual / anchored eligible weight",
         "SERIALNO:SPORDER",
         "under-18",
     ):
         assert fragment in take_up["reason"]
+    # microcosm#1060 review: the share-scaled targets are gone.
+    assert "share of the frame" not in take_up["reason"]
+    assert "the donor contribution" in take_up["treatment"]
     # microcosm#1020: the ACS immigration inputs are a reviewed method, not
     # an engine-default gap.
     immigration = by_id["acs_immigration_status_method"]
@@ -1538,8 +1543,10 @@ def test_ssi_medicaid_stage_runs_both_engine_passes_in_household_chunks(
     tmp_path, monkeypatch
 ) -> None:
     """SSI candidates, then Medicaid eligibility, each over the projected and
-    reviewed-null-filled ACS view in --hh-chunk household batches; the tool's
-    stage matches the runtime stage and records its gate."""
+    reviewed-null-filled view in --hh-chunk household batches: the donor
+    households first (their pooled contribution sets the ACS residual
+    targets), then the ACS households. The tool's stage matches the runtime
+    stage and records its gate."""
 
     module = _load_tool_module()
     fixtures = _ssi_medicaid_fixtures()
@@ -1563,6 +1570,12 @@ def test_ssi_medicaid_stage_runs_both_engine_passes_in_household_chunks(
         hh_chunk=100,
     )
     assert calls == [
+        ("project",),
+        ("fill", summary),
+        ("uncapped", 40, 100),
+        ("project",),
+        ("fill", summary),
+        ("eligible", 40, 100),
         ("project",),
         ("fill", summary),
         ("uncapped", 600, 100),
