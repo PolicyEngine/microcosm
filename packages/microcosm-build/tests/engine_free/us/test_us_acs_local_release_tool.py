@@ -858,6 +858,7 @@ _INCOME_TRANSFER_COLUMNS = (
 def _income_receipt(**overrides) -> dict:
     receipt = {
         "issue": "microcosm#1022",
+        "method": "separate_local_qrf_pass_oip_aligned_retp_missing_cells_only",
         "donor_channel": "asec",
         "columns": {
             column: {"imputed_rows": 3, "unmodeled_rows": 0}
@@ -899,6 +900,12 @@ def _staging_income_summary(**overrides) -> dict:
         _staging_income_summary(
             acs_local_income_transfer=_income_receipt(donor_channel="puf")
         ),
+        # A staging run before the reviewed OIP and aligned-RETP predictors.
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(
+                method="separate_local_qrf_pass_missing_cells_only"
+            )
+        ),
         _staging_income_summary(
             acs_local_income_transfer=_income_receipt(
                 columns={
@@ -924,6 +931,7 @@ def _staging_income_summary(**overrides) -> dict:
         "truthy-gate",
         "wrong-issue",
         "wrong-donor-channel",
+        "stale-method",
         "missing-column",
         "unmodeled-rows",
     ],

@@ -353,6 +353,41 @@ def test_acs_loader_leaves_absent_receipt_sources_absent(tmp_path: Path) -> None
     assert "PAP" not in tables["person"]
 
 
+def _other_income_source(tmp_path: Path) -> AcsPumsSource:
+    household_zip = tmp_path / "other-income-hh.zip"
+    person_zip = tmp_path / "other-income-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("oi", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("oi", 1, 20, OIP=4_800),
+                # A 10-year-old: Census blanks for the income items.
+                _person("oi", 2, 25, AGEP=10, MAR=5, WAGP=None, OIP=None),
+            ]
+        },
+    )
+    return AcsPumsSource(household_zip, person_zip)
+
+
+def test_acs_loader_keeps_other_income(tmp_path: Path) -> None:
+    """microcosm#1022: OIP is the local income pass's child-support predictor;
+    the loader keeps it raw and a Census blank stays blank."""
+
+    tables, _ = load_acs_pums_tables(_other_income_source(tmp_path))
+    person = tables["person"]
+    assert person["OIP"].iloc[0] == 4_800
+    assert pd.isna(person["OIP"].iloc[1])
+    assert "acs_other_income" not in person
+
+
+def test_acs_loader_leaves_an_absent_other_income_source_absent(
+    tmp_path: Path,
+) -> None:
+    tables, _ = load_acs_pums_tables(_source(tmp_path))
+    assert "OIP" not in tables["person"]
+
+
 def test_built_acs_frame_carries_the_immigration_sources(tmp_path: Path) -> None:
     pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
     frame, _metadata = build_acs_pums_unit_frame(_immigration_source(tmp_path))
