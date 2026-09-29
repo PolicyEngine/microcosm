@@ -714,12 +714,9 @@ class TestE8SupportSplitRecompute:
         split, frame = _split_then_cloned()
         receipt, problems = self._receipt(frame)
         assert problems == {}
-        # At the packaged cap of 80 ids 2 (130) and 3 (121) divide in two and
-        # id 6 (61) stays whole: two copies in two families, three selected.
-        assert receipt["copies"] == split.copies_created == 2
-        assert receipt["families"] == 2
-        assert split.households_selected == 3
-        assert receipt["copies_recomputed"] == 2
+        assert receipt["copies"] == split.copies_created == 5
+        assert receipt["families"] == split.households_selected == 3
+        assert receipt["copies_recomputed"] == 5
         assert receipt["households_selected"] == 3
         assert receipt["pre_split_households"] == 6
         assert receipt["id_multiplier"] == 10
@@ -739,27 +736,27 @@ class TestE8SupportSplitRecompute:
         _, frame = _split_then_cloned()
         ids = frame.table("household")["household_id"].to_numpy()
         weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
-        # A unit of mass moves between root 2 and its copy: the family total
+        # A unit of mass moves between root 2's two copies: the family total
         # holds, so the selection stands, but two members leave w / n.
         weights[ids == 12] += 1.0
-        weights[ids == 2] -= 1.0
+        weights[ids == 22] -= 1.0
         _, problems = self._receipt(_rebuild(frame, household_weights=weights))
         assert problems == {"support_split_family_weights": 2}
 
     def test_a_tampered_copy_count_is_reported(self) -> None:
         _, frame = _split_then_cloned()
         household = frame.table("household").copy()
-        household.loc[household["household_id"] == 2, CGT_SUPPORT_COPIES_COLUMN] = 3
+        household.loc[household["household_id"] == 2, CGT_SUPPORT_COPIES_COLUMN] = 2
         _, problems = self._receipt(_rebuild(frame, household=household))
-        # The copy now disagrees with its root, the family has too few copies
-        # for its count, the rule says two, and w / 3 fits neither member;
-        # the selection itself is untouched.
+        # Both copies now disagree with their root, the family has one copy
+        # too many for its count, the rule says three, and w / 2 fits no
+        # member; the selection itself is untouched.
         assert problems["support_split_flags"] == {
-            "copies_disagreeing_with_root": 1,
+            "copies_disagreeing_with_root": 2,
             "families_with_missing_or_extra_copies": 1,
         }
         assert problems["support_split_copies_stored"] == 1
-        assert problems["support_split_family_weights"] == 2
+        assert problems["support_split_family_weights"] == 3
         assert "support_split_selection_stored" not in problems
         assert "support_split_selection_permutation" not in problems
 
@@ -773,16 +770,7 @@ class TestE8SupportSplitRecompute:
         household.loc[
             household["household_id"] == 1, UK_CGT_INVESTABLE_WEALTH_COLUMNS[0]
         ] = 1e6
-        ids = frame.table("household")["household_id"].to_numpy()
-        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
-        # Its pair (clone id 101 on this frame's multiplier of 100) carries 90
-        # in all, 45 a twin: enough to divide at the packaged cap of 80 once
-        # the rule selects it.
-        weights[ids == 1] = 45.0
-        weights[ids == 101] = 45.0
-        _, problems = self._receipt(
-            _rebuild(frame, household=household, household_weights=weights)
-        )
+        _, problems = self._receipt(_rebuild(frame, household=household))
         assert problems == {
             "support_split_selection_stored": {"missing": 0, "extra": 1}
         }

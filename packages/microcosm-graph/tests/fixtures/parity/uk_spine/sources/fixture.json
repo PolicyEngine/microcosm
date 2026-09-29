@@ -317,7 +317,7 @@
           "joint_resource": "hmrc_cgt_conditioning_facts.json",
           "joint_vintage": "2024-25",
           "kind": "split_top_wealth_support_households",
-          "maximum_copy_weight": 80,
+          "maximum_copy_weight": 60,
           "minimum_gain_band_lower": 250000,
           "published_top_band_taxpayers": 58000,
           "reason": "Capital-gains support split divides the wealthiest households of each HMRC Table 3 income band into light copies at equal weight; every household's mass and the total household mass are conserved.",
