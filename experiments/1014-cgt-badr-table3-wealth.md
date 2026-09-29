@@ -252,8 +252,47 @@ placed per cell and per band, the pass-1 overshoot per income band and the open 
 count and gains; it holds no threshold, so the first licensed build measures the design with the redraw and
 the anchor unchanged in code.
 
-_Licensed arm `ch1` (c8 head): to be filled from the build and calibration receipts (fence at design and
-calibrated weights by row type, demoted support-copy mass, rows per band, heaviest placed row per band,
-open-band achieved against 3,000 and GBP 48.47bn, loss, ESS, liability, Table 3 and 4.1 fit, weight ratio,
-identity-tool receipt)._
+**Licensed arms.** Four arms settle the two parameters; every build ran at main's gate thresholds with no
+relaxation, and every calibration is the national role's doctrine.
 
+- `ch1` (277d95d3e; cap 60, headroom 2.0): all 26 spine gates pass. The split selects 299 households into
+  3,764 copies (30,532 households before the clone, 61,064 after) at a conserved 29,422,433. In the redraw the
+  support families bring 3,216 gainer rows, 2,173 placed carrying 63,101 people and 1,043 demoted carrying
+  30,303, which the anchor then trims with every other sub-exempt clone to the A&S composition (40,738 on a
+  40,738 target); the open band lands at 2,871 people and GBP 52.1bn on 94 rows with the heaviest at 254,
+  against one row of about 900 and GBP 62.7bn before. The fence reads 7,466 at design weights and 6,771
+  calibrated, all of it clones (the support families cross nothing), against the 73,000 bound; loss 0.0085,
+  effective sample size 5,228, liability +3.8 percent, Table 3 within 0.3 and Table 4.1 within 3.0 percent.
+  One terminal gate fails: `uk_weight_ratio` at 1,210.8 against the certified 1,151.25, the maximum weight
+  unchanged (31,449 against 34,734 on the previous arm) and the positive median halved from 53.6 to 26.0
+  because 8,126 light family rows joined the frame.
+- `ch2` (cap 80, headroom 2.0; commit 817e13f3e, reverted): fails at the spine on the asset-type stage's
+  residential gains bound, a gap of GBP 10.29bn against a bound of 5.38bn where every earlier arm, `ch1`
+  included, sat at four to five percent of its bound. The split's lighter rows shrank that gate's three-sigma
+  envelope from about 11bn to about 5.4bn while a few top-band families carry billions each, so a change of
+  the copy granularity re-rolls the residential draw with a ten-billion stake; the cap stays at 60.
+- `h15` (cap 60, headroom 1.5): all 26 spine gates pass (residential gap 8 percent of its bound); 223 households
+  into 2,847 copies; fence 6,677; the ratio 1,161.0 misses the bound by under one percent, the maximum weight
+  having moved to 33,025 and the median to 28.5.
+- `h125` (cap 60, headroom 1.25; the configuration the branch carries from c306cc07d): all 26 spine gates and
+  all 7 terminal gates pass. 189 households into 2,376 copies (29,144 households before the clone); the
+  support families place 1,317 rows carrying 38,300 people and demote 714 carrying 20,732; the anchor sits
+  on its 41,000 target; the open band lands at 2,643 people and GBP 47.7bn on 84 rows with the heaviest at
+  254; the fence reads 7,513 at design and 6,711 calibrated, all clones; the ratio is 1,079.1 (maximum 33,975,
+  median 31.5) against 1,151.25; loss 0.0084, effective sample size 5,198, liability +3.6 percent (GBP
+  23.31bn), 550,033 taxpayers and GBP 119.1bn of gains against 549,961 and 119.4bn on `wp3final`, BADR
+  61,016 claimants and GBP 18.65bn qualifying, the worst tax-by-age row 6.4 percent against 10.1, Table 3
+  within 0.4 and Table 4.1 within 3.0 percent, the share of gains above GBP 125,140 at 55.3 percent, and the
+  identity-stability tool passes with the split's E8 recompute green. The residential gap sits at 8 percent
+  of its bound.
+- `ch3` (c306cc07d, the pushed head; cap 60, headroom 1.25): rebuilt for provenance under the PR's own
+  commit, its spine is identical to `h125` dataset for dataset (2,454 datasets, the files differ only in
+  provenance bytes) and its calibration reproduces every figure above to the digit: all 26 spine gates and all
+  7 terminal gates pass, fence 6,711, ratio 1,079.1, effective sample size 5,198.
+
+The placement replay confirms the mechanism on every arm: the wealth cliff is unchanged for plain clones
+(placed share near zero below the eighth investable-wealth decile, 11 percent in the eighth, 35 in the ninth
+and 70 in the tenth on `ch1`), while the support families, being the wealthiest rows of their columns, are
+placed at 99 percent by mass. The heaviest rows the walk still places in the GBP 250,000 to 1m bands are
+plain clones of the SPI income-band donors at 1,496 (their stage stacks them at 2,992 and the clone halves
+them), which microcosm#1063 will lighten; the split does not touch them.
