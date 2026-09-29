@@ -15,7 +15,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
@@ -152,6 +152,26 @@ from microcosm.build.us_runtime import (
     write_puf_capital_gains_tail_manifest,
 )
 from microcosm.build.us_runtime.asec_sources import ASEC_SOURCE_ARTIFACTS
+from microcosm.build.us_runtime.block_location import (
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
+    US_LOCATION_RULE_BLOCK_V1,
+    US_LOCATION_RULE_CHOICES,
+    US_LOCATION_RULE_LEGACY,
+    UsLocationLadder,
+    load_us_location_ladder,
+    us_block_location_gate,
+    us_block_location_manifest,
+    with_household_us_block_location,
+)
+from microcosm.build.us_runtime.cps_source_geography import (
+    cps_source_geography,
+    household_source_keys,
+    load_cps_household_geography,
+)
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
     refuse_denied_frame,
@@ -162,7 +182,10 @@ from microcosm.build.us_runtime.puf_qrf_chain import (
     initialize_primary_puf_qrf_chain,
     run_primary_puf_qrf_chain,
 )
-from microcosm.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+from microcosm.build.us_runtime.puf_support import (
+    PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
+    US_PERSON_REFERENCE_ID_COLUMNS,
+)
 from microcosm.frame import Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 from microcosm.frame.units import US_SCHEMA
@@ -281,6 +304,60 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
 OUTER_STAGE_PIPELINE = StagePipeline(
     tuple(Stage(name, " -> ".join(boundaries)) for name, boundaries in STAGE_BOUNDARIES)
 )
+# --location-rule block_v1 (microcosm #696) replaces the legacy two-step
+# location (SOI return-count congressional-district draw, then a block within
+# that district) with one household block draw from which every geography,
+# the congressional district included, derives. It is a separate pipeline so
+# the legacy stage list, its descriptions and its sha stay byte-identical.
+HOUSEHOLD_LOCATION_STAGE_NAME = "household_location_assignment"
+_LEGACY_LOCATION_STAGE_NAMES = (
+    "congressional_district_assignment",
+    "block_ladder_assignment",
+)
+
+
+def _block_v1_stage_boundaries() -> tuple[tuple[str, tuple[str, ...]], ...]:
+    boundaries: list[tuple[str, tuple[str, ...]]] = []
+    for stage_name, steps in STAGE_BOUNDARIES:
+        if stage_name == _LEGACY_LOCATION_STAGE_NAMES[0]:
+            boundaries.append(
+                (
+                    HOUSEHOLD_LOCATION_STAGE_NAME,
+                    ("with_household_us_block_location[block_v1]",),
+                )
+            )
+        elif stage_name != _LEGACY_LOCATION_STAGE_NAMES[1]:
+            boundaries.append((stage_name, steps))
+    return tuple(boundaries)
+
+
+BLOCK_V1_STAGE_BOUNDARIES = _block_v1_stage_boundaries()
+BLOCK_V1_PIPELINE_STEPS = tuple(name for name, _ in BLOCK_V1_STAGE_BOUNDARIES)
+BLOCK_V1_OUTER_STAGE_PIPELINE = StagePipeline(
+    tuple(
+        Stage(name, " -> ".join(boundaries))
+        for name, boundaries in BLOCK_V1_STAGE_BOUNDARIES
+    )
+)
+# Every stage name --stage accepts under either rule; a rule's own pipeline
+# refuses the other rule's location stages at run time.
+ALL_STAGE_NAMES = (*STAGE_NAMES, HOUSEHOLD_LOCATION_STAGE_NAME)
+
+
+def _location_rule(args: object) -> str:
+    return str(getattr(args, "location_rule", US_LOCATION_RULE_LEGACY))
+
+
+def _is_block_v1(args: object) -> bool:
+    return _location_rule(args) == US_LOCATION_RULE_BLOCK_V1
+
+
+def _pipeline_steps_for(args: object) -> tuple[str, ...]:
+    return BLOCK_V1_PIPELINE_STEPS if _is_block_v1(args) else PIPELINE_STEPS
+
+
+def _pipeline_for(args: object) -> StagePipeline:
+    return BLOCK_V1_OUTER_STAGE_PIPELINE if _is_block_v1(args) else OUTER_STAGE_PIPELINE
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -363,7 +440,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
         "--stage",
-        choices=(*STAGE_NAMES, "all"),
+        choices=(*ALL_STAGE_NAMES, "all"),
         default="all",
         help=(
             "Run one descriptive checkpointed stage, or run all stages as fresh "
@@ -446,7 +523,46 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "build."
         ),
     )
+    parser.add_argument(
+        "--location-rule",
+        choices=US_LOCATION_RULE_CHOICES,
+        default=US_LOCATION_RULE_LEGACY,
+        help=(
+            "Household location rule. 'legacy' (default) draws a "
+            "congressional district from SOI return-count Ledger facts and "
+            "then a block within it. 'block_v1' (microcosm #696) draws one "
+            "2020 census block per household proportional to block "
+            "population within its CPS ASEC source geography (identified "
+            "county, else its state outside the ASEC year's identified "
+            "counties) and derives every other geography, the congressional "
+            "district included, from the block."
+        ),
+    )
+    parser.add_argument(
+        "--location-seed",
+        default=0,
+        type=int,
+        help="Seed of the block_v1 household block draw (block_v1 only).",
+    )
+    parser.add_argument(
+        "--location-clones",
+        default=1,
+        type=int,
+        help=(
+            "Location clones per household (block_v1 only). Only 1 is "
+            "admitted on this line today; see the parse-time refusal."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.location_rule == US_LOCATION_RULE_BLOCK_V1:
+        _validate_block_v1_args(parser, args)
+        return _validate_common_args(parser, args)
+    if args.location_seed != 0 or args.location_clones != 1:
+        parser.error(
+            "--location-seed and --location-clones apply only to "
+            "--location-rule block_v1; the legacy rule draws with "
+            "--congressional-district-seed and --geography-ladder-seed"
+        )
     if (
         args.congressional_district_vintage_crosswalk is not None
         and not args.assign_congressional_districts
@@ -476,6 +592,75 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "(tools/build_us_block_ladder_artifact.py) or opt out "
             "explicitly with --without-block-ladder"
         )
+    return _validate_common_args(parser, args)
+
+
+# Why --location-clones > 1 is refused on this line (read this session): the
+# release that consumes this base refuses duplicate copies of one source unit.
+_LOCATION_CLONES_BLOCKERS = (
+    "support_provenance.py:support_copy_rank_series admits only support clone "
+    "indices 0, 1 and 2 on a historical frame",
+    "sipp_head_start.py:_recipient_predictors (via with_us_sipp_head_start_input) "
+    "refuses repeated (person_source_id, copy rank) pairs",
+    "voluntary_filing.py:_source_receiver_rows refuses repeated "
+    "(tax_unit_source_id, copy rank) pairs",
+    "puf_capital_gains_tail.py:assert_puf_capital_gains_tail_survives_selection "
+    "requires each capital-gains tail donor once among applied tax units",
+)
+
+
+def _validate_block_v1_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
+    if args.location_clones != 1:
+        parser.error(
+            "--location-clones must be 1 on the base-h5 line for now: the "
+            "Route A release (tools/build_us_fiscal_refresh_release.py "
+            "--base-h5) cannot yet admit location clones of one source "
+            "household: " + "; ".join(_LOCATION_CLONES_BLOCKERS)
+        )
+    if args.location_seed < 0:
+        parser.error("--location-seed must be non-negative")
+    if args.block_ladder_artifact is None:
+        parser.error(
+            "--location-rule block_v1 requires --block-ladder-artifact: the "
+            "household block draw samples the ladder's 2020 blocks"
+        )
+    if args.without_block_ladder:
+        parser.error(
+            "--location-rule block_v1 and --without-block-ladder are "
+            "contradictory: every geography derives from the drawn block"
+        )
+    if args.assign_congressional_districts or args.ledger_facts is not None:
+        parser.error(
+            "--location-rule block_v1 replaces the SOI return-count "
+            "congressional-district draw: drop --assign-congressional-"
+            "districts and --ledger-facts (the district derives from the block)"
+        )
+    if args.congressional_district_seed != 0 or args.geography_ladder_seed != 0:
+        parser.error(
+            "--congressional-district-seed and --geography-ladder-seed seed "
+            "the legacy draws; under --location-rule block_v1 pass "
+            "--location-seed"
+        )
+    if args.congressional_district_vintage_crosswalk is None:
+        parser.error(
+            "--location-rule block_v1 requires "
+            "--congressional-district-vintage-crosswalk: the Route A release "
+            "checks the base's crosswalk sha and 119th-Congress target "
+            "attributes before it runs"
+        )
+    if args.base_h5 is not None:
+        parser.error(
+            "--location-rule block_v1 requires --asec-h5 sources: a CPS "
+            "household's candidate blocks come from its ASEC GTCO/GESTFIPS "
+            "row, which a --base-h5 input does not carry"
+        )
+
+
+def _validate_common_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> argparse.Namespace:
     if args.support_spine_spec is not None and args.asec_h5 is None:
         parser.error("--support-spine-spec requires --asec-h5")
     if args.stage != "all" and args.checkpoint_dir is None:
@@ -672,7 +857,11 @@ def main(argv: list[str] | None = None) -> None:
         # pipeline and remains the byte-for-byte compatibility path.
         boundary_dir = getattr(args, "equivalence_boundary_dir", None)
         observer = (
-            None if boundary_dir is None else _EquivalenceBoundaryObserver(boundary_dir)
+            None
+            if boundary_dir is None
+            else _EquivalenceBoundaryObserver(
+                boundary_dir, pipeline_steps=_pipeline_steps_for(args)
+            )
         )
         if observer is None:
             _run_all(args)
@@ -686,14 +875,15 @@ def main(argv: list[str] | None = None) -> None:
 def _run_staged_all(args: argparse.Namespace) -> None:
     """Run every outer boundary in a fresh interpreter, resuming by prefix."""
 
+    pipeline_steps = _pipeline_steps_for(args)
     runtime = StageRuntime(
         args.checkpoint_dir,
-        OUTER_STAGE_PIPELINE,
+        _pipeline_for(args),
         run_config=_stage_run_config(args),
     )
     completed_prefix = runtime.context.completed
-    remaining = PIPELINE_STEPS[len(completed_prefix) :]
-    if not remaining and completed_prefix == PIPELINE_STEPS:
+    remaining = pipeline_steps[len(completed_prefix) :]
+    if not remaining and completed_prefix == pipeline_steps:
         # Re-enter only the fresh final child so it can validate/repair the
         # export and stage_all alias after a crash in the post-context window.
         remaining = ("final_export",)
@@ -767,6 +957,12 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     command.extend(("--geography-ladder-seed", str(args.geography_ladder_seed)))
     if args.allow_geography_ladder_gate_failures:
         command.append("--allow-geography-ladder-gate-failures")
+    if _is_block_v1(args):
+        # Emitted only off the legacy rule, so legacy child command lines
+        # stay byte-identical.
+        command.extend(("--location-rule", _location_rule(args)))
+        command.extend(("--location-seed", str(args.location_seed)))
+        command.extend(("--location-clones", str(args.location_clones)))
     if getattr(args, "equivalence_deterministic_h5_metadata", False):
         command.append("--equivalence-deterministic-h5-metadata")
     return command
@@ -846,7 +1042,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             "PYTHONHASHSEED",
         )
     }
-    return {
+    config: dict[str, object] = {
         "allow_geography_ladder_gate_failures": bool(
             args.allow_geography_ladder_gate_failures
         ),
@@ -904,6 +1100,24 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         "thread_environment": thread_environment,
         "without_block_ladder": bool(args.without_block_ladder),
     }
+    if _is_block_v1(args):
+        # Off the legacy rule only, so a legacy run config (and every legacy
+        # checkpoint directory that locked one) is unchanged. The ladder's
+        # digest is locked too: a ladder rewritten in place at the same path
+        # would silently move every drawn block.
+        config.update(
+            {
+                "location_rule": _location_rule(args),
+                "location_seed": int(args.location_seed),
+                "location_clones": int(args.location_clones),
+                "block_ladder_artifact_sha256": (
+                    _sha256(args.block_ladder_artifact)
+                    if Path(args.block_ladder_artifact).is_file()
+                    else None
+                ),
+            }
+        )
+    return config
 
 
 def _builder_code_identity() -> dict[str, object]:
@@ -928,13 +1142,19 @@ def _builder_code_identity() -> dict[str, object]:
 class _EquivalenceBoundaryObserver:
     """Write test-only monolith snapshots without changing production stages."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        pipeline_steps: tuple[str, ...] = PIPELINE_STEPS,
+    ) -> None:
         self.root = root.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self._next_stage_index = 0
+        self.pipeline_steps = pipeline_steps
 
     def observe_frame(self, stage: str, frame: Frame) -> None:
-        expected = PIPELINE_STEPS[self._next_stage_index]
+        expected = self.pipeline_steps[self._next_stage_index]
         if stage != expected:
             raise AssertionError(
                 f"Monolith boundary order changed: expected {expected!r}, got "
@@ -945,7 +1165,7 @@ class _EquivalenceBoundaryObserver:
             frame,
             metadata={
                 "artifact_kind": "populace_monolith_equivalence_boundary",
-                "pipeline_steps": list(PIPELINE_STEPS),
+                "pipeline_steps": list(self.pipeline_steps),
                 "stage": stage,
                 "stage_index": self._next_stage_index,
             },
@@ -987,10 +1207,10 @@ class _EquivalenceBoundaryObserver:
                 temporary.unlink(missing_ok=True)
 
     def assert_complete(self) -> None:
-        if self._next_stage_index != len(PIPELINE_STEPS):
+        if self._next_stage_index != len(self.pipeline_steps):
             raise AssertionError(
                 "Monolith boundary observer stopped after "
-                f"{self._next_stage_index}/{len(PIPELINE_STEPS)} stages."
+                f"{self._next_stage_index}/{len(self.pipeline_steps)} stages."
             )
 
 
@@ -1046,6 +1266,165 @@ def _write_policyengine_dataset(
             output_h5,
             period=args.target_year,
         )
+
+
+def _load_block_v1_location_ladder(args: argparse.Namespace) -> UsLocationLadder:
+    """Load the block_v1 ladder; its primary CD plan must be the current one.
+
+    Route A reads the base's ``congressional_district_geoid`` as a
+    current-vintage (119th Congress) district and checks the vintage attrs
+    this builder writes, so a ladder whose primary plan is another vintage
+    is refused before any draw.
+    """
+
+    ladder = load_us_location_ladder(args.block_ladder_artifact)
+    if ladder.primary_congressional_district_plan != (
+        CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+    ):
+        raise SystemExit(
+            "--location-rule block_v1: the block ladder's primary "
+            "congressional-district plan is "
+            f"{ladder.primary_congressional_district_plan!r}, but this base "
+            f"records districts as {CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE!r}."
+        )
+    # Validates the crosswalk artifact (current-vintage targets) even though
+    # block_v1 translates no facts: its digest is the attr Route A checks.
+    load_congressional_district_vintage_crosswalk(
+        args.congressional_district_vintage_crosswalk
+    )
+    return ladder
+
+
+def _block_v1_household_location(
+    args: argparse.Namespace,
+    frame: Frame,
+) -> tuple[Frame, dict[str, object]]:
+    """Draw every household's 2020 block (microcosm #696) and record it.
+
+    Every household on this line is CPS ASEC lineage: PUF-detail and
+    capital-gains tail copies share their native row's
+    ``(source_year, source_household_id)``, so each copy's candidate blocks
+    come from the same ASEC row (identified county when ``GTCO`` is nonzero,
+    else its state outside that ASEC year's identified counties), while each
+    copy gets its own keyed draw. Returns the located frame and the
+    ``household_location`` manifest record.
+    """
+
+    ladder = _load_block_v1_location_ladder(args)
+    asec_paths = _asec_source_paths(args)
+    source_year, source_household_id = household_source_keys(frame)
+    geography = cps_source_geography(
+        ladder,
+        load_cps_household_geography(asec_paths),
+        source_year=source_year,
+        source_household_id=source_household_id,
+        state_fips=frame.table("household")["state_fips"].to_numpy(np.int64),
+    )
+    located, table = with_household_us_block_location(
+        frame,
+        ladder,
+        seed=args.location_seed,
+        clones=args.location_clones,
+        county_fips=geography.county_fips,
+        identification_group=geography.identification_group,
+        identified_counties=geography.identified_counties,
+        cbsa_code=geography.cbsa_code,
+        unidentified_county_share=geography.unidentified_county_share,
+        person_reference_columns=US_PERSON_REFERENCE_ID_COLUMNS,
+    )
+    household = located.table("household")
+    household_weights = located.weights_for("household").values
+    location_gate = us_block_location_gate(household, ladder)
+    # The L0/refit release export re-runs the legacy geography-ladder gate
+    # (l0_refit_export.py:export_us_l0_refit_h5) on frames built from this
+    # base, so the block draw must pass it here too.
+    ladder_gate = us_geography_ladder_gate(household, household_weights)
+    failures = [
+        *(f"us_block_location: {failure}" for failure in location_gate.failures),
+        *(f"geography_ladder: {failure}" for failure in ladder_gate.failures),
+    ]
+    if failures and not args.allow_geography_ladder_gate_failures:
+        raise SystemExit(
+            "Household location (block_v1) gate failed:\n  " + "\n  ".join(failures)
+        )
+    record = us_block_location_manifest(
+        table,
+        ladder,
+        seed=args.location_seed,
+        clones=args.location_clones,
+        candidate_set_rule=geography.record,
+    )
+    record.update(
+        {
+            "applied": True,
+            "artifact": str(args.block_ladder_artifact.resolve()),
+            "artifact_sha256": ladder.sha256,
+            "asec_h5": {
+                str(year): str(path.resolve())
+                for year, path in sorted(asec_paths.items())
+            },
+            "congressional_district_vintage_crosswalk": str(
+                args.congressional_district_vintage_crosswalk.resolve()
+            ),
+            "congressional_district_vintage_crosswalk_sha256": _sha256(
+                args.congressional_district_vintage_crosswalk
+            ),
+            "congressional_district_vintage_target": (
+                CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+            "coverage": us_geography_ladder_assignment_summary(
+                household,
+                ladder.blocks,
+                weight_values=household_weights,
+            ),
+            "gate": {
+                "passed": location_gate.passed,
+                "failures": list(location_gate.failures),
+                "details": dict(location_gate.details),
+            },
+            "geography_ladder_gate": {
+                "passed": ladder_gate.passed,
+                "failures": list(ladder_gate.failures),
+                "details": dict(ladder_gate.details),
+            },
+        }
+    )
+    return located, record
+
+
+def _write_block_v1_location_attrs(
+    attrs: MutableMapping[str, object],
+    household_location: Mapping[str, object],
+) -> None:
+    """Root attrs of a block_v1 base; legacy bases never carry the location ones.
+
+    The crosswalk digest and ``119th_congress`` target are the attrs Route A
+    checks before it runs. The ladder digest and vintages go under both the
+    legacy ladder names and the ``populace_block_ladder_*`` names every
+    block_v1 line writes. Seed and clones are written as text, as the stacked
+    pool writes them.
+    """
+
+    ladder = household_location["block_ladder"]
+    if not isinstance(ladder, Mapping):
+        raise TypeError("household_location['block_ladder'] must be a mapping.")
+    attrs[CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = str(
+        household_location["congressional_district_vintage_crosswalk_sha256"]
+    )
+    attrs[CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = str(
+        household_location["congressional_district_vintage_target"]
+    )
+    attrs[GEOGRAPHY_LADDER_ARTIFACT_SHA256_ATTR] = str(ladder["sha256"])
+    attrs[GEOGRAPHY_LADDER_VINTAGES_ATTR] = json.dumps(
+        ladder["layer_vintages"], sort_keys=True
+    )
+    attrs[POPULACE_BLOCK_LADDER_SHA256_ATTR] = str(ladder["sha256"])
+    attrs[POPULACE_BLOCK_LADDER_VINTAGES_ATTR] = json.dumps(
+        ladder["layer_vintages"], sort_keys=True
+    )
+    attrs[POPULACE_LOCATION_RULE_ATTR] = str(household_location["location_rule"])
+    attrs[POPULACE_LOCATION_SEED_ATTR] = str(household_location["seed"])
+    attrs[POPULACE_LOCATION_CLONES_ATTR] = str(household_location["clones"])
 
 
 def _run_all(
@@ -1516,89 +1895,116 @@ def _run_all(
             + "\n  ".join(education_inputs_gate.failures)
         )
     _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
-    congressional_district_assignment = {"applied": False}
-    if args.assign_congressional_districts:
-        ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
-        if args.congressional_district_vintage_crosswalk is not None:
-            ledger_facts = translate_congressional_district_facts_to_current_vintage(
-                ledger_facts,
-                load_congressional_district_vintage_crosswalk(
-                    args.congressional_district_vintage_crosswalk
+    household_location: dict[str, object] | None = None
+    if _is_block_v1(args):
+        # block_v1 replaces both legacy location stages with one block draw;
+        # their summary keys stay present and unapplied.
+        imputed, household_location = _block_v1_household_location(args, imputed)
+        congressional_district_assignment = {
+            "applied": False,
+            "replaced_by": "household_location",
+        }
+        geography_ladder_assignment = {
+            "applied": False,
+            "opted_out": False,
+            "replaced_by": "household_location",
+        }
+        _observe_frame_boundary(
+            boundary_observer, HOUSEHOLD_LOCATION_STAGE_NAME, imputed
+        )
+    else:
+        congressional_district_assignment = {"applied": False}
+        if args.assign_congressional_districts:
+            ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
+            if args.congressional_district_vintage_crosswalk is not None:
+                ledger_facts = (
+                    translate_congressional_district_facts_to_current_vintage(
+                        ledger_facts,
+                        load_congressional_district_vintage_crosswalk(
+                            args.congressional_district_vintage_crosswalk
+                        ),
+                    )
+                )
+            distribution = congressional_district_distribution_from_ledger_facts(
+                ledger_facts
+            )
+            imputed = with_household_congressional_districts(
+                imputed,
+                distribution,
+                seed=args.congressional_district_seed,
+            )
+            congressional_district_assignment = (
+                congressional_district_assignment_summary(
+                    imputed.table("household"),
+                    distribution,
+                )
+            )
+            congressional_district_assignment.update(
+                {
+                    "ledger_facts": str(args.ledger_facts.resolve()),
+                    "ledger_facts_sha256": _sha256(args.ledger_facts),
+                    "congressional_district_vintage_crosswalk": (
+                        str(args.congressional_district_vintage_crosswalk.resolve())
+                        if args.congressional_district_vintage_crosswalk is not None
+                        else None
+                    ),
+                    "congressional_district_vintage_crosswalk_sha256": (
+                        _sha256(args.congressional_district_vintage_crosswalk)
+                        if args.congressional_district_vintage_crosswalk is not None
+                        else None
+                    ),
+                    "seed": args.congressional_district_seed,
+                }
+            )
+        _observe_frame_boundary(
+            boundary_observer, "congressional_district_assignment", imputed
+        )
+        geography_ladder_assignment = {
+            "applied": False,
+            "opted_out": bool(args.without_block_ladder),
+        }
+        if args.block_ladder_artifact is not None:
+            ladder = load_us_block_ladder(args.block_ladder_artifact)
+            imputed = with_household_us_geography_ladder(
+                imputed,
+                ladder,
+                seed=args.geography_ladder_seed,
+                expected_congressional_district_vintage=(
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
                 ),
             )
-        distribution = congressional_district_distribution_from_ledger_facts(
-            ledger_facts
-        )
-        imputed = with_household_congressional_districts(
-            imputed,
-            distribution,
-            seed=args.congressional_district_seed,
-        )
-        congressional_district_assignment = congressional_district_assignment_summary(
-            imputed.table("household"),
-            distribution,
-        )
-        congressional_district_assignment.update(
-            {
-                "ledger_facts": str(args.ledger_facts.resolve()),
-                "ledger_facts_sha256": _sha256(args.ledger_facts),
-                "congressional_district_vintage_crosswalk": (
-                    str(args.congressional_district_vintage_crosswalk.resolve())
-                    if args.congressional_district_vintage_crosswalk is not None
-                    else None
-                ),
-                "congressional_district_vintage_crosswalk_sha256": (
-                    _sha256(args.congressional_district_vintage_crosswalk)
-                    if args.congressional_district_vintage_crosswalk is not None
-                    else None
-                ),
-                "seed": args.congressional_district_seed,
-            }
-        )
-    _observe_frame_boundary(
-        boundary_observer, "congressional_district_assignment", imputed
-    )
-    geography_ladder_assignment = {
-        "applied": False,
-        "opted_out": bool(args.without_block_ladder),
-    }
-    if args.block_ladder_artifact is not None:
-        ladder = load_us_block_ladder(args.block_ladder_artifact)
-        imputed = with_household_us_geography_ladder(
-            imputed,
-            ladder,
-            seed=args.geography_ladder_seed,
-            expected_congressional_district_vintage=(
-                CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
-            ),
-        )
-        household = imputed.table("household")
-        household_weights = imputed.weights_for("household").values
-        gate = us_geography_ladder_gate(household, household_weights)
-        if not gate.passed and not args.allow_geography_ladder_gate_failures:
-            raise SystemExit(
-                "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
+            household = imputed.table("household")
+            household_weights = imputed.weights_for("household").values
+            gate = us_geography_ladder_gate(household, household_weights)
+            if not gate.passed and not args.allow_geography_ladder_gate_failures:
+                raise SystemExit(
+                    "Geography-ladder gate failed:\n  " + "\n  ".join(gate.failures)
+                )
+            geography_ladder_assignment = us_geography_ladder_assignment_summary(
+                household,
+                ladder,
+                weight_values=household_weights,
             )
-        geography_ladder_assignment = us_geography_ladder_assignment_summary(
-            household,
-            ladder,
-            weight_values=household_weights,
-        )
-        geography_ladder_assignment.update(
-            {
-                "artifact": str(args.block_ladder_artifact.resolve()),
-                "artifact_sha256": _sha256(args.block_ladder_artifact),
-                "seed": args.geography_ladder_seed,
-                "gate": {
-                    "passed": gate.passed,
-                    "failures": list(gate.failures),
-                    "details": dict(gate.details),
-                },
-            }
-        )
-    _observe_frame_boundary(boundary_observer, "block_ladder_assignment", imputed)
+            geography_ladder_assignment.update(
+                {
+                    "artifact": str(args.block_ladder_artifact.resolve()),
+                    "artifact_sha256": _sha256(args.block_ladder_artifact),
+                    "seed": args.geography_ladder_seed,
+                    "gate": {
+                        "passed": gate.passed,
+                        "failures": list(gate.failures),
+                        "details": dict(gate.details),
+                    },
+                }
+            )
+        _observe_frame_boundary(boundary_observer, "block_ladder_assignment", imputed)
     _write_policyengine_dataset(args, imputed, output_h5)
-    if (
+    if household_location is not None:
+        import h5py
+
+        with h5py.File(output_h5, "a") as h5:
+            _write_block_v1_location_attrs(h5.attrs, household_location)
+    elif (
         args.congressional_district_vintage_crosswalk is not None
         or args.block_ladder_artifact is not None
     ):
@@ -1830,6 +2236,8 @@ def _run_all(
         "channel_output_totals": _channel_output_totals(imputed),
         "immigration_composition": us_immigration_composition_summary(imputed),
     }
+    if household_location is not None:
+        summary["household_location"] = household_location
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
     _observe_frame_boundary(boundary_observer, "final_export", imputed)
@@ -1842,7 +2250,7 @@ def _run_configured_stage(args: argparse.Namespace) -> None:
     if args.stage in LEGACY_STAGE_ALIASES:
         raise SystemExit(
             f"Stage alias {args.stage!r} was Phase-1-only; use one of the "
-            f"descriptive stages {list(PIPELINE_STEPS)}."
+            f"descriptive stages {list(_pipeline_steps_for(args))}."
         )
     _run_outer_stage(args)
 
@@ -1850,9 +2258,16 @@ def _run_configured_stage(args: argparse.Namespace) -> None:
 def _run_outer_stage(args: argparse.Namespace) -> None:
     """Run one exact pipeline step through the lossless outer-stage runtime."""
 
+    pipeline_steps = _pipeline_steps_for(args)
+    if args.stage not in pipeline_steps:
+        raise SystemExit(
+            f"--stage {args.stage!r} is not a stage of the "
+            f"--location-rule {_location_rule(args)} pipeline "
+            f"{list(pipeline_steps)}."
+        )
     runtime = StageRuntime(
         args.checkpoint_dir,
-        OUTER_STAGE_PIPELINE,
+        _pipeline_for(args),
         run_config=_stage_run_config(args),
     )
     if args.stage in runtime.context.completed:
@@ -1933,6 +2348,12 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
         elif args.stage == "final_export":
             after = before
             metadata = _export_staged_result(args, after, stage_metadata)
+            assert_unchanged_identity(before, after, stage=args.stage)
+        elif args.stage == HOUSEHOLD_LOCATION_STAGE_NAME:
+            after, household_location = _block_v1_household_location(args, before)
+            metadata = {"household_location": household_location}
+            # --location-clones is 1 on this line (refused at parse time), so
+            # the draw adds geography columns and changes no row or id.
             assert_unchanged_identity(before, after, stage=args.stage)
         else:
             after, metadata = _post_qrf_frame_stage(
@@ -2029,7 +2450,7 @@ def _ensure_asec_raw_stage_checkpoint(
                 "artifact_kind": ASEC_RAW_STAGE_ARTIFACT_KIND,
                 "identity": frame_identity(raw_frame).to_payload(),
                 "operator_status": ASEC_RAW_STAGE_OPERATOR_STATUS,
-                "pipeline_sha256": OUTER_STAGE_PIPELINE.sha256,
+                "pipeline_sha256": _pipeline_for(args).sha256,
                 "raw_source_mappings": raw_source_mappings,
                 "schema_version": ASEC_RAW_STAGE_SCHEMA_VERSION,
                 "source_construction_identity": frame_identity(
@@ -2974,11 +3395,33 @@ def _export_staged_result(
     output_h5 = out_dir / _dataset_filename(args.target_year)
     summary_path = out_dir / _summary_filename(args.target_year)
     _write_policyengine_dataset(args, frame, output_h5)
-    congressional = stage_metadata["congressional_district_assignment"][
-        "congressional_district_assignment"
-    ]
-    geography = stage_metadata["block_ladder_assignment"]["geography_ladder_assignment"]
-    if (
+    household_location: dict[str, object] | None = None
+    if _is_block_v1(args):
+        household_location = stage_metadata[HOUSEHOLD_LOCATION_STAGE_NAME][
+            "household_location"
+        ]
+        congressional: dict[str, object] = {
+            "applied": False,
+            "replaced_by": "household_location",
+        }
+        geography: dict[str, object] = {
+            "applied": False,
+            "opted_out": False,
+            "replaced_by": "household_location",
+        }
+    else:
+        congressional = stage_metadata["congressional_district_assignment"][
+            "congressional_district_assignment"
+        ]
+        geography = stage_metadata["block_ladder_assignment"][
+            "geography_ladder_assignment"
+        ]
+    if household_location is not None:
+        import h5py
+
+        with h5py.File(output_h5, "a") as h5:
+            _write_block_v1_location_attrs(h5.attrs, household_location)
+    elif (
         args.congressional_district_vintage_crosswalk is not None
         or args.block_ladder_artifact is not None
     ):
@@ -3084,13 +3527,13 @@ def _export_staged_result(
         "puf_tax_detail_tail_bounds": qrf["puf_tax_detail_tail_bounds"],
         "puf_capital_gains_tail_transfer": capital_gains_tail,
         **{name: signals[name] for name in required_signals},
-        "congressional_district_assignment": stage_metadata[
-            "congressional_district_assignment"
-        ]["congressional_district_assignment"],
+        "congressional_district_assignment": congressional,
         "geography_ladder_assignment": geography,
         "channel_output_totals": _channel_output_totals(frame),
         "immigration_composition": us_immigration_composition_summary(frame),
     }
+    if household_location is not None:
+        summary["household_location"] = household_location
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
     return {

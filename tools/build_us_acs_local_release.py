@@ -146,6 +146,166 @@ def release_refresh_recipe(soi_mode: str) -> str:
     )
 
 
+#: The staging summary's ``orchestration.location_rule`` value that marks a
+#: ``block_v1`` staging run (``tools/_legacy/build_us_acs_multispine_base.py
+#: --location-rule block_v1``). A summary without the key is a legacy run.
+BLOCK_V1_LOCATION_RULE = "block_v1"
+
+
+def staging_location_rule(staging_summary: dict) -> str:
+    """The household location rule the staging run recorded (default legacy)."""
+
+    orchestration = staging_summary.get("orchestration")
+    if not isinstance(orchestration, dict):
+        return "legacy"
+    return str(orchestration.get("location_rule", "legacy"))
+
+
+def staging_household_location(staging_summary: dict) -> dict | None:
+    """The ``block_v1`` location record, or ``None`` for a legacy staging run.
+
+    A summary that says ``block_v1`` but lacks the record (or its block-ladder
+    path and sha) is refused: finalize could not re-run the block gate.
+    """
+
+    rule = staging_location_rule(staging_summary)
+    if rule == "legacy":
+        return None
+    if rule != BLOCK_V1_LOCATION_RULE:
+        raise SystemExit(
+            f"The staging summary records an unknown location_rule {rule!r}."
+        )
+    record = staging_summary.get("household_location")
+    ladder = record.get("block_ladder") if isinstance(record, dict) else None
+    if (
+        not isinstance(record, dict)
+        or not isinstance(ladder, dict)
+        or not ladder.get("sha256")
+        or not record.get("block_ladder_path")
+    ):
+        raise SystemExit(
+            "The staging summary records location_rule block_v1 but no "
+            "household_location block-ladder path and sha256; re-run staging "
+            "with the current builder."
+        )
+    return record
+
+
+def staging_refresh_recipe(staging_summary: dict) -> str:
+    """The staging command that reproduces the recorded location rule.
+
+    A legacy staging run's recipe is :data:`LEGACY_STAGING_REFRESH_RECIPE`,
+    unchanged; a ``block_v1`` run's names its rule, seed and block ladder.
+    """
+
+    if staging_household_location(staging_summary) is None:
+        return LEGACY_STAGING_REFRESH_RECIPE
+    orchestration = staging_summary["orchestration"]
+    return (
+        f"{LEGACY_STAGING_REFRESH_RECIPE} "
+        f"--location-rule {BLOCK_V1_LOCATION_RULE} "
+        f"--location-seed {int(orchestration.get('location_seed', 0))} "
+        "--block-ladder <us_block_ladder_2020_puma.npz>"
+    )
+
+
+def calibrated_location_root_attributes(
+    staging_summary: dict, *, targets_ladder_sha256: str | None = None
+) -> dict | None:
+    """H5 root attributes recording a ``block_v1`` staging run's location rule.
+
+    ``None`` for a legacy staging run, whose calibrated artifact is written
+    exactly as before. ``targets_ladder_sha256`` is the PUMA ladder the
+    population targets were materialized from (run identity
+    ``ladder_sha256``); under ``block_v1`` it must be the ladder staging
+    recorded, because the attribute names that ladder as the targets' source.
+    """
+
+    record = staging_household_location(staging_summary)
+    if record is None:
+        return None
+    from build_us_acs_multispine_base import _legacy
+
+    orchestration = staging_summary["orchestration"]
+    geography_ladder = staging_summary.get("geography_ladder") or {}
+    if not geography_ladder.get("sha256"):
+        raise SystemExit(
+            "The block_v1 staging summary records no PUMA-ladder sha256 "
+            "(geography_ladder.sha256); refusing to write location attributes "
+            "that cannot name it."
+        )
+    require_block_v1_targets_ladder(staging_summary, targets_ladder_sha256)
+    return _legacy.location_root_attributes(
+        location_rule=BLOCK_V1_LOCATION_RULE,
+        location_seed=int(orchestration.get("location_seed", record.get("seed", 0))),
+        location_clones=int(
+            orchestration.get("location_clones", record.get("clones", 1))
+        ),
+        block_ladder_sha256=str(record["block_ladder"]["sha256"]),
+        block_ladder_vintages=dict(record["block_ladder"].get("layer_vintages") or {}),
+        puma_ladder_sha256=str(geography_ladder["sha256"]),
+        puma_ladder_vintages=dict(geography_ladder.get("layer_vintages") or {}),
+    )
+
+
+def require_block_v1_targets_ladder(
+    staging_summary: dict, targets_ladder_sha256: str | None
+) -> None:
+    """Refuse a block_v1 release whose targets ladder is not the staged one.
+
+    Staging checked the block ladder against its ``--puma-ladder``; the
+    release's state and CD population targets come from ``--ladder``. Under
+    ``block_v1`` they must be the same file, or the recorded ladder agreement
+    and ``populace_puma_ladder_artifact_sha256`` would name a ladder the
+    calibration never used.
+    """
+
+    if staging_household_location(staging_summary) is None:
+        return
+    staged = (staging_summary.get("geography_ladder") or {}).get("sha256")
+    if targets_ladder_sha256 is not None and targets_ladder_sha256 != staged:
+        raise SystemExit(
+            f"--ladder (sha {str(targets_ladder_sha256)[:12]}…) is not the PUMA "
+            f"ladder the block_v1 staging run recorded ({str(staged)[:12]}…); "
+            "the calibrated artifact and the ladder-agreement check name that "
+            "ladder."
+        )
+
+
+def load_staging_block_ladder(staging_summary: dict, override: Path | None = None):
+    """Load the block ladder a ``block_v1`` staging run recorded, sha-verified.
+
+    ``override`` relocates the file (another machine or volume); its sha256
+    must still equal the one the staging summary recorded.
+    """
+
+    from microcosm.build.us_runtime.block_location import load_us_location_ladder
+
+    record = staging_household_location(staging_summary)
+    if record is None:
+        if override is not None:
+            raise SystemExit(
+                "--block-ladder applies only to a block_v1 staging run; this "
+                "staging summary records the legacy location rule."
+            )
+        return None
+    path = Path(override or record["block_ladder_path"])
+    expected = record["block_ladder"]["sha256"]
+    if not path.exists():
+        raise SystemExit(
+            f"Block ladder {path} (recorded by the block_v1 staging run) is "
+            "missing; pass --block-ladder with the same bytes."
+        )
+    actual = _sha256(path)
+    if actual != expected:
+        raise SystemExit(
+            f"Block ladder {path} has sha256 {actual[:12]}…, not the "
+            f"{str(expected)[:12]}… the block_v1 staging run located households "
+            "with."
+        )
+    return load_us_location_ladder(path)
+
+
 # ---------------------------------------------------------------------------
 # Shared telemetry
 # ---------------------------------------------------------------------------
@@ -1276,12 +1436,28 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
         projected.strata,
         mass_log=projected.mass_log,
     )
-    _write_dataset(
-        calibrated,
-        Path(args.out_h5),
-        period=PERIOD,
-        artifact_kind="calibrated_local_area_artifact",
+    location_attributes = calibrated_location_root_attributes(
+        _load_json(_staging_summary_path(args)),
+        targets_ladder_sha256=identity.get("ladder_sha256"),
     )
+    if location_attributes is None:
+        _write_dataset(
+            calibrated,
+            Path(args.out_h5),
+            period=PERIOD,
+            artifact_kind="calibrated_local_area_artifact",
+        )
+    else:
+        # block_v1: the shim's writer plus the location root attributes.
+        from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
+
+        write_nullable_us_h5(
+            calibrated,
+            Path(args.out_h5),
+            period=PERIOD,
+            artifact_kind="calibrated_local_area_artifact",
+            root_attributes=location_attributes,
+        )
     (args.checkpoint_dir / "consumer_export.json").write_text(
         json.dumps(
             {
@@ -1466,6 +1642,7 @@ def finalize_reviewed_limitations(
     ess_fraction = diagnostics.get("ess_fraction", 0.0)
     households = diagnostics.get("households") or 0
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
+    household_location = staging_household_location(staging_summary)
     limitations = list(staging_summary.get("reviewed_limitations", []))
     aged_ssi = (spine_qa or {}).get("per_spine", {})
     limitations += [
@@ -1518,17 +1695,21 @@ def finalize_reviewed_limitations(
             ),
             "calibration_blocker": False,
         },
-        {
-            "id": "cd_population_marginal_vintage_2020",
-            "status": "reviewed_vintage",
-            "reason": (
-                "Congressional-district population marginals use "
-                "119th-boundary / 2020-apportionment Census populations from "
-                "the PUMA ladder; the build period is 2024. Boundaries are "
-                "2020-census-drawn (honest v1)."
-            ),
-            "calibration_blocker": False,
-        },
+        (
+            _block_v1_cd_population_limitation(household_location)
+            if household_location is not None
+            else {
+                "id": "cd_population_marginal_vintage_2020",
+                "status": "reviewed_vintage",
+                "reason": (
+                    "Congressional-district population marginals use "
+                    "119th-boundary / 2020-apportionment Census populations from "
+                    "the PUMA ladder; the build period is 2024. Boundaries are "
+                    "2020-census-drawn (honest v1)."
+                ),
+                "calibration_blocker": False,
+            }
+        ),
         {
             "id": "low_effective_sample_size_lambda_zero",
             "status": "reviewed_concentration",
@@ -1555,30 +1736,107 @@ def finalize_reviewed_limitations(
             ),
             "calibration_blocker": False,
         },
-        {
-            "id": "mixed_sub_puma_column_coverage",
-            "status": "reviewed_construction",
-            "columns": [
-                "block_geoid",
-                "tract_geoid",
-                "cbsa_code",
-                "place_fips",
-                "sldl",
-                "sldu",
-            ],
-            "reason": (
-                "Donor rows keep their certified block-ladder geography "
-                "columns; ACS rows carry no sub-PUMA geography, so these "
-                "columns are donor-spine-only. Consumers filtering on them "
-                "must scope to the asec_puf spine."
-            ),
-            "calibration_blocker": False,
-        },
+        (
+            _block_v1_sub_puma_column_limitation(household_location)
+            if household_location is not None
+            else {
+                "id": "mixed_sub_puma_column_coverage",
+                "status": "reviewed_construction",
+                "columns": [
+                    "block_geoid",
+                    "tract_geoid",
+                    "cbsa_code",
+                    "place_fips",
+                    "sldl",
+                    "sldu",
+                ],
+                "reason": (
+                    "Donor rows keep their certified block-ladder geography "
+                    "columns; ACS rows carry no sub-PUMA geography, so these "
+                    "columns are donor-spine-only. Consumers filtering on them "
+                    "must scope to the asec_puf spine."
+                ),
+                "calibration_blocker": False,
+            }
+        ),
     ]
     deduped: dict[str, dict] = {}
     for limitation in limitations:
         deduped[limitation["id"]] = limitation
     return list(deduped.values())
+
+
+def _block_v1_cd_population_limitation(household_location: dict) -> dict:
+    """``cd_population_marginal_vintage_2020`` for a ``block_v1`` staging run."""
+
+    vintages = (household_location.get("block_ladder") or {}).get(
+        "layer_vintages"
+    ) or {}
+    plan = vintages.get("congressional_district", "unrecorded")
+    agreement = household_location.get("ladder_agreement")
+    districts = (
+        agreement.get("congressional_districts")
+        if isinstance(agreement, dict)
+        else None
+    )
+    checked = (
+        (
+            " The staging run checked that the two ladders carry the same "
+            "PUMAs, states and districts; the largest per-district population "
+            "difference between them was "
+            f"{districts.get('max_abs_population_difference')}."
+        )
+        if isinstance(districts, dict)
+        else ""
+    )
+    return {
+        "id": "cd_population_marginal_vintage_2020",
+        "status": "reviewed_vintage",
+        "reason": (
+            "Congressional-district population marginals use "
+            "119th-boundary / 2020-apportionment Census populations from "
+            "the PUMA ladder; the build period is 2024. Each household's "
+            "congressional district is the block ladder's "
+            f"{plan!r} district of its one 2020 census block "
+            f"({household_location.get('rule')}).{checked} Boundaries are "
+            "2020-census-drawn (honest v1)."
+        ),
+        "location_rule": BLOCK_V1_LOCATION_RULE,
+        "household_district_plan": plan,
+        "ladder_agreement": agreement,
+        "calibration_blocker": False,
+    }
+
+
+def _block_v1_sub_puma_column_limitation(household_location: dict) -> dict:
+    """``mixed_sub_puma_column_coverage`` for a ``block_v1`` staging run."""
+
+    donor_blocks = household_location.get("donor_blocks") or {}
+    return {
+        "id": "mixed_sub_puma_column_coverage",
+        "status": "reviewed_construction",
+        "location_rule": BLOCK_V1_LOCATION_RULE,
+        "columns": [
+            "block_geoid",
+            "tract_geoid",
+            "cbsa_code",
+            "place_fips",
+            "sldl",
+            "sldu",
+        ],
+        "reason": (
+            "Every household on both spines carries these columns, derived "
+            "from its one 2020 census block through the block ladder: ACS "
+            "rows from a block drawn with probability proportional to 2020 "
+            "block population within their observed PUMA; donor rows from "
+            "the block their base-H5 build assigned, or, lacking one, a "
+            "block drawn within their state. On ACS rows they are draws, "
+            "not observations; the PUMS record identifies only state and "
+            "PUMA."
+        ),
+        "donor_blocks": dict(donor_blocks),
+        "calibration_blocker": False,
+    }
 
 
 def _local_hours_gate(frame, staging_summary: dict):
@@ -1647,6 +1905,15 @@ def do_finalize(args) -> None:
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     load_us_puma_ladder(args.ladder)
     ladder_gate = us_puma_ladder_gate(households, weights)
+    block_location_gate = None
+    require_block_v1_targets_ladder(staging_summary, ladder_sha)
+    block_ladder = load_staging_block_ladder(
+        staging_summary, getattr(args, "block_ladder", None)
+    )
+    if block_ladder is not None:
+        from microcosm.build.us_runtime.block_location import us_block_location_gate
+
+        block_location_gate = us_block_location_gate(households, block_ladder)
     composition = spine_composition(households, frame.table("person"), weights)
     # microcosm#765: refuse to package an artifact whose usual-weekly-hours
     # surface is the engine's constant-40 default (or otherwise out of band),
@@ -1753,6 +2020,12 @@ def do_finalize(args) -> None:
             "detail": composition,
         },
     }
+    if block_location_gate is not None:
+        gates["us_block_location_gate"] = {
+            "passed": bool(block_location_gate.passed),
+            "failures": list(block_location_gate.failures),
+            "detail": dict(block_location_gate.details),
+        }
     if spine_qa:
         gates["spine_ssi_qa"] = {
             "passed": True,
@@ -1794,6 +2067,8 @@ def do_finalize(args) -> None:
         )
         if not gates[name]["passed"]
     ]
+    if block_location_gate is not None and not block_location_gate.passed:
+        hard_failures.append("us_block_location_gate")
     updated_summary = dict(staging_summary)
     updated_summary.update(
         {
@@ -1834,6 +2109,16 @@ _STAGING_ORCHESTRATION_KEYS = (
     "geography_seed",
     "donor_channel",
 )
+#: Staging location settings a ``block_v1`` staging run records. A legacy
+#: summary has none of them, and they are projected only when present (with
+#: the run's ``household_location`` record), so a legacy build manifest's
+#: ``staging_orchestration`` is unchanged.
+_STAGING_LOCATION_ORCHESTRATION_KEYS = (
+    "location_rule",
+    "location_seed",
+    "location_clones",
+    "block_ladder_sha256",
+)
 
 
 def _require_uncapped_staging(staging_summary: dict) -> dict[str, object]:
@@ -1862,7 +2147,21 @@ def _require_uncapped_staging(staging_summary: dict) -> dict[str, object]:
             f"The staging run was capped at {cap} ACS household(s) "
             "(--max-households); a smoke's output must not be packaged."
         )
-    return {key: orchestration.get(key) for key in _STAGING_ORCHESTRATION_KEYS}
+    projected = {key: orchestration.get(key) for key in _STAGING_ORCHESTRATION_KEYS}
+    projected.update(
+        {
+            key: orchestration[key]
+            for key in _STAGING_LOCATION_ORCHESTRATION_KEYS
+            if key in orchestration
+        }
+    )
+    # A block_v1 staging run's full location record (rule, seed, clones,
+    # ladders, donor-block accounting, gate) rides into the build manifest
+    # with the settings above; a legacy run records none.
+    household_location = staging_household_location(staging_summary)
+    if household_location is not None:
+        projected["household_location"] = household_location
+    return projected
 
 
 def _require_recorded_soi_mode(materialize_rss: dict) -> str:
@@ -2068,7 +2367,7 @@ def do_package(args) -> dict:
             "against the new certified release H5; everything else is "
             "unchanged."
         ),
-        "staging": LEGACY_STAGING_REFRESH_RECIPE,
+        "staging": staging_refresh_recipe(staging_summary),
         "release": release_refresh_recipe(soi_mode),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
@@ -2374,6 +2673,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--out",
         type=Path,
         help="Release root for --stage package (releases/<id>/ lands here).",
+    )
+    parser.add_argument(
+        "--block-ladder",
+        type=Path,
+        default=None,
+        help=(
+            "Relocated copy of the block ladder a --location-rule block_v1 "
+            "staging run recorded (default: the path in its summary). Its "
+            "sha256 must equal the recorded one; refused for a legacy run."
+        ),
     )
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument(

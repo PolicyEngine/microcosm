@@ -3377,3 +3377,226 @@ def test_ready_stacked_pool_loader_requires_both_terminal_gate_aliases(
 
     with pytest.raises(ValueError, match="terminal_gates must be an object"):
         load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+# --------------------------------------------------------------------------
+# --location-rule block_v1 (microcosm#696): the full ready-pool loader path
+# --------------------------------------------------------------------------
+
+_BLOCK_FIXTURE_LADDER_SHA256 = "e" * 64
+_BLOCK_FIXTURE_LAYER_VINTAGES = {
+    "block": "2020_census_block",
+    "congressional_district": "119th_congress",
+}
+_BLOCK_FIXTURE_CPS_SHA256 = {2023: "a" * 64}
+# Native households 10 and 20, plus the PUF-support clone of 20; every
+# derived column is a prefix or ladder lookup of the one located block.
+_BLOCK_FIXTURE_BLOCKS = ("060014001001000", "060014002002001", "060014002002001")
+
+
+def _block_location_root_attributes(seed: int) -> dict[str, str]:
+    return {
+        h5_io.POPULACE_LOCATION_RULE_ATTR: "block_v1",
+        h5_io.POPULACE_LOCATION_SEED_ATTR: str(seed),
+        h5_io.POPULACE_LOCATION_CLONES_ATTR: "1",
+        h5_io.POPULACE_BLOCK_LADDER_SHA256_ATTR: _BLOCK_FIXTURE_LADDER_SHA256,
+        h5_io.POPULACE_BLOCK_LADDER_VINTAGES_ATTR: json.dumps(
+            _BLOCK_FIXTURE_LAYER_VINTAGES, sort_keys=True
+        ),
+    }
+
+
+def _rewrite_as_block_location_pool(
+    manifest_path: Path,
+    *,
+    seed: int = 5,
+) -> dict[str, object]:
+    """Turn the ready stacked fixture into a block_v1 pool and manifest."""
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        household = h5_io.read_frame_table(store, "household")
+        blocks = pd.Series(_BLOCK_FIXTURE_BLOCKS, index=household.index, dtype=object)
+        household["block_geoid"] = blocks
+        household["tract_geoid"] = blocks.str[:11]
+        household["county_fips"] = blocks.str[:5]
+        household["place_fips"] = pd.Series(["", "53000", "53000"], dtype=object)
+        household["sldu"] = pd.Series(["06009", "06010", "06010"], dtype=object)
+        household["sldl"] = pd.Series(["06018", "06020", "06020"], dtype=object)
+        household["cbsa_code"] = pd.Series(["41860"] * 3, dtype=object)
+        store.put("household", household, format="fixed")
+        attributes = store.get_node("/")._v_attrs
+        for key, value in _block_location_root_attributes(seed).items():
+            attributes[key] = value
+
+    clone_column = support_clone_index_column("household")
+    native = household.loc[household[clone_column].eq(0)]
+    legacy = manifest["geography_assignment"]
+    contract = h5_io.expected_us_stacked_block_location_contract(
+        seed=seed,
+        clones=1,
+        block_ladder_sha256=_BLOCK_FIXTURE_LADDER_SHA256,
+        crosswalk_sha256=(
+            legacy["contract"]["authorities"][
+                "congressional_district_vintage_crosswalk"
+            ]["sha256"]
+        ),
+        cps_asec_sha256=_BLOCK_FIXTURE_CPS_SHA256,
+    )
+    location = {
+        "rule": h5_io.US_STACKED_BLOCK_LOCATION_ALGORITHM_ID,
+        "location_rule": "block_v1",
+        "seed": seed,
+        "clones": 1,
+        "block_ladder": {
+            "sha256": _BLOCK_FIXTURE_LADDER_SHA256,
+            "layer_vintages": dict(_BLOCK_FIXTURE_LAYER_VINTAGES),
+        },
+        "households": len(native),
+        "rows": len(native),
+    }
+    assignment = {
+        **legacy,
+        "contract": contract,
+        "assigned_household_geography": (
+            h5_io.ordered_household_block_location_receipt(
+                native, boundary="block_v1 fixture"
+            )
+        ),
+        "household_location": location,
+        "gate": {
+            "passed": True,
+            "gates": {
+                "us_block_location": {"passed": True},
+                "us_puma_ladder": {"passed": True},
+            },
+        },
+    }
+    manifest["geography_assignment"] = assignment
+    manifest["stage_receipts"]["geography_assignment"] = deepcopy(assignment)
+    manifest["household_location"] = deepcopy(location)
+    manifest["operator_order"] = list(
+        h5_io.US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
+    )
+    manifest["provenance_pins"] = {
+        role: {
+            "path": f"/fixture/{role}",
+            "expected_sha256": authority["sha256"],
+            "actual_sha256": authority["sha256"],
+            "size_bytes": 1,
+        }
+        for role, authority in contract["authorities"].items()
+    }
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest
+
+
+def test_ready_stacked_pool_loader_accepts_a_block_location_pool(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    _rewrite_as_block_location_pool(manifest_path, seed=5)
+
+    frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
+
+    household = frame.table("household")
+    assert household["block_geoid"].astype(str).tolist() == list(_BLOCK_FIXTURE_BLOCKS)
+    assert manifest["operator_order"] == list(
+        h5_io.US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
+    )
+    assert manifest["household_location"]["seed"] == 5
+    assert h5_io.us_stacked_pool_operator_order(manifest) == (
+        h5_io.US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda manifest: manifest.update(
+                {"operator_order": list(US_STACKED_POOL_OPERATOR_ORDER)}
+            ),
+            "canonical late-DAG operator order",
+        ),
+        (
+            lambda manifest: manifest["household_location"].update({"seed": 6}),
+            "household_location record does not match",
+        ),
+        (
+            lambda manifest: manifest["provenance_pins"].pop("block_ladder"),
+            "geography authority 'block_ladder' differs",
+        ),
+    ],
+)
+def test_ready_stacked_pool_loader_refuses_a_changed_block_manifest(
+    tmp_path: Path,
+    mutate: Callable[[dict[str, object]], object],
+    message: str,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = _rewrite_as_block_location_pool(manifest_path)
+    mutate(manifest)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_binds_block_location_root_attrs(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = _rewrite_as_block_location_pool(manifest_path, seed=5)
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        store.get_node("/")._v_attrs[h5_io.POPULACE_LOCATION_SEED_ATTR] = "6"
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="location root attributes"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_refuses_block_drift_across_clones(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = _rewrite_as_block_location_pool(manifest_path)
+    pool_path = Path(manifest["pool_h5"]["path"])
+    clone_column = support_clone_index_column("household")
+    with pd.HDFStore(pool_path, mode="a") as store:
+        household = h5_io.read_frame_table(store, "household")
+        household.loc[household[clone_column].eq(1), "sldl"] = "06099"
+        store.put("household", household, format="fixed")
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cloned household rows disagree.*sldl"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_legacy_stacked_manifest_refuses_h5_location_rule_attrs(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    pool_path = Path(manifest["pool_h5"]["path"])
+    with pd.HDFStore(pool_path, mode="a") as store:
+        store.get_node("/")._v_attrs[h5_io.POPULACE_LOCATION_RULE_ATTR] = "block_v1"
+    manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+    manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="legacy-rule manifest"):
+        load_simulation_ready_us_multispine_pool(manifest_path)

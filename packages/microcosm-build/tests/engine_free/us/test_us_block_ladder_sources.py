@@ -279,3 +279,126 @@ def test_assemble_refuses_populated_block_without_a_district() -> None:
             cbsa_by_county={},
             metadata={},
         )
+
+
+def _metadata_with_puma() -> dict:
+    return {
+        "schema_version": 1,
+        "kind": "us_block_ladder",
+        "block_vintage": "2020_tabulation_blocks",
+        "sampling_basis": "population",
+        "layers": {
+            layer: {"vintage": "test", "source": "test source"}
+            for layer in (
+                "congressional_district",
+                "sldu",
+                "sldl",
+                "place",
+                "cbsa",
+                "puma",
+            )
+        },
+    }
+
+
+def test_assemble_adds_each_blocks_tract_puma(tmp_path) -> None:
+    from microcosm.build.us_runtime.block_location import load_us_location_ladder
+    from microcosm.build.us_runtime.geography_ladder import load_us_block_ladder
+
+    payload = assemble_us_block_ladder(
+        block_population={100010401001000: 20, 100010401001001: 5, 360010001001000: 30},
+        cd_by_block={
+            100010401001000: 1000,
+            100010401001001: 1000,
+            360010001001000: 3620,
+        },
+        sldu_by_block={},
+        sldl_by_block={},
+        place_by_block={},
+        cbsa_by_county={},
+        metadata=_metadata_with_puma(),
+        tract_to_puma={10001040100: 1000100, 36001000100: 3600200},
+    )
+    assert payload["puma"].tolist() == [1000100, 1000100, 3600200]
+    path = tmp_path / "ladder.npz"
+    np.savez_compressed(path, **payload)
+    # The schema-1 loader ignores the additive array; the location loader reads it.
+    assert len(load_us_block_ladder(path)) == 3
+    assert load_us_location_ladder(path).puma.tolist() == [1000100, 1000100, 3600200]
+
+
+def test_assemble_refuses_a_block_whose_tract_has_no_puma() -> None:
+    with pytest.raises(ValueError, match="tract-to-PUMA"):
+        assemble_us_block_ladder(
+            block_population={100010401001000: 20},
+            cd_by_block={100010401001000: 1000},
+            sldu_by_block={},
+            sldl_by_block={},
+            place_by_block={},
+            cbsa_by_county={},
+            metadata={},
+            tract_to_puma={},
+        )
+
+
+def test_block_ladder_puma_matches_the_puma_ladder_built_from_the_same_sources() -> (
+    None
+):
+    """Differential: the block ladder's per-block PUMA and the PUMA ladder are
+    two implementations of the same tract -> PUMA geography; per-PUMA
+    population and the (PUMA, CD) and (PUMA, county) overlaps must agree."""
+
+    import pandas as pd
+
+    from microcosm.build.us_runtime.puma_ladder_sources import (
+        assemble_us_puma_ladder,
+    )
+
+    rng = np.random.default_rng(3)
+    blocks: dict[int, int] = {}
+    districts: dict[int, int] = {}
+    tract_to_puma: dict[int, int] = {}
+    for state in (1, 36):
+        for county in (1, 3, 5):
+            for tract in (100, 200, 300):
+                tract_geoid = int(f"{state:02d}{county:03d}{tract:06d}")
+                tract_to_puma[tract_geoid] = (
+                    state * 10**5 + 100 + int(rng.integers(0, 2))
+                )
+                for block in range(1000, 1000 + int(rng.integers(1, 5))):
+                    geoid = tract_geoid * 10**4 + block
+                    blocks[geoid] = int(rng.integers(1, 500))
+                    districts[geoid] = state * 100 + int(rng.integers(1, 3))
+    block_payload = assemble_us_block_ladder(
+        block_population=blocks,
+        cd_by_block=districts,
+        sldu_by_block={},
+        sldl_by_block={},
+        place_by_block={},
+        cbsa_by_county={},
+        metadata=_metadata_with_puma(),
+        tract_to_puma=tract_to_puma,
+    )
+    puma_payload = assemble_us_puma_ladder(
+        block_population=blocks,
+        cd_by_block=districts,
+        tract_to_puma=tract_to_puma,
+        metadata={},
+    )
+    population = pd.Series(block_payload["population"])
+    puma = block_payload["puma"]
+    by_puma = population.groupby(puma).sum()
+    assert by_puma.index.tolist() == puma_payload["puma"].tolist()
+    assert by_puma.tolist() == puma_payload["puma_population"].tolist()
+    for layer, value in (
+        ("cd", block_payload["congressional_district_geoid"]),
+        ("county", block_payload["block_geoid"] // 10**10),
+    ):
+        overlap = population.groupby([puma, value]).sum().sort_index()
+        assert overlap.index.get_level_values(0).tolist() == (
+            puma_payload[f"{layer}_overlap_puma"].tolist()
+        )
+        assert overlap.index.get_level_values(1).tolist() == (
+            puma_payload[f"{layer}_overlap_{layer}"].tolist()
+        )
+        assert overlap.tolist() == puma_payload[f"{layer}_overlap_population"].tolist()

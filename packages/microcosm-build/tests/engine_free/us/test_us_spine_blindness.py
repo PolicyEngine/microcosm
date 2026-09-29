@@ -261,7 +261,19 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
+        # Household location v1 (#696): one block per household within its
+        # finest source geography; every geography derives from the block.
+        # Reached by the stacked pool under --location-rule block_v1 and
+        # scanned there like every other reached module.
+        "block_location.py",
         "cps_carried.py",
+        # Parser for Census's CPS ASEC identified-county list (List 4); no
+        # population treatment.
+        "cps_identified_county_sources.py",
+        # Joins each CPS household's GTCO/GESTFIPS by its (source_year,
+        # source_household_id) key for the block_v1 draw; no source-spine
+        # read. Remains subject to the all-runtime source-identity scan.
+        "cps_source_geography.py",
         "demographics.py",
         "education_assistance_source.py",
         "eligibility_inputs.py",
@@ -3479,10 +3491,12 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
         # 73 = main's 70 plus spm_independence_role.py, spm_role_source.py and
         # spm_composition.py, reached because the pool's engine-input
         # projection names the SPM role as a required source input (#893).
-        # All three are classified in _OTHER_US_RUNTIME_MODULES and scanned
-        # below like every other reached module.
-        assert len(runtime_graph) == 73, (
-            f"{tool.name} must reach the pinned 73-module runtime graph; "
+        # 75 adds block_location.py and cps_source_geography.py, which the
+        # --location-rule block_v1 household location reaches (#696). All are
+        # classified in _OTHER_US_RUNTIME_MODULES and scanned below like every
+        # other reached module.
+        assert len(runtime_graph) == 75, (
+            f"{tool.name} must reach the pinned 75-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

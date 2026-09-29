@@ -51,7 +51,7 @@ import re
 import subprocess
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
@@ -106,6 +106,17 @@ from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankSt
 from microcosm.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
 )
+from microcosm.build.us_runtime.block_location import (
+    US_BLOCK_LOCATION_RULE_ID,
+    US_LOCATION_RULE_BLOCK_V1,
+    US_LOCATION_RULE_CHOICES,
+    US_LOCATION_RULE_LEGACY,
+    UsLocationLadder,
+    load_us_location_ladder,
+    us_block_location_gate,
+    us_block_location_manifest,
+    with_household_us_block_location,
+)
 from microcosm.build.us_runtime.congressional_district_geography import (
     CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
 )
@@ -116,18 +127,29 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
     load_congressional_district_vintage_crosswalk,
 )
+from microcosm.build.us_runtime.cps_source_geography import (
+    cps_source_geography,
+    load_cps_household_geography,
+)
 from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
     US_ELIGIBILITY_INPUTS_PARENT_ID_COLUMNS,
 )
 from microcosm.build.us_runtime.h5_io import (
+    POPULACE_BLOCK_LADDER_SHA256_ATTR,
+    POPULACE_BLOCK_LADDER_VINTAGES_ATTR,
+    POPULACE_LOCATION_CLONES_ATTR,
+    POPULACE_LOCATION_RULE_ATTR,
+    POPULACE_LOCATION_SEED_ATTR,
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+    US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER,
     US_STACKED_POOL_OPERATOR_ORDER,
     load_simulation_ready_us_multispine_pool_manifest,
+    ordered_household_block_location_receipt,
     write_nullable_us_h5,
 )
 from microcosm.build.us_runtime.housing_inputs import (
@@ -370,6 +392,39 @@ _STACKED_CD_CROSSWALK_SHA256 = (
 _STACKED_CD_CROSSWALK_SOURCE_VINTAGE_REF = "vintage:cd_117"
 _STACKED_CD_CROSSWALK_SOURCE_VINTAGE = "117th_congress"
 _STACKED_CD_CROSSWALK_TARGET_VINTAGE_REF = "vintage:cd_119"
+# --location-rule block_v1 (microcosm#696).  Its seed site and stream are
+# deliberately outside the spec engine's legacy-v1 seed protocol, which pins
+# only the default (legacy) geography operator.
+_STACKED_BLOCK_LOCATION_OPERATOR = "assign_us_block_location"
+_STACKED_BLOCK_LOCATION_SEED_SITE = "us_block_location"
+_STACKED_BLOCK_LOCATION_SEED_STREAM = "household_location_block_v1"
+_STACKED_BLOCK_LADDER_INPUT_ROLE = "block_ladder"
+_STACKED_BLOCK_LADDER_SOURCE_REF = "source:us_block_ladder_2020_puma"
+_STACKED_CPS_ASEC_INPUT_ROLE_PREFIX = "cps_asec_household_geography_"
+_STACKED_BLOCK_LOCATION_DERIVED_COLUMNS = (
+    "block_geoid",
+    "tract_geoid",
+    "county_fips",
+    "place_fips",
+    "sldu",
+    "sldl",
+    "cbsa_code",
+    "puma",
+    CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+)
+# The downstream checks that fix one household row per source record and so
+# cannot yet admit K > 1 location clones on the stacked line.
+_STACKED_LOCATION_CLONE_BLOCKERS = (
+    "support_provenance.validate_assembly_provenance (exact native row counts "
+    "per survey channel)",
+    "stacked_spine.validate_stacked_spine_frame (realized stack counts and "
+    "lineage digests, re-checked against the stack receipt in "
+    "build_us_multispine_pool.build_stacked_pool)",
+    "stacked_spine._validate_stacked_clone_role_lifecycle (household clone "
+    "roles {0}, {0,1} or {0,1,2} only)",
+    "build_us_multispine_pool._validate_stacked_geography_assignment_receipt "
+    "(ordered native household-id digest and household_rows)",
+)
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
 
@@ -665,6 +720,91 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _location_parser() -> argparse.ArgumentParser:
+    """Household-location options (microcosm#696), parsed beside ``_parser``.
+
+    They live in their own parser so the pinned stacked parser surface and
+    its tests stay byte-identical; ``main`` merges both namespaces.
+    """
+
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        allow_abbrev=False,
+        description="Household location options (default: --location-rule legacy).",
+    )
+    parser.add_argument(
+        "--location-rule",
+        choices=US_LOCATION_RULE_CHOICES,
+        default=US_LOCATION_RULE_LEGACY,
+        help=(
+            "Household location rule. legacy (default) keeps the pinned "
+            "PUMA-ladder draw byte-for-byte; block_v1 draws one 2020 census "
+            "block per household within its finest source geography (ACS "
+            "PUMA; CPS ASEC county, or state minus identified counties) and "
+            "derives every other geography from the block (microcosm#696)."
+        ),
+    )
+    parser.add_argument(
+        "--location-seed",
+        type=int,
+        default=0,
+        help="Non-negative block_v1 location seed (default: 0; legacy refuses others).",
+    )
+    parser.add_argument(
+        "--location-clones",
+        type=int,
+        default=1,
+        help=(
+            "Locations per household (default: 1). The stacked pool refuses "
+            "more than one; see the error for the checks that still fix one "
+            "row per source household."
+        ),
+    )
+    parser.add_argument(
+        "--block-ladder",
+        type=Path,
+        help=(
+            "2020 block ladder carrying the additive per-block PUMA array. "
+            "Required by --location-rule block_v1; refused otherwise."
+        ),
+    )
+    parser.add_argument(
+        "--block-ladder-sha256",
+        type=_sha256_argument,
+        help="Expected SHA-256 of --block-ladder (required by block_v1).",
+    )
+    parser.add_argument(
+        "--cps-asec-h5",
+        action="append",
+        metavar="INCOME_YEAR=PATH",
+        help=(
+            "Processed CPS ASEC H5 (census_cps_{INCOME_YEAR}.h5) whose "
+            "household GESTFIPS/GTCO/GTCBSA define ASEC candidate blocks. "
+            "Repeat once per ASEC source year; required by block_v1."
+        ),
+    )
+    parser.add_argument(
+        "--cps-asec-h5-sha256",
+        action="append",
+        metavar="INCOME_YEAR=SHA256",
+        help="Expected SHA-256 of each --cps-asec-h5, keyed by the same year.",
+    )
+    return parser
+
+
+def _parse_arguments(argv: list[str] | None) -> argparse.Namespace:
+    """Parse the location options, then the pinned stacked/legacy options."""
+
+    location_parser = _location_parser()
+    location_args, remaining = location_parser.parse_known_args(argv)
+    if any(token in {"-h", "--help"} for token in remaining):
+        location_parser.print_help()
+    args = _parser().parse_args(remaining)
+    for key, value in vars(location_args).items():
+        setattr(args, key, value)
+    return args
+
+
 def _output_paths(
     path: Path,
     *,
@@ -902,9 +1042,306 @@ def _stacked_geography_assignment_contract() -> dict[str, object]:
     }
 
 
+def _stacked_block_location_contract(
+    seed: int,
+    clones: int,
+    ladder_sha256: str,
+    *,
+    cps_asec_sha256: Mapping[int, str],
+    crosswalk_sha256: str = _STACKED_CD_CROSSWALK_SHA256,
+) -> dict[str, object]:
+    """Return the closed ``block_v1`` household-location authority.
+
+    The legacy contract (:func:`_stacked_geography_assignment_contract`) is
+    untouched; this one replaces it only under ``--location-rule block_v1``.
+    Its algorithm id is the shared block-location rule id, its seed site and
+    stream are outside the legacy-v1 seed protocol, and its authorities are
+    the block ladder, the congressional-district vintage crosswalk (target
+    universe and release attrs) and every CPS ASEC household-geography H5
+    the ASEC candidate sets read.  ``h5_io.expected_us_stacked_block_location_contract``
+    is the consumer's independent copy.
+    """
+
+    authorities: dict[str, object] = {
+        _STACKED_BLOCK_LADDER_INPUT_ROLE: {
+            "input_role": _STACKED_BLOCK_LADDER_INPUT_ROLE,
+            "source_ref": _STACKED_BLOCK_LADDER_SOURCE_REF,
+            "sha256": ladder_sha256,
+        },
+        _STACKED_CD_CROSSWALK_INPUT_ROLE: {
+            "input_role": _STACKED_CD_CROSSWALK_INPUT_ROLE,
+            "source_ref": _STACKED_CD_CROSSWALK_SOURCE_REF,
+            "sha256": crosswalk_sha256,
+            "source_vintage_ref": _STACKED_CD_CROSSWALK_SOURCE_VINTAGE_REF,
+            "source_vintage": _STACKED_CD_CROSSWALK_SOURCE_VINTAGE,
+            "target_vintage_ref": _STACKED_CD_CROSSWALK_TARGET_VINTAGE_REF,
+            "target_vintage": CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+        },
+    }
+    for income_year, sha256 in sorted(cps_asec_sha256.items()):
+        role = _stacked_cps_asec_input_role(income_year)
+        authorities[role] = {
+            "input_role": role,
+            "source_ref": f"source:census_cps_{int(income_year)}",
+            "income_year": int(income_year),
+            "sha256": sha256,
+        }
+    return {
+        "declaration": {
+            "anchor": "block",
+            "order": _STACKED_GEOGRAPHY_ASSIGNMENT_ORDER,
+            "location_rule": US_LOCATION_RULE_BLOCK_V1,
+            "kernels": {
+                "assign": f"kernel:{_STACKED_BLOCK_LOCATION_OPERATOR}",
+                "validate": "kernel:us_block_location_gate",
+            },
+            "draw": {
+                "unit": "household",
+                "universe": "census_block_2020",
+                "weight": "block_population_2020",
+                "candidate_sets": {
+                    "acs": "blocks_within_observed_puma",
+                    "asec": "cps_asec_source_geography",
+                },
+                "uniforms": "stable_identity_uniforms",
+            },
+            "derive": list(_STACKED_BLOCK_LOCATION_DERIVED_COLUMNS),
+            "assertions": [
+                "observed_acs_puma_preserved",
+                "block_state_matches_state_fips",
+                "geography_derived_from_block",
+            ],
+            "ladder_source": _STACKED_BLOCK_LADDER_SOURCE_REF,
+            "congressional_district_vintage_crosswalk": {
+                "source_ref": _STACKED_CD_CROSSWALK_SOURCE_REF,
+                "source_vintage": _STACKED_CD_CROSSWALK_SOURCE_VINTAGE_REF,
+                "target_vintage": _STACKED_CD_CROSSWALK_TARGET_VINTAGE_REF,
+            },
+            "seed": f"stream:{_STACKED_BLOCK_LOCATION_SEED_STREAM}",
+            "clones": int(clones),
+            "validation": [
+                "us_block_location_gate",
+                "puma_ladder_gate",
+                "vintage_refusal",
+            ],
+        },
+        "algorithm": {
+            "id": US_BLOCK_LOCATION_RULE_ID,
+            "kernel": "with_household_us_block_location",
+            "operator": _STACKED_BLOCK_LOCATION_OPERATOR,
+            "order": _STACKED_GEOGRAPHY_ASSIGNMENT_ORDER,
+            "location_rule": US_LOCATION_RULE_BLOCK_V1,
+            "clones": int(clones),
+        },
+        "authorities": authorities,
+        "seed": {
+            "site": _STACKED_BLOCK_LOCATION_SEED_SITE,
+            "stream": _STACKED_BLOCK_LOCATION_SEED_STREAM,
+            "value_source": "cli.location_seed",
+            "value": int(seed),
+        },
+    }
+
+
+def _stacked_cps_asec_input_role(income_year: int) -> str:
+    return f"{_STACKED_CPS_ASEC_INPUT_ROLE_PREFIX}{int(income_year)}"
+
+
+def _location_rule(args: argparse.Namespace) -> str:
+    """The requested location rule; namespaces without the flag are legacy."""
+
+    return getattr(args, "location_rule", US_LOCATION_RULE_LEGACY)
+
+
+def _is_block_location(args: argparse.Namespace) -> bool:
+    return _location_rule(args) == US_LOCATION_RULE_BLOCK_V1
+
+
+def _year_keyed_arguments(
+    values: Sequence[str] | None,
+    *,
+    option: str,
+) -> dict[int, str]:
+    """Parse repeated ``INCOME_YEAR=VALUE`` options into a year-keyed map."""
+
+    parsed: dict[int, str] = {}
+    for raw in values or ():
+        year_text, separator, value = str(raw).partition("=")
+        if not separator or not year_text.strip().isdigit() or not value:
+            raise ValueError(f"{option} expects INCOME_YEAR=VALUE, got {raw!r}.")
+        year = int(year_text)
+        if year in parsed:
+            raise ValueError(f"{option} repeats income year {year}.")
+        parsed[year] = value
+    return parsed
+
+
+def _cps_asec_h5_arguments(
+    args: argparse.Namespace,
+) -> tuple[dict[int, Path], dict[int, str]]:
+    """The block_v1 CPS ASEC household-geography H5s and their pins."""
+
+    paths = {
+        year: Path(value)
+        for year, value in _year_keyed_arguments(
+            getattr(args, "cps_asec_h5", None), option="--cps-asec-h5"
+        ).items()
+    }
+    pins = _year_keyed_arguments(
+        getattr(args, "cps_asec_h5_sha256", None), option="--cps-asec-h5-sha256"
+    )
+    for year, value in pins.items():
+        if not _LOWERCASE_SHA256.fullmatch(value):
+            raise ValueError(
+                f"--cps-asec-h5-sha256 {year}= must be exactly 64 lowercase "
+                "hexadecimal characters."
+            )
+    return paths, pins
+
+
+def _stacked_location_contract_for_args(
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    """The geography contract a configured run binds (legacy by default)."""
+
+    if not _is_block_location(args):
+        return _stacked_geography_assignment_contract()
+    _require_stacked_block_location_arguments(args)
+    _paths, cps_pins = _cps_asec_h5_arguments(args)
+    return _stacked_block_location_contract(
+        args.location_seed,
+        args.location_clones,
+        args.block_ladder_sha256,
+        cps_asec_sha256=cps_pins,
+        crosswalk_sha256=args.congressional_district_vintage_crosswalk_sha256,
+    )
+
+
+def _stacked_operator_order_for_contract(
+    contract: Mapping[str, object],
+) -> tuple[str, ...]:
+    algorithm = contract.get("algorithm")
+    if isinstance(algorithm, Mapping) and algorithm.get("id") == (
+        US_BLOCK_LOCATION_RULE_ID
+    ):
+        return US_STACKED_POOL_BLOCK_LOCATION_OPERATOR_ORDER
+    return US_STACKED_POOL_OPERATOR_ORDER
+
+
+def _require_location_rule_arguments(args: argparse.Namespace) -> None:
+    """Refuse location options that the requested rule does not use."""
+
+    rule = _location_rule(args)
+    seed = getattr(args, "location_seed", 0)
+    clones = getattr(args, "location_clones", 1)
+    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+        raise ValueError("--location-seed must be a non-negative integer.")
+    if isinstance(clones, bool) or not isinstance(clones, int) or clones < 1:
+        raise ValueError("--location-clones must be a positive integer.")
+    block_options = {
+        "--block-ladder": getattr(args, "block_ladder", None),
+        "--block-ladder-sha256": getattr(args, "block_ladder_sha256", None),
+        "--cps-asec-h5": getattr(args, "cps_asec_h5", None) or None,
+        "--cps-asec-h5-sha256": getattr(args, "cps_asec_h5_sha256", None) or None,
+    }
+    if rule == US_LOCATION_RULE_LEGACY:
+        if seed != 0 or clones != 1:
+            raise ValueError(
+                "--location-seed and --location-clones apply only to "
+                "--location-rule block_v1; the legacy rule draws with the "
+                "pinned model seed and one location per household."
+            )
+        given = [option for option, value in block_options.items() if value]
+        if given:
+            raise ValueError(
+                f"{', '.join(given)} apply only to --location-rule block_v1."
+            )
+        return
+    if rule != US_LOCATION_RULE_BLOCK_V1:
+        raise ValueError(f"Unknown --location-rule {rule!r}.")
+    if getattr(args, "legacy_two_spine", False):
+        raise ValueError(
+            "--location-rule block_v1 is a stacked-pipeline rule; "
+            "--legacy-two-spine assigns no household geography."
+        )
+    if getattr(args, "config_authority", "constants") != "constants":
+        raise ValueError(
+            "--location-rule block_v1 cannot run under --config-authority "
+            "constants_adapter: that authority equality-attests the packaged "
+            "spec bundle, which certifies only the legacy geography contract."
+        )
+    if clones != 1:
+        raise ValueError(
+            "--location-rule block_v1 on the stacked pool admits exactly one "
+            f"location per household (got --location-clones {clones}); these "
+            "downstream checks fix one household row per source record: "
+            + "; ".join(_STACKED_LOCATION_CLONE_BLOCKERS)
+            + "."
+        )
+    _require_stacked_block_location_arguments(args)
+
+
+def _require_stacked_block_location_arguments(args: argparse.Namespace) -> None:
+    """Require the block_v1 authorities and refuse the unused PUMA ladder."""
+
+    unused = [
+        option
+        for option, value in {
+            "--puma-ladder": getattr(args, "puma_ladder", None),
+            "--puma-ladder-sha256": getattr(args, "puma_ladder_sha256", None),
+        }.items()
+        if value is not None
+    ]
+    if unused:
+        raise ValueError(
+            f"{', '.join(unused)} are legacy-rule inputs; --location-rule "
+            "block_v1 draws every household from --block-ladder."
+        )
+    required = {
+        "--block-ladder": getattr(args, "block_ladder", None),
+        "--block-ladder-sha256": getattr(args, "block_ladder_sha256", None),
+        "--congressional-district-vintage-crosswalk": getattr(
+            args, "congressional_district_vintage_crosswalk", None
+        ),
+        "--congressional-district-vintage-crosswalk-sha256": getattr(
+            args, "congressional_district_vintage_crosswalk_sha256", None
+        ),
+    }
+    missing = [option for option, value in required.items() if value is None]
+    if missing:
+        raise ValueError(
+            "--location-rule block_v1 requires pinned household-location "
+            f"authorities; missing {', '.join(missing)}."
+        )
+    if required["--congressional-district-vintage-crosswalk-sha256"] != (
+        _STACKED_CD_CROSSWALK_SHA256
+    ):
+        raise ValueError(
+            "--congressional-district-vintage-crosswalk-sha256 differs from the "
+            "canonical US authority pin: got "
+            f"{required['--congressional-district-vintage-crosswalk-sha256']}, "
+            f"expected {_STACKED_CD_CROSSWALK_SHA256}."
+        )
+    paths, pins = _cps_asec_h5_arguments(args)
+    if not paths:
+        raise ValueError(
+            "--location-rule block_v1 requires --cps-asec-h5 INCOME_YEAR=PATH "
+            "for every ASEC source year (census_cps_{year}.h5): ASEC households "
+            "draw within their CPS source county or state remainder."
+        )
+    if set(paths) != set(pins):
+        raise ValueError(
+            "--cps-asec-h5 and --cps-asec-h5-sha256 must name the same income "
+            f"years; got {sorted(paths)} and {sorted(pins)}."
+        )
+
+
 def _require_stacked_geography_arguments(args: argparse.Namespace) -> None:
     """Require both authenticated geography authorities on the stacked route."""
 
+    if _is_block_location(args):
+        _require_location_rule_arguments(args)
+        return
     required = {
         "--puma-ladder": getattr(args, "puma_ladder", None),
         "--puma-ladder-sha256": getattr(args, "puma_ladder_sha256", None),
@@ -995,7 +1432,9 @@ def _verify_inputs(
             args.puf_source_year_csv_sha256,
         ),
     }
-    if not args.legacy_two_spine:
+    if not args.legacy_two_spine and _is_block_location(args):
+        verified.update(_verify_block_location_inputs(args))
+    elif not args.legacy_two_spine:
         verified.update(
             {
                 _STACKED_PUMA_LADDER_INPUT_ROLE: _verify_file(
@@ -1013,6 +1452,42 @@ def _verify_inputs(
     return verified, acs_source_manifest
 
 
+def _verify_block_location_inputs(
+    args: argparse.Namespace,
+) -> dict[str, _VerifiedInput]:
+    """Authenticate the block_v1 location authorities against their pins."""
+
+    cps_paths, cps_pins = _cps_asec_h5_arguments(args)
+    verified = {
+        _STACKED_BLOCK_LADDER_INPUT_ROLE: _verify_file(
+            "US block location ladder",
+            args.block_ladder,
+            args.block_ladder_sha256,
+        ),
+        _STACKED_CD_CROSSWALK_INPUT_ROLE: _verify_file(
+            "congressional-district vintage crosswalk",
+            args.congressional_district_vintage_crosswalk,
+            args.congressional_district_vintage_crosswalk_sha256,
+        ),
+    }
+    for year in sorted(cps_paths):
+        verified[_stacked_cps_asec_input_role(year)] = _verify_file(
+            f"CPS ASEC {year} household geography H5",
+            cps_paths[year],
+            cps_pins[year],
+        )
+    return verified
+
+
+def _block_location_source_paths(args: argparse.Namespace) -> set[Path]:
+    cps_paths, _cps_pins = _cps_asec_h5_arguments(args)
+    return {
+        Path(args.block_ladder).resolve(),
+        Path(args.congressional_district_vintage_crosswalk).resolve(),
+        *(Path(path).resolve() for path in cps_paths.values()),
+    }
+
+
 def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
     """Resolve immutable input locations without opening them."""
 
@@ -1024,7 +1499,10 @@ def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
         Path(args.puf_h5).resolve(),
         Path(args.puf_source_year_csv).resolve(),
     }
-    if not args.legacy_two_spine:
+    if not args.legacy_two_spine and _is_block_location(args):
+        _require_stacked_geography_arguments(args)
+        paths.update(_block_location_source_paths(args))
+    elif not args.legacy_two_spine:
         _require_stacked_geography_arguments(args)
         paths.update(
             {
@@ -1314,7 +1792,22 @@ def _configured_input_pins_digest(args: argparse.Namespace) -> str:
         "processed_puf": args.puf_h5_sha256,
         "puf_source_year": args.puf_source_year_csv_sha256,
     }
-    if not args.legacy_two_spine:
+    if not args.legacy_two_spine and _is_block_location(args):
+        _require_stacked_geography_arguments(args)
+        _cps_paths, cps_pins = _cps_asec_h5_arguments(args)
+        payload.update(
+            {
+                _STACKED_BLOCK_LADDER_INPUT_ROLE: args.block_ladder_sha256,
+                _STACKED_CD_CROSSWALK_INPUT_ROLE: (
+                    args.congressional_district_vintage_crosswalk_sha256
+                ),
+                **{
+                    _stacked_cps_asec_input_role(year): sha256
+                    for year, sha256 in sorted(cps_pins.items())
+                },
+            }
+        )
+    elif not args.legacy_two_spine:
         _require_stacked_geography_arguments(args)
         payload.update(
             {
@@ -1329,7 +1822,14 @@ def _configured_input_pins_digest(args: argparse.Namespace) -> str:
 
 def _assert_stacked_geography_verified_inputs(
     verified_inputs: Mapping[str, _VerifiedInput],
+    *,
+    geography_contract: Mapping[str, object] | None = None,
 ) -> None:
+    if geography_contract is not None and _is_block_location_contract(
+        geography_contract
+    ):
+        _assert_block_location_verified_inputs(verified_inputs, geography_contract)
+        return
     expected = {
         _STACKED_PUMA_LADDER_INPUT_ROLE: _STACKED_PUMA_LADDER_SHA256,
         _STACKED_CD_CROSSWALK_INPUT_ROLE: _STACKED_CD_CROSSWALK_SHA256,
@@ -1350,6 +1850,46 @@ def _assert_stacked_geography_verified_inputs(
             )
 
 
+def _is_block_location_contract(contract: Mapping[str, object]) -> bool:
+    algorithm = contract.get("algorithm")
+    return isinstance(algorithm, Mapping) and (
+        algorithm.get("id") == US_BLOCK_LOCATION_RULE_ID
+    )
+
+
+def _assert_block_location_verified_inputs(
+    verified_inputs: Mapping[str, _VerifiedInput],
+    contract: Mapping[str, object],
+) -> None:
+    """Every block_v1 authority must be a verified input with its pinned bytes."""
+
+    authorities = contract.get("authorities")
+    if not isinstance(authorities, Mapping) or not authorities:
+        raise ValueError("Block-location contract has no authorities.")
+    if verified_inputs.get(_STACKED_PUMA_LADDER_INPUT_ROLE) is not None:
+        raise ValueError(
+            "A block-location identity must not also bind the legacy PUMA ladder."
+        )
+    for role, authority in sorted(authorities.items()):
+        pin = verified_inputs.get(role)
+        if pin is None:
+            raise ValueError(
+                f"Stacked checkpoint identity requires verified input role {role!r}."
+            )
+        sha256 = authority.get("sha256") if isinstance(authority, Mapping) else None
+        if pin.expected_sha256 != sha256 or pin.actual_sha256 != sha256:
+            raise ValueError(
+                f"Stacked verified input {role!r} differs from its "
+                f"block-location authority SHA-256 {sha256}."
+            )
+    crosswalk = verified_inputs[_STACKED_CD_CROSSWALK_INPUT_ROLE]
+    if crosswalk.actual_sha256 != _STACKED_CD_CROSSWALK_SHA256:
+        raise ValueError(
+            f"Stacked verified input {_STACKED_CD_CROSSWALK_INPUT_ROLE!r} differs "
+            f"from its canonical SHA-256 {_STACKED_CD_CROSSWALK_SHA256}."
+        )
+
+
 def _stacked_checkpoint_base_identity(
     verified_inputs: Mapping[str, _VerifiedInput],
     *,
@@ -1359,13 +1899,27 @@ def _stacked_checkpoint_base_identity(
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
     policyengine_us_version: str | None = None,
+    geography_contract: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Bind #599/#608 caches to the live stack and both scale controls."""
+    """Bind #599/#608 caches to the live stack and both scale controls.
 
+    ``geography_contract`` defaults to the legacy geography contract; a
+    ``block_v1`` run passes its block-location contract, which also selects
+    the block-location operator order.
+    """
+
+    geography = (
+        _stacked_geography_assignment_contract()
+        if geography_contract is None
+        else _json_ready(dict(geography_contract))
+    )
     # The empty mapping is reserved for the pure static-component oracle.
     # Every configured/runtime identity carries verified inputs.
     if verified_inputs:
-        _assert_stacked_geography_verified_inputs(verified_inputs)
+        _assert_stacked_geography_verified_inputs(
+            verified_inputs,
+            geography_contract=geography_contract,
+        )
     fraction_token = _stacked_rung(sample_fraction)
     if isinstance(sample_seed, bool) or sample_seed < 0:
         raise ValueError("sample_seed must be a non-negative integer.")
@@ -1401,10 +1955,10 @@ def _stacked_checkpoint_base_identity(
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,
         },
-        "geography_assignment": _stacked_geography_assignment_contract(),
+        "geography_assignment": geography,
         "stacked_authority": stacked_spine_authority_receipt(),
         "pool_code": {
-            "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
+            "operator_order": list(_stacked_operator_order_for_contract(geography)),
             "pre_clone_source_operator_order": list(
                 POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
             ),
@@ -1474,7 +2028,7 @@ def _configured_stacked_identity(args: argparse.Namespace) -> dict[str, object]:
         "sample_seed": args.sample_seed,
         "clone_attachment_fraction": float(args.clone_attachment_fraction),
         "clone_attachment_seed": args.clone_attachment_seed,
-        "geography_assignment": _stacked_geography_assignment_contract(),
+        "geography_assignment": _stacked_location_contract_for_args(args),
         "stacked_authority": stacked_spine_authority_receipt(),
     }
 
@@ -1499,6 +2053,7 @@ def _discover_stacked_checkpoint_identity(
     sample_seed: int,
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
+    geography_contract: Mapping[str, object] | None = None,
 ) -> dict[str, object] | None:
     """Recover a current live-stack identity before loading survey sources.
 
@@ -1551,6 +2106,7 @@ def _discover_stacked_checkpoint_identity(
                 sample_seed=sample_seed,
                 clone_attachment_fraction=clone_attachment_fraction,
                 clone_attachment_seed=clone_attachment_seed,
+                geography_contract=geography_contract,
             )
             if base_identity != expected:
                 raise ValueError("checkpoint base identity is stale")
@@ -1721,8 +2277,16 @@ def _validate_stacked_geography_assignment_receipt(
     target_districts: tuple[int, ...],
     boundary: str,
     require_exact_assembled_rows: bool,
+    configured_contract: Mapping[str, object] | None = None,
+    location_ladder: UsLocationLadder | None = None,
 ) -> None:
-    """Bind a live assembled-or-later Frame to its assignment receipt."""
+    """Bind a live assembled-or-later Frame to its assignment receipt.
+
+    The expected contract is selected by the receipt's algorithm id (legacy
+    by default).  A ``block_v1`` receipt is accepted only when the run's
+    ``configured_contract`` is that same block-location contract, and a
+    block-location configured run refuses a legacy receipt.
+    """
 
     if (
         receipt.get("artifact_kind")
@@ -1730,6 +2294,32 @@ def _validate_stacked_geography_assignment_receipt(
         or receipt.get("schema_version") != 1
     ):
         raise ValueError(f"{boundary}: geography assignment receipt is unsupported.")
+    receipt_contract = receipt.get("contract")
+    block_receipt = isinstance(
+        receipt_contract, Mapping
+    ) and _is_block_location_contract(receipt_contract)
+    block_configured = isinstance(
+        configured_contract, Mapping
+    ) and _is_block_location_contract(configured_contract)
+    if block_receipt or block_configured:
+        if not (
+            block_receipt
+            and block_configured
+            and _json_ready(receipt_contract) == _json_ready(configured_contract)
+        ):
+            raise ValueError(
+                f"{boundary}: geography assignment contract differs from the "
+                "configured location rule."
+            )
+        _validate_stacked_block_location_receipt(
+            frame,
+            receipt,
+            target_districts=target_districts,
+            boundary=boundary,
+            require_exact_assembled_rows=require_exact_assembled_rows,
+            location_ladder=location_ladder,
+        )
+        return
     expected_contract = _stacked_geography_assignment_contract()
     if _json_ready(receipt.get("contract")) != _json_ready(expected_contract):
         raise ValueError(f"{boundary}: geography assignment contract changed.")
@@ -1931,6 +2521,600 @@ def _assign_stacked_household_geography(
         target_districts=target_districts,
         boundary="stacked post-assembly geography assignment",
         require_exact_assembled_rows=True,
+    )
+    return assigned, receipt, target_districts
+
+
+def _expected_block_location_contract_from(
+    contract: Mapping[str, object],
+) -> dict[str, object]:
+    """Rebuild the canonical block_v1 contract from a receipt's variable fields."""
+
+    seed = contract.get("seed")
+    algorithm = contract.get("algorithm")
+    authorities = contract.get("authorities")
+    if (
+        not isinstance(seed, Mapping)
+        or not isinstance(algorithm, Mapping)
+        or not isinstance(authorities, Mapping)
+    ):
+        raise ValueError("block-location contract is malformed.")
+    block = authorities.get(_STACKED_BLOCK_LADDER_INPUT_ROLE)
+    crosswalk = authorities.get(_STACKED_CD_CROSSWALK_INPUT_ROLE)
+    if not isinstance(block, Mapping) or not isinstance(crosswalk, Mapping):
+        raise ValueError("block-location contract authorities are incomplete.")
+    cps_asec_sha256: dict[int, str] = {}
+    for role, authority in authorities.items():
+        if not str(role).startswith(_STACKED_CPS_ASEC_INPUT_ROLE_PREFIX):
+            continue
+        year = authority.get("income_year") if isinstance(authority, Mapping) else None
+        if (
+            isinstance(year, bool)
+            or not isinstance(year, int)
+            or role != _stacked_cps_asec_input_role(year)
+        ):
+            raise ValueError(
+                f"block-location CPS ASEC authority {role!r} is malformed."
+            )
+        cps_asec_sha256[year] = str(authority.get("sha256"))
+    value = seed.get("value")
+    clones = algorithm.get("clones")
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("block-location seed must be a non-negative integer.")
+    if isinstance(clones, bool) or clones != 1:
+        raise ValueError(
+            f"block-location contract binds {clones!r} location clones; the "
+            "stacked pool admits exactly one."
+        )
+    return _stacked_block_location_contract(
+        value,
+        clones,
+        str(block.get("sha256")),
+        cps_asec_sha256=cps_asec_sha256,
+        crosswalk_sha256=str(crosswalk.get("sha256")),
+    )
+
+
+def _block_location_summary(
+    household: pd.DataFrame,
+    record: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "applied": True,
+        "location_rule": US_LOCATION_RULE_BLOCK_V1,
+        "household_rows": len(household),
+        "source_geography_households": _json_ready(
+            record.get("source_geography_households")
+        ),
+        "unique_values": {
+            column: int(household[column].astype(str).nunique(dropna=False))
+            for column in (
+                "block_geoid",
+                "tract_geoid",
+                "county_fips",
+                "puma",
+                CONGRESSIONAL_DISTRICT_GEOID_COLUMN,
+            )
+        },
+    }
+
+
+def _block_location_gate_report(
+    household: pd.DataFrame,
+    weights: np.ndarray,
+    ladder: UsLocationLadder,
+) -> GateReport:
+    return GateReport(
+        (
+            us_block_location_gate(household, ladder),
+            us_puma_ladder_gate(household, weights, assign_tract=False),
+        )
+    )
+
+
+def _validate_stacked_block_location_receipt(
+    frame: Frame,
+    receipt: Mapping[str, object],
+    *,
+    target_districts: tuple[int, ...],
+    boundary: str,
+    require_exact_assembled_rows: bool,
+    location_ladder: UsLocationLadder | None,
+) -> None:
+    """Bind a live Frame to its ``block_v1`` household-location receipt."""
+
+    contract = receipt.get("contract")
+    if not isinstance(contract, Mapping):
+        raise ValueError(f"{boundary}: geography assignment contract changed.")
+    try:
+        expected_contract = _expected_block_location_contract_from(contract)
+    except ValueError as error:
+        raise ValueError(f"{boundary}: {error}") from error
+    if _json_ready(contract) != _json_ready(expected_contract):
+        raise ValueError(f"{boundary}: geography assignment contract changed.")
+    if receipt.get("target_universe") != (
+        _target_congressional_district_universe_receipt(target_districts)
+    ):
+        raise ValueError(f"{boundary}: congressional-district target universe changed.")
+    output = receipt.get("output")
+    if not isinstance(output, Mapping):
+        raise ValueError(f"{boundary}: geography assignment output is missing.")
+    assigned_rows = output.get("household_rows")
+    if (
+        isinstance(assigned_rows, bool)
+        or not isinstance(assigned_rows, int)
+        or assigned_rows < 1
+    ):
+        raise ValueError(
+            f"{boundary}: geography assignment household row count is invalid."
+        )
+    household = frame.table("household")
+    if len(household) < assigned_rows or (
+        require_exact_assembled_rows and len(household) != assigned_rows
+    ):
+        raise ValueError(
+            f"{boundary}: live household rows do not match the assembled "
+            "geography assignment."
+        )
+    native_household = household
+    clone_column = support_clone_index_column("household")
+    if clone_column in household:
+        clone_index = pd.to_numeric(household[clone_column], errors="coerce")
+        native_household = household.loc[clone_index.eq(0)]
+    if len(native_household) != assigned_rows or receipt.get(
+        "pre_assignment_household_order"
+    ) != _ordered_household_id_receipt(native_household):
+        raise ValueError(
+            f"{boundary}: ordered native household IDs differ from the seeded "
+            "geography assignment receipt."
+        )
+    if receipt.get("assigned_household_geography") != (
+        ordered_household_block_location_receipt(native_household, boundary=boundary)
+    ):
+        raise ValueError(
+            f"{boundary}: ordered native household block location differs from "
+            "the assignment output receipt."
+        )
+    values = _assigned_congressional_district_values(household, boundary=boundary)
+    outside = ~np.isin(values, np.asarray(target_districts, dtype=np.int64))
+    if outside.any():
+        raise ValueError(
+            f"{boundary}: household congressional-district values fall outside "
+            f"the authenticated 119th-Congress crosswalk target universe: "
+            f"{sorted(set(values[outside].tolist()))[:5]}."
+        )
+    if require_exact_assembled_rows:
+        expected_output = {
+            "household_rows": len(household),
+            "positive_congressional_district_rows": len(values),
+            "unique_congressional_district_values": int(len(np.unique(values))),
+        }
+        if output != expected_output:
+            raise ValueError(
+                f"{boundary}: assembled geography assignment counts changed."
+            )
+    summary = receipt.get("summary")
+    if (
+        not isinstance(summary, Mapping)
+        or summary.get("applied") is not True
+        or summary.get("household_rows") != assigned_rows
+    ):
+        raise ValueError(f"{boundary}: geography assignment summary is invalid.")
+    location = receipt.get("household_location")
+    authorities = contract.get("authorities")
+    block_sha256 = (
+        authorities[_STACKED_BLOCK_LADDER_INPUT_ROLE].get("sha256")  # type: ignore[index,union-attr]
+        if isinstance(authorities, Mapping)
+        else None
+    )
+    ladder_record = (
+        location.get("block_ladder") if isinstance(location, Mapping) else None
+    )
+    if (
+        not isinstance(location, Mapping)
+        or location.get("rule") != US_BLOCK_LOCATION_RULE_ID
+        or location.get("location_rule") != US_LOCATION_RULE_BLOCK_V1
+        or location.get("seed") != contract["seed"]["value"]  # type: ignore[index]
+        or location.get("clones") != 1
+        or location.get("households") != assigned_rows
+        or location.get("rows") != assigned_rows
+        or not isinstance(ladder_record, Mapping)
+        or ladder_record.get("sha256") != block_sha256
+    ):
+        raise ValueError(
+            f"{boundary}: household_location record differs from its "
+            "block-location contract."
+        )
+    gate_receipt = receipt.get("gate")
+    gates = gate_receipt.get("gates") if isinstance(gate_receipt, Mapping) else None
+    if (
+        not isinstance(gate_receipt, Mapping)
+        or gate_receipt.get("passed") is not True
+        or not isinstance(gates, Mapping)
+        or set(gates) != {"us_block_location", "us_puma_ladder"}
+        or any(
+            not isinstance(gates[name], Mapping)
+            or gates[name].get("passed") is not True
+            for name in gates
+        )
+    ):
+        raise ValueError(
+            f"{boundary}: block-location and PUMA-ladder gate receipts did not pass."
+        )
+    if require_exact_assembled_rows:
+        live_puma = GateReport(
+            (
+                us_puma_ladder_gate(
+                    household,
+                    frame.weights_for("household").values,
+                    assign_tract=False,
+                ),
+            )
+        ).to_manifest()["gates"]["us_puma_ladder"]
+        if gates["us_puma_ladder"] != live_puma:
+            raise ValueError(
+                f"{boundary}: PUMA-ladder gate receipt changed from live output."
+            )
+        if location_ladder is not None:
+            live_block = GateReport(
+                (us_block_location_gate(household, location_ladder),)
+            ).to_manifest()["gates"]["us_block_location"]
+            if gates["us_block_location"] != live_block:
+                raise ValueError(
+                    f"{boundary}: block-location gate receipt changed from live output."
+                )
+
+    source_column = support_source_id_column("household")
+    if source_column in household and clone_column in household:
+        grouped = household.groupby(source_column, sort=False, dropna=False)
+        for column in _STACKED_BLOCK_LOCATION_DERIVED_COLUMNS:
+            if column not in household:
+                raise ValueError(
+                    f"{boundary}: household table lost block-location column "
+                    f"{column!r}."
+                )
+            incoherent = grouped[column].nunique(dropna=False) > 1
+            if bool(incoherent.any()):
+                raise ValueError(
+                    f"{boundary}: cloned household support rows disagree on "
+                    f"assigned geography column {column!r}."
+                )
+
+
+def _require_cps_asec_pins_match_raw_stage(
+    raw_stage_metadata: Mapping[str, object],
+    cps_asec_sha256: Mapping[int, str],
+) -> None:
+    """The CPS H5s the ASEC draw reads must be the ones the ASEC rows came from.
+
+    The ASEC raw-stage checkpoint's ``source_receipt`` records each pooled
+    source year's ``census_cps_{year}.h5`` digest; the block_v1 pins must name
+    exactly those years with exactly those digests.
+    """
+
+    receipt = raw_stage_metadata.get("source_receipt")
+    sources = receipt.get("sources") if isinstance(receipt, Mapping) else None
+    if not isinstance(sources, list) or not sources:
+        raise ValueError(
+            "block_v1 cannot bind its CPS ASEC pins: the ASEC raw-stage "
+            "checkpoint records no source_receipt.sources."
+        )
+    recorded: dict[int, str] = {}
+    for source in sources:
+        year = source.get("year") if isinstance(source, Mapping) else None
+        sha256 = source.get("sha256") if isinstance(source, Mapping) else None
+        if (
+            isinstance(year, bool)
+            or not isinstance(year, int)
+            or not isinstance(sha256, str)
+            or year in recorded
+        ):
+            raise ValueError(
+                "block_v1 cannot bind its CPS ASEC pins: a raw-stage source "
+                f"entry is malformed: {source!r}."
+            )
+        recorded[year] = sha256
+    pinned = {int(year): sha256 for year, sha256 in cps_asec_sha256.items()}
+    if pinned != recorded:
+        raise ValueError(
+            "block_v1 CPS ASEC pins differ from the ASEC raw-stage sources: "
+            f"pinned {dict(sorted(pinned.items()))}, raw stage "
+            f"{dict(sorted(recorded.items()))}."
+        )
+
+
+def _stacked_asec_source_keys(
+    frame: Frame,
+    asec_household_ids: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """``(source_year, source_household_id)`` of each ASEC household, in order.
+
+    Same contract as ``cps_source_geography.household_source_keys`` restricted
+    to ASEC-channel households (ACS persons carry no CPS source key): every
+    member of a household must carry one complete integral pair.
+    """
+
+    person = frame.table("person")
+    missing = [
+        column
+        for column in ("person_household_id", "source_year", "source_household_id")
+        if column not in person
+    ]
+    if missing:
+        raise ValueError(
+            "block_v1 ASEC households need a CPS source key; the stacked person "
+            f"table lacks {missing}."
+        )
+    ids = np.asarray(asec_household_ids, dtype=np.int64)
+    members = person.loc[
+        person["person_household_id"].isin(ids),
+        ["person_household_id", "source_year", "source_household_id"],
+    ]
+    numeric = members[["source_year", "source_household_id"]].apply(
+        pd.to_numeric, errors="coerce"
+    )
+    complete = numeric.notna().all(axis=1) & (numeric == np.floor(numeric)).all(axis=1)
+    if not bool(complete.all()):
+        raise ValueError(
+            f"block_v1: {int((~complete).sum())} ASEC person row(s) carry no "
+            "complete integral (source_year, source_household_id) key."
+        )
+    keyed = pd.DataFrame(
+        {
+            "person_household_id": members["person_household_id"].to_numpy(np.int64),
+            "source_year": numeric["source_year"].to_numpy(np.int64),
+            "source_household_id": numeric["source_household_id"].to_numpy(np.int64),
+        }
+    ).drop_duplicates()
+    if keyed["person_household_id"].duplicated().any():
+        raise ValueError(
+            "block_v1: an ASEC household's members disagree on their CPS source key."
+        )
+    aligned = keyed.set_index("person_household_id").reindex(ids)
+    if aligned.isna().any().any():
+        raise ValueError(
+            "block_v1: some ASEC households have no member carrying a CPS source key."
+        )
+    return (
+        aligned["source_year"].to_numpy(np.int64),
+        aligned["source_household_id"].to_numpy(np.int64),
+    )
+
+
+def _assign_stacked_household_block_location(
+    frame: Frame,
+    *,
+    ladder: UsLocationLadder,
+    crosswalk: pd.DataFrame,
+    cps_household_geography: pd.DataFrame,
+    contract: Mapping[str, object],
+) -> tuple[Frame, dict[str, object], tuple[int, ...]]:
+    """Apply the ``block_v1`` household-location rule after source assembly.
+
+    Every household draws one 2020 block in proportion to block population
+    within its finest source geography: an ACS household within its observed
+    PUMA; an ASEC household within its CPS county (``GTCO != 0``) or its state
+    minus the counties its ASEC vintage identifies (``GTCO = 0``), per
+    ``cps_source_geography``.  Every other geography is the block's ladder
+    lookup.  PUF support clones are created later and inherit it.
+    """
+
+    if not _is_block_location_contract(contract):
+        raise ValueError("block-location assignment requires a block_v1 contract.")
+    seed_block = contract["seed"]
+    algorithm = contract["algorithm"]
+    seed = int(seed_block["value"])  # type: ignore[index]
+    clones = int(algorithm["clones"])  # type: ignore[index]
+    if clones != 1:
+        raise ValueError(
+            "The stacked pool admits exactly one location per household; "
+            + "; ".join(_STACKED_LOCATION_CLONE_BLOCKERS)
+            + "."
+        )
+    authorities = contract["authorities"]
+    expected_ladder_sha256 = authorities[_STACKED_BLOCK_LADDER_INPUT_ROLE]["sha256"]  # type: ignore[index]
+    if ladder.sha256 != expected_ladder_sha256:
+        raise ValueError(
+            "US block location ladder bytes differ from the contract's pinned "
+            f"SHA-256: got {ladder.sha256}, expected {expected_ladder_sha256}."
+        )
+    if ladder.puma is None:
+        raise ValueError(
+            "block_v1 needs a block ladder carrying the per-block 'puma' array: "
+            "ACS households draw within their observed PUMA."
+        )
+    if ladder.primary_congressional_district_plan != (
+        CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+    ):
+        raise ValueError(
+            "US block location ladder primary congressional-district plan is "
+            f"{ladder.primary_congressional_district_plan!r}, expected "
+            f"{CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE!r}."
+        )
+    target_districts = _crosswalk_target_congressional_districts(crosswalk)
+    ladder_districts = tuple(
+        sorted(
+            int(value)
+            for value in np.unique(ladder.blocks.congressional_district_geoid).tolist()
+        )
+    )
+    if ladder_districts != target_districts:
+        raise ValueError(
+            "US block location ladder congressional-district universe differs "
+            "from the authenticated vintage-crosswalk target universe."
+        )
+
+    # Source-spine blind, like the legacy PUMA ladder: a household that
+    # carries an observed 7-digit PUMA (an ACS record) draws within it, and
+    # every other household resolves its finest geography from its CPS ASEC
+    # source row. The support channel is never read (test_us_spine_blindness).
+    household = frame.table("household")
+    for column in ("state_fips", "puma"):
+        if column not in household:
+            raise ValueError(f"block_v1 assignment needs household column {column!r}.")
+    n = len(household)
+    observed = household["puma"].astype("string")
+    has_puma = observed.str.fullmatch(r"[0-9]{7}").fillna(False).to_numpy(bool)
+    malformed = (observed.fillna("").str.len() > 0).to_numpy(bool) & ~has_puma
+    if malformed.any():
+        raise ValueError(
+            f"block_v1: {int(malformed.sum())} household(s) carry a puma that is "
+            "not a 7-digit 2020 PUMA geoid; the rule never widens such a draw."
+        )
+    # An ACS PUMS record also carries its PUMA as the ``puma_geoid`` alias and
+    # the raw five-digit ``PUMA``; an ASEC record carries neither. A household
+    # with either field but no valid matching ``puma`` is malformed, so it
+    # can never fall through to a CPS source-key join (ACS source keys share
+    # the CPS 2024 key space).
+    for alias in ("puma_geoid", "PUMA"):
+        if alias not in household:
+            continue
+        carried = household[alias].astype("string").fillna("").str.len() > 0
+        carried = carried.to_numpy(bool)
+        orphaned = carried & ~has_puma
+        if orphaned.any():
+            raise ValueError(
+                f"block_v1: {int(orphaned.sum())} household(s) carry an ACS "
+                f"{alias!r} but no valid 7-digit puma; refusing to resolve them "
+                "through CPS source keys."
+            )
+    if "puma_geoid" in household:
+        alias_values = household["puma_geoid"].astype("string").fillna("")
+        disagree = has_puma & (alias_values != observed.fillna("")).to_numpy(bool)
+        if disagree.any():
+            raise ValueError(
+                f"block_v1: {int(disagree.sum())} household(s) carry a puma that "
+                "disagrees with their puma_geoid alias."
+            )
+    puma = np.zeros(n, dtype=np.int64)
+    if has_puma.any():
+        puma[has_puma] = observed[has_puma].astype(np.int64).to_numpy()
+    needs_source = ~has_puma
+    state_fips = pd.to_numeric(household["state_fips"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    if not np.isfinite(state_fips).all():
+        raise ValueError("block_v1 needs a state_fips on every household.")
+    county_fips = np.zeros(n, dtype=np.int64)
+    identification_group = np.full(n, -1, dtype=np.int64)
+    cbsa_code = np.zeros(n, dtype=np.int64)
+    identified_counties: dict[int, frozenset[int]] = {}
+    unidentified_county_share = None
+    candidate_set_rule: dict[str, object] = {
+        "observed_puma": "blocks_within_observed_puma",
+        "no_observed_puma": "cps_asec_source_geography",
+    }
+    cbsa_applied = False
+    if needs_source.any():
+        asec_ids = household.loc[needs_source, "household_id"].to_numpy(np.int64)
+        source_year, source_household_id = _stacked_asec_source_keys(frame, asec_ids)
+        pinned_years = {
+            int(authority["income_year"])  # type: ignore[index]
+            for role, authority in authorities.items()  # type: ignore[union-attr]
+            if str(role).startswith(_STACKED_CPS_ASEC_INPUT_ROLE_PREFIX)
+        }
+        loaded_years = {
+            int(year)
+            for year in np.unique(
+                cps_household_geography["source_year"].to_numpy(np.int64)
+            ).tolist()
+        }
+        missing_years = sorted(set(np.unique(source_year).tolist()) - pinned_years)
+        if missing_years or loaded_years != pinned_years:
+            raise ValueError(
+                "block_v1 ASEC source years need exactly their pinned CPS ASEC "
+                f"household H5s: frame years missing a pin {missing_years}; "
+                f"pinned {sorted(pinned_years)}; loaded {sorted(loaded_years)}."
+            )
+        cps = cps_source_geography(
+            ladder,
+            cps_household_geography,
+            source_year=source_year,
+            source_household_id=source_household_id,
+            state_fips=state_fips[needs_source].astype(np.int64),
+        )
+        county_fips[needs_source] = cps.county_fips
+        identification_group[needs_source] = cps.identification_group
+        if cps.cbsa_code is not None:
+            cbsa_applied = True
+            cbsa_code[needs_source] = cps.cbsa_code
+        identified_counties = dict(cps.identified_counties)
+        unidentified_county_share = cps.unidentified_county_share
+        candidate_set_rule["cps_asec"] = _json_ready(cps.record)
+
+    pre_assignment_order = _ordered_household_id_receipt(household)
+    assigned, table = with_household_us_block_location(
+        frame,
+        ladder,
+        seed=seed,
+        clones=clones,
+        puma=puma,
+        county_fips=county_fips,
+        identification_group=identification_group,
+        identified_counties=identified_counties,
+        cbsa_code=cbsa_code if cbsa_applied else None,
+        unidentified_county_share=unidentified_county_share,
+    )
+    located = assigned.table("household")
+    acs_located = located.loc[has_puma, "puma"].astype(str).to_numpy()
+    acs_observed = household.loc[has_puma, "puma"].astype(str).to_numpy()
+    if not np.array_equal(acs_located, acs_observed):
+        raise AssertionError("block_v1 moved a household out of its observed PUMA.")
+    record = _json_ready(
+        us_block_location_manifest(
+            table,
+            ladder,
+            seed=seed,
+            clones=clones,
+            candidate_set_rule=candidate_set_rule,
+        )
+    )
+    values = _assigned_congressional_district_values(
+        located,
+        boundary="stacked post-assembly block location",
+    )
+    gate_report = _block_location_gate_report(
+        located, assigned.weights_for("household").values, ladder
+    )
+    if not gate_report.passed:
+        failures = [
+            f"{gate.name}: {failure}"
+            for gate in gate_report.results
+            for failure in gate.failures
+        ]
+        raise ValueError(
+            "Stacked post-assembly block-location gates failed:\n  "
+            + "\n  ".join(failures)
+        )
+    receipt = {
+        "artifact_kind": "populace_us_stacked_household_geography_assignment",
+        "schema_version": 1,
+        "contract": _json_ready(dict(contract)),
+        "pre_assignment_household_order": pre_assignment_order,
+        "assigned_household_geography": ordered_household_block_location_receipt(
+            located,
+            boundary="stacked post-assembly block location",
+        ),
+        "target_universe": _target_congressional_district_universe_receipt(
+            target_districts
+        ),
+        "output": {
+            "household_rows": len(located),
+            "positive_congressional_district_rows": len(values),
+            "unique_congressional_district_values": int(len(np.unique(values))),
+        },
+        "summary": _block_location_summary(located, record),
+        "household_location": record,
+        "gate": gate_report.to_manifest(),
+    }
+    _validate_stacked_geography_assignment_receipt(
+        assigned,
+        receipt,
+        target_districts=target_districts,
+        boundary="stacked post-assembly block location",
+        require_exact_assembled_rows=True,
+        configured_contract=contract,
+        location_ladder=ladder,
     )
     return assigned, receipt, target_districts
 
@@ -3621,6 +4805,13 @@ def build_stacked_pool(
     )
     if _json_ready(current_stack_receipt) != _json_ready(expected_stack_receipt):
         raise ValueError("Fresh stacked assembly receipt changed before execution.")
+    # The checkpoint identity binds the run's geography contract; a block_v1
+    # identity admits only its own block-location receipt (legacy identities,
+    # and the empty identity some callers pass, keep the legacy checks).
+    identity_geography = checkpoint_identity.get("geography_assignment")
+    configured_geography_contract = (
+        identity_geography if isinstance(identity_geography, Mapping) else None
+    )
 
     if resume is None:
         if not isinstance(geography_assignment_receipt, Mapping):
@@ -3633,6 +4824,7 @@ def build_stacked_pool(
             target_districts=geography_target_districts,
             boundary="stacked pool fresh assembly",
             require_exact_assembled_rows=True,
+            configured_contract=configured_geography_contract,
         )
         current = canonicalize_frame_string_dtypes(
             assembled,
@@ -3693,6 +4885,7 @@ def build_stacked_pool(
             target_districts=geography_target_districts,
             boundary=f"stacked pool {resume.stage} resume",
             require_exact_assembled_rows=resume.stage == "assembled",
+            configured_contract=configured_geography_contract,
         )
         qbi_transition_authority_sha256 = resume.qbi_transition_authority_sha256
         late_producer_transition_authority_sha256 = (
@@ -4072,6 +5265,7 @@ def build_stacked_pool(
         target_districts=geography_target_districts,
         boundary="stacked pool terminal input-only output",
         require_exact_assembled_rows=False,
+        configured_contract=configured_geography_contract,
     )
     return StackedPoolBuildResult(
         frame=current,
@@ -4248,8 +5442,15 @@ def _stacked_manifest_payload(
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
     run_config: Mapping[str, object] | None = None,
+    geography_contract: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Build the stacked-only manifest without changing the legacy envelope."""
+    """Build the stacked-only manifest without changing the legacy envelope.
+
+    ``geography_contract`` defaults to the legacy geography contract.  A
+    ``block_v1`` run passes its block-location contract; only then does the
+    manifest bind the block-location operator order and gain a top-level
+    ``household_location`` record.
+    """
 
     _validate_stacked_post_puf_stage_receipt(
         result.frame,
@@ -4274,17 +5475,25 @@ def _stacked_manifest_payload(
         raise ValueError(
             "Stacked pool stage receipts have no geography assignment object."
         )
-    if _json_ready(geography_assignment.get("contract")) != _json_ready(
+    expected_geography_contract = (
         _stacked_geography_assignment_contract()
+        if geography_contract is None
+        else geography_contract
+    )
+    if _json_ready(geography_assignment.get("contract")) != _json_ready(
+        expected_geography_contract
     ):
         raise ValueError("Stacked pool geography assignment contract changed.")
-    _assert_stacked_geography_verified_inputs(verified_inputs)
+    _assert_stacked_geography_verified_inputs(
+        verified_inputs,
+        geography_contract=geography_contract,
+    )
     gates = _stacked_gate_payload(result)
     stack_manifest = _json_ready(result.stack_receipt)
     worker_execution_authentication = _stacked_worker_execution_authentication(
         result.stage_receipts
     )
-    return {
+    payload: dict[str, object] = {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
         "pipeline": _STACKED_PIPELINE,
@@ -4293,7 +5502,9 @@ def _stacked_manifest_payload(
         "simulation_ready": result.simulation_ready,
         "publication_run_id": publication_run_id,
         "calibration_applied": False,
-        "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
+        "operator_order": list(
+            _stacked_operator_order_for_contract(expected_geography_contract)
+        ),
         "period": POOL_TIME_PERIOD,
         "random_seed": POOL_RANDOM_SEED,
         "run_config": _stacked_run_config_receipt(run_config),
@@ -4378,6 +5589,11 @@ def _stacked_manifest_payload(
             "requires_manifest_simulation_ready": True,
         },
     }
+    if _is_block_location_contract(expected_geography_contract):
+        payload["household_location"] = _json_ready(
+            geography_assignment.get("household_location")
+        )
+    return payload
 
 
 def _stacked_publication_tombstone(
@@ -4528,6 +5744,65 @@ def _write_outputs(
         temporary_diagnostics.unlink(missing_ok=True)
 
 
+def _stacked_household_location_record(
+    stage_receipts: Mapping[str, object],
+) -> Mapping[str, object] | None:
+    """The geography receipt's ``household_location`` record (block_v1 only)."""
+
+    assignment = stage_receipts.get("geography_assignment")
+    record = (
+        assignment.get("household_location")
+        if isinstance(assignment, Mapping)
+        else None
+    )
+    return record if isinstance(record, Mapping) else None
+
+
+def _stacked_location_root_attributes(
+    geography_contract: Mapping[str, object] | None,
+    verified_inputs: Mapping[str, _VerifiedInput],
+    household_location: Mapping[str, object] | None = None,
+) -> dict[str, str]:
+    """H5 root attrs recording a block_v1 rule and seed (none under legacy).
+
+    Seed and clones are text, as the base-H5 line writes them; the block
+    ladder digest and layer vintages use the ACS line's attribute names.
+    """
+
+    if geography_contract is None or not _is_block_location_contract(
+        geography_contract
+    ):
+        return {}
+    seed = geography_contract["seed"]["value"]  # type: ignore[index]
+    clones = geography_contract["algorithm"]["clones"]  # type: ignore[index]
+    ladder_record = (
+        household_location.get("block_ladder")
+        if isinstance(household_location, Mapping)
+        else None
+    )
+    vintages = (
+        ladder_record.get("layer_vintages")
+        if isinstance(ladder_record, Mapping)
+        else None
+    )
+    if not isinstance(vintages, Mapping) or not vintages:
+        raise ValueError(
+            "A block_v1 pool H5 needs the household_location record's block "
+            "ladder layer vintages."
+        )
+    return {
+        POPULACE_LOCATION_RULE_ATTR: US_LOCATION_RULE_BLOCK_V1,
+        POPULACE_LOCATION_SEED_ATTR: str(int(seed)),
+        POPULACE_LOCATION_CLONES_ATTR: str(int(clones)),
+        POPULACE_BLOCK_LADDER_SHA256_ATTR: (
+            verified_inputs[_STACKED_BLOCK_LADDER_INPUT_ROLE].actual_sha256
+        ),
+        POPULACE_BLOCK_LADDER_VINTAGES_ATTR: json.dumps(
+            _json_ready(dict(vintages)), sort_keys=True
+        ),
+    }
+
+
 def _write_stacked_outputs(
     result: StackedPoolBuildResult,
     *,
@@ -4541,6 +5816,7 @@ def _write_stacked_outputs(
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
     run_config: Mapping[str, object] | None = None,
+    geography_contract: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Atomically publish the stacked input-only pool and terminal receipts."""
 
@@ -4606,6 +5882,11 @@ def _write_stacked_outputs(
                 CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
                     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
                 ),
+                **_stacked_location_root_attributes(
+                    geography_contract,
+                    verified_inputs,
+                    _stacked_household_location_record(result.stage_receipts),
+                ),
             },
         )
         _atomic_write_json(temporary_diagnostics, diagnostics)
@@ -4624,6 +5905,7 @@ def _write_stacked_outputs(
             clone_attachment_fraction=clone_attachment_fraction,
             clone_attachment_seed=clone_attachment_seed,
             run_config=run_config,
+            geography_contract=geography_contract,
         )
         _atomic_write_json(outputs.manifest, manifest)
         return manifest
@@ -4899,6 +6181,22 @@ def _stacked_run_config(args: argparse.Namespace) -> dict[str, object]:
         "config_authority": "constants_adapter",
         "spec_binding_status": "resolved",
         "spec_binding": binding,
+    }
+
+
+def _with_location_run_config(
+    run_config: dict[str, object],
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    """Add the location rule and seed to run_config only under block_v1."""
+
+    if not _is_block_location(args):
+        return run_config
+    return {
+        **run_config,
+        "location_rule": US_LOCATION_RULE_BLOCK_V1,
+        "location_seed": getattr(args, "location_seed", 0),
+        "location_clones": getattr(args, "location_clones", 1),
     }
 
 
@@ -5257,7 +6555,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
     predecessor = args.logbook_prev_row_digest
     rung = _stacked_rung(args.sample_fraction)
     logbook_seed: int | None = None
-    run_config = _requested_stacked_run_config(args)
+    run_config = _with_location_run_config(_requested_stacked_run_config(args), args)
     preflight_digest = hashlib.sha256(
         _canonical_json_bytes(
             {
@@ -5306,7 +6604,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
         # configured/checkpoint identity, then deliberately leaves those
         # generation-0 identities untouched.  The binding is a run receipt.
         try:
-            run_config = _stacked_run_config(args)
+            run_config = _with_location_run_config(_stacked_run_config(args), args)
         except Exception:
             if run_config.get("spec_binding_status") == "resolution_pending":
                 run_config = {
@@ -5314,6 +6612,12 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     "spec_binding_status": "resolution_failed",
                 }
             raise
+        _require_location_rule_arguments(args)
+        geography_contract = (
+            _stacked_location_contract_for_args(args)
+            if _is_block_location(args)
+            else None
+        )
         configured_identity = _configured_stacked_identity(args)
         state.identity_digest = hashlib.sha256(
             _canonical_json_bytes(configured_identity)
@@ -5351,6 +6655,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             sample_seed=args.sample_seed,
             clone_attachment_fraction=args.clone_attachment_fraction,
             clone_attachment_seed=args.clone_attachment_seed,
+            geography_contract=geography_contract,
         )
         checkpoint_store: _PoolStageCheckpointStore | None = None
         resume: MultispinePoolCheckpoint | None = None
@@ -5415,16 +6720,36 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 sample_fraction=args.sample_fraction,
                 sample_seed=args.sample_seed,
             )
-            puma_ladder = load_us_puma_ladder(args.puma_ladder)
-            (
-                stack_frame,
-                geography_assignment_receipt,
-                assigned_target_districts,
-            ) = _assign_stacked_household_geography(
-                stack.frame,
-                ladder=puma_ladder,
-                crosswalk=congressional_district_crosswalk,
-            )
+            if geography_contract is None:
+                puma_ladder = load_us_puma_ladder(args.puma_ladder)
+                (
+                    stack_frame,
+                    geography_assignment_receipt,
+                    assigned_target_districts,
+                ) = _assign_stacked_household_geography(
+                    stack.frame,
+                    ladder=puma_ladder,
+                    crosswalk=congressional_district_crosswalk,
+                )
+            else:
+                cps_asec_paths, cps_asec_pins = _cps_asec_h5_arguments(args)
+                _require_cps_asec_pins_match_raw_stage(
+                    loaded.asec_raw_stage_checkpoint,
+                    cps_asec_pins,
+                )
+                (
+                    stack_frame,
+                    geography_assignment_receipt,
+                    assigned_target_districts,
+                ) = _assign_stacked_household_block_location(
+                    stack.frame,
+                    ladder=load_us_location_ladder(args.block_ladder),
+                    crosswalk=congressional_district_crosswalk,
+                    cps_household_geography=load_cps_household_geography(
+                        cps_asec_paths
+                    ),
+                    contract=geography_contract,
+                )
             if assigned_target_districts != geography_target_districts:
                 raise ValueError(
                     "Post-assembly geography assignment changed the authenticated "
@@ -5441,6 +6766,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 sample_seed=args.sample_seed,
                 clone_attachment_fraction=args.clone_attachment_fraction,
                 clone_attachment_seed=args.clone_attachment_seed,
+                geography_contract=geography_contract,
             )
             _promote_stacked_attempt_identity(
                 state,
@@ -5518,6 +6844,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             clone_attachment_fraction=args.clone_attachment_fraction,
             clone_attachment_seed=args.clone_attachment_seed,
             run_config=run_config,
+            geography_contract=geography_contract,
         )
         _append_phase(state, "publication_completed")
         state.artifact_location = _local_artifact_reference(outputs.pool_h5)
@@ -5590,7 +6917,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
     """Dispatch to the stacked default or explicit legacy two-spine path."""
 
-    args = _parser().parse_args(argv)
+    args = _parse_arguments(argv)
+    _require_location_rule_arguments(args)
     if args.legacy_two_spine:
         if getattr(args, "config_authority", "constants") != "constants":
             raise ValueError(

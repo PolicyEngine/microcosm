@@ -23,7 +23,7 @@ A local-area release names its donor in `us_source_coverage.json`
 `release_manifest.json`, and it then requires that manifest to carry exactly
 one microdata artifact whose SHA-256 equals the staging donor H5
 (`_donor_release_identity`,
-`tools/_legacy/build_us_acs_multispine_base.py:169-216`). The contract refuses
+`tools/_legacy/build_us_acs_multispine_base.py`). The contract refuses
 a local-area release without it (`microcosm/data/contract.py:4468-4486`).
 
 The national default does not carry the three receipt inputs the ACS transfer
