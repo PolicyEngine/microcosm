@@ -901,6 +901,19 @@ def _ssi_disability_receipt(**overrides) -> dict:
     return receipt
 
 
+def _staged_ssi_criteria(acs_true_rows: int = 0) -> dict:
+    """A staging SSI receipt with ``acs_true_rows`` criteria-positive ACS persons.
+
+    The package stage's SSI take-up release block reads this count. The
+    package fixtures default to 0, a run the block lets through without any
+    SSI take-up handling.
+    """
+
+    return _ssi_disability_receipt(
+        outcome={"acs_true_rows": acs_true_rows, "filled_true_rows": acs_true_rows}
+    )
+
+
 def _staging_ssi_disability_summary(**overrides) -> dict:
     """A current staging run through the SSI disability criteria (microcosm#1022)."""
 
@@ -1252,6 +1265,9 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
                 # An uncapped staging run, so the package stage's cap check
                 # (which runs first) lets these inputs reach the hours gates.
                 "orchestration": {"max_households": None},
+                # No criteria-positive ACS person: the SSI take-up release
+                # block lets the run through.
+                "acs_local_ssi_disability": _staged_ssi_criteria(),
             }
         )
     )
@@ -1466,7 +1482,7 @@ def _package_args_before_evidence(
         (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": soi_mode}))
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
-    summary: dict = {}
+    summary: dict = {"acs_local_ssi_disability": _staged_ssi_criteria()}
     if max_households is not _UNSET:
         summary["orchestration"] = {
             "max_households": max_households,
@@ -1560,7 +1576,12 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps({"orchestration": {"max_households": None}})
+        json.dumps(
+            {
+                "orchestration": {"max_households": None},
+                "acs_local_ssi_disability": _staged_ssi_criteria(),
+            }
+        )
     )
     out_h5 = tmp_path / "out.h5"
     out_h5.write_bytes(b"artifact")
@@ -1914,6 +1935,9 @@ def _finalize_args(module, tmp_path: Path):
                 # The current staging builder records its cap; an uncapped run
                 # is what the package-stage tests built on this fixture need.
                 "orchestration": {"max_households": None},
+                # No criteria-positive ACS person, so the package stage's SSI
+                # take-up release block lets these runs through.
+                "acs_local_ssi_disability": _staged_ssi_criteria(),
             }
         )
     )
@@ -2448,6 +2472,92 @@ def test_package_requires_a_current_ssi_disability_gate(
     assert not (args.out / "package_result.json").exists()
     assert not list((args.out / "releases").rglob("*.json"))
     assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
+def _block_evidence_args(module, tmp_path, monkeypatch, *, acs_true_rows: int):
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    path = tmp_path / "staging.summary.json"
+    summary = json.loads(path.read_text())
+    summary["acs_local_ssi_disability"] = _staged_ssi_criteria(acs_true_rows)
+    path.write_text(json.dumps(summary))
+    return args
+
+
+def test_package_blocks_criteria_positive_acs_rows_without_ssi_take_up(
+    tmp_path, monkeypatch
+):
+    """microcosm#1022 (review of #1058): the criteria stage makes ACS persons
+    SSI-eligible, and universal take-up would pay every one of them."""
+
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=12)
+    with pytest.raises(SystemExit) as exc:
+        module.do_package(args)
+    message = str(exc.value)
+    assert "12 ACS person(s) meet meets_ssi_disability_criteria" in message
+    assert "no SSI take-up handling" in message
+    assert "microcosm#1022" in message
+    assert "PR #1060" in message
+    assert not (args.out / "releases").exists(), "a blocked release leaves nothing"
+
+
+def test_package_records_the_ssi_take_up_block_when_no_acs_row_is_positive(
+    tmp_path, monkeypatch
+):
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=0)
+    result = module.do_package(args)
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["ssi_take_up_release_block"] == {
+        "criteria_positive_acs_rows": 0,
+        "filled_true_rows": 0,
+        "take_up_handling": None,
+    }
+
+
+def test_recorded_ssi_take_up_handling_lifts_the_block(tmp_path, monkeypatch):
+    module = _load_tool_module()
+    handling = {"stage": "invented_ssi_take_up"}
+    monkeypatch.setattr(
+        module, "_recorded_ssi_take_up_handling", lambda identity, ckpt: handling
+    )
+    block = module._require_ssi_take_up_handling(
+        {"acs_local_ssi_disability": _staged_ssi_criteria(12)}, {}, tmp_path
+    )
+    assert block == {
+        "criteria_positive_acs_rows": 12,
+        "filled_true_rows": 12,
+        "take_up_handling": handling,
+    }
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        None,
+        _ssi_disability_receipt(),
+        _ssi_disability_receipt(outcome=None),
+        _ssi_disability_receipt(outcome={"acs_true_rows": "12"}),
+        _ssi_disability_receipt(outcome={"acs_true_rows": True}),
+        _ssi_disability_receipt(outcome={"acs_true_rows": -1}),
+    ],
+    ids=["no-receipt", "no-outcome", "null-outcome", "string", "bool", "negative"],
+)
+def test_ssi_take_up_block_refuses_a_summary_without_the_criteria_count(
+    tmp_path, receipt
+):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"outcome\.acs_true_rows"):
+        module._require_ssi_take_up_handling(
+            {"acs_local_ssi_disability": receipt}, {}, tmp_path
+        )
 
 
 def test_do_finalize_hard_fails_on_a_failed_work_disability_gate(tmp_path, monkeypatch):
