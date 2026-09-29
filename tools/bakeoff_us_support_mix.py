@@ -632,34 +632,41 @@ def _load_shard_frame(path: Path):
 
 
 #: Engine inputs the Sep-23 ACS staging carries as all-null on ACS rows and
-#: its reviewed-null register predates. The production ACS local release at
-#: 767312d6 had no such column, so the engine used the variable's default;
-#: filling with that default reproduces it. Counted in every receipt.
-DEFAULT_FILLED_INPUTS = (("person", "is_spm_independent_minor_role"),)
+#: its reviewed-null register predates. ``is_spm_independent_minor_role`` has
+#: a formula (``is_household_head | is_household_spouse``, spm_calculator's
+#: policyengine adapter); a column that is entirely null is dropped so the
+#: engine derives the role from household structure, as it did for the
+#: production ACS local release, whose staging had no such column. A
+#: partially null column is an error. Counted in every receipt.
+FORMULA_DERIVED_WHEN_ALL_NULL = (("person", "is_spm_independent_minor_role"),)
 
 
-def _fill_with_engine_default(frame) -> dict[str, int]:
-    from policyengine_us import CountryTaxBenefitSystem
+def _drop_all_null_formula_inputs(frame):
+    from microcosm.frame import Frame
 
-    system = CountryTaxBenefitSystem()
-    filled = {}
-    for entity, column in DEFAULT_FILLED_INPUTS:
-        table = frame.table(entity)
+    dropped = {}
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    for entity, column in FORMULA_DERIVED_WHEN_ALL_NULL:
+        table = tables[entity]
         if column not in table.columns:
             continue
         missing = table[column].isna()
-        if missing.any():
-            default = system.variables[column].default_value
-            table[column] = table[column].where(~missing, default).astype(type(default))
-            filled[f"{entity}.{column}"] = int(missing.sum())
-    return filled
+        if missing.all():
+            tables[entity] = table.drop(columns=[column])
+            dropped[f"{entity}.{column}"] = int(missing.sum())
+        elif missing.any():
+            raise RuntimeError(f"{entity}.{column} is partially null ({int(missing.sum())} rows)")
+    if not dropped:
+        return frame, dropped
+    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
+    return Frame(tables, frame.schema, weights, frame.strata, mass_log=frame.mass_log), dropped
 
 
 def _materialize_frame(frame, concept_specs, *, summary_path: Path | None, batch: int):
     tool = release_tool()
     acs = acs_local_tool()
     projected, dropped = acs.project_input_only(frame, period=PERIOD)
-    default_filled = _fill_with_engine_default(projected)
+    projected, formula_derived = _drop_all_null_formula_inputs(projected)
     if summary_path is not None:
         acs.fill_reviewed_nulls(projected, summary_path, period=PERIOD)
     target_frame, registry, compilation = tool._materialize_target_frame(
@@ -669,7 +676,7 @@ def _materialize_frame(frame, concept_specs, *, summary_path: Path | None, batch
         refuse_population_aggregates=True,
     )
     household = target_frame.table("household")
-    compilation = {**compilation, "default_filled_inputs": default_filled}
+    compilation = {**compilation, "formula_derived_inputs": formula_derived}
     return household, [spec.measure for spec in registry.specs], compilation, dropped
 
 
@@ -696,12 +703,17 @@ def do_materialize(args) -> None:
     shard_dir = args.work / "shards" / args.source
     out_dir = args.work / "concepts" / args.source
     out_dir.mkdir(parents=True, exist_ok=True)
-    rows = pd.read_parquet(args.work / f"rows_{args.source}.parquet", columns=["shard", "household_id"])
+    rows = pd.read_parquet(args.work / f"rows_{args.source}.parquet")
     rows["row"] = np.arange(len(rows))
+    if "spm_zero_adult_unit" in rows:
+        # Group-quarters records whose SPM unit has no classified adult: the
+        # pinned engine refuses them, and Census puts ACS group quarters
+        # outside the SPM universe (us_runtime/spm_universe_source.py).
+        rows = rows[~rows["spm_zero_adult_unit"]]
     low, high = 0, len(rows)
     if args.rank_range:
         low, high = (int(x) for x in args.rank_range.split(","))
-        rows["rank"] = acs_rank(args.work)
+        rows["rank"] = acs_rank(args.work)[rows["row"].to_numpy()]
     shards = sorted(shard_dir.glob("shard_*.pkl"))
     if args.only:
         wanted = {int(x) for x in args.only.split(",") if x.strip()}
@@ -744,7 +756,7 @@ def do_materialize(args) -> None:
             "households": len(household), "nnz": int(csr.nnz),
             "missing_measures": missing, "compiled_concepts": len(compiled),
             "batching": compilation.get("target_materialization_batching"),
-            "default_filled_inputs": compilation.get("default_filled_inputs"),
+            "formula_derived_inputs": compilation.get("formula_derived_inputs"),
             "wall_s": round(time.time() - started, 1), "peak_rss_gb": round(peak_rss_gb(), 2),
             "cpu_s": round(resource.getrusage(resource.RUSAGE_SELF).ru_utime, 1),
         })
@@ -792,7 +804,12 @@ def do_diffcheck(args) -> None:
         if (args.work / "diffcheck.json").exists() else {}
     for source in args.sources.split(","):
         frame = _load_shard_frame(args.work / "shards" / source / "shard_000.pkl")
-        hh_ids = frame.table("household")["household_id"].to_numpy()[: args.households]
+        hh_ids = frame.table("household")["household_id"].to_numpy()
+        index = pd.read_parquet(args.work / f"rows_{source}.parquet")
+        if "spm_zero_adult_unit" in index:
+            flagged = index.loc[(index["shard"] == 0) & index["spm_zero_adult_unit"], "household_id"]
+            hh_ids = hh_ids[~np.isin(hh_ids, flagged.to_numpy())]
+        hh_ids = hh_ids[: args.households]
         person_mask = np.isin(frame.table("person")["person_household_id"].to_numpy(), hh_ids)
         frame = frame.select(person_mask)
         summary = args.summary if source == "acs" else None
@@ -1034,9 +1051,11 @@ def do_arm(args) -> None:
     started = time.time()
     arm = parse_arm(args.arm)
     out = args.work / "arms" / args.product / f"{arm.label}.json"
-    if out.exists() and not args.force:
+    previous = json.loads(out.read_text()) if out.exists() else None
+    if previous is not None and previous.get("scored_all_levels") and not args.force:
         log(f"{out} exists")
         return
+    rescore = previous is not None and out.with_suffix(".weights.npy").exists() and not args.force
     wait_for_memory(args.min_available_gb)
     import torch
 
@@ -1052,6 +1071,8 @@ def do_arm(args) -> None:
     rows_acs["row"] = np.arange(len(rows_acs))
     if args.exclude_gq:
         rows_acs = rows_acs[~rows_acs["group_quarters"]].reset_index(drop=True)
+    if "spm_zero_adult_unit" in rows_acs:
+        rows_acs = rows_acs[~rows_acs["spm_zero_adult_unit"]].reset_index(drop=True)
     # ---------------- rows
     asec = rows_cps[rows_cps["channel"] == "asec"]
     cps_hh = asec.groupby("income_year").size().to_dict()
@@ -1135,10 +1156,12 @@ def do_arm(args) -> None:
     measure_col = {m: j for j, m in enumerate(measures)}
     usable = targets[targets["excluded"].isna() & targets["measure"].isin(measure_col)].copy()
     usable["col"] = usable["measure"].map(measure_col)
+    # Both products are scored on every held-out target (national, state and
+    # district); the national product trains on its surface only.
+    holdout = usable[usable["role"] == "holdout"].reset_index(drop=True)
     if args.product == "national":
         usable = usable[usable["in_national_state"]]
     train = usable[usable["role"] == "train"].reset_index(drop=True)
-    holdout = usable[usable["role"] == "holdout"].reset_index(drop=True)
     states = np.unique(selected["state_fips"])
     cds = np.unique(np.concatenate([selected["cd_geoid"].to_numpy(), usable.loc[usable["cd_geoid"] >= 0, "cd_geoid"].to_numpy()]))
     state_code = {s: i for i, s in enumerate(np.unique(np.concatenate([states, usable["state_fips"][usable["state_fips"] >= 0]])))}
@@ -1172,27 +1195,34 @@ def do_arm(args) -> None:
     nonzero = np.diff(a_train.indptr) > 0
     a_train, b_train, loss_w = a_train[nonzero], b_train[nonzero], loss_w[nonzero]
     scales = default_target_loss_scales(b_train)
-    operator = _SparseOperator(a_train)
     solve_started = time.time()
-    weights, trajectory = _optimize(
-        operator,
-        torch.tensor(b_train, dtype=torch.float32),
-        torch.tensor(loss_w, dtype=torch.float32),
-        torch.tensor(scales, dtype=torch.float32),
-        1.0,
-        w0,
-        epochs=args.epochs,
-        learning_rate=0.02,
-        conserve_mass=True,
-        max_weight_ratio=5.0,
-        l0_lambda=0.0,
-        l2_lambda=0.0,
-        target_records=None,
-        init_mean=0.999,
-        temperature=0.25,
-    )
-    solve_s = time.time() - solve_started
-    del operator
+    if rescore:
+        # Re-score saved weights (a scoring change, no re-solve).
+        weights = np.load(out.with_suffix(".weights.npy")).astype(np.float64)
+        if len(weights) != len(w0):
+            raise SystemExit(f"{arm.label}: saved weights do not match the arm's rows")
+        trajectory = np.array([previous["train"]["loss_initial"], previous["train"]["loss_final"]])
+    else:
+        operator = _SparseOperator(a_train)
+        weights, trajectory = _optimize(
+            operator,
+            torch.tensor(b_train, dtype=torch.float32),
+            torch.tensor(loss_w, dtype=torch.float32),
+            torch.tensor(scales, dtype=torch.float32),
+            1.0,
+            w0,
+            epochs=args.epochs,
+            learning_rate=0.02,
+            conserve_mass=True,
+            max_weight_ratio=5.0,
+            l0_lambda=0.0,
+            l2_lambda=0.0,
+            target_records=None,
+            init_mean=0.999,
+            temperature=0.25,
+        )
+        del operator
+    solve_s = time.time() - solve_started if not rescore else previous["runtime"]["solve_s"]
     gc.collect()
     # ---------------- scoring
     def errors(matrix, target_values, w):
@@ -1269,7 +1299,8 @@ def do_arm(args) -> None:
     for _cd, idx in pd.Series(np.arange(len(selected))).groupby(selected["cd_geoid"].to_numpy()):
         cd_ess.append(distinct_unit_ess(weights[idx.to_numpy()], units[idx.to_numpy()]))
     receipt = {
-        "arm": arm.label, "product": args.product,
+        "arm": arm.label, "product": args.product, "scored_all_levels": True,
+        "rescored": bool(rescore),
         "counts": dataclasses.asdict(counts),
         "rows": {"cps_physical": int(len(cps_expanded)), "acs": int(len(acs_rows)), "total": int(len(selected))},
         "distinct_households": int(pd.Series(units).nunique()),
@@ -1283,7 +1314,8 @@ def do_arm(args) -> None:
         "train": {"targets": int(a_train.shape[0]), "cd_population_targets": extra_train,
                   "nnz": int(a_train.nnz),
                   "loss_initial": float(trajectory[0]), "loss_final": float(trajectory[-1]),
-                  "loss_at": {str(e): float(trajectory[min(e, len(trajectory)) - 1]) for e in (100, 250, 500, 1000, len(trajectory))}},
+                  "loss_at": (previous["train"]["loss_at"] if rescore else
+                              {str(e): float(trajectory[min(e, len(trajectory)) - 1]) for e in (100, 250, 500, 1000, len(trajectory))})},
         "holdout_targets": result_targets,
         "acs_native": acs_eval.to_dict(orient="records"),
         "report_only": report,
@@ -1309,7 +1341,7 @@ def do_run_grid(args) -> None:
     for product in args.products.split(","):
         for label in arms:
             out = args.work / "arms" / product / f"{label}.json"
-            if out.exists():
+            if out.exists() and json.loads(out.read_text()).get("scored_all_levels"):
                 continue
             wait_for_memory(args.min_available_gb)
             command = [sys.executable, str(Path(__file__).resolve()), "arm", "--work", str(args.work),
