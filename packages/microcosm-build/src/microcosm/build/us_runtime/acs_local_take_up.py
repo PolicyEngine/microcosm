@@ -15,8 +15,10 @@ ACS-spine rows; donor-spine values and any stored ACS value are kept.
   reported ``receives_snap`` always takes up, and non-reporters draw at the
   rate that puts the weighted ACS take-up share on the national FNS
   participation rate of the ``snap_take_up`` manifest stage. On ACS rows the
-  reporters are native household ``FS`` (every SPM unit of an FS == 1
-  housing unit), which staging writes over the QRF transfer
+  reporters are constrained by native household ``FS``: the only SPM unit of
+  an FS == 1 housing unit, or in one with several units the units the QRF
+  names (the reference unit when it names none), which staging writes over
+  the QRF transfer
   (:mod:`~microcosm.build.us_runtime.acs_local_receipt_anchors`,
   microcosm#1022).
 - TANF uses the take-up contract's seeded Bernoulli draw at its

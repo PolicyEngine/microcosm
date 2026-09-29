@@ -18,23 +18,35 @@ release tool's take-up stage reads.
 The rule
 --------
 
-- ``FS == 2``: every SPM unit of the household is ``False``.
-- ``FS == 1``: every SPM unit of the household is ``True``, including the
-  one-person units microcosm#1023 gives adult roommates and other
-  nonrelatives. The item names the housing unit, not the SNAP household, so
-  it cannot say which unit received SNAP. Marking every unit is the donor's
-  own convention: the CPS ASEC asks the same household question, Census
-  prorates the household's SNAP amount to every SPM unit in it (Supplemental
-  Poverty Measure technical documentation, section 4.3.1), and the donor's
-  ``receives_snap`` is ``SPM_SNAPSUB > 0``.
+``FS`` says only that *someone* in the housing unit received SNAP. Since
+microcosm#1023 a housing unit can hold several SPM units (a roommate's own
+unit, say), and a roommate who buys and prepares food apart is a SNAP
+household of their own (7 U.S.C. 2012(m)). So ``FS == 1`` is a constraint
+that at least one unit received SNAP, not a label for every unit
+(microcosm#1062 review). Census's proration of a household SNAP amount to
+every SPM unit (Supplemental Poverty Measure technical documentation,
+section 4.3.1) allocates resources for poverty measurement; it does not
+establish that every unit enrolled.
+
+- ``FS == 2``: every SPM unit of the household is ``False`` (hard).
 - Group quarters (``TYPEHUGQ`` 2/3) are ``False``. FS is a housing-unit item,
   and a group-quarters record that carries a code anyway is ignored and
   counted in the receipt.
+- ``FS == 1`` with one SPM unit: that unit is ``True``.
+- ``FS == 1`` with several SPM units: each unit keeps its transferred
+  ``receives_snap``. The QRF is conditioned on each unit's own size, ages,
+  sex, income and tenure, so it serves as the recipient-identity model. If
+  it names no unit of the household, the reference person's unit is set
+  ``True``: the only unit identifiable without a model, and the one that
+  holds the householder's family. The receipt counts the households whose
+  constraint the QRF already met, the households whose reference unit was
+  forced, and the non-reference units ``True`` through the QRF.
 - A housing unit with a blank or unknown FS code is refused, never read as
   no.
 
 A reporter only anchors take-up; the engine still applies SNAP eligibility
-to each unit's own members and income.
+to each unit's own members and income. SNAP purchase-and-prepare units
+(microcosm#1023 option 2) could later place the receipt more exactly.
 
 TANF
 ----
@@ -45,6 +57,11 @@ together. The donor gates ``receives_tanf`` on ``PAW_TYP`` because
 ``PAW_VAL > 0`` alone conflates the two (microcosm#591), and the ACS has no
 type item. ``PAP`` is loaded, and the receipt records its recipients and
 their overlap with the transferred ``receives_tanf``; it anchors nothing.
+Overriding ``receives_snap`` alone can change its joint distribution with
+the transferred ``receives_tanf`` (the transfer fits them as one family), so
+the receipt also carries the weighted SNAP x TANF cross-tab of ACS units
+before and after the override, and the gate reports the donor spine's for
+comparison. Both are informational.
 """
 
 from __future__ import annotations
@@ -80,7 +97,7 @@ __all__ = [
 
 ACS_LOCAL_RECEIPT_ANCHOR_ISSUE = "microcosm#1022"
 ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME = "acs_local_receipt_anchor_signal"
-ACS_LOCAL_RECEIPT_ANCHOR_METHOD = "acs_fs_household_receipt_on_every_spm_unit"
+ACS_LOCAL_RECEIPT_ANCHOR_METHOD = "acs_fs_household_receipt_at_least_one_spm_unit"
 #: ACS household SNAP recipiency in the past 12 months: 1 yes, 2 no.
 ACS_SNAP_RECIPIENCY = "FS"
 ACS_FS_YES = 1
@@ -121,8 +138,11 @@ _PERSON_COLUMNS = (
     ACS_PUBLIC_ASSISTANCE_INCOME,
 )
 _RULE = (
-    "receives_snap is True on every SPM unit of an FS == 1 housing unit and "
-    "False on every unit of an FS == 2 housing unit and in group quarters"
+    "receives_snap is False on every SPM unit of an FS == 2 housing unit and "
+    "in group quarters, and True on the only SPM unit of an FS == 1 housing "
+    "unit; in an FS == 1 housing unit with several SPM units each unit keeps "
+    "its transferred (QRF) receives_snap, and the reference person's unit is "
+    "set True when no unit is, so at least one unit is True"
 )
 _TANF_DECISION = (
     "receives_tanf keeps its transferred value: PAP covers TANF and general "
@@ -134,23 +154,88 @@ _GRADED_SNAP_COUNTS = (
     "acs_households",
     "housing_unit_households",
     "fs_yes_households",
+    "fs_yes_households_with_several_units",
     "acs_spm_units",
     "units_anchored",
+    "non_reference_units_anchored",
+)
+#: The resolution paths of FS == 1 housing units with several SPM units.
+_RESOLUTION_COUNTS = (
+    "single_unit_households",
+    "several_unit_households_met_by_qrf",
+    "several_unit_households_reference_forced",
+    "reference_units_true_via_qrf",
+    "reference_units_forced",
+    "non_reference_units_true_via_qrf",
+    "non_reference_units_false",
 )
 _GRADED_TANF_COUNTS = ("pap_recipients", "pap_units")
 
 
 @dataclass(frozen=True)
 class _Anchor:
-    """The FS rule on one set of ACS households, persons and SPM units."""
+    """FS and the SPM-unit layout of one set of ACS households."""
 
     housing_unit: np.ndarray  # per household
     fs_yes: np.ndarray  # per household: a housing unit with FS == 1
     group_quarters_coded: np.ndarray  # per household: GQ with an FS code
+    units_per_household: np.ndarray  # per household
     unit_household: np.ndarray  # per unit: position in the household table
     unit_reference: np.ndarray  # per unit: holds the reference person
     unit_group_quarters: np.ndarray  # per unit
-    unit_anchor: np.ndarray  # per unit: the rule's receives_snap
+    unit_fs_yes: np.ndarray  # per unit: in an FS == 1 housing unit
+
+    @property
+    def several_units(self) -> np.ndarray:
+        """Per household: an FS == 1 housing unit with several SPM units."""
+        return self.fs_yes & (self.units_per_household > 1)
+
+    @property
+    def unit_shared(self) -> np.ndarray:
+        """Per unit: in an FS == 1 housing unit with several SPM units."""
+        return self.several_units[self.unit_household]
+
+
+def _any_by_household(anchor: _Anchor, units: np.ndarray) -> np.ndarray:
+    """Per household: whether any of the selected units belongs to it."""
+    found = np.zeros(len(anchor.housing_unit), dtype=bool)
+    found[anchor.unit_household[units]] = True
+    return found
+
+
+def _resolve(
+    anchor: _Anchor, transferred: np.ndarray
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """The rule's ``receives_snap`` per unit, and how each FS == 1 unit got it.
+
+    ``transferred`` is the QRF's per-unit value (a missing cell reads
+    ``False``). Raises ``ValueError`` when a housing unit that needs its
+    reference unit forced has no unit holding the reference person.
+    """
+
+    single = anchor.unit_fs_yes & ~anchor.unit_shared
+    kept = anchor.unit_shared & transferred
+    met = anchor.several_units & _any_by_household(anchor, kept)
+    forced_households = anchor.several_units & ~met
+    orphaned = forced_households & ~_any_by_household(anchor, anchor.unit_reference)
+    if orphaned.any():
+        raise ValueError(
+            f"{int(orphaned.sum())} FS == 1 housing unit(s) with several SPM units "
+            "have no unit transferred as a SNAP recipient and no unit holding the "
+            "reference person, so the at-least-one constraint has no unit to set."
+        )
+    forced = (
+        anchor.unit_shared
+        & anchor.unit_reference
+        & forced_households[anchor.unit_household]
+    )
+    return single | kept | forced, {
+        "single": single,
+        "kept": kept,
+        "forced": forced,
+        "met_households": met,
+        "forced_households": forced_households,
+    }
 
 
 def _numeric(values: pd.Series) -> np.ndarray:
@@ -279,20 +364,27 @@ def _anchor(
         housing_unit=housing_unit,
         fs_yes=fs_yes,
         group_quarters_coded=~housing_unit & ~np.isnan(fs),
+        units_per_household=np.bincount(positions, minlength=len(housing_unit)),
         unit_household=positions,
         unit_reference=reference,
         unit_group_quarters=~housing_unit[positions],
-        unit_anchor=fs_yes[positions],
+        unit_fs_yes=fs_yes[positions],
     )
 
 
 def _snap_counts(
-    anchor: _Anchor, *, household_weights: np.ndarray, unit_weights: np.ndarray
+    anchor: _Anchor,
+    values: np.ndarray,
+    *,
+    household_weights: np.ndarray,
+    unit_weights: np.ndarray,
 ) -> dict[str, Any]:
+    """Counts of FS and of the units' ``receives_snap`` (``values``)."""
+
     housing_unit = anchor.housing_unit
-    units_per_household = np.bincount(
-        anchor.unit_household, minlength=len(housing_unit)
-    )
+    true_households = _any_by_household(anchor, values)
+    reference_true = _any_by_household(anchor, values & anchor.unit_reference)
+    other_true = _any_by_household(anchor, values & ~anchor.unit_reference)
     share = _share(household_weights[housing_unit], anchor.fs_yes[housing_unit])
     low, high = ACS_SNAP_HOUSEHOLD_SHARE_BAND
     return {
@@ -302,23 +394,26 @@ def _snap_counts(
         "fs_yes_households": int(anchor.fs_yes.sum()),
         "fs_no_households": int((housing_unit & ~anchor.fs_yes).sum()),
         "group_quarters_fs_coded_ignored": int(anchor.group_quarters_coded.sum()),
-        "fs_yes_households_with_several_units": int(
-            (anchor.fs_yes & (units_per_household > 1)).sum()
-        ),
-        "acs_spm_units": int(len(anchor.unit_anchor)),
-        "units_anchored": int(anchor.unit_anchor.sum()),
+        "fs_yes_households_with_several_units": int(anchor.several_units.sum()),
+        "acs_spm_units": int(len(values)),
+        "units_anchored": int(values.sum()),
         "group_quarters_units": int(anchor.unit_group_quarters.sum()),
-        # One-person units of adult nonrelatives (microcosm#1023) in FS == 1
-        # housing units: the units this rule marks that the reference-unit
-        # alternative would not.
-        "non_reference_units_anchored": int(
-            (anchor.unit_anchor & ~anchor.unit_reference).sum()
+        # Units without the reference person (microcosm#1023's roommate and
+        # other-nonrelative units) reporting SNAP: only the QRF puts them here.
+        "non_reference_units_anchored": int((values & ~anchor.unit_reference).sum()),
+        # Several-unit FS == 1 housing units whose only reporting unit is the
+        # reference person's: where a forced reference unit must sit.
+        "several_unit_households_reference_only": int(
+            (anchor.several_units & reference_true & ~other_true).sum()
+        ),
+        "several_unit_households_with_a_reporter": int(
+            (anchor.several_units & true_households).sum()
         ),
         "weighted": {
             "housing_unit_households": float(household_weights[housing_unit].sum()),
             "fs_yes_households": float(household_weights[anchor.fs_yes].sum()),
             "fs_yes_household_share": share,
-            "anchored_unit_share": _share(unit_weights, anchor.unit_anchor),
+            "anchored_unit_share": _share(unit_weights, values),
         },
         "household_share_reference": {
             "value": ACS_SNAP_HOUSEHOLD_SHARE_REFERENCE,
@@ -330,12 +425,73 @@ def _snap_counts(
     }
 
 
+def _resolution_counts(
+    anchor: _Anchor,
+    paths: Mapping[str, np.ndarray],
+    *,
+    household_weights: np.ndarray,
+    unit_weights: np.ndarray,
+) -> dict[str, Any]:
+    """How each FS == 1 housing unit met the at-least-one constraint."""
+
+    reference = anchor.unit_reference
+    kept, forced = paths["kept"], paths["forced"]
+    single_households = anchor.fs_yes & (anchor.units_per_household == 1)
+    left_false = anchor.unit_shared & ~kept & ~forced
+    counts = {
+        "single_unit_households": single_households,
+        "several_unit_households_met_by_qrf": paths["met_households"],
+        "several_unit_households_reference_forced": paths["forced_households"],
+    }
+    units = {
+        "reference_units_true_via_qrf": kept & reference,
+        "reference_units_forced": forced,
+        "non_reference_units_true_via_qrf": kept & ~reference,
+        "non_reference_units_false": left_false & ~reference,
+    }
+    return {
+        **{key: int(mask.sum()) for key, mask in counts.items()},
+        **{key: int(mask.sum()) for key, mask in units.items()},
+        "reference_units_false": int((left_false & reference).sum()),
+        "weighted": {
+            **{
+                key: float(household_weights[mask].sum())
+                for key, mask in counts.items()
+            },
+            **{key: float(unit_weights[mask].sum()) for key, mask in units.items()},
+        },
+    }
+
+
+def _snap_tanf_crosstab(
+    snap: np.ndarray, tanf: np.ndarray, unit_weights: np.ndarray
+) -> dict[str, Any]:
+    """Weighted SNAP x TANF shares of SPM units (informational)."""
+
+    cells = {
+        f"{snap_label}_{tanf_label}": (snap_flags & tanf_flags)
+        for snap_label, snap_flags in (("snap", snap), ("no_snap", ~snap))
+        for tanf_label, tanf_flags in (("tanf", tanf), ("no_tanf", ~tanf))
+    }
+    both = float(unit_weights[snap & tanf].sum())
+    snap_weight = float(unit_weights[snap].sum())
+    tanf_weight = float(unit_weights[tanf].sum())
+    return {
+        "units": {key: int(mask.sum()) for key, mask in cells.items()},
+        "weighted_unit_shares": {
+            key: _share(unit_weights, mask) for key, mask in cells.items()
+        },
+        "tanf_share_of_snap_units": both / snap_weight if snap_weight > 0 else None,
+        "snap_share_of_tanf_units": both / tanf_weight if tanf_weight > 0 else None,
+    }
+
+
 def _tanf_counts(
     person: pd.DataFrame,
     amount: np.ndarray,
     unit_ids: np.ndarray,
     tanf: np.ndarray,
-    unit_anchor: np.ndarray,
+    snap: np.ndarray,
     *,
     unit_weights: np.ndarray,
     person_weights: np.ndarray,
@@ -356,7 +512,7 @@ def _tanf_counts(
         "transferred_tanf_units_with_pap": int((tanf & unit_recipient).sum()),
         "transferred_tanf_units_without_pap": int((tanf & ~unit_recipient).sum()),
         "pap_units_without_transferred_tanf": int((unit_recipient & ~tanf).sum()),
-        "transferred_tanf_units_not_snap_anchored": int((tanf & ~unit_anchor).sum()),
+        "transferred_tanf_units_not_snap_anchored": int((tanf & ~snap).sum()),
         "weighted": {
             "pap_recipients": float(person_weights[recipient].sum()),
             "pap_unit_share": _share(unit_weights, unit_recipient),
@@ -366,7 +522,7 @@ def _tanf_counts(
 
 
 def with_acs_local_snap_receipt_anchor(frame: Frame) -> tuple[Frame, dict[str, Any]]:
-    """Replace the transferred ``receives_snap`` on ACS rows with the FS rule.
+    """Constrain the transferred ``receives_snap`` on ACS rows by the FS rule.
 
     ``frame`` is the ACS-only frame after the shared transfer, before
     pooling: every row is an ACS row, the household table carries
@@ -374,13 +530,17 @@ def with_acs_local_snap_receipt_anchor(frame: Frame) -> tuple[Frame, dict[str, A
     ``RELSHIPP``, and the spm_unit table the transferred ``receives_snap``
     and ``receives_tanf``. Only ``receives_snap`` changes. Returns the frame
     and a JSON-ready receipt: FS households (weighted and unweighted), units
-    anchored, transferred values overridden in each direction, and the ``PAP``
-    recipients against the transferred ``receives_tanf``.
+    anchored, how each several-unit FS == 1 housing unit met the constraint,
+    transferred values overridden in each direction, the ``PAP`` recipients
+    against the transferred ``receives_tanf``, and the SNAP x TANF cross-tab
+    before and after the override.
 
     Raises:
         ValueError: If the frame is not US-schema, a required column is
             absent, a housing unit has no FS 1/2, ``PAP`` is blank at 15 or
-            over, or an SPM unit spans households or has no member.
+            over, an SPM unit spans households or has no member, or a
+            several-unit FS == 1 housing unit needing its reference unit has
+            none.
     """
 
     if frame.schema != US_SCHEMA:
@@ -400,6 +560,7 @@ def with_acs_local_snap_receipt_anchor(frame: Frame) -> tuple[Frame, dict[str, A
     amount = _public_assistance(person)
     transferred, transferred_present = _flags(spm_unit[_SNAP])
     tanf, _ = _flags(spm_unit[_TANF])
+    values, paths = _resolve(anchor, transferred)
     household_weights = np.asarray(
         frame.resolve_weights("household").values, dtype=np.float64
     )
@@ -411,7 +572,7 @@ def with_acs_local_snap_receipt_anchor(frame: Frame) -> tuple[Frame, dict[str, A
     )
 
     updated = spm_unit.copy()
-    updated[_SNAP] = anchor.unit_anchor.copy()
+    updated[_SNAP] = values.copy()
     tables = {entity: frame.table(entity) for entity in frame.entities}
     tables["spm_unit"] = updated
     result = Frame(
@@ -423,10 +584,13 @@ def with_acs_local_snap_receipt_anchor(frame: Frame) -> tuple[Frame, dict[str, A
         metadata=frame.metadata,
     )
 
-    to_true = anchor.unit_anchor & ~transferred
-    to_false = ~anchor.unit_anchor & transferred
+    to_true = values & ~transferred
+    to_false = ~values & transferred
     snap = _snap_counts(
-        anchor, household_weights=household_weights, unit_weights=unit_weights
+        anchor, values, household_weights=household_weights, unit_weights=unit_weights
+    )
+    snap["resolution"] = _resolution_counts(
+        anchor, paths, household_weights=household_weights, unit_weights=unit_weights
     )
     snap["transferred"] = {
         "true_units": int(transferred.sum()),
@@ -436,9 +600,7 @@ def with_acs_local_snap_receipt_anchor(frame: Frame) -> tuple[Frame, dict[str, A
         "group_quarters_true_to_false": int(
             (anchor.unit_group_quarters & transferred).sum()
         ),
-        "unchanged": int(
-            (transferred_present & (anchor.unit_anchor == transferred)).sum()
-        ),
+        "unchanged": int((transferred_present & (values == transferred)).sum()),
         "weighted": {
             "true_unit_share": _share(unit_weights, transferred),
             "false_to_true_unit_share": _share(unit_weights, to_true),
@@ -466,10 +628,18 @@ def with_acs_local_snap_receipt_anchor(frame: Frame) -> tuple[Frame, dict[str, A
                 amount,
                 unit_ids,
                 tanf,
-                anchor.unit_anchor,
+                values,
                 unit_weights=unit_weights,
                 person_weights=person_weights,
             ),
+        },
+        # microcosm#1062 review: the override touches receives_snap alone, so
+        # its joint distribution with the transferred receives_tanf can move.
+        "snap_tanf_crosstab": {
+            "informational": True,
+            "basis": "ACS SPM units, weighted by SPM-unit weight",
+            "before_override": _snap_tanf_crosstab(transferred, tanf, unit_weights),
+            "after_override": _snap_tanf_crosstab(values, tanf, unit_weights),
         },
     }
     return result, receipt
@@ -480,18 +650,22 @@ def acs_local_receipt_anchor_signal_gate(
     *,
     receipt: Mapping[str, Any] | None,
 ) -> GateResult:
-    """Require the FS receipt anchor on every ACS SPM unit.
+    """Require the FS receipt constraint on every ACS housing unit.
 
     Fails when origin tags or a required column are missing; when an ACS
     housing unit carries no FS 1/2 or an ACS ``PAP`` is blank at 15 or over;
-    when an ACS SPM unit's ``receives_snap`` is missing or differs from the
-    rule (``True`` exactly on the units of FS == 1 housing units); or when
-    ``receipt`` (the staging receipt) is missing, from another method, or
-    counts households, units, anchors or ``PAP`` recipients the frame does
-    not hold. Details report the weighted FS == 1 share of ACS housing units
-    against the ACS S2201 reference band (informational, never a failure),
-    the ``PAP``/``receives_tanf`` overlap and the donor's ``receives_snap``
-    share. Donor rows are reported, never graded: their receipt is ASEC's.
+    when an ACS SPM unit's ``receives_snap`` is missing; when a unit of an
+    FS == 2 housing unit or of group quarters reports SNAP; when the only
+    SPM unit of an FS == 1 housing unit does not; when an FS == 1 housing
+    unit with several SPM units has none that does; or when ``receipt`` (the
+    staging receipt) is missing, from another method, counts households,
+    units, anchors, non-reference reporters or ``PAP`` recipients the frame
+    does not hold, or its overrides or resolution paths do not reconcile.
+    Details report the weighted FS == 1 share of ACS housing units against
+    the ACS S2201 reference band (informational, never a failure), the
+    ``PAP``/``receives_tanf`` overlap, the donor's ``receives_snap`` share,
+    and the weighted SNAP x TANF cross-tab of ACS and donor units. Donor rows
+    are reported, never graded: their receipt is ASEC's.
     """
 
     spm_unit = frame.table("spm_unit")
@@ -544,18 +718,28 @@ def acs_local_receipt_anchor_signal_gate(
             f"{ACS_2024_1YR_SPINE}: receives_snap is missing on {missing} SPM "
             "unit(s); the engine default is no reported receipt."
         )
-    unmeasured = int((present & values & ~anchor.unit_anchor).sum())
+    values = values & present
+    unmeasured = int((values & ~anchor.unit_fs_yes).sum())
     if unmeasured:
         failures.append(
             f"{ACS_2024_1YR_SPINE}: {unmeasured} SPM unit(s) report SNAP receipt "
             f"outside an {ACS_SNAP_RECIPIENCY} == {ACS_FS_YES} housing unit."
         )
-    unanchored = int((present & ~values & anchor.unit_anchor).sum())
+    unanchored = int(
+        (present & ~values & anchor.unit_fs_yes & ~anchor.unit_shared).sum()
+    )
     if unanchored:
         failures.append(
-            f"{ACS_2024_1YR_SPINE}: {unanchored} SPM unit(s) of an "
+            f"{ACS_2024_1YR_SPINE}: {unanchored} SPM unit(s) alone in an "
             f"{ACS_SNAP_RECIPIENCY} == {ACS_FS_YES} housing unit do not report "
             "SNAP receipt."
+        )
+    unmet = int((anchor.several_units & ~_any_by_household(anchor, values)).sum())
+    if unmet:
+        failures.append(
+            f"{ACS_2024_1YR_SPINE}: {unmet} {ACS_SNAP_RECIPIENCY} == {ACS_FS_YES} "
+            "housing unit(s) with several SPM units have no unit reporting SNAP "
+            "receipt; at least one must."
         )
 
     household_weights = np.asarray(
@@ -569,29 +753,44 @@ def acs_local_receipt_anchor_signal_gate(
     )
     snap = _snap_counts(
         anchor,
+        values,
         household_weights=household_weights[acs_households],
         unit_weights=unit_weights[acs_units],
     )
+    acs_tanf = _flags(spm_unit.loc[acs_units, _TANF])[0]
     tanf = _tanf_counts(
         acs_person,
         amount,
         unit_ids,
-        _flags(spm_unit.loc[acs_units, _TANF])[0],
-        anchor.unit_anchor,
+        acs_tanf,
+        values,
         unit_weights=unit_weights[acs_units],
         person_weights=person_weights[acs_persons],
     )
     failures += _receipt_failures(receipt, snap=snap, tanf=tanf)
     donor = ~acs_units
+    donor_snap = _flags(spm_unit.loc[donor, _SNAP])[0]
     details.update(
         {
             "rule": _RULE,
             "snap": snap,
             "tanf": tanf,
             "donor_spm_units": int(donor.sum()),
-            "donor_receives_snap_unit_share": _share(
-                unit_weights[donor], _flags(spm_unit.loc[donor, _SNAP])[0]
-            ),
+            "donor_receives_snap_unit_share": _share(unit_weights[donor], donor_snap),
+            # microcosm#1062 review: the joint SNAP x TANF distribution of the
+            # ACS units after the override, beside the donor spine's.
+            "snap_tanf_crosstab": {
+                "informational": True,
+                "basis": "SPM units by spine, weighted by SPM-unit weight",
+                ACS_2024_1YR_SPINE: _snap_tanf_crosstab(
+                    values, acs_tanf, unit_weights[acs_units]
+                ),
+                "donor": _snap_tanf_crosstab(
+                    donor_snap,
+                    _flags(spm_unit.loc[donor, _TANF])[0],
+                    unit_weights[donor],
+                ),
+            },
         }
     )
     return _gate(failures, details)
@@ -655,6 +854,70 @@ def _receipt_failures(
             "The ACS receipt-anchor receipt's overrides do not reconcile: "
             f"{moves[0]} transferred True - {moves[1]} to False + {moves[2]} to "
             f"True != {anchored} anchored."
+        )
+    return failures + _resolution_failures(recorded_snap.get("resolution"), snap)
+
+
+def _resolution_failures(resolution: object, snap: Mapping[str, Any]) -> list[str]:
+    """The receipt's resolution paths must reconcile with the frame's units."""
+
+    counts = (
+        {key: resolution.get(key) for key in _RESOLUTION_COUNTS}
+        if isinstance(resolution, Mapping)
+        else {}
+    )
+    if len(counts) != len(_RESOLUTION_COUNTS) or any(
+        type(value) is not int for value in counts.values()
+    ):
+        return [
+            "The ACS receipt-anchor receipt does not count how each FS == 1 "
+            "housing unit met the at-least-one constraint."
+        ]
+    failures: list[str] = []
+    several = snap["fs_yes_households_with_several_units"]
+    met = counts["several_unit_households_met_by_qrf"]
+    forced = counts["several_unit_households_reference_forced"]
+    single = counts["single_unit_households"]
+    if met + forced != several or counts["reference_units_forced"] != forced:
+        failures.append(
+            "The ACS receipt-anchor receipt's resolution does not reconcile: "
+            f"{met} met by the QRF + {forced} reference-forced != {several} FS "
+            "== 1 housing unit(s) with several SPM units, or "
+            f"{counts['reference_units_forced']} forced reference unit(s)."
+        )
+    if single != snap["fs_yes_households"] - several:
+        failures.append(
+            f"The ACS receipt-anchor receipt counts {single} single-unit FS == 1 "
+            f"housing unit(s); the frame holds {snap['fs_yes_households'] - several}."
+        )
+    if (
+        counts["non_reference_units_true_via_qrf"]
+        != snap["non_reference_units_anchored"]
+    ):
+        failures.append(
+            "The ACS receipt-anchor receipt's resolution does not reconcile: "
+            f"{counts['non_reference_units_true_via_qrf']} non-reference unit(s) "
+            "True through the QRF, but the frame holds "
+            f"{snap['non_reference_units_anchored']} non-reference reporter(s)."
+        )
+    total = (
+        single
+        + counts["reference_units_true_via_qrf"]
+        + counts["reference_units_forced"]
+        + counts["non_reference_units_true_via_qrf"]
+    )
+    if total != snap["units_anchored"]:
+        failures.append(
+            "The ACS receipt-anchor receipt's resolution does not reconcile: "
+            f"its paths account for {total} reporting unit(s); the frame holds "
+            f"{snap['units_anchored']}."
+        )
+    if forced > snap["several_unit_households_reference_only"]:
+        failures.append(
+            f"The ACS receipt-anchor receipt forces {forced} reference unit(s), "
+            "but only "
+            f"{snap['several_unit_households_reference_only']} several-unit FS "
+            "== 1 housing unit(s) report through the reference unit alone."
         )
     return failures
 

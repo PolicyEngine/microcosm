@@ -2395,32 +2395,45 @@ def finalize_reviewed_limitations(
             "affected_spines": ["acs_2024_1yr"],
             "columns": ["receives_snap", "receives_tanf"],
             "reason": (
-                "receives_snap on ACS rows is native household FS (anyone in "
-                "the household received SNAP in the past 12 months), not the "
-                "QRF transfer, whose predictors carry no receipt signal "
-                f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}). FS names the housing "
-                "unit, not the SNAP household: FS == 1 marks every SPM unit of "
-                "the household, including the one-person units of adult "
-                "nonrelatives, as the donor's SPM_SNAPSUB > 0 does (Census "
-                "prorates the household SNAP amount to every SPM unit); FS == "
-                "2 marks none; group quarters, outside the FS universe, are "
-                "False. A roommate who buys and prepares food apart is thus "
-                "anchored with the reference family's receipt. FS under-"
-                "reports administrative SNAP, so the anchor is a floor the "
-                "take-up draw (microcosm#1019) fills to the FNS rate. "
+                "receives_snap on ACS rows is anchored by native household FS "
+                "(anyone in the household received SNAP in the past 12 "
+                "months), not left to the QRF transfer, whose predictors carry "
+                f"no receipt signal ({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}). FS "
+                "names the housing unit, not the SNAP household, so FS == 1 "
+                "is a constraint that at least one SPM unit of the housing "
+                "unit received SNAP (microcosm#1062 review): the only SPM "
+                "unit of a single-unit housing unit is True; in a housing "
+                "unit with several SPM units (microcosm#1023's roommate "
+                "units) each unit keeps its transferred QRF value, which is "
+                "conditioned on the unit's own size, ages, income and tenure, "
+                "and the reference person's unit is set True when the QRF "
+                "names none. A roommate who buys and prepares food apart is "
+                "therefore not forced to report the family's receipt. Census "
+                "prorates a household SNAP amount to every SPM unit (the "
+                "donor's SPM_SNAPSUB > 0) to measure poverty resources, which "
+                "does not establish that every unit enrolled. FS == 2 marks "
+                "none; group quarters, outside the FS universe, are False. FS "
+                "under-reports administrative SNAP, so the anchor is a floor "
+                "the take-up draw (microcosm#1019) fills to the FNS rate. "
                 "receives_tanf keeps its QRF transfer: ACS PAP covers TANF and "
                 "general assistance together, and PAP > 0 is not TANF receipt "
                 "(microcosm#591); PAP is loaded and its overlap with the "
-                "transferred receives_tanf is recorded, not applied."
+                "transferred receives_tanf is recorded, not applied, and the "
+                "SNAP x TANF cross-tab of ACS units before and after the "
+                "override is recorded beside the donor spine's."
             ),
             "treatment": (
                 "Applied at staging after the transfer, whose declared plan "
                 "is unchanged, and before pooling, so donor rows keep their "
                 "ASEC receipt. Gated by acs_local_receipt_anchor_signal at "
-                "staging and finalize: receives_snap is exactly the FS rule "
-                "on every ACS SPM unit, every ACS housing unit carries FS 1 "
-                "or 2, and the staging receipt counts the households, units, "
-                "anchors and PAP recipients the packaged ACS rows hold. The "
+                "staging and finalize: no unit of an FS == 2 housing unit or "
+                "of group quarters reports SNAP, the only SPM unit of an FS "
+                "== 1 housing unit does, every FS == 1 housing unit with "
+                "several SPM units has at least one reporting unit, every ACS "
+                "housing unit carries FS 1 or 2, and the staging receipt "
+                "counts the households, units, anchors, non-reference "
+                "reporters, resolution paths and PAP recipients the packaged "
+                "ACS rows hold. The "
                 "weighted FS == 1 share of ACS housing units is reported "
                 "against the 2023 ACS figure (12.2%), not graded."
             ),
@@ -2678,10 +2691,12 @@ def _require_local_spm_units(staging_summary: dict) -> dict:
 def _require_local_receipt_anchors(staging_summary: dict) -> dict:
     """The staging ACS receipt-anchor receipt (microcosm#1022), or refuse it.
 
-    Staging replaces the transferred ``receives_snap`` on every ACS SPM unit
-    with native household ``FS`` and gates it before writing the H5. A summary
+    Staging constrains the transferred ``receives_snap`` on ACS SPM units by
+    native household ``FS`` (at least one unit of an FS == 1 housing unit,
+    none of an FS == 2 one) and gates it before writing the H5. A summary
     without a passing receipt and gate is a pre-change staging run, whose ACS
-    SNAP reporters are the QRF transfer's.
+    SNAP reporters are the QRF transfer's; one with an earlier method marked
+    every unit of an FS == 1 housing unit, roommates included.
     """
 
     receipt = staging_summary.get("acs_local_receipt_anchors")

@@ -231,7 +231,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in (
         "microcosm#1022",
         "household FS",
-        "every SPM unit",
+        "at least one SPM unit",
+        "reference person's unit is set True",
+        "not forced to report the family's receipt",
         "group quarters",
         "SPM_SNAPSUB",
         "PAP > 0 is not TANF receipt",
@@ -1311,7 +1313,7 @@ def test_consumer_export_refuses_a_pre_spm_unit_staging_before_loading_it(
 def _receipt_anchor_receipt(**overrides) -> dict:
     receipt = {
         "issue": "microcosm#1022",
-        "method": "acs_fs_household_receipt_on_every_spm_unit",
+        "method": "acs_fs_household_receipt_at_least_one_spm_unit",
         "snap": {"fs_yes_households": 2, "units_anchored": 3},
         "tanf": {"pap_recipients": 1, "pap_units": 1},
     }
@@ -1354,6 +1356,13 @@ def _staging_receipt_anchor_summary(**overrides) -> dict:
                 method="reference_unit_only"
             )
         ),
+        # microcosm#1062 review: staging anchored with the pre-review rule,
+        # which marked every unit of an FS == 1 housing unit, roommates too.
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                method="acs_fs_household_receipt_on_every_spm_unit"
+            )
+        ),
         _staging_receipt_anchor_summary(
             acs_local_receipt_anchors=_receipt_anchor_receipt(snap=None)
         ),
@@ -1371,6 +1380,7 @@ def _staging_receipt_anchor_summary(**overrides) -> dict:
         "truthy-gate",
         "wrong-issue",
         "wrong-method",
+        "pre-review-method",
         "no-counts",
         "untyped-count",
     ],
