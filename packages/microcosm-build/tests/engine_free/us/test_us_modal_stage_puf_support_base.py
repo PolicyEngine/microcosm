@@ -6,11 +6,13 @@ base on Modal. The argv it builds must equal the command Route A's local
 driver built for commit 4b57d15a287c (``base-config.json``) flag for flag and
 value for value, differing only in file paths. These tests hold that with a
 differential test against a tokenized copy of that command, a second one
-through the pinned tool's own parser and per-stage child commands, Hypothesis
-properties of the argv builder, the plan refusals, the budget stop of a
-multi-process tool, the home-cache seed, the pinned tree file, the disk
-guard and the cost cap. Nothing here needs Modal, a country engine or the
-network.
+through the pinned tool's own parser and per-stage child commands (loaded
+from 4b57d15a2's source; skipped, visibly, in a clone without that commit),
+Hypothesis properties of the argv builder, the plan refusals, the budget
+stop of a multi-process tool, the home-cache seed, the pinned tree file, the
+disk guard, the cost ceiling, the refusal of unfinished receipts, the
+comparison with the local run's checkpoints, the upload commands and the
+write probe. Nothing here needs Modal, a country engine or the network.
 """
 
 from __future__ import annotations
@@ -171,7 +173,11 @@ def _option(argv: list[str], flag: str) -> str:
 
 
 def _pinned_tool_source() -> str | None:
-    """The base tool at the committed plan's commit, or None outside its history."""
+    """The base tool at the committed plan's commit, or None outside its history.
+
+    CI checks out one commit (actions/checkout's default depth 1), so there
+    the pinned commit is absent and every test that needs it skips, visibly.
+    """
 
     shown = subprocess.run(
         [
@@ -191,14 +197,31 @@ def _tool_flags(source: str) -> set[str]:
     return set(re.findall(r'add_argument\(\s*"(--[A-Za-z0-9-]+)"', source))
 
 
-def _load_base_tool():
-    """This tree's base tool (engine-free to import), checked against the pin."""
+_NO_PINNED_COMMIT = (
+    "the committed plan's commit is not in this clone's history (CI's depth-1 "
+    "checkout); the pinned-tool checks run in a clone that has it"
+)
 
-    pinned = _pinned_tool_source()
-    if pinned is not None:
-        # The parser below is 4b57d15a2's own, byte for byte.
-        assert BASE_TOOL.read_text() == pinned
-    spec = importlib.util.spec_from_file_location("route_a_base_tool", BASE_TOOL)
+
+@pytest.fixture(scope="module")
+def pinned_source() -> str:
+    source = _pinned_tool_source()
+    if source is None:
+        pytest.skip(_NO_PINNED_COMMIT)
+    return source
+
+
+@pytest.fixture(scope="module")
+def pinned_tool(pinned_source: str, tmp_path_factory):
+    """The base tool as the plan's commit has it, loaded from that source.
+
+    Not this tree's copy: the plan runs 4b57d15a2's tool whatever main does
+    to tools/build_us_puf_support_base.py later. Importing it is engine-free.
+    """
+
+    path = tmp_path_factory.mktemp("pinned") / "build_us_puf_support_base.py"
+    path.write_text(pinned_source)
+    spec = importlib.util.spec_from_file_location("route_a_base_tool_pinned", path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
@@ -248,12 +271,15 @@ def test_route_a_command_uses_exactly_the_builder_flags() -> None:
     assert not set(flags) & plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
 
 
-def test_the_tool_s_own_parser_reads_the_same_build_from_both_commands() -> None:
-    # Differential through the pinned tool itself: its _parse_args reads the
-    # Modal argv and Route A's local argv into the same settings (paths
-    # aside), and the per-stage child commands that --stage all spawns
-    # (_stage_cli_args) match stage for stage.
-    tool = _load_base_tool()
+def test_the_tool_s_own_parser_reads_the_same_build_from_both_commands(
+    pinned_tool,
+) -> None:
+    # Differential through the pinned tool itself (4b57d15a2's source, not
+    # this tree's): its _parse_args reads the Modal argv and Route A's local
+    # argv into the same settings (paths aside), and the per-stage child
+    # commands that --stage all spawns (_stage_cli_args) match stage for
+    # stage.
+    tool = pinned_tool
     modal_argv = plan_lib.planned_argv(_committed_plan())
     local_argv = _local_argv()
     assert modal_argv[1:3] == local_argv[1:3] == ["-B", BASE.script]
@@ -589,21 +615,30 @@ def test_loose_base_plans_are_refused(mutate, message: str) -> None:
 
 def test_the_budget_ceiling_is_the_timeout_less_the_base_s_overhead() -> None:
     ceiling = plan_lib.BASE.timeout_s - plan_lib.BASE_RUNNER_OVERHEAD_SECONDS
-    assert ceiling == 19_800
+    assert ceiling == 14_700
     assert plan_lib.parse_plan(base_plan_data(max_wall_seconds=ceiling))
+    # Max's 4 hours fit, with 5 minutes to spare for staging.
+    assert ceiling - _committed_plan().max_wall_seconds == 300
 
 
-def test_an_option_that_maps_to_an_owned_flag_is_refused(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "flag",
+    sorted(
+        plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
+        | plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
+    ),
+)
+def test_an_option_that_maps_to_an_owned_flag_is_refused(monkeypatch, flag) -> None:
     # A registry mistake: an allowlisted option for a flag the builder sets
-    # would pass --seed twice. The plan is refused, and so is the argv.
-    rogue = dataclasses.replace(
-        BASE, options={"seed": plan_lib.OptionFlag("--seed", int)}
-    )
+    # would pass it twice, and one for a withheld flag would open an escape
+    # hatch (--base-h5, --allow-geography-ladder-gate-failures, ...). The
+    # plan is refused, and so is the argv, for every one of the 26 flags.
+    rogue = dataclasses.replace(BASE, options={"x": plan_lib.OptionFlag(flag, str)})
     monkeypatch.setitem(plan_lib.TOOLS, BASE.name, rogue)
-    with pytest.raises(plan_lib.PlanError, match="runner-owned flag --seed"):
-        plan_lib.parse_plan(base_plan_data(options={"seed": 1}))
-    plan = dataclasses.replace(_committed_plan(), tool=rogue, options={"seed": 1})
-    with pytest.raises(plan_lib.PlanError, match="runner-owned flag --seed"):
+    with pytest.raises(plan_lib.PlanError, match=f"runner-owned flag {flag}"):
+        plan_lib.parse_plan(base_plan_data(options={"x": "v"}))
+    plan = dataclasses.replace(_committed_plan(), tool=rogue, options={"x": "v"})
+    with pytest.raises(plan_lib.PlanError, match=f"runner-owned flag {flag}"):
         plan_lib.planned_argv(plan)
 
 
@@ -620,23 +655,29 @@ def test_validate_cli_refuses_a_rogue_registration(
     assert "runner-owned flag --out" in capsys.readouterr().err
 
 
+_OWNED = (
+    plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS | plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
+)
+
+
 def test_the_owned_flags_are_exactly_the_tool_s_flags() -> None:
-    # The owned flags are 4b57d15a2's _parse_args flags, all of them: the
-    # builder's and the withheld ones, which never overlap. A flag the tool
-    # gains later is caught here (in this tree) before a plan could rely on
-    # it being unowned.
+    # The registration's owned flags (what parse_plan and option_argv
+    # enforce) are the builder's and the withheld ones, which never overlap,
+    # and together they are every flag of the tool's _parse_args. A flag the
+    # tool gains later is caught here (in this tree) before a plan could rely
+    # on it being unowned.
     assert not (
         plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
         & plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
     )
-    owned = (
-        plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
-        | plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
-    )
-    assert _tool_flags(BASE_TOOL.read_text()) == owned
-    pinned = _pinned_tool_source()
-    if pinned is not None:
-        assert _tool_flags(pinned) == owned
+    assert len(_OWNED) == 26
+    assert BASE.owned_flags == _OWNED
+    assert plan_lib.TOOLS[BASE.name].owned_flags == _OWNED
+    assert _tool_flags(BASE_TOOL.read_text()) == _OWNED
+
+
+def test_the_owned_flags_are_the_pinned_tool_s_flags(pinned_source: str) -> None:
+    assert _tool_flags(pinned_source) == _OWNED == BASE.owned_flags
 
 
 def test_a_staged_input_whose_bytes_differ_is_refused() -> None:
@@ -669,12 +710,57 @@ def test_the_plan_s_estimate_at_its_budget_is_within_max_s_cap() -> None:
     assert plan_lib.HEAVY.estimated_usd(14_400 + 1_800, 3.0) > 15.0
 
 
-def test_the_timeout_bounds_the_worst_case() -> None:
-    # If the budget stop and the mirror both hung, the class timeout is the
-    # ceiling: 6 hours non-preemptible.
-    assert plan_lib.BASE.estimated_usd(plan_lib.BASE.timeout_s, 3.0) == pytest.approx(
-        19.51, abs=0.01
+def test_the_class_timeout_keeps_the_hard_ceiling_inside_max_s_cap() -> None:
+    # The timeout bounds the function's execution time, so the class's
+    # timeout at the non-preemptible list price is the most one attempt can
+    # list at, whatever the plan's budget, a hung stop or a slow mirror do.
+    ceiling = plan_lib.BASE.estimated_usd(
+        plan_lib.BASE.timeout_s, plan_lib.NONPREEMPTIBLE_PRICE_MULTIPLIER
     )
+    assert ceiling <= plan_lib.BASE_COST_CAP_USD == 15.0
+    assert ceiling == pytest.approx(14.90, abs=0.01)
+    plan = _committed_plan()
+    assert plan_lib.estimated_usd_at_timeout(plan) == ceiling
+    assert plan_lib.summarize(plan)["estimated_usd_at_timeout"] == ceiling
+    # The old 6-hour timeout would have listed at $19.51, over the cap.
+    assert plan_lib.BASE.estimated_usd(6 * 3600, 3.0) > plan_lib.BASE_COST_CAP_USD
+
+
+@_PROPERTY_SETTINGS
+@given(
+    max_wall=st.integers(
+        min_value=60,
+        max_value=plan_lib.BASE.timeout_s - plan_lib.BASE_RUNNER_OVERHEAD_SECONDS,
+    ),
+    elapsed=st.floats(min_value=0, max_value=20_000, allow_nan=False),
+    spent=st.floats(min_value=0, max_value=20_000, allow_nan=False),
+)
+def test_the_tool_s_budget_always_leaves_the_runner_its_reserve(
+    max_wall: int, elapsed: float, spent: float
+) -> None:
+    # Whatever time staging took (elapsed) and whatever earlier attempts
+    # spent, the tool is stopped early enough that the runner's reserve
+    # still fits inside the class timeout, and never later than the plan's
+    # own budget allows.
+    plan = plan_lib.parse_plan(base_plan_data(max_wall_seconds=max_wall))
+    remaining = plan_lib.remaining_wall_seconds(
+        plan, [{"elapsed_seconds": spent}] if spent else []
+    )
+    budget = plan_lib.tool_budget(plan, remaining, elapsed)
+    seconds = int(budget["seconds"])
+    assert seconds <= remaining
+    assert elapsed + seconds + plan_lib.BASE_RUNNER_OVERHEAD_SECONDS <= (
+        plan_lib.BASE.timeout_s + 1
+    )
+    assert seconds == min(remaining, int(budget["container_seconds"]))
+    assert budget["limited_by"] == (
+        "max_wall_seconds"
+        if remaining <= int(budget["container_seconds"])
+        else "container_timeout"
+    )
+    # A first attempt that staged in under 5 minutes gets Max's whole 4 hours.
+    if max_wall == 14_400 and not spent and elapsed <= 300:
+        assert seconds == 14_400
 
 
 def test_validate_cli_prints_the_base_argv_class_and_estimate(capsys) -> None:
@@ -689,12 +775,15 @@ def test_validate_cli_prints_the_base_argv_class_and_estimate(capsys) -> None:
         "class": "base",
         "cpu": 4.0,
         "memory_gib": 112.0,
-        "timeout_h": 6.0,
+        "timeout_h": 16_500 / 3600,
+        "timeout_s": 16_500,
         "nonpreemptible": True,
         "runner_overhead_seconds": 1800,
         "min_free_disk_gib": 70,
+        "mirrored_state_gib": 50,
     }
     assert summary["estimated_usd_at_max_wall"] == pytest.approx(14.63, abs=0.01)
+    assert summary["estimated_usd_at_timeout"] == pytest.approx(14.90, abs=0.01)
     assert summary["measured_locally"]["peak_rss_gb"] == 72.5
     assert summary["home_seeds"] == [
         {"input": SEED.input, "path": f"~/{SEED.path}", "sha256": SEED.sha256}
@@ -730,7 +819,7 @@ def test_the_base_runs_on_its_own_modal_functions(app) -> None:
         assert (options["cpu"], options["memory"], options["timeout"]) == (
             4.0,
             112 * 1024,
-            6 * 3600,
+            16_500,
         )
         assert options.get("nonpreemptible", False) is nonpreemptible
         assert options["retries"] == 0
@@ -984,14 +1073,17 @@ def test_run_stage_refuses_a_small_disk_before_staging(
 # --------------------------------------------------------------------------- #
 
 
-def _base_receipt(state: Path) -> dict:
+def _base_receipt(
+    state: Path, *, returncode: int = 0, stopped_at_budget: bool = False
+) -> dict:
     data = base_plan_data()
     plan = plan_lib.parse_plan(data)
     receipt = plan_lib.build_receipt(
         plan,
         data,
         argv=plan_lib.planned_argv(plan),
-        returncode=0,
+        returncode=returncode,
+        stopped_at_budget=stopped_at_budget,
         started_at="2026-09-29T12:00:00Z",
         finished_at="2026-09-29T15:00:00Z",
         wall_seconds=10_800.0,
@@ -1056,6 +1148,7 @@ def test_verify_receipt_cli_takes_a_prefix(tmp_path: Path, capsys) -> None:
     assert plan_lib.main([*args, "--prefix", "base-out", "--strict"]) == 0
     assert json.loads(capsys.readouterr().out) == {
         "verified": True,
+        "status": "COMPLETED",
         "outputs": 1,
         "problems": 0,
     }
@@ -1063,3 +1156,331 @@ def test_verify_receipt_cli_takes_a_prefix(tmp_path: Path, capsys) -> None:
     capsys.readouterr()
     assert plan_lib.main([*args, "--prefix", "/abs"]) == 2
     assert "REFUSED" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stopped", "problems"),
+    [
+        (
+            1,
+            False,
+            ["the receipt's status is 'FAILED', not 'COMPLETED' (returncode 1)"],
+        ),
+        # A stop at the budget during final_export: the tool (4b57d15a2)
+        # writes its H5 at the final path and reopens it, so base-out can
+        # hold a truncated H5 that the FAILED receipt lists faithfully.
+        (
+            -15,
+            True,
+            [
+                "the receipt's status is 'FAILED', not 'COMPLETED' (returncode -15)",
+                "the stage was stopped at its budget (stopped_at_budget)",
+            ],
+        ),
+    ],
+)
+def test_verify_receipt_cli_refuses_a_stage_that_did_not_finish(
+    tmp_path: Path, capsys, returncode: int, stopped: bool, problems: list[str]
+) -> None:
+    state = tmp_path / "state"
+    (state / "base-out").mkdir(parents=True)
+    (state / "base-out" / plan_lib.PUF_SUPPORT_BASE_ARTIFACT).write_bytes(b"\x89HD")
+    receipt = _base_receipt(state, returncode=returncode, stopped_at_budget=stopped)
+    assert receipt["status"] == "FAILED"
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(receipt))
+    args = [
+        "verify-receipt",
+        str(receipt_path),
+        "--state-root",
+        str(state),
+        "--prefix",
+        "base-out",
+        "--strict",
+    ]
+    assert plan_lib.main(args) == 1
+    captured = capsys.readouterr()
+    assert captured.err.splitlines() == problems
+    assert json.loads(captured.out) == {
+        "verified": False,
+        "status": "FAILED",
+        "outputs": 1,
+        "problems": len(problems),
+    }
+    # The bytes still verify when the operator asks for exactly that.
+    assert plan_lib.main([*args, "--allow-failed"]) == 0
+    assert json.loads(capsys.readouterr().out)["verified"] is True
+    # The runner's resume check still accepts a FAILED receipt's state.
+    latest = ("all-x.json", receipt)
+    assert plan_lib.pulled_state_problems(state, latest) == []
+
+
+# --------------------------------------------------------------------------- #
+# Comparing the Modal base with the local run of the same commit               #
+# --------------------------------------------------------------------------- #
+
+LOCAL_REFERENCE = ROOT / "docs" / "us-modal-stage-route-a-base-local-reference.json"
+
+
+def _reference() -> dict:
+    return json.loads(LOCAL_REFERENCE.read_text())
+
+
+def test_the_local_reference_matches_the_plan_and_the_fixture() -> None:
+    reference = _reference()
+    plan = _committed_plan()
+    assert reference["schema"] == plan_lib.LOCAL_REFERENCE_SCHEMA
+    assert (reference["tool"], reference["stage"]) == (BASE.name, plan.stage)
+    assert reference["commit"] == plan.commit == _fixture()["build_commit"]
+    # The outputs are frame checkpoints under the plan's checkpoint dir.
+    checkpoints = plan_lib.PUF_SUPPORT_BASE_CHECKPOINTS
+    assert sorted(reference["outputs"]) == [
+        f"{checkpoints}/000_source_construction.frame.h5",
+        f"{checkpoints}/001_pre_clone_enrichment.frame.h5",
+    ]
+    assert reference["run_context_path"] == f"{checkpoints}/stage_run_context.json"
+    # The six distributions the tool fingerprints, pinned once each.
+    assert set(reference["builder_code_identity"]["dependency_versions"]) == {
+        "h5py",
+        "numpy",
+        "pandas",
+        "policyengine-us",
+        "quantile-forest",
+        "scikit-learn",
+    }
+
+
+def _modal_run(
+    tmp_path: Path, *, frames: dict[str, str] | None = None, identity: dict | None
+) -> tuple[Path, Path]:
+    """A receipt and run context for a Modal run with the given frame hashes."""
+
+    reference = _reference()
+    context = {
+        "run_config": {
+            "builder_code_identity": {
+                "python": "3.14.2 (main) [GCC]",
+                **(identity or {}),
+            }
+        }
+    }
+    context_bytes = json.dumps(context).encode()
+    outputs = [
+        {"path": rel, "bytes": 1, "sha256": sha}
+        for rel, sha in (frames or reference["outputs"]).items()
+    ]
+    outputs.append(
+        {
+            "path": reference["run_context_path"],
+            "bytes": len(context_bytes),
+            "sha256": hashlib.sha256(context_bytes).hexdigest(),
+        }
+    )
+    receipt = {
+        "schema": plan_lib.RECEIPT_SCHEMA,
+        "tool": BASE.name,
+        "stage": "all",
+        "source": {"commit": reference["commit"]},
+        "outputs": outputs,
+    }
+    receipt_path = tmp_path / "receipt.json"
+    receipt_path.write_text(json.dumps(receipt))
+    context_path = tmp_path / "stage_run_context.json"
+    context_path.write_bytes(context_bytes)
+    return receipt_path, context_path
+
+
+def _lineage(receipt_path: Path, context_path: Path) -> list[str]:
+    return [
+        "compare-lineage",
+        str(receipt_path),
+        "--reference",
+        str(LOCAL_REFERENCE),
+        "--run-context",
+        str(context_path),
+    ]
+
+
+def test_compare_lineage_passes_a_modal_run_that_reproduces_the_local_bytes(
+    tmp_path: Path, capsys
+) -> None:
+    identity = _reference()["builder_code_identity"]
+    receipt_path, context_path = _modal_run(tmp_path, identity=identity)
+    assert plan_lib.main(_lineage(receipt_path, context_path)) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert (out["reproduced"], out["problems"]) == (True, 0)
+    assert out["python"]["local"].startswith("3.14.7 free-threading build")
+    assert out["python"]["modal"] == "3.14.2 (main) [GCC]"
+
+
+def test_compare_lineage_reports_every_departure(tmp_path: Path, capsys) -> None:
+    reference = _reference()
+    frames = dict(reference["outputs"])
+    first = "base-checkpoints/000_source_construction.frame.h5"
+    frames[first] = "0" * 64
+    identity = {
+        "source_sha256": "1" * 64,
+        "dependency_versions": {
+            **reference["builder_code_identity"]["dependency_versions"],
+            "numpy": "2.4.5",
+        },
+    }
+    receipt_path, context_path = _modal_run(tmp_path, frames=frames, identity=identity)
+    assert plan_lib.main(_lineage(receipt_path, context_path)) == 1
+    err = capsys.readouterr().err.splitlines()
+    assert err[0] == (
+        f"{first}: Modal wrote sha256 {'0' * 64}, the local run {reference['outputs'][first]}"
+    )
+    assert err[1].startswith("builder_code_identity.source_sha256: Modal '1111")
+    assert err[2].startswith("builder_code_identity.dependency_versions: Modal ")
+    assert len(err) == 3
+    # A run context that is not the file the receipt lists is refused.
+    context_path.write_text("{}")
+    assert plan_lib.main(_lineage(receipt_path, context_path)) == 1
+    assert "the file given is sha256" in capsys.readouterr().err
+
+
+def test_lineage_problems_refuses_the_wrong_run() -> None:
+    reference = _reference()
+    receipt = {
+        "schema": plan_lib.RECEIPT_SCHEMA,
+        "tool": BASE.name,
+        "stage": "all",
+        "source": {"commit": "f" * 40},
+        "outputs": [],
+    }
+    problems = plan_lib.lineage_problems(receipt, reference, None, None)
+    assert (
+        problems[0]
+        == f"commit: the receipt's {'f' * 40}, the local run's {reference['commit']}"
+    )
+    assert "base-checkpoints/000_source_construction.frame.h5: not in the receipt" in (
+        problems
+    )
+    assert plan_lib.lineage_problems({}, reference, None, None) == [
+        f"not a {plan_lib.RECEIPT_SCHEMA} receipt"
+    ]
+    assert plan_lib.lineage_problems(receipt, {}, None, None) == [
+        f"not a {plan_lib.LOCAL_REFERENCE_SCHEMA} reference"
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# Uploading the inputs                                                         #
+# --------------------------------------------------------------------------- #
+
+
+def _plan_with_local_files(tmp_path: Path, roles: tuple[str, ...]) -> tuple[Path, dict]:
+    data = base_plan_data()
+    files = {}
+    for role in roles:
+        path = tmp_path / "local" / f"{role} file.bin"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(role.encode())
+        _replace_sha(data, role, hashlib.sha256(path.read_bytes()).hexdigest())
+        files[role] = path
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(data))
+    return plan_path, files
+
+
+def test_upload_commands_verify_each_file_against_the_plan(
+    tmp_path: Path, capsys
+) -> None:
+    plan_path, files = _plan_with_local_files(tmp_path, ("puf_2015_csv", "acs_2022_h5"))
+    pairs = [f"{role}={path}" for role, path in files.items()]
+    assert plan_lib.main(["upload-commands", str(plan_path), *pairs]) == 0
+    rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    plan = plan_lib.parse_plan(json.loads(plan_path.read_text()))
+    assert [row["role"] for row in rows] == list(files)
+    for row in rows:
+        ref = plan.inputs[row["role"]]
+        assert row["sha256"] == ref.sha256
+        assert row["volume_path"] == ref.volume_path
+        assert row["upload"] == (
+            f"modal volume put {plan_lib.INPUTS_VOLUME} "
+            f"'{files[row['role']]}' {ref.volume_path}"
+        )
+    # The script form uploads each file unless the volume already lists it.
+    assert plan_lib.main(["upload-commands", "--shell", str(plan_path), *pairs]) == 0
+    script = capsys.readouterr().out
+    assert script.startswith("#!/bin/bash\n")
+    assert "set -euo pipefail" in script
+    assert script.count("modal volume put ") == 2
+    assert script.count("modal volume ls ") == 2
+
+
+@pytest.mark.parametrize(
+    ("pair", "message"),
+    [
+        ("puf_2015_csv={other}", "the plan pins"),
+        ("crosswalk={good}", "not an input of the plan"),
+        ("puf_2015_csv={missing}", "is not a file"),
+        ("puf_2015_csv", "expected ROLE=PATH"),
+    ],
+)
+def test_upload_commands_refuse_a_file_the_plan_does_not_pin(
+    tmp_path: Path, capsys, pair: str, message: str
+) -> None:
+    plan_path, files = _plan_with_local_files(tmp_path, ("puf_2015_csv",))
+    other = tmp_path / "other.csv"
+    other.write_text("not the pinned bytes")
+    pair = pair.format(
+        good=files["puf_2015_csv"], other=other, missing=tmp_path / "absent"
+    )
+    good = f"puf_2015_csv={files['puf_2015_csv']}"
+    extra = [] if pair.startswith("puf_2015_csv") else [good]
+    assert plan_lib.main(["upload-commands", str(plan_path), *extra, pair]) == 2
+    captured = capsys.readouterr()
+    # Refused as a whole: not even the good file's command is printed.
+    assert captured.out == ""
+    assert "REFUSED" in captured.err and message in captured.err
+
+
+# --------------------------------------------------------------------------- #
+# The runs volume's write rate against the runner's reserve                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_write_probe_verdict_sizes_the_mirror_against_the_reserve() -> None:
+    stage = BASE.stages["all"]
+    gib = 1024**3
+    reserve = plan_lib.BASE_RUNNER_OVERHEAD_SECONDS - plan_lib.STOP_GRACE_SECONDS
+    # The slowest rate that still mirrors 50 GiB inside the reserve.
+    floor = 50 * gib / reserve
+    fast = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 1.01))
+    assert "problem" not in fast
+    assert fast["post_tool_reserve_seconds"] == reserve == 1740
+    slow = plan_lib.write_probe_verdict(stage, gib, gib / (floor * 0.99))
+    assert "more than the 1740s the runner keeps" in slow["problem"]
+    # The runbook's one measured volume rate (reads, at least 58 MB/s) fits.
+    assert "problem" not in plan_lib.write_probe_verdict(stage, 58_000_000, 1.0)
+    acs = plan_lib.US_ACS_LOCAL_RELEASE.stages["materialize"]
+    assert "skipped" in plan_lib.write_probe_verdict(acs, 0, 0.0)
+
+
+def test_the_app_s_write_probe_times_a_committed_copy_and_cleans_up(
+    app, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(plan_lib, "RUNS_MOUNT", str(tmp_path / "runs"))
+    monkeypatch.setattr(plan_lib, "WORK_ROOT", str(tmp_path / "work"))
+    monkeypatch.setattr(plan_lib, "WRITE_PROBE_BYTES", 8 * 1024 * 1024)
+    app.runs_volume.commit.reset_mock()
+    verdict = app._write_probe(_committed_plan())
+    assert verdict["bytes"] == 8 * 1024 * 1024
+    assert verdict["seconds"] >= 0 and "mb_per_s" in verdict
+    # The timed commit and the cleanup commit.
+    assert app.runs_volume.commit.call_count == 2
+    assert not list((tmp_path / "runs").rglob("*.bin*"))
+    assert not list((tmp_path / "work").rglob("*.bin"))
+
+    def broken(*_args, **_kwargs):
+        raise OSError("volume full")
+
+    monkeypatch.setattr(plan_lib, "copy_hashed", broken)
+    failed = app._write_probe(_committed_plan())
+    assert failed == {"problem": "write probe failed: OSError: volume full"}
+    # A stage that declares no mirrored state is not probed.
+    acs = dataclasses.replace(_committed_plan(), tool=plan_lib.US_ACS_LOCAL_RELEASE)
+    acs = dataclasses.replace(acs, stage="materialize")
+    assert "skipped" in app._write_probe(acs)

@@ -1,0 +1,28 @@
+{
+  "schema": "microcosm-modal-us-stage-local-reference/1",
+  "description": "What Route A's local base run for commit 4b57d15a2 wrote before it stopped, for comparing the Modal base with it (tools/modal_us_stage_plan.py compare-lineage; runbook, Route A's base stage, step 6). The local run (route_a.sh section 4, run directory run-4b57d15a287c, 2026-09-28) completed its first two outer stages and was then stopped by its supervisor's disk floor (base-sup.failed-1790651711/RESULT.json: refusal DISK_FLOOR, returncode -9). Its base-checkpoints/stage_run_context.json records both completed stages with these checkpoint sha256, and the files hashed to the same values on 2026-09-29. The frame checkpoint writer sets track_times=False on every HDF5 object (packages/microcosm-build/src/microcosm/build/frame_checkpoint.py at 4b57d15a2), and neither file contains the machine's paths, interpreter or platform strings, so equal inputs and equal numerics give equal bytes. source_sha256 equals microcosm.build.code_identity's digest recomputed over the committed tree of 4b57d15a2, so a clean clone of that commit gives the same value.",
+  "tool": "us-puf-support-base",
+  "stage": "all",
+  "commit": "4b57d15a287c4a1729bad362a2f6d57c4de9059e",
+  "outputs": {
+    "base-checkpoints/000_source_construction.frame.h5": "be8c268930ff90a46af5225cc95244cc3db9f66ff37b26211d7515b75d2338cf",
+    "base-checkpoints/001_pre_clone_enrichment.frame.h5": "5a52f337a44aa8fdfbcf4ce36b391f1b59a246ce82dd736f25e0d4ca8051ce9f"
+  },
+  "run_context_path": "base-checkpoints/stage_run_context.json",
+  "builder_code_identity": {
+    "source_sha256": "c02fd0576a158da00951c15ad505d022174e321f30bf36ebd664bb199c6604ec",
+    "dependency_versions": {
+      "h5py": "3.16.0",
+      "numpy": "2.4.6",
+      "pandas": "3.0.3",
+      "policyengine-us": "2.2.1",
+      "quantile-forest": "1.4.2",
+      "scikit-learn": "1.8.0"
+    }
+  },
+  "local_platform": {
+    "python": "3.14.7 free-threading build (main, Sep  1 2026, 14:07:44) [Clang 22.1.3 ]",
+    "interpreter": "cpython-3.14+freethreaded-macos-aarch64-none (the build worktree's .venv/pyvenv.cfg)",
+    "numpy_blas": "accelerate (numpy/__config__.py in the build worktree's venv)"
+  }
+}

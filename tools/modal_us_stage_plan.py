@@ -17,8 +17,14 @@ Command line (no Modal needed)::
 
     python3 tools/modal_us_stage_plan.py validate PLAN.json
     python3 tools/modal_us_stage_plan.py digest FILE [FILE ...]
+    python3 tools/modal_us_stage_plan.py upload-commands PLAN.json \\
+        ROLE=PATH [ROLE=PATH ...] [--shell]
     python3 tools/modal_us_stage_plan.py verify-receipt RECEIPT.json \\
-        --state-root DIR [--strict] [--prefix SUBDIR]
+        --state-root DIR [--strict] [--prefix SUBDIR] [--allow-failed]
+    python3 tools/modal_us_stage_plan.py compare-lineage RECEIPT.json \\
+        --reference LOCAL_REFERENCE.json --run-context stage_run_context.json
+
+``upload-commands`` prints ``modal volume`` commands; it runs none of them.
 
 See ``docs/us-modal-stage-runbook.md``.
 """
@@ -57,7 +63,10 @@ RUNS_MOUNT = "/vol/runs"
 IMAGE_REPO_ROOT = "/root/microcosm"
 IMAGE_VENV = "/opt/venv"
 # Local US builds run on 3.14 (runtime.python 3.14.4 in the #974 build
-# manifest); the image matches so a Modal replay differs only by platform.
+# manifest); the image matches the minor version. It is the standard (GIL)
+# build on Linux x86_64, so a replay of a local run on free-threaded 3.14 on
+# macOS arm64 (Route A's base) differs by interpreter build and platform
+# too; compare-lineage checks what that changes.
 IMAGE_PYTHON_VERSION = "3.14"
 IMAGE_UV_VERSION = "0.11.7"
 RUNNER_HF_HUB_VERSION = "1.18.0"
@@ -161,30 +170,57 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 # Modal hold 15 to 24 GB more RSS than local at the same point of another
 # stage, so the worst case seen is about 90 GiB. 112 GiB leaves about 22 GiB
 # over that and is at least 1.5 times the local peak. It is not HEAVY
-# because Max capped the run at about $15 (2026-09-29): non-preemptible, a
-# 4-hour budget plus 30 minutes of runner time (BASE_RUNNER_OVERHEAD_SECONDS)
-# lists at $16.36 with HEAVY's 128 GiB and $14.63 with 112 GiB. Four
-# cores: the base used 6,238 CPU-s in 2,788 s of wall locally, 2.2 cores on
-# average. The 6-hour timeout is the local supervisor's wall limit for the
-# same command (base-config.json limits.wall_seconds 21,600); the plan's
-# max_wall_seconds stops the tool earlier. No ephemeral_disk request: Modal
-# gives each container a disk quota of 512 GiB by default
+# because Max capped the run at about $15 (2026-09-29, BASE_COST_CAP_USD):
+# non-preemptible, a 4-hour budget plus 30 minutes of runner time
+# (BASE_RUNNER_OVERHEAD_SECONDS) lists at $16.36 with HEAVY's 128 GiB and
+# $14.63 with 112 GiB. Four cores: the base used 6,238 CPU-s in 2,788 s of
+# wall locally, 2.2 cores on average.
+#
+# The timeout is the hard ceiling, and it is set so that ceiling stays inside
+# the cap: Modal's timeout bounds a function's execution time
+# (modal.com/docs/guide/timeouts, read 2026-09-29), and 16,500 s of this
+# class lists at $14.90 non-preemptible. That is the 4-hour tool budget, the
+# 30-minute runner reserve and 5 minutes for staging. The runner also keeps
+# the tool inside the timeout: it stops the tool no later than the timeout
+# less the reserve (container_tool_seconds), so time spent before the tool
+# (pulling state, staging inputs) comes out of the tool's time, never out of
+# the reserve for hashing, mirroring and the receipt. No ephemeral_disk
+# request: Modal gives each container a disk quota of 512 GiB by default
 # (modal.com/docs/guide/resources, read 2026-09-29) and the base writes about
 # 50 GB; StageSpec.min_free_disk_gib checks the disk before anything is staged.
-BASE = Resources("base", cpu=4.0, memory_mib=112 * 1024, timeout_s=6 * 3600)
+BASE = Resources("base", cpu=4.0, memory_mib=112 * 1024, timeout_s=16_500)
 RESOURCE_CLASSES = {item.name: item for item in (CHECK, HEAVY, LIGHT, BASE)}
+#: Max's cap for the base run (2026-09-29: non-preemptible, 4 hours, "about
+#: $15"). The base class's hard ceiling (its timeout, non-preemptible, at list
+#: price) must not exceed it; a test holds this.
+BASE_COST_CAP_USD = 15.0
 
 # Time the container keeps for staging inputs, hashing and mirroring state,
 # beyond the plan's max_wall_seconds. It bounds max_wall_seconds below the
-# class's timeout and is added to the cost estimate at the budget.
+# class's timeout, is added to the cost estimate at the budget, and is the
+# reserve the runner keeps after the tool before the timeout
+# (container_tool_seconds).
 RUNNER_OVERHEAD_SECONDS = 15 * 60
 # The base mirrors its checkpoints (about 44 GB) and its output (about 2.4 GB)
-# after the tool exits: one hashing pass and one copy to the runs volume. The
-# runbook measured staging inputs from the volume at no less than 58 MB/s
-# (11.4 GB in under 3.5 minutes, container start included), which puts one
-# 46 GB copy at up to about 13 minutes. Thirty minutes is an allowance, not a
-# measurement; the receipt records the container's wall and its list price.
+# after the tool exits: one pass that hashes each file while copying it to
+# the runs volume (mirror_tree_hashed). The runbook measured staging inputs
+# from the volume at no less than 58 MB/s (11.4 GB in under 3.5 minutes,
+# container start included); no container-to-volume write rate has been
+# measured, so the check measures one (write_probe_verdict) and refuses when
+# the base's state could not be written inside this reserve. Thirty minutes
+# is an allowance, not a measurement; the receipt records the container's
+# wall and its list price.
 BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
+# The state the base leaves to hash and mirror, for the check's write probe:
+# about 44 GB of frame checkpoints and the 2.35 GB H5 locally (route_a.sh
+# section 4), plus the final checkpoint's hard-linked alias
+# (_link_all_stage_checkpoint), which the mirror copies as a second file. An
+# allowance from the local figures, not a measurement.
+BASE_MIRRORED_STATE_GIB = 50
+# How long the runner waits after SIGTERM before SIGKILL (stop_process_group).
+STOP_GRACE_SECONDS = 60
+# The check's container-to-volume write probe (write_probe_verdict).
+WRITE_PROBE_BYTES = 1024**3
 
 
 @dataclass(frozen=True)
@@ -248,6 +284,10 @@ class StageSpec:
     # Free space the stage needs under WORK_ROOT before anything is staged;
     # a container with less refuses (cheaply) instead of failing hours in.
     min_free_disk_gib: int | None = None
+    # The state the stage may leave to hash and mirror after the tool. When
+    # set, the check probes the runs volume's write rate and refuses if that
+    # much state could not be written inside the runner's reserve.
+    mirrored_state_gib: float | None = None
 
 
 @dataclass(frozen=True)
@@ -460,9 +500,10 @@ RUNNER_SMOKE = ToolSpec(
 # checkpoints would throw the whole run away. (The runner stops the tool's
 # whole process group at the budget, so a stage child cannot outlive its
 # parent and hold the stop past the budget; see stop_process_group.) The cost
-# is one more hashing pass and one more copy of about 44 GB when the tool
-# exits (BASE_RUNNER_OVERHEAD_SECONDS), the same again pulled back by a
-# resuming attempt, and the volume storage until the checkpoints are
+# is one copy of about 44 GB, hashed as it is copied, when the tool exits
+# (BASE_RUNNER_OVERHEAD_SECONDS); a resuming attempt pulls it back, hashed
+# and verified in the same pass, and that pull comes out of its tool time
+# (container_tool_seconds); and the volume storage until the checkpoints are
 # deleted after the release.
 PUF_SUPPORT_BASE_CHECKPOINTS = "base-checkpoints"
 PUF_SUPPORT_BASE_OUT = "base-out"
@@ -613,6 +654,7 @@ US_PUF_SUPPORT_BASE = ToolSpec(
             # of checkpoints, the 2.35 GB H5, about 2.4 GB of inputs and
             # the 2023 archive with its extracted member, plus headroom.
             min_free_disk_gib=70,
+            mirrored_state_gib=BASE_MIRRORED_STATE_GIB,
         )
     },
     options={},
@@ -1103,7 +1145,10 @@ def build_stage_argv(
     return [python, "-B", *script, *tool_argv]
 
 
-def planned_argv(plan: Plan, work_root: str = WORK_ROOT) -> list[str]:
+def planned_argv(plan: Plan, work_root: str | None = None) -> list[str]:
+    # Read WORK_ROOT when called, so the argv and the runner's own paths
+    # (which read it the same way) always agree.
+    work_root = WORK_ROOT if work_root is None else work_root
     paths = {
         name: input_local_path(work_root, ref) for name, ref in plan.inputs.items()
     }
@@ -1139,7 +1184,7 @@ def tool_environment(
 
 
 def stop_process_group(
-    proc: subprocess.Popen, *, grace_seconds: float = 60.0
+    proc: subprocess.Popen, *, grace_seconds: float = STOP_GRACE_SECONDS
 ) -> dict[str, bool]:
     """Stop a tool started with ``process_group=0`` and everything it spawned.
 
@@ -1337,6 +1382,73 @@ def mirror_actions(
     return copy, delete
 
 
+def copy_hashed(src: Path | str, dst: Path | str) -> tuple[str, int]:
+    """Copy ``src`` to ``dst`` like ``shutil.copy2``, hashing in the same read.
+
+    The copy keeps ``src``'s mtime (``shutil.copystat``), which is what lets
+    mirror_actions skip a file that has not changed since it was mirrored.
+    """
+
+    digest = hashlib.sha256()
+    size = 0
+    with open(src, "rb") as reader, open(dst, "wb") as writer:
+        while chunk := reader.read(_CHUNK):
+            digest.update(chunk)
+            writer.write(chunk)
+            size += len(chunk)
+    shutil.copystat(src, dst)
+    return digest.hexdigest(), size
+
+
+#: ``{relative path: (bytes, mtime_ns, sha256)}`` for files already hashed.
+KnownHashes = Mapping[str, tuple[int, int, str]]
+
+
+def _mirror(
+    source: Path,
+    destination: Path,
+    *,
+    hash_every_file: bool,
+    known: KnownHashes | None = None,
+) -> tuple[list[dict[str, object]], dict[str, int]]:
+    partials = (
+        sorted(destination.rglob(f"*{MIRROR_PARTIAL_SUFFIX}"))
+        if destination.exists()
+        else []
+    )
+    for stale in partials:
+        stale.unlink()
+    listing = tree_listing(source)
+    copy, delete = mirror_actions(listing, tree_listing(destination))
+    to_copy = set(copy)
+    known = known or {}
+    outputs: list[dict[str, object]] = []
+    counts = {"copied": 0, "hashed_in_place": 0, "hashes_reused": 0}
+    for rel, meta in listing.items():
+        entry = known.get(rel)
+        if rel in to_copy:
+            target = destination / rel
+            target.parent.mkdir(parents=True, exist_ok=True)
+            tmp = target.with_name(f".{target.name}{MIRROR_PARTIAL_SUFFIX}")
+            sha, size = copy_hashed(source / rel, tmp)
+            os.replace(tmp, target)
+            counts["copied"] += 1
+        elif not hash_every_file:
+            continue
+        elif entry is not None and (entry[0], entry[1]) == meta:
+            # Hashed earlier (pulled and verified) and not touched since.
+            sha, size = entry[2], meta[0]
+            counts["hashes_reused"] += 1
+        else:
+            sha, size = sha256_file(source / rel)
+            counts["hashed_in_place"] += 1
+        outputs.append({"path": rel, "bytes": size, "sha256": sha})
+    for rel in delete:
+        (destination / rel).unlink()
+    counts.update(deleted=len(delete), partials_removed=len(partials))
+    return outputs, counts
+
+
 def mirror_tree(source: Path | str, destination: Path | str) -> dict[str, int]:
     """Make ``destination`` mirror ``source``, one file at a time, atomically.
 
@@ -1347,28 +1459,48 @@ def mirror_tree(source: Path | str, destination: Path | str) -> dict[str, int]:
     the latest receipt refuses that mix.
     """
 
-    source, destination = Path(source), Path(destination)
-    partials = (
-        sorted(destination.rglob(f"*{MIRROR_PARTIAL_SUFFIX}"))
-        if destination.exists()
-        else []
-    )
-    for stale in partials:
-        stale.unlink()
-    copy, delete = mirror_actions(tree_listing(source), tree_listing(destination))
-    for rel in copy:
-        target = destination / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        tmp = target.with_name(f".{target.name}{MIRROR_PARTIAL_SUFFIX}")
-        shutil.copy2(source / rel, tmp)
-        os.replace(tmp, target)
-    for rel in delete:
-        (destination / rel).unlink()
+    _, counts = _mirror(Path(source), Path(destination), hash_every_file=False)
     return {
-        "copied": len(copy),
-        "deleted": len(delete),
-        "partials_removed": len(partials),
+        "copied": counts["copied"],
+        "deleted": counts["deleted"],
+        "partials_removed": counts["partials_removed"],
     }
+
+
+def mirror_tree_hashed(
+    source: Path | str,
+    destination: Path | str,
+    *,
+    known: KnownHashes | None = None,
+) -> tuple[list[dict[str, object]], dict[str, int]]:
+    """``mirror_tree`` and ``hash_tree(source)`` in one read of each file.
+
+    Returns the source tree hashed exactly as :func:`hash_tree` lists it,
+    and the mirror's counts. A copied file is hashed as it is copied, with
+    the same atomic rename as ``mirror_tree``. A file the destination already
+    holds (same size and mtime) is not copied: its sha256 comes from
+    ``known`` when ``known`` has it at the same size and mtime (a file
+    pulled and verified earlier and left untouched since), and is otherwise
+    read once to hash it.
+    """
+
+    return _mirror(Path(source), Path(destination), hash_every_file=True, known=known)
+
+
+def known_hashes(
+    root: Path | str, outputs: Iterable[Mapping[str, object]]
+) -> dict[str, tuple[int, int, str]]:
+    """``outputs`` (a hashed listing of ``root``) keyed with each file's
+    current size and mtime, for :func:`mirror_tree_hashed`'s ``known``."""
+
+    listing = tree_listing(root)
+    known: dict[str, tuple[int, int, str]] = {}
+    for item in outputs:
+        rel = str(item["path"])
+        meta = listing.get(rel)
+        if meta is not None and meta[0] == item["bytes"]:
+            known[rel] = (meta[0], meta[1], str(item["sha256"]))
+    return known
 
 
 def hash_tree(root: Path | str) -> list[dict[str, object]]:
@@ -1470,12 +1602,35 @@ def _under_prefix(rel: str, prefix: str | None) -> bool:
     return prefix is None or rel.startswith(prefix.rstrip("/") + "/")
 
 
+def receipt_status_problems(receipt: Mapping) -> list[str]:
+    """Why a receipt does not describe a finished stage, if it does not.
+
+    A FAILED receipt lists exactly what its state held when the stage
+    stopped, which can include a partly written output: at 4b57d15a2 the
+    base writes its H5 at its final path and then reopens it to add
+    attributes (``_export_staged_result``), so a stop at the budget during
+    ``final_export`` leaves a partial H5 that the receipt lists faithfully.
+    Its bytes verify, but it is not a stage's output.
+    """
+
+    problems = []
+    if receipt.get("status") != "COMPLETED":
+        problems.append(
+            f"the receipt's status is {receipt.get('status')!r}, not 'COMPLETED' "
+            f"(returncode {receipt.get('returncode')})"
+        )
+    if receipt.get("stopped_at_budget"):
+        problems.append("the stage was stopped at its budget (stopped_at_budget)")
+    return problems
+
+
 def verify_receipt(
     receipt: Mapping,
     state_root: Path | str,
     *,
     strict: bool = False,
     prefix: str | None = None,
+    require_completed: bool = False,
 ) -> list[str]:
     """Re-hash a fetched state tree against a receipt; return the problems.
 
@@ -1483,7 +1638,10 @@ def verify_receipt(
     directory of the state (``base-out`` for the base's release inputs, so
     its 44 GB of checkpoints need not be fetched); ``strict`` then also
     limits its extra-file check to that directory. ``state_root`` is still
-    the state directory, not the prefix.
+    the state directory, not the prefix. ``require_completed`` also refuses
+    a receipt of a stage that did not finish (:func:`receipt_status_problems`);
+    the runner's own pulled-state check leaves it off, because a stage
+    resumes from the state of a FAILED receipt.
     """
 
     if receipt.get("schema") != RECEIPT_SCHEMA:
@@ -1491,7 +1649,7 @@ def verify_receipt(
     if prefix is not None:
         _safe_relative_path(prefix.rstrip("/"), "prefix")
     root = Path(state_root)
-    problems: list[str] = []
+    problems: list[str] = receipt_status_problems(receipt) if require_completed else []
     declared = set()
     selected = [
         item
@@ -1564,6 +1722,62 @@ def pulled_state_problems(
     return [
         f"state differs from receipt {name}: {problem}"
         for problem in verify_receipt(receipt, state_root, strict=True)
+    ]
+
+
+def receipt_outputs_problems(
+    receipt: Mapping, outputs: Sequence[Mapping[str, object]]
+) -> list[str]:
+    """``verify_receipt(strict=True)`` against a tree already hashed.
+
+    ``outputs`` is a whole tree as :func:`hash_tree` or
+    :func:`mirror_tree_hashed` lists it, so nothing is read again. The
+    problems and their order are verify_receipt's.
+    """
+
+    if receipt.get("schema") != RECEIPT_SCHEMA:
+        return [f"not a {RECEIPT_SCHEMA} receipt"]
+    observed = {str(item["path"]): item for item in outputs}
+    problems: list[str] = []
+    declared = set()
+    for item in receipt.get("outputs", []):
+        rel = str(item["path"])
+        declared.add(rel)
+        seen = observed.get(rel)
+        if seen is None:
+            problems.append(f"missing: {rel}")
+        elif seen["bytes"] != item["bytes"]:
+            problems.append(
+                f"size mismatch: {rel} is {seen['bytes']} bytes, receipt {item['bytes']}"
+            )
+        elif seen["sha256"] != item["sha256"]:
+            problems.append(f"sha256 mismatch: {rel}")
+    problems += [f"not in receipt: {rel}" for rel in sorted(set(observed) - declared)]
+    return problems
+
+
+def pulled_outputs_problems(
+    outputs: Sequence[Mapping[str, object]], latest: tuple[str, Mapping] | None
+) -> list[str]:
+    """:func:`pulled_state_problems` for a state tree hashed as it was pulled.
+
+    The runner pulls the run's state with :func:`mirror_tree_hashed`, so the
+    pulled bytes are verified against the latest receipt without a second
+    read of the (for the base, about 46 GB) tree.
+    """
+
+    if latest is None:
+        if not outputs:
+            return []
+        paths = sorted(str(item["path"]) for item in outputs)
+        return [
+            f"the run's state has {len(paths)} file(s) and the run has no receipt "
+            f"(e.g. {paths[:3]})"
+        ]
+    name, receipt = latest
+    return [
+        f"state differs from receipt {name}: {problem}"
+        for problem in receipt_outputs_problems(receipt, outputs)
     ]
 
 
@@ -1781,6 +1995,88 @@ def remaining_wall_seconds(
     return int(plan.max_wall_seconds - spent)
 
 
+def container_tool_seconds(plan: Plan, elapsed_seconds: float) -> int:
+    """How long the tool may run so the runner keeps its reserve.
+
+    The class timeout bounds the function's execution time. The runner stops
+    the tool no later than ``timeout_s - runner_overhead_seconds`` after
+    ``_run_stage`` began, so what came before the tool (the lock wait,
+    pulling and verifying the run's state, staging the inputs), which is
+    ``elapsed_seconds``, comes out of the tool's time rather than out of the
+    reserve that stopping the tool, hashing, mirroring and the receipt need.
+    """
+
+    return int(
+        plan.resources.timeout_s
+        - plan.stage_spec.runner_overhead_seconds
+        - elapsed_seconds
+    )
+
+
+def tool_budget(
+    plan: Plan, plan_remaining_seconds: int | None, elapsed_seconds: float
+) -> dict[str, object]:
+    """The tool's wall budget for this attempt, and which limit set it.
+
+    The smaller of what is left of the plan's ``max_wall_seconds``
+    (:func:`remaining_wall_seconds`) and :func:`container_tool_seconds`. A
+    plan without ``max_wall_seconds`` still gets the container's limit, so
+    no stage runs into the class timeout, which would leave no receipt.
+    """
+
+    container = container_tool_seconds(plan, elapsed_seconds)
+    if plan_remaining_seconds is not None and plan_remaining_seconds <= container:
+        seconds, limited_by = plan_remaining_seconds, "max_wall_seconds"
+    else:
+        seconds, limited_by = container, "container_timeout"
+    return {
+        "seconds": seconds,
+        "limited_by": limited_by,
+        "plan_remaining_seconds": plan_remaining_seconds,
+        "container_seconds": container,
+        "elapsed_before_tool_seconds": round(elapsed_seconds, 1),
+    }
+
+
+def write_probe_verdict(
+    stage: StageSpec, probe_bytes: int, probe_seconds: float
+) -> dict[str, object]:
+    """Whether the runs volume writes fast enough for the stage's state.
+
+    The check copies ``probe_bytes`` to the runs volume and commits it,
+    timed as ``probe_seconds``. Extrapolated to the stage's
+    ``mirrored_state_gib``, that is the time mirroring its state would take
+    after the tool. The runner keeps ``runner_overhead_seconds`` after the
+    tool's deadline, of which the stop may take STOP_GRACE_SECONDS; if the
+    extrapolated mirror does not fit in the rest, a stop at the budget would
+    run into the class timeout mid-mirror and leave no receipt, so the check
+    reports a problem. One small probe from the check container is a hint,
+    not a guarantee.
+    """
+
+    if stage.mirrored_state_gib is None:
+        return {"skipped": f"stage {stage.name!r} declares no mirrored state size"}
+    rate = probe_bytes / max(probe_seconds, 1e-6)
+    needed = stage.mirrored_state_gib * 1024**3 / rate
+    reserve = stage.runner_overhead_seconds - STOP_GRACE_SECONDS
+    verdict: dict[str, object] = {
+        "bytes": probe_bytes,
+        "seconds": round(probe_seconds, 2),
+        "mb_per_s": round(rate / 1e6, 1),
+        "mirrored_state_gib": stage.mirrored_state_gib,
+        "implied_mirror_seconds": round(needed),
+        "post_tool_reserve_seconds": reserve,
+    }
+    if needed > reserve:
+        verdict["problem"] = (
+            f"the runs volume took {probe_seconds:.1f}s for {probe_bytes} bytes "
+            f"({rate / 1e6:.1f} MB/s); {stage.mirrored_state_gib} GiB of state "
+            f"would take about {needed:.0f}s to mirror, more than the "
+            f"{reserve}s the runner keeps after the tool"
+        )
+    return verdict
+
+
 def estimated_usd_at_max_wall(plan: Plan) -> float | None:
     """List-price cost of a stage that runs its whole budget, runner time included."""
 
@@ -1790,6 +2086,17 @@ def estimated_usd_at_max_wall(plan: Plan) -> float | None:
         plan.max_wall_seconds + plan.stage_spec.runner_overhead_seconds,
         plan.price_multiplier,
     )
+
+
+def estimated_usd_at_timeout(plan: Plan) -> float:
+    """List-price cost of the class timeout: the hard ceiling of one attempt.
+
+    Modal's timeout bounds a function's execution time
+    (modal.com/docs/guide/timeouts). Scheduling and container start are
+    outside it; Modal's billing report is the billed figure.
+    """
+
+    return plan.resources.estimated_usd(plan.resources.timeout_s, plan.price_multiplier)
 
 
 def summarize(plan: Plan) -> dict[str, object]:
@@ -1807,9 +2114,11 @@ def summarize(plan: Plan) -> dict[str, object]:
             "cpu": resources.cpu,
             "memory_gib": resources.memory_gib,
             "timeout_h": resources.timeout_s / 3600,
+            "timeout_s": resources.timeout_s,
             "nonpreemptible": plan.nonpreemptible,
             "runner_overhead_seconds": stage_spec.runner_overhead_seconds,
             "min_free_disk_gib": stage_spec.min_free_disk_gib,
+            "mirrored_state_gib": stage_spec.mirrored_state_gib,
         },
         "max_wall_seconds": plan.max_wall_seconds,
         "env": dict(plan.env),
@@ -1839,7 +2148,158 @@ def summarize(plan: Plan) -> dict[str, object]:
         )
     if plan.max_wall_seconds is not None:
         summary["estimated_usd_at_max_wall"] = estimated_usd_at_max_wall(plan)
+    # The hard ceiling of one attempt: the class timeout at list price.
+    summary["estimated_usd_at_timeout"] = estimated_usd_at_timeout(plan)
     return summary
+
+
+# --------------------------------------------------------------------------- #
+# Uploading inputs and comparing a Modal run with a local one                  #
+# --------------------------------------------------------------------------- #
+
+
+def upload_rows(plan: Plan, files: Mapping[str, Path | str]) -> list[dict[str, object]]:
+    """Hash local files against a plan's volume inputs; the upload for each.
+
+    Every role must be a content-addressed volume input of the plan
+    (``volume://cas/sha256/<digest>/<name>``) and its file must hash to the
+    plan's digest. Any problem refuses the whole set (PlanError), so no
+    upload command is produced for a file the plan does not pin.
+    """
+
+    rows: list[dict[str, object]] = []
+    problems: list[str] = []
+    for role, raw_path in files.items():
+        ref = plan.inputs.get(role)
+        if ref is None:
+            problems.append(f"{role}: not an input of the plan ({sorted(plan.inputs)})")
+            continue
+        if ref.kind != "volume" or not str(ref.volume_path).startswith("cas/sha256/"):
+            problems.append(
+                f"{role}: {ref.uri} is not a content-addressed volume input"
+            )
+            continue
+        path = Path(raw_path)
+        if not path.is_file():
+            problems.append(f"{role}: {path} is not a file")
+            continue
+        sha, size = sha256_file(path)
+        if sha != ref.sha256:
+            problems.append(
+                f"{role}: {path} is sha256 {sha}; the plan pins {ref.sha256}"
+            )
+            continue
+        remote = str(ref.volume_path)
+        rows.append(
+            {
+                "role": role,
+                "file": str(path),
+                "bytes": size,
+                "sha256": sha,
+                "volume_path": remote,
+                "exists": (
+                    f"modal volume ls {INPUTS_VOLUME} {PurePosixPath(remote).parent}"
+                ),
+                "upload": (
+                    f"modal volume put {INPUTS_VOLUME} {shlex.quote(str(path))} {remote}"
+                ),
+            }
+        )
+    if problems:
+        raise PlanError("; ".join(problems))
+    return rows
+
+
+def upload_script(rows: Sequence[Mapping[str, object]]) -> str:
+    """A bash script that uploads each verified file unless it is already there."""
+
+    lines = [
+        "#!/bin/bash",
+        "# Written by tools/modal_us_stage_plan.py upload-commands. Each file below",
+        "# hashed to its plan digest when this script was written.",
+        "set -euo pipefail",
+    ]
+    for row in rows:
+        name = PurePosixPath(str(row["volume_path"])).name
+        where = f"{row['role']} {row['volume_path']}"
+        lines += [
+            f"# {row['role']}: {row['bytes']} bytes, sha256 {row['sha256']}",
+            f"if {row['exists']} 2>/dev/null | grep -qF -- {shlex.quote(name)}; then",
+            f"  echo {shlex.quote('present ' + where)}",
+            "else",
+            f"  {row['upload']}",
+            f"  echo {shlex.quote('uploaded ' + where)}",
+            "fi",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+LOCAL_REFERENCE_SCHEMA = "microcosm-modal-us-stage-local-reference/1"
+
+
+def lineage_problems(
+    receipt: Mapping,
+    reference: Mapping,
+    run_context: Mapping | None,
+    run_context_sha256: str | None,
+) -> list[str]:
+    """Where a Modal run departs from a local run of the same commit and inputs.
+
+    ``reference`` (``microcosm-modal-us-stage-local-reference/1``) records
+    what the local run wrote: the sha256 of deterministic outputs (the base's
+    frame checkpoints, written without HDF5 timestamps) and the builder code
+    identity its run context locked. The receipt must list the same bytes
+    for each output, and ``run_context`` (the Modal run's own file, whose
+    sha256 must be the one the receipt lists) must lock the same source
+    digest and dependency versions. The interpreter and platform differ by
+    design and are only reported.
+    """
+
+    if reference.get("schema") != LOCAL_REFERENCE_SCHEMA:
+        return [f"not a {LOCAL_REFERENCE_SCHEMA} reference"]
+    if receipt.get("schema") != RECEIPT_SCHEMA:
+        return [f"not a {RECEIPT_SCHEMA} receipt"]
+    problems: list[str] = []
+    for key in ("tool", "stage"):
+        if receipt.get(key) != reference.get(key):
+            problems.append(
+                f"{key}: the receipt's {receipt.get(key)!r}, the reference's "
+                f"{reference.get(key)!r}"
+            )
+    commit = (receipt.get("source") or {}).get("commit")
+    if commit != reference.get("commit"):
+        problems.append(
+            f"commit: the receipt's {commit}, the local run's {reference.get('commit')}"
+        )
+    listed = {str(item["path"]): item for item in receipt.get("outputs", [])}
+    for rel, local_sha in sorted(dict(reference.get("outputs", {})).items()):
+        item = listed.get(rel)
+        if item is None:
+            problems.append(f"{rel}: not in the receipt")
+        elif item["sha256"] != local_sha:
+            problems.append(
+                f"{rel}: Modal wrote sha256 {item['sha256']}, the local run {local_sha}"
+            )
+    context_path = str(reference.get("run_context_path"))
+    item = listed.get(context_path)
+    if item is None:
+        problems.append(f"{context_path}: not in the receipt")
+    elif run_context_sha256 != item["sha256"]:
+        problems.append(
+            f"{context_path}: the file given is sha256 {run_context_sha256}, "
+            f"the receipt lists {item['sha256']}"
+        )
+    identity = ((run_context or {}).get("run_config") or {}).get(
+        "builder_code_identity"
+    ) or {}
+    expected = reference.get("builder_code_identity") or {}
+    for key in ("source_sha256", "dependency_versions"):
+        if identity.get(key) != expected.get(key):
+            problems.append(
+                f"builder_code_identity.{key}: Modal {identity.get(key)!r}, "
+                f"local {expected.get(key)!r}"
+            )
+    return problems
 
 
 # --------------------------------------------------------------------------- #
@@ -1868,6 +2328,18 @@ def _digest_lines(paths: Iterable[Path]) -> list[str]:
     return lines
 
 
+def _role_paths(pairs: Sequence[str]) -> dict[str, Path]:
+    files: dict[str, Path] = {}
+    for pair in pairs:
+        role, eq, path = pair.partition("=")
+        if not eq or not role or not path:
+            raise PlanError(f"{pair!r}: expected ROLE=PATH")
+        if role in files:
+            raise PlanError(f"role {role!r} given twice")
+        files[role] = Path(path)
+    return files
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1875,6 +2347,17 @@ def main(argv: list[str] | None = None) -> int:
     validate.add_argument("plan", type=Path)
     digest = sub.add_parser("digest", help="sha256 + CAS upload command per file")
     digest.add_argument("paths", nargs="+", type=Path)
+    upload = sub.add_parser(
+        "upload-commands",
+        help="hash local files against a plan's inputs; print their upload commands",
+    )
+    upload.add_argument("plan", type=Path)
+    upload.add_argument("files", nargs="+", metavar="ROLE=PATH")
+    upload.add_argument(
+        "--shell",
+        action="store_true",
+        help="print a bash script that uploads each file unless it is on the volume",
+    )
     verify = sub.add_parser("verify-receipt", help="re-hash a fetched state tree")
     verify.add_argument("receipt", type=Path)
     verify.add_argument("--state-root", type=Path, required=True)
@@ -1884,6 +2367,19 @@ def main(argv: list[str] | None = None) -> int:
         help="verify only the outputs under this directory of the state "
         "(e.g. base-out), for a partial fetch",
     )
+    verify.add_argument(
+        "--allow-failed",
+        action="store_true",
+        help="verify the bytes of a FAILED or stopped_at_budget receipt too; "
+        "without it such a receipt does not verify",
+    )
+    lineage = sub.add_parser(
+        "compare-lineage",
+        help="compare a Modal run's receipt and run context with a local run's",
+    )
+    lineage.add_argument("receipt", type=Path)
+    lineage.add_argument("--reference", type=Path, required=True)
+    lineage.add_argument("--run-context", type=Path, required=True)
     args = parser.parse_args(argv)
 
     if args.command == "validate":
@@ -1899,10 +2395,55 @@ def main(argv: list[str] | None = None) -> int:
         for line in _digest_lines(args.paths):
             print(line)
         return 0
+    if args.command == "upload-commands":
+        try:
+            _, plan = load_plan(args.plan)
+            rows = upload_rows(plan, _role_paths(args.files))
+        except PlanError as error:
+            print(f"REFUSED: {error}", file=sys.stderr)
+            return 2
+        if args.shell:
+            print(upload_script(rows), end="")
+        else:
+            for row in rows:
+                print(json.dumps(row))
+        return 0
     receipt = json.loads(args.receipt.read_text())
+    if args.command == "compare-lineage":
+        reference = json.loads(args.reference.read_text())
+        context_bytes = args.run_context.read_bytes()
+        problems = lineage_problems(
+            receipt,
+            reference,
+            json.loads(context_bytes),
+            hashlib.sha256(context_bytes).hexdigest(),
+        )
+        for problem in problems:
+            print(problem, file=sys.stderr)
+        identity = (json.loads(context_bytes).get("run_config") or {}).get(
+            "builder_code_identity"
+        ) or {}
+        print(
+            json.dumps(
+                {
+                    "reproduced": not problems,
+                    "problems": len(problems),
+                    "outputs_compared": sorted(reference.get("outputs", {})),
+                    "python": {
+                        "modal": identity.get("python"),
+                        "local": (reference.get("local_platform") or {}).get("python"),
+                    },
+                }
+            )
+        )
+        return 0 if not problems else 1
     try:
         problems = verify_receipt(
-            receipt, args.state_root, strict=args.strict, prefix=args.prefix
+            receipt,
+            args.state_root,
+            strict=args.strict,
+            prefix=args.prefix,
+            require_completed=not args.allow_failed,
         )
     except PlanError as error:
         print(f"REFUSED: {error}", file=sys.stderr)
@@ -1918,6 +2459,7 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(
             {
                 "verified": not problems,
+                "status": receipt.get("status"),
                 "outputs": len(outputs),
                 "problems": len(problems),
             }

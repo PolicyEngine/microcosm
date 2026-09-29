@@ -77,15 +77,19 @@ release directory onto the runs volume. Publication stays the human step in
    `runs/<run_id>/state/` on `microcosm-us-stage-runs`. That directory holds
    the checkpoints, the calibrated H5, the release root for `package` and
    the stage logs. A stage pulls the state to local disk and runs the tool
-   there, since materialize writes a memory-mapped matrix. Before anything
-   uses the pulled state, it is verified against the run's latest receipt
-   (by `finished_at`): every file the receipt lists, with its bytes and
-   sha256, and nothing else. With no receipt the state must be empty. A
-   mismatch means a stage was cut short after changing the state, and the
-   stage refuses; start a new `run_id`. When the tool exits the state is
-   mirrored back: each changed file is copied under a temporary name in its
-   own directory and renamed over the old one, and files the tool deleted
-   are removed, so a mirror cut short never leaves a half-written file.
+   there, since materialize writes a memory-mapped matrix. Each file is
+   hashed while it is pulled, and before anything uses the pulled state it
+   is verified against the run's latest receipt (by `finished_at`): every
+   file the receipt lists, with its bytes and sha256, and nothing else.
+   With no receipt the state must be empty. A mismatch means a stage was
+   cut short after changing the state, and the stage refuses; start a new
+   `run_id`. When the tool exits the state is mirrored back: each changed
+   file is hashed while it is copied under a temporary name in its own
+   directory and renamed over the old one, and files the tool deleted are
+   removed, so a mirror cut short never leaves a half-written file. A file
+   the tool did not touch is neither copied nor read again; its digest is
+   the one verified when it was pulled. Each file of the state is read at
+   most once on the way in and at most once on the way out.
    Later stages of the same run pick up from that state. Before
    paying for inputs, a stage after materialize checks that the run's
    `checkpoints/run_identity.json` exists and pins the same staging and
@@ -131,7 +135,7 @@ local wall times in this table understate Modal's wall and cost.
 | finalize | 23.3 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | package | 21.8 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
-| PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores, 112 GiB, 6 h timeout | about $0.84 ($2.52 non-preemptible) |
+| PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores, 112 GiB, 4 h 35 min timeout | about $0.84 ($2.52 non-preemptible) |
 
 The prices are Modal's list prices for standard compute, read from
 modal.com/pricing on 22 September 2026 and unchanged on 29 September:
@@ -161,6 +165,10 @@ python3 tools/modal_us_stage_plan.py digest \
   <run>/acs_multispine_staging.h5 <run>/acs_multispine_staging.summary.json \
   <feed>/consumer_facts.jsonl <ladder>/us_puma_ladder_2020.npz
 modal volume put microcosm-us-stage-inputs <file> cas/sha256/<digest>/<name>
+#    Once a plan exists, `upload-commands PLAN ROLE=PATH ...` hashes each file
+#    against the plan's digest for that role and refuses the whole set on any
+#    mismatch; with --shell it writes a script that uploads only the files
+#    the volume does not list yet (see "Route A's base stage", step 1).
 
 # 2. Write the plan (copy docs/us-modal-stage-example-plan.json) and
 #    validate it locally. This prints the argv, the resource class and the
@@ -182,7 +190,12 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 #    stops the tool then (SIGTERM to the tool's process group, which the
 #    tool runs in alone, so a stage child it spawned stops too; SIGKILL to
 #    whatever is left after 60 s), and the receipt says FAILED,
-#    stopped_at_budget.
+#    stopped_at_budget. Whatever the plan says, the runner also stops the
+#    tool by the class timeout less the stage's runner reserve, counted
+#    from the start of the function, so pulling state and staging inputs
+#    come out of the tool's time and the state is always mirrored with a
+#    receipt before the timeout (the receipt's runner.tool_budget says
+#    which limit applied).
 #    The budget covers every attempt that never finished: when Modal
 #    restarts a preempted container, the time the cut-short attempts ran
 #    comes off it (see "Preemption and restarts" below). A stop at the
@@ -190,7 +203,10 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 #    whole budget again.
 MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
 
-# 5. Fetch the state and verify it against the receipt.
+# 5. Fetch the state and verify it against the receipt. A receipt whose
+#    status is not COMPLETED, or that says stopped_at_budget, does not
+#    verify: its state can hold a partly written output. Add --allow-failed
+#    to check the bytes of such a state anyway (for a resume, say).
 mkdir -p modal-runs
 modal volume get microcosm-us-stage-runs runs/<run_id> ./modal-runs/
 python3 tools/modal_us_stage_plan.py verify-receipt \
@@ -391,6 +407,19 @@ On 29 September 2026 Max ruled to run only Route A's base stage on Modal:
 non-preemptible, capped at 4 hours of wall, about $15. The release, its
 preflight and certification stay on the build machine.
 
+**How the cap holds.** The 4 hours are the tool's wall: the plan's
+`max_wall_seconds` is 14,400. The container's hard ceiling is the class
+timeout, 16,500 seconds (4 hours 35 minutes), which lists at $14.90
+non-preemptible. Modal's timeout bounds a function's execution time
+(modal.com/docs/guide/timeouts, read 29 September 2026), so no attempt runs
+longer, whatever hangs. A test holds that ceiling at or below $15
+(`BASE_COST_CAP_USD`). Two things sit outside it. Scheduling and container
+start are not execution time. And Modal bills CPU and memory at the higher
+of the request and actual use (modal.com/docs/guide/resources, read 29
+September 2026), so the ceiling assumes the stage stays within 4 cores and
+112 GiB (see "Resources"). The billed figure is in Modal's workspace billing
+report.
+
 **What runs.** Tool `us-puf-support-base` runs
 `tools/build_us_puf_support_base.py --stage all` with the command Route A's
 driver built for commit `4b57d15a` (`route_a.sh` section 4, recorded in the
@@ -402,12 +431,25 @@ estimators, district seed 0, `--assign-congressional-districts`) are fixed
 in the registration, not plan options: a different setting is a different
 base, and changing it is a reviewed registry change. The tool's other flags
 (`--base-h5`, the smoke limit, the equivalence harness, the ladder escape
-hatches) are runner-owned, so no plan can pass them. A test holds the built
-argv equal to a copy of the local command with its paths tokenized
-(`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`),
-and a second one runs both commands through the pinned tool's own
-`_parse_args` and `_stage_cli_args`: the same settings, and the same child
-command for every outer stage, paths aside.
+hatches) are runner-owned, so no plan can pass them; a test refuses a
+registry option for each of the 26 owned flags.
+
+Two kinds of test hold the command:
+
+- In every checkout, CI included: the built argv equals a copy of the local
+  command with its paths tokenized
+  (`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`),
+  and the registration's owned flags equal the flags of this tree's tool.
+- Only in a clone that has commit `4b57d15a2`: the tool is loaded from that
+  commit's own source (`git show`), not from this tree's copy, and its
+  `_parse_args` and `_stage_cli_args` read both commands into the same
+  settings and the same child command for every outer stage, paths aside.
+  Its flags must equal the registration's owned flags.
+
+CI checks out only the commit under test (`actions/checkout` fetches one
+commit by default), so there the pinned-commit tests report a skip rather
+than pass. Run them in a full clone before a paid run (step 2 below).
+
 The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
 `route-a-base-4b57d15a287c`, branch `main`).
 
@@ -440,15 +482,31 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   the only fetch the tool itself calls is the Census download above (the
   library fetches an ASEC person archive only for an unmapped year, and all
   three are mapped).
+- **The interpreter and platform differ; the package versions do not.**
+  The local base for `4b57d15a2` ran on free-threaded CPython 3.14.7 on
+  macOS arm64. The build worktree's `.venv/pyvenv.cfg` names
+  `cpython-3.14+freethreaded-macos-aarch64-none`, and the run's own
+  `stage_run_context.json` records `3.14.7 free-threading build … [Clang
+  22.1.3]`. That venv's `numpy/__config__.py` gives its BLAS as
+  `accelerate`. The image is `debian_slim` with the standard (GIL) build of
+  CPython 3.14 (`IMAGE_PYTHON_VERSION`; Modal served 3.14.2 in September)
+  on Linux x86_64 under gVisor. There `uv.lock` at `4b57d15a2` resolves the
+  manylinux x86_64 wheel of numpy 2.4.6. The lock pins one version of each
+  numeric distribution the tool fingerprints, the same six versions the
+  local run recorded: numpy 2.4.6, pandas 3.0.3, scikit-learn 1.8.0,
+  quantile-forest 1.4.2, policyengine-us 2.2.1 and h5py 3.16.0. No run has
+  shown that this platform reproduces the Mac's numbers, so step 6 below
+  compares the first checkpoints byte for byte before the base is used.
 
-**Resources.** Class `base`: 4 cores, 112 GiB, a 6-hour timeout.
+**Resources.** Class `base`: 4 cores, 112 GiB, a 16,500-second timeout.
 
 - *Memory.* The local peak was 72.47 GB (67.5 GiB, `/usr/bin/time -l` of
   the 16 September run under policyengine-us 1.819.0; not re-measured on
   2.2.1). On 23 September Modal held 15 to 24 GB more than the build machine
   at the same point of materialize, so the worst case seen is about 90 GiB;
   112 GiB leaves about 22 GiB over that. The heavy class's 128 GiB would
-  put the capped run over $15 (below). Memory is a request, not a limit.
+  put the capped run over $15 (below). Memory is a request, not a limit:
+  use above 112 GiB would be billed above the ceiling.
 - *CPU.* The base used 6,238 CPU-s in 2,788 s of wall, 2.2 cores on
   average; 4 cores cover that. The request is not a ceiling: Modal's
   default soft CPU limit is 16 physical cores above the request, and CPU is
@@ -471,9 +529,28 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   floor for the same command, 69 GiB). That refusal is not charged to the
   budget, and the receipt records the free space it saw
   (`runner.work_disk`).
-- *Timeout.* Six hours, the local supervisor's wall limit for the same
-  command. The plan's `max_wall_seconds` (14,400) stops the tool well
-  before; the timeout only bounds a stop or mirror that hangs.
+- *Timeout and the runner's reserve.* 16,500 seconds is the 4-hour budget,
+  the 30-minute runner reserve and 5 minutes for staging. The runner stops
+  the tool at whichever comes first: the plan's budget, or 14,700 seconds
+  after the function started (the timeout less the reserve). A slow pull
+  or staging therefore shortens the tool's time, never the reserve. The
+  reserve covers stopping the tool (up to 60 s), then hashing and mirroring
+  the state, then the receipt. The state is about 50 GiB
+  (`BASE_MIRRORED_STATE_GIB`): the local run's 44 GB of checkpoints and
+  2.35 GB H5, plus the final checkpoint's hard-linked alias
+  (`stage_all.frame.h5`), which the mirror copies as a second file.
+- *The write probe.* No container-to-volume write rate has been measured,
+  so the check measures one. It copies 1 GiB to the runs volume, commits
+  it, deletes it, and reports `runs_volume_write_probe`. The check fails
+  when 50 GiB at that rate would not fit in the 1,740 s the reserve leaves
+  after the stop, which means below about 31 MB/s. The only measured volume
+  rate here is reads of at least 58 MB/s (the acceptance attempt above).
+  Modal describes volume bandwidth as up to 2.5 GB/s and not guaranteed
+  (modal.com/docs/guide/volumes, read 29 September 2026). One small probe
+  is a hint, not a guarantee. If a mirror did run into the timeout, Modal
+  would end the function before the receipt was written. The cost would
+  still stop at the ceiling, but the run's volume state would be a partial
+  mirror with no receipt, which the next attempt refuses (new `run_id`).
 
 **The checkpoints are mirrored.** They live in the state directory, so the
 runner hashes them into the receipt and copies them to the runs volume when
@@ -489,71 +566,167 @@ config differs. Every path in it is the same in every attempt of the run,
 and so are the image, the plan's environment and the class, so a relaunch
 of the same plan should resume. If Modal gave the new container different
 thread variables, the tool would refuse, and the run would need a new
-`run_id`. The cost: one more
-hashing pass and one more copy of about 44 GB when the tool exits, the same
-pulled back and verified by a resuming attempt, and about 46 GB on the runs
-volume until it is deleted. The plan's estimate allows 30 minutes of runner
-time for this instead of the usual 15; that is an allowance, not a
-measurement. The `base-out` directory (the H5, its summary JSON and the
-capital-gains tail manifest, which the tool also copies to
-`base-checkpoints/artifacts/`) is mirrored either way.
+`run_id`. The cost has three parts:
+
+- one copy of about 46 GB when the tool exits, hashed as it is copied;
+- the same pulled back by a resuming attempt, hashed and verified in that
+  one pass, with the pull's time taken from that attempt's tool budget;
+- about 46 GB on the runs volume until it is deleted.
+
+The `base-out` directory (the H5, its summary JSON and the capital-gains
+tail manifest, which the tool also copies to `base-checkpoints/artifacts/`)
+is mirrored either way.
 
 **The budget stop.** The tool runs in its own process group. At the budget
 the runner sends SIGTERM to the group and SIGKILL to whatever is left 60
-seconds later. `--stage all` runs each outer stage as a child interpreter;
-stopping only the parent (as the runner did before) would leave that child
-running with the log pipe open, and the runner, which reads the pipe to its
-end, would wait out the child's whole stage past the budget. The receipt
-then says FAILED with
-`stopped_at_budget`, and relaunching the same plan gets the whole budget
-again (see "Preemption and restarts"). That relaunch is another paid run
-of up to the same cost and needs Max's go.
+seconds later. `--stage all` runs each outer stage as a child interpreter.
+Stopping only the parent (as the runner did before) would leave that child
+running with the log pipe open. The runner reads the pipe to its end, so it
+would wait out the child's whole stage past the budget. The receipt then
+says FAILED with `stopped_at_budget`, and relaunching the same plan gets
+the whole budget again (see "Preemption and restarts").
+
+A relaunch is another paid run and needs Max's go. Its hard ceiling is the
+same $14.90, because the class timeout bounds every attempt, so two
+attempts can list at up to about $29.80. The relaunch also gets less tool
+time than the first attempt. It first pulls and verifies about 46 GB of
+state: up to about 13 minutes at the volume read rate measured on 23
+September (at least 58 MB/s, measured for staging inputs), and that comes
+out of its tool budget. Before the relaunch, its check hashes the same
+state in place on the volume, inside the check class's 30-minute timeout.
 
 **Cost.** At the 14,400-second budget plus 30 minutes of runner time, the
 plan's list-price estimate is $14.63 non-preemptible. At the local wall it
-would be $2.52. A stage that ran into the 6-hour timeout would list at
-$19.51. Modal bills the higher of the request and actual use, so a run
-that bursts above 4 cores costs more than the estimate. The receipt records
-the container's wall and its list-price cost at the request
-(`estimated_usd_container_at_list_price`); the billed figure is in Modal's
-workspace billing report.
+would be $2.52. The hard ceiling of one attempt, the class timeout, lists
+at $14.90 (`estimated_usd_at_timeout` in `validate`). An earlier draft of
+this class had a 6-hour timeout, which listed at $19.51, over the cap. The
+receipt records the container's wall and its list-price cost at the
+request (`estimated_usd_container_at_list_price`) and `runner.tool_budget`
+(the tool's budget and which limit set it).
 
-**Run it.** From a checkout that has this registration:
+**Run it.** From a checkout that has this registration and the full
+history of `main` (so the pinned-commit tests run):
 
 ```bash
-# 1. Inputs, on the build machine. The script re-hashes each file, refuses a
-#    mismatch with Route A's digest, and skips files already uploaded.
-/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/modal-base/upload_inputs.sh
+# 1. Inputs, on the build machine (paths from route_a.sh input_rows()).
+#    upload-commands re-hashes each file and refuses the whole set if any
+#    file's sha256 is not the plan's; the script it writes uploads each
+#    file to cas/sha256/<digest>/<name> unless the volume already has it.
+S=$HOME/PolicyEngine/policyengine-us-data/policyengine_us_data/storage
+E=$HOME/PolicyEngine/_buildm-runtime/inputs/asec_education
+python3 tools/modal_us_stage_plan.py upload-commands --shell \
+  docs/us-modal-stage-route-a-base-plan.json \
+  asec_2024_h5=$S/census_cps_2024.h5 asec_2023_h5=$S/census_cps_2023.h5 \
+  asec_2022_h5=$S/census_cps_2022.h5 puf_2024_h5=$S/puf_2024.h5 \
+  puf_2015_csv=$S/puf_2015.csv acs_2022_h5=$S/acs_2022.h5 \
+  asec_education_2022_zip=$E/asecpub23csv.zip \
+  asec_education_2023_zip=$E/asecpub24csv.zip \
+  asec_education_2024_zip=$E/asecpub25csv.zip \
+  base_ledger_facts=$HOME/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl \
+  block_ladder_npz=$HOME/PolicyEngine/_buildf-runtime/inputs/us_block_ladder_2020.npz \
+  > upload-route-a-base.sh && bash upload-route-a-base.sh
 
-# 2. Validate locally: the argv, class base, and the $14.63 estimate.
+# 2. Validate locally: the argv, class base, the $14.63 estimate and the
+#    $14.90 ceiling (estimated_usd_at_timeout). Then run the base's tests,
+#    and confirm the pinned-commit tests passed rather than skipped.
 python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-base-plan.json
+uv run pytest -rs packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py
 
-# 3. Check on Modal (check class, cents): the clone and branch, the
-#    crosswalk digest, the pinned tool's _parse_args on the argv, and all
-#    eleven inputs hashed on the volume. Its work_disk field shows what the
-#    check container's /work reports against the stage's 70 GiB (a hint:
-#    the paid container checks its own disk before staging).
+# 3. Check on Modal (check class, cents). It checks the clone and branch,
+#    the crosswalk digest, the pinned tool's _parse_args on the argv, and
+#    all eleven inputs hashed on the volume. It also probes the runs
+#    volume's write rate (runs_volume_write_probe; the check fails if 50
+#    GiB would not mirror inside the runner's reserve). Its work_disk field
+#    shows what the check container's /work reports against the stage's
+#    70 GiB (a hint: the paid container checks its own disk before staging).
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
   modal run tools/modal_us_stage.py
 
-# 4. Run it (paid, non-preemptible, up to about $15).
+# 4. Run it: paid and non-preemptible. The estimate is $14.63; the class
+#    timeout caps this attempt at $14.90 list.
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
   modal run --detach tools/modal_us_stage.py --run
 
 # 5. Fetch the receipts and base-out only, not the 44 GB of checkpoints,
-#    and verify base-out against the receipt. Check where the files landed
-#    (see Commands step 5) and point --state-root at the directory that
-#    holds base-out/.
+#    and verify base-out against the receipt. verify-receipt refuses a
+#    receipt that is not COMPLETED or says stopped_at_budget: after a stop
+#    during final_export, base-out can hold a truncated H5 that the FAILED
+#    receipt lists byte for byte. Check where the files landed (see Commands
+#    step 5) and point --state-root at the directory that holds base-out/.
 R=route-a-base-4b57d15a287c
 mkdir -p modal-runs/$R/state
 modal volume get microcosm-us-stage-runs runs/$R/receipts ./modal-runs/$R/
 modal volume get microcosm-us-stage-runs runs/$R/state/base-out ./modal-runs/$R/state/
-python3 tools/modal_us_stage_plan.py verify-receipt \
-  ./modal-runs/$R/receipts/all-<utc>.json \
+RECEIPT=./modal-runs/$R/receipts/all-<utc>.json
+python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
   --state-root ./modal-runs/$R/state --prefix base-out --strict
+
+# 6. Required before the base is used: compare the Modal run with the local
+#    run of the same commit and inputs. The local run's first two frame
+#    checkpoints are deterministic (written without HDF5 timestamps, with
+#    no paths or platform strings in them). The comparison needs their
+#    sha256 in the receipt, and the Modal run's own stage_run_context.json,
+#    whose sha256 must be the one the receipt lists. The reference is
+#    docs/us-modal-stage-route-a-base-local-reference.json.
+modal volume get microcosm-us-stage-runs \
+  runs/$R/state/base-checkpoints/stage_run_context.json ./modal-runs/$R/
+python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
+  --reference docs/us-modal-stage-route-a-base-local-reference.json \
+  --run-context ./modal-runs/$R/stage_run_context.json
 ```
 
-The release and certification still run locally: Route A's driver takes
+`compare-lineage` exits 0 when the receipt's `000_source_construction` and
+`001_pre_clone_enrichment` checkpoints have the local run's sha256
+(`be8c2689…` and `5a52f337…`) and the Modal run locked the local run's code
+identity: `source_sha256` `c02fd057…` (the digest of the committed tree of
+`4b57d15a2`, so an untracked file in either tree would change it) and the
+same six dependency versions. A frame checkpoint that differs means the
+Modal platform did not reproduce the Mac's bytes. That can be the numbers
+or the HDF5 layout; a dataset-by-dataset comparison tells which. Either
+way, stop: record it in the run's notes, do not hand the base to Route A,
+and get Max's call before the base is used. The report also prints both
+interpreters, which differ by design.
+
+**Hand the base to Route A.** Route A's driver skips its base stage only
+when `$RUN/base-sup/ACCEPTED` exists (`stage_done base` in `route_a.sh`).
+Without that file, rerunning `route_a.sh` builds the base again locally. It
+would resume from the failed local run's checkpoints in
+`$RUN/base-checkpoints` and write its own H5 into `$RUN/base-out`. The
+release would then certify that local base, not the bytes the Modal receipt
+proves, because `base.sha256` is recomputed from whatever file is there.
+After steps 5 and 6 pass, and before rerunning `route_a.sh`:
+
+```bash
+# 7. $RUN is Route A's run directory for the build commit
+#    (.../overnight-20260923/route-a/run-4b57d15a287c on the build machine).
+RUN=<Route A run directory>
+test ! -e "$RUN/base-sup" && test ! -e "$RUN/base-out"   # never overwrite a base
+mkdir -p "$RUN/base-out"
+cp -p ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
+# The copies, in place, against the receipt (COMPLETED only, nothing extra).
+python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
+  --state-root "$RUN" --prefix base-out --strict
+H5=$RUN/base-out/base_populace_us_2024_puf_support.h5
+echo "$(shasum -a 256 "$H5" | cut -c1-64)  $H5" > "$RUN/base.sha256"
+# The failed local run's partial checkpoints: keep them, out of the way.
+mv "$RUN/base-checkpoints" "$RUN/base-checkpoints.local-$(date +%s)"
+mkdir -p "$RUN/base-sup"
+cp "$RECEIPT" "$RUN/base-sup/modal-receipt.json"
+RECEIPT_SHA=$(shasum -a 256 "$RECEIPT" | cut -c1-64)
+printf '{\n "status": "MODAL_RECEIPT",\n "returncode": 0,\n "refusal": null,\n "receipt": "%s",\n "receipt_sha256": "%s"\n}\n' \
+  "$(basename "$RECEIPT")" "$RECEIPT_SHA" > "$RUN/base-sup/RESULT.json"
+echo "returncode=0 $(date '+%F %T') modal receipt $(basename "$RECEIPT") sha256 $RECEIPT_SHA" \
+  > "$RUN/base-sup/ACCEPTED"
+```
+
+`RESULT.json` has the one-key-per-line shape `route_a.sh`'s
+`result_accepted` reads (`"refusal": null`, `"returncode": 0`). `ACCEPTED`
+is what `stage_done` checks. Then rerun `route_a.sh`. It skips the base,
+keeps `base.sha256` (the H5, copied with its mtime, is not newer than it),
+and logs that digest for the H5 it passes to the preflight and the
+release.
+
+The release and certification still run locally. Route A's driver takes
 the base H5 from its run directory and runs the preflight, the release and
 the publisher's `--preflight-only` check on the build machine. The receipt
 proves which bytes Modal produced; it does not certify the base. After the
@@ -668,7 +841,9 @@ and paths, never file contents.
 - **The base stage on Modal is unmeasured.** It is registered (see
   "Route A's base stage") and sized from the local run; its Modal wall,
   peak and the runner's hashing and mirroring time for 46 GB of state are
-  estimates until the first receipt.
+  estimates until the first receipt. The check's write probe is the only
+  measurement of the runs volume's write rate before then, and whether
+  the platform reproduces the local bytes is known only after step 6.
 - **The staging stage (`tools/build_us_acs_multispine_base.py`)** is not
   registered either. It takes a directory input (`--inputs-dir`, the ACS
   PUMS archive cache), which the plan format does not support. Supporting it

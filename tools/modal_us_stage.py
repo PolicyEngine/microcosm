@@ -13,8 +13,9 @@ is listed with its sha256 in a receipt written next to it.
 Check (cheap, the default; builds the image, verifies the clone and that
 the plan's branch contains its commit, the environment, the tool's own
 argument parser on the built argv, every input digest, the run's prior
-state against its latest receipt, its attempts and budget, without running
-the stage)::
+state against its latest receipt, its attempts and budget, and, for a stage
+that declares how much state it mirrors, the runs volume's write rate,
+without running the stage)::
 
     MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
@@ -352,6 +353,49 @@ def _parse_check(
     }
 
 
+def _write_probe(plan: plan_lib.Plan) -> dict[str, object]:
+    """Time a copy of WRITE_PROBE_BYTES to the runs volume, and its commit.
+
+    Only for a stage that declares ``mirrored_state_gib`` (the base). The
+    copy is the one the runner's push makes (``plan_lib.copy_hashed`` to a
+    temporary name, then a rename) followed by ``runs_volume.commit()``; the
+    probe file is deleted afterwards, outside every run's directory.
+    """
+
+    stage = plan.stage_spec
+    if stage.mirrored_state_gib is None:
+        return plan_lib.write_probe_verdict(stage, 0, 0.0)
+    local = Path(plan_lib.WORK_ROOT) / "write-probe" / "probe.bin"
+    local.parent.mkdir(parents=True, exist_ok=True)
+    chunk = 8 * 1024 * 1024
+    with open(local, "wb") as handle:
+        for _ in range(max(1, plan_lib.WRITE_PROBE_BYTES // chunk)):
+            handle.write(os.urandom(chunk))
+    probe_dir = Path(plan_lib.RUNS_MOUNT) / "write-probes"
+    target = (
+        probe_dir / f"{_modal_ids().get('input_id') or 'local'}-{time.time_ns()}.bin"
+    )
+    tmp = target.with_name(f".{target.name}{plan_lib.MIRROR_PARTIAL_SUFFIX}")
+    try:
+        probe_dir.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
+        _, size = plan_lib.copy_hashed(local, tmp)
+        os.replace(tmp, target)
+        runs_volume.commit()
+        seconds = time.monotonic() - started
+        verdict = plan_lib.write_probe_verdict(stage, size, seconds)
+    except Exception as error:  # noqa: BLE001 - reported as a check problem
+        verdict = {"problem": f"write probe failed: {type(error).__name__}: {error}"}
+    finally:
+        for path in (tmp, target, local):
+            path.unlink(missing_ok=True)
+        try:
+            runs_volume.commit()
+        except Exception as error:  # noqa: BLE001 - the probe's result stands
+            print(f"write probe cleanup commit failed: {error}", flush=True)
+    return verdict
+
+
 class _BudgetWatch(threading.Thread):
     """Stop the tool once the plan's max_wall_seconds has passed.
 
@@ -364,7 +408,7 @@ class _BudgetWatch(threading.Thread):
         self,
         proc: subprocess.Popen,
         max_wall_seconds: int | None,
-        grace_seconds: float = 60.0,
+        grace_seconds: float = plan_lib.STOP_GRACE_SECONDS,
     ) -> None:
         super().__init__(daemon=True)
         self.proc = proc
@@ -553,6 +597,12 @@ def check_stage(plan_data: dict) -> dict:
         "stage_needs_gib": plan.stage_spec.min_free_disk_gib,
         "would_refuse": plan_lib.work_disk_problem(plan.stage_spec, disk.free),
     }
+    # Whether the stage's state could be mirrored inside the runner's reserve
+    # after the tool, at the write rate this container sees on the runs volume.
+    probe = _write_probe(plan)
+    report["runs_volume_write_probe"] = probe
+    if "problem" in probe:
+        problems.append(str(probe["problem"]))
 
     # The probe and the parser run in the environment the stage would get.
     tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
@@ -748,20 +798,24 @@ def _attempt_stage(
         raise _Refusal(disk_problem)
 
     # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
-    #    verified against the run's latest receipt before anything uses it;
-    #    then the inputs to stable local paths, each digest verified.
-    pulled = plan_lib.mirror_tree(run_dir / "state", state)
+    #    hashed as it is copied and verified against the run's latest receipt
+    #    before anything uses it (one read of each file); then the inputs to
+    #    stable local paths, each digest verified.
+    pulled_outputs, pulled = plan_lib.mirror_tree_hashed(run_dir / "state", state)
     receipts = _receipts(run_dir)
     latest = plan_lib.latest_receipt(
         [(name, data) for name, data, _ in receipts], plan.run_id
     )
-    problems = plan_lib.pulled_state_problems(state, latest)
+    problems = plan_lib.pulled_outputs_problems(pulled_outputs, latest)
     if problems:
         raise plan_lib.PlanError(
             f"run {plan.run_id!r}: its state on {plan_lib.RUNS_VOLUME} is not what "
             "its latest receipt lists, so a stage was cut short after changing it; "
             "use a new run_id. " + "; ".join(problems[:10])
         )
+    # The pulled files' digests, so the push does not read them again when
+    # the tool leaves them untouched.
+    known = plan_lib.known_hashes(state, pulled_outputs)
     prior = [{"file": name, "sha256": sha} for name, _, sha in receipts]
     inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
     env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
@@ -778,6 +832,25 @@ def _attempt_stage(
 
     # 6. The stage itself, in the pinned tree, logged to the state directory.
     #    Its own process group, so the budget stops every process it spawns.
+    #    Its budget is the plan's remaining max_wall_seconds, cut to what the
+    #    container has left before the class timeout less the runner's
+    #    reserve: time spent above (pulling state, staging) comes out of the
+    #    tool, so hashing, mirroring and the receipt always fit.
+    tool_budget = plan_lib.tool_budget(
+        plan, budget_seconds, time.time() - attempt.started
+    )
+    if int(tool_budget["seconds"]) < plan_lib.MIN_ATTEMPT_SECONDS:
+        raise plan_lib.PlanError(
+            f"only {tool_budget['seconds']}s of tool time is left before the "
+            f"class timeout ({tool_budget}); pulling and staging took the "
+            "container's time"
+        )
+    if tool_budget["limited_by"] != "max_wall_seconds":
+        print(
+            f"BUDGET: the tool may run {tool_budget['seconds']}s "
+            f"(limited by {tool_budget['limited_by']})",
+            flush=True,
+        )
     argv = plan_lib.planned_argv(plan)
     started_at, started = _now(), time.time()
     log_path = state / "logs" / f"{plan.stage}-{started_at.replace(':', '')}.log"
@@ -794,7 +867,7 @@ def _attempt_stage(
             stderr=subprocess.STDOUT,
             process_group=0,
         )
-        budget = _BudgetWatch(proc, budget_seconds)
+        budget = _BudgetWatch(proc, int(tool_budget["seconds"]))
         budget.start()
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -806,10 +879,11 @@ def _attempt_stage(
     peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     finished_at = _now()
 
-    # 7. Outputs: hash the whole state tree, mirror it to the volume, receipt.
-    #    The heartbeat keeps running, so this is charged too.
-    outputs = plan_lib.hash_tree(state)
-    pushed = plan_lib.mirror_tree(state, run_dir / "state")
+    # 7. Outputs: mirror the state tree to the volume, hashing each file as it
+    #    is copied (a file pulled and left untouched keeps its verified
+    #    digest), then the receipt. The heartbeat keeps running, so this is
+    #    charged too.
+    outputs, pushed = plan_lib.mirror_tree_hashed(state, run_dir / "state", known=known)
     receipt = plan_lib.build_receipt(
         plan,
         plan_data,
@@ -830,6 +904,7 @@ def _attempt_stage(
             "modal": attempt.modal,
             "work_disk": work_disk,
             "home_seeds": home_seeds,
+            "tool_budget": tool_budget,
         },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
