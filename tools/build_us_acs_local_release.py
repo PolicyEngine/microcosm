@@ -2249,7 +2249,8 @@ def finalize_reviewed_limitations(
                 "under-65 SSI reporters without the criteria are reported, not "
                 "failed. Packaging is blocked while any ACS person meets the "
                 "criteria and the run records no SSI take-up handling for ACS "
-                "rows (the SSI take-up release block)."
+                "rows (the SSI take-up release block); the recorded "
+                "acs_local_ssi_medicaid_take_up assignment is that handling."
             ),
             "calibration_blocker": False,
         },
@@ -2513,14 +2514,26 @@ def _require_local_ssi_disability(staging_summary: dict) -> dict:
 def _recorded_ssi_take_up_handling(identity: dict, checkpoint_dir: Path) -> dict | None:
     """The run's recorded SSI take-up handling for ACS rows, or ``None``.
 
-    Nothing in this lane assigns ``takes_up_ssi_if_eligible`` on ACS rows yet:
-    they ship at the engine default ``True`` (reviewed limitation
-    ``acs_take_up_engine_defaults``), so no run records handling. The ACS
-    SSI/Medicaid take-up stage (microcosm#1022, PR #1060) supplies it.
+    The ACS SSI/Medicaid take-up stage assigns ``takes_up_ssi_if_eligible`` on
+    ACS rows at materialize (microcosm#1022) and records the assignment in
+    ``run_identity.json``. That receipt, with its assignment file unchanged,
+    is the handling; a run without it has none. A present receipt that is
+    not a passing one, or whose file changed, is refused outright. Packaging
+    separately requires the ``acs_local_ssi_medicaid_take_up_signal``
+    finalize gate bound to the packaged bytes.
     """
 
-    del identity, checkpoint_dir
-    return None
+    if "acs_local_ssi_medicaid_take_up" not in identity:
+        return None
+    receipt, _ = _recorded_ssi_medicaid_take_up(identity, checkpoint_dir)
+    return {
+        "stage": "acs_local_ssi_medicaid_take_up",
+        "issue": receipt["issue"],
+        "method": receipt["method"],
+        "assigned_sha256": receipt["assigned_sha256"],
+        "assignment_file": dict(receipt["assignment_file"]),
+        "finalize_gate": ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+    }
 
 
 def _require_ssi_take_up_handling(

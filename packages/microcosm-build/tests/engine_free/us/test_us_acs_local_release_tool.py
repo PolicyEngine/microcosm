@@ -2997,6 +2997,68 @@ def test_recorded_ssi_take_up_handling_lifts_the_block(tmp_path, monkeypatch):
     }
 
 
+def _with_recorded_ssi_medicaid_take_up(module, args, **overrides) -> dict:
+    """Record a current SSI/Medicaid take-up receipt in the run identity."""
+
+    path = args.checkpoint_dir / "run_identity.json"
+    identity = json.loads(path.read_text())
+    receipt = _ssi_medicaid_receipt(module, args.checkpoint_dir, **overrides)
+    identity["acs_local_ssi_medicaid_take_up"] = receipt
+    path.write_text(json.dumps(identity))
+    return receipt
+
+
+def test_the_ssi_medicaid_take_up_receipt_lifts_the_ssi_take_up_block(
+    tmp_path, monkeypatch
+):
+    """microcosm#1022: with ACS SSI take-up assigned, criteria-positive ACS
+    persons may ship; the manifest names the handling that let them."""
+
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=12)
+    receipt = _with_recorded_ssi_medicaid_take_up(module, args)
+
+    result = module.do_package(args)
+
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["ssi_take_up_release_block"] == {
+        "criteria_positive_acs_rows": 12,
+        "filled_true_rows": 12,
+        "take_up_handling": {
+            "stage": "acs_local_ssi_medicaid_take_up",
+            "issue": "microcosm#1022",
+            "method": module.ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD,
+            "assigned_sha256": receipt["assigned_sha256"],
+            "assignment_file": receipt["assignment_file"],
+            "finalize_gate": "acs_local_ssi_medicaid_take_up_signal",
+        },
+    }
+
+
+@pytest.mark.parametrize("edit", ["failed", "changed-file"])
+def test_an_invalid_ssi_medicaid_take_up_receipt_does_not_lift_the_block(
+    tmp_path, monkeypatch, edit
+):
+    module = _load_tool_module()
+    args = _block_evidence_args(module, tmp_path, monkeypatch, acs_true_rows=12)
+    if edit == "failed":
+        _with_recorded_ssi_medicaid_take_up(
+            module, args, gate={"passed": False, "failures": ["x"]}
+        )
+        message = "records no passing ACS local SSI/Medicaid take-up"
+    else:
+        _with_recorded_ssi_medicaid_take_up(module, args)
+        (args.checkpoint_dir / module.ACS_SSI_MEDICAID_TAKE_UP_FILENAME).write_bytes(
+            b"edited after materialize"
+        )
+        message = "missing or changed since materialize"
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a blocked release leaves nothing"
+
+
 @pytest.mark.parametrize(
     "receipt",
     [
