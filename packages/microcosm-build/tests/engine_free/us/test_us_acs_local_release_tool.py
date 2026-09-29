@@ -352,6 +352,60 @@ def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None
     assert seen == [(marker, audit)]
 
 
+def test_reviewed_null_fill_refuses_to_default_fill_take_up(tmp_path) -> None:
+    """microcosm#1019: a missing take-up cell is refused even when registered,
+    because the engine default ``True`` is universal take-up."""
+
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    spm_unit = frame.table("spm_unit").assign(
+        takes_up_snap_if_eligible=[True, False] * 3 + [np.nan] * 2
+    )
+    frame = Frame(
+        {
+            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {
+                        "entity": "spm_unit",
+                        "column": "takes_up_snap_if_eligible",
+                        "missing_rows": 2,
+                    }
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError,
+        match=r"spm_unit\.takes_up_snap_if_eligible \(2 null rows\)",
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert spm_unit["takes_up_snap_if_eligible"].isna().sum() == 2
+
+
+def test_take_up_consumers_refuse_a_checkpoint_without_the_assignment() -> None:
+    module = _load_tool_module()
+    for identity in (
+        {},
+        {"acs_local_take_up": {"seed": "0", "assigned_sha256": "a" * 64}},
+        {"acs_local_take_up": {"seed": 0}},
+    ):
+        with pytest.raises(SystemExit, match="Re-run --stage materialize"):
+            module._recorded_take_up(identity)
+    recorded = {"seed": 3, "assigned_sha256": "a" * 64}
+    assert module._recorded_take_up({"acs_local_take_up": recorded}) == recorded
+
+
 def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
     """Every package-stage input, with the finalize report's hours entry given.
 
@@ -385,6 +439,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         # The general hours gate, bound to these bytes: the package stage
         # requires it before it reaches the ACS local-hours re-check.
         "hours_worked_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_take_up_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -1064,6 +1124,23 @@ def _stub_local_hours_gate(module, monkeypatch) -> None:
     )
 
 
+def _stub_local_take_up_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS take-up classification pass (or fail); its tests cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_take_up_signal_gate",
+        lambda frame: GateResult(
+            name="acs_local_take_up_signal",
+            passed=passed,
+            failures=() if passed else ("acs_2024_1yr: invented constant take-up",),
+            details={},
+        ),
+    )
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -1080,6 +1157,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     )
     monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
     _stub_local_hours_gate(module, monkeypatch)
+    _stub_local_take_up_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -1141,6 +1219,64 @@ def test_do_finalize_hours_gate_passes_on_plausible_surface(
     frame = _staging_frame_with_hours(weekly, last_week)
     _message, report = _run_finalize(module, monkeypatch, args, frame)
     assert report["gates"]["hours_worked_signal"]["passed"] is True
+
+
+def test_do_finalize_hard_fails_on_a_failed_take_up_gate(tmp_path, monkeypatch):
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_take_up_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_take_up_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert gate["failures"] == ["acs_2024_1yr: invented constant take-up"]
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert "acs_local_take_up_signal" in summary["simulation_readiness_blockers"]
+
+
+def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
+    tmp_path, monkeypatch
+):
+    """The 2026-09-23 release signature: every ACS unit takes SNAP/TANF up."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_take_up_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _plausible_hours_frame()
+    spm_unit = frame.table("spm_unit").assign(
+        **{
+            spine_column("spm_unit"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+            "takes_up_snap_if_eligible": [True, True, True, False] + [True] * 4,
+            "takes_up_tanf_if_eligible": [True, False, False, False] + [True] * 4,
+            "receives_snap": [True] + [False] * 7,
+        }
+    )
+    frame = Frame(
+        {
+            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_take_up_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert all(failure.startswith("acs_2024_1yr:") for failure in gate["failures"])
+    assert any(
+        "takes_up_snap_if_eligible is constant" in failure
+        for failure in gate["failures"]
+    )
 
 
 @requires_pytables
@@ -1246,7 +1382,9 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
     )
 
 
-def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
+def _package_args_with_hours(
+    module, tmp_path, monkeypatch, *, gate_state, take_up_state="passed"
+):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
     _stub_local_hours_gate(module, monkeypatch)
@@ -1275,6 +1413,13 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
         if gate_state == "missing"
         else {"hours_worked_signal": gate, "acs_local_hours_signal": local_gate}
     )
+    take_up_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if take_up_state == "failed":
+        take_up_gate.update(passed=False, failures=["invented take-up failure"])
+    elif take_up_state == "stale":
+        take_up_gate["artifact_sha256"] = "0" * 64
+    if gates and take_up_state != "missing":
+        gates["acs_local_take_up_signal"] = take_up_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -1325,6 +1470,31 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+    take_up = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "acs_local_take_up_signal"
+    ]
+    assert take_up["passed"] is True
+    assert take_up["artifact_sha256"] == copied_sha
+
+
+@requires_pytables
+@pytest.mark.parametrize("take_up_state", ["missing", "failed", "stale"])
+def test_package_requires_a_current_take_up_gate(tmp_path, monkeypatch, take_up_state):
+    """microcosm#1019: a report finalized before the take-up gate, or failing
+    it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        take_up_state=take_up_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
 
 
 @requires_pytables

@@ -100,6 +100,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # Legacy ACS-only under-15 modeled completion and read-only per-origin
         # hours release diagnostics; exact boundary functions are pinned below.
         "acs_local_hours.py",
+        # Legacy local-lane ACS-row SNAP/TANF take-up fill and per-origin
+        # take-up gate (#1019); exact boundary functions are pinned below.
+        "acs_local_take_up.py",
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -232,6 +235,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_inputs.py",
         # Legacy source-hours completion and release gate; outside the registry.
         "acs_local_hours.py",
+        # Legacy local-lane take-up fill and release gate; outside the registry.
+        "acs_local_take_up.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
@@ -3406,6 +3411,37 @@ def test_acs_local_hours_provenance_is_limited_to_reviewed_boundaries() -> None:
 
     # A module-level owner entry must not exempt its remaining donor/transfer
     # helpers or executable declarations from the ordinary provenance scanner.
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> None:
+    """Pin the ACS-row take-up fill and per-origin take-up gate (#1019)."""
+
+    source = (_US_RUNTIME / "acs_local_take_up.py").read_text()
+    boundaries = (
+        "acs_local_take_up_signal_gate",
+        "with_acs_local_take_up_inputs",
+    )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
     tree = ast.parse(source)
     remaining = ast.Module(
         body=[
