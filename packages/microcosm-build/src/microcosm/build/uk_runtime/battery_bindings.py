@@ -1599,6 +1599,8 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_abs_realization_deviation",
                 "allow_cap_bound",
                 "stocks",
+                # microcosm#1049 student_loan_plans stage-health check.
+                "maximum_stock_relative_deviation",
                 "maximum_relative_mass_imbalance",
                 "spi_prior_mass_share",
                 "absolute_tolerance",

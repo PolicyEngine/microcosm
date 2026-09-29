@@ -535,9 +535,9 @@
           "PLAN_2": 8940000.0,
           "PLAN_5": 10000.0
         },
-        "maximum_abs_realization_deviation": 1.0
+        "maximum_stock_relative_deviation": 0.05
       },
-      "notes": "Stage-time realization gate over the per-plan student-loan top-up receipts."
+      "notes": "Stage-time gate over the per-plan student-loan top-up receipts (microcosm#1049). The stage realises each plan's shortfall against the pinned SLC liable stock by an identity-keyed greedy walk: eligible persons in ascending stable-uniform order, taken when their weight fits inside the remaining shortfall, skipped when it would overshoot, and the skipped person nearest the remainder taken afterwards if that brings the realised mass nearer the shortfall (the gas-connection walk's rule). The gate checks what the walk controls: the realised top-up sits within the lightest skipped person's weight of the shortfall, and the plan's final England count within maximum_stock_relative_deviation (5 percent) of the stock. A pool lighter than the shortfall must have been taken whole, and its attainment is recorded rather than refused: on the licensed spine PLAN_2's eligible pool holds about 2.0m people against a 7.5m shortfall (final England count 3.4m against the 8.94m stock), a gap between what the SLC liable stock counts and what the FRS carries that the stage cannot close. A plan already at or above its stock is left as reported and recorded. Every receipt field is required and the receipt must be self-consistent, so a partial or tampered receipt fails closed. This replaces a relative-deviation check on a Bernoulli increment, which refused every spine since #1006: PLAN_5's shortfall had shrunk to 817 people, about one survey person's weight, so the draw's outcome of zero or two rows was off by around 100 percent whichever way it fell (1.10 against the 1.0 rule), while the final count (10,901 against 10,000) was acceptable and unchecked. The synthetic smoke build over the H2 fixture cannot reach either stock and records both pools as exhausted."
     },
     {
       "id": "uk_stage_age_tail_targets",

@@ -100,38 +100,126 @@ def test_realization_gate_target_and_deviation_parameters_are_live() -> None:
     ).passed
 
 
-def test_student_loan_stock_parameter_is_live() -> None:
-    evidence = {
-        "stage": "student_loans",
-        "plans": {
-            "PLAN_2": {
-                "stock": 100.0,
-                "final_england_count": 98.0,
-                "realization_deviation": -0.02,
-            }
-        },
+def _student_loan_receipt(**overrides):
+    """A PLAN_2 receipt the walk produced: 3 of 6 eligible rows taken, 2 skipped."""
+    receipt = {
+        "stock": 100.0,
+        "reported_count": 70.0,
+        "reported_england_count": 60.0,
+        "shortfall": 40.0,
+        "eligible_rows": 6,
+        "eligible_mass": 60.0,
+        "topped_up_rows": 3,
+        "topped_up_mass": 39.0,
+        "rows_skipped_for_weight": 2,
+        "lightest_skipped_weight": 5.0,
+        "realization_gap": -1.0,
+        "pool_exhausted": False,
+        "final_england_count": 99.0,
+        "stock_attainment": 0.99,
     }
+    receipt.update(overrides)
+    return receipt
+
+
+def test_student_loan_gate_holds_the_walk_bound_and_the_stock() -> None:
+    """The gate checks what the walk controls and fails closed (microcosm#1049)."""
     parameters = {
         "stage": "student_loans",
         "check": "student_loan_plans",
         "stocks": {"PLAN_2": 100.0},
-        "maximum_abs_realization_deviation": 0.02,
+        "maximum_stock_relative_deviation": 0.02,
     }
 
-    assert _passed(
-        uk_stage_health_gate(
-            evidence=evidence,
+    def run(receipt, params=parameters):
+        return uk_stage_health_gate(
+            evidence={"stage": "student_loans", "plans": {"PLAN_2": receipt}},
             stage="student_loans",
             check="student_loan_plans",
-            parameters=parameters,
+            parameters=params,
         )
-    )
-    assert not uk_stage_health_gate(
-        evidence=evidence,
-        stage="student_loans",
-        check="student_loan_plans",
-        parameters={**parameters, "stocks": {"PLAN_2": 99.0}},
+
+    passed = run(_student_loan_receipt())
+    assert _passed(passed)
+    assert passed.details["plans"]["PLAN_2"]["regime"] == "walked_to_stock"
+    assert passed.details["worst_abs_realization_gap"] == 1.0
+    # The declared stock is live.
+    assert not run(
+        _student_loan_receipt(), {**parameters, "stocks": {"PLAN_2": 99.0}}
     ).passed
+    # The walk bound: a gap at or beyond the lightest skipped weight.
+    assert not run(_student_loan_receipt(lightest_skipped_weight=1.0)).passed
+    # A fit claimed without a skipped person to bound it.
+    assert not run(
+        _student_loan_receipt(rows_skipped_for_weight=0, lightest_skipped_weight=None)
+    ).passed
+    # The final count against the stock, at the declared tolerance.
+    assert not run(
+        _student_loan_receipt(),
+        {**parameters, "maximum_stock_relative_deviation": 0.005},
+    ).passed
+    # Self-consistency: a tampered gap or final count.
+    assert not run(_student_loan_receipt(realization_gap=-2.0)).passed
+    assert not run(_student_loan_receipt(final_england_count=98.0)).passed
+    # A pool receipted as exhausted must have been taken whole ...
+    exhausted = _student_loan_receipt(
+        shortfall=140.0,
+        stock=200.0,
+        eligible_rows=6,
+        eligible_mass=60.0,
+        topped_up_rows=6,
+        topped_up_mass=60.0,
+        rows_skipped_for_weight=0,
+        lightest_skipped_weight=None,
+        realization_gap=-80.0,
+        pool_exhausted=True,
+        final_england_count=120.0,
+        stock_attainment=0.6,
+    )
+    whole = run(exhausted, {**parameters, "stocks": {"PLAN_2": 200.0}})
+    assert _passed(whole)
+    assert whole.details["plans"]["PLAN_2"]["regime"] == "pool_exhausted"
+    assert whole.details["plans"]["PLAN_2"]["stock_attainment"] == 0.6
+    # ... and fails when it was not.
+    assert not run(
+        {
+            **exhausted,
+            "topped_up_rows": 5,
+            "topped_up_mass": 55.0,
+            "realization_gap": -85.0,
+            "final_england_count": 115.0,
+        },
+        {**parameters, "stocks": {"PLAN_2": 200.0}},
+    ).passed
+    # A plan at or above its stock is left alone; topping it up fails.
+    reported = _student_loan_receipt(
+        shortfall=0.0,
+        reported_england_count=105.0,
+        topped_up_rows=0,
+        topped_up_mass=0.0,
+        rows_skipped_for_weight=0,
+        lightest_skipped_weight=None,
+        realization_gap=0.0,
+        final_england_count=105.0,
+        stock_attainment=1.05,
+    )
+    above = run(reported)
+    assert _passed(above)
+    assert above.details["plans"]["PLAN_2"]["regime"] == "reported_at_or_above_stock"
+    assert not run(
+        {
+            **reported,
+            "topped_up_rows": 1,
+            "topped_up_mass": 2.0,
+            "realization_gap": 2.0,
+            "final_england_count": 107.0,
+        }
+    ).passed
+    # A partial receipt fails closed.
+    with pytest.raises(ValueError, match="pool_exhausted"):
+        run({k: v for k, v in _student_loan_receipt().items() if k != "pool_exhausted"})
+    with pytest.raises(ValueError, match="eligible_rows"):
+        run(_student_loan_receipt(eligible_rows=-1))
 
 
 def test_cgt_incidence_mass_threshold_is_live() -> None:
@@ -949,6 +1037,8 @@ def test_cgt_incidence_anchor_gate_holds_the_composition_and_the_pairs() -> None
         )
     with pytest.raises(ValueError, match="pair_count"):
         _anchor_gate(_anchor_evidence(pair_count=1.5))
+
+
 def _gate_parameters(gate_id: str) -> dict:
     gates = json.loads(
         (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")

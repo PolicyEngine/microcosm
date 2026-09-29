@@ -3992,6 +3992,8 @@ stages:
     highest_education: TERTIARY
     seed: 42
     salt: student_loan_plan_5
+    realization: identity_uniform_order_walk
+    realization_bound: the realised top-up sits within the weight of the lightest person the walk skipped of the shortfall, so the plan's final England count sits within that weight of the stock; a pool lighter than the shortfall is taken whole and receipted as exhausted, and a plan already at or above its stock is left as reported
   - kind: top_up_to_stock
     plan: PLAN_2
     priority: 2
@@ -4009,6 +4011,8 @@ stages:
     highest_education: TERTIARY
     seed: 42
     salt: student_loan_plan_2
+    realization: identity_uniform_order_walk
+    realization_bound: the realised top-up sits within the weight of the lightest person the walk skipped of the shortfall, so the plan's final England count sits within that weight of the stock; a pool lighter than the shortfall is taken whole and receipted as exhausted, and a plan already at or above its stock is left as reported
     reason: Student-loan plan assignment writes an enum column only; household rows
       and typed household weights pass through and total household mass is conserved.
   outputs:

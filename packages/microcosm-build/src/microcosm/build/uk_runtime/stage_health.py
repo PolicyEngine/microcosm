@@ -530,49 +530,166 @@ def _realization_target_gate(
     )
 
 
+def _nonnegative_count(value: object, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a non-negative integer, got {value!r}.")
+    return value
+
+
 def _student_loan_plans_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
+    """Each plan's top-up walked to its SLC stock, or the reason it could not.
+
+    The stage realises a plan's shortfall by a greedy identity-keyed walk
+    (microcosm#1049), so the check is on what the walk controls: the realised
+    top-up sits within the lightest skipped person's weight of the shortfall
+    and the final England count within ``maximum_stock_relative_deviation``
+    of the stock. A pool lighter than the shortfall must have been taken
+    whole; its attainment is recorded, not refused, because the gap between
+    the SLC liable stock and what the FRS carries is a data question the
+    stage cannot close. A plan already at or above its stock must have been
+    left as reported. Every receipt field is required and the receipt must be
+    self-consistent, so a tampered or partial receipt fails closed.
+    """
+
     check = "student_loan_plans"
     plans = _mapping(evidence.get("plans"), label=f"{stage}.plans")
     declared_stocks = _mapping(parameters["stocks"], label=f"{stage}.stocks")
-    max_deviation = _finite_number(
-        parameters["maximum_abs_realization_deviation"],
-        label=f"{stage}.maximum_abs_realization_deviation",
+    tolerance = _finite_number(
+        parameters["maximum_stock_relative_deviation"],
+        label=f"{stage}.maximum_stock_relative_deviation",
     )
+    if tolerance < 0.0:
+        raise ValueError(f"{stage}: maximum_stock_relative_deviation must be >= 0.")
     failures: list[str] = []
-    worst = 0.0
+    by_plan: dict[str, dict[str, object]] = {}
+    worst_gap = 0.0
+    worst_deviation = 0.0
     for plan, declared_stock in declared_stocks.items():
         receipt = plans.get(str(plan))
         if not isinstance(receipt, Mapping):
             failures.append(f"{stage}: missing receipt for {plan}.")
             continue
-        stock = _finite_number(receipt.get("stock"), label=f"{stage}.{plan}.stock")
-        expected = _finite_number(
-            declared_stock, label=f"{stage}.{plan}.declared_stock"
-        )
+        label = f"{stage}.{plan}"
+        stock = _finite_number(receipt.get("stock"), label=f"{label}.stock")
+        expected = _finite_number(declared_stock, label=f"{label}.declared_stock")
         if stock != expected:
             failures.append(f"{stage}: {plan} stock {stock} != declared {expected}.")
+        shortfall = _finite_number(receipt.get("shortfall"), label=f"{label}.shortfall")
+        eligible_mass = _finite_number(
+            receipt.get("eligible_mass"), label=f"{label}.eligible_mass"
+        )
+        topped_up_mass = _finite_number(
+            receipt.get("topped_up_mass"), label=f"{label}.topped_up_mass"
+        )
+        gap = _finite_number(
+            receipt.get("realization_gap"), label=f"{label}.realization_gap"
+        )
+        reported = _finite_number(
+            receipt.get("reported_england_count"),
+            label=f"{label}.reported_england_count",
+        )
         final = _finite_number(
-            receipt.get("final_england_count"),
-            label=f"{stage}.{plan}.final_england_count",
+            receipt.get("final_england_count"), label=f"{label}.final_england_count"
         )
-        deviation = abs(
-            _finite_number(
-                receipt.get("realization_deviation"),
-                label=f"{stage}.{plan}.realization_deviation",
+        eligible_rows = _nonnegative_count(
+            receipt.get("eligible_rows"), label=f"{label}.eligible_rows"
+        )
+        topped_up_rows = _nonnegative_count(
+            receipt.get("topped_up_rows"), label=f"{label}.topped_up_rows"
+        )
+        skipped_rows = _nonnegative_count(
+            receipt.get("rows_skipped_for_weight"),
+            label=f"{label}.rows_skipped_for_weight",
+        )
+        exhausted = receipt.get("pool_exhausted")
+        if not isinstance(exhausted, bool):
+            raise ValueError(
+                f"{label}.pool_exhausted must be a bool, got {exhausted!r}."
             )
-        )
-        worst = max(worst, deviation)
+        lightest = receipt.get("lightest_skipped_weight")
+        if lightest is not None:
+            lightest = _finite_number(
+                lightest, label=f"{label}.lightest_skipped_weight"
+            )
+        if not math.isclose(
+            gap, topped_up_mass - shortfall, rel_tol=1e-9, abs_tol=1e-6
+        ):
+            failures.append(
+                f"{stage}: {plan} realization_gap {gap} is not topped_up_mass minus "
+                f"shortfall ({topped_up_mass - shortfall})."
+            )
+        if not math.isclose(
+            final, reported + topped_up_mass, rel_tol=1e-9, abs_tol=1e-6
+        ):
+            failures.append(
+                f"{stage}: {plan} final_england_count {final} is not the reported "
+                f"count plus the top-up ({reported + topped_up_mass})."
+            )
         if final < 0.0:
             failures.append(f"{stage}: {plan} final_england_count is negative.")
-        if deviation > max_deviation:
-            failures.append(
-                f"{stage}: {plan} realization_deviation {deviation} exceeds {max_deviation}."
-            )
-    details = {"plans_checked": len(declared_stocks), "worst_abs_deviation": worst}
+        deviation = abs(final - stock) / stock if stock > 0.0 else abs(final - stock)
+        if shortfall <= 0.0:
+            regime = "reported_at_or_above_stock"
+            if topped_up_rows != 0 or topped_up_mass != 0.0:
+                failures.append(
+                    f"{stage}: {plan} was topped up ({topped_up_rows} rows) with no "
+                    "shortfall."
+                )
+        elif exhausted:
+            regime = "pool_exhausted"
+            if (
+                skipped_rows != 0
+                or topped_up_rows != eligible_rows
+                or not math.isclose(
+                    topped_up_mass, eligible_mass, rel_tol=1e-9, abs_tol=1e-6
+                )
+            ):
+                failures.append(
+                    f"{stage}: {plan} pool is receipted as exhausted but was not taken "
+                    f"whole ({topped_up_rows} of {eligible_rows} rows, mass "
+                    f"{topped_up_mass} of {eligible_mass})."
+                )
+        else:
+            regime = "walked_to_stock"
+            # With nobody skipped the walk can only have met the shortfall
+            # exactly; otherwise the gap is bounded by the lightest skip.
+            if skipped_rows == 0 or lightest is None:
+                if skipped_rows != 0 or lightest is not None or gap != 0.0:
+                    failures.append(
+                        f"{stage}: {plan} walk reports a fit to the shortfall "
+                        "without a skipped person to bound it."
+                    )
+            elif abs(gap) >= lightest:
+                failures.append(
+                    f"{stage}: {plan} realization_gap {gap} is not within the lightest "
+                    f"skipped weight {lightest} of the shortfall."
+                )
+            if deviation > tolerance:
+                failures.append(
+                    f"{stage}: {plan} final England count {final} deviates "
+                    f"{deviation:.4f} from the stock {stock}, above "
+                    f"{tolerance}."
+                )
+        worst_gap = max(worst_gap, abs(gap))
+        if regime == "walked_to_stock":
+            worst_deviation = max(worst_deviation, deviation)
+        by_plan[str(plan)] = {
+            "regime": regime,
+            "stock_attainment": final / stock if stock > 0.0 else None,
+            "realization_gap": gap,
+            "rows_skipped_for_weight": skipped_rows,
+            "lightest_skipped_weight": lightest,
+        }
+    details = {
+        "plans_checked": len(declared_stocks),
+        "worst_abs_realization_gap": worst_gap,
+        "worst_walked_stock_deviation": worst_deviation,
+        "plans": by_plan,
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

@@ -8621,7 +8621,9 @@
       "eligible_region_exclusions",
       "highest_education",
       "seed",
-      "salt"
+      "salt",
+      "realization",
+      "realization_bound"
      ],
      "properties": {
       "kind": {
@@ -8674,6 +8676,12 @@
        "type": "integer"
       },
       "salt": {
+       "type": "string"
+      },
+      "realization": {
+       "type": "string"
+      },
+      "realization_bound": {
        "type": "string"
       }
      }
