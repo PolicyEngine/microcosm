@@ -762,6 +762,23 @@ def source_take_up_frame(source_path: Path, programs, *, sampler, chunk_bytes: i
     )
 
 
+def split_take_up_gate_failures(
+    failures: Iterable[str],
+) -> tuple[list[str], list[str], list[str]]:
+    """``us_take_up_signal_gate`` failures as (missing, constant, share band)."""
+    missing: list[str] = []
+    constant: list[str] = []
+    band: list[str] = []
+    for failure in failures:
+        if "missing seeded take-up column" in failure:
+            missing.append(failure)
+        elif "constant column" in failure:
+            constant.append(failure)
+        else:
+            band.append(failure)
+    return missing, constant, band
+
+
 def stale_count_calibrated(payload: Mapping[str, Any]) -> list[str]:
     """``_main``'s stale count-calibrated check over a take-up payload."""
     return [
@@ -1163,19 +1180,43 @@ class ExportProbe:
             "seeded_program_count": payload["seeded_program_count"],
             "shares": _take_up_shares(payload),
         }
-        # A column that varies on the subsample varies on the pool; a
-        # constant one may not, and a share is a weighted estimate.
+        # A stored column's absence does not depend on the sample. A column
+        # that varies on the subsample varies on the pool, but a constant one
+        # may not, and a share is a weighted estimate.
         failures = list(payload["gate"]["failures"])
-        constant = [failure for failure in failures if "constant column" in failure]
-        band = [failure for failure in failures if failure not in constant]
+        missing, constant, band = split_take_up_gate_failures(failures)
+        from microcosm.build.us_runtime.take_up_contract import (
+            load_take_up_contract,
+        )
+
+        programs = load_take_up_contract().programs
+        entity_of = {program.variable: program.entity for program in programs}
+        stale_missing = [
+            variable
+            for variable in stale
+            if variable not in self.frame.table(entity_of[variable]).columns
+        ]
+        stale_constant = [
+            variable for variable in stale if variable not in stale_missing
+        ]
+        record["stale_count_calibrated_missing"] = stale_missing
+        record["stale_count_calibrated_constant"] = stale_constant
         scale_note = "" if self.census else " (weighted estimates at this sample)"
+        self._add(
+            "take_up_participation",
+            "take-up signal gate: missing seeded columns",
+            "fail" if missing else "pass",
+            AUTHORITATIVE,
+            "; ".join(missing) or "every seeded column is stored",
+            "diagnostic",
+        )
         self._add(
             "take_up_participation",
             "take-up signal gate: constant columns",
             "fail" if constant else "pass",
             INFORMATIONAL if constant and not self.census else AUTHORITATIVE,
             "; ".join(constant)
-            or "every seeded column varies here, so it varies on the pool",
+            or "every stored seeded column varies here, so it varies on the pool",
             "diagnostic",
         )
         self._add(
@@ -1188,22 +1229,29 @@ class ExportProbe:
         )
         self._add(
             "take_up_participation",
-            "stale count-calibrated take-up columns",
-            "fail" if stale else "pass",
-            INFORMATIONAL if stale and not self.census else AUTHORITATIVE,
-            f"ship at the engine default: {stale}"
-            if stale
-            else "every count-calibrated column varies here, so it varies on the pool",
+            "stale count-calibrated take-up columns: missing",
+            "fail" if stale_missing else "pass",
+            AUTHORITATIVE,
+            f"not stored, so they ship at the engine default: {stale_missing}"
+            if stale_missing
+            else "every count-calibrated column is stored",
+            "raises",
+        )
+        self._add(
+            "take_up_participation",
+            "stale count-calibrated take-up columns: constant",
+            "fail" if stale_constant else "pass",
+            INFORMATIONAL if stale_constant and not self.census else AUTHORITATIVE,
+            f"constant here, so they ship at the engine default: {stale_constant}"
+            if stale_constant
+            else "every stored count-calibrated column varies here, so it varies "
+            "on the pool",
             "raises",
         )
         if self.source_export is not None:
-            from microcosm.build.us_runtime.take_up_contract import (
-                load_take_up_contract,
-            )
-
             source_frame = source_take_up_frame(
                 self.source_export,
-                load_take_up_contract().programs,
+                programs,
                 sampler=self.sampler,
                 chunk_bytes=self.chunk_bytes,
             )
