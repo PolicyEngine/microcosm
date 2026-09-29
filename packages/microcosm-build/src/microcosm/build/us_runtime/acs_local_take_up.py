@@ -32,9 +32,11 @@ an engine default that biases SNAP (microcosm#1022). None needs the engine:
   ``snap_abawd_discretionary_exemption`` manifest rate. ACS persons carry no
   complete source identity, so the draws key on
   ``acs_2024_1yr:SERIALNO:SPORDER`` (``SPORDER`` alone repeats in every
-  household). Like the donor, the flag is seeded across all adults 18-64 and
-  the engine intersects it with modeled ABAWD coverage, which makes it an
-  upper bound on actual state usage.
+  household). The flag is a cap-based proxy, not an observed exemption
+  assignment: no survey records which people a state exempts, so, like the
+  donor, it is an upper-bound propensity drawn at the statutory cap across
+  all adults 18-64, which the engine intersects with modeled ABAWD coverage.
+  Actual state usage runs below the cap.
 - ``receives_housing_assistance`` (SPM unit) copies the transferred
   ``takes_up_housing_assistance_if_eligible``; on the donor both come from
   ``SPM_CAPHOUSESUB > 0`` and are equal by construction
@@ -47,7 +49,8 @@ an engine default that biases SNAP (microcosm#1022). None needs the engine:
   measured ``MCARE == 1``
   (:mod:`~microcosm.build.us_runtime.medicare_take_up`): coverage is the
   take-up signal and the engine applies eligibility. ``HINS3`` covers every
-  person; a blank reads as not covered.
+  person; a blank or a code other than 1/2 reads as not covered, and the
+  receipt and gate count both (unweighted, weighted and at 65+) for review.
 
 Two more shipped at an engine default although neither moves SNAP in
 practice (microcosm#1022); the helpers of
@@ -193,6 +196,7 @@ _GROUP_QUARTERS_KINDS = (2, 3)
 #: ACS Medicare coverage item (1 yes, 2 no), asked of every person.
 _MEDICARE_COVERAGE = "HINS3"
 _MEDICARE_COVERED = 1
+_MEDICARE_CODES = (1, 2)
 _MEDICARE_AGE = 65
 #: Weighted Medicare take-up among ACS persons 65+ must reach this floor; ACS
 #: coverage runs well above 90% there, so a lower share means a miscoded item.
@@ -276,6 +280,38 @@ def _filled(values: pd.Series, missing: np.ndarray, assigned: np.ndarray) -> pd.
 def _share(weights: np.ndarray, flags: np.ndarray) -> float:
     total = float(weights.sum())
     return float(weights[flags].sum()) / total if total > 0 else 0.0
+
+
+def _hins3_audit(
+    coverage: pd.Series, age: np.ndarray, weights: np.ndarray
+) -> dict[str, object]:
+    """Blank and invalid ``HINS3`` cells among the given persons (informational).
+
+    ``HINS3`` is asked of every person with codes 1/2, so a blank is a loader
+    gap and any other value a miscode. Both read as not covered; the counts
+    are reported for review (microcosm#1022), never a failure.
+    """
+    numeric = pd.to_numeric(coverage, errors="coerce").to_numpy(dtype=np.float64)
+    blank = coverage.isna().to_numpy(dtype=bool)
+    invalid = ~blank & ~np.isin(numeric, _MEDICARE_CODES)
+    aged = age >= _MEDICARE_AGE
+
+    def counts(cells: np.ndarray) -> dict[str, object]:
+        return {
+            "rows": int(cells.sum()),
+            "weight": float(weights[cells].sum()),
+            "rows_65_plus": int((cells & aged).sum()),
+            "weight_65_plus": float(weights[cells & aged].sum()),
+        }
+
+    return {
+        "persons": int(len(coverage)),
+        "persons_65_plus": int(aged.sum()),
+        "valid_codes": list(_MEDICARE_CODES),
+        "blank": counts(blank),
+        "invalid": counts(invalid),
+        "treatment": "read as not covered; informational, not graded",
+    }
 
 
 def _acs_person_draw_keys(
@@ -363,6 +399,12 @@ def _discretionary_fill(
                 "the snap_abawd_discretionary_exemption stage's seeding: age "
                 f"{_COVERED_AGE_RANGE[0]}-{_COVERED_AGE_RANGE[1]} and a stable "
                 "draw below the manifest rate"
+            ),
+            "interpretation": (
+                "cap-based proxy: an upper-bound propensity drawn at the "
+                "statutory cap across all adults "
+                f"{_COVERED_AGE_RANGE[0]}-{_COVERED_AGE_RANGE[1]}, not an "
+                "observed exemption assignment"
             ),
             "rate": rate,
             "rate_source": source,
@@ -735,6 +777,11 @@ def with_acs_local_take_up_inputs(
         person_weights[head_start_ages],
         _flags(final_person.loc[head_start_ages, _HEAD_START])[0],
     )
+    medicare["hins3_audit"] = _hins3_audit(
+        final_person.loc[acs_persons, _MEDICARE_COVERAGE],
+        age[acs_persons],
+        person_weights[acs_persons],
+    )
     receipt: dict[str, object] = {
         "issue": "microcosm#1019",
         "seed": int(seed),
@@ -999,6 +1046,13 @@ def _grade_medicare(
     native = _numeric(person[_MEDICARE_COVERAGE]) == _MEDICARE_COVERED
     mismatched = int((flags != native).sum())
     entry["differs_from_native_coverage"] = mismatched
+    entry["hins3_audit"] = _hins3_audit(
+        person[_MEDICARE_COVERAGE],
+        _numeric(person[_AGE_COLUMN])
+        if _AGE_COLUMN in person
+        else np.full(len(person), np.nan),
+        weights,
+    )
     if mismatched:
         failures.append(
             f"{_MEDICARE} differs from ACS {_MEDICARE_COVERAGE} == "
@@ -1030,8 +1084,9 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
     exempt share of ages 18-64 around the manifest rate and no one exempt
     outside them, a housing receipt equal to the transferred take-up flag
     (``False`` in group quarters), Medicare take-up equal to ``HINS3 == 1``
-    with a high share at 65+, vehicle counts equal to ``VEH`` (0 in group
-    quarters), and Head Start take-up only at ages 3-5, at a share around the
+    with a high share at 65+ (blank and invalid ``HINS3`` cells are counted
+    in the ACS detail but not graded), vehicle counts equal to ``VEH`` (0 in
+    group quarters), and Head Start take-up only at ages 3-5, at a share around the
     donor spine's. Donor-spine shares and anchors are reported but not
     graded: those cells come from the donor release, whose own gates graded
     them. Other ``takes_up_*`` columns are not graded (microcosm#1022).
