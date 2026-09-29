@@ -72,6 +72,11 @@ def _apply_pending_roster_transformations(
     # back to the originals right after the asset-type stage.
     assert "cgt_incidence_anchor" not in roster
     roster.insert(roster.index("hmrc_cgt_asset_type_spine") + 1, "cgt_incidence_anchor")
+    # #1045 re-mint pending: the band-donor stack is retired and the support
+    # split runs right before the incidence clone.
+    assert "cgt_support_split" not in roster
+    roster.remove("cgt_band_donors")
+    roster.insert(roster.index("cgt_incidence_clone"), "cgt_support_split")
     # #930 re-mint pending: the NTS bus-travel stage imputes the journeys the
     # consumption stage prices, so it runs right before lcfs_consumption.
     assert "nts_bus_travel" not in roster

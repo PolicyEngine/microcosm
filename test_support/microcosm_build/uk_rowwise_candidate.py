@@ -280,7 +280,7 @@ def _write_staging_h5(
             "household_support_clone_index": support_clone_indices,
             "household_is_spi_synthetic": spi_flags,
             "household_is_capital_gains_clone": [False] * len(household_ids),
-            "household_is_cgt_band_donor": [False] * len(household_ids),
+            "household_is_cgt_support_copy": [False] * len(household_ids),
         }
     )
     person_ids = [10_000 + household_id for household_id in household_ids]

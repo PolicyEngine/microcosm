@@ -113,11 +113,6 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "cgt_band_donor_support_bounds.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "hmrc_income_release_gate_report.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

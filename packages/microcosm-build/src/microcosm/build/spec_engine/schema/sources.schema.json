@@ -8088,7 +8088,6 @@
      "required": [
       "kind",
       "clone_flag_column",
-      "donor_flag_column",
       "id_remapping",
       "pairing",
       "requirement"
@@ -8098,9 +8097,6 @@
        "const": "pair_clone_households_to_originals"
       },
       "clone_flag_column": {
-       "type": "string"
-      },
-      "donor_flag_column": {
        "type": "string"
       },
       "id_remapping": {
@@ -8189,7 +8185,6 @@
       "sub_exempt_group",
       "loss_group",
       "liable_clones",
-      "donors",
       "factor",
       "maximum_factor",
       "transfer",
@@ -8213,9 +8208,6 @@
        "type": "string"
       },
       "liable_clones": {
-       "type": "string"
-      },
-      "donors": {
        "type": "string"
       },
       "factor": {
@@ -8311,89 +8303,145 @@
      "additionalProperties": false,
      "required": [
       "kind",
-      "size_band_resource",
-      "incidence_resource",
-      "minimum_band_lower",
-      "donors_per_band",
-      "expected_band_count",
-      "expected_donor_count",
-      "candidate_order",
-      "draw",
-      "propensity",
-      "seed",
-      "flag_column",
+      "joint_resource",
+      "joint_record_set_prefix",
+      "joint_vintage",
+      "taxpayer_concept",
+      "income_band_lower_bounds",
+      "minimum_gain_band_lower",
+      "published_top_band_taxpayers",
+      "suppressed_cells",
+      "clone_split_factor",
+      "headroom",
+      "expected_support_mass",
+      "support_mass_rule",
+      "income_band_measure",
+      "income_proxy_components",
+      "allowance_subtraction",
+      "adult_minimum_age",
       "carrier",
-      "initial_weight",
-      "never_zero_weight",
+      "wealth_measure",
+      "investable_wealth_columns",
+      "selection",
+      "maximum_copy_weight",
+      "copy_rule",
+      "id_remapping",
+      "flag_column",
+      "copies_column",
+      "values",
       "weight_kind_out",
-      "reason",
-      "size_band_vintage",
-      "retained_taxpayers",
-      "retained_gains_gbp"
+      "conservation",
+      "declared_factor",
+      "reason"
      ],
      "properties": {
       "kind": {
-       "const": "stack_band_donor_households"
+       "const": "split_top_wealth_support_households"
       },
-      "size_band_resource": {
+      "joint_resource": {
        "type": "string"
       },
-      "incidence_resource": {
+      "joint_record_set_prefix": {
        "type": "string"
       },
-      "minimum_band_lower": {
+      "joint_vintage": {
+       "type": "string"
+      },
+      "taxpayer_concept": {
+       "type": "string"
+      },
+      "income_band_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 1
+      },
+      "minimum_gain_band_lower": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "published_top_band_taxpayers": {
        "type": "number"
       },
-      "donors_per_band": {
+      "suppressed_cells": {
+       "type": "string"
+      },
+      "clone_split_factor": {
        "type": "integer",
        "minimum": 1
       },
-      "expected_band_count": {
+      "headroom": {
+       "type": "number"
+      },
+      "expected_support_mass": {
+       "type": "number"
+      },
+      "support_mass_rule": {
+       "type": "string"
+      },
+      "income_band_measure": {
+       "type": "string"
+      },
+      "income_proxy_components": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1
+      },
+      "allowance_subtraction": {
+       "type": "boolean"
+      },
+      "adult_minimum_age": {
        "type": "integer",
        "minimum": 1
-      },
-      "expected_donor_count": {
-       "type": "integer",
-       "minimum": 1
-      },
-      "candidate_order": {
-       "type": "string"
-      },
-      "draw": {
-       "type": "string"
-      },
-      "propensity": {
-       "type": "string"
-      },
-      "seed": {
-       "type": "integer"
-      },
-      "flag_column": {
-       "type": "string"
       },
       "carrier": {
        "type": "string"
       },
-      "initial_weight": {
+      "wealth_measure": {
        "type": "string"
       },
-      "never_zero_weight": {
-       "type": "boolean"
+      "investable_wealth_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1
+      },
+      "selection": {
+       "type": "string"
+      },
+      "maximum_copy_weight": {
+       "type": "number"
+      },
+      "copy_rule": {
+       "type": "string"
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "copies_column": {
+       "type": "string"
+      },
+      "values": {
+       "type": "string"
       },
       "weight_kind_out": {
        "type": "string"
       },
+      "conservation": {
+       "type": "string"
+      },
+      "declared_factor": {
+       "type": "number"
+      },
       "reason": {
        "type": "string"
-      },
-      "size_band_vintage": {
-       "type": "string"
-      },
-      "retained_taxpayers": {
-       "type": "number"
-      },
-      "retained_gains_gbp": {
-       "type": "number"
       }
      }
     },

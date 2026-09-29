@@ -3444,7 +3444,82 @@ stages:
   - uc_deduction_random_draw
   - uc_deduction_type_random_draw
   - uc_latent_deduction_rate
-  notes: Assigns region-conditioned latent deduction demand to every benefit unit from identity-keyed seed-0 draws, rounded and clamped to the PolicyEngine-UK float32 input contract before applying the engine's exact band and normalized-combination mappings. The attributes are award-independent; law and claimant gating remain in the engine. Clone and donor-stack stages copy the completed attributes byte-for-byte. The persisted draws are microcosm's identity-keyed blake2b uniforms, not PolicyEngine-UK's splitmix64 fallback hash; the engine reads the persisted columns and derives the same flag, rate and combination from them, so the two draw columns must stay on the export surface (allow-listed and test-pinned).
+  notes: Assigns region-conditioned latent deduction demand to every benefit unit from identity-keyed seed-0 draws, rounded and clamped to the PolicyEngine-UK float32 input contract before applying the engine's exact band and normalized-combination mappings. The attributes are award-independent; law and claimant gating remain in the engine. The support-split and clone stages copy the completed attributes byte-for-byte. The persisted draws are microcosm's identity-keyed blake2b uniforms, not PolicyEngine-UK's splitmix64 fallback hash; the engine reads the persisted columns and derives the same flag, rate and combination from them, so the two draw columns must stay on the export surface (allow-listed and test-pinned).
+- stage: cgt_support_split
+  survey: Family Resources Survey 2024-25, SPI synthetic support and HMRC Capital Gains Tax statistics Table 3 (2024-25 individuals by size of gain and taxable income)
+  source: HMRC Capital Gains Tax statistics, July 2026 release, Table 3 for 2024-25, via the vendored conditioning facts
+  grain: household
+  artifacts:
+  - role: cgt_conditioning_facts
+    kind: public_aggregate_reference
+    resource: hmrc_cgt_conditioning_facts.json
+    format: json
+    runtime_sha256_required: true
+  - role: policy_parameters
+    kind: versioned_parameter_tree
+    dependency: policyengine-uk>=2.98.0 via microcosm-build[uk]
+    parameters:
+    - gov.hmrc.income_tax.allowances.personal_allowance.amount
+    - gov.hmrc.income_tax.allowances.personal_allowance.maximum_ANI
+    - gov.hmrc.income_tax.allowances.personal_allowance.reduction_rate
+    instant_rule: raw dated parameter files evaluated at 1 June of the build period's tax year
+    runtime_sha256_required: false
+    dependency_discipline: deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time
+  operations:
+  - kind: split_top_wealth_support_households
+    joint_resource: hmrc_cgt_conditioning_facts.json
+    joint_record_set_prefix: hmrc.cgt_table3_2026.ty2024.
+    joint_vintage: 2024-25
+    taxpayer_concept: hmrc.cgt_taxpayers_individuals
+    income_band_lower_bounds:
+    - 0
+    - 37700
+    - 50000
+    - 100000
+    - 125140
+    - 200000
+    minimum_gain_band_lower: 250000
+    published_top_band_taxpayers: 58000.0
+    suppressed_cells: published counts withheld as fewer than 1,000 count as zero and are counted in the receipt
+    clone_split_factor: 2
+    headroom: 2.0
+    expected_support_mass: 232000.0
+    support_mass_rule: clone_split_factor x headroom x published taxpayers with gains at or above minimum_gain_band_lower in the income column
+    income_band_measure: taxable_income_proxy of the oldest adult (tapered Personal Allowance from the policy_parameters artifact) digitised on income_band_lower_bounds, as the Table 3 redraw classifies gainers
+    income_proxy_components:
+    - employment_income
+    - self_employment_income
+    - state_pension_reported
+    - private_pension_income
+    - property_income
+    - savings_interest_income
+    - dividend_income
+    - miscellaneous_income
+    allowance_subtraction: true
+    adult_minimum_age: 16
+    carrier: oldest adult; person_id ascending breaks age ties
+    wealth_measure: household sum of investable_wealth_columns; a missing or non-finite value refuses the stage
+    investable_wealth_columns:
+    - gross_financial_wealth
+    - corporate_wealth
+    - other_residential_property_value
+    - non_residential_property_value
+    selection: within each income band walk households in investable wealth descending, household_id ascending, accumulating positive household weight until the cumulative weight reaches the band's support mass; whole households; an exhausted pool is recorded, not refused
+    maximum_copy_weight: 60.0
+    copy_rule: copies = ceil(household weight / maximum_copy_weight); every copy carries weight / copies
+    id_remapping: id_multiplier_for_values; copy k takes every entity id + k x multiplier
+    flag_column: household_is_cgt_support_copy
+    copies_column: cgt_support_copies
+    values: every column copied unchanged; no draw, no seed, no salt
+    weight_kind_out: importance
+    conservation: exact_total
+    declared_factor: 1.0
+    reason: Capital-gains support split divides the wealthiest households of each HMRC Table 3 income band into light copies at equal weight; every household's mass and the total household mass are conserved.
+  outputs:
+  - household_is_cgt_support_copy
+  - cgt_support_copies
+  rewrites: []
+  notes: 'Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 before the clone (30 after), each copy the same household at an equal share of its weight. No value is assigned and no draw is made; the clone stage gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact).'
 - stage: cgt_incidence_clone
   survey: Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence
   source: Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465
@@ -3501,48 +3576,6 @@ stages:
   rewrites:
   - capital_gains
   notes: Spine-only equal-mass incidence clone. The A&S prior fixes the gainer set and order for the following HMRC Table 3 redraw; negative extrapolated draws remain loss-makers.
-- stage: cgt_band_donors
-  survey: HMRC Capital Gains Tax statistics Table 2.1a (2024-25 individuals) and Advani-Summers capital-gains incidence
-  source: HMRC Capital Gains Tax statistics, July 2026 release, Table 2.1a for 2024-25, via the vendored conditioning facts
-  grain: household
-  artifacts:
-  - role: cgt_conditioning_facts
-    kind: public_aggregate_reference
-    resource: hmrc_cgt_conditioning_facts.json
-    format: json
-    runtime_sha256_required: true
-  - role: capital_gains_incidence
-    kind: public_aggregate_reference
-    resource: advani_summers_capital_gains_distribution.json
-    format: json
-    runtime_sha256_required: true
-  operations:
-  - kind: stack_band_donor_households
-    size_band_resource: hmrc_cgt_conditioning_facts.json
-    size_band_vintage: 2024-25
-    retained_taxpayers: 392000.0
-    retained_gains_gbp: 118209000000.0
-    incidence_resource: advani_summers_capital_gains_distribution.json
-    minimum_band_lower: 12300
-    donors_per_band: 30
-    expected_band_count: 9
-    expected_donor_count: 270
-    candidate_order: household_id ascending
-    draw: weighted_without_replacement
-    propensity: Advani-Summers percent_with_gains at oldest-adult component-sum income
-    seed: 1
-    flag_column: household_is_cgt_band_donor
-    carrier: oldest adult; person_id ascending breaks age ties
-    initial_weight: published band taxpayers / donors_per_band
-    never_zero_weight: true
-    weight_kind_out: importance
-    reason: Stack 30 positive-weight HMRC Table 2.1a support households per retained gain band; published donor mass is added explicitly.
-  outputs:
-  - household_is_cgt_band_donor
-  - capital_gains
-  rewrites:
-  - capital_gains
-  notes: Adds 270 positive-weight band donors. Rows below GBP 12,300 are excluded because they mix annual-exempt-amount regimes and the spline body already supplies that support. Band weights and starting gains come from the 2024-25 Table 2.1a rows of the vendored conditioning resource, the vintage the size-of-gain calibration targets fit (microcosm#725).
 - stage: hmrc_cgt_gains_spine
   survey: HMRC Capital Gains Tax statistics 2026 release, Table 3 2024-25 (individual taxpayers and gains by size of gain and taxable income) conditioned on the 2024-25 Tables 2.1a, 5, 6 and 1, all vendored from the pinned Chronicle feed
   source: https://www.gov.uk/government/statistics/capital-gains-tax-statistics
@@ -3866,9 +3899,8 @@ stages:
   operations:
   - kind: pair_clone_households_to_originals
     clone_flag_column: household_is_capital_gains_clone
-    donor_flag_column: household_is_cgt_band_donor
     id_remapping: id_multiplier_for_values
-    pairing: clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false and not a band donor)
+    pairing: clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false; the support split's copies are pre-clone rows with their own clones)
     requirement: bijection between clone and original households; an unpaired clone or original fails the build
   - kind: derive_reporter_composition_from_banded_quantiles
     resource: advani_summers_capital_gains_distribution.json
@@ -3896,14 +3928,13 @@ stages:
     extrapolation: ext=0
     crossings: each band's degree-1 quantile spline inverted at zero and at the build period's annual exempt amount
     aggregation: crossings averaged over clone carriers weighted by household weight times the band's percent_with_gains
-    liable_mass: weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw, clones and band donors alike
+    liable_mass: weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw
     targets: sub_exempt = liable_mass * (exempt_quantile - zero_quantile) / (1 - exempt_quantile); loss = liable_mass * zero_quantile / (1 - exempt_quantile)
   - kind: transfer_clone_mass_to_originals
-    population: clone households paired to their originals; band donors and originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts
+    population: clone households paired to their originals; originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts
     sub_exempt_group: clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched
     loss_group: clone households whose carrier's capital_gains are negative
     liable_clones: untouched
-    donors: untouched
     factor: min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched
     maximum_factor: 1.0
     transfer: each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves
@@ -3914,7 +3945,7 @@ stages:
     reason: Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved.
   outputs: []
   rewrites: []
-  notes: 'Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone''s paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers and band donors are untouched; the groups, targets and receipt are clone-side quantities (band donors and originals are outside the anchor), every pair''s mass and the household total are conserved, and the receipt is gated at stage time.'
+  notes: 'Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone''s paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers are untouched; the groups, targets and receipt are clone-side quantities (originals are outside the anchor), every pair''s mass and the household total are conserved, and the receipt is gated at stage time.'
 - stage: salary_sacrifice
   survey: Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis
   source: HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029
@@ -3927,7 +3958,7 @@ stages:
     runtime_sha256_required: true
   operations:
   - kind: fit_weighted_qrf
-    training_population: support_channel == frs and not capital-gains clone and not CGT band donor and salary_sacrifice_asked == 1
+    training_population: support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1
     target_population: salary_sacrifice_asked != 1 frame-wide
     predictors:
     - age

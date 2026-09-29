@@ -46,10 +46,10 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     uk_cgt_spine_stage_transform,
 )
 from microcosm.build.uk_runtime.cgt_structure import (
-    UKCGTBandDonorStageTransform,
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
+from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -1496,11 +1496,13 @@ def _build_implementations(
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
         ),
+        "cgt_support_split": UKCGTSupportSplitStageTransform(
+            stage=stages["cgt_support_split"],
+            distribution=cgt_distribution,
+            parameters=cgt_parameters,
+        ),
         "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
             stage=stages["cgt_incidence_clone"]
-        ),
-        "cgt_band_donors": UKCGTBandDonorStageTransform(
-            stage=stages["cgt_band_donors"]
         ),
         "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
             stages["hmrc_cgt_gains_spine"],

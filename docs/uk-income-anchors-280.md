@@ -232,6 +232,14 @@ microcosm#1006, comments 5812328880 and 5814299594):
   a certified cut until the fence is settled on the #970/#979 side (bind the
   count, spread the band-donor mass over lighter rows, or cap their weight
   ratio).
+  **2026-09-29 (microcosm#1045):** settled by retiring the band-donor stage.
+  The Table 3 redraw owns every gain amount and places rows by wealth rank,
+  so the demoted donors were an artefact of drawing support by income and
+  placing it by wealth; #1045 replaces the stack with `cgt_support_split`, a
+  deterministic mass-conserving split of the wealthiest households of each
+  Table 3 income column into light copies before the incidence clone, and
+  the sub-exempt population becomes the anchor-trimmed Advani–Summers clone
+  composition (its 2030 crossing is 6,000 to 7,500 on the existing arms).
 
 ## SPI rows before the donor imputations
 

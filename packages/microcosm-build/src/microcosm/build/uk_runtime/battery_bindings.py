@@ -1623,6 +1623,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_relative_composition_error",
                 "maximum_pair_relative_error",
                 "minimum_pair_count",
+                # #1045 cgt_support_split stage-health check: the split rule's
+                # declared constants and the conservation tolerance.
+                "clone_split_factor",
+                "headroom",
+                "maximum_copy_weight",
+                "maximum_relative_mass_deviation",
                 # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
                 # reserved bands and the donors each must carry.
                 "band_lower_bounds",

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import math
 from collections.abc import Mapping
-from importlib.resources import files
 
 import numpy as np
 
@@ -49,8 +47,8 @@ def uk_stage_health_gate(
         return _source_signal_gate(stage, evidence, parameters)
     if check == "age_tail_targets":
         return _age_tail_targets_gate(stage, evidence, parameters)
-    if check == "cgt_band_donor_support":
-        return _cgt_band_donor_support_gate(stage, evidence, parameters)
+    if check == "cgt_support_split":
+        return _cgt_support_split_gate(stage, evidence, parameters)
     if check == "spi_income_band_donor_support":
         return _spi_income_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
@@ -898,46 +896,161 @@ def _age_tail_targets_gate(
     )
 
 
-def _cgt_band_donor_support_gate(
+def _cgt_support_split_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    check = "cgt_band_donor_support"
-    resource_name = str(parameters["support_bounds_resource"])
-    resource = json.loads(files(_UK_PACKAGE).joinpath(resource_name).read_text())
-    bounds = _mapping(resource.get("bounds"), label=f"{resource_name}.bounds")
-    lower, upper = bounds["capital_gains"]
-    global_lower = _finite_number(lower, label="capital_gains.lower")
-    bands = evidence.get("bands")
-    if not isinstance(bands, list | tuple):
-        raise ValueError(f"{stage}.bands must be a list.")
+    """The support split conserved mass, capped every copy and met its rule.
+
+    Exhaustion is a recorded regime, not a failure (microcosm#1045): a column
+    whose pool is lighter than its support mass selects the whole pool and
+    says so. The split assigns no value, so nothing distributional is held.
+    """
+
+    check = "cgt_support_split"
+    clone_split_factor = _finite_number(
+        parameters["clone_split_factor"], label=f"{stage}.clone_split_factor"
+    )
+    headroom = _finite_number(parameters["headroom"], label=f"{stage}.headroom")
+    maximum_copy_weight = _finite_number(
+        parameters["maximum_copy_weight"], label=f"{stage}.maximum_copy_weight"
+    )
+    tolerance = _finite_number(
+        parameters["maximum_relative_mass_deviation"],
+        label=f"{stage}.maximum_relative_mass_deviation",
+    )
+    effective_tolerance = max(tolerance, _FLOAT_RELATIVE_TOLERANCE)
     failures: list[str] = []
-    for row in bands:
+
+    declared = _mapping(evidence.get("parameters"), label=f"{stage}.parameters")
+    for key, expected in (
+        ("clone_split_factor", clone_split_factor),
+        ("headroom", headroom),
+        ("maximum_copy_weight", maximum_copy_weight),
+    ):
+        value = _finite_number(declared.get(key), label=f"{stage}.parameters.{key}")
+        if value != expected:
+            failures.append(
+                f"{stage}: receipt {key} {value} differs from the gate's {expected}."
+            )
+
+    mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
+    old_total = _finite_number(mass.get("old_total"), label=f"{stage}.mass.old_total")
+    new_total = _finite_number(mass.get("new_total"), label=f"{stage}.mass.new_total")
+    if old_total <= 0.0 or new_total <= 0.0:
+        failures.append(f"{stage}: household mass must be positive before and after.")
+    deviation = abs(new_total - old_total) / max(abs(old_total), 1.0)
+    if deviation > effective_tolerance:
+        failures.append(
+            f"{stage}: household mass deviation {deviation} exceeds the effective "
+            f"tolerance {effective_tolerance}."
+        )
+
+    rows = evidence.get("bands")
+    if not isinstance(rows, list | tuple):
+        raise ValueError(f"{stage}.bands must be a list.")
+    exhausted: list[float] = []
+    sums = {
+        "support_mass": 0.0,
+        "selected_mass": 0.0,
+        "households_selected": 0,
+        "copies_created": 0,
+    }
+    heaviest_copy = 0.0
+    for row in rows:
         if not isinstance(row, Mapping):
             failures.append(f"{stage}: band row is not an object.")
             continue
-        realized_min = _finite_number(
-            row.get("realized_min_gain"), label=f"{stage}.realized_min_gain"
+        lower = _finite_number(
+            row.get("income_lower_bound"), label=f"{stage}.income_lower_bound"
         )
-        realized_max = _finite_number(
-            row.get("realized_max_gain"), label=f"{stage}.realized_max_gain"
+        published = _finite_number(
+            row.get("published_top_band_taxpayers"),
+            label=f"{stage}.published_top_band_taxpayers",
         )
-        lower_limit = _finite_number(
-            row.get("lower_limit"), label=f"{stage}.lower_limit"
+        support = _finite_number(row.get("support_mass"), label=f"{stage}.support_mass")
+        selected = _finite_number(
+            row.get("selected_mass"), label=f"{stage}.selected_mass"
         )
-        band_floor = max(global_lower, lower_limit)
-        if realized_min < band_floor:
+        pool_mass = _finite_number(row.get("pool_mass"), label=f"{stage}.pool_mass")
+        counts = {}
+        for key in ("pool_households", "households_selected", "copies_created"):
+            value = row.get(key)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{stage}.{key} must be a non-negative integer.")
+            counts[key] = value
+        heaviest_selected = _finite_number(
+            row.get("heaviest_selected_weight"),
+            label=f"{stage}.heaviest_selected_weight",
+        )
+        row_heaviest_copy = _finite_number(
+            row.get("heaviest_copy_weight"), label=f"{stage}.heaviest_copy_weight"
+        )
+        pool_exhausted = row.get("pool_exhausted")
+        if not isinstance(pool_exhausted, bool):
+            raise ValueError(f"{stage}.pool_exhausted must be a boolean.")
+        expected_support = clone_split_factor * headroom * published
+        if not np.isclose(support, expected_support, rtol=1e-12, atol=1e-9):
             failures.append(
-                f"{stage}: realized gain {realized_min} falls below {band_floor}."
+                f"{stage}: column from {lower} support mass {support} differs from "
+                f"{clone_split_factor} x {headroom} x {published}."
             )
-        if upper is not None and realized_max >= _finite_number(
-            upper, label="capital_gains.upper"
-        ):
+        if row_heaviest_copy > maximum_copy_weight * (1.0 + 1e-12):
             failures.append(
-                f"{stage}: realized gain {realized_max} exceeds open upper bound."
+                f"{stage}: column from {lower} copy weight {row_heaviest_copy} "
+                f"exceeds the maximum {maximum_copy_weight}."
             )
-    details = {"bands_checked": len(bands), "minimum_lower_limit": global_lower}
+        if pool_exhausted:
+            exhausted.append(lower)
+            if counts["households_selected"] != counts["pool_households"] or not (
+                np.isclose(selected, pool_mass, rtol=1e-12, atol=1e-9)
+            ):
+                failures.append(
+                    f"{stage}: column from {lower} is recorded as exhausted but did "
+                    "not select its whole pool."
+                )
+        elif selected + 1e-9 < support:
+            failures.append(
+                f"{stage}: column from {lower} selected mass {selected} falls short "
+                f"of its support mass {support} without recording exhaustion."
+            )
+        if heaviest_selected <= maximum_copy_weight and counts["copies_created"]:
+            failures.append(
+                f"{stage}: column from {lower} created {counts['copies_created']} "
+                "copies although no selected household exceeds the maximum weight."
+            )
+        sums["support_mass"] += support
+        sums["selected_mass"] += selected
+        sums["households_selected"] += counts["households_selected"]
+        sums["copies_created"] += counts["copies_created"]
+        heaviest_copy = max(heaviest_copy, row_heaviest_copy)
+
+    totals = _mapping(evidence.get("totals"), label=f"{stage}.totals")
+    for key in ("households_selected", "copies_created"):
+        value = totals.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value != sums[key]:
+            failures.append(
+                f"{stage}: totals.{key} {value!r} differs from the column sum "
+                f"{sums[key]}."
+            )
+    for key in ("support_mass", "selected_mass"):
+        value = _finite_number(totals.get(key), label=f"{stage}.totals.{key}")
+        if not np.isclose(value, sums[key], rtol=1e-12, atol=1e-6):
+            failures.append(
+                f"{stage}: totals.{key} {value} differs from the column sum "
+                f"{sums[key]}."
+            )
+
+    details = {
+        "columns_checked": len(rows),
+        "exhausted_columns": exhausted,
+        "households_selected": sums["households_selected"],
+        "copies_created": sums["copies_created"],
+        "heaviest_copy_weight": heaviest_copy,
+        "relative_mass_deviation": deviation,
+        "effective_relative_tolerance": effective_tolerance,
+    }
     return (
         _fail(stage, check, failures, details)
         if failures

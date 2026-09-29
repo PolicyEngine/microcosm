@@ -795,8 +795,8 @@ def build_manifest(
                 stage_name="cgt_incidence_clone",
                 candidate_source=candidate_source,
             ),
-            "cgt_band_donors": _source_stage_family_coverage_contract(
-                stage_name="cgt_band_donors",
+            "cgt_support_split": _source_stage_family_coverage_contract(
+                stage_name="cgt_support_split",
                 candidate_source=candidate_source,
             ),
             "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
@@ -911,14 +911,10 @@ def _source_stage_family_coverage_contract(
             "assert the mass was conserved."
         )
     required_mass_change_reason = declared_reasons[-1]
-    mass_change_semantics = (
-        "mass_increasing_support"
-        if any(
-            operation.get("kind") == "stack_band_donor_households"
-            for operation in operations
-        )
-        else "mass_conserving"
-    )
+    # Every spine stage conserves household mass since microcosm#1045 retired
+    # the band-donor stack; the validator keeps ``mass_increasing_support``
+    # only until the SPI income-band donors follow (microcosm#1063).
+    mass_change_semantics = "mass_conserving"
     return {
         "status": "required_at_build",
         "stage": stage_name,

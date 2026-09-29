@@ -49,8 +49,8 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {
         "spi_support_channel",
         "spi_income_band_donors",
+        "cgt_support_split",
         "cgt_incidence_clone",
-        "cgt_band_donors",
         "cgt_incidence_anchor",
     }
 )
@@ -59,7 +59,9 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # (``Frame.stratum_mass``: household weights broadcast through membership), so
 # ``conserve`` is satisfiable only by an expansion that keeps household
 # composition fixed.  CGT cloning does (a clone is its source household at
-# half weight).  The SPI support channel does not: it stacks synthetic
+# half weight), and so does the CGT support split (every copy is its source
+# household at an equal share of its weight, microcosm#1045).  The SPI
+# support channel does not: it stacks synthetic
 # households whose person counts differ from the FRS households whose mass
 # they take over, so household mass is conserved exactly (the stage's
 # ``allocate_zero_weight_prior_mass`` declares ``conservation: exact_total``)
@@ -70,18 +72,19 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
     "spi_support_channel": "declared",
-    # Reserved income rows add their published band mass, as the CGT donors do.
+    # Reserved income rows add their published band mass (microcosm#1063 owes
+    # them the channel treatment).
     "spi_income_band_donors": "free",
+    "cgt_support_split": "conserve",
     "cgt_incidence_clone": "conserve",
-    "cgt_band_donors": "free",
     "cgt_incidence_anchor": "conserve",
 }
 
 _STRUCTURAL_WEIGHT_KIND = {
     "spi_support_channel": "importance",
     "spi_income_band_donors": "importance",
+    "cgt_support_split": "importance",
     "cgt_incidence_clone": "importance",
-    "cgt_band_donors": "importance",
     "cgt_incidence_anchor": "importance",
 }
 
@@ -267,8 +270,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
+    # The support split copies whole households, so its surface is open.
+    "cgt_support_split": None,
     "cgt_incidence_clone": None,
-    "cgt_band_donors": None,
     # The amounts redraw conditions on age and household region as well as
     # the income proxy (microcosm#725), and ranks gainers on household
     # investable wealth (microcosm#1014); all are context carriers, declared
@@ -349,7 +353,6 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 )
             ),
             ("household", "household_is_capital_gains_clone"),
-            ("household", "household_is_cgt_band_donor"),
         }
     ),
     "salary_sacrifice": None,
@@ -748,12 +751,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "uc_latent_deduction_rate", "float64"),
         _Cell("benunit", "uc_deduction_combination", "string"),
     ),
+    # The support split writes only its lineage cells: copies carry every
+    # other column of their source household unchanged (microcosm#1045).
+    "cgt_support_split": (
+        _Cell("household", "household_is_cgt_support_copy", "bool"),
+        _Cell("household", "cgt_support_copies", "int64"),
+    ),
     "cgt_incidence_clone": (
         _Cell("household", "household_is_capital_gains_clone", "bool"),
-        _Cell("person", "capital_gains", "float64"),
-    ),
-    "cgt_band_donors": (
-        _Cell("household", "household_is_cgt_band_donor", "bool"),
         _Cell("person", "capital_gains", "float64"),
     ),
     "hmrc_cgt_gains_spine": (_Cell("person", "capital_gains", "float64"),),

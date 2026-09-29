@@ -367,44 +367,155 @@ def test_source_signal_structural_zero_parameter_is_live() -> None:
     ).passed
 
 
-def test_cgt_band_donor_support_handles_open_upper_bound() -> None:
-    evidence = {
-        "stage": "cgt_band_donors",
-        "bands": [
+def _support_split_receipt() -> dict[str, object]:
+    """A licensed-scale support split receipt: every column met its rule."""
+
+    published = {0: 17_000.0, 37_700: 5_000.0, 50_000: 11_000.0, 100_000: 3_000.0}
+    rows = []
+    for lower, count in published.items():
+        support = 2 * 2.0 * count
+        rows.append(
             {
-                "lower_limit": 12300.0,
-                "donor_count": 1,
-                "realized_min_gain": 12300.0,
-                "realized_max_gain": 1_000_000_000.0,
+                "income_lower_bound": float(lower),
+                "published_top_band_taxpayers": count,
+                "suppressed_cells": 1 if lower == 100_000 else 0,
+                "support_mass": support,
+                "pool_households": 4_000,
+                "pool_mass": 4_000_000.0,
+                "households_selected": 70,
+                "copies_created": 1_120,
+                "selected_mass": support + 500.0,
+                "wealth_threshold": 2_500_000.0,
+                "heaviest_selected_weight": 1_900.0,
+                "heaviest_copy_weight": 59.4,
+                "pool_exhausted": False,
             }
-        ],
-    }
-    parameters = {
-        "stage": "cgt_band_donors",
-        "check": "cgt_band_donor_support",
-        "support_bounds_resource": "cgt_band_donor_support_bounds.json",
-    }
-
-    assert _passed(
-        uk_stage_health_gate(
-            evidence=evidence,
-            stage="cgt_band_donors",
-            check="cgt_band_donor_support",
-            parameters=parameters,
         )
+    return {
+        "stage": "cgt_support_split",
+        "bands": rows,
+        "totals": {
+            "published_top_band_taxpayers": sum(published.values()),
+            "suppressed_cells": 1,
+            "support_mass": sum(row["support_mass"] for row in rows),
+            "households_selected": 280,
+            "copies_created": 4_480,
+            "selected_mass": sum(row["selected_mass"] for row in rows),
+            "households_before": 26_768,
+            "households_after": 31_248,
+            "zero_weight_excluded": 0,
+        },
+        "mass": {"old_total": 29_422_433.0, "new_total": 29_422_433.0},
+        "parameters": {
+            "clone_split_factor": 2,
+            "headroom": 2.0,
+            "maximum_copy_weight": 60.0,
+        },
+    }
+
+
+_SUPPORT_SPLIT_PARAMETERS = {
+    "stage": "cgt_support_split",
+    "check": "cgt_support_split",
+    "clone_split_factor": 2,
+    "headroom": 2.0,
+    "maximum_copy_weight": 60.0,
+    "maximum_relative_mass_deviation": 1e-9,
+}
+
+
+def _support_split_gate(evidence: dict[str, object]):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="cgt_support_split",
+        check="cgt_support_split",
+        parameters=_SUPPORT_SPLIT_PARAMETERS,
     )
 
-    failed = uk_stage_health_gate(
-        evidence={
-            **evidence,
-            "bands": [{**evidence["bands"][0], "realized_min_gain": 12_299.0}],
-        },
-        stage="cgt_band_donors",
-        check="cgt_band_donor_support",
-        parameters=parameters,
+
+def test_cgt_support_split_gate_passes_a_conforming_receipt() -> None:
+    result = _support_split_gate(_support_split_receipt())
+
+    assert _passed(result)
+    assert result.details["exhausted_columns"] == []
+    assert result.details["copies_created"] == 4_480
+
+
+def test_cgt_support_split_gate_tolerates_a_recorded_exhausted_column() -> None:
+    """A column lighter than its support mass selects its whole pool and says so."""
+
+    evidence = _support_split_receipt()
+    rows = [dict(row) for row in evidence["bands"]]
+    rows[-1].update(
+        {
+            "pool_households": 3,
+            "pool_mass": 4.5,
+            "households_selected": 3,
+            "copies_created": 0,
+            "selected_mass": 4.5,
+            "heaviest_selected_weight": 1.7,
+            "heaviest_copy_weight": 1.7,
+            "pool_exhausted": True,
+        }
     )
-    assert failed.passed is False
-    assert "falls below" in failed.failures[0]
+    totals = dict(evidence["totals"])
+    totals["households_selected"] = 210 + 3
+    totals["copies_created"] = 3_360
+    totals["selected_mass"] = sum(row["selected_mass"] for row in rows)
+    result = _support_split_gate({**evidence, "bands": rows, "totals": totals})
+
+    assert _passed(result)
+    assert result.details["exhausted_columns"] == [100_000.0]
+
+
+@pytest.mark.parametrize(
+    "mutate,fragment",
+    [
+        (
+            lambda e: e["mass"].__setitem__("new_total", 29_422_433.0 * (1 + 1e-6)),
+            "mass deviation",
+        ),
+        (
+            lambda e: e["bands"][0].__setitem__("heaviest_copy_weight", 60.5),
+            "exceeds the maximum",
+        ),
+        (
+            lambda e: e["bands"][0].__setitem__("support_mass", 68_001.0),
+            "differs from",
+        ),
+        (
+            lambda e: e["bands"][1].__setitem__("selected_mass", 19_000.0),
+            "falls short",
+        ),
+        (
+            lambda e: e["bands"][2].__setitem__("pool_exhausted", True),
+            "did not select its whole pool",
+        ),
+        (
+            lambda e: e["totals"].__setitem__("copies_created", 4_481),
+            "differs from the column sum",
+        ),
+        (
+            lambda e: e["parameters"].__setitem__("headroom", 1.5),
+            "differs from the gate's",
+        ),
+    ],
+)
+def test_cgt_support_split_gate_fails_closed(mutate, fragment: str) -> None:
+    evidence = _support_split_receipt()
+    mutate(evidence)
+    result = _support_split_gate(evidence)
+
+    assert result.passed is False
+    assert fragment in " ".join(result.failures)
+
+
+def test_cgt_support_split_gate_refuses_a_missing_field() -> None:
+    evidence = _support_split_receipt()
+    del evidence["bands"][0]["heaviest_copy_weight"]
+
+    with pytest.raises(ValueError, match="heaviest_copy_weight"):
+        _support_split_gate(evidence)
 
 
 def test_age_tail_relative_deviation_parameter_is_live() -> None:

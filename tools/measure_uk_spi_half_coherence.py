@@ -147,7 +147,7 @@ def split_halves(
             column
             for column in (
                 "household_is_capital_gains_clone",
-                "household_is_cgt_band_donor",
+                "household_is_cgt_support_copy",
             )
             if column in household.columns
         ]

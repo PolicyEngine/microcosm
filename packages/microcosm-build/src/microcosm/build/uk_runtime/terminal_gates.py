@@ -177,6 +177,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
     "household.cash_isa",
+    # #1045: the CGT support split's family copy count.
+    "household.cgt_support_copies",
     "household.clone_index",
     "household.constituency_code_oa",
     "household.consumer_debt",
@@ -187,7 +189,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.geography_household_key",
     "household.has_fuel_consumption",
     "household.household_is_capital_gains_clone",
-    "household.household_is_cgt_band_donor",
+    "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",
     "household.household_is_spi_synthetic",
     # #930: the NTS bus-travel stage's household journey cell.

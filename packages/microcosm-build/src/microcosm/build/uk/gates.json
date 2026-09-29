@@ -433,17 +433,20 @@
       "notes": "Stage-time conservation gate over the CGT incidence clone receipt."
     },
     {
-      "id": "uk_stage_cgt_band_donors_support",
+      "id": "uk_stage_cgt_support_split_mass",
       "gate": "stage_health",
       "phase": "transferred",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
       "parameters": {
-        "stage": "cgt_band_donors",
-        "check": "cgt_band_donor_support",
-        "support_bounds_resource": "cgt_band_donor_support_bounds.json"
+        "stage": "cgt_support_split",
+        "check": "cgt_support_split",
+        "clone_split_factor": 2,
+        "headroom": 2.0,
+        "maximum_copy_weight": 60.0,
+        "maximum_relative_mass_deviation": 1e-09
       },
-      "notes": "Stage-time donor-support gate for cgt_band_donors. The cgt_band_donor_support_bounds.json semantic_fit_note says these intervals describe donor-stage initial support and that terminal support-gate applicability requires reviewer confirmation, so this entry deliberately gates the donor stage rather than uk_support."
+      "notes": "Stage-time gate over the CGT support split receipt (microcosm#1045). Total household mass is conserved to the declared deviation; every copy weighs at most the declared maximum; each income column's support mass equals clone_split_factor x headroom x the published count of gainers at or above GBP 250,000 in that column; the selected mass covers the support mass unless the column's pool is exhausted, in which case the whole pool is selected and the exhaustion is recorded rather than refused (five of six columns exhaust on the synthetic smoke fixture). The split supplies row support at the top of the gains distribution for the Table 3 redraw and assigns no value, so it holds no distributional threshold."
     },
     {
       "id": "uk_stage_spi_income_band_donors_support",
@@ -729,6 +732,7 @@
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
           "household.cash_isa",
+          "household.cgt_support_copies",
           "household.clone_index",
           "household.constituency_code_oa",
           "household.consumer_debt",
@@ -739,7 +743,7 @@
           "household.geography_household_key",
           "household.has_fuel_consumption",
           "household.household_is_capital_gains_clone",
-          "household.household_is_cgt_band_donor",
+          "household.household_is_cgt_support_copy",
           "household.household_is_spi_income_band_donor",
           "household.household_is_spi_synthetic",
           "household.household_local_bus_trips",

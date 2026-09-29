@@ -159,7 +159,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "sample_categorical_from_count_table",
         "replace_sentinels",
         "split_component_by_share",
-        "stack_band_donor_households",
+        "split_top_wealth_support_households",
         "stack_income_band_donor_households",
         "stack_zero_weight_donors",
         "strict_read_private_table",

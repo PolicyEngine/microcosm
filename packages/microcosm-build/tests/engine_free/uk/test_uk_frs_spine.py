@@ -2301,7 +2301,7 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "uc_deduction_random_draw": 0,
         "uc_deduction_type_random_draw": 0,
     }
-    assert declared["cgt_band_donors"] == {"stack_band_donor_households": 1}
+    assert "cgt_support_split" not in declared
     assert declared["spi_income_band_donors"] == {
         "stack_income_band_donor_households": 3
     }
@@ -2339,8 +2339,8 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
             return {"evidence": self.payload}
 
     e8_payloads = {
+        "cgt_support_split": {"stage": "cgt_support_split", "rows": 2},
         "cgt_incidence_clone": {"stage": "cgt_incidence_clone", "rows": 1},
-        "cgt_band_donors": {"stage": "cgt_band_donors", "rows": 2},
         "salary_sacrifice": {"stage": "salary_sacrifice", "rows": 3},
         "student_loans": {"stage": "student_loans", "rows": 4},
         "age_tail": {"stage": "age_tail", "rows": 5},
@@ -2369,8 +2369,8 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
         "hmrc_spi_income_spine": _CheckpointStage(
             spi_payloads["hmrc_spi_income_spine"]
         ),
+        "cgt_support_split": _CheckpointStage(e8_payloads["cgt_support_split"]),
         "cgt_incidence_clone": _CheckpointStage(e8_payloads["cgt_incidence_clone"]),
-        "cgt_band_donors": _CheckpointStage(e8_payloads["cgt_band_donors"]),
         "salary_sacrifice": _CheckpointStage(e8_payloads["salary_sacrifice"]),
         "student_loans": SimpleNamespace(
             last_result=_EvidenceResult(e8_payloads["student_loans"])
@@ -2385,8 +2385,8 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
             "frs_hmrc_spine_leaves",
             "spi_support_channel",
             "hmrc_spi_income_spine",
+            "cgt_support_split",
             "cgt_incidence_clone",
-            "cgt_band_donors",
             "salary_sacrifice",
             "student_loans",
             "age_tail",
@@ -2404,8 +2404,8 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
         "frs_hmrc_spine_leaves",
         "spi_support_channel",
         "hmrc_spi_income_spine",
+        "cgt_support_split",
         "cgt_incidence_clone",
-        "cgt_band_donors",
         "salary_sacrifice",
         "student_loans",
         "age_tail",
