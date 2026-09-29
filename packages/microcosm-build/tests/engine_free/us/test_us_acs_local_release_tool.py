@@ -1253,6 +1253,96 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
     )
 
 
+def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
+    tmp_path, monkeypatch
+) -> None:
+    """The run-identity, weights and QA bindings at their real call sites.
+
+    A sparse-era checkpoint (its identity records the roles digest) round-trips
+    when every piece of evidence names the same materialization, weights and
+    bytes; an interrupted recalibration (the export's weights differ from the
+    summary's) or QA of other bytes is refused before any gate report or
+    release directory is written.
+    """
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    ckpt = args.checkpoint_dir
+    for name, content in (
+        ("target_registry.json", "{}"),
+        (module.TARGET_ROLES_FILENAME, "[]"),
+        (module.TARGET_MATRIX_FILENAME, "matrix"),
+    ):
+        (ckpt / name).write_text(content)
+    identity = {
+        "staging_sha256": module._sha256(args.staging_h5),
+        "ladder_sha256": module._sha256(args.ladder),
+        "population_cells_dropped": [],
+        "sampling": _FULL_RUNG,
+        "target_registry_sha256": module._sha256(ckpt / "target_registry.json"),
+        "target_roles_sha256": module._sha256(ckpt / module.TARGET_ROLES_FILENAME),
+        "target_matrix": {
+            "sha256": module._sha256(ckpt / module.TARGET_MATRIX_FILENAME)
+        },
+    }
+    stamp = module._run_identity_digest(identity)
+    summary = {
+        **json.loads((ckpt / "calibration_summary.json").read_text()),
+        "run_identity_sha256": stamp,
+        "weights_sha256": "w",
+    }
+    export = {
+        "staging_sha256": artifact_sha,
+        "run_identity_sha256": stamp,
+        "out_h5_sha256": artifact_sha,
+        "weights_sha256": "w",
+    }
+    qa = {
+        "plain_consumption": True,
+        "artifact_sha256": artifact_sha,
+        "per_spine": {},
+        "run_identity_sha256": stamp,
+    }
+    evidence = {
+        "run_identity.json": identity,
+        "calibration_summary.json": summary,
+        "consumer_export.json": export,
+        "spine_qa.json": qa,
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (ckpt / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+
+    # An interrupted recalibration: a new H5 and export, the old summary.
+    (ckpt / "consumer_export.json").write_text(
+        json.dumps({**export, "weights_sha256": "new"})
+    )
+    with pytest.raises(SystemExit, match="describe different weights"):
+        module.do_finalize(args)
+    assert not args.gate_report.exists()
+    (ckpt / "consumer_export.json").write_text(json.dumps(export))
+
+    module.do_finalize(args)
+    assert json.loads(args.out_summary.read_text())["simulation_ready"] is True
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+
+    # QA of the wrong materialization: package refuses before any release dir.
+    (ckpt / "spine_qa.json").write_text(
+        json.dumps({**qa, "run_identity_sha256": "old"})
+    )
+    with pytest.raises(SystemExit, match="another materialization"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    (ckpt / "spine_qa.json").write_text(json.dumps(qa))
+
+    result = module.do_package(args)
+    assert result["root_artifact"]["sha256"] == artifact_sha
+
+
 def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
