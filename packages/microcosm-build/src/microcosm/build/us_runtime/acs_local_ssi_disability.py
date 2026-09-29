@@ -50,10 +50,10 @@ unchanged.
   depends only on the build seed and their own record, never on row order,
   the number of rows filled or the donor spine.
 
-SSI take-up is not seeded here: on ACS rows it still ships at the engine
-default, universal take-up (reviewed limitation acs_take_up_engine_defaults),
-so every ACS person who meets these criteria and is otherwise eligible takes
-SSI up until the take-up stage lands (microcosm#1022).
+SSI take-up is not seeded here: the release tool's materialize assigns it on
+the ACS rows against these criteria, after an engine pre-pass
+(:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`,
+microcosm#1022).
 """
 
 from __future__ import annotations

@@ -116,6 +116,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # Legacy local-lane ACS-row SSI disability-criteria fill and
         # per-origin gate (#1022); exact boundary functions are pinned below.
         "acs_local_ssi_disability.py",
+        # Legacy local-lane ACS-row SSI/Medicaid take-up assignment, recorded
+        # re-application and per-origin gate (#1022); exact boundary
+        # functions are pinned below.
+        "acs_local_ssi_medicaid_take_up.py",
         # Owner-approved release boundary: exact raw ACS join and receipt.
         "acs_release_predictors.py",
         "base_pool.py",  # Legacy late-spine assembly.
@@ -262,6 +266,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane SSI disability-criteria fill and release gate
         # (#1022); outside the registry.
         "acs_local_ssi_disability.py",
+        # Legacy local-lane SSI/Medicaid take-up assignment and release gate
+        # (#1022); outside the registry.
+        "acs_local_ssi_medicaid_take_up.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
@@ -3592,6 +3599,47 @@ def test_acs_local_ssi_disability_provenance_is_limited_to_reviewed_boundaries()
     boundaries = (
         "acs_local_ssi_disability_signal_gate",
         "with_acs_local_ssi_disability_criteria",
+    )
+    assert (
+        tuple(
+            sorted(
+                caller for caller, _line in _function_callers(source, "spine_column")
+            )
+        )
+        == boundaries
+    )
+    tree = ast.parse(source)
+    remaining = ast.Module(
+        body=[
+            node
+            for node in tree.body
+            if not (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name in boundaries
+            )
+        ],
+        type_ignores=[],
+    )
+    assert not _source_spine_accesses(ast.unparse(remaining))
+
+
+def test_acs_local_ssi_medicaid_take_up_provenance_is_limited_to_reviewed_boundaries() -> (
+    None
+):
+    """Pin the ACS-row SSI/Medicaid take-up boundaries (#1022).
+
+    The band and state assignment helpers, draw keys, receipt grading and
+    digest read no origin tag; only the stage and the recorded re-application
+    (which select ACS rows), the assignment export and the release gate do,
+    each once, at person grain.
+    """
+
+    source = (_US_RUNTIME / "acs_local_ssi_medicaid_take_up.py").read_text()
+    boundaries = (
+        "acs_local_ssi_medicaid_take_up_assignment",
+        "acs_local_ssi_medicaid_take_up_signal_gate",
+        "with_acs_local_ssi_medicaid_take_up",
+        "with_recorded_acs_local_ssi_medicaid_take_up",
     )
     assert (
         tuple(
