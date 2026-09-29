@@ -634,11 +634,13 @@ def _check_district_rows_against_parents(
         if not np.array_equal(rebuilt, direct):
             outside = np.flatnonzero(~written & (direct != 0))
             if len(outside):
+                household_ids = target_households["household_id"].to_numpy()
                 raise RuntimeError(
-                    f"{len(outside)} household(s) (chunk positions "
-                    f"{outside[:5].tolist()}) carry {parent_name} but sit in no "
-                    "district of its block: their congressional district is "
-                    "not one of their state's current-plan districts."
+                    f"{len(outside)} household(s) (household_id "
+                    f"{household_ids[outside[:5]].tolist()}) carry {parent_name} "
+                    "but sit in no district of its block: their congressional "
+                    "district is not one of their state's current-plan "
+                    "districts, or the block is missing that district's row."
                 )
             differing = int((rebuilt != direct).sum())
             raise RuntimeError(

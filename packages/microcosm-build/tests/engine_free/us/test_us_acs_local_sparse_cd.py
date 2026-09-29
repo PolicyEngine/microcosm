@@ -451,7 +451,8 @@ def test_households_outside_their_states_block_are_named(monkeypatch, tmp_path) 
     specs = [
         spec for spec in _parented_surface_specs(fixtures) if spec.name != "cd_0602_agi"
     ]
-    with pytest.raises(RuntimeError, match="sit in no district of its block"):
+    # Household 3 is the CA household in district 0602, whose row is missing.
+    with pytest.raises(RuntimeError, match=r"household_id \[3\]\) carry state_06_agi"):
         _materialize(
             module, fixtures, release, monkeypatch, tmp_path, specs, hh_chunk=5
         )
