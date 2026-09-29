@@ -29,8 +29,10 @@ from typing import Any
 
 from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.release_input_coverage import (
+    ListParameterEdit,
     ReformCoverageProbe,
     installed_list_parameter_baseline,
+    list_parameter_baseline,
     resolve_probe_parameter_changes,
     us_release_reform_coverage_probes,
 )
@@ -54,12 +56,14 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
     A list edit resolves against the installed PolicyEngine-US baseline here,
     so an edit that no longer fits that baseline fails before anything is
     scored. The returned reform also re-reads each edited list from the system
-    it is applied to and refuses to apply if that baseline differs from the one
-    the edit was resolved against, so the resolved list can only replace the
+    it is applied to, over the edit's whole period, and refuses to apply
+    unless that list is the baseline the edit was resolved against or already
+    the reform's own resolution, so the resolved list can only replace the
     baseline it was derived from.
 
     Raises:
-        ValueError: If a list edit does not fit the installed baseline.
+        ValueError: Naming the probe, if a list edit does not fit the installed
+            baseline.
     """
     from policyengine_core.reforms import Reform
 
@@ -78,28 +82,41 @@ def _build_reform(probe: ReformCoverageProbe) -> Any:
     if not probe.list_edits:
         return Reform.from_dict(dict(probe.parameter_changes), country_id="us")
 
-    baselines = {
-        path: installed_list_parameter_baseline(path, edit)
-        for path, edit in probe.list_edits.items()
-    }
-    changes = resolve_probe_parameter_changes(probe, lambda path, edit: baselines[path])
+    baselines: dict[str, list[str]] = {}
+
+    def installed_baseline(path: str, edit: ListParameterEdit) -> list[str]:
+        baselines[path] = installed_list_parameter_baseline(path, edit)
+        return baselines[path]
+
+    changes = resolve_probe_parameter_changes(probe, installed_baseline)
     resolved = Reform.from_dict(changes, country_id="us")
     probe_id, list_edits = probe.id, dict(probe.list_edits)
+    resolved_lists = {
+        path: list(changes[path][edit.period]) for path, edit in list_edits.items()
+    }
 
     class _ResolvedListEdits(resolved):
-        resolved_list_edits = {
-            path: list(changes[path][edit.period]) for path, edit in list_edits.items()
-        }
+        resolved_list_edits = resolved_lists
 
         def apply(self) -> None:
+            # PolicyEngine-US applies a reform set more than once while it
+            # builds a system (CountryTaxBenefitSystem applies it before and
+            # after backdating parameters), so a list that already holds this
+            # reform's resolution is re-applied as a no-op.
             for path, edit in list_edits.items():
-                applied_to = list(self.parameters.get_child(path)(edit.start))
-                if applied_to != baselines[path]:
+                try:
+                    applied_to = list_parameter_baseline(self.parameters, path, edit)
+                except ValueError as error:
+                    raise ValueError(
+                        f"reform-coverage probe {probe_id!r}: {error}"
+                    ) from error
+                if applied_to not in (baselines[path], resolved_lists[path]):
                     raise ValueError(
                         f"reform-coverage probe {probe_id!r}: {path} was resolved "
                         f"against the baseline {baselines[path]} but the system "
-                        f"it is applied to holds {applied_to} at {edit.start}; "
-                        "the resolved list would revert that difference."
+                        f"it is applied to holds {applied_to} over "
+                        f"{edit.period}; the resolved list would revert that "
+                        "difference."
                     )
             resolved.apply(self)
 
@@ -190,7 +207,11 @@ def us_reform_coverage_smoke_gate(
                     "period": edit.period,
                     "remove": list(edit.remove),
                     "add": list(edit.add),
-                    "resolved": resolved_lists.get(path),
+                    "resolved": (
+                        None
+                        if resolved_lists.get(path) is None
+                        else list(resolved_lists[path])
+                    ),
                 }
                 for path, edit in probe.list_edits.items()
             }

@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import functools
 import json
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
@@ -352,8 +353,16 @@ class ReleaseInputColumn:
                 )
 
 
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
 def _iso_date(text: str) -> date | None:
-    if len(text) != 10:
+    """``text`` as a calendar date if it is exactly ``YYYY-MM-DD``, else None.
+
+    The pattern comes first because ``date.fromisoformat`` also accepts ISO
+    week dates (``2024-W01-1``), which would not order as instant strings.
+    """
+    if not _ISO_DATE.fullmatch(text):
         return None
     try:
         return date.fromisoformat(text)
@@ -470,48 +479,68 @@ def resolve_list_parameter_edit(
     return [item for item in items if item not in removed] + list(edit.add)
 
 
+def _is_list(value: Any) -> bool:
+    return not isinstance(value, (str, bytes)) and isinstance(value, Sequence)
+
+
 def list_parameter_baseline(
     parameters: Any, path: str, edit: ListParameterEdit
 ) -> list[str]:
-    """Read the baseline list a ``policyengine-core`` parameter tree holds.
+    """Read the list a ``policyengine-core`` parameter tree holds over an edit.
 
     Args:
         parameters: The root parameter node of a tax-benefit system.
         path: The list-valued parameter's dotted path.
-        edit: The edit whose period the baseline must span.
+        edit: The edit whose period the list must span.
 
     Returns:
-        The baseline list at ``edit.start``.
+        The list at ``edit.start``.
 
     Raises:
-        ValueError: If ``path`` is not a list-valued parameter, or its baseline
-            changes inside ``edit.period`` (no single baseline to edit, so the
-            edit must be split at the change).
+        ValueError: If ``path`` is not a leaf parameter, a value it takes inside
+            ``edit.period`` is not a list, or the list changes inside the
+            period (no single baseline to edit, so the edit must be split at
+            each change, all of which the message names in date order).
     """
     try:
         parameter = parameters.get_child(path)
     except ValueError as error:
-        raise ValueError(
-            f"{path}: not a parameter of the installed engine ({error})."
-        ) from error
+        raise ValueError(f"{path}: not a parameter of the engine ({error}).") from error
     if not callable(parameter) or not hasattr(parameter, "values_list"):
-        raise ValueError(f"{path}: not a leaf parameter of the installed engine.")
+        raise ValueError(f"{path}: not a leaf parameter of the engine.")
     baseline = parameter(edit.start)
-    if isinstance(baseline, (str, bytes)) or not isinstance(baseline, Sequence):
+    if not _is_list(baseline):
         raise ValueError(
-            f"{path}: baseline value {baseline!r} at {edit.start} is not a list; "
-            "list edits apply only to list-valued parameters."
+            f"{path}: value {baseline!r} at {edit.start} is not a list; list "
+            "edits apply only to list-valued parameters."
         )
-    for value_at in parameter.values_list:
-        instant = str(value_at.instant_str)
-        if edit.start < instant <= edit.stop and list(parameter(instant)) != list(
-            baseline
-        ):
+    breakpoints = sorted(
+        {
+            str(value_at.instant_str)
+            for value_at in parameter.values_list
+            if edit.start < str(value_at.instant_str) <= edit.stop
+        }
+    )
+    changes: list[str] = []
+    previous = list(baseline)
+    for instant in breakpoints:
+        value = parameter(instant)
+        if not _is_list(value):
             raise ValueError(
-                f"{path}: the baseline list changes at {instant}, inside the "
-                f"list edit period {edit.period}; split the edit at {instant} "
-                "so each part edits one baseline."
+                f"{path}: value {value!r} at {instant}, inside the list edit "
+                f"period {edit.period}, is not a list; list edits apply only "
+                "to list-valued parameters."
             )
+        if list(value) != previous:
+            changes.append(instant)
+        previous = list(value)
+    if changes:
+        raise ValueError(
+            f"{path}: the list changes at {', '.join(changes)}, inside the list "
+            f"edit period {edit.period}; split the edit at "
+            + ("that instant" if len(changes) == 1 else "each of those instants")
+            + " so each part edits one baseline."
+        )
     return list(baseline)
 
 
@@ -533,6 +562,15 @@ def installed_list_parameter_baseline(path: str, edit: ListParameterEdit) -> lis
         ValueError: As :func:`list_parameter_baseline`.
     """
     return list_parameter_baseline(_installed_parameters(), path, edit)
+
+
+def _pins_a_list(value: Any) -> bool:
+    """Whether a ``parameter_changes`` entry holds a list at any depth."""
+    if isinstance(value, (list, tuple)):
+        return True
+    if isinstance(value, Mapping):
+        return any(_pins_a_list(item) for item in value.values())
+    return False
 
 
 @dataclass(frozen=True)
@@ -599,9 +637,13 @@ class ReformCoverageProbe:
                 f"{self.id}: provide exactly one of parameter changes "
                 "(parameter_changes and/or list_edits) or neutralized_variable."
             )
+        if not isinstance(self.list_edits, Mapping):
+            raise ValueError(
+                f"{self.id}: list_edits must map parameter paths to "
+                "ListParameterEdit values."
+            )
         for path, periods in self.parameter_changes.items():
-            values = periods.values() if isinstance(periods, Mapping) else (periods,)
-            if any(isinstance(value, (list, tuple)) for value in values):
+            if _pins_a_list(periods):
                 raise ValueError(
                     f"{self.id}: parameter_changes pins a whole list for {path}. "
                     "A pinned list reverts any later engine change to it (the "
@@ -610,6 +652,11 @@ class ReformCoverageProbe:
                     "engine's baseline."
                 )
         for path, edit in self.list_edits.items():
+            if not isinstance(path, str) or not path:
+                raise ValueError(
+                    f"{self.id}: list_edits keys must be non-empty parameter "
+                    f"paths, got {path!r}."
+                )
             if not isinstance(edit, ListParameterEdit):
                 raise ValueError(
                     f"{self.id}: list_edits[{path!r}] must be a ListParameterEdit."

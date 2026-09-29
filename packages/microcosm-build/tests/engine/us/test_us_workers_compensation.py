@@ -116,15 +116,22 @@ def test_policyengine_us_2_2_1_contract_and_positive_annual_behavior() -> None:
 
 
 def test_shipped_snap_exclusion_probe_binds_with_positive_sign() -> None:
-    from policyengine_core.reforms import Reform
+    from datetime import date, timedelta
+
     from policyengine_us import CountryTaxBenefitSystem, Simulation
+
+    from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
     probe = next(
         probe
         for probe in us_release_reform_coverage_probes()
         if probe.id == "workers_compensation_snap_exclusion"
     )
-    reform = Reform.from_dict(dict(probe.parameter_changes), country_id="us")
+    edit = probe.list_edits[_SNAP_UNEARNED_SOURCES]
+    # The smoke's own reform, its list edit resolved on the installed engine,
+    # applied the way the release scorer builds a reform system.
+    reform = _build_reform(probe)
+    reformed_system = CountryTaxBenefitSystem(reform=(reform,))
     situation = {
         "people": {
             "adult": {
@@ -149,10 +156,31 @@ def test_shipped_snap_exclusion_probe_binds_with_positive_sign() -> None:
         },
     }
     baseline = Simulation(situation=situation)
-    reformed = Simulation(
-        tax_benefit_system=CountryTaxBenefitSystem(reform=(reform,)),
-        situation=situation,
+    reformed = Simulation(tax_benefit_system=reformed_system, situation=situation)
+
+    # Not a no-op: over the edit period the reformed engine counts every
+    # baseline source but workers' compensation, and outside it the baseline.
+    parameters = baseline.tax_benefit_system.parameters
+    sources = parameters.get_child(_SNAP_UNEARNED_SOURCES)
+    reformed_sources = reformed_system.parameters.get_child(_SNAP_UNEARNED_SOURCES)
+    assert _OUTPUT in sources(edit.start)
+    expected = [source for source in sources(edit.start) if source != _OUTPUT]
+    assert reform.resolved_list_edits == {_SNAP_UNEARNED_SOURCES: expected}
+    for instant in (edit.start, edit.stop):
+        assert list(reformed_sources(instant)) == expected
+    for instant in (
+        date.fromisoformat(edit.start) - timedelta(days=1),
+        date.fromisoformat(edit.stop) + timedelta(days=1),
+    ):
+        assert list(reformed_sources(str(instant))) == list(sources(str(instant)))
+    # A source the engine counts once per SPM unit (TANF in 2.2.1) stays on
+    # that list alone; the pinned list of 2026-09-28 re-added it per person.
+    spm_unit_path = "gov.usda.snap.income.sources.unearned_spm_unit"
+    spm_unit_sources = list(parameters.get_child(spm_unit_path)(edit.start))
+    assert spm_unit_sources == list(
+        reformed_system.parameters.get_child(spm_unit_path)(edit.start)
     )
+    assert not set(expected) & set(spm_unit_sources)
 
     effect = reformed.calculate("snap", 2024)[0] - baseline.calculate("snap", 2024)[0]
     assert effect > 1_000.0
