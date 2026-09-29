@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+import json
 from types import SimpleNamespace
 
 import numpy as np
@@ -20,6 +22,7 @@ from microcosm.build.uk_runtime.was_lisa import (
     UK_WAS_LISA_MASS_CONSERVATION_REASON,
     UK_WAS_LISA_OUTPUT_COLUMNS,
     UK_WAS_LISA_STAGE_NAME,
+    UK_WAS_LISA_SUPPORT_CLIP_COLUMNS,
     BalanceModelSpec,
     OwnershipModelSpec,
     UKWASLISAStageTransform,
@@ -33,7 +36,10 @@ from microcosm.build.uk_runtime.was_lisa import (
     recipient_predictors,
 )
 from microcosm.build.uk_runtime.was_wealth import UK_WAS_ENGINE_PREDICTOR_ENTITIES
+from test_support.paths import paths_for
 from tools.graph_uk_spine_fixture import _was_donor, _was_person_donor
+
+_PATHS = paths_for("microcosm-build")
 
 #: The declared operation parameters (the committed manifest carries these).
 CLEAN = {
@@ -635,3 +641,46 @@ def test_committed_declaration_carries_the_tested_parameters() -> None:
         for artifact in was_wealth.artifacts
         if artifact["role"] == "was_qrf_donor"
     )
+
+
+def _bounds_tool():
+    path = _PATHS.repository / "tools/build_uk_was_lisa_support_bounds.py"
+    spec = importlib.util.spec_from_file_location(
+        "build_uk_was_lisa_support_bounds", path
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_support_bounds_round_the_credible_range_outward() -> None:
+    payload = _bounds_tool().support_bounds_payload(
+        _was_person_donor(),
+        _was_donor(),
+        columns=_columns(),
+        household_tab_sha256="a" * 64,
+        person_tab_sha256="b" * 64,
+    )
+
+    # The synthetic credible holders hold GBP 5-24 (the household-6 holder is
+    # recoded by the age rule), so the one-significant-figure bounds are 0-30.
+    assert payload["bounds"] == {BALANCE_COLUMN: [0.0, 30]}
+    assert payload["source"]["person_tab_sha256"] == "b" * 64
+
+
+def test_committed_support_bounds_match_the_stage_pins() -> None:
+    resource = (
+        _PATHS.package / "src/microcosm/build/uk" / "was_lisa_support_bounds.json"
+    )
+    payload = json.loads(resource.read_text(encoding="utf-8"))
+    stage = load_country_spec("uk").sources.stage_map()[UK_WAS_LISA_STAGE_NAME]
+    pins = {artifact["role"]: artifact["sha256"] for artifact in stage.artifacts}
+
+    assert set(payload["bounds"]) == set(UK_WAS_LISA_SUPPORT_CLIP_COLUMNS)
+    assert payload["source"]["household_tab_sha256"] == pins["was_qrf_donor"]
+    assert payload["source"]["person_tab_sha256"] == pins["was_person_tab"]
+    low, high = payload["bounds"][BALANCE_COLUMN]
+    assert low == 0.0
+    # Outward-rounded to one significant figure: no unit-record value.
+    assert high == float(f"{high:.0e}")
