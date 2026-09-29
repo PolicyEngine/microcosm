@@ -60,6 +60,7 @@ __all__ = [
     "ACS_PERSON_TRANSFER_PREDICTORS",
     "ASEC_PUF_DONOR_SPINE",
     "AcsImputedInput",
+    "AcsPersonPredictorExtension",
     "AcsTransferBankPatternStep",
     "AcsTransferPattern",
     "AcsTransferResult",
@@ -182,6 +183,7 @@ def _pregnancy_structural_policy_identity(*, enabled: bool) -> dict[str, object]
     ).hexdigest()
     return payload
 
+
 _IMMIGRATION_STATUS_TARGETS = (
     "ssn_card_type",
     "immigration_status_str",
@@ -272,14 +274,137 @@ _TENURE_CODES: Mapping[str, float] = {
     "RENTER": 3.0,
 }
 
+#: Model-only namespace an opt-in person predictor extension must use, so it
+#: can never be mistaken for, or written as, a frame column.
+_EXTENSION_FEATURE_PREFIX = "__acs_transfer_"
+
+
+@dataclass(frozen=True)
+class AcsPersonPredictorExtension:
+    """An opt-in combined person predictor for the families one call names.
+
+    The shared transfer never uses one: every family an extension does not
+    name, and every call that passes none, keeps the shared predictors, seeds,
+    draws and execution-contract payload byte for byte. On the donor the
+    feature is the row sum of ``donor_components`` (a missing component makes
+    the row's feature missing, as for the shared combined analogs); on the
+    recipient it is the ``recipient_source`` column. With ``replaces=None``
+    the feature follows the shared optional predictors; otherwise it stands
+    in, at the same position, for that shared combined predictor.
+    """
+
+    feature: str
+    donor_components: tuple[str, ...]
+    recipient_source: str
+    families: tuple[str, ...]
+    replaces: str | None = None
+
+    def identity(self) -> dict[str, object]:
+        """The JSON-ready definition bound into the execution contract."""
+
+        return {
+            "feature": self.feature,
+            "donor_components": list(self.donor_components),
+            "recipient_source": self.recipient_source,
+            "families": list(self.families),
+            "replaces": self.replaces,
+        }
+
+
+def _distinct_names(values: object) -> bool:
+    return (
+        isinstance(values, tuple)
+        and bool(values)
+        and all(isinstance(value, str) and value.strip() for value in values)
+        and len(set(values)) == len(values)
+    )
+
+
+def _normalize_person_predictor_extensions(
+    extensions: Iterable[AcsPersonPredictorExtension] | None,
+) -> tuple[AcsPersonPredictorExtension, ...]:
+    """Validate opt-in extensions on their own; ``None`` means none."""
+
+    if extensions is None:
+        return ()
+    if isinstance(extensions, (str, bytes, AcsPersonPredictorExtension)):
+        raise TypeError(
+            "person_predictor_extensions must be a sequence of "
+            "AcsPersonPredictorExtension."
+        )
+    items = tuple(extensions)
+    reserved = {
+        *ACS_PERSON_TRANSFER_PREDICTORS,
+        *ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
+        *ACS_GROUP_TRANSFER_PREDICTORS,
+        *_GROUP_OPTIONAL_NAMES.values(),
+    }
+    features: set[str] = set()
+    for item in items:
+        if not isinstance(item, AcsPersonPredictorExtension):
+            raise TypeError(
+                "person_predictor_extensions must contain only "
+                f"AcsPersonPredictorExtension, got {type(item).__name__}."
+            )
+        feature = item.feature
+        if (
+            not isinstance(feature, str)
+            or not feature.startswith(_EXTENSION_FEATURE_PREFIX)
+            or feature == _EXTENSION_FEATURE_PREFIX
+        ):
+            raise ValueError(
+                f"ACS person predictor extension feature {feature!r} must be a "
+                f"model-only name starting with {_EXTENSION_FEATURE_PREFIX!r}."
+            )
+        if feature in reserved or feature in features:
+            raise ValueError(
+                f"ACS person predictor extension feature {feature!r} clashes "
+                "with a shared transfer predictor or another extension."
+            )
+        features.add(feature)
+        if not _distinct_names(item.donor_components):
+            raise ValueError(
+                f"ACS person predictor extension {feature!r} needs a non-empty "
+                "tuple of distinct donor component column names."
+            )
+        if not isinstance(item.recipient_source, str) or not (
+            item.recipient_source.strip()
+        ):
+            raise ValueError(
+                f"ACS person predictor extension {feature!r} needs a recipient "
+                "source column name."
+            )
+        if not _distinct_names(item.families):
+            raise ValueError(
+                f"ACS person predictor extension {feature!r} needs a non-empty "
+                "tuple of distinct family names."
+            )
+        if item.replaces is not None and item.replaces not in (
+            _DONOR_COMBINED_COMPONENTS
+        ):
+            raise ValueError(
+                f"ACS person predictor extension {feature!r} may replace only a "
+                f"shared combined predictor {sorted(_DONOR_COMBINED_COMPONENTS)}, "
+                f"not {item.replaces!r}."
+            )
+    return items
+
 
 def acs_transfer_execution_contract_identity(
     *,
     targets: Sequence[str] | None = None,
     derive_schedule_d: bool = True,
+    person_predictor_extensions: Sequence[AcsPersonPredictorExtension] | None = None,
 ) -> dict[str, object]:
-    """Bind the complete runtime predictor and target-codec contract."""
+    """Bind the complete runtime predictor and target-codec contract.
 
+    ``person_predictor_extensions`` enters the payload only when it is
+    non-empty, so every caller that uses none (the shared plan, the pool lane,
+    banked checkpoints and the spec projection) keeps the same payload and
+    SHA-256.
+    """
+
+    extensions = _normalize_person_predictor_extensions(person_predictor_extensions)
     requested_targets = frozenset(() if targets is None else targets)
     schedule_d_enabled = derive_schedule_d and bool(
         requested_targets & {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH}
@@ -341,6 +466,11 @@ def acs_transfer_execution_contract_identity(
             },
         },
     }
+    if extensions:
+        # Opt-in only: an empty extension list must not change the payload.
+        payload["person_predictor_extensions"] = [
+            extension.identity() for extension in extensions
+        ]
     payload["sha256"] = hashlib.sha256(
         json.dumps(
             payload,
@@ -1138,8 +1268,8 @@ def _prepare_pregnancy_structural_plan(
             "through 44."
         )
 
-    source_codes, group_count, key_column, representatives = (
-        _pregnancy_source_groups(table)
+    source_codes, group_count, key_column, representatives = _pregnancy_source_groups(
+        table
     )
     eligible_min = np.ones(group_count, dtype=np.int8)
     eligible_max = np.zeros(group_count, dtype=np.int8)
@@ -1305,6 +1435,7 @@ def transfer_acs_inputs(
     derive_schedule_d: bool = True,
     execution_contract: Mapping[str, object] | None = None,
     regime_evidence_targets: Iterable[tuple[str, str]] = (),
+    person_predictor_extensions: Sequence[AcsPersonPredictorExtension] | None = None,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -1336,6 +1467,16 @@ def transfer_acs_inputs(
     selection. Only those targets incur donor-regime detection, fitted-result
     verification, and pattern provenance. The default is empty so an owner
     cannot accidentally broaden every transfer's runtime or receipt contract.
+
+    ``person_predictor_extensions`` is an opt-in sequence of
+    :class:`AcsPersonPredictorExtension`: an extra (or stand-in) combined
+    person predictor for the families each one names. Families it does not
+    name, and every call that passes none, keep the shared predictors, seeds,
+    draws and execution-contract SHA-256 byte for byte; a call that uses one
+    binds it into the contract. An extension is refused on a group-entity
+    family, on a family outside the plan, on a feature name that clashes with
+    a shared predictor or another extension, when the donor lacks a component
+    and when the recipient lacks the source column.
     """
 
     _validate_frames(recipient, donor)
@@ -1344,6 +1485,7 @@ def transfer_acs_inputs(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
     )
+    extensions = _normalize_person_predictor_extensions(person_predictor_extensions)
     default_plan = target_families is None or (
         target_families == declared_acs_transfer_target_families()
     )
@@ -1355,6 +1497,12 @@ def transfer_acs_inputs(
         if target_families is not None
         else default_acs_transfer_target_families(donor),
         recipient=recipient,
+    )
+    extension_scope = _person_predictor_extension_scope(
+        requested,
+        extensions,
+        person_entity=recipient.schema.person_entity,
+        max_targets_per_fit=max_targets_per_fit,
     )
     requested = _split_large_target_families(
         requested,
@@ -1382,6 +1530,7 @@ def transfer_acs_inputs(
     resolved_execution_contract = acs_transfer_execution_contract_identity(
         targets=all_targets,
         derive_schedule_d=derive_schedule_d,
+        person_predictor_extensions=extensions,
     )
     if execution_contract is not None and dict(execution_contract) != (
         resolved_execution_contract
@@ -1449,9 +1598,7 @@ def transfer_acs_inputs(
                 person,
                 pregnancy_plan,
             )
-            pregnancy_entity, pregnancy_family, pregnancy_targets = (
-                pregnancy_request
-            )
+            pregnancy_entity, pregnancy_family, pregnancy_targets = pregnancy_request
             if pregnancy_targets != (_PREGNANCY_TARGET,):  # pragma: no cover
                 raise AssertionError(
                     "Pregnancy structural target was not isolated before receipt."
@@ -1506,6 +1653,11 @@ def transfer_acs_inputs(
         family_regime_evidence_targets = tuple(
             target for target in targets if (entity, target) in selected_regime_evidence
         )
+        family_extensions = (
+            extension_scope.get(family, ())
+            if entity == recipient.schema.person_entity
+            else ()
+        )
         recipient_table = recipient.table(entity)
         target_missing = {
             target: (
@@ -1546,6 +1698,7 @@ def transfer_acs_inputs(
                 seed=seed,
                 n_estimators=n_estimators,
                 regime_evidence_targets=family_regime_evidence_targets,
+                extensions=family_extensions,
             )
         else:
             fitted = _fit_family_patterns_banked(
@@ -1564,6 +1717,7 @@ def transfer_acs_inputs(
                 },
                 total_targets=len(ordered_bank_targets),
                 regime_evidence_targets=family_regime_evidence_targets,
+                extensions=family_extensions,
             )
         patterns_without_regimes = (
             tuple(replace(pattern, target_regimes=()) for pattern in fitted.patterns)
@@ -1957,6 +2111,7 @@ def _fit_family_patterns(
     seed: int,
     n_estimators: int,
     regime_evidence_targets: tuple[str, ...],
+    extensions: Sequence[AcsPersonPredictorExtension] = (),
 ) -> _FamilyFit:
     _validate_donor_targets(donor, entity=entity, targets=targets)
     donor_table = donor.table(entity)
@@ -1982,6 +2137,7 @@ def _fit_family_patterns(
         recipient,
         entity=entity,
         targets=targets,
+        extensions=extensions,
     )
     overlap = sorted(set(surface.required).intersection(targets))
     if overlap:
@@ -2150,6 +2306,7 @@ def _fit_family_patterns_banked(
     target_indexes: Mapping[str, int],
     total_targets: int,
     regime_evidence_targets: tuple[str, ...],
+    extensions: Sequence[AcsPersonPredictorExtension] = (),
 ) -> _FamilyFit:
     """Fit one family targetwise, resuming exact raw chained draws."""
 
@@ -2185,6 +2342,7 @@ def _fit_family_patterns_banked(
         recipient,
         entity=entity,
         targets=targets,
+        extensions=extensions,
     )
     overlap = sorted(set(surface.required).intersection(targets))
     if overlap:
@@ -2572,9 +2730,12 @@ def _transfer_feature_surface(
     *,
     entity: str,
     targets: Sequence[str],
+    extensions: Sequence[AcsPersonPredictorExtension] = (),
 ) -> _FeatureSurface:
     if entity == donor.schema.person_entity:
-        surface = _person_feature_surface(donor, recipient)
+        surface = _person_feature_surface(donor, recipient, extensions=extensions)
+    elif extensions:  # pragma: no cover - the extension scope refuses groups
+        raise AssertionError("ACS person predictor extensions reached a group family.")
     else:
         surface = _group_feature_surface(donor, recipient, entity=entity)
 
@@ -2598,7 +2759,12 @@ def _transfer_feature_surface(
     )
 
 
-def _person_feature_surface(donor: Frame, recipient: Frame) -> _FeatureSurface:
+def _person_feature_surface(
+    donor: Frame,
+    recipient: Frame,
+    *,
+    extensions: Sequence[AcsPersonPredictorExtension] = (),
+) -> _FeatureSurface:
     donor_required = _required_person_features(donor, role="donor")
     recipient_required = _required_person_features(recipient, role="recipient")
     donor_optional = _person_optional_features(donor, role="donor")
@@ -2608,6 +2774,15 @@ def _person_feature_surface(donor: Frame, recipient: Frame) -> _FeatureSurface:
         for name in ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS
         if name in donor_optional and name in recipient_optional
     )
+    if extensions:
+        donor_optional, recipient_optional, optional = _extend_person_optional(
+            donor,
+            recipient,
+            donor_optional,
+            recipient_optional,
+            shared=optional,
+            extensions=extensions,
+        )
     return _FeatureSurface(
         donor=pd.concat(
             [donor_required, donor_optional.loc[:, list(optional)]], axis=1
@@ -2618,6 +2793,73 @@ def _person_feature_surface(donor: Frame, recipient: Frame) -> _FeatureSurface:
         required=ACS_PERSON_TRANSFER_PREDICTORS,
         optional=optional,
     )
+
+
+def _extend_person_optional(
+    donor: Frame,
+    recipient: Frame,
+    donor_optional: pd.DataFrame,
+    recipient_optional: pd.DataFrame,
+    *,
+    shared: tuple[str, ...],
+    extensions: Sequence[AcsPersonPredictorExtension],
+) -> tuple[pd.DataFrame, pd.DataFrame, tuple[str, ...]]:
+    """Add one family's opt-in predictors to its shared optional surface.
+
+    A stand-in takes the position of the shared predictor it replaces; an
+    addition follows the shared predictors. An extension is explicit, so a
+    donor lacking a component or a recipient lacking the source column is
+    refused rather than silently dropped from the fit.
+    """
+
+    donor_optional = donor_optional.copy()
+    recipient_optional = recipient_optional.copy()
+    donor_person = donor.table(donor.schema.person_entity)
+    for extension in extensions:
+        missing = [
+            component
+            for component in extension.donor_components
+            if component not in donor_person.columns
+        ]
+        if missing:
+            raise ValueError(
+                f"ACS person predictor extension {extension.feature!r} needs "
+                f"donor component(s) {missing}, which the donor lacks."
+            )
+        donor_values = _complete_component_sum(
+            donor,
+            extension.donor_components,
+            feature=extension.feature,
+        )
+        if donor_values is None:  # pragma: no cover - components checked above
+            raise AssertionError("ACS extension donor components vanished.")
+        recipient_values = _person_column(recipient, extension.recipient_source)
+        if recipient_values is None:
+            raise ValueError(
+                f"ACS person predictor extension {extension.feature!r} needs "
+                f"recipient source column {extension.recipient_source!r}, which "
+                "the recipient lacks."
+            )
+        donor_optional[extension.feature] = donor_values.to_numpy()
+        recipient_optional[extension.feature] = recipient_values.to_numpy()
+    _validate_optional_numeric_frame(
+        recipient_optional.loc[:, [extension.feature for extension in extensions]],
+        context="ACS transfer recipient person predictor extensions",
+    )
+    replaced = {
+        extension.replaces: extension.feature
+        for extension in extensions
+        if extension.replaces is not None
+    }
+    ordered = tuple(
+        replaced.get(name, name)
+        for name in ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS
+        if name in replaced or name in shared
+    )
+    added = tuple(
+        extension.feature for extension in extensions if extension.replaces is None
+    )
+    return donor_optional, recipient_optional, (*ordered, *added)
 
 
 def _required_person_features(frame: Frame, *, role: str) -> pd.DataFrame:
@@ -3129,6 +3371,69 @@ def _normalize_target_families(
             if targets:
                 normalized.append((entity, family, targets))
     return normalized
+
+
+def _person_predictor_extension_scope(
+    families: Sequence[tuple[str, str, tuple[str, ...]]],
+    extensions: tuple[AcsPersonPredictorExtension, ...],
+    *,
+    person_entity: str,
+    max_targets_per_fit: int,
+) -> dict[str, tuple[AcsPersonPredictorExtension, ...]]:
+    """Map each fitted person family (batch) to the extensions naming it."""
+
+    if not extensions:
+        return {}
+    person_families = {
+        family: targets
+        for entity, family, targets in families
+        if entity == person_entity
+    }
+    group_families = {
+        family: entity
+        for entity, family, _targets in families
+        if entity != person_entity
+    }
+    scoped: dict[str, list[AcsPersonPredictorExtension]] = {}
+    for extension in extensions:
+        for family in extension.families:
+            if family not in person_families:
+                if family in group_families:
+                    raise ValueError(
+                        f"ACS person predictor extension {extension.feature!r} "
+                        f"names family {family!r} on group entity "
+                        f"{group_families[family]!r}; extensions are person "
+                        "predictors only."
+                    )
+                raise ValueError(
+                    f"ACS person predictor extension {extension.feature!r} names "
+                    f"family {family!r}, which is not a requested person family."
+                )
+            if extension.recipient_source in person_families[family]:
+                raise ValueError(
+                    f"ACS person predictor extension {extension.feature!r} reads "
+                    f"recipient source {extension.recipient_source!r}, a target of "
+                    f"family {family!r}; the source must be an observed total."
+                )
+            scoped.setdefault(family, []).append(extension)
+    scope: dict[str, tuple[AcsPersonPredictorExtension, ...]] = {}
+    for family, family_extensions in scoped.items():
+        replaced = [
+            extension.replaces
+            for extension in family_extensions
+            if extension.replaces is not None
+        ]
+        if len(replaced) != len(set(replaced)):
+            raise ValueError(
+                f"ACS transfer family {family!r} has two person predictor "
+                f"extensions replacing the same shared predictor: {replaced}."
+            )
+        for _entity, batch, _targets in _split_large_target_families(
+            [(person_entity, family, person_families[family])],
+            max_targets_per_fit=max_targets_per_fit,
+        ):
+            scope[batch] = tuple(family_extensions)
+    return scope
 
 
 def _split_large_target_families(
