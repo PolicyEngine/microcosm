@@ -720,7 +720,8 @@ class TestE8SupportSplitRecompute:
         assert receipt["households_selected"] == 3
         assert receipt["pre_split_households"] == 6
         assert receipt["id_multiplier"] == 10
-        assert receipt["support_mass"] == 280.0
+        # 2 x 1.25 x (60 + 10) published in the two bands.
+        assert receipt["support_mass"] == 175.0
         assert receipt["mass"]["old_total"] == receipt["mass"]["new_total"]
         assert receipt["max_abs_family_weight_diff"] < 1e-9
         assert [row["households_selected"] for row in receipt["bands"]] == [
@@ -766,13 +767,15 @@ class TestE8SupportSplitRecompute:
         _, frame = _split_then_cloned()
         household = frame.table("household").copy()
         # Household 1 (weight 70, whole in the store) becomes the wealthiest
-        # in band 0, so the rule now divides it into two copies.
+        # in band 0, so the rule now divides it into two copies; band 0's
+        # support mass of 150 is then covered by ids 1 and 2, so the stored
+        # family 3 is missing from the recomputed rule as well.
         household.loc[
             household["household_id"] == 1, UK_CGT_INVESTABLE_WEALTH_COLUMNS[0]
         ] = 1e6
         _, problems = self._receipt(_rebuild(frame, household=household))
         assert problems == {
-            "support_split_selection_stored": {"missing": 0, "extra": 1}
+            "support_split_selection_stored": {"missing": 1, "extra": 1}
         }
 
     def test_a_missing_mass_record_is_reported(self) -> None:

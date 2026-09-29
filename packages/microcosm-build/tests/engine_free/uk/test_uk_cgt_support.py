@@ -88,6 +88,9 @@ SCENARIO_TOP_CELLS = {
     37_700: {250_000: 10.0},
 }
 SCENARIO_SUPPORT = {0: 240.0, 37_700: 40.0}
+#: The reference scenario's support masses (2 x 2 x published) were tuned to a
+#: headroom of 2.0; the packaged headroom is asserted separately.
+SCENARIO_HEADROOM = 2.0
 
 
 def _scenario_frame(**overrides):
@@ -106,6 +109,7 @@ def _scenario_split(**overrides):
         _scenario_frame(**overrides),
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
     )
 
 
@@ -181,12 +185,12 @@ def test_support_mass_pins_hold_on_the_vendored_joint():
         16_000.0,
     ]
     assert [row["support_mass"] for row in rows] == [
-        68_000.0,
-        20_000.0,
-        44_000.0,
-        12_000.0,
-        24_000.0,
-        64_000.0,
+        42_500.0,
+        12_500.0,
+        27_500.0,
+        7_500.0,
+        15_000.0,
+        40_000.0,
     ]
     assert (
         sum(row["published_top_band_taxpayers"] for row in rows)
@@ -494,6 +498,7 @@ def test_split_offsets_every_entity_id_by_k_times_the_multiplier():
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
     )
     out_person = result.frame.table("person")
     out_benunit = result.frame.table("benunit")
@@ -580,6 +585,7 @@ def test_split_copies_every_column_and_membership_unchanged():
         frame,
         distribution=support_distribution(SCENARIO_TOP_CELLS),
         parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
     )
     person = result.frame.table("person")
     benunit = result.frame.table("benunit")
@@ -667,6 +673,7 @@ def test_split_records_pool_exhaustion_and_empty_bands_without_refusing():
             {0: {250_000: 1_000.0}, 125_140: {250_000: 10.0}}
         ),
         parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
     )
     bands = {row["income_lower_bound"]: row for row in result.band_rows}
 
@@ -705,6 +712,7 @@ def test_split_falls_back_when_every_incumbent_is_selected():
         frame,
         distribution=support_distribution({0: {250_000: 1_000.0}}),
         parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
     )
 
     assert result.households_selected == 2
@@ -722,6 +730,7 @@ def test_split_counts_suppressed_cells_and_reports_channels_when_present():
             {0: {250_000: None, 500_000: None, 1_000_000: 5.0}}
         ),
         parameters=PARAMETERS,
+        headroom=SCENARIO_HEADROOM,
     )
 
     assert result.suppressed_cells == 2
@@ -881,8 +890,8 @@ def test_operation_dictionary_restates_the_reviewed_design():
     assert payload["minimum_gain_band_lower"] == 250_000
     assert payload["published_top_band_taxpayers"] == 58_000.0
     assert payload["clone_split_factor"] == 2
-    assert payload["headroom"] == 2.0
-    assert payload["expected_support_mass"] == 232_000.0
+    assert payload["headroom"] == 1.25
+    assert payload["expected_support_mass"] == 145_000.0
     assert payload["income_proxy_components"] == list(
         UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
     )

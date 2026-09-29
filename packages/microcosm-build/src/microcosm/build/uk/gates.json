@@ -442,7 +442,7 @@
         "stage": "cgt_support_split",
         "check": "cgt_support_split",
         "clone_split_factor": 2,
-        "headroom": 2.0,
+        "headroom": 1.25,
         "maximum_copy_weight": 60.0,
         "maximum_relative_mass_deviation": 1e-09
       },

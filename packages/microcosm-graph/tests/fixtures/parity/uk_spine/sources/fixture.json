@@ -284,9 +284,9 @@
           "copies_column": "cgt_support_copies",
           "copy_rule": "copies = ceil(household weight / maximum_copy_weight); every copy carries weight / copies",
           "declared_factor": 1,
-          "expected_support_mass": 232000,
+          "expected_support_mass": 145000,
           "flag_column": "household_is_cgt_support_copy",
-          "headroom": 2,
+          "headroom": 1.25,
           "id_remapping": "id_multiplier_for_values; copy k takes every entity id + k x multiplier",
           "income_band_lower_bounds": [
             0,

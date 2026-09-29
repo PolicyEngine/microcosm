@@ -3482,8 +3482,8 @@ stages:
     published_top_band_taxpayers: 58000.0
     suppressed_cells: published counts withheld as fewer than 1,000 count as zero and are counted in the receipt
     clone_split_factor: 2
-    headroom: 2.0
-    expected_support_mass: 232000.0
+    headroom: 1.25
+    expected_support_mass: 145000.0
     support_mass_rule: clone_split_factor x headroom x published taxpayers with gains at or above minimum_gain_band_lower in the income column
     income_band_measure: taxable_income_proxy of the oldest adult (tapered Personal Allowance from the policy_parameters artifact) digitised on income_band_lower_bounds, as the Table 3 redraw classifies gainers
     income_proxy_components:

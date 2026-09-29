@@ -77,7 +77,7 @@ CGT_SUPPORT_COPIES_COLUMN = "cgt_support_copies"
 CGT_SUPPORT_CLONE_SPLIT_FACTOR = 2
 #: Covers clones whose prior draws at or below zero and the quarter of the
 #: redraw's rank key the prior carries.
-CGT_SUPPORT_HEADROOM = 2.0
+CGT_SUPPORT_HEADROOM = 1.25
 #: A copy weighs at most this before the clone (half of it after), so the
 #: GBP 5m+ band seats at least a hundred rows.
 CGT_SUPPORT_MAXIMUM_COPY_WEIGHT = 60.0
@@ -94,7 +94,7 @@ CGT_SUPPORT_TAXPAYER_CONCEPT = "hmrc.cgt_taxpayers_individuals"
 #: support mass that count implies): a re-vendored resource that moves them
 #: fails the stage assert until reviewed here.
 CGT_SUPPORT_PUBLISHED_TOP_BAND_TAXPAYERS = 58_000.0
-CGT_SUPPORT_EXPECTED_MASS = 232_000.0
+CGT_SUPPORT_EXPECTED_MASS = 145_000.0
 CGT_SUPPORT_MASS_CHANGE_REASON = (
     "Capital-gains support split divides the wealthiest households of each "
     "HMRC Table 3 income band into light copies at equal weight; every "
@@ -418,6 +418,7 @@ def split_cgt_support_households(
     *,
     distribution: HMRCCapitalGainsJointDistribution,
     parameters: UKCGTPolicyParameters,
+    headroom: float = CGT_SUPPORT_HEADROOM,
 ) -> UKCGTSupportSplitResult:
     """Split the wealthiest households of each income band into light copies.
 
@@ -456,7 +457,7 @@ def split_cgt_support_households(
     mass_rows = cgt_support_mass_by_income_band(
         distribution,
         clone_split_factor=CGT_SUPPORT_CLONE_SPLIT_FACTOR,
-        headroom=CGT_SUPPORT_HEADROOM,
+        headroom=headroom,
         minimum_gain_band_lower=CGT_SUPPORT_MINIMUM_GAIN_BAND_LOWER,
     )
     support_by_band = {
@@ -565,6 +566,7 @@ def split_cgt_support_households(
     else:
         frs_selected = spi_selected = 0
     return UKCGTSupportSplitResult(
+        headroom=headroom,
         frame=result,
         band_rows=tuple(band_rows),
         published_top_band_taxpayers=float(
