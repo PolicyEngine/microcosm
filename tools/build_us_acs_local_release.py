@@ -18,8 +18,9 @@ package; each is separately resumable):
                 state-geography SOI contract -- with ``totals`` and ``full``
                 as explicit opt-ins), refuse a staging run that records no
                 passing ACS local immigration stage (microcosm#1020), no
-                passing native ACS work/disability stage (microcosm#1021) or
-                no passing ACS local income transfer (microcosm#1022), seed
+                passing native ACS work/disability stage (microcosm#1021), no
+                passing ACS local income transfer or no passing ACS local SSI
+                disability-criteria stage (microcosm#1022), seed
                 ACS-row SNAP/TANF take-up (microcosm#1019) and fill
                 the ACS rows' discretionary ABAWD exemption, housing-
                 assistance receipt and Medicare take-up without the engine
@@ -88,6 +89,13 @@ from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_TRANSFER_ISSUE,
     acs_local_income_transfer_signal_gate,
 )
+from microcosm.build.us_runtime.acs_local_ssi_disability import (
+    ACS_LOCAL_SSI_DISABILITY_COLUMN,
+    ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
+    ACS_LOCAL_SSI_DISABILITY_ISSUE,
+    ACS_LOCAL_SSI_DISABILITY_METHOD,
+    acs_local_ssi_disability_signal_gate,
+)
 from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
     ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
@@ -103,6 +111,9 @@ from microcosm.build.us_runtime.acs_local_work_disability import (
     ACS_NATIVE_PROVENANCE,
     WEEKS_WORKED_EXPORT_BLOCKER,
     acs_local_work_disability_signal_gate,
+)
+from microcosm.build.us_runtime.ssi_disability_criteria import (
+    SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
 )
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -431,6 +442,14 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             strict=True,
         )
     },
+    # microcosm#1022: the SSI disability default, False, fails every ACS
+    # person under 65 who is not blind; staging runs the donor's SIPP model on
+    # the ACS rows and the donor release carries its own values.
+    ("person", ACS_LOCAL_SSI_DISABILITY_COLUMN): (
+        "the engine default False fails the SSI disability test for every ACS "
+        f"person under 65 who is not blind ({ACS_LOCAL_SSI_DISABILITY_ISSUE}); "
+        "re-run staging with the current builder"
+    ),
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
 
@@ -1110,6 +1129,7 @@ def do_materialize(args) -> None:
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
     log("hashing staging inputs for the run identity …")
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
@@ -1249,12 +1269,13 @@ def do_calibrate(args) -> None:
     # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
     _recorded_take_up(identity)
     # Likewise a checkpoint materialized from a pre-#1020, pre-#1021 or
-    # pre-#1022-income staging run: the consumer export at the end of this
-    # stage would refuse its summary.
+    # pre-#1022 (income or SSI disability) staging run: the consumer export at
+    # the end of this stage would refuse its summary.
     staging_summary = _load_json(_staging_summary_path(args))
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
     registry_path = args.checkpoint_dir / "target_registry.json"
     registry_sha = _sha256(registry_path)
@@ -1452,6 +1473,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
+    _require_local_ssi_disability(staging_summary)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, staging_summary)
     frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
@@ -1879,6 +1901,40 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_local_ssi_disability_criteria",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [ACS_LOCAL_SSI_DISABILITY_COLUMN],
+            "reason": (
+                "ACS rows get meets_ssi_disability_criteria from the donor "
+                "release's archived SIPP QRF (the same pinned full SIPP 2023 "
+                "file, screens, predictors, weighted sample and fixed forest), "
+                "run on a CPS-named view of each ACS person "
+                f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}). The six ACS difficulty "
+                "items stand in for the ASEC PEDIS* items, and a blank below "
+                "an item's minimum question age reads as no difficulty; age, "
+                "sex, wages and marriage are native; interest, dividend and "
+                "rental income, liquid assets and Social Security disability "
+                "come from the shared transfer, and disability benefits from "
+                "the local income pass. ACS persons under 65 who report SSI "
+                "(SSIP) are anchored, and the draws are keyed on "
+                "acs_2024_1yr:SERIALNO:SPORDER and the build seed. SSI take-up "
+                "on ACS rows still ships at the engine default "
+                "(acs_take_up_engine_defaults), so every ACS person who meets "
+                "the criteria and is otherwise eligible takes SSI up."
+            ),
+            "treatment": (
+                "Gated by acs_local_ssi_disability_signal at staging and "
+                "finalize (a complete boolean on both spines, non-constant with "
+                "a positive weighted share among ACS persons aged 18-64, and a "
+                "receipt pinned to the SIPP file with no unfilled ACS row); the "
+                "ACS/donor 18-64 share ratio outside the review band and "
+                "under-65 SSI reporters without the criteria are reported, not "
+                "failed."
+            ),
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -2055,6 +2111,41 @@ def _require_local_income_transfer(staging_summary: dict) -> dict:
     return receipt
 
 
+def _require_local_ssi_disability(staging_summary: dict) -> dict:
+    """The staging SSI disability-criteria receipt (microcosm#1022), or refuse it.
+
+    Staging runs the donor release's archived SIPP model on the ACS rows and
+    gates it before writing the H5. A summary without a passing receipt and
+    gate, pinned to the SIPP file, is a pre-change staging run, whose ACS rows
+    reach the reviewed-null fill with ``meets_ssi_disability_criteria`` False.
+    """
+
+    receipt = staging_summary.get("acs_local_ssi_disability")
+    gate = staging_summary.get("acs_local_ssi_disability_gate")
+    donor = receipt.get("sipp_donor") if isinstance(receipt, dict) else None
+    if (
+        not isinstance(receipt, dict)
+        or receipt.get("issue") != ACS_LOCAL_SSI_DISABILITY_ISSUE
+        or receipt.get("column") != ACS_LOCAL_SSI_DISABILITY_COLUMN
+        or receipt.get("method") != ACS_LOCAL_SSI_DISABILITY_METHOD
+        or type(receipt.get("filled_rows")) is not int
+        or receipt.get("unfilled_acs_rows") != 0
+        or not isinstance(donor, dict)
+        or donor.get("sha256") != SIPP_2023_SSI_DISABILITY_DONOR_SHA256
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local SSI "
+            f"disability-criteria stage ({ACS_LOCAL_SSI_DISABILITY_ISSUE}): "
+            "every ACS person under 65 who is not blind would fail the SSI "
+            "disability test (the engine default False). Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder "
+            "and the pinned SIPP donor."
+        )
+    return receipt
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -2141,6 +2232,12 @@ def do_finalize(args) -> None:
     income_gate = acs_local_income_transfer_signal_gate(
         frame, receipt=staging_summary.get("acs_local_income_transfer")
     )
+    # microcosm#1022: refuse ACS SSI disability criteria that are missing or
+    # carry no working-age signal on the packaged bytes, or a staging receipt
+    # that is not the complete SIPP-pinned pass.
+    ssi_disability_gate = acs_local_ssi_disability_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_ssi_disability")
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -2209,6 +2306,12 @@ def do_finalize(args) -> None:
             "passed": bool(income_gate.passed),
             "failures": list(income_gate.failures),
             "detail": dict(income_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_SSI_DISABILITY_GATE_NAME: {
+            "passed": bool(ssi_disability_gate.passed),
+            "failures": list(ssi_disability_gate.failures),
+            "detail": dict(ssi_disability_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
@@ -2280,7 +2383,14 @@ def do_finalize(args) -> None:
                 "role, outside the shared transfer plan, gated by "
                 "acs_local_income_transfer_signal "
                 f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}; reviewed limitation "
-                "acs_local_income_transfer)."
+                "acs_local_income_transfer). ACS "
+                "meets_ssi_disability_criteria is not transferred: staging "
+                "runs the donor release's archived SIPP SSI disability model "
+                "on the ACS rows, with the native ACS difficulty items as its "
+                "difficulty predictors, gated by "
+                "acs_local_ssi_disability_signal "
+                f"({ACS_LOCAL_SSI_DISABILITY_ISSUE}; reviewed limitation "
+                "acs_local_ssi_disability_criteria)."
             ),
         },
         "spine_composition": {
@@ -2332,6 +2442,7 @@ def do_finalize(args) -> None:
             ACS_LOCAL_IMMIGRATION_GATE_NAME,
             ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
             ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
+            ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -2582,6 +2693,9 @@ def do_package(args) -> dict:
     # microcosm#1022: nor, before the income-transfer gate existed, for the
     # packaged ACS child support, disability and distribution income.
     _require_bound_finalize_gate(gates, ACS_LOCAL_INCOME_TRANSFER_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the SSI disability gate existed, for the
+    # packaged ACS SSI disability criteria.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_SSI_DISABILITY_GATE_NAME, h5_sha)
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report
