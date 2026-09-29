@@ -540,6 +540,59 @@ def test_medicare_take_up_is_native_hins3_and_blank_reads_false() -> None:
     assert entry["weighted_aged_take_up_share"] > 0.8
 
 
+def test_discretionary_receipt_describes_a_cap_based_proxy() -> None:
+    _, receipt = with_acs_local_take_up_inputs(_frame(), seed=0)
+    entry = receipt["engine_free_fills"]["columns"][DISCRETIONARY]
+    assert entry["interpretation"] == (
+        "cap-based proxy: an upper-bound propensity drawn at the statutory cap "
+        "across all adults 18-64, not an observed exemption assignment"
+    )
+
+
+def test_blank_and_invalid_hins3_are_counted_but_not_graded() -> None:
+    frame = _frame()
+    person = frame.table("person").copy()
+    acs = _acs_persons(frame)
+    age = person["age"].to_numpy()
+    aged_rows = np.flatnonzero(acs & (age >= 65))
+    young_rows = np.flatnonzero(acs & (age < 65))
+    blank = [int(aged_rows[0]), int(young_rows[0]), int(young_rows[1])]
+    invalid = [int(aged_rows[1]), int(young_rows[2])]
+    person["HINS3"] = person["HINS3"].astype(object)
+    person.loc[blank, "HINS3"] = np.nan
+    person.loc[invalid[0], "HINS3"] = 3
+    person.loc[invalid[1], "HINS3"] = 0
+    edited = _with_table(frame, "person", person)
+    weights = edited.resolve_weights("person").values
+
+    def expected(rows: list[int]) -> dict[str, object]:
+        aged = [row for row in rows if age[row] >= 65]
+        return {
+            "rows": len(rows),
+            "weight": pytest.approx(float(weights[rows].sum())),
+            "rows_65_plus": len(aged),
+            "weight_65_plus": pytest.approx(float(weights[aged].sum())),
+        }
+
+    result, receipt = with_acs_local_take_up_inputs(edited, seed=0)
+    audit = receipt["engine_free_fills"]["columns"][MEDICARE]["hins3_audit"]
+    assert audit["blank"] == expected(blank)
+    assert audit["invalid"] == expected(invalid)
+    assert audit["persons"] == int(acs.sum())
+    assert audit["persons_65_plus"] == int((acs & (age >= 65)).sum())
+    # Both read as not covered.
+    medicare = result.table("person")[MEDICARE].to_numpy(dtype=bool)
+    assert not medicare[blank + invalid].any()
+    # The gate reports the same counts on the ACS spine and still passes.
+    gate = acs_local_take_up_signal_gate(result)
+    assert gate.passed, gate.failures
+    columns = gate.details["per_spine"][ACS_2024_1YR_SPINE]["columns"]
+    assert columns[MEDICARE]["hins3_audit"]["blank"] == expected(blank)
+    assert columns[MEDICARE]["hins3_audit"]["invalid"] == expected(invalid)
+    donor = gate.details["per_spine"][ASEC_PUF_DONOR_SPINE]["columns"]
+    assert "hins3_audit" not in donor[MEDICARE]
+
+
 def test_engine_free_fills_are_deterministic_and_digested() -> None:
     first, first_receipt = with_acs_local_take_up_inputs(_frame(), seed=11)
     again, again_receipt = with_acs_local_take_up_inputs(_frame(), seed=11)
