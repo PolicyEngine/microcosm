@@ -582,10 +582,79 @@ def _write_frs_raw(root: Path) -> dict[str, dict[str, object]]:
     return artifacts
 
 
+def _was_person_donor() -> pd.DataFrame:
+    """Synthetic WAS round-8 persons of the 64 synthetic WAS households.
+
+    Mixed-case raw names as in the deposit. Adults and dependent children per
+    household follow the household tab's NumAdultR8/NumCh18R8; Lifetime ISA
+    holders are younger adults with small values (below the households' gross
+    financial wealth, which WAS counts them in), one banded value, one
+    ONS-imputed holder, one ONS-imputed non-holder, one self-employment
+    sentinel and one holder in an age band the product rules exclude (recoded
+    by the stage's credibility rule).
+    """
+
+    rows: list[dict[str, float]] = []
+    for household in range(_DONOR_ROWS):
+        adults = 1 + household % 3
+        children = household % 3
+        for person in range(adults + children):
+            adult = person < adults
+            band = (
+                4 + (household * 3 + person * 5) % 14
+                if adult
+                else 1 + (household + person) % 3
+            )
+            holder = adult and person == 0 and household % 2 == 0 and 4 <= band <= 9
+            impossible = adult and person == 0 and household == 5
+            if impossible:
+                band = 13
+            value = float(5 + household % 20) if (holder or impossible) else 0.0
+            banded = holder and household == 10
+            rows.append(
+                {
+                    "CASER8": float(household + 1),
+                    "PersonR8": float(person + 1),
+                    "IsDepR8": 2.0 if adult else 1.0,
+                    "DVAge17R8": float(band),
+                    "SexR8": float(1 + (household + person) % 2),
+                    "DVGIEmpR8": (
+                        15_000.0 + 1_000.0 * ((household * 7 + person) % 40)
+                        if adult
+                        else -9.0
+                    ),
+                    "DVGISER8": (
+                        (-8.0 if household == 3 else 5_000.0 * (household % 5 == 0))
+                        if adult and person == 0
+                        else (0.0 if adult else -9.0)
+                    ),
+                    "fisa_binary3r8_i": 1.0 if value > 0 else (0.0 if adult else -9.0),
+                    "fisa_binary3r8_iflag": (
+                        1.0 if (holder and household == 14) or household == 7 else 0.0
+                    ),
+                    "FLISAVR8": (-8.0 if banded else value) if value > 0 else -9.0,
+                    "flisavr8_iflag": 1.0 if banded else 0.0,
+                    "FLISABR8": 1.0 if banded else -9.0,
+                    "flisabr8_iflag": 0.0,
+                    "DVFLISAvR8": value,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _was_donor() -> pd.DataFrame:
     rows = np.arange(_DONOR_ROWS, dtype=float)
+    lisa_totals = (
+        _was_person_donor()
+        .groupby("CASER8")["DVFLISAvR8"]
+        .sum()
+        .reindex(rows + 1.0, fill_value=0.0)
+        .to_numpy()
+    )
     return pd.DataFrame(
         {
+            "CASER8": rows + 1.0,
+            "DVFLISAVR8_aggr": lisa_totals,
             "R8xshhwgt": 1.0 + rows % 7 / 10.0,
             "DVLUKValR8_sum": 10.0 + rows,
             "DVPropertyR8": 20_000.0 + rows * 500.0,
