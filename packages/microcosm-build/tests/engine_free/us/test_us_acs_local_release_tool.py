@@ -224,7 +224,14 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     assert spm_units["status"] == "reviewed_modeling_decision"
     assert spm_units["affected_spines"] == ["acs_2024_1yr"]
     assert "acs_local_spm_unit_signal" in spm_units["treatment"]
-    for fragment in ("microcosm#1023", "RELSHIPP 34", "under 15", "foster"):
+    for fragment in (
+        "microcosm#1023",
+        "RELSHIPP 34",
+        "under 15",
+        "foster",
+        "no unmarried partner (22 or 24)",
+        "the roommate's child",
+    ):
         assert fragment in spm_units["reason"]
     # microcosm#1021: native ACS disability is a reviewed method; weeks worked
     # is staged only, and is_veteran is documented, not exported.
@@ -1041,7 +1048,7 @@ def test_ssi_disability_criteria_are_never_default_filled() -> None:
 def _spm_unit_receipt(**overrides) -> dict:
     receipt = {
         "issue": "microcosm#1023",
-        "method": "adult_nonrelative_own_spm_unit",
+        "method": "roommates_and_unpartnered_other_nonrelatives_own_spm_unit",
         "persons_moved": 3,
         "units_created": 3,
     }
@@ -1080,6 +1087,13 @@ def _staging_spm_unit_summary(**overrides) -> dict:
         _staging_spm_unit_summary(
             acs_local_spm_units=_spm_unit_receipt(method="household")
         ),
+        # microcosm#1061 review: staging split with the pre-review rule, which
+        # moved a partner's child coded 36 out of the partner's unit.
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(
+                method="adult_nonrelative_own_spm_unit"
+            )
+        ),
         _staging_spm_unit_summary(
             acs_local_spm_units=_spm_unit_receipt(persons_moved="3")
         ),
@@ -1095,6 +1109,7 @@ def _staging_spm_unit_summary(**overrides) -> dict:
         "truthy-gate",
         "wrong-issue",
         "wrong-method",
+        "pre-review-method",
         "untyped-count",
         "unit-count-mismatch",
     ],
