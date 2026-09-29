@@ -5,7 +5,8 @@ that one plan (``docs/us-modal-stage-route-a-base-plan.json``) runs Route A's
 base on Modal. The argv it builds must equal the command Route A's local
 driver built for commit 4b57d15a287c (``base-config.json``) flag for flag and
 value for value, differing only in file paths. These tests hold that with a
-differential test against a tokenized copy of that command, Hypothesis
+differential test against a tokenized copy of that command, a second one
+through the pinned tool's own parser and per-stage child commands, Hypothesis
 properties of the argv builder, the plan refusals, the budget stop of a
 multi-process tool, the home-cache seed, the pinned tree file, the disk
 guard and the cost cap. Nothing here needs Modal, a country engine or the
@@ -17,8 +18,10 @@ from __future__ import annotations
 import collections
 import dataclasses
 import hashlib
+import importlib.util
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -40,6 +43,7 @@ from test_support.microcosm_build.us_modal_stage_plan_tool import (
 )
 
 BASE = plan_lib.US_PUF_SUPPORT_BASE
+BASE_TOOL = ROOT / BASE.script
 SEED = plan_lib.ASEC_2023_ARCHIVE_SEED
 MAPPING_FLAGS = ("--asec-h5", "--asec-h5-sha256", "--asec-education-source")
 
@@ -166,6 +170,65 @@ def _option(argv: list[str], flag: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
+def _pinned_tool_source() -> str | None:
+    """The base tool at the committed plan's commit, or None outside its history."""
+
+    shown = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "show",
+            f"{_committed_plan().commit}:{BASE.script}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    return shown.stdout if shown.returncode == 0 else None
+
+
+def _tool_flags(source: str) -> set[str]:
+    return set(re.findall(r'add_argument\(\s*"(--[A-Za-z0-9-]+)"', source))
+
+
+def _load_base_tool():
+    """This tree's base tool (engine-free to import), checked against the pin."""
+
+    pinned = _pinned_tool_source()
+    if pinned is not None:
+        # The parser below is 4b57d15a2's own, byte for byte.
+        assert BASE_TOOL.read_text() == pinned
+    spec = importlib.util.spec_from_file_location("route_a_base_tool", BASE_TOOL)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _local_argv() -> list[str]:
+    """The fixture's argv with its tokens replaced by stand-in local paths."""
+
+    def local(value: str) -> str:
+        value = re.sub(r"<input:([a-z0-9_]+)>", r"/local/inputs/\1", value)
+        return value.replace("<state>", "/local/run").replace("<repo>", "/local/wt")
+
+    return ["/local/python", *(local(value) for value in _fixture()["argv"][1:])]
+
+
+def _paths_masked(value: object) -> object:
+    """A parsed value with every path replaced by a marker, YEAR= kept."""
+
+    if isinstance(value, Path):
+        return "<path>"
+    if isinstance(value, list):
+        return [_paths_masked(item) for item in value]
+    if isinstance(value, str) and value.startswith("/"):
+        return "<path>"
+    if isinstance(value, str) and re.fullmatch(r"\d{4}=/.*", value):
+        return value.split("=", 1)[0] + "=<path>"
+    return value
+
+
 def test_committed_plan_argv_equals_route_a_base_config() -> None:
     fixture = _fixture()
     plan = _committed_plan()
@@ -183,6 +246,63 @@ def test_route_a_command_uses_exactly_the_builder_flags() -> None:
     assert set(flags) == plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
     assert set(flags) <= BASE.owned_flags
     assert not set(flags) & plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
+
+
+def test_the_tool_s_own_parser_reads_the_same_build_from_both_commands() -> None:
+    # Differential through the pinned tool itself: its _parse_args reads the
+    # Modal argv and Route A's local argv into the same settings (paths
+    # aside), and the per-stage child commands that --stage all spawns
+    # (_stage_cli_args) match stage for stage.
+    tool = _load_base_tool()
+    modal_argv = plan_lib.planned_argv(_committed_plan())
+    local_argv = _local_argv()
+    assert modal_argv[1:3] == local_argv[1:3] == ["-B", BASE.script]
+    modal_args = tool._parse_args(modal_argv[3:])
+    local_args = tool._parse_args(local_argv[3:])
+    modal_settings = {k: _paths_masked(v) for k, v in vars(modal_args).items()}
+    local_settings = {k: _paths_masked(v) for k, v in vars(local_args).items()}
+    assert modal_settings == local_settings
+    # Route A's scalar settings, and every escape hatch left at its default.
+    assert {
+        key: modal_settings[key]
+        for key in (
+            "stage",
+            "target_year",
+            "seed",
+            "n_estimators",
+            "assign_congressional_districts",
+            "congressional_district_seed",
+            "geography_ladder_seed",
+            "base_h5",
+            "support_spine_spec",
+            "asec_max_households",
+            "asec_2023_weeks_unemployed_source",
+            "without_block_ladder",
+            "allow_geography_ladder_gate_failures",
+            "equivalence_boundary_dir",
+            "equivalence_deterministic_h5_metadata",
+        )
+    } == {
+        "stage": "all",
+        "target_year": 2024,
+        "seed": 0,
+        "n_estimators": 32,
+        "assign_congressional_districts": True,
+        "congressional_district_seed": 0,
+        "geography_ladder_seed": 0,
+        "base_h5": None,
+        "support_spine_spec": None,
+        "asec_max_households": None,
+        "asec_2023_weeks_unemployed_source": None,
+        "without_block_ladder": False,
+        "allow_geography_ladder_gate_failures": False,
+        "equivalence_boundary_dir": None,
+        "equivalence_deterministic_h5_metadata": False,
+    }
+    for stage in tool.PIPELINE_STEPS:
+        modal_child = tool._stage_cli_args(modal_args, stage)
+        local_child = tool._stage_cli_args(local_args, stage)
+        assert _paths_masked(modal_child) == _paths_masked(local_child), stage
 
 
 def test_committed_plan_pins_route_a_s_eleven_inputs() -> None:
@@ -500,20 +620,23 @@ def test_validate_cli_refuses_a_rogue_registration(
     assert "runner-owned flag --out" in capsys.readouterr().err
 
 
-def test_every_owned_flag_is_a_real_flag_of_the_tool() -> None:
-    # The owned flags are copied from 4b57d15a2's _parse_args (the tool is
-    # unchanged on main since); the withheld ones never overlap what the
-    # builder sets.
+def test_the_owned_flags_are_exactly_the_tool_s_flags() -> None:
+    # The owned flags are 4b57d15a2's _parse_args flags, all of them: the
+    # builder's and the withheld ones, which never overlap. A flag the tool
+    # gains later is caught here (in this tree) before a plan could rely on
+    # it being unowned.
     assert not (
         plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
         & plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
     )
-    source = (ROOT / "tools" / "build_us_puf_support_base.py").read_text()
-    for flag in (
+    owned = (
         plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS
         | plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
-    ):
-        assert f'"{flag}"' in source, flag
+    )
+    assert _tool_flags(BASE_TOOL.read_text()) == owned
+    pinned = _pinned_tool_source()
+    if pinned is not None:
+        assert _tool_flags(pinned) == owned
 
 
 def test_a_staged_input_whose_bytes_differ_is_refused() -> None:

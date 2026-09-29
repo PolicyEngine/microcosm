@@ -183,7 +183,7 @@ RUNNER_OVERHEAD_SECONDS = 15 * 60
 # runbook measured staging inputs from the volume at no less than 58 MB/s
 # (11.4 GB in under 3.5 minutes, container start included), which puts one
 # 46 GB copy at up to about 13 minutes. Thirty minutes is an allowance, not a
-# measurement; the receipt records the container's real wall and cost.
+# measurement; the receipt records the container's wall and its list price.
 BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
 
 
@@ -446,10 +446,13 @@ RUNNER_SMOKE = ToolSpec(
 #
 # The checkpoints are mirrored deliberately. `--stage all` runs each outer
 # stage in a fresh interpreter and resumes from the completed prefix
-# (_run_staged_all), with the inputs, settings and code identity locked in
-# stage_run_context.json. Every path the tool records is the same in every
-# attempt of a run (/work/inputs/..., /work/state/...), so a later attempt
-# of the same run_id resumes where the last one stopped. The placement is
+# (_run_staged_all), with its whole run config (input paths and digests,
+# settings, code identity, thread variables) locked in
+# stage_run_context.json; a resume whose config differs is refused. Every
+# path the tool records is the same in every attempt of a run
+# (/work/inputs/..., /work/state/...), and so are the image, the plan's
+# environment and the class, so a later attempt of the same run_id should
+# resume where the last one stopped. The placement is
 # non-preemptible, so what this protects against is mostly the budget: at
 # the per-chunk slowdowns the runbook measured for materialize's engine pass
 # on Modal (3.3 to 7.6 times the build machine), the 2,788-second local base

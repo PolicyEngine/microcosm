@@ -404,7 +404,10 @@ base, and changing it is a reviewed registry change. The tool's other flags
 (`--base-h5`, the smoke limit, the equivalence harness, the ladder escape
 hatches) are runner-owned, so no plan can pass them. A test holds the built
 argv equal to a copy of the local command with its paths tokenized
-(`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`).
+(`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`),
+and a second one runs both commands through the pinned tool's own
+`_parse_args` and `_stage_cli_args`: the same settings, and the same child
+command for every outer stage, paths aside.
 The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
 `route-a-base-4b57d15a287c`, branch `main`).
 
@@ -447,7 +450,16 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   112 GiB leaves about 22 GiB over that. The heavy class's 128 GiB would
   put the capped run over $15 (below). Memory is a request, not a limit.
 - *CPU.* The base used 6,238 CPU-s in 2,788 s of wall, 2.2 cores on
-  average; 4 cores cover that.
+  average; 4 cores cover that. The request is not a ceiling: Modal's
+  default soft CPU limit is 16 physical cores above the request, and CPU is
+  billed on the higher of the request and actual use
+  (modal.com/docs/guide/resources, read 29 September 2026). The function
+  sets no explicit limit, as the ACS classes set none. What bounds the use in
+  practice is what the container shows the tool: on 23 September Modal set
+  `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and
+  `BLIS_NUM_THREADS` to the class's CPU request in the check container, and
+  `nproc` reported 4 in the heavy one (see "Acceptance attempt: 23
+  September materialize on the state surface" above).
 - *Disk.* The base writes about 50 GB: 44 GB of frame checkpoints, the
   2.35 GB H5, about 2.4 GB of staged inputs and the seeded archive with its
   extracted member. Modal gives each container a disk quota of 512 GiB by
@@ -470,9 +482,14 @@ the budget is. At the per-chunk slowdowns measured for materialize on
 Modal (3.3 to 7.6 times the build machine), the 2,788-second local base
 would take 2.6 to 5.9 hours, and a stop at 4 hours without checkpoints
 would lose the whole run. With them, `--stage all` resumes from the last
-completed outer stage (`_run_staged_all`). Every path the tool locks into
-`stage_run_context.json` is the same in every attempt of the run, so a
-relaunch of the same plan resumes rather than refusing. The cost: one more
+completed outer stage (`_run_staged_all`). The tool locks its whole run
+config in `stage_run_context.json` (input paths and digests, settings, its
+code identity and the thread variables it sees) and refuses a resume whose
+config differs. Every path in it is the same in every attempt of the run,
+and so are the image, the plan's environment and the class, so a relaunch
+of the same plan should resume. If Modal gave the new container different
+thread variables, the tool would refuse, and the run would need a new
+`run_id`. The cost: one more
 hashing pass and one more copy of about 44 GB when the tool exits, the same
 pulled back and verified by a resuming attempt, and about 46 GB on the runs
 volume until it is deleted. The plan's estimate allows 30 minutes of runner
@@ -497,7 +514,9 @@ plan's list-price estimate is $14.63 non-preemptible. At the local wall it
 would be $2.52. A stage that ran into the 6-hour timeout would list at
 $19.51. Modal bills the higher of the request and actual use, so a run
 that bursts above 4 cores costs more than the estimate. The receipt records
-the container's wall and its cost.
+the container's wall and its list-price cost at the request
+(`estimated_usd_container_at_list_price`); the billed figure is in Modal's
+workspace billing report.
 
 **Run it.** From a checkout that has this registration:
 
