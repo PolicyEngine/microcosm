@@ -171,8 +171,9 @@ waiver register alone. After microcosm#1033 changed the QRF draws:
 - two entries went stale (`alimony_expense`, `qualified_bdc_income`);
 - one went thin (`farm_income`).
 
-In that run the input stages took about an hour, target materialization about
-2 h 20 min, and the solve plus terminal gates about half an hour.
+That run's own `build.timing` splits it: at most 2,049 s for the base load,
+input stages and pre-solve gates, then 9,951 s of target compilation and
+1,668 s of calibration. The dry run replaces everything after the first part.
 
 The dry run replays the release itself and stops before the expensive part:
 
@@ -200,16 +201,20 @@ go to target materialization. There it grades the staged frame at its base
 weights, calling the release tool's own gate functions (none is
 re-implemented), and exits `1` on any certain failure, `2` on AT-RISK only,
 and `0` when clean. An argparse error also exits `2` but writes no report, so
-the wrapper returns `64` whenever no report was written. It writes only its report: nothing under `--out`, no
-staging telemetry, no receipts. A base or donor that the config does not name
-locally is still downloaded, into the same caches the release uses. A refusal
-before the stop point becomes the report's certain failure. The checks:
+the wrapper returns `64` whenever no report was written. It writes only its
+report: nothing under `--out`, no staging telemetry, no receipts. A base or
+donor that the config does not name locally is still downloaded, into the same
+caches the release uses. A refusal before the stop point becomes the report's
+certain failure. A crash while grading is reported as the dry run's own error,
+never as a release refusal. The checks:
 
 - **`qrf_tail_register`** covers every QRF output and every register entry. It
   reports each one's release class at base weights (`over`, `at_or_under`,
   `thin`, `dense`, `absent`, `non_numeric` or `not_qrf_output`), the verdict
-  that class gives (`used`, `stale`, `unused`, `unwaived` or `waived`), and
-  every verdict the solve could still reach.
+  that class gives (`used`, `stale`, `unused`, `unwaived`, `waived` or, under
+  `--evidence-release`, `owned`), and every verdict the solve could still
+  reach. A register file that does not load is a certain failure here: the
+  release reads it only at its terminal gates.
 - **`export_input_mass`** runs the export input-mass gate with the staged
   frame standing in for the export. It classifies the
   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
@@ -219,6 +224,15 @@ before the stop point becomes the report's certain failure. The checks:
   **`zero_support_preview`** and **`pre_solve_battery`** grade the remaining
   base-computable pre-export gates. `pre_solve_battery` holds the batched early
   failures and every signal gate's lines.
+- **`export_signal_regrades`** covers the health-input and
+  reported-coverage-vintage gates, which the release grades before the solve
+  and again on the export. Neither reads weights, so on the full-pool path the
+  re-grade repeats the staged verdict. On the L0 path it can flip, and the
+  check flags each signal a selection could empty.
+- Under `--evidence-release`, a certain failure whose every release line
+  matches an owner pattern (the release's own matching rule) becomes AT-RISK,
+  marked OWNED, because the evidence tier ships it as a known failure. Any
+  unowned line still refuses.
 - **`not_previewable`** lists every gate that depends on the solve, on target
   materialization or on the written H5, so the report never implies coverage
   it lacks.
@@ -242,22 +256,44 @@ the stated margins allow. If they all give one verdict, the item is certain (a
 FAIL when that verdict fails). If they give several and some fail, the item is
 AT-RISK. With every margin at zero, the verdict equals the release gate's
 verdict at base weights, which the tests check against the release tool's own
-functions. The default margins:
+functions.
+
+On the L0 path the solve also picks which households ship and refits their
+weights. Nobody has measured how that moves a top-k share, so by default no
+share verdict there is certain. A value-only verdict the release re-grades on
+the selected export (input coverage, the two signal re-grades, zero support)
+stays certain only while every signal it rests on keeps at least one record
+under the carrier-retention margin. The default margins:
 
 | Margin | Default | Basis |
 | --- | --- | --- |
 | `--dry-run-tail-share-rise-margin` | 0.35 | largest measured rise +0.299 (run 310842b986d7, 32 columns); d177 register pairs up to +0.29 |
 | `--dry-run-tail-share-fall-margin` | 0.05 | largest measured fall −0.033 |
 | `--dry-run-mass-drift-margin` | 0.10 | flags in-band columns near the ±50% edge; measured drift moves reach +0.84, so no nonzero-mass verdict is certain |
+| `--dry-run-l0-tail-share-rise-margin`, `--dry-run-l0-tail-share-fall-margin` | 1.0 | L0 path only; unmeasured, so the default admits any share |
 | `--dry-run-support-nonzero-share-margin` | 0.02 | L0 path only; a conservative default, not a measurement |
-| `--dry-run-support-carrier-retention` | 0.25 | L0 path only; a conservative default, not a measurement |
+| `--dry-run-support-carrier-retention` | 0.25 | L0 path only; the smallest kept fraction of the records carrying one signal; a conservative default, not a measurement |
 
 The measurements behind them are in
 [experiments/us-release-dry-run-margin-evidence.md](experiments/us-release-dry-run-margin-evidence.md).
-Graded at base weights with these defaults, run 310842b986d7's register exits
-`1` on `farm_income`, a thin column whose unused entry is certain. Every other
-refused column that the base carries is AT-RISK, and none is PASS (`bond_assets`
-exists only after the release's own stages).
+
+**Checked on the failed run.** The dry run was replayed on run 310842b986d7's
+own release config with its d177 register:
+
+- It exits `1` on `farm_income`, a thin column (469 carriers) whose unused
+  entry is certain.
+- Every other column that release refused is AT-RISK, and none is PASS. That
+  includes `bond_assets`, at 0.520 at base weights against the release's 0.766.
+- At the stop point, the staged frame with the release's saved final weights
+  attached reproduces the release's recorded tail surface exactly: every
+  share, carrier count, refusal and register-mismatch entry.
+- Its staged-frame digest matches the identity of the release's own
+  target-frame checkpoint.
+
+On a saturated host the replay took 17,691 s to reach its stop point. It got
+0.79 CPU-seconds per second and was switched out 115 million times. Its CPU
+time was 14,046 s; the original run had used about 11,000 CPU-seconds by the
+same point, in at most 2,049 s.
 
 **Run it** after the base build exits and before launching the release, with
 the release config you will launch. Run it again after any change to a waiver

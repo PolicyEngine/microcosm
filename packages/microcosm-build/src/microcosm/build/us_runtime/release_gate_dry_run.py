@@ -9,10 +9,10 @@ share unwaived (``bond_assets``, ``domestic_production_ald``,
 stale (``alimony_expense``, ``qualified_bdc_income``) and one went thin
 (``farm_income``). The release grades that register on the calibrated export
 frame, and so it grades the export input-mass register and the stored-input,
-SPM-composition and input-coverage gates. In that run the export frame came
-after about an hour of input stages, about 2 h 20 min of target
-materialization, and the solve (measured from the run's supervisor series and
-materialization-cache timestamps).
+SPM-composition and input-coverage gates. The run's own ``build.timing``
+(``calibration_diagnostics.json``) puts that frame after at most 2,049 s of
+base load, input stages and pre-solve gates, 9,951 s of target compilation
+and 1,668 s of calibration.
 
 ``tools/preflight_us_release_gates.py`` grades the raw base in minutes. But the
 register surface belongs to the *staged* frame. Five QRF stages run inside the
@@ -45,10 +45,15 @@ change it. The solve can move three kinds of thing:
   calibration may raise it (:data:`DEFAULT_TAIL_SHARE_RISE_MARGIN`) or lower
   it (:data:`DEFAULT_TAIL_SHARE_FALL_MARGIN`).
 * **Record support**, on the L0 path only. A sparse release keeps the
-  households its L0 selection picks, so nonzero shares and carrier counts move
-  too. Carriers can only fall, since records are dropped and never added, so a
-  thin column stays thin. The support margins bound the rest. They are
-  conservative defaults, not measurements.
+  households its L0 selection picks and refits their weights. Nonzero shares
+  and carrier counts move, and top-k shares move by an amount nobody has
+  measured: the tail margins come from full-pool runs, so on this path the L0
+  tail margins apply instead, and by default they admit any share. Carriers
+  can only fall, since records are dropped and never added, so a thin column
+  stays thin. A value-only verdict the release re-grades on the selected
+  export stays certain only while every signal it rests on keeps a record
+  under the carrier-retention margin. The support margins are conservative
+  defaults, not measurements.
 * **Nothing else.** The staged frame fixes which columns exist, their dtypes,
   whether a column is a QRF output, and every value of every record.
 
@@ -65,11 +70,17 @@ Evidence for the default margins
 See ``experiments/us-release-dry-run-margin-evidence.md``.
 
 * **Tail shares, run 310842b986d7.** The release's own tail gate was
-  recomputed at base and at calibrated weights over all 32 columns it checked.
-  The calibrated side reproduces the release's recorded
-  ``qrf_tail_concentration.json`` exactly for 31 columns. The exception, off by
-  0.0013, is a column a release-time stage rewrites. The shifts (calibrated
-  minus base) run from -0.033 to +0.299, median +0.105.
+  recomputed at base and at calibrated weights on 32 of the 33 columns it
+  checked, read from the raw base (``bond_assets`` exists only after the
+  release's stages). The calibrated side reproduces the release's recorded
+  ``qrf_tail_concentration.json`` exactly for 31 of them. The exception, off
+  by 0.0013, is a column a release-time stage rewrites. The shifts
+  (calibrated minus base) run from -0.033 to +0.299, median +0.105.
+* **The dry run itself, on that run's config.** At the stop point, the staged
+  frame with the release's saved final weights attached reproduces the
+  release's recorded tail surface exactly: every share, carrier count, refusal
+  and register-mismatch entry. ``bond_assets`` moves from 0.520 at base weights
+  to 0.766, inside the margins.
 * **Tail shares, route A d177 register.** Its six initial-weight versus
   calibrated pairs give +0.06 to +0.29.
 * **Export input mass.** Between base and calibrated weights, the drift of the
@@ -81,7 +92,7 @@ See ``experiments/us-release-dry-run-margin-evidence.md``.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, get_args
 
@@ -89,6 +100,7 @@ from microcosm.build.us_runtime.release_gate_preflight import PreflightReport
 from microcosm.build.us_runtime.spm_composition import CheckResult, PreflightStatus
 
 __all__ = [
+    "DEFAULT_L0_TAIL_SHARE_MARGIN",
     "DEFAULT_MASS_DRIFT_MARGIN",
     "DEFAULT_SUPPORT_CARRIER_RETENTION",
     "DEFAULT_SUPPORT_NONZERO_SHARE_MARGIN",
@@ -104,15 +116,20 @@ __all__ = [
     "TailVerdict",
     "base_tail_classes",
     "certain_lines_check",
+    "apply_evidence_ownership",
+    "bound_zero_support_on_l0",
     "classify_tail_column",
     "degenerate_input_register_check",
     "ecps_parity_register_check",
     "export_input_mass_check",
+    "export_signal_regrades_check",
     "input_coverage_register_check",
     "not_previewable_check",
     "possible_tail_classes",
+    "post_stop_error_report",
     "pre_solve_refusal_report",
     "qrf_tail_register_check",
+    "qrf_tail_register_unloadable_check",
     "tail_register_verdict",
     "tail_share_classes",
 ]
@@ -133,12 +150,20 @@ DEFAULT_TAIL_SHARE_FALL_MARGIN = 0.05
 #: bound. It only sets which in-band columns are called out.
 DEFAULT_MASS_DRIFT_MARGIN = 0.10
 
+#: L0 path only: how far an L0 selection and refit may raise or lower a top-k
+#: share. Nothing has measured it (every measured shift is from full-pool runs),
+#: so the default admits any share: on the L0 path no checked column's share
+#: verdict is certain until an operator with L0 evidence narrows it.
+DEFAULT_L0_TAIL_SHARE_MARGIN = 1.0
+
 #: L0 path only: how far a column's record nonzero share may move under the
 #: solve's household selection. A conservative default, not a measurement.
 DEFAULT_SUPPORT_NONZERO_SHARE_MARGIN = 0.02
 
-#: L0 path only: the smallest fraction of a column's base carriers the solve's
-#: household selection may keep. A conservative default, not a measurement.
+#: L0 path only: the smallest fraction of the records carrying one signal (a
+#: column's carriers, the records holding one value, a vintage's reporters) that
+#: the solve's household selection may keep. A conservative default, not a
+#: measurement.
 DEFAULT_SUPPORT_CARRIER_RETENTION = 0.25
 
 #: Where the default margins' evidence lives.
@@ -149,6 +174,8 @@ _MARGIN_NAMES = (
     "tail_share_fall",
     "mass_drift",
     "support_nonzero_share",
+    "l0_tail_share_rise",
+    "l0_tail_share_fall",
 )
 
 
@@ -163,8 +190,12 @@ class DryRunMargins:
             an in-band column is flagged.
         support_nonzero_share: L0 path only. Largest move of a column's record
             nonzero share.
-        support_carrier_retention: L0 path only. Smallest kept fraction of a
-            column's carriers, in ``(0, 1]``.
+        support_carrier_retention: L0 path only. Smallest kept fraction of the
+            records carrying one signal, in ``(0, 1]``.
+        l0_tail_share_rise: L0 path only. Largest rise of a top-k share under
+            an L0 selection and refit (unmeasured; the default admits any).
+        l0_tail_share_fall: L0 path only. Largest fall of a top-k share under
+            an L0 selection and refit (unmeasured; the default admits any).
     """
 
     tail_share_rise: float = DEFAULT_TAIL_SHARE_RISE_MARGIN
@@ -172,6 +203,8 @@ class DryRunMargins:
     mass_drift: float = DEFAULT_MASS_DRIFT_MARGIN
     support_nonzero_share: float = DEFAULT_SUPPORT_NONZERO_SHARE_MARGIN
     support_carrier_retention: float = DEFAULT_SUPPORT_CARRIER_RETENTION
+    l0_tail_share_rise: float = DEFAULT_L0_TAIL_SHARE_MARGIN
+    l0_tail_share_fall: float = DEFAULT_L0_TAIL_SHARE_MARGIN
 
     def __post_init__(self) -> None:
         for name in _MARGIN_NAMES:
@@ -208,6 +241,8 @@ class DryRunMargins:
             mass_drift=0.0,
             support_nonzero_share=0.0,
             support_carrier_retention=1.0,
+            l0_tail_share_rise=0.0,
+            l0_tail_share_fall=0.0,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -217,8 +252,20 @@ class DryRunMargins:
             "mass_drift": float(self.mass_drift),
             "support_nonzero_share": float(self.support_nonzero_share),
             "support_carrier_retention": float(self.support_carrier_retention),
+            "l0_tail_share_rise": float(self.l0_tail_share_rise),
+            "l0_tail_share_fall": float(self.l0_tail_share_fall),
             "evidence": MARGIN_EVIDENCE,
         }
+
+    def keeps_a_record(self, signal_records: int) -> bool:
+        """Whether a selection inside the margins keeps one of these records.
+
+        On the L0 path the selection keeps at least
+        ``signal_records * support_carrier_retention`` of the records carrying
+        one signal, so at least one survives iff that is at least one.
+        """
+
+        return signal_records * self.support_carrier_retention >= 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -253,13 +300,17 @@ TailClass = Literal[
 #: * ``unused``: any other register entry.
 #: * ``unwaived``: a concentrated column with no entry.
 #: * ``waived``: an unwaived column under ``--allow-qrf-tail-concentration``.
+#: * ``owned``: an unwaived column under ``--evidence-release`` whose release
+#:   line an owner pattern matches, so the evidence tier ships it as a known
+#:   failure instead of refusing.
 #: * ``ok``: anything else.
-TailVerdict = Literal["ok", "used", "unwaived", "waived", "stale", "unused"]
+TailVerdict = Literal["ok", "used", "unwaived", "waived", "owned", "stale", "unused"]
 
 #: Verdicts the release refuses. ``stale`` and ``unused`` ride the
 #: register-mismatch line, which is appended whatever
-#: ``--allow-qrf-tail-concentration`` says. ``unwaived`` rides the gate's own
-#: line, which that flag suppresses (into ``waived``).
+#: ``--allow-qrf-tail-concentration`` says and which ``--evidence-release``
+#: always refuses. ``unwaived`` rides the gate's own line, which that flag
+#: suppresses (into ``waived``) and an evidence owner can own (into ``owned``).
 FAILING_TAIL_VERDICTS: frozenset[str] = frozenset({"unwaived", "stale", "unused"})
 
 _TAIL_CLASSES: tuple[str, ...] = get_args(TailClass)
@@ -271,16 +322,20 @@ def tail_register_verdict(
     *,
     in_register: bool,
     allow_concentration: bool = False,
+    evidence_owned: bool = False,
 ) -> TailVerdict:
     """The release's verdict on a column in ``tail_class``.
 
     This mirrors ``_record_qrf_tail_concentration_gate`` in the release tool:
-    ``tail_concentration_gate`` plus ``_qrf_tail_register_mismatch``.
+    ``tail_concentration_gate`` plus ``_qrf_tail_register_mismatch``, and
+    under ``--evidence-release`` the owner check of its terminal batch.
 
     Args:
         tail_class: The column's class under the release's tail gate.
         in_register: Whether the per-run register names the column.
         allow_concentration: ``--allow-qrf-tail-concentration``.
+        evidence_owned: ``--evidence-release`` with an owner pattern matching
+            this column's ``QRF tail concentration failed:`` line.
 
     Raises:
         ValueError: For an unknown class.
@@ -295,7 +350,9 @@ def tail_register_verdict(
             return "stale"
         return "unused"
     if tail_class == "over":
-        return "waived" if allow_concentration else "unwaived"
+        if allow_concentration:
+            return "waived"
+        return "owned" if evidence_owned else "unwaived"
     return "ok"
 
 
@@ -366,11 +423,17 @@ def possible_tail_classes(
 
     def share_band() -> frozenset[TailClass]:
         assert top_share is not None
+        # The tail margins were measured on full-pool runs only; an L0 selection
+        # and refit get their own (unmeasured) margins.
         return tail_share_classes(
             top_share,
             max_top_share=max_top_share,
-            rise_margin=margins.tail_share_rise,
-            fall_margin=margins.tail_share_fall,
+            rise_margin=(
+                margins.tail_share_rise if support_fixed else margins.l0_tail_share_rise
+            ),
+            fall_margin=(
+                margins.tail_share_fall if support_fixed else margins.l0_tail_share_fall
+            ),
         )
 
     if support_fixed:
@@ -424,10 +487,12 @@ class TailColumnDryRun:
 
     @property
     def status(self) -> PreflightStatus:
+        # An owned failure is not a refusal, but the release ships it as a
+        # known failure, so it needs a human's eye: AT-RISK, never PASS.
         failing = self.possible_verdicts & FAILING_TAIL_VERDICTS
         if failing and failing == self.possible_verdicts:
             return "FAIL"
-        if failing:
+        if failing or "owned" in self.possible_verdicts:
             return "AT_RISK"
         return "PASS"
 
@@ -465,6 +530,7 @@ def classify_tail_column(
     max_top_share: float,
     sparse_nonzero_share_max: float,
     min_nonzero_records: int,
+    evidence_owned: bool = False,
 ) -> TailColumnDryRun:
     """Grade one column: its base verdict and every verdict the solve allows."""
 
@@ -488,12 +554,14 @@ def classify_tail_column(
             base_class,
             in_register=in_register,
             allow_concentration=allow_concentration,
+            evidence_owned=evidence_owned,
         ),
         possible_verdicts=frozenset(
             tail_register_verdict(
                 tail_class,
                 in_register=in_register,
                 allow_concentration=allow_concentration,
+                evidence_owned=evidence_owned,
             )
             for tail_class in possible
         ),
@@ -595,6 +663,9 @@ _VERDICT_PHRASES: Mapping[str, str] = {
     "unused": "an unused register entry",
     "unwaived": "an unwaived concentrated column",
     "waived": "a concentrated column waived by --allow-qrf-tail-concentration",
+    "owned": (
+        "a concentrated column the evidence tier would ship as an owned known failure"
+    ),
     "ok": "not a register matter",
 }
 
@@ -630,15 +701,19 @@ def _tail_line(
             f"{row.column}: {_VERDICT_PHRASES.get(verdict, verdict)} — "
             f"{description}; {why}. The release refuses it: {remedy}."
         )
-    margin_note = (
-        f"calibration may raise a share by up to {margins.tail_share_rise:.2f} or "
-        f"lower it by up to {margins.tail_share_fall:.2f}"
-    )
-    if not support_fixed:
-        margin_note += (
-            "; on the L0 path the solve also picks the export's records "
-            f"(nonzero-share margin {margins.support_nonzero_share:.2f}, carrier "
-            f"retention {margins.support_carrier_retention:.2f})"
+    if support_fixed:
+        margin_note = (
+            f"calibration may raise a share by up to {margins.tail_share_rise:.2f} "
+            f"or lower it by up to {margins.tail_share_fall:.2f}"
+        )
+    else:
+        margin_note = (
+            "on the L0 path the solve picks the export's records and refits their "
+            "weights: a share may rise by up to "
+            f"{margins.l0_tail_share_rise:.2f} or fall by up to "
+            f"{margins.l0_tail_share_fall:.2f} (unmeasured), the nonzero share may "
+            f"move by {margins.support_nonzero_share:.2f}, and carrier retention is "
+            f"at least {margins.support_carrier_retention:.2f}"
         )
     return (
         f"{row.column}: {_VERDICT_PHRASES.get(row.base_verdict, row.base_verdict)} "
@@ -659,6 +734,7 @@ def qrf_tail_register_check(
     margins: DryRunMargins,
     allow_concentration: bool,
     register_source: Mapping[str, Any],
+    evidence_owner: Callable[[str], str | None] | None = None,
 ) -> CheckResult:
     """The per-run QRF tail register against the staged frame at base weights.
 
@@ -680,6 +756,9 @@ def qrf_tail_register_check(
         margins: The stated bounds.
         allow_concentration: ``--allow-qrf-tail-concentration``.
         register_source: The register's path, sha256 and entry count.
+        evidence_owner: Under ``--evidence-release``, the owner (or ``None``) of
+            a column's ``QRF tail concentration failed:`` line; ``None`` outside
+            the evidence tier. The register-mismatch line is never ownable.
     """
 
     gate = {
@@ -709,10 +788,14 @@ def qrf_tail_register_check(
     top_share = {str(k): float(v) for k, v in gate_details["top_share"].items()}
 
     rows: list[TailColumnDryRun] = []
+    owners: dict[str, str] = {}
     for column, base_class in classes.items():
         carriers = carrier_counts.get(
             column, thin_counts.get(column, nonzero_records.get(column))
         )
+        owner = evidence_owner(column) if evidence_owner is not None else None
+        if owner is not None:
+            owners[column] = owner
         rows.append(
             classify_tail_column(
                 column,
@@ -727,6 +810,7 @@ def qrf_tail_register_check(
                 max_top_share=float(gate["max_top_share"]),
                 sparse_nonzero_share_max=float(gate["sparse_nonzero_share_max"]),
                 min_nonzero_records=int(gate["min_nonzero_records"]),
+                evidence_owned=owner is not None,
             )
         )
 
@@ -773,7 +857,40 @@ def qrf_tail_register_check(
             "sparse_nonzero_share_max": float(gate["sparse_nonzero_share_max"]),
             "margins": margins.to_dict(),
             "release_lines_at_base_weights": list(release_lines_at_base_weights),
+            **(
+                {"evidence_owners": dict(sorted(owners.items()))}
+                if evidence_owner is not None
+                else {}
+            ),
         },
+    )
+
+
+def qrf_tail_register_unloadable_check(
+    register_source: Mapping[str, Any],
+    error: BaseException,
+) -> CheckResult:
+    """The QRF tail register does not load: a certain refusal.
+
+    The release reads ``--qrf-tail-concentration-exclusions`` only at its
+    terminal gates, after target materialization and the solve, and fails there
+    (``_record_qrf_tail_concentration_gate``).
+    """
+
+    return CheckResult(
+        name="qrf_tail_register",
+        status="FAIL",
+        summary=(
+            "the per-run register does not load; the release reads it only "
+            "after the solve and fails there"
+        ),
+        failures=(
+            f"{register_source.get('path')}: {type(error).__name__}: {error}. The "
+            "release loads this register at its terminal gates, after target "
+            "materialization and the solve, and refuses the run there: fix the "
+            "file (a JSON object of column -> non-empty reason).",
+        ),
+        details={"register": dict(register_source)},
     )
 
 
@@ -1139,15 +1256,24 @@ def input_coverage_register_check(
     gate_details: Mapping[str, Any],
     support_fixed: bool,
     waived: bool,
+    signal_counts: Mapping[str, int] | None = None,
+    margins: DryRunMargins | None = None,
 ) -> CheckResult:
     """``us_release_input_coverage_gate`` on the staged frame.
 
     Values only, no weights. On the full-pool path the export keeps every
-    staged record, so the verdict is the release's. On the L0 path a missing or
-    all-default required column stays failed under any selection of records,
-    so those refusals are still certain. A stale reviewed exclusion (the column
-    carries signal) can be cured by a selection that drops its carriers, so
-    there it is AT-RISK.
+    staged record, so the verdict is the release's. On the L0 path the release
+    re-grades the gate on the solve's household selection:
+
+    * A missing or all-default required column stays failed under any
+      selection, so those refusals are still certain.
+    * A stale reviewed exclusion (the column carries signal) can be cured by a
+      selection that drops its carriers, so it is AT-RISK.
+    * A passing required column can go degenerate if the selection drops every
+      record off the engine default. ``signal_counts``
+      (``us_release_input_coverage_signal_counts``) gives those records per
+      column; a column whose count does not keep a record under the
+      carrier-retention margin is AT-RISK.
     """
 
     stale = list(gate_details.get("stale_exclusions", ()))
@@ -1155,6 +1281,21 @@ def input_coverage_register_check(
     other_lines = [
         line for line in gate_failures if not line.startswith("Stale reviewed")
     ]
+    failing_columns = set(gate_details.get("missing", ())) | set(
+        gate_details.get("degenerate_required", ())
+    )
+    fragile: dict[str, int] = {}
+    if not support_fixed:
+        if signal_counts is None or margins is None:
+            raise ValueError(
+                "The L0 path needs the required columns' signal counts and the "
+                "margins to bound the release's re-grade on the selection."
+            )
+        fragile = {
+            column: count
+            for column, count in sorted(signal_counts.items())
+            if column not in failing_columns and not margins.keeps_a_record(count)
+        }
     if waived:
         failures: tuple[str, ...] = ()
         at_risks: tuple[str, ...] = ()
@@ -1166,6 +1307,14 @@ def input_coverage_register_check(
         at_risks = tuple(
             f"{line} (L0 path: a selection that drops every carrier would cure it)"
             for line in stale_lines
+        ) + tuple(
+            f"{column}: required input column with {count} record(s) off the "
+            "engine default; on the L0 path the release re-grades input coverage "
+            "on the solve's household selection, and at carrier retention "
+            f"{margins.support_carrier_retention:.2f} a selection may drop them "
+            "all, leaving the column degenerate on the export."
+            for column, count in fragile.items()
+            if margins is not None
         )
     status: PreflightStatus = "FAIL" if failures else "AT_RISK" if at_risks else "PASS"
     return CheckResult(
@@ -1198,7 +1347,207 @@ def input_coverage_register_check(
             "reviewed_exclusions": dict(gate_details.get("reviewed_exclusions", {})),
             "dormant_exclusions": list(gate_details.get("dormant_exclusions", ())),
             "calibration_path": "full_pool" if support_fixed else "l0_selection",
+            **({"l0_fragile_required_columns": fragile} if fragile else {}),
         },
+    )
+
+
+def export_signal_regrades_check(
+    *,
+    health_value_counts: Mapping[str, Sequence[tuple[object, int]]],
+    reported_coverage_details: Mapping[str, Any],
+    support_fixed: bool,
+    margins: DryRunMargins,
+) -> CheckResult:
+    """The two value-only signal gates the release re-grades on the export.
+
+    The release grades the health-input and reported-coverage-vintage gates on
+    the staged frame before the solve (their failures are in
+    ``pre_solve_battery``). It then re-grades both on the export frame. Neither
+    reads weights, so on the full-pool path the re-grade repeats the staged
+    verdict. On the L0 path the solve's household selection can flip a pass:
+
+    * A health-input column goes constant if the selection keeps only one of
+      its observed values. It stays nonconstant while its second most common
+      value keeps a record under the carrier-retention margin.
+    * A reported-coverage vintage group with at least the gate's minimum rows
+      fails if the selection drops all reporters of one input. A group below
+      the minimum is never enforced, and selection only shrinks groups.
+
+    Args:
+        health_value_counts: Each ``US_HEALTH_INPUT_NONCONSTANT_COLUMNS``
+            column's observed values and counts (``observed_value_counts``).
+        reported_coverage_details: The staged-frame
+            ``us_reported_coverage_vintage_signal_gate`` details.
+        support_fixed: True on the full-pool path.
+        margins: The stated bounds.
+    """
+
+    rows: list[dict[str, Any]] = []
+    at_risks: list[str] = []
+    for column, counts in sorted(health_value_counts.items()):
+        runner_up = int(counts[1][1]) if len(counts) > 1 else 0
+        stays = support_fixed or margins.keeps_a_record(runner_up)
+        rows.append(
+            {
+                "gate": "health_input_signal",
+                "column": column,
+                "distinct_observed_values": len(counts),
+                "second_value_records": runner_up,
+                "certain_on_export": stays,
+            }
+        )
+        if not stays and len(counts) > 1:
+            at_risks.append(
+                f"health_input_signal/{column}: its second most common value has "
+                f"{runner_up} record(s); on the L0 path, at carrier retention "
+                f"{margins.support_carrier_retention:.2f}, a selection may keep only "
+                "one value, and the release's export re-grade fails a constant "
+                "column."
+            )
+    vintages = dict(reported_coverage_details.get("vintages", {}))
+    for label, vintage in sorted(vintages.items()):
+        if not vintage.get("enforced"):
+            continue
+        for column, reporters in sorted(
+            dict(vintage.get("reporter_counts", {})).items()
+        ):
+            stays = support_fixed or margins.keeps_a_record(int(reporters))
+            if stays:
+                continue
+            rows.append(
+                {
+                    "gate": "reported_coverage_vintage_signal",
+                    "vintage": label,
+                    "column": column,
+                    "reporters": int(reporters),
+                    "certain_on_export": False,
+                }
+            )
+            if int(reporters) > 0:
+                at_risks.append(
+                    f"reported_coverage_vintage_signal/{label}/{column}: "
+                    f"{reporters} reporter(s) in an enforced vintage group; on the "
+                    "L0 path, at carrier retention "
+                    f"{margins.support_carrier_retention:.2f}, a selection may drop "
+                    "them all, and the release's export re-grade fails a vintage "
+                    "with no reporters."
+                )
+    status: PreflightStatus = "AT_RISK" if at_risks else "PASS"
+    return CheckResult(
+        name="export_signal_regrades",
+        status=status,
+        summary=(
+            "the health-input and reported-coverage-vintage gates the release "
+            "re-grades on the export "
+            + (
+                "repeat their staged-frame verdicts (no weights read, every record "
+                "kept)"
+                if support_fixed
+                else "stay passed on any selection inside the margins"
+                if not at_risks
+                else f"can flip on the L0 selection: {len(at_risks)} fragile signal(s)"
+            )
+        ),
+        at_risks=tuple(at_risks),
+        rows=tuple(rows),
+        details={
+            "calibration_path": "full_pool" if support_fixed else "l0_selection",
+            "enforced_vintages": sum(1 for v in vintages.values() if v.get("enforced")),
+        },
+    )
+
+
+def bound_zero_support_on_l0(
+    check: CheckResult,
+    *,
+    support_fixed: bool,
+    margins: DryRunMargins,
+) -> CheckResult:
+    """``check_zero_support_preview`` with the L0 re-grade bounded.
+
+    A zero-support target stays zero on any subset of records, so failures
+    stay certain. On the L0 path the release grades zero support on the
+    selected support, so a supported target whose support records may all be
+    dropped under the carrier-retention margin is AT-RISK.
+    """
+
+    if support_fixed:
+        return check
+    fragile = [
+        row
+        for row in check.rows
+        if row.get("checkable")
+        and row.get("verdict") == "supported"
+        and not margins.keeps_a_record(int(row.get("support_records", 0)))
+    ]
+    if not fragile:
+        return check
+    at_risks = tuple(check.at_risks) + tuple(
+        f"{row['target']}: {row['support_records']} support record(s); on the L0 "
+        "path, at carrier retention "
+        f"{margins.support_carrier_retention:.2f}, a selection may drop them all "
+        "and leave the target a structural zero."
+        for row in fragile
+    )
+    return CheckResult(
+        name=check.name,
+        status="FAIL" if check.failures else "AT_RISK",
+        summary=check.summary + f"; {len(fragile)} fragile on the L0 selection",
+        failures=check.failures,
+        at_risks=at_risks,
+        rows=check.rows,
+        details={**dict(check.details), "l0_fragile_targets": len(fragile)},
+    )
+
+
+def apply_evidence_ownership(
+    check: CheckResult,
+    *,
+    release_lines: Sequence[str],
+    owner_of: Callable[[str], str | None],
+) -> CheckResult:
+    """Grade a failing check's release lines against the evidence tier's owners.
+
+    Under ``--evidence-release`` the release ships a failure whose line an
+    owner pattern matches as a known failure, and refuses the run if any line
+    is unowned. ``release_lines`` are the lines the release would append for
+    this check's certain failures. If every one is owned, the failures become
+    AT-RISK ("owned") lines; otherwise the check still certainly refuses.
+    """
+
+    if check.status != "FAIL" or not release_lines:
+        return check
+    owners = [owner_of(line) for line in release_lines]
+    if any(owner is None for owner in owners):
+        return CheckResult(
+            name=check.name,
+            status=check.status,
+            summary=check.summary,
+            failures=check.failures,
+            at_risks=check.at_risks,
+            rows=check.rows,
+            details={
+                **dict(check.details),
+                "evidence_unowned_release_lines": [
+                    line
+                    for line, owner in zip(release_lines, owners, strict=True)
+                    if owner is None
+                ],
+            },
+        )
+    named = ", ".join(dict.fromkeys(owner for owner in owners if owner))
+    return CheckResult(
+        name=check.name,
+        status="AT_RISK",
+        summary=check.summary + f" (owned under --evidence-release: {named})",
+        at_risks=tuple(
+            f"OWNED ({named}; the evidence tier ships it as a known failure): {line}"
+            for line in check.failures
+        )
+        + tuple(check.at_risks),
+        rows=check.rows,
+        details={**dict(check.details), "evidence_owners": named},
     )
 
 
@@ -1433,6 +1782,35 @@ def pre_solve_refusal_report(
                     "the release refuses before target materialization; the "
                     "dry run stopped where the release would, and graded "
                     "nothing after it"
+                ),
+                failures=(f"{type(error).__name__}: {error}",),
+                details={"error_type": type(error).__name__},
+            ),
+        ),
+        inputs=inputs,
+    )
+
+
+def post_stop_error_report(
+    error: BaseException,
+    *,
+    inputs: Mapping[str, Any],
+) -> ReleaseDryRunReport:
+    """The report for a dry run that reached its stop point and then crashed.
+
+    Every check is evaluated behind its own guard, so this means the report
+    itself could not be assembled. It is not a release refusal: the dry run
+    certifies nothing, and exits 1 so nobody reads the crash as clean.
+    """
+
+    return ReleaseDryRunReport(
+        checks=(
+            CheckResult(
+                name="dry_run_evaluation_error",
+                status="FAIL",
+                summary=(
+                    "the dry run reached its stop point but crashed while "
+                    "grading; it certifies nothing about the release"
                 ),
                 failures=(f"{type(error).__name__}: {error}",),
                 details={"error_type": type(error).__name__},

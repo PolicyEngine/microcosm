@@ -59,6 +59,7 @@ from microcosm.build.gates import (
     default_valued_columns_gate,
     input_mass_parity_gate,
     nonconstant_columns_gate,
+    observed_value_counts,
     parity_gate,
     tail_concentration_gate,
     target_fit_gate,
@@ -275,6 +276,7 @@ from microcosm.build.us_runtime.reform_validation import (
     write_reform_validation,
 )
 from microcosm.build.us_runtime.release_gate_dry_run import (
+    DEFAULT_L0_TAIL_SHARE_MARGIN,
     DEFAULT_MASS_DRIFT_MARGIN,
     DEFAULT_SUPPORT_CARRIER_RETENTION,
     DEFAULT_SUPPORT_NONZERO_SHARE_MARGIN,
@@ -282,14 +284,19 @@ from microcosm.build.us_runtime.release_gate_dry_run import (
     DEFAULT_TAIL_SHARE_RISE_MARGIN,
     DryRunMargins,
     ReleaseDryRunReport,
+    apply_evidence_ownership,
+    bound_zero_support_on_l0,
     certain_lines_check,
     degenerate_input_register_check,
     ecps_parity_register_check,
     export_input_mass_check,
+    export_signal_regrades_check,
     input_coverage_register_check,
     not_previewable_check,
+    post_stop_error_report,
     pre_solve_refusal_report,
     qrf_tail_register_check,
+    qrf_tail_register_unloadable_check,
 )
 from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
     CheckResult,
@@ -298,6 +305,7 @@ from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
     project_ecps_parity_known_gap_names,
+    us_release_input_coverage_signal_counts,
 )
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
@@ -390,7 +398,19 @@ _DRY_RUN_MARGIN_FLAGS: tuple[tuple[str, float, str], ...] = (
     (
         "--dry-run-support-carrier-retention",
         DEFAULT_SUPPORT_CARRIER_RETENTION,
-        "L0 path: the smallest kept fraction of a column's carriers",
+        "L0 path: the smallest kept fraction of the records carrying one signal",
+    ),
+    (
+        "--dry-run-l0-tail-share-rise-margin",
+        DEFAULT_L0_TAIL_SHARE_MARGIN,
+        "L0 path: how far an L0 selection and refit may raise a top-k share "
+        "(unmeasured; the default admits any share)",
+    ),
+    (
+        "--dry-run-l0-tail-share-fall-margin",
+        DEFAULT_L0_TAIL_SHARE_MARGIN,
+        "L0 path: how far an L0 selection and refit may lower a top-k share "
+        "(unmeasured; the default admits any share)",
     ),
 )
 _DRY_RUN_MARGIN_FIELDS = (
@@ -399,6 +419,8 @@ _DRY_RUN_MARGIN_FIELDS = (
     "mass_drift",
     "support_nonzero_share",
     "support_carrier_retention",
+    "l0_tail_share_rise",
+    "l0_tail_share_fall",
 )
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
@@ -11100,6 +11122,18 @@ def _load_evidence_failure_owner_patterns(
     return (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
 
 
+def _evidence_owner(
+    failure: str,
+    owner_patterns: Sequence[tuple[str, str]],
+) -> str | None:
+    """The owner of one recorded failure line: the first pattern it contains."""
+
+    return next(
+        (owner for pattern, owner in owner_patterns if pattern in failure),
+        None,
+    )
+
+
 def _evidence_known_failures(
     failures: Sequence[str],
     owner_patterns: Sequence[tuple[str, str]],
@@ -11113,10 +11147,7 @@ def _evidence_known_failures(
     entries: list[dict[str, str]] = []
     unowned: list[str] = []
     for failure in failures:
-        owner = next(
-            (owner for pattern, owner in owner_patterns if pattern in failure),
-            None,
-        )
+        owner = _evidence_owner(failure, owner_patterns)
         if owner is None:
             unowned.append(failure)
         else:
@@ -11417,6 +11448,9 @@ class _ReleaseDryRun:
         self.margins = margins
         self.git_dirty = git_dirty
         self.started = started
+        # Set once _main reaches the stop point. An error after it is the dry
+        # run's own crash, never a refusal the release would share.
+        self.stopped = False
 
     @classmethod
     def start(
@@ -11455,9 +11489,19 @@ class _ReleaseDryRun:
         }
 
     def refused(self, error: BaseException) -> int:
-        """Report a refusal before the stop point: certain, exit 1."""
+        """Report an error that ended the run: exit 1 either way.
 
-        return self._write(pre_solve_refusal_report(error, inputs=self.inputs()))
+        Before the stop point it is the release's own refusal, which the release
+        would meet at the same place. After it, the dry run crashed while
+        grading, and the report says it certifies nothing.
+        """
+
+        report = (
+            post_stop_error_report(error, inputs=self.inputs())
+            if self.stopped
+            else pre_solve_refusal_report(error, inputs=self.inputs())
+        )
+        return self._write(report)
 
     def finish(
         self,
@@ -11470,9 +11514,11 @@ class _ReleaseDryRun:
         degenerate_input_gate: GateResult,
         ecps_parity_gate: GateResult,
         binding: Mapping[str, object],
+        evidence_owner_patterns: Sequence[tuple[str, str]] = (),
     ) -> int:
         """Grade the staged frame at its base weights and write the report."""
 
+        self.stopped = True
         support_fixed = _full_pool_calibration(
             self.args, int(base_frame.n("household"))
         )
@@ -11487,10 +11533,11 @@ class _ReleaseDryRun:
             input_mass_reference_gate=input_mass_reference_gate,
             degenerate_input_gate=degenerate_input_gate,
             ecps_parity_gate=ecps_parity_gate,
+            evidence_owner_patterns=evidence_owner_patterns,
         )
         registers = {
             "qrf_tail_concentration": _dry_run_register_source(
-                self.args.qrf_tail_concentration_exclusions
+                self.args.qrf_tail_concentration_exclusions, guarded=True
             ),
             "export_input_mass": _dry_run_constant_register(
                 "US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS",
@@ -11519,9 +11566,10 @@ class _ReleaseDryRun:
         print(report.human_table())
         if self.args.evidence_release:
             print(
-                "\n--evidence-release: the release exports failures its owner "
-                "patterns match as known failures; this dry run grades the "
-                "gates, not that conversion."
+                "\n--evidence-release: a certain failure whose every release line "
+                "an owner pattern matches is reported AT-RISK (OWNED), since the "
+                "evidence tier ships it as a known failure; any unowned line "
+                "refuses the export."
             )
         print(f"\nWrote the dry-run report to {self.report_path}")
         return report.exit_code
@@ -11533,14 +11581,27 @@ class _ReleaseDryRun:
 _ACTIVE_DRY_RUN: _ReleaseDryRun | None = None
 
 
-def _dry_run_register_source(path: Path | None) -> dict[str, object]:
+def _dry_run_register_source(
+    path: Path | None, *, guarded: bool = False
+) -> dict[str, object]:
+    """The register's path, sha256 and entry count for the report.
+
+    ``guarded`` records a file that does not read or load instead of raising:
+    the ``qrf_tail_register`` check reports that failure, and the rest of the
+    report must survive it.
+    """
+
     if path is None:
         return {"path": None, "sha256": None, "entries": 0}
-    return {
-        "path": str(path),
-        "sha256": _sha256(path),
-        "entries": len(_load_qrf_tail_concentration_exclusions(path)),
-    }
+    source: dict[str, object] = {"path": str(path), "sha256": None, "entries": None}
+    try:
+        source["sha256"] = _sha256(path)
+        source["entries"] = len(_load_qrf_tail_concentration_exclusions(path))
+    except Exception as error:
+        if not guarded:
+            raise
+        source["error"] = f"{type(error).__name__}: {error}"
+    return source
 
 
 def _dry_run_constant_register(name: str, register: Mapping[str, str]) -> dict:
@@ -11571,13 +11632,19 @@ def _dry_run_checkpoint_status(
     }
     if not path.exists():
         return status
-    import h5py
-
+    # Never raises: it is evaluated at the stop point, before finish() marks
+    # the run stopped, so an error here must not read as a pre-solve refusal.
     try:
+        import h5py
+
         with h5py.File(path, "r") as h5:
             stored = h5.attrs.get("identity_sha256")
-    except OSError as error:
-        return {**status, "identity_matches": False, "read_error": str(error)}
+    except Exception as error:
+        return {
+            **status,
+            "identity_matches": False,
+            "read_error": f"{type(error).__name__}: {error}",
+        }
     if isinstance(stored, bytes):
         stored = stored.decode("utf-8")
     return {**status, "identity_matches": stored == identity_sha256}
@@ -11610,6 +11677,7 @@ def _release_dry_run_checks(
     input_mass_reference_gate: GateResult | None,
     degenerate_input_gate: GateResult,
     ecps_parity_gate: GateResult,
+    evidence_owner_patterns: Sequence[tuple[str, str]] = (),
 ) -> list[CheckResult]:
     """Every dry-run check, each through this tool's own gate function.
 
@@ -11617,9 +11685,17 @@ def _release_dry_run_checks(
     export is this frame with calibrated household weights; on the L0 path it
     is a household selection of it. See
     :mod:`microcosm.build.us_runtime.release_gate_dry_run` for what is certain.
+    Under ``--evidence-release`` each certain failure is graded against the
+    owner patterns with the terminal batch's own rule (:func:`_evidence_owner`).
     """
 
     checks: list[CheckResult] = []
+    # The exact lines the release would append for each check's certain
+    # failures, for the evidence tier's owner check.
+    release_lines: dict[str, list[str]] = {}
+
+    def owner_of(line: str) -> str | None:
+        return _evidence_owner(line, evidence_owner_patterns)
 
     def run(name: str, build: Callable[[], CheckResult]) -> None:
         try:
@@ -11637,6 +11713,7 @@ def _release_dry_run_checks(
                 ),
             ),
         ]
+        release_lines["pre_solve_battery"] = lines
         return certain_lines_check(
             "pre_solve_battery",
             lines=lines,
@@ -11654,7 +11731,13 @@ def _release_dry_run_checks(
 
     def qrf_tail() -> CheckResult:
         path = args.qrf_tail_concentration_exclusions
-        register = _load_qrf_tail_concentration_exclusions(path)
+        try:
+            register = _load_qrf_tail_concentration_exclusions(path)
+        except Exception as error:
+            # The release reads this file only at its terminal gates.
+            return qrf_tail_register_unloadable_check(
+                _dry_run_register_source(path, guarded=True), error
+            )
         gate, surface = _qrf_tail_concentration_gate(
             base_frame, reviewed_exclusions=register
         )
@@ -11664,6 +11747,15 @@ def _release_dry_run_checks(
             mismatch,
             allow_concentration=args.allow_qrf_tail_concentration,
         )
+
+        def tail_owner(column: str) -> str | None:
+            # The release's line for a concentrated column; its share is only
+            # known at calibrated weights, so match on the fixed prefix.
+            return owner_of(
+                f"QRF tail concentration failed: {column}: top "
+                f"{US_QRF_TAIL_CONCENTRATION_TOP_K} weighted records carry"
+            )
+
         return qrf_tail_register_check(
             qrf_outputs=sorted(_qrf_imputed_source_outputs()),
             register=register,
@@ -11674,6 +11766,7 @@ def _release_dry_run_checks(
             margins=margins,
             allow_concentration=args.allow_qrf_tail_concentration,
             register_source=_dry_run_register_source(path),
+            evidence_owner=tail_owner if args.evidence_release else None,
         )
 
     def export_input_mass() -> CheckResult:
@@ -11691,7 +11784,7 @@ def _release_dry_run_checks(
         )
         input_variables = _engine_input_variables()
         candidate_totals = us_input_mass_totals(base_frame, columns=input_variables)
-        return export_input_mass_check(
+        check = export_input_mass_check(
             gate_failures=gate.failures,
             gate_details=gate.details,
             candidate_totals=candidate_totals,
@@ -11711,39 +11804,76 @@ def _release_dry_run_checks(
             reference_is_candidate=reference_frame is None,
             reference_label=reference_name,
         )
+        certain = {row["column"] for row in check.rows if row.get("status") == "FAIL"}
+        release_lines["export_input_mass"] = [
+            f"Input mass parity failed: {failure}"
+            for failure in gate.failures
+            if failure.split(":", 1)[0] in certain
+        ]
+        return check
 
     def degenerate_input() -> CheckResult:
+        lines = _pre_solve_gate_failures(degenerate_input_gate=degenerate_input_gate)
+        release_lines["degenerate_input_register"] = lines
         return degenerate_input_register_check(
             gate_passed=degenerate_input_gate.passed,
             gate_details=degenerate_input_gate.details,
             register=US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
-            release_lines=_pre_solve_gate_failures(
-                degenerate_input_gate=degenerate_input_gate
-            ),
+            release_lines=lines,
         )
 
     def ecps_parity() -> CheckResult:
+        lines = _pre_solve_gate_failures(ecps_parity_gate=ecps_parity_gate)
+        release_lines["ecps_parity_register"] = lines
         return ecps_parity_register_check(
             gate_passed=ecps_parity_gate.passed,
             gate_details=ecps_parity_gate.details,
-            release_lines=_pre_solve_gate_failures(ecps_parity_gate=ecps_parity_gate),
+            release_lines=lines,
             waived=args.allow_ecps_parity_gaps,
         )
 
     def input_coverage() -> CheckResult:
-        gate = us_release_input_coverage_gate(base_frame, PolicyEngineUSEngine())
-        return input_coverage_register_check(
+        engine = PolicyEngineUSEngine()
+        gate = us_release_input_coverage_gate(base_frame, engine)
+        check = input_coverage_register_check(
             gate_passed=gate.passed,
             gate_failures=gate.failures,
             gate_details=gate.details,
             support_fixed=support_fixed,
             waived=args.allow_input_coverage_gaps,
+            signal_counts=(
+                None
+                if support_fixed
+                else us_release_input_coverage_signal_counts(base_frame, engine)
+            ),
+            margins=margins,
+        )
+        release_lines["input_coverage_register"] = [
+            f"Input coverage failed: {failure}" for failure in check.failures
+        ]
+        return check
+
+    def export_signal_regrades() -> CheckResult:
+        tax_unit = base_frame.table("tax_unit")
+        reported = pre_solve_gates.get("reported_coverage_vintage_gate")
+        if reported is None:
+            reported = us_reported_coverage_vintage_signal_gate(base_frame)
+        return export_signal_regrades_check(
+            health_value_counts={
+                column: observed_value_counts(tax_unit[column].to_numpy())
+                for column in US_HEALTH_INPUT_NONCONSTANT_COLUMNS
+                if column in tax_unit.columns
+            },
+            reported_coverage_details=reported.details,
+            support_fixed=support_fixed,
+            margins=margins,
         )
 
     def stored_inputs() -> CheckResult:
         # The export keeps every staged column (with_weights and select both
         # preserve them), so the release's verdict on the export is this one.
         lines, details = _stored_input_gate_failures(base_frame, stage="export frame")
+        release_lines["stored_inputs"] = list(lines)
         return certain_lines_check(
             "stored_inputs",
             lines=lines,
@@ -11759,6 +11889,7 @@ def _release_dry_run_checks(
         lines, details = _spm_composition_gate_failures(
             base_frame, stage="export frame"
         )
+        release_lines["spm_composition"] = list(lines)
         return certain_lines_check(
             "spm_composition",
             lines=lines,
@@ -11783,7 +11914,19 @@ def _release_dry_run_checks(
             or not _target_is_congressional_district(spec)
         ]
         check = check_zero_support_preview(base_frame, gated)
-        return dataclasses.replace(
+        zeros = [
+            str(row["target"])
+            for row in check.rows
+            if row.get("verdict") == "zero_support"
+        ]
+        if zeros:
+            # The release's own line for these targets (_release_gate_failures).
+            examples = ", ".join(zeros[:5]) + ("" if len(zeros) <= 5 else ", ...")
+            release_lines["zero_support_preview"] = [
+                f"{len(zeros)} positive fiscal targets have zero materialized "
+                f"support (examples: {examples})."
+            ]
+        check = dataclasses.replace(
             check,
             details={
                 **dict(check.details),
@@ -11792,6 +11935,9 @@ def _release_dry_run_checks(
                 "graded_frame": "staged frame (before target materialization)",
             },
         )
+        return bound_zero_support_on_l0(
+            check, support_fixed=support_fixed, margins=margins
+        )
 
     run("pre_solve_battery", pre_solve_battery)
     run("qrf_tail_register", qrf_tail)
@@ -11799,9 +11945,19 @@ def _release_dry_run_checks(
     run("degenerate_input_register", degenerate_input)
     run("ecps_parity_register", ecps_parity)
     run("input_coverage_register", input_coverage)
+    run("export_signal_regrades", export_signal_regrades)
     run("stored_inputs", stored_inputs)
     run("spm_composition", spm_composition)
     run("zero_support_preview", zero_support)
+    if args.evidence_release:
+        checks = [
+            apply_evidence_ownership(
+                check,
+                release_lines=release_lines.get(check.name, ()),
+                owner_of=owner_of,
+            )
+            for check in checks
+        ]
     checks.append(not_previewable_check())
     return checks
 
@@ -14115,6 +14271,7 @@ def _main(argv: Sequence[str] | None = None) -> int | None:
             input_mass_reference_gate=input_mass_reference_gate,
             degenerate_input_gate=degenerate_input_gate,
             ecps_parity_gate=ecps_parity_gate,
+            evidence_owner_patterns=evidence_failure_owner_patterns,
             binding={
                 "build_commit": full_commit,
                 "release_id": release_id,

@@ -6003,7 +6003,8 @@ def _run_dry_run_release(
     def refuse_materialization(*args, **kwargs):
         raise AssertionError("a dry run must stop before target materialization")
 
-    monkeypatch.setattr(builder, "_release_dry_run_checks", recording_checks)
+    if mode != "dry_run_bad_register":
+        monkeypatch.setattr(builder, "_release_dry_run_checks", recording_checks)
     monkeypatch.setattr(
         builder, "_load_or_materialize_target_frame", refuse_materialization
     )
@@ -6026,7 +6027,8 @@ def _run_dry_run_release(
     assert not out.exists()
     inputs = payload["inputs"]
     assert inputs["git_dirty"] is True
-    assert inputs["release_argv"][-2:] == ["--dry-run-gates-report", str(report_path)]
+    argv = inputs["release_argv"]
+    assert argv[argv.index("--dry-run-gates-report") + 1] == str(report_path)
     if mode == "dry_run_refusal":
         assert exit_code == 1
         assert payload["status"] == "FAIL"
@@ -6034,6 +6036,22 @@ def _run_dry_run_release(
         assert check["name"] == "pre_solve_refusal"
         assert "[dry-run-refusal-sentinel]" in check["failures"][0]
         assert recorded == {}
+        return
+    if mode == "dry_run_bad_register":
+        # Review finding 1: a bad register is the register's certain failure,
+        # graded alongside every other check, not a pre-solve refusal.
+        assert exit_code == 1
+        names = [check["name"] for check in payload["checks"]]
+        assert "pre_solve_refusal" not in names
+        assert "dry_run_evaluation_error" not in names
+        assert len(names) == 11
+        (tail,) = [c for c in payload["checks"] if c["name"] == "qrf_tail_register"]
+        assert tail["status"] == "FAIL"
+        assert "no_such_register.json" in tail["failures"][0]
+        assert "terminal gates" in tail["failures"][0]
+        register = inputs["registers"]["qrf_tail_concentration"]
+        assert register["path"].endswith("no_such_register.json")
+        assert register["error"].startswith("FileNotFoundError")
         return
     assert exit_code == 2
     assert payload["status"] == "AT_RISK"
@@ -6365,6 +6383,7 @@ def _run_green_register_release(
         "dry_run",
         "dry_run_degraded",
         "dry_run_refusal",
+        "dry_run_bad_register",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -6438,6 +6457,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``dry_run_refusal``: the degenerate-input evaluation itself crashes before
     the stop point. main() must turn the refusal into the report's certain
     failure (exit 1), not a traceback.
+    ``dry_run_bad_register``: the dry run with a QRF tail register path that
+    does not exist, through the real stop-point grading (nothing stubbed). The
+    report must keep every graded check and name the register as a certain
+    qrf_tail_register failure, never as a pre-solve refusal.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
@@ -6457,7 +6480,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         *stored_input_modes,
     }
     clean_run = terminal_mode == "qrf_tail_register_clean" or green_run
-    dry_run_modes = {"dry_run", "dry_run_degraded", "dry_run_refusal"}
+    dry_run_modes = {
+        "dry_run",
+        "dry_run_degraded",
+        "dry_run_refusal",
+        "dry_run_bad_register",
+    }
     dry_run_report = tmp_path / "dry-run" / "gates.json"
     checkpoint_run = terminal_mode == "target_frame_checkpoint"
     # Outside ``out``, so the no-H5-under-out sweep below still pins that a
@@ -6696,6 +6724,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             argv.append("--skip-reform-coverage-smoke")
     if terminal_mode in dry_run_modes:
         argv += ["--dry-run-gates-report", str(dry_run_report)]
+    if terminal_mode == "dry_run_bad_register":
+        argv += [
+            "--qrf-tail-concentration-exclusions",
+            str(tmp_path / "no_such_register.json"),
+        ]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
 

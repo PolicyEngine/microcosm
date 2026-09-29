@@ -105,6 +105,16 @@ def test_tail_register_verdict_is_the_release_classification(
         )
         == verdict
     )
+    # Under --evidence-release an owner converts only the gate's own line: a
+    # concentrated column without an entry. The register mismatch (stale,
+    # unused) is refused whatever the owners say, and the allow flag wins.
+    owned = dry.tail_register_verdict(
+        tail_class,
+        in_register=in_register,
+        allow_concentration=allow,
+        evidence_owned=True,
+    )
+    assert owned == ("owned" if verdict == "unwaived" else verdict)
 
 
 def test_tail_register_verdict_refuses_an_unknown_class() -> None:
@@ -125,7 +135,12 @@ def test_dry_run_margins_validate() -> None:
             dry.DryRunMargins(**bad)
     exact = dry.DryRunMargins.exact()
     assert exact.tail_share_rise == exact.tail_share_fall == 0.0
+    assert exact.l0_tail_share_rise == exact.l0_tail_share_fall == 0.0
     assert exact.support_carrier_retention == 1.0
+    with pytest.raises(ValueError, match="l0_tail_share_rise"):
+        dry.DryRunMargins(l0_tail_share_rise=-1.0)
+    margins = dry.DryRunMargins(support_carrier_retention=0.25)
+    assert margins.keeps_a_record(4) and not margins.keeps_a_record(3)
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +179,8 @@ def _margins_strategy(st):
         mass_drift=unit,
         support_nonzero_share=st.floats(min_value=0.0, max_value=0.1),
         support_carrier_retention=st.floats(min_value=0.01, max_value=1.0),
+        l0_tail_share_rise=st.floats(min_value=0.0, max_value=1.0),
+        l0_tail_share_fall=st.floats(min_value=0.0, max_value=1.0),
     )
 
 
@@ -263,6 +280,8 @@ def test_widening_margins_only_adds_classes() -> None:
             support_carrier_retention=max(
                 0.01, narrow.support_carrier_retention * widen[3]
             ),
+            l0_tail_share_rise=narrow.l0_tail_share_rise + widen[0],
+            l0_tail_share_fall=narrow.l0_tail_share_fall + widen[1],
         )
         base = _release_class(
             nonzero_share=measured["nonzero_share"],
@@ -360,6 +379,56 @@ def test_l0_support_widens_near_the_cuts_only() -> None:
         dry.possible_tail_classes(
             "over", top_share=None, nonzero_share=0.01, carriers=900, **common
         )
+
+
+def test_l0_share_verdicts_are_never_certain_by_default() -> None:
+    """The review's scenario: base share 0.35, 5,000 carriers, on L0.
+
+    The full-pool tail margins were measured on dense runs only, so on the L0
+    path the default admits any share: a stale-looking register entry is
+    AT-RISK, never a certain "remove the entry" that the release could then
+    refuse as unwaived.
+    """
+
+    hypothesis, st = _hypothesis()
+    common = dict(
+        support_fixed=False,
+        max_top_share=_MAX_TOP_SHARE,
+        sparse_nonzero_share_max=_SPARSE_MAX,
+        min_nonzero_records=_MIN_CARRIERS,
+    )
+    row = dry.classify_tail_column(
+        "entry",
+        base_class="at_or_under",
+        in_register=True,
+        allow_concentration=False,
+        top_share=0.35,
+        nonzero_share=0.01,
+        carriers=5_000,
+        margins=dry.DryRunMargins(),
+        **common,
+    )
+    assert row.possible_verdicts == {"stale", "used"}
+    assert row.status == "AT_RISK"
+
+    @hypothesis.settings(max_examples=300, deadline=None)
+    @hypothesis.given(
+        share=st.floats(min_value=0.0, max_value=1.0),
+        in_register=st.booleans(),
+    )
+    def check(share, in_register):
+        base = "over" if share > _MAX_TOP_SHARE else "at_or_under"
+        possible = dry.possible_tail_classes(
+            base,
+            top_share=share,
+            nonzero_share=0.01,
+            carriers=50_000,
+            margins=dry.DryRunMargins(),
+            **common,
+        )
+        assert {"over", "at_or_under"} <= possible
+
+    check()
 
 
 # ---------------------------------------------------------------------------
@@ -965,15 +1034,232 @@ def test_input_coverage_is_certain_on_full_pool_and_stale_is_at_risk_on_l0() -> 
         waived=False,
     )
     assert full.status == "FAIL" and len(full.failures) == 2
+    with pytest.raises(ValueError, match="signal counts"):
+        dry.input_coverage_register_check(
+            gate_passed=gate.passed,
+            gate_failures=gate.failures,
+            gate_details=gate.details,
+            support_fixed=False,
+            waived=False,
+        )
     l0 = dry.input_coverage_register_check(
         gate_passed=gate.passed,
         gate_failures=gate.failures,
         gate_details=gate.details,
         support_fixed=False,
         waived=False,
+        signal_counts={"present": 1_000},
+        margins=dry.DryRunMargins(),
     )
     assert len(l0.failures) == 1 and l0.failures[0].startswith("missing:")
     assert len(l0.at_risks) == 1 and "L0 path" in l0.at_risks[0]
+
+
+def test_l0_input_coverage_pass_is_at_risk_when_a_selection_can_empty_it() -> None:
+    """Review finding 3: a staged PASS the L0 export re-grade can flip."""
+
+    gate = input_column_coverage_gate(
+        ["sparse", "broad"],
+        required_columns=["sparse", "broad"],
+        degenerate_columns=[],
+        no_observed_columns=[],
+    )
+    assert gate.passed
+    margins = dry.DryRunMargins(support_carrier_retention=0.25)
+    kwargs = dict(
+        gate_passed=True,
+        gate_failures=(),
+        gate_details=gate.details,
+        waived=False,
+        signal_counts={"sparse": 3, "broad": 4},
+        margins=margins,
+    )
+    l0 = dry.input_coverage_register_check(support_fixed=False, **kwargs)
+    assert l0.status == "AT_RISK"
+    assert [line.split(":", 1)[0] for line in l0.at_risks] == ["sparse"]
+    assert l0.details["l0_fragile_required_columns"] == {"sparse": 3}
+    full = dry.input_coverage_register_check(support_fixed=True, **kwargs)
+    assert full.status == "PASS"
+
+
+def test_non_default_counts_agree_with_the_degenerate_gate() -> None:
+    """Differential: a zero count is exactly the gate's degenerate class."""
+
+    hypothesis, st = _hypothesis()
+    from microcosm.build.gates import (
+        default_valued_columns_gate,
+        non_default_record_count,
+        observed_value_counts,
+    )
+
+    column = st.one_of(
+        st.lists(st.sampled_from([0.0, 1.0, float("nan"), 2.5]), min_size=1),
+        st.lists(st.booleans(), min_size=1),
+        st.lists(st.sampled_from([0, 1, 7]), min_size=1),
+    )
+
+    @hypothesis.settings(max_examples=300, deadline=None)
+    @hypothesis.given(values=column, default=st.sampled_from([0.0, 1, True, False]))
+    def check(values, default):
+        array = np.asarray(values)
+        gate = default_valued_columns_gate({"c": array}, {"c": default})
+        degenerate = "c" in gate.details["default_valued_columns"]
+        count = non_default_record_count(array, default)
+        assert (count == 0) == degenerate
+        observed = observed_value_counts(array)
+        assert sum(n for _, n in observed) == int(
+            np.sum(~pd.isna(array)) if array.dtype.kind == "f" else array.size
+        )
+
+    check()
+
+
+def test_input_coverage_signal_counts_match_the_gate(builder, tail_frame) -> None:
+    from microcosm.build.us_runtime.release_input_coverage import (
+        us_release_input_coverage_gate,
+        us_release_input_coverage_signal_counts,
+    )
+
+    class Engine:
+        @staticmethod
+        def default_values(names):
+            return {name: 0.0 for name in names}
+
+    manifest = SimpleNamespace(
+        required_columns=frozenset({"casualty_loss", "estate_income", "absent"}),
+        reviewed_exclusions={},
+    )
+    counts = us_release_input_coverage_signal_counts(
+        tail_frame, Engine(), manifest=manifest
+    )
+    assert counts == {"casualty_loss": 200, "estate_income": 550}
+    gate = us_release_input_coverage_gate(tail_frame, Engine(), manifest=manifest)
+    assert gate.details["missing"] == ["absent"]
+    assert gate.details["degenerate_required"] == []
+
+
+def test_export_signal_regrades_bound_the_l0_selection() -> None:
+    margins = dry.DryRunMargins(support_carrier_retention=0.25)
+    reported = {
+        "vintages": {
+            "asec/2023": {
+                "rows": 9_000,
+                "enforced": True,
+                "reporter_counts": {"has_esi": 3, "has_medicaid": 400},
+            },
+            "asec/2021": {
+                "rows": 40,
+                "enforced": False,
+                "reporter_counts": {"has_esi": 1},
+            },
+        }
+    }
+    health = {
+        "takes_up_aca_if_eligible": [(True, 90_000), (False, 2)],
+        "selected_marketplace_plan_benchmark_ratio": [(1.0, 5_000), (0.9, 800)],
+    }
+    full = dry.export_signal_regrades_check(
+        health_value_counts=health,
+        reported_coverage_details=reported,
+        support_fixed=True,
+        margins=margins,
+    )
+    assert full.status == "PASS" and full.at_risks == ()
+    l0 = dry.export_signal_regrades_check(
+        health_value_counts=health,
+        reported_coverage_details=reported,
+        support_fixed=False,
+        margins=margins,
+    )
+    assert l0.status == "AT_RISK"
+    assert sorted(line.split(":", 1)[0] for line in l0.at_risks) == [
+        "health_input_signal/takes_up_aca_if_eligible",
+        "reported_coverage_vintage_signal/asec/2023/has_esi",
+    ]
+
+
+def test_zero_support_on_l0_is_bounded() -> None:
+    check = CheckResult(
+        name="zero_support_preview",
+        status="PASS",
+        summary="0 zero-support",
+        rows=(
+            {
+                "target": "thin",
+                "checkable": True,
+                "support_records": 2,
+                "verdict": "supported",
+            },
+            {
+                "target": "broad",
+                "checkable": True,
+                "support_records": 400,
+                "verdict": "supported",
+            },
+            {
+                "target": "derived",
+                "checkable": False,
+                "verdict": "not_statically_checkable",
+            },
+        ),
+    )
+    margins = dry.DryRunMargins(support_carrier_retention=0.25)
+    assert (
+        dry.bound_zero_support_on_l0(check, support_fixed=True, margins=margins)
+        is check
+    )
+    l0 = dry.bound_zero_support_on_l0(check, support_fixed=False, margins=margins)
+    assert l0.status == "AT_RISK"
+    assert [line.split(":", 1)[0] for line in l0.at_risks] == ["thin"]
+
+
+def test_evidence_ownership_converts_only_fully_owned_checks() -> None:
+    failing = CheckResult(
+        name="spm_composition",
+        status="FAIL",
+        summary="units",
+        failures=("SPM measurement composition failed (export frame): 3 units",),
+    )
+    patterns = {"SPM measurement composition failed": "PolicyEngine/microcosm#1"}
+
+    def owner_of(line):
+        return next((o for p, o in patterns.items() if p in line), None)
+
+    owned = dry.apply_evidence_ownership(
+        failing, release_lines=failing.failures, owner_of=owner_of
+    )
+    assert owned.status == "AT_RISK"
+    assert owned.at_risks[0].startswith("OWNED (PolicyEngine/microcosm#1")
+    assert PreflightReport(checks=(owned,)).exit_code == 2
+    mixed = dry.apply_evidence_ownership(
+        failing,
+        release_lines=[*failing.failures, "Stored model inputs failed: x"],
+        owner_of=owner_of,
+    )
+    assert mixed.status == "FAIL"
+    assert mixed.details["evidence_unowned_release_lines"] == [
+        "Stored model inputs failed: x"
+    ]
+    passing = CheckResult(name="x", status="PASS", summary="")
+    assert (
+        dry.apply_evidence_ownership(passing, release_lines=["a"], owner_of=owner_of)
+        is passing
+    )
+
+
+def test_unloadable_register_is_a_certain_failure_and_crashes_are_not_refusals() -> (
+    None
+):
+    check = dry.qrf_tail_register_unloadable_check(
+        {"path": "missing.json", "sha256": None}, FileNotFoundError("missing.json")
+    )
+    assert check.status == "FAIL" and check.name == "qrf_tail_register"
+    assert "terminal gates" in check.failures[0]
+    report = dry.post_stop_error_report(RuntimeError("boom"), inputs={})
+    assert report.exit_code == 1
+    (only,) = report.checks
+    assert only.name == "dry_run_evaluation_error"
+    assert "certifies nothing" in only.summary
 
 
 # ---------------------------------------------------------------------------
@@ -1196,6 +1482,7 @@ def test_release_dry_run_checks_run_the_release_gates(
         "degenerate_input_register",
         "ecps_parity_register",
         "input_coverage_register",
+        "export_signal_regrades",
         "stored_inputs",
         "spm_composition",
         "zero_support_preview",
@@ -1221,6 +1508,92 @@ def test_release_dry_run_checks_run_the_release_gates(
         for check in checks
         if check.name != "stored_inputs"
     )
+
+
+def test_release_dry_run_checks_evidence_tier_missing_register_and_l0(
+    builder, tail_frame, monkeypatch, tmp_path
+) -> None:
+    """The same assembly under --evidence-release, then on the L0 path.
+
+    * Evidence tier: the standing owner owns the concentrated columns' gate
+      lines, so they are OWNED (AT-RISK), not refusals, while the SPM refusal,
+      which no standing owner matches, still refuses.
+    * A register path that does not exist is a certain qrf_tail_register
+      failure (the release reads it only at its terminal gates) and leaves
+      every other check graded.
+    * On the L0 path the input-coverage bound reads the signal counts.
+    """
+
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ("estate_income",))
+    monkeypatch.setattr(builder, "PolicyEngineUSEngine", lambda: None)
+    monkeypatch.setattr(
+        builder,
+        "us_release_input_coverage_gate",
+        lambda frame, engine: GateResult(name="us_release_input_coverage", passed=True),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_release_input_coverage_signal_counts",
+        lambda frame, engine: {"estate_income": 550, "casualty_loss": 3},
+    )
+    args = builder._parse_args(
+        [
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "unused-out",
+            "--dense-default-dataset",
+            "--dry-run-gates-report",
+            "r.json",
+        ]
+    )
+    common = dict(
+        margins=dry.DryRunMargins(),
+        base_frame=tail_frame,
+        target_specs=[],
+        early_terminal_gate_failures=[],
+        pre_solve_gates={},
+        input_mass_reference_gate=None,
+        degenerate_input_gate=GateResult(name="degenerate_input_signal", passed=True),
+        ecps_parity_gate=GateResult(name="parity", passed=True),
+    )
+
+    args.evidence_release = True
+    evidence = {
+        check.name: check
+        for check in builder._release_dry_run_checks(
+            args,
+            support_fixed=True,
+            evidence_owner_patterns=builder.US_EVIDENCE_FAILURE_OWNERS,
+            **common,
+        )
+    }
+    tail = evidence["qrf_tail_register"]
+    assert tail.status == "AT_RISK" and tail.failures == ()
+    owned = {
+        row["column"] for row in tail.rows if row["possible_verdicts"] == ["owned"]
+    }
+    assert owned == set(_OVER)
+    assert set(tail.details["evidence_owners"]) >= set(_OVER)
+    assert evidence["spm_composition"].status == "FAIL"
+    assert evidence["spm_composition"].details["evidence_unowned_release_lines"]
+
+    args.evidence_release = False
+    args.qrf_tail_concentration_exclusions = tmp_path / "missing.json"
+    l0 = {
+        check.name: check
+        for check in builder._release_dry_run_checks(
+            args, support_fixed=False, **common
+        )
+    }
+    missing = l0["qrf_tail_register"]
+    assert missing.status == "FAIL" and "terminal gates" in missing.failures[0]
+    assert "missing.json" in missing.failures[0]
+    assert l0["input_coverage_register"].status == "AT_RISK"
+    assert [
+        line.split(":", 1)[0] for line in l0["input_coverage_register"].at_risks
+    ] == ["casualty_loss"]
+    assert len(l0) == 11
 
 
 # ---------------------------------------------------------------------------

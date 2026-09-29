@@ -83,6 +83,8 @@ _MARGIN_FLAGS: tuple[str, ...] = (
     "--dry-run-mass-drift-margin",
     "--dry-run-support-nonzero-share-margin",
     "--dry-run-support-carrier-retention",
+    "--dry-run-l0-tail-share-rise-margin",
+    "--dry-run-l0-tail-share-fall-margin",
 )
 
 

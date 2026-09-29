@@ -134,6 +134,7 @@ __all__ = [
     "us_release_input_coverage_gate",
     "us_release_input_coverage_required_columns",
     "us_release_input_coverage_reviewed_exclusions",
+    "us_release_input_coverage_signal_counts",
     "us_release_reform_coverage_probes",
 ]
 
@@ -604,6 +605,53 @@ def _degenerate_columns(
     )
 
 
+def _coverage_present_values(frame: Any, relevant: set[str]) -> dict[str, Any]:
+    """The values of every ``relevant`` column the export would persist."""
+
+    present_values: dict[str, Any] = {}
+    for entity in frame.entities:
+        table = frame.table(entity)
+        for column in table.columns:
+            if column in relevant and column not in present_values:
+                present_values[column] = table[column].to_numpy()
+
+    # Frame weights are typed pipeline state, not ordinary table data. The US
+    # adapter materializes this authoritative vector as ``household_weight``
+    # when writing PolicyEngine H5, overwriting any redundant table column.
+    # Mirror that export behavior here so the gate covers what is persisted.
+    if "household_weight" in relevant:
+        present_values.pop("household_weight", None)
+        if "household" in frame.weighted_entities:
+            present_values["household_weight"] = frame.weights_for("household").values
+    return present_values
+
+
+def us_release_input_coverage_signal_counts(
+    frame: Any,
+    engine: Any,
+    *,
+    manifest: ReleaseInputCoverageManifest | None = None,
+) -> dict[str, int]:
+    """Each present required column's count of records off the engine default.
+
+    Counts the same values :func:`us_release_input_coverage_gate` grades, under
+    its degeneracy comparison, so a count of zero is a column the gate calls
+    degenerate. The release dry run uses the counts to bound whether an L0
+    household selection could leave a required column degenerate on the export.
+    """
+
+    from microcosm.build.gates import non_default_record_count
+
+    manifest = manifest or load_release_input_coverage_manifest()
+    present_values = _coverage_present_values(frame, set(manifest.required_columns))
+    defaults = engine.default_values(sorted(present_values))
+    return {
+        column: non_default_record_count(values, defaults[column])
+        for column, values in sorted(present_values.items())
+        if column in defaults
+    }
+
+
 def us_release_input_coverage_gate(
     frame: Any,
     engine: Any,
@@ -631,24 +679,7 @@ def us_release_input_coverage_gate(
     manifest = manifest or load_release_input_coverage_manifest()
     required = manifest.required_columns
     reviewed = manifest.reviewed_exclusions
-    relevant = required | set(reviewed)
-
-    present_values: dict[str, Any] = {}
-    for entity in frame.entities:
-        table = frame.table(entity)
-        for column in table.columns:
-            if column in relevant and column not in present_values:
-                present_values[column] = table[column].to_numpy()
-
-    # Frame weights are typed pipeline state, not ordinary table data. The US
-    # adapter materializes this authoritative vector as ``household_weight``
-    # when writing PolicyEngine H5, overwriting any redundant table column.
-    # Mirror that export behavior here so the gate covers what is persisted.
-    if "household_weight" in relevant:
-        present_values.pop("household_weight", None)
-        if "household" in frame.weighted_entities:
-            present_values["household_weight"] = frame.weights_for("household").values
-
+    present_values = _coverage_present_values(frame, required | set(reviewed))
     degenerate, no_observed = _degenerate_columns(present_values, engine)
     return input_column_coverage_gate(
         present_values.keys(),
