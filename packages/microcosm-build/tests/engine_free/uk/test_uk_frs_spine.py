@@ -17,12 +17,14 @@ from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.observation import StageObservation
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
+from microcosm.build.stage_evidence import snapshot_stage_evidence
 from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.build.uk_runtime import (
     frs_disability,
     frs_education_grants,
     frs_legacy_proxies,
     frs_take_up,
+    spine_build,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_relationships import (
@@ -47,11 +49,11 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.frame import Frame, WeightKind, engine_tables
-from test_support.paths import paths_for
 
-_TEST_PATHS = paths_for("microcosm-build")
-
-_TOOL_PATH = _TEST_PATHS.repository / "tools" / "build_uk_frs_spine.py"
+# The driver lives in the package now; ``tools/build_uk_frs_spine.py`` is a
+# shim over it. Each test still executes its own module copy so per-test
+# monkeypatches never leak through the shared import.
+_TOOL_PATH = Path(spine_build.__file__)
 
 
 def _load_tool():
@@ -59,8 +61,51 @@ def _load_tool():
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    # Register the copy before executing it (the documented recipe for
+    # importing a source file by path): ``dataclass`` resolves the driver's
+    # string annotations through ``sys.modules[cls.__module__]``, and each
+    # test's fresh copy replaces the previous one under this private name.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _stored_stage_evidence(*, stage_names, implementations) -> dict[str, object]:
+    """The sidecar's ``stage_evidence`` block from per-stage stored snapshots.
+
+    Mirrors ``spine_sidecar_evidence`` over ``snapshot_stage_evidence``: the
+    driver no longer collects from live objects, it reads what each kernel
+    stored. Only the executed stages are consulted, exactly as each kernel
+    snapshots its own transform after it has run.
+    """
+
+    documents = {
+        stage: snapshot_stage_evidence(stage, implementations[stage])
+        for stage in stage_names
+        if stage in implementations
+    }
+    return {
+        stage: document["evidence"]
+        for stage, document in documents.items()
+        if document["evidence"] is not None
+    }
+
+
+def _stored_fit_weight_records(
+    *, stage_names, implementations
+) -> dict[str, list[dict[str, str]]]:
+    """The sidecar's ``fit_weight_records`` block from per-stage stored snapshots."""
+
+    documents = {
+        stage: snapshot_stage_evidence(stage, implementations[stage])
+        for stage in stage_names
+        if stage in implementations
+    }
+    return {
+        stage: document["fit_weight_records"]
+        for stage, document in documents.items()
+        if "fit_weight_records" in document
+    }
 
 
 def test_staging_stage_observer_translates_shared_observation() -> None:
@@ -1300,18 +1345,17 @@ def _patch_spi_spine_driver_runtime(
             self.last_result = SimpleNamespace(replay_report={"report_kind": "fake"})
             return result
 
-    def _write_fake_replay(report, path):
-        output = Path(path)
-        output.write_text(
-            json.dumps({"report_kind": "fake_spine_replay"}) + "\n",
-            encoding="utf-8",
-        )
-        return output
+        def checkpoint_metadata(self) -> dict[str, object]:
+            if self.last_result is None:
+                raise RuntimeError("Stage evidence requires completed computation.")
+            return {
+                "evidence": {"stage": self.stage.stage},
+                "replay_payload": {"report_kind": "fake_spine_replay"},
+            }
 
     monkeypatch.setattr(tool, "UKFRSHMRCSpineLeavesStageTransform", _FakeStageTransform)
     monkeypatch.setattr(tool, "UKSPISupportChannelStageTransform", _FakeStageTransform)
     monkeypatch.setattr(tool, "UKSPIIncomeSpineStageTransform", _FakeStageTransform)
-    monkeypatch.setattr(tool, "write_hmrc_replay_report", _write_fake_replay)
     return spi_tab, hmrc_ods
 
 
@@ -1964,6 +2008,127 @@ def test_driver_records_sanitized_failed_staging_lifecycle(
     assert str(tmp_path) not in serialized
 
 
+def test_driver_materializes_a_blocked_assembled_gate_report_before_failing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A gate refusal inside ``run_graph`` still leaves ``spine_gates.json``.
+
+    The assembled battery runs as a graph node and the first later stage
+    refuses on its stored verdict, so ``run_graph`` raises before the
+    success-path materialisation. The driver hands the operator the same
+    report file the in-process battery wrote before it raised: blocked at
+    ``assembled``, the transferred phase unreached, the block error in the
+    receipt and on stderr, and no H5.
+    """
+    from microcosm.build.gate_battery import (
+        GateOutcome,
+        GatePhaseReport,
+        GateStatus,
+        gate_phase_report_payload,
+    )
+    from microcosm.build.gates import GateResult
+    from microcosm.build.uk_runtime.graph_evidence import (
+        require_uk_spine_gate_admission,
+    )
+    from microcosm.graph import NodeRejected
+
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "blocked.h5"
+    tool = _load_tool()
+    spec = _synthetic_spec(stage)
+    # The synthetic roster carries the real gate declarations, so the driver
+    # arms the spine battery and the graph gains its gate nodes.
+    spec.gates = load_country_spec("uk").gates
+    monkeypatch.setattr(tool, "load_country_spec", lambda country: spec)
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+
+    gates = tool._spine_gate_manifest_from_spec(spec)
+    assembled = [entry for entry in gates.gates if entry.phase == "assembled"]
+    failed = assembled[0]
+    report = GatePhaseReport(
+        "assembled",
+        tuple(
+            GateOutcome(
+                entry,
+                GateStatus.FAILED if entry is failed else GateStatus.PASSED,
+                GateResult(
+                    name=entry.id,
+                    passed=entry is not failed,
+                    failures=(
+                        ("synthetic assembled failure",) if entry is failed else ()
+                    ),
+                    details={},
+                ),
+            )
+            for entry in assembled
+        ),
+    )
+    stored = json.dumps(gate_phase_report_payload(report, gates=gates)).encode()
+
+    def _refuse_admission(*_args, **_kwargs):
+        # What the first post-checkpoint stage does with the stored verdict,
+        # wrapped the way the executor wraps a kernel failure.
+        context = SimpleNamespace(
+            artifacts={"spine_gate": SimpleNamespace(payload=stored)},
+            node=SimpleNamespace(artifact_inputs=()),
+            params={
+                "spine_gate_phase": "assembled",
+                "spine_gate_release_candidate": False,
+                "spine_gate_synthetic_smoke": False,
+            },
+        )
+        try:
+            require_uk_spine_gate_admission(context)
+        except ValueError as refusal:
+            raise NodeRejected(
+                f"Node 'frs_age_tail' kernel 'uk.stage@1' failed: {refusal}"
+            ) from refusal
+        pytest.fail("the stored assembled verdict did not refuse admission")
+
+    monkeypatch.setattr(tool, "run_graph", _refuse_admission)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--no-staging",
+            ]
+        )
+        == 1
+    )
+
+    report_path = output.with_suffix(".spine_gates.json")
+    err = capsys.readouterr().err
+    assert f"Gate battery blocked at phase 'assembled' (report: {report_path})" in err
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["blocked_at_phase"] == "assembled"
+    assert payload["gates"][failed.id]["status"] == "failed"
+    transferred = [entry.id for entry in gates.gates if entry.phase == "transferred"]
+    assert transferred
+    assert {payload["gates"][gate_id]["status"] for gate_id in transferred} == {
+        "unreached"
+    }
+    assert not output.exists()
+    receipts = list((tmp_path / "logbook-receipts").rglob("error.json"))
+    assert len(receipts) == 1
+    assert json.loads(receipts[0].read_text())["error_type"].endswith(
+        "GateBatteryBlockedError"
+    )
+    rows = load_spool_rows(tmp_path / "logbook-spool")
+    assert len(rows) == 1
+    assert rows[0].disposition == "failed"
+
+
 def test_driver_sampled_named_edge_aborts_with_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2158,8 +2323,6 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
 
 
 def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
-    tool = _load_tool()
-
     class _EvidenceResult:
         def __init__(self, payload: dict[str, object]) -> None:
             self.payload = payload
@@ -2215,7 +2378,7 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
         "future_stage": _CheckpointStage(new_payload),
     }
 
-    evidence = tool._collect_stage_evidence(
+    evidence = _stored_stage_evidence(
         stage_names=(
             "frs_spine",
             "frs_hmrc_spine_leaves",
@@ -2251,8 +2414,6 @@ def test_spine_sidecar_collects_stage_evidence_by_duck_type() -> None:
 
 
 def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
-    tool = _load_tool()
-
     class _Record:
         def __init__(self, fit_name, weight_kind):
             self.fit_name = fit_name
@@ -2271,7 +2432,7 @@ def test_collect_fit_weight_records_is_duck_typed_and_fail_visible():
         "etb_vat": SimpleNamespace(fit_weight_records=()),
         "lcfs_consumption": _Broken(),
     }
-    records = tool._collect_fit_weight_records(
+    records = _stored_fit_weight_records(
         stage_names=("frs_spine", "was_wealth", "etb_vat", "lcfs_consumption"),
         implementations=implementations,
     )
@@ -2393,8 +2554,6 @@ def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
     its executed prefix — an un-run stage being consulted is the regression.
     """
 
-    tool = _load_tool()
-
     class _RefusesUntilRun:
         def __init__(self) -> None:
             self.ran = False
@@ -2411,13 +2570,13 @@ def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
 
     # The assembled-boundary call: only the executed prefix is offered, so the
     # un-run late stage is never consulted and nothing raises.
-    assembled = tool._collect_stage_evidence(
+    assembled = _stored_stage_evidence(
         stage_names=("early_stage",), implementations=implementations
     )
     assert assembled == {}
 
     late.ran = True
-    transferred = tool._collect_stage_evidence(
+    transferred = _stored_stage_evidence(
         stage_names=("early_stage", "late_stage"), implementations=implementations
     )
     assert transferred == {"late_stage": {"stage": "late_stage", "ok": True}}
@@ -2457,7 +2616,6 @@ def test_collect_fit_weight_records_sees_through_the_run_proxies():
 
     from microcosm.build.observation import ObservedTransform
 
-    tool = _load_tool()
     record = SimpleNamespace(
         fit_name="uk_was_2018_20_wealth:savings", weight_kind="design"
     )
@@ -2492,7 +2650,7 @@ def test_collect_fit_weight_records_sees_through_the_run_proxies():
         "was_wealth": observed(_Fit(), "was_wealth"),
         "etb_vat": observed(_GraphLike(_Fit()), "etb_vat"),
     }
-    records = tool._collect_fit_weight_records(
+    records = _stored_fit_weight_records(
         stage_names=("frs_spine", "was_wealth", "etb_vat"),
         implementations=implementations,
     )
