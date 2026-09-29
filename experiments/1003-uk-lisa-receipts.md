@@ -162,8 +162,8 @@ The ownership model on the full donor (stage evidence), in terms of standardised
 - Sex (−0.09), cash ISA and household net income are small.
 
 The weighted mean probability matches the donor share (0.8897% against 0.8902%), as the
-unpenalised intercept guarantees up to solver tolerance. By age group, the model's mean probability is within 0.02 points of the
-donor share. The solver converged in 22 iterations.
+unpenalised intercept guarantees up to solver tolerance. By age group, the model's mean
+probability is within 0.02 points of the donor share. The solver converged in 22 iterations.
 
 ## Part C. Realised holdings against the donor
 
@@ -298,7 +298,7 @@ medians and weighted means of log(1 + x) over adults. The stage-time spine is th
 without the CGT band donors; a clone and its original carry identical cells and their weights sum
 to the stage-time weight.
 
-| Age | Median gross financial wealth, donor | Spine | Ratio | Mean log, gross financial wealth, donor / spine | Mean log, savings, donor / spine | Private renters, donor / spine |
+| Age | Median gross financial wealth, donor | Median, spine | Ratio | Mean log, gross financial wealth, donor / spine | Mean log, savings, donor / spine | Private renters, donor / spine |
 | --- | --- | --- | --- | --- | --- | --- |
 | 18–24 | £12,200 | £48,800 | 4.0 | 9.21 / 10.37 | 5.72 / 6.75 | 19.0% / 30.3% |
 | 25–34 | £8,820 | £26,300 | 3.0 | 8.75 / 9.87 | 5.02 / 5.93 | 26.0% / 35.1% |
@@ -345,7 +345,9 @@ Three options, measured or implied on the same inputs:
   - Within each age group, the ranking by financial wealth, and with it the coherence, stays as
     in (a).
   - Balances stay as in (a), because the balance forest still conditions on the financial draws.
-  - It anchors the 2024-25 spine to the 2020-22 donor rate, and holdings have grown since.
+  - It anchors the 2024-25 spine to the 2020-22 donor rate, and holdings have grown since:
+    HMRC reports LISA subscriptions 20.1% (£472 million) higher in 2024 to 2025
+    ([annual savings statistics, September 2026 commentary](https://www.gov.uk/government/statistics/annual-savings-statistics-2026/commentary-for-annual-savings-statistics-september-2026)).
 
 Whichever option she picks, the `was_wealth` level is a follow-up in its own right: it moves every
 reader of the financial draws, not only this stage.
