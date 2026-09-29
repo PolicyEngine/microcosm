@@ -124,6 +124,7 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_education": ("frs",),
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
+    "was_lisa": ("was", "was_person"),
     "nts_bus_travel": (
         "nts_household",
         "nts_individual",
@@ -142,6 +143,7 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
 _SPLIT_SOURCE_DESCRIPTIONS = {
     "frs": "Pinned local FRS table directory.",
     "was": "Pinned local WAS household donor table.",
+    "was_person": "Pinned local WAS person donor table.",
     "nts_household": "Pinned local NTS household donor table.",
     "nts_individual": "Pinned local NTS individual donor table.",
     "nts_trip": "Pinned local NTS trip donor table.",
@@ -213,6 +215,10 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "frs_household_draws": frozenset(),
     "frs_brma": None,
     "was_wealth": None,
+    # The LISA model reads the was_wealth household predictors through the
+    # engine (household net income over the whole frame), an open surface like
+    # the WAS chain it conditions on.
+    "was_lisa": None,
     # The factor's mean is taken over FRS-base owners only, so the support
     # channel is a direct read.
     "regional_property_uprating": frozenset(
@@ -610,6 +616,11 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells("household", ("cash_isa", "stocks_and_shares_isa")),
         *_cells("household", ("mortgage_debt", "consumer_debt")),
         _Cell("person", "student_loan_balance", "float64"),
+    ),
+    "was_lisa": (
+        _Cell("person", "has_lifetime_isa", "bool"),
+        _Cell("person", "lifetime_isa_balance", "float64"),
+        _Cell("household", "household_lifetime_isa_balance", "float64"),
     ),
     "nts_bus_travel": (
         _Cell("person", "local_bus_use_band", "int64"),

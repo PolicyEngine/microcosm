@@ -45,7 +45,7 @@ from microcosm.graph import (
 from microcosm.graph.population import dtype_for_token
 
 from .. import stage_evidence
-from . import bus_use_incidence, frs_hmrc_source, uc_relationships
+from . import bus_use_incidence, frs_hmrc_source, uc_relationships, was_wealth
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -77,6 +77,7 @@ _STAGE_MODULES = {
     "frs_household_draws": "frs_household_draws",
     "frs_brma": "frs_brma",
     "was_wealth": "was_wealth",
+    "was_lisa": "was_lisa",
     "nts_bus_travel": "nts_bus_travel",
     "regional_property_uprating": "regional_uprating",
     "lcfs_consumption": "lcfs_consumption",
@@ -109,6 +110,9 @@ _STAGE_HELPER_MODULES = {
     "frs_education_grant_split": (uk_engine_adapter,),
     "frs_brma": (uk_engine_adapter,),
     "was_wealth": (uk_engine_adapter,),
+    # The LISA stage reads its household donor through the WAS cleaning and its
+    # household predictors through the WAS recipient surface.
+    "was_lisa": (uk_engine_adapter, was_wealth),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     "lcfs_consumption": (uk_engine_adapter,),
     "etb_vat": (uk_engine_adapter,),
@@ -362,7 +366,7 @@ def _fixture_asset_type_facts(path: Path):
 def _fixture_descriptor(
     source: Path,
 ) -> tuple[Mapping[str, object], dict[str, SourceStageSpec]]:
-    """Parse the H2 bundle's descriptor and its 27 stage specs, keyed by name."""
+    """Parse the H2 bundle's descriptor and its stage specs, keyed by name."""
 
     from microcosm.build.source_manifest import SourceStageSpec
 
@@ -386,7 +390,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 34-stage spine "
+            "UK parity fixture must describe the current 35-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -434,6 +438,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .uc_capital_coherence import UKUCCapitalCoherenceStageTransform
     from .uc_deduction_attributes import UKUCDeductionAttributesStageTransform
     from .uc_reporter_redraw import UKUCReporterRedrawStageTransform
+    from .was_lisa import UKWASLISAStageTransform
     from .was_wealth import UKWASWealthStageTransform
 
     descriptor, stages = _fixture_descriptor(source)
@@ -443,6 +448,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     raw_dir = _fixture_input(source, inputs, "frs_raw")
     was = pd.read_csv(
         _fixture_input(source, inputs, "was"), float_precision="round_trip"
+    )
+    was_person = pd.read_csv(
+        _fixture_input(source, inputs, "was_person"), float_precision="round_trip"
     )
     lcfs_household = pd.read_csv(
         _fixture_input(source, inputs, "lcfs_household"),
@@ -534,6 +542,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "was_wealth": UKWASWealthStageTransform(
                 stage=stages["was_wealth"], engine=engine, donor=was
+            ),
+            "was_lisa": UKWASLISAStageTransform(
+                stage=stages["was_lisa"],
+                engine=engine,
+                donor_household=was,
+                donor_person=was_person,
             ),
             "nts_bus_travel": UKNTSBusTravelStageTransform(
                 stage=stages["nts_bus_travel"],

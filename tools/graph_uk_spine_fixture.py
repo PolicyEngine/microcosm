@@ -129,6 +129,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -150,11 +151,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 34
+UK_FIXTURE_STAGE_COUNT = 35
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 34-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 35-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -1273,6 +1274,10 @@ def _fixture_stages(
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
             )
+        elif stage.stage == "was_lisa":
+            stage = _replace_operation(
+                stage, "impute_lifetime_isa_balance", n_estimators=_QRF_ESTIMATORS
+            )
         elif stage.stage == "nts_bus_travel":
             stage = _replace_operation(
                 stage, "impute_bus_use_band", n_estimators=_QRF_ESTIMATORS
@@ -1433,6 +1438,7 @@ def _build_implementations(
     stages: Mapping[str, SourceStageSpec],
     raw_dir: Path,
     was: pd.DataFrame,
+    was_person: pd.DataFrame,
     nts_household: pd.DataFrame,
     nts_individual: pd.DataFrame,
     nts_trip: pd.DataFrame,
@@ -1505,6 +1511,12 @@ def _build_implementations(
         "frs_brma": UKFRSBRMAStageTransform(stage=stages["frs_brma"], engine=engine),
         "was_wealth": UKWASWealthStageTransform(
             stage=stages["was_wealth"], engine=engine, donor=was
+        ),
+        "was_lisa": UKWASLISAStageTransform(
+            stage=stages["was_lisa"],
+            engine=engine,
+            donor_household=was,
+            donor_person=was_person,
         ),
         "nts_bus_travel": UKNTSBusTravelStageTransform(
             stage=stages["nts_bus_travel"],
@@ -1602,7 +1614,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 34-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 35-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1672,11 +1684,13 @@ def generate(output: Path) -> None:
     stage_map = {stage.stage: stage for stage in stages}
 
     was = _was_donor()
+    was_person = _was_person_donor()
     nts_household, nts_individual, nts_trip, nts_stage, nts_ticket = _nts_donors()
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
     spi_donor = _spi_donor()
     _write_csv(sources / "was.csv", was)
+    _write_csv(sources / "was_person.csv", was_person)
     _write_csv(sources / "nts_household.csv", nts_household)
     _write_csv(sources / "nts_individual.csv", nts_individual)
     _write_csv(sources / "nts_trip.csv", nts_trip)
@@ -1703,6 +1717,7 @@ def generate(output: Path) -> None:
         stages=stage_map,
         raw_dir=raw_dir,
         was=was,
+        was_person=was_person,
         nts_household=nts_household,
         nts_individual=nts_individual,
         nts_trip=nts_trip,
@@ -1761,6 +1776,7 @@ def generate(output: Path) -> None:
         "inputs": {
             "frs_raw": "frs_raw",
             "was": "was.csv",
+            "was_person": "was_person.csv",
             "nts_household": "nts_household.csv",
             "nts_individual": "nts_individual.csv",
             "nts_trip": "nts_trip.csv",

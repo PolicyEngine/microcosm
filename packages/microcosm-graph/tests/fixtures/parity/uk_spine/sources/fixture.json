@@ -34,7 +34,8 @@
     "nts_ticket": "nts_ticket.csv",
     "nts_trip": "nts_trip.csv",
     "spi_donor": "spi_donor.csv",
-    "was": "was.csv"
+    "was": "was.csv",
+    "was_person": "was_person.csv"
   },
   "schema_version": "uk-spine-parity-fixture.v1",
   "stages": {
@@ -4765,6 +4766,217 @@
       "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
       "stage": "uc_reporter_redraw",
       "survey": "Family Resources Survey 2024-25"
+    },
+    "was_lisa": {
+      "artifacts": [
+        {
+          "access": "private_local_input",
+          "doi": "10.5255/UKDA-SN-7215-20",
+          "filename": "was_round_8_hhold_eul_may_2025_230525.tab",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "role": "was_qrf_donor",
+          "runtime_sha256_required": true,
+          "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
+          "size_bytes": 39073613,
+          "ukds_study_number": 7215
+        },
+        {
+          "access": "private_local_input",
+          "doi": "10.5255/UKDA-SN-7215-20",
+          "filename": "was_round_8_person_eul_may_2025_230525.tab",
+          "format": "tab",
+          "kind": "private_microdata",
+          "locator": "caller-supplied local input",
+          "role": "was_person_tab",
+          "runtime_sha256_required": true,
+          "sha256": "1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a",
+          "size_bytes": 356930989,
+          "ukds_study_number": 7215,
+          "vintage": "round_8"
+        }
+      ],
+      "grain": "person",
+      "nonnegative_outputs": [
+        "lifetime_isa_balance",
+        "household_lifetime_isa_balance"
+      ],
+      "notes": "Imputes Lifetime ISA holdings per adult from the WAS round-8 person tab (microcosm#1003). The donor is every non-dependent adult of the person tab joined many-to-one on CASER8 to the cleaned household tab (the was_wealth donor, same pins); the released value DVFLISAvR8 (the ONS-completed FLISAVR8_i) must sum to the household aggregate DVFLISAVR8_aggr on every household or the stage refuses the tab, and a missing or negative value is refused rather than read as a zero balance. Response classes (observed, banded with the ONS value inside the reported band, ONS-imputed value or holding, rule-impossible) are receipted and never used as predictors. The declared credibility rule recodes holders recorded in an age band starting at 45 or above to non-holders and keeps holders above the balance ceiling as holders outside the balance fit (basis on the clean operation). Ownership is a weighted logistic regression with a ridge penalty on the slopes and an unpenalised intercept, so the donor's weighted ownership share is reproduced in-sample, on the age group, the log of person earnings, household net income, gross financial wealth, cash ISA, stocks-and-shares ISA and savings, private renting, sex and the number of children; the house regime gate (gradient boosting) is miscalibrated for an outcome held by under one per cent of adults with about 120 donor holders. Recipients aged 18 or over hold when a uniform keyed on person_id falls below their probability; no upper age limit is imposed. The balance is the regime-gated QRF fitted on the credible holders and drawn at the owner's keyed quantile (predict_positive_from_uniforms), so it is positive exactly when the person holds. Household predictors reuse the was_wealth definitions; tenure is the private-renter flag on both sides (DVPriRntR8 == 1; tenure_type RENT_PRIVATELY), not the engine is_renting. WAS counts LISAs inside gross financial wealth, so a household total above its gross_financial_wealth draw is scaled down pro rata (receipted) and ownership is re-derived from the capped balance; was_wealth columns are never rewritten. Balances are April 2020 to March 2022 pounds from a Great Britain donor and are not uprated; Northern Ireland recipients are predicted from the GB model. WAS records holdings, not annual contributions, and the stage derives no contribution or bonus.",
+      "operations": [
+        {
+          "age_band_edges": [
+            0,
+            5,
+            10,
+            15,
+            20,
+            25,
+            30,
+            35,
+            40,
+            45,
+            50,
+            55,
+            60,
+            65,
+            70,
+            75,
+            80
+          ],
+          "aggregate_tolerance_gbp": 1,
+          "credibility_rule": {
+            "balance_ceiling_gbp": 40000,
+            "basis": "LISAs have been opened only by people aged 18 to 39 since 6 April 2017, so no holder was older than 44 by the end of round-8 fieldwork (March 2022); a holder recorded in an age band starting at 45 or above is a misreported ISA type and is recoded to a non-holder. About GBP 30,500 of contributions, government bonus and the one-off 2017-18 Help to Buy ISA transfer was attainable before returns, so a holder above GBP 40,000 stays a holder but leaves the balance fit.",
+            "maximum_holder_age_band_lower": 45
+          },
+          "female_code": 2,
+          "household_aggregate": "DVFLISAVR8_aggr",
+          "household_key": "CASER8",
+          "household_predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "gross_financial_wealth",
+            "savings",
+            "cash_isa",
+            "stocks_and_shares_isa"
+          ],
+          "kind": "clean_was_lisa_donor",
+          "non_dependent_code": 2,
+          "person_columns": {
+            "age_band": "DVAge17R8",
+            "band_imputed": "flisabr8_iflag",
+            "employment_income": "DVGIEmpR8",
+            "holding_imputed": "fisa_binary3r8_iflag",
+            "holds_lifetime_isa": "fisa_binary3r8_i",
+            "is_dependent_child": "IsDepR8",
+            "lifetime_isa_balance": "DVFLISAvR8",
+            "person_number": "PersonR8",
+            "reported_band": "FLISABR8",
+            "reported_value": "FLISAVR8",
+            "self_employment_income": "DVGISER8",
+            "sex": "SexR8",
+            "value_imputed": "flisavr8_iflag"
+          },
+          "scope": "WAS round-8 person tab joined many-to-one to the cleaned household tab on the anonymised case number; exact lower-case column matching; the released person LISA value must sum to the household aggregate",
+          "sentinel_codes": [
+            -9,
+            -8,
+            -7,
+            -6
+          ],
+          "sentinel_recode_columns": [
+            "employment_income",
+            "self_employment_income"
+          ]
+        },
+        {
+          "consumed_only": true,
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "private_pension_income",
+            "employment_income",
+            "self_employment_income",
+            "capital_income",
+            "is_renting"
+          ]
+        },
+        {
+          "age_group_lower_bounds": [
+            0,
+            25,
+            35,
+            45,
+            55
+          ],
+          "count_predictors": [
+            "num_children"
+          ],
+          "indicator_predictors": [
+            "is_private_renter",
+            "is_female"
+          ],
+          "kind": "impute_lifetime_isa_ownership",
+          "log1p_predictors": [
+            "employment_income",
+            "household_net_income",
+            "gross_financial_wealth",
+            "cash_isa",
+            "stocks_and_shares_isa",
+            "savings"
+          ],
+          "max_iter": 5000,
+          "model": "weighted_ridge_logistic",
+          "output": "has_lifetime_isa",
+          "penalty_c": 1,
+          "population": {
+            "minimum_age": 18
+          },
+          "salt": "was_lisa:has_lifetime_isa",
+          "seed": 0,
+          "solver": "lbfgs",
+          "standardise": "donor_unweighted_mean_sd"
+        },
+        {
+          "expected_regime": "positive_only",
+          "kind": "impute_lifetime_isa_balance",
+          "model": "regime_gated_qrf",
+          "n_estimators": 4,
+          "output": "lifetime_isa_balance",
+          "predictors": [
+            "age_band",
+            "is_female",
+            "employment_income",
+            "household_net_income",
+            "gross_financial_wealth",
+            "savings",
+            "cash_isa",
+            "stocks_and_shares_isa",
+            "is_private_renter",
+            "num_children"
+          ],
+          "salt": "was_lisa:lifetime_isa_balance",
+          "seed": 0,
+          "training_rows": "credible_holders"
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        },
+        {
+          "cap_column": "gross_financial_wealth",
+          "column": "lifetime_isa_balance",
+          "kind": "cap_lifetime_isa_to_financial_wealth",
+          "method": "pro_rata_within_household",
+          "ownership_output": "has_lifetime_isa"
+        },
+        {
+          "aggregates": {
+            "household_lifetime_isa_balance": "lifetime_isa_balance"
+          },
+          "kind": "aggregate_person_to_household",
+          "method": "sum"
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "WAS Lifetime ISA imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
+        }
+      ],
+      "outputs": [
+        "has_lifetime_isa",
+        "lifetime_isa_balance",
+        "household_lifetime_isa_balance"
+      ],
+      "rewrites": [],
+      "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).",
+      "stage": "was_lisa",
+      "survey": "Wealth and Assets Survey round 8"
     },
     "was_wealth": {
       "artifacts": [

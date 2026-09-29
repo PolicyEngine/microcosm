@@ -456,6 +456,7 @@ class TestUKManifest:
                 "salary_sacrifice",
                 "student_loans",
                 "was_wealth",
+                "was_lisa",
                 "regional_property_uprating",
                 "nts_bus_travel",
                 "lcfs_consumption",

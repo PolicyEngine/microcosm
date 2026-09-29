@@ -2279,6 +2279,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "nts_ticket_tab",
         "published_fact_surface",
         "qrf_donor",
+        "was_person_tab",
         "was_qrf_donor",
     }
     # Every private input, the three NTS tabs included since the SN 5340
@@ -2293,6 +2294,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         str(artifact["role"]): str(artifact["sha256"])
         for stage_name in (
             "was_wealth",
+            "was_lisa",
             "nts_bus_travel",
             "lcfs_consumption",
             "etb_vat",
@@ -2320,6 +2322,7 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
     assert declared["nts_bus_travel"] == {"local_bus_use_band": 0}
+    assert declared["was_lisa"] == {"has_lifetime_isa": 0, "lifetime_isa_balance": 0}
     assert declared["lcfs_consumption"] == {
         "has_fuel_consumption": 0,
         "lcfs_consumption": 0,

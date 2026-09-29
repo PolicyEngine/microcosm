@@ -121,6 +121,7 @@ OWNERSHIP_COLUMN = "has_lifetime_isa"
 BALANCE_COLUMN = "lifetime_isa_balance"
 HOUSEHOLD_BALANCE_COLUMN = "household_lifetime_isa_balance"
 FINANCIAL_WEALTH_COLUMN = "gross_financial_wealth"
+CAP_METHOD = "pro_rata_within_household"
 UK_WAS_LISA_PERSON_OUTPUT_COLUMNS: tuple[str, ...] = (
     OWNERSHIP_COLUMN,
     BALANCE_COLUMN,
@@ -1352,10 +1353,13 @@ class UKWASLISAStageTransform:
         if (
             cap.get("column") != BALANCE_COLUMN
             or cap.get("cap_column") != FINANCIAL_WEALTH_COLUMN
+            or cap.get("method") != CAP_METHOD
+            or cap.get("ownership_output") != OWNERSHIP_COLUMN
         ):
             raise WASLISAError(
                 "cap_lifetime_isa_to_financial_wealth must cap "
-                f"{BALANCE_COLUMN!r} at {FINANCIAL_WEALTH_COLUMN!r}."
+                f"{BALANCE_COLUMN!r} at {FINANCIAL_WEALTH_COLUMN!r} "
+                f"({CAP_METHOD}) and re-derive {OWNERSHIP_COLUMN!r}."
             )
         donor = clean_was_lisa_donor(
             self._table(

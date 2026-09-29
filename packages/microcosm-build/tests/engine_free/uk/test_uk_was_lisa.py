@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
@@ -120,6 +121,7 @@ CAP = {
     "column": "lifetime_isa_balance",
     "cap_column": "gross_financial_wealth",
     "method": "pro_rata_within_household",
+    "ownership_output": "has_lifetime_isa",
 }
 
 
@@ -160,6 +162,38 @@ def _stage() -> SourceStageSpec:
             ],
             "outputs": list(UK_WAS_LISA_OUTPUT_COLUMNS),
             "nonnegative_outputs": [BALANCE_COLUMN, HOUSEHOLD_BALANCE_COLUMN],
+        }
+    )
+
+
+def _committed_stage(n_estimators: int = 4) -> SourceStageSpec:
+    """The packaged ``was_lisa`` declaration, with a small balance forest."""
+
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    committed = spec.sources.stage_map()[UK_WAS_LISA_STAGE_NAME]
+    operations = [
+        {
+            "kind": operation.kind,
+            **dict(operation.parameters),
+            **(
+                {"n_estimators": n_estimators}
+                if operation.kind == "impute_lifetime_isa_balance"
+                else {}
+            ),
+        }
+        for operation in committed.operations
+    ]
+    return SourceStageSpec.from_mapping(
+        {
+            "stage": committed.stage,
+            "survey": committed.survey,
+            "source": committed.source,
+            "grain": committed.grain,
+            "artifacts": [dict(artifact) for artifact in committed.artifacts],
+            "operations": operations,
+            "outputs": list(committed.outputs),
+            "nonnegative_outputs": list(committed.nonnegative_outputs),
         }
     )
 
@@ -476,7 +510,7 @@ def test_cap_scales_a_household_over_its_financial_wealth_pro_rata() -> None:
 
 def _transform() -> UKWASLISAStageTransform:
     return UKWASLISAStageTransform(
-        stage=_stage(),
+        stage=_committed_stage(),
         engine=_FakeEngine(),
         donor_household=_was_donor(),
         donor_person=_was_person_donor(),
@@ -565,3 +599,39 @@ def test_stage_requires_its_tabs() -> None:
 
     with pytest.raises(WASLISAError, match="was_person_tab"):
         transform(_recipient_frame())
+
+
+def test_committed_declaration_carries_the_tested_parameters() -> None:
+    """The packaged manifest declares exactly what these tests exercise."""
+
+    committed = load_country_spec("uk").sources.stage_map()[UK_WAS_LISA_STAGE_NAME]
+    by_kind = {
+        operation.kind: dict(operation.parameters) for operation in committed.operations
+    }
+
+    clean = dict(by_kind["clean_was_lisa_donor"])
+    clean.pop("scope")
+    clean["credibility_rule"] = {
+        key: value for key, value in clean["credibility_rule"].items() if key != "basis"
+    }
+    assert clean == CLEAN
+    assert by_kind["impute_lifetime_isa_ownership"] == OWNERSHIP
+    assert by_kind["impute_lifetime_isa_balance"] == {**BALANCE, "n_estimators": 100}
+    assert by_kind["cap_lifetime_isa_to_financial_wealth"] == CAP
+    assert by_kind["aggregate_person_to_household"] == {
+        "method": "sum",
+        "aggregates": {HOUSEHOLD_BALANCE_COLUMN: BALANCE_COLUMN},
+    }
+    receipts = by_kind["record_mass_conservation_receipt"]
+    assert receipts["reason"] == UK_WAS_LISA_MASS_CONSERVATION_REASON
+    assert committed.outputs == UK_WAS_LISA_OUTPUT_COLUMNS
+    roles = {artifact["role"]: artifact for artifact in committed.artifacts}
+    assert roles["was_person_tab"]["sha256"] == (
+        "1ca6fd37d9c677242112e0d7839df8b406eb1611db8322b20771f054e329d71a"
+    )
+    was_wealth = load_country_spec("uk").sources.stage_map()["was_wealth"]
+    assert roles["was_qrf_donor"] == next(
+        artifact
+        for artifact in was_wealth.artifacts
+        if artifact["role"] == "was_qrf_donor"
+    )
