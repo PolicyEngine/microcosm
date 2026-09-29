@@ -232,7 +232,9 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in (
         "microcosm#1022",
         "household FS",
-        "every SPM unit",
+        "at least one SPM unit",
+        "reference person's unit is set True",
+        "not forced to report the family's receipt",
         "group quarters",
         "SPM_SNAPSUB",
         "PAP > 0 is not TANF receipt",
@@ -245,7 +247,14 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     assert spm_units["status"] == "reviewed_modeling_decision"
     assert spm_units["affected_spines"] == ["acs_2024_1yr"]
     assert "acs_local_spm_unit_signal" in spm_units["treatment"]
-    for fragment in ("microcosm#1023", "RELSHIPP 34", "under 15", "foster"):
+    for fragment in (
+        "microcosm#1023",
+        "RELSHIPP 34",
+        "under 15",
+        "foster",
+        "no unmarried partner (22 or 24)",
+        "the roommate's child",
+    ):
         assert fragment in spm_units["reason"]
     # microcosm#1021: native ACS disability is a reviewed method; weeks worked
     # is staged only, and is_veteran is documented, not exported.
@@ -322,11 +331,16 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     for fragment in (
         "HINS4 == 1",
         "SSIP",
-        "share of the frame",
+        "after the donor rows' pooled recipients",
+        "count minus contribution",
+        "probability residual / anchored eligible weight",
         "SERIALNO:SPORDER",
         "under-18",
     ):
         assert fragment in take_up["reason"]
+    # microcosm#1060 review: the share-scaled targets are gone.
+    assert "share of the frame" not in take_up["reason"]
+    assert "the donor contribution" in take_up["treatment"]
     # microcosm#1020: the ACS immigration inputs are a reviewed method, not
     # an engine-default gap.
     immigration = by_id["acs_immigration_status_method"]
@@ -1103,7 +1117,7 @@ def test_ssi_disability_criteria_are_never_default_filled() -> None:
 def _spm_unit_receipt(**overrides) -> dict:
     receipt = {
         "issue": "microcosm#1023",
-        "method": "adult_nonrelative_own_spm_unit",
+        "method": "roommates_and_unpartnered_other_nonrelatives_own_spm_unit",
         "persons_moved": 3,
         "units_created": 3,
     }
@@ -1142,6 +1156,13 @@ def _staging_spm_unit_summary(**overrides) -> dict:
         _staging_spm_unit_summary(
             acs_local_spm_units=_spm_unit_receipt(method="household")
         ),
+        # microcosm#1061 review: staging split with the pre-review rule, which
+        # moved a partner's child coded 36 out of the partner's unit.
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(
+                method="adult_nonrelative_own_spm_unit"
+            )
+        ),
         _staging_spm_unit_summary(
             acs_local_spm_units=_spm_unit_receipt(persons_moved="3")
         ),
@@ -1157,6 +1178,7 @@ def _staging_spm_unit_summary(**overrides) -> dict:
         "truthy-gate",
         "wrong-issue",
         "wrong-method",
+        "pre-review-method",
         "untyped-count",
         "unit-count-mismatch",
     ],
@@ -1338,7 +1360,7 @@ def test_consumer_export_refuses_a_pre_spm_unit_staging_before_loading_it(
 def _receipt_anchor_receipt(**overrides) -> dict:
     receipt = {
         "issue": "microcosm#1022",
-        "method": "acs_fs_household_receipt_on_every_spm_unit",
+        "method": "acs_fs_household_receipt_at_least_one_spm_unit",
         "snap": {"fs_yes_households": 2, "units_anchored": 3},
         "tanf": {"pap_recipients": 1, "pap_units": 1},
     }
@@ -1381,6 +1403,13 @@ def _staging_receipt_anchor_summary(**overrides) -> dict:
                 method="reference_unit_only"
             )
         ),
+        # microcosm#1062 review: staging anchored with the pre-review rule,
+        # which marked every unit of an FS == 1 housing unit, roommates too.
+        _staging_receipt_anchor_summary(
+            acs_local_receipt_anchors=_receipt_anchor_receipt(
+                method="acs_fs_household_receipt_on_every_spm_unit"
+            )
+        ),
         _staging_receipt_anchor_summary(
             acs_local_receipt_anchors=_receipt_anchor_receipt(snap=None)
         ),
@@ -1398,6 +1427,7 @@ def _staging_receipt_anchor_summary(**overrides) -> dict:
         "truthy-gate",
         "wrong-issue",
         "wrong-method",
+        "pre-review-method",
         "no-counts",
         "untyped-count",
     ],
@@ -1764,8 +1794,10 @@ def test_ssi_medicaid_stage_runs_both_engine_passes_in_household_chunks(
     tmp_path, monkeypatch
 ) -> None:
     """SSI candidates, then Medicaid eligibility, each over the projected and
-    reviewed-null-filled ACS view in --hh-chunk household batches; the tool's
-    stage matches the runtime stage and records its gate."""
+    reviewed-null-filled view in --hh-chunk household batches: the donor
+    households first (their pooled contribution sets the ACS residual
+    targets), then the ACS households. The tool's stage matches the runtime
+    stage and records its gate."""
 
     module = _load_tool_module()
     fixtures = _ssi_medicaid_fixtures()
@@ -1789,6 +1821,12 @@ def test_ssi_medicaid_stage_runs_both_engine_passes_in_household_chunks(
         hh_chunk=100,
     )
     assert calls == [
+        ("project",),
+        ("fill", summary),
+        ("uncapped", 40, 100),
+        ("project",),
+        ("fill", summary),
+        ("eligible", 40, 100),
         ("project",),
         ("fill", summary),
         ("uncapped", 600, 100),

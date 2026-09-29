@@ -13,51 +13,73 @@ enrollment targets shrink the weights of eligible ACS persons instead of
 selecting enrollees among them (the microcosm#170 bias).
 
 This stage assigns both flags on ACS rows with the donor stages' own methods,
-against the donor stages' counts scaled to the ACS rows' share of the frame.
-It fills only missing ACS cells; donor-spine values and any stored ACS value
-are kept.
+against what the donor rows leave of the donor stages' counts. It fills only
+missing ACS cells; donor-spine values and any stored ACS value are kept.
 
 - **Engine pre-pass.** Like the donor stages, both assignments read the
   engine: SSI candidates are ``uncapped_ssi > 0`` in December 2024 and the
   Medicaid domain is ``is_medicaid_eligible``. The caller supplies both as
-  callables over a view of the ACS households only (the builder owns the
-  simulations and their household batching). In that view a missing take-up
-  cell reads ``True``, neither variable depends on its own flag, and the
-  Medicaid pass sees the SSI flags just assigned, because SSI receipt is a
-  Medicaid eligibility category (``is_ssi_recipient_for_medicaid``), exactly
-  as the fiscal lane assigns SSI before Medicaid.
-- **Target scaling.** The frame pools the donor and ACS spines, each carrying
-  part of the population weight, and the donor rows already carry flags drawn
-  against the full national and state counts. Each ACS target is the donor
-  stage's count times the ACS rows' share of the frame's person weight in the
-  same SSA age band or state (pre-calibration weights), so the pooled frame
-  carries the count before calibration moves any weight.
+  callables over a view of whole households (the builder owns the
+  simulations and their household batching). The stage calls them first on
+  the donor households, to measure what the donor rows already deliver, then
+  on the ACS households. In the ACS view a missing take-up cell reads
+  ``True``, neither variable depends on its own flag, and the Medicaid pass
+  sees the SSI flags just assigned, because SSI receipt is a Medicaid
+  eligibility category (``is_ssi_recipient_for_medicaid``), exactly as the
+  fiscal lane assigns SSI before Medicaid.
+- **Residual targets.** The donor H5's flags were drawn against the full SSA
+  and CMS counts, and pool assembly then scaled every donor weight by
+  ``1 - acs_share``. The donor rows therefore already deliver part of each
+  count, and that part need not match the ACS rows' share of a band's or
+  state's person weight (microcosm#1060 review). Each ACS target is the
+  residual: the count minus the donor rows' pooled recipient weight in the
+  same SSA age band or state, floored at zero. A donor recipient carries its
+  stored flag and is an SSI candidate (for Medicaid, eligible with its own
+  SSI flags) in the donor pre-pass, weighted by this frame's pre-calibration
+  person weight. Donor plus ACS then carries the count before calibration
+  moves any weight. Where the ACS capacity is below the residual every ACS
+  candidate takes up and the shortfall is recorded; where ACS anchors alone
+  exceed it the excess is recorded.
 - **SSI** follows :mod:`~microcosm.build.us_runtime.ssi_take_up`. An ACS
   person with ``ssi_reported`` (the adjusted native ``SSIP``) above zero
-  always takes SSI up, the ACS counterpart of the donor's ``SSI_VAL`` anchor.
-  ``SSIP`` is asked from age 15, so a blank below 15 reads as no report and a
-  blank at 15 or over is refused. Everyone else draws once against the band
-  prior ``(target - reporter floor) / (capacity - reporter floor)`` of
+  always takes SSI up, the ACS counterpart of the donor's ``SSI_VAL`` anchor,
+  so reporters are a floor even above the residual. ``SSIP`` is asked from
+  age 15, so a blank below 15 reads as no report and a blank at 15 or over is
+  refused. Everyone else draws once against the band prior
+  ``(residual - reporter floor) / (capacity - reporter floor)`` of
   :func:`~microcosm.build.us_runtime.ssi_take_up._band_prior`, measured on the
-  ACS rows' candidate weight, with its fallbacks. All three SSA bands draw, as
-  on the donor, and the under-18 band is fenced from grading exactly as the
-  donor's delivery gate fences it.
-- **Medicaid** runs the donor's ``medicaid_take_up`` manifest stage unchanged
-  on the ACS rows: ``HINS4 == 1`` anchors always take up, everyone else draws
-  against the in-build state fill rate, and the assignment is greedily
-  calibrated to each state's scaled CMS count among eligible non-anchored
-  persons. ACS ``HINS4`` is "Medicaid, Medical Assistance, or any kind of
-  government-assistance plan for those with low incomes or a disability", so
-  it also covers CHIP and state-funded plans and is broader than the ASEC's
-  current-Medicaid anchor. An anchor mass above a state's scaled count is that
-  state's reachable floor (the donor gate's rule): anchors are never dropped.
+  ACS rows' candidate weight. In a saturated band (capacity at or below the
+  residual) every open candidate takes up and non-candidates draw at the
+  prior's reporter-rate fallback. All three SSA bands draw, as on the donor,
+  and the under-18 band is fenced from grading exactly as the donor's
+  delivery gate fences it.
+- **Medicaid** runs the donor's ``medicaid_take_up`` manifest stage on the
+  ACS rows against the residual state counts: anchors take up, everyone else
+  draws against the in-build state fill rate, and the assignment is greedily
+  calibrated to each state's residual among eligible non-anchored persons
+  (every eligible person enrolls where the residual exceeds eligibility).
+  The anchor is ACS ``HINS4 == 1``: "Medicaid, Medical Assistance, or any
+  kind of government-assistance plan for those with low incomes or a
+  disability". It also covers CHIP and state-funded plans, so it is broader
+  than the ASEC's current-Medicaid anchor and is not forced wholesale. Where
+  a state's anchored eligible weight exceeds its residual, each HINS4 record
+  there stays anchored with probability residual / HINS4 anchored eligible
+  weight, on its own keyed draw; a record not kept is an ordinary
+  non-anchor, which can still draw or be calibrated in. The state's excess
+  is recorded. The treatment is state-level because the CMS counts are:
+  policyengine-us 2.2.1 gives CHIP its own ``takes_up_chip_if_eligible`` and
+  makes CHIP eligibility exclusive of Medicaid eligibility, so HINS4 CHIP
+  children already fall outside the measured (Medicaid-eligible) anchor
+  mass, and the ledger has no child/adult split of the Medicaid counts to
+  stratify against.
 - **Draws** come from seeded blake2b uniforms on the donor stages' streams,
   keyed on ``acs_2024_1yr:SERIALNO:SPORDER``, so a person's draw depends only
-  on the build seed and their own record.
+  on the build seed and their own record. The HINS4 keep draw has a stream of
+  its own.
 
-The receipt records each band's and state's count, ACS share, scaled target,
-capacity and delivered weight on the pre-calibration frame weights, and a
-digest of the ACS assignment.
+The receipt records, per band and state, the count, the donor rows' pooled
+contribution, the residual, the ACS capacity, the ACS assignment, the pooled
+total and any shortfall or excess, and a digest of the ACS assignment.
 :func:`acs_local_ssi_medicaid_take_up_signal_gate` grades both the flags and
 the receipt.
 """
@@ -123,7 +145,7 @@ __all__ = [
 ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE = "microcosm#1022"
 ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME = "acs_local_ssi_medicaid_take_up_signal"
 ACS_LOCAL_SSI_MEDICAID_TAKE_UP_METHOD = (
-    "donor_stage_methods_on_acs_rows_at_acs_share_scaled_targets"
+    "donor_stage_methods_on_acs_rows_at_donor_residual_targets"
 )
 ACS_LOCAL_SSI_TAKE_UP_COLUMN = US_SSI_TAKE_UP_OUTPUT_COLUMNS[0]
 ACS_LOCAL_MEDICAID_TAKE_UP_COLUMN = US_MEDICAID_TAKE_UP_VARIABLE
@@ -133,9 +155,9 @@ ACS_LOCAL_SSI_MEDICAID_TAKE_UP_COLUMNS: tuple[str, ...] = (
     ACS_LOCAL_MEDICAID_TAKE_UP_COLUMN,
 )
 #: An enforced SSI band whose prior was count-truthful (neither saturated nor
-#: met by its anchors) must deliver its scaled count within this relative
+#: met by its anchors) must deliver its residual count within this relative
 #: tolerance: the donor's delivery envelope. The expected delivery equals the
-#: count by construction, so only a broken draw misses it.
+#: residual by construction, so only a broken draw misses it.
 ACS_LOCAL_SSI_BAND_RELATIVE_TOLERANCE = US_SSI_TAKE_UP_BAND_DELIVERY_RELATIVE_TOLERANCE
 ACS_LOCAL_SSI_CANDIDATE_DEFINITION = "uncapped_ssi > 0 at 2024-12"
 ACS_LOCAL_MEDICAID_ELIGIBILITY_DEFINITION = (
@@ -155,12 +177,39 @@ _MEDICAID_COVERED = 1
 _STATE = "state_fips"
 _DRAW_KEY_FORMAT = f"{ACS_2024_1YR_SPINE}:SERIALNO:SPORDER"
 _WEIGHTS_BASIS = "acs_rows_pre_calibration_frame_person_weights"
+_TARGET_BASIS = (
+    "each SSA band count and CMS state count minus the donor rows' pooled "
+    "recipient weight there (stored flag x engine candidacy or eligibility on "
+    "the donor households x pre-calibration frame person weight), floored at 0"
+)
+#: The HINS4 keep draw's own blake2b stream (microcosm#1060 review).
+_HINS4_KEEP_STREAM = "acs_local_medicaid_hins4_anchor_keep"
+_HINS4_TREATMENT = (
+    "HINS4 == 1 anchors take up, except where a state's anchored eligible "
+    "weight exceeds its residual: there each HINS4 record stays anchored with "
+    "probability (residual - stored anchored weight) / HINS4 anchored eligible "
+    "weight, on a keyed draw; a record not kept is an ordinary non-anchor"
+)
+#: A receipt's residual must be its count minus the donor contribution; the
+#: two are written from the same floats, so only a changed formula differs.
+_RESIDUAL_RELATIVE_TOLERANCE = 1e-9
+#: A saturated band assigns every candidate: delivery equals capacity up to
+#: floating-point summation order.
+_SATURATED_RELATIVE_TOLERANCE = 1e-6
 _BAND_KEYS = tuple(band.key for band in US_SSI_TAKE_UP_AGE_TARGETS)
 _BAND_NUMBERS = (
-    "scaled_target",
+    "national_target",
+    "donor_recipient_weight",
+    "residual_target",
     "candidate_capacity",
     "reporter_candidate_floor",
     "selected_recipient_weight",
+)
+_STATE_NUMBERS = (
+    "cms_count",
+    "donor_enrolled_weight",
+    "residual_target",
+    "hins4_keep_probability",
 )
 
 #: Person-aligned engine values over a view of the ACS households.
@@ -292,27 +341,92 @@ def _checked_state_targets(state_targets: pd.DataFrame) -> pd.DataFrame:
     return table
 
 
-def _acs_weight_shares(
-    groups: np.ndarray, acs: np.ndarray, weights: np.ndarray
+def _group_sums(
+    groups: np.ndarray, weights: np.ndarray, selected: np.ndarray
 ) -> dict[str, float]:
-    """The ACS rows' share of the frame's person weight in each group."""
+    """The weight of the selected rows in each group (every group listed)."""
 
     table = pd.DataFrame(
         {
             "group": np.asarray(groups).astype(str),
-            "weight": weights,
-            "acs_weight": np.where(acs, weights, 0.0),
+            "weight": np.where(selected, weights, 0.0),
         }
     )
-    sums = table.groupby("group", sort=True)[["weight", "acs_weight"]].sum()
-    return {
-        str(group): (
-            float(row["acs_weight"]) / float(row["weight"])
-            if row["weight"] > 0
-            else 0.0
+    sums = table.groupby("group", sort=True)["weight"].sum()
+    return {str(group): float(value) for group, value in sums.items()}
+
+
+def _keyed_uniform(key: str, *, seed: int, stream: str) -> float:
+    """A seeded blake2b uniform on ``stream`` for one ACS draw key."""
+
+    value = int.from_bytes(
+        hashlib.blake2b(f"{seed}:{stream}:{key}".encode(), digest_size=8).digest(),
+        byteorder="big",
+        signed=False,
+    )
+    return value / float(2**64)
+
+
+def _donor_contribution(
+    frame: Frame,
+    donor: np.ndarray,
+    *,
+    bands: np.ndarray,
+    state: np.ndarray,
+    weights: np.ndarray,
+    uncapped_ssi: EngineValues,
+    medicaid_eligibility: EngineValues,
+) -> tuple[dict[str, float], dict[str, float], dict[str, int]]:
+    """The donor rows' pooled SSI recipients by band and enrollees by state.
+
+    A donor recipient carries its stored flag and is an SSI candidate
+    (``uncapped_ssi > 0``) or Medicaid-eligible (with the donor's own SSI
+    flags) when the engine evaluates the donor households: the product the
+    engine gates receipt on. Each is summed on this frame's pre-calibration
+    person weight, which pool assembly already scaled by ``1 - acs_share``.
+    The donor view is freed before the ACS view is built, so the pre-pass
+    never holds both.
+    """
+
+    counts = {"rows": int(donor.sum()), "ssi_candidate_rows": 0}
+    counts["medicaid_eligible_rows"] = 0
+    if not donor.any():
+        return {}, {}, counts
+    rows = frame.table("person").loc[donor]
+    ssi_flags, ssi_present, ssi_invalid = _boolean_cells(rows[_SSI])
+    medicaid_flags, medicaid_present, medicaid_invalid = _boolean_cells(rows[_MEDICAID])
+    incomplete = int((~ssi_present | ssi_invalid).sum()) + int(
+        (~medicaid_present | medicaid_invalid).sum()
+    )
+    if incomplete:
+        raise ValueError(
+            f"{incomplete} donor SSI/Medicaid take-up cell(s) are missing or not "
+            "boolean; the donor rows' pooled recipients set the ACS residual "
+            "targets, so they must be complete."
         )
-        for group, row in sums.iterrows()
-    }
+    view = frame.select(donor)
+    if not np.array_equal(
+        view.table("person")["person_id"].to_numpy(), rows["person_id"].to_numpy()
+    ):
+        raise ValueError(
+            "The donor engine view does not preserve the donor person order."
+        )
+    uncapped = _engine_values(
+        uncapped_ssi, view, rows=len(rows), label="donor uncapped_ssi"
+    ).astype(np.float64)
+    candidate = uncapped > 0.0
+    eligible = _engine_values(
+        medicaid_eligibility, view, rows=len(rows), label="donor is_medicaid_eligible"
+    ).astype(bool)
+    del view
+    donor_weights = weights[donor]
+    counts["ssi_candidate_rows"] = int(candidate.sum())
+    counts["medicaid_eligible_rows"] = int(eligible.sum())
+    return (
+        _group_sums(bands[donor], donor_weights, candidate & ssi_flags),
+        _group_sums(state[donor], donor_weights, eligible & medicaid_flags),
+        counts,
+    )
 
 
 def _engine_values(
@@ -322,7 +436,7 @@ def _engine_values(
     if values.shape != (rows,):
         raise ValueError(
             f"The engine pre-pass returned {values.shape} {label} value(s) for "
-            f"{rows} ACS person(s)."
+            f"{rows} person(s)."
         )
     if values.dtype != np.bool_ and not np.isfinite(values.astype(np.float64)).all():
         raise ValueError(f"The engine pre-pass returned nonfinite {label} values.")
@@ -339,14 +453,18 @@ def _ssi_assignment(
     flags: np.ndarray,
     present: np.ndarray,
     targets: Mapping[str, float],
-    shares: Mapping[str, float],
+    donor: Mapping[str, float],
     seed: int,
 ) -> tuple[np.ndarray, list[dict[str, Any]]]:
     """ACS-aligned SSI flags and one diagnostics row per SSA band.
 
-    Stored cells are kept (a stored ``True`` counts toward the floor, a stored
-    ``False`` leaves the capacity); a missing reporter takes up; every other
-    missing cell draws once against its band prior.
+    Each band's target is its SSA count minus the donor rows' pooled
+    recipient weight, floored at zero. Stored cells are kept (a stored
+    ``True`` counts toward the floor, a stored ``False`` leaves the
+    capacity); a missing reporter takes up, even above the residual; every
+    other missing cell draws once against its band prior. Where the capacity
+    cannot reach the residual, every open candidate takes up and the
+    shortfall is recorded.
     """
 
     missing = ~present
@@ -363,23 +481,31 @@ def _ssi_assignment(
         key = definition.key
         in_band = bands == key
         target = float(targets[key])
-        share = float(shares.get(key, 0.0))
-        scaled = target * share
+        donor_weight = float(donor.get(key, 0.0))
+        residual = max(target - donor_weight, 0.0)
         candidates = in_band & candidate
         capacity = float(weights[candidates & (fixed_true | open_rows)].sum())
         floor = float(weights[candidates & fixed_true].sum())
-        prior = _band_prior(scaled, capacity, floor)
+        prior = _band_prior(residual, capacity, floor)
         drawing = in_band & open_rows
         assigned[drawing] = draws[drawing] < prior
+        saturated = bool(capacity <= residual)
+        all_candidates = saturated and floor < residual
+        if all_candidates:
+            # The capacity cannot reach the residual: every open candidate
+            # takes up; non-candidates keep the prior's reporter-rate fallback.
+            assigned[drawing & candidate] = True
         delivered = float(weights[candidates & assigned].sum())
+        pooled = donor_weight + delivered
         rows.append(
             {
                 "age_band": key,
                 "label": definition.label,
                 "enforced": key in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
                 "national_target": target,
-                "acs_weight_share": share,
-                "scaled_target": scaled,
+                "donor_recipient_weight": donor_weight,
+                "donor_share_of_target": donor_weight / target,
+                "residual_target": residual,
                 "acs_person_rows": int(in_band.sum()),
                 "candidate_rows": int(candidates.sum()),
                 "reporter_rows": int((in_band & reporter).sum()),
@@ -387,10 +513,17 @@ def _ssi_assignment(
                 "candidate_capacity": capacity,
                 "reporter_candidate_floor": floor,
                 "assignment_prior": float(prior),
+                "all_candidates_assigned": all_candidates,
                 "selected_recipient_weight": delivered,
-                "relative_error": (delivered - scaled) / scaled if scaled > 0 else None,
-                "saturated": bool(capacity <= scaled),
-                "anchor_excess": max(floor - scaled, 0.0),
+                "relative_error": (
+                    (delivered - residual) / residual if residual > 0 else None
+                ),
+                "pooled_recipient_weight": pooled,
+                "pooled_relative_error": (pooled - target) / target,
+                "saturated": saturated,
+                "capacity_shortfall": max(residual - capacity, 0.0),
+                "anchor_excess": max(floor - residual, 0.0),
+                "donor_excess": max(donor_weight - target, 0.0),
             }
         )
     return assigned, rows
@@ -407,15 +540,22 @@ def _medicaid_assignment(
     flags: np.ndarray,
     present: np.ndarray,
     state_targets: pd.DataFrame,
-    shares: Mapping[str, float],
+    donor: Mapping[str, float],
     seed: int,
     substitutions: Sequence[Mapping[str, object]],
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """ACS-aligned Medicaid flags and the donor stage's diagnostics.
+    """ACS-aligned Medicaid flags, the donor stage's diagnostics and the
+    per-state residual accounting.
 
-    Runs the ``medicaid_take_up`` manifest stage on the ACS rows whose cell is
-    missing or stored ``True`` (a stored ``False`` stays out of the stage),
-    with ``HINS4 == 1`` or a stored ``True`` as the preserved anchor.
+    Each state's target is its CMS count minus the donor rows' pooled
+    enrollment, floored at zero. A missing cell with ``HINS4 == 1`` anchors,
+    but where the state's anchored eligible weight exceeds that residual each
+    such record stays anchored with probability (residual - stored anchored
+    weight) / HINS4 anchored eligible weight, on its own keyed draw. The
+    ``medicaid_take_up`` manifest stage then runs on the ACS rows whose cell
+    is missing or stored ``True`` (a stored ``False`` stays out of the
+    stage), with the kept HINS4 records and stored ``True`` cells as the
+    preserved anchor.
     """
 
     from microcosm.build.us_runtime import (  # local: package init owns the manifest
@@ -423,18 +563,37 @@ def _medicaid_assignment(
         us_source_operation_handlers,
     )
 
-    scaled = state_targets.assign(
-        acs_weight_share=state_targets["state_fips"].map(
-            lambda code: float(shares.get(str(code), 0.0))
-        )
-    )
-    scaled["national_target"] = scaled["target"].astype(np.float64)
-    scaled["target"] = scaled["national_target"] * scaled["acs_weight_share"]
-    stage_targets = scaled[["state_fips", "target"]].reset_index(drop=True)
+    codes = state_targets["state_fips"].astype(str).to_numpy()
+    counts = state_targets["target"].to_numpy(dtype=np.float64)
+    donor_weight = np.array([float(donor.get(code, 0.0)) for code in codes])
+    residual = np.maximum(counts - donor_weight, 0.0)
+    stage_targets = pd.DataFrame({"state_fips": codes, "target": residual})
 
     missing = ~present
-    fixed_true = (present & flags) | (missing & anchor)
+    stored_true = present & flags
+    hins4 = missing & anchor
     staged = missing | flags
+    stored_weight = _group_sums(state, weights, eligible & stored_true)
+    hins4_weight = _group_sums(state, weights, eligible & hins4)
+    keep: dict[str, float] = {}
+    for code, target in zip(codes, residual, strict=True):
+        stored = stored_weight.get(code, 0.0)
+        anchored = hins4_weight.get(code, 0.0)
+        keep[code] = (
+            1.0
+            if anchored <= 0.0 or stored + anchored <= target
+            else float(np.clip((target - stored) / anchored, 0.0, 1.0))
+        )
+    probability = pd.Series(state).map(keep).fillna(1.0).to_numpy(dtype=np.float64)
+    keep_draws = np.zeros(len(keys), dtype=np.float64)
+    thinning = hins4 & (probability < 1.0)
+    if thinning.any():
+        keep_draws[thinning] = [
+            _keyed_uniform(str(key), seed=int(seed), stream=_HINS4_KEEP_STREAM)
+            for key in keys[thinning]
+        ]
+    kept = hins4 & (keep_draws < probability)
+    fixed_true = stored_true | kept
     table = pd.DataFrame(
         {
             "person_id": person_ids[staged],
@@ -480,22 +639,58 @@ def _medicaid_assignment(
     diagnostics["anchor"] = (
         f"ACS {_MEDICAID_COVERAGE} == {_MEDICAID_COVERED} (Medicaid, Medical "
         "Assistance, or any government-assistance plan for those with low incomes "
-        "or a disability)"
+        "or a disability), kept with a keyed probability where the state's "
+        "anchored eligible weight exceeds its residual"
     )
     diagnostics["issues"] = [
         *diagnostics.get("issues", []),
         ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE,
     ]
-    return assigned, {
-        "state_targets": [
+    ones = np.ones(len(assigned), dtype=np.float64)
+    capacity = _group_sums(state, weights, eligible & staged)
+    enrolled = _group_sums(state, weights, eligible & assigned)
+    kept_weight = _group_sums(state, weights, eligible & fixed_true)
+    hins4_rows = _group_sums(state, ones, hins4)
+    thinned_rows = _group_sums(state, ones, hins4 & ~kept)
+    rows: list[dict[str, Any]] = []
+    for code, count, donor_value, target in zip(
+        codes, counts, donor_weight, residual, strict=True
+    ):
+        anchored = stored_weight.get(code, 0.0) + hins4_weight.get(code, 0.0)
+        acs_enrolled = enrolled.get(code, 0.0)
+        pooled = float(donor_value) + acs_enrolled
+        rows.append(
             {
-                "state_fips": str(row.state_fips),
-                "national_target": float(row.national_target),
-                "acs_weight_share": float(row.acs_weight_share),
-                "scaled_target": float(row.target),
+                "state_fips": str(code),
+                "cms_count": float(count),
+                "donor_enrolled_weight": float(donor_value),
+                "donor_share_of_target": (
+                    float(donor_value) / float(count) if count > 0 else None
+                ),
+                "residual_target": float(target),
+                "acs_eligible_weight": capacity.get(code, 0.0),
+                "anchored_eligible_weight": anchored,
+                "anchor_excess": max(anchored - float(target), 0.0),
+                "hins4_keep_probability": keep[code],
+                "hins4_anchor_rows": int(hins4_rows.get(code, 0.0)),
+                "hins4_thinned_rows": int(thinned_rows.get(code, 0.0)),
+                "kept_anchor_eligible_weight": kept_weight.get(code, 0.0),
+                "acs_enrolled_weight": acs_enrolled,
+                "pooled_enrolled_weight": pooled,
+                "pooled_relative_error": (
+                    (pooled - float(count)) / float(count) if count > 0 else None
+                ),
+                "capacity_shortfall": max(float(target) - capacity.get(code, 0.0), 0.0),
+                "donor_excess": max(float(donor_value) - float(count), 0.0),
             }
-            for row in scaled.itertuples(index=False)
-        ],
+        )
+    return assigned, {
+        "hins4_treatment": _HINS4_TREATMENT,
+        "hins4_keep_stream": _HINS4_KEEP_STREAM,
+        "hins4_anchor_rows": int(hins4.sum()),
+        "hins4_thinned_rows": int((hins4 & ~kept).sum()),
+        "thinned_states": sorted(code for code, value in keep.items() if value < 1.0),
+        "state_targets": rows,
         "staged_rows": int(staged.sum()),
         "stored_false_rows_kept": int((present & ~flags).sum()),
         "diagnostics": _json_ready(diagnostics),
@@ -558,22 +753,27 @@ def with_acs_local_ssi_medicaid_take_up(
         medicaid_state_targets: CMS state Medicaid enrollment counts
             (``state_fips``, ``target``), after reviewed substitutions.
         uncapped_ssi: Returns December 2024 ``uncapped_ssi`` for every person
-            of the view it is given (the ACS households, missing take-up
-            cells reading ``True``).
+            of the view it is given: first the donor households (their
+            stored flags), then the ACS households (missing take-up cells
+            reading ``True``).
         medicaid_eligibility: Returns 2024 ``is_medicaid_eligible`` for every
-            person of the view it is given (SSI take-up now assigned).
+            person of the view it is given: the donor households with their
+            own SSI flags, then the ACS households with SSI take-up now
+            assigned.
         medicaid_substitutions: The reviewed CMS substitution records in
             effect, for the donor gate's staleness check.
 
     Returns:
-        The frame with filled ACS cells and a JSON-ready receipt, including a
-        digest of the ACS assignment.
+        The frame with filled ACS cells and a JSON-ready receipt, including
+        each band's and state's donor contribution, residual, shortfall and
+        excess, and a digest of the ACS assignment.
 
     Raises:
         ValueError: If the frame is not US-schema, origin tags or a required
-            column are missing, an ACS household holds a non-ACS person, an
-            ACS row lacks what its draw or anchor reads, the targets are
-            malformed, or an engine callable returns misaligned values.
+            column are missing, an ACS household holds a non-ACS person, a
+            donor take-up cell is missing, an ACS row lacks what its draw or
+            anchor reads, the targets are malformed, or an engine callable
+            returns misaligned values.
     """
 
     if frame.schema != US_SCHEMA:
@@ -645,8 +845,17 @@ def with_acs_local_ssi_medicaid_take_up(
             f"{int(ssi_invalid.sum())} SSI and {int(medicaid_invalid.sum())} "
             "Medicaid cell(s) are not."
         )
-    band_shares = _acs_weight_shares(bands, acs, weights)
-    state_shares = _acs_weight_shares(state, acs, weights)
+    # The donor rows' pooled contribution sets each ACS residual target
+    # (microcosm#1060 review). Donor households hold no ACS person.
+    donor_ssi, donor_medicaid, donor_counts = _donor_contribution(
+        frame,
+        ~acs,
+        bands=bands,
+        state=state,
+        weights=weights,
+        uncapped_ssi=uncapped_ssi,
+        medicaid_eligibility=medicaid_eligibility,
+    )
 
     # Engine pre-pass over the ACS households only. ``select`` copied every
     # table, so the view is this stage's own: its missing take-up cells read
@@ -670,7 +879,7 @@ def with_acs_local_ssi_medicaid_take_up(
         flags=ssi_flags,
         present=ssi_present,
         targets=targets,
-        shares=band_shares,
+        donor=donor_ssi,
         seed=int(seed),
     )
     # SSI receipt is a Medicaid eligibility category: evaluate it with the
@@ -690,7 +899,7 @@ def with_acs_local_ssi_medicaid_take_up(
         flags=medicaid_flags,
         present=medicaid_present,
         state_targets=state_targets,
-        shares=state_shares,
+        donor=donor_medicaid,
         seed=int(seed),
         substitutions=medicaid_substitutions,
     )
@@ -723,12 +932,12 @@ def with_acs_local_ssi_medicaid_take_up(
         "acs_persons": int(acs.sum()),
         "acs_households": int(len(acs_households)),
         "weights_basis": _WEIGHTS_BASIS,
-        "target_scaling": (
-            "each SSA band count and CMS state count times the ACS rows' share "
-            "of the frame's person weight in that band or state"
-        ),
+        "target_basis": _TARGET_BASIS,
         "engine_prepass": {
-            "rows": "acs_households",
+            "rows": "donor_households_then_acs_households",
+            "donor_rows": donor_counts["rows"],
+            "donor_ssi_candidate_rows": donor_counts["ssi_candidate_rows"],
+            "donor_medicaid_eligible_rows": donor_counts["medicaid_eligible_rows"],
             "missing_take_up_cells_read_as": True,
             "ssi_candidate_definition": ACS_LOCAL_SSI_CANDIDATE_DEFINITION,
             "medicaid_eligibility_definition": (
@@ -850,12 +1059,29 @@ def with_recorded_acs_local_ssi_medicaid_take_up(
     return _with_person(frame, updated)
 
 
+def _residual_failure(
+    label: str, count: float, donor: float, residual: float
+) -> list[str]:
+    """A receipt residual must be its count minus the donor contribution."""
+
+    expected = max(count - donor, 0.0)
+    if abs(residual - expected) <= _RESIDUAL_RELATIVE_TOLERANCE * max(count, 1.0):
+        return []
+    return [
+        f"receipt: {label} targets {residual:.0f}, not the donor residual "
+        f"{expected:.0f} (count {count:.0f} minus the donor rows' pooled "
+        f"recipients {donor:.0f})."
+    ]
+
+
 def _grade_ssi_bands(bands: object) -> tuple[list[str], list[dict[str, Any]]]:
     """Grade each recorded SSA band; return failures and per-band statuses.
 
-    Only an enforced band whose prior was count-truthful is held to the
-    tolerance: under-18 is fenced as on the donor, a band whose anchors alone
-    meet its count keeps them, and a saturated band cannot reach it.
+    Every band's target must be its donor residual. Only an enforced band
+    whose prior was count-truthful is held to the tolerance: under-18 is
+    fenced as on the donor, a band the donor already meets or whose anchors
+    alone meet its residual keeps them, and a saturated band must have
+    assigned every candidate.
     """
 
     if not isinstance(bands, Sequence) or [
@@ -873,30 +1099,110 @@ def _grade_ssi_bands(bands: object) -> tuple[list[str], list[dict[str, Any]]]:
                 f"receipt: SSI band {key!r} has missing or nonfinite values."
             )
             continue
-        scaled, capacity, floor, delivered = numbers
-        error = (delivered - scaled) / scaled if scaled > 0 else None
+        count, donor, residual, capacity, floor, delivered = numbers
+        failures += _residual_failure(f"SSI band {key!r}", count, donor, residual)
+        error = (delivered - residual) / residual if residual > 0 else None
         if key not in US_SSI_TAKE_UP_ENFORCED_BAND_KEYS:
             status = "fenced"
-        elif scaled <= 0:
-            status = "no_acs_target"
-            failures.append(
-                f"SSI band {key!r}: the ACS rows carry no weight in an enforced band."
-            )
-        elif floor >= scaled:
+        elif residual <= 0:
+            status = "donor_meets_count"
+        elif floor >= residual:
             status = "anchor_excess"
-        elif capacity <= scaled:
+        elif capacity <= 0:
+            status = "no_acs_capacity"
+            failures.append(
+                f"SSI band {key!r}: the ACS rows carry no candidate weight in an "
+                f"enforced band with a residual of {residual:.0f}."
+            )
+        elif capacity <= residual:
             status = "saturated"
+            if abs(delivered - capacity) > _SATURATED_RELATIVE_TOLERANCE * capacity:
+                failures.append(
+                    f"SSI band {key!r}: candidate capacity {capacity:.0f} cannot "
+                    f"reach the residual {residual:.0f}, so every candidate must "
+                    f"take up, but delivered weight is {delivered:.0f}."
+                )
         elif abs(error) <= tolerance:
             status = "within_tolerance"
         else:
             status = "outside_tolerance"
             failures.append(
                 f"SSI band {key!r}: delivered ACS candidate weight {delivered:.0f} "
-                f"misses the ACS-scaled SSA count {scaled:.0f} by {error:+.1%}, "
+                f"misses the donor residual {residual:.0f} by {error:+.1%}, "
                 f"beyond {tolerance:.0%}; the prior was count-truthful there."
             )
-        graded.append({"age_band": key, "status": status, "relative_error": error})
+        graded.append(
+            {
+                "age_band": key,
+                "status": status,
+                "relative_error": error,
+                "capacity_shortfall": max(residual - capacity, 0.0),
+                "anchor_excess": max(floor - residual, 0.0),
+            }
+        )
     return failures, graded
+
+
+def _medicaid_residual_failures(
+    medicaid: Mapping[str, Any], diagnostics: Mapping[str, Any]
+) -> list[str]:
+    """Each state's target must be its donor residual, and the donor gate
+    must have graded exactly those residuals."""
+
+    rows = medicaid.get("state_targets")
+    if not isinstance(rows, Sequence) or not rows:
+        return ["receipt: no Medicaid state residual rows."]
+    failures: list[str] = []
+    residuals: dict[str, float] = {}
+    for row in rows:
+        numbers = (
+            [_finite(row.get(name)) for name in _STATE_NUMBERS]
+            if isinstance(row, Mapping)
+            else [float("nan")]
+        )
+        code = str(row.get("state_fips")) if isinstance(row, Mapping) else "?"
+        if not all(np.isfinite(numbers)):
+            failures.append(
+                f"receipt: Medicaid state {code} has missing or nonfinite values."
+            )
+            continue
+        count, donor, residual, keep = numbers
+        residuals[code] = residual
+        failures += _residual_failure(f"Medicaid state {code}", count, donor, residual)
+        if not 0.0 <= keep <= 1.0:
+            failures.append(
+                f"receipt: Medicaid state {code} HINS4 keep probability {keep!r} "
+                "is not a probability."
+            )
+    for state in diagnostics.get("states", []):
+        code = str(state.get("state_fips"))
+        target = state.get("target")
+        if target is None or code not in residuals:
+            continue
+        if abs(float(target) - residuals[code]) > _RESIDUAL_RELATIVE_TOLERANCE * max(
+            residuals[code], 1.0
+        ):
+            failures.append(
+                f"receipt: Medicaid state {code} was graded against {target!r}, "
+                f"not its donor residual {residuals[code]:.0f}."
+            )
+    return failures
+
+
+def _thinned_hins4(receipt: object) -> tuple[frozenset[str], int]:
+    """The states whose HINS4 anchors the receipt thinned, and how many rows."""
+
+    medicaid = receipt.get("medicaid") if isinstance(receipt, Mapping) else None
+    if not isinstance(medicaid, Mapping):
+        return frozenset(), 0
+    rows = medicaid.get("state_targets")
+    states = frozenset(
+        str(row.get("state_fips"))
+        for row in (rows if isinstance(rows, Sequence) else [])
+        if isinstance(row, Mapping) and _finite(row.get("hins4_keep_probability")) < 1.0
+    )
+    thinned = medicaid.get("hins4_thinned_rows")
+    return states, thinned if type(thinned) is int else 0
 
 
 def _receipt_failures(
@@ -959,6 +1265,8 @@ def _receipt_failures(
             details["medicaid_saturated_states"] = list(
                 diagnostics.get("saturated_states", [])
             )
+        failures += _medicaid_residual_failures(medicaid, diagnostics)
+        details["medicaid_thinned_states"] = sorted(_thinned_hins4(receipt)[0])
     details["receipt"] = {"present": True, "failures": len(failures)}
     return failures
 
@@ -971,15 +1279,20 @@ def acs_local_ssi_medicaid_take_up_signal_gate(
     Fails when either column is absent or has a missing or non-boolean cell on
     either spine (the reviewed-null fill would make it universal take-up), is
     constant on a spine, or when an ACS ``ssi_reported`` reporter lacks SSI
-    take-up or an ACS ``HINS4 == 1`` person lacks Medicaid take-up. It also
-    fails unless ``receipt`` shows the materialize assignment with no unfilled
-    ACS row, each enforced SSI band (18-64, 65+) within
-    :data:`ACS_LOCAL_SSI_BAND_RELATIVE_TOLERANCE` of its ACS-scaled count
-    wherever the prior was count-truthful, and the donor Medicaid gate passing
-    on the ACS state diagnostics. The under-18 band, saturated and
-    anchor-exceeded SSI bands, saturated Medicaid states and the weighted
-    shares are reported, not failed. Donor cells are graded for completeness
-    and variation only; the donor release's own gates graded their values.
+    take-up, or an ACS ``HINS4 == 1`` person lacks Medicaid take-up outside
+    the states whose HINS4 anchors the receipt thinned (or beyond the thinned
+    row count). It also fails unless ``receipt`` shows the materialize
+    assignment with no unfilled ACS row, every band's and state's target
+    equal to its count minus the donor rows' pooled contribution, each
+    enforced SSI band (18-64, 65+) within
+    :data:`ACS_LOCAL_SSI_BAND_RELATIVE_TOLERANCE` of that residual wherever
+    the prior was count-truthful, every candidate assigned in a saturated
+    enforced band, and the donor Medicaid gate passing on the ACS state
+    diagnostics at the residuals. The under-18 band, SSI bands the donor
+    already meets or whose anchors exceed the residual, saturated Medicaid
+    states, shortfalls, excesses and the weighted shares are reported, not
+    failed. Donor cells are graded for completeness and variation only; the
+    donor release's own gates graded their values.
     """
 
     person = frame.table("person")
@@ -1075,15 +1388,33 @@ def acs_local_ssi_medicaid_take_up_signal_gate(
         flags, present, invalid = cells[column]
         reporters = acs & anchored()
         dropped = reporters & present & ~invalid & ~flags
-        anchors[column] = {
-            "source": source,
-            "acs_anchor_rows": int(reporters.sum()),
-            "dropped": int(dropped.sum()),
-        }
+        entry = {"source": source, "acs_anchor_rows": int(reporters.sum())}
+        if column == _MEDICAID and dropped.any():
+            # HINS4 anchors are thinned, not forced, where a state's anchored
+            # eligible weight exceeds its residual (microcosm#1060 review).
+            thinned_states, thinned_rows = _thinned_hins4(receipt)
+            if thinned_states and _STATE in frame.table("household"):
+                state = _normalize_state_fips(frame.broadcast(_STATE).to_numpy())
+                thinned = dropped & np.isin(state, sorted(thinned_states))
+                entry["thinned"] = int(thinned.sum())
+                if int(thinned.sum()) > thinned_rows:
+                    failures.append(
+                        f"{ACS_2024_1YR_SPINE}: {int(thinned.sum())} HINS4 "
+                        f"anchor(s) lack {column} in thinned states, above the "
+                        f"receipt's {thinned_rows} thinned row(s)."
+                    )
+                dropped = dropped & ~thinned
+        entry["dropped"] = int(dropped.sum())
+        anchors[column] = entry
         if dropped.any():
             failures.append(
                 f"{ACS_2024_1YR_SPINE}: {int(dropped.sum())} person(s) anchored by "
-                f"{source} do not carry {column}; anchors must take up."
+                f"{source} do not carry {column}; anchors must take up"
+                + (
+                    " outside the states whose HINS4 anchors the receipt thins."
+                    if column == _MEDICAID
+                    else "."
+                )
             )
     failures += _receipt_failures(receipt, int(acs.sum()), details)
     return GateResult(

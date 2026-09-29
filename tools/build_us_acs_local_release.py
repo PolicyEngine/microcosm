@@ -1231,15 +1231,18 @@ def _recorded_take_up(identity: dict) -> dict:
 def _acs_engine_values(
     view, *, variable: str, summary_path: Path, hh_chunk: int
 ) -> np.ndarray:
-    """One household-batched engine pass over the ACS view (microcosm#1022).
+    """One household-batched engine pass over a pre-pass view (microcosm#1022).
 
-    The view gets materialize's own engine-pass contract (input-schema
-    projection plus reviewed-null fill), then the fiscal lane's batched helper
-    evaluates ``variable`` in chunks of ``hh_chunk`` households, so the
-    pre-pass holds one chunk's simulation at a time. The view is the stage's
-    own copy of the ACS households, so both contract steps edit it in place
-    (the classifier of :func:`project_input_only`, without its copy): the
-    pre-pass never holds a second copy of the ACS rows.
+    The stage calls this on the donor households first, to measure the donor
+    rows' pooled contribution that sets each ACS residual target, then on the
+    ACS households. The view gets materialize's own engine-pass contract
+    (input-schema projection plus reviewed-null fill), then the fiscal lane's
+    batched helper evaluates ``variable`` in chunks of ``hh_chunk``
+    households, so the pre-pass holds one chunk's simulation at a time. The
+    view is the stage's own copy of those households, so both contract steps
+    edit it in place (the classifier of :func:`project_input_only`, without
+    its copy): the pre-pass never holds a second copy of the rows, and the
+    donor view (about 5% of persons) is freed before the ACS view is built.
     """
 
     import build_us_fiscal_refresh_release as release_tool
@@ -1263,7 +1266,7 @@ def _acs_engine_values(
     values = helper(view, maximum_microsim_batch_size=hh_chunk)
     gc.collect()
     log(
-        f"ACS engine pre-pass {variable}: {len(values):,} persons "
+        f"Engine pre-pass {variable}: {len(values):,} persons "
         f"({time.time() - started:.1f}s, peak RSS {rss():.2f}GB)"
     )
     return values
@@ -1277,7 +1280,9 @@ def _with_local_ssi_medicaid_take_up(
     Runs before materialize's engine pass, so the CMS enrollment targets
     select enrollees among eligible ACS persons instead of shrinking the
     eligible population; a failed gate stops the stage before the hours of
-    materialization.
+    materialization. The ACS targets are what the donor rows leave of the SSA
+    and CMS counts on the pooled weights, measured with the same two engine
+    passes over the donor households (microcosm#1060 review).
     """
 
     started = time.time()
@@ -2361,34 +2366,51 @@ def finalize_reviewed_limitations(
                 "household-batched engine pre-pass over the ACS households "
                 "(December 2024 uncapped_ssi > 0 as the SSI candidates, then "
                 "is_medicaid_eligible with the SSI flags assigned). Each "
-                "target is the donor stage's count (the SSA federal-payment "
-                "recipients by age band; the CMS December 2024 state "
-                "enrollment) times the ACS rows' share of the frame's "
-                "pre-calibration person weight in that band or state. SSI: "
-                "ssi_reported (SSIP, asked from age 15) reporters always take "
-                "up and everyone else draws at the ssi_take_up band prior; "
-                "the under-18 band draws but is fenced from grading, as on "
-                "the donor. Medicaid: ACS HINS4 == 1 anchors always take up "
-                "and the medicaid_take_up manifest stage fills and greedily "
-                "calibrates each state to its scaled CMS count among "
-                "eligible non-anchored persons. HINS4 also covers CHIP and "
-                "state-funded means-tested plans, so the anchor is broader "
-                "than the ASEC's current-Medicaid item; an anchor mass above "
-                "a state's scaled count is kept as its floor. Draws are keyed "
-                "on acs_2024_1yr:SERIALNO:SPORDER and the build seed. The "
-                "targets bind the pre-calibration frame; the release solve "
-                "does not carry the SSA band counts."
+                "target is the residual of the donor stage's count (the SSA "
+                "federal-payment recipients by age band; the CMS December "
+                "2024 state enrollment) after the donor rows' pooled "
+                "recipients: the donor H5 was assigned against the full "
+                "count and pool assembly scaled its weights by 1 - acs_share, "
+                "so the stage measures the donor's contribution with the same "
+                "two engine passes over the donor households (stored flag x "
+                "candidacy or eligibility x pre-calibration person weight) "
+                "and targets count minus contribution, floored at zero "
+                "(microcosm#1060 review). SSI: ssi_reported (SSIP, asked from "
+                "age 15) reporters always take up, as a floor even above the "
+                "residual, and everyone else draws at the ssi_take_up band "
+                "prior; where the ACS candidate capacity is below the "
+                "residual every candidate takes up and the shortfall is "
+                "recorded. The under-18 band draws but is fenced from "
+                "grading, as on the donor. Medicaid: the medicaid_take_up "
+                "manifest stage fills and greedily calibrates each state to "
+                "its residual among eligible non-anchored persons. ACS HINS4 "
+                "== 1 is the anchor, but HINS4 also covers CHIP and "
+                "state-funded means-tested plans, so it is not forced "
+                "wholesale: where a state's anchored eligible weight exceeds "
+                "its residual, each HINS4 record there stays anchored with "
+                "probability residual / anchored eligible weight on a keyed "
+                "draw, and the state's excess is recorded. The treatment is "
+                "state-level because the CMS counts carry no child/adult "
+                "split; policyengine-us 2.2.1 keeps CHIP take-up separate "
+                "and CHIP eligibility exclusive of Medicaid eligibility. "
+                "Draws are keyed on acs_2024_1yr:SERIALNO:SPORDER and the "
+                "build seed. The targets bind the pre-calibration frame; the "
+                "release solve does not carry the SSA band counts."
             ),
             "treatment": (
                 "Gated by acs_local_ssi_medicaid_take_up_signal at "
                 "materialize and finalize: both flags complete and "
-                "non-constant on both spines, every ACS SSIP reporter and "
-                "HINS4 anchor taking up, the 18-64 and 65+ SSI bands within "
-                "5% of their ACS-scaled counts wherever the prior was "
-                "count-truthful, and the donor medicaid_take_up gate passing "
-                "on the ACS state diagnostics. The under-18 band, saturated "
-                "or anchor-exceeded SSI bands and saturated Medicaid states "
-                "are reported, not failed. The consumer export applies the "
+                "non-constant on both spines, every ACS SSIP reporter taking "
+                "up and every HINS4 anchor outside the thinned states taking "
+                "up, every band and state target equal to its count minus "
+                "the donor contribution, the 18-64 and 65+ SSI bands within "
+                "5% of their residuals wherever the prior was count-truthful "
+                "(every candidate assigned where saturated), and the donor "
+                "medicaid_take_up gate passing on the ACS state diagnostics "
+                "at the residuals. The under-18 band, SSI bands the donor "
+                "meets or whose anchors exceed the residual, saturated "
+                "Medicaid states and every shortfall and excess are "
+                "reported, not failed. The consumer export applies the "
                 "recorded assignment and must reproduce its digest."
             ),
             "calibration_blocker": False,
@@ -2401,14 +2423,23 @@ def finalize_reviewed_limitations(
                 "The ACS has no SPM unit id, so the loader makes each ACS "
                 "housing unit one SPM unit. Staging "
                 f"({ACS_LOCAL_SPM_UNIT_ISSUE}) gives every roommate or "
-                "housemate (RELSHIPP 34) and other nonrelative (36) aged 15 "
-                "or over an SPM unit of their own, per the Census SPM unit "
-                "definition (related people, co-resident unrelated children "
-                "cared for by the family, and cohabiting partners and their "
-                "children). RELSHIPP relates each person to the reference "
-                "person only, so a couple or a parent and child among the "
-                "nonrelatives is not identifiable: each adult nonrelative is "
-                "a one-person unit, and nonrelatives under 15 stay in the "
+                "housemate (RELSHIPP 34) aged 15 or over an SPM unit of their "
+                "own, per the Census SPM unit definition (related people, "
+                "co-resident unrelated children cared for by the family, and "
+                "cohabiting partners and their children and relatives). An "
+                "other nonrelative (36) aged 15 or over gets their own unit "
+                "only when the household has no unmarried partner (22 or "
+                "24): the ACS records relationship to the householder only, "
+                "so a partner's child or relative is coded 36, and with a "
+                "partner present a 36 stays with the reference person and "
+                "the partner (microcosm#1061 review). RELSHIPP relates each "
+                "person to the reference person only, so a couple or a "
+                "parent and child among the nonrelatives is not "
+                "identifiable: each mover is a one-person unit, and a 36 "
+                "moved from a household that also holds a roommate, who may "
+                "be the roommate's child, is counted in the staging receipt, "
+                "with the unit-size sensitivity under the 34-only and "
+                "34-and-every-36 rules. Nonrelatives under 15 stay in the "
                 "reference person's unit, whose tax unit claims them. "
                 "Unmarried partners (22, 24), foster children (35) and every "
                 "relative stay with the reference person. New units take the "
@@ -2421,10 +2452,13 @@ def finalize_reviewed_limitations(
             ),
             "treatment": (
                 "Gated by acs_local_spm_unit_signal at staging and finalize: "
-                "no ACS SPM unit holds an adult nonrelative together with "
-                "the reference person, the ACS partition is exactly the "
-                "rule, ACS tax units nest in SPM units, and the staging "
-                "receipt moved as many people as the packaged ACS rows hold."
+                "no ACS SPM unit holds a mover (a roommate, or an other "
+                "nonrelative with no partner in the household) together with "
+                "the reference person, no other nonrelative in a partner's "
+                "household is outside the reference person's unit, the ACS "
+                "partition is exactly the rule, ACS tax units nest in SPM "
+                "units, and the staging receipt moved and kept as many "
+                "people as the packaged ACS rows hold."
             ),
             "calibration_blocker": False,
         },
@@ -2434,32 +2468,45 @@ def finalize_reviewed_limitations(
             "affected_spines": ["acs_2024_1yr"],
             "columns": ["receives_snap", "receives_tanf"],
             "reason": (
-                "receives_snap on ACS rows is native household FS (anyone in "
-                "the household received SNAP in the past 12 months), not the "
-                "QRF transfer, whose predictors carry no receipt signal "
-                f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}). FS names the housing "
-                "unit, not the SNAP household: FS == 1 marks every SPM unit of "
-                "the household, including the one-person units of adult "
-                "nonrelatives, as the donor's SPM_SNAPSUB > 0 does (Census "
-                "prorates the household SNAP amount to every SPM unit); FS == "
-                "2 marks none; group quarters, outside the FS universe, are "
-                "False. A roommate who buys and prepares food apart is thus "
-                "anchored with the reference family's receipt. FS under-"
-                "reports administrative SNAP, so the anchor is a floor the "
-                "take-up draw (microcosm#1019) fills to the FNS rate. "
+                "receives_snap on ACS rows is anchored by native household FS "
+                "(anyone in the household received SNAP in the past 12 "
+                "months), not left to the QRF transfer, whose predictors carry "
+                f"no receipt signal ({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}). FS "
+                "names the housing unit, not the SNAP household, so FS == 1 "
+                "is a constraint that at least one SPM unit of the housing "
+                "unit received SNAP (microcosm#1062 review): the only SPM "
+                "unit of a single-unit housing unit is True; in a housing "
+                "unit with several SPM units (microcosm#1023's roommate "
+                "units) each unit keeps its transferred QRF value, which is "
+                "conditioned on the unit's own size, ages, income and tenure, "
+                "and the reference person's unit is set True when the QRF "
+                "names none. A roommate who buys and prepares food apart is "
+                "therefore not forced to report the family's receipt. Census "
+                "prorates a household SNAP amount to every SPM unit (the "
+                "donor's SPM_SNAPSUB > 0) to measure poverty resources, which "
+                "does not establish that every unit enrolled. FS == 2 marks "
+                "none; group quarters, outside the FS universe, are False. FS "
+                "under-reports administrative SNAP, so the anchor is a floor "
+                "the take-up draw (microcosm#1019) fills to the FNS rate. "
                 "receives_tanf keeps its QRF transfer: ACS PAP covers TANF and "
                 "general assistance together, and PAP > 0 is not TANF receipt "
                 "(microcosm#591); PAP is loaded and its overlap with the "
-                "transferred receives_tanf is recorded, not applied."
+                "transferred receives_tanf is recorded, not applied, and the "
+                "SNAP x TANF cross-tab of ACS units before and after the "
+                "override is recorded beside the donor spine's."
             ),
             "treatment": (
                 "Applied at staging after the transfer, whose declared plan "
                 "is unchanged, and before pooling, so donor rows keep their "
                 "ASEC receipt. Gated by acs_local_receipt_anchor_signal at "
-                "staging and finalize: receives_snap is exactly the FS rule "
-                "on every ACS SPM unit, every ACS housing unit carries FS 1 "
-                "or 2, and the staging receipt counts the households, units, "
-                "anchors and PAP recipients the packaged ACS rows hold. The "
+                "staging and finalize: no unit of an FS == 2 housing unit or "
+                "of group quarters reports SNAP, the only SPM unit of an FS "
+                "== 1 housing unit does, every FS == 1 housing unit with "
+                "several SPM units has at least one reporting unit, every ACS "
+                "housing unit carries FS 1 or 2, and the staging receipt "
+                "counts the households, units, anchors, non-reference "
+                "reporters, resolution paths and PAP recipients the packaged "
+                "ACS rows hold. The "
                 "weighted FS == 1 share of ACS housing units is reported "
                 "against the 2023 ACS figure (12.2%), not graded."
             ),
@@ -2680,11 +2727,13 @@ def _require_local_ssi_disability(staging_summary: dict) -> dict:
 def _require_local_spm_units(staging_summary: dict) -> dict:
     """The staging ACS SPM-unit receipt (microcosm#1023), or refuse it.
 
-    Staging gives every ACS roommate and other nonrelative aged 15 or over
-    (``RELSHIPP`` 34/36) an SPM unit of their own, per the Census SPM unit
-    definition, and gates the partition before writing the H5. A summary
-    without a passing receipt and gate is a pre-change staging run, whose ACS
-    SPM units are whole households.
+    Staging gives every ACS roommate (``RELSHIPP`` 34) aged 15 or over, and
+    every other nonrelative (36) aged 15 or over in a household with no
+    unmarried partner (22/24), an SPM unit of their own, per the Census SPM
+    unit definition, and gates the partition before writing the H5. A summary
+    without a passing receipt and gate, or with an earlier method, is a
+    pre-change staging run: whole-household ACS SPM units, or a partner's
+    child or relative split from the partner.
     """
 
     receipt = staging_summary.get("acs_local_spm_units")
@@ -2715,10 +2764,12 @@ def _require_local_spm_units(staging_summary: dict) -> dict:
 def _require_local_receipt_anchors(staging_summary: dict) -> dict:
     """The staging ACS receipt-anchor receipt (microcosm#1022), or refuse it.
 
-    Staging replaces the transferred ``receives_snap`` on every ACS SPM unit
-    with native household ``FS`` and gates it before writing the H5. A summary
+    Staging constrains the transferred ``receives_snap`` on ACS SPM units by
+    native household ``FS`` (at least one unit of an FS == 1 housing unit,
+    none of an FS == 2 one) and gates it before writing the H5. A summary
     without a passing receipt and gate is a pre-change staging run, whose ACS
-    SNAP reporters are the QRF transfer's.
+    SNAP reporters are the QRF transfer's; one with an earlier method marked
+    every unit of an FS == 1 housing unit, roommates included.
     """
 
     receipt = staging_summary.get("acs_local_receipt_anchors")
@@ -2914,7 +2965,7 @@ def do_finalize(args) -> None:
     )
     # microcosm#1022: refuse ACS SSI or Medicaid take-up that is missing,
     # constant or unanchored on the packaged bytes, or a materialize receipt
-    # whose enforced SSI bands or Medicaid states miss their ACS-scaled counts.
+    # whose enforced SSI bands or Medicaid states miss their donor residuals.
     ssi_medicaid_gate = acs_local_ssi_medicaid_take_up_signal_gate(
         frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
     )

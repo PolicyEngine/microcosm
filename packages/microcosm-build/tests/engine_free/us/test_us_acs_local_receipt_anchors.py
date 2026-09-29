@@ -81,18 +81,23 @@ def _person(serialno: str, sporder: int, relationship: int, **overrides) -> dict
     return row
 
 
-#: Five ACS records (sorted SERIALNO order = household ids 1-5):
-#: A  FS 1: reference, a 30-year-old roommate (own unit), a nonrelative child
+#: Seven ACS records (sorted SERIALNO order = household ids 1-7):
+#: A  FS 1: reference, a 30-year-old roommate (own unit), a nonrelative child;
+#:    the QRF names neither unit, so the reference unit is forced
 #: B  FS 2: reference with public assistance income, a 50-year-old roommate
 #: C  noninstitutional group quarters, FS blank
 #: D  FS 1: a married couple and their child (one unit)
 #: E  FS 2: a reference person alone
+#: F  FS 1: reference and a 45-year-old roommate; the QRF names the roommate
+#: G  FS 1: reference and a 33-year-old roommate; the QRF names the reference
 _HOUSEHOLDS = [
     _household("A", 3, WGTP=10, FS=1),
     _household("B", 2, WGTP=20, FS=2),
     _household("C", 1, WGTP=0, TYPEHUGQ=3, TEN=None, RNTP=None, GRNTP=None, FS=None),
     _household("D", 3, WGTP=30, FS=1),
     _household("E", 1, WGTP=40, FS=2),
+    _household("F", 2, WGTP=50, FS=1),
+    _household("G", 2, WGTP=60, FS=1),
 ]
 _PERSONS = [
     _person("A", 1, 20),
@@ -105,13 +110,42 @@ _PERSONS = [
     _person("D", 2, 21, MAR=1, SEX=2),
     _person("D", 3, 25, AGEP=5, WAGP=None, PAP=None),
     _person("E", 1, 20),
+    _person("F", 1, 20),
+    _person("F", 2, 34, AGEP=45),
+    _person("G", 1, 20),
+    _person("G", 2, 34, AGEP=33),
 ]
 #: Split units, in id order: A reference (+ child), A roommate, B reference,
-#: B roommate, C, D family, E.
-_RULE = [True, True, False, False, False, True, False]
+#: B roommate, C, D family, E, F reference, F roommate, G reference,
+#: G roommate.
+_RULE = [True, False, False, False, False, True, False, False, True, True, False]
 #: What the QRF transfer is made to have written.
-_TRANSFERRED_SNAP = [False, False, True, False, True, True, False]
-_TRANSFERRED_TANF = [False, False, False, False, False, True, True]
+_TRANSFERRED_SNAP = [
+    False,
+    False,
+    True,
+    False,
+    True,
+    True,
+    False,
+    False,
+    True,
+    True,
+    False,
+]
+_TRANSFERRED_TANF = [
+    False,
+    False,
+    False,
+    False,
+    False,
+    True,
+    True,
+    False,
+    True,
+    False,
+    False,
+]
 
 
 def _source(tmp_path: Path, households=None, persons=None) -> AcsPumsSource:
@@ -178,14 +212,62 @@ def test_loader_carries_fs_on_households_and_pap_on_persons(loader_frame) -> Non
 # --- the rule ----------------------------------------------------------------
 
 
-def test_fs_marks_every_unit_of_the_household(anchored, transferred) -> None:
+def test_fs_constrains_the_housing_unit_and_the_qrf_names_the_recipient(
+    anchored,
+) -> None:
     frame, _receipt = anchored
     assert frame.table("spm_unit")["receives_snap"].tolist() == _RULE
     assert frame.table("spm_unit")["receives_snap"].dtype == np.dtype(bool)
-    # FS == 1 reaches the roommate's own unit (A); FS == 2 clears the
-    # transferred True on B's reference unit; group quarters are False even
-    # where the transfer said True.
-    assert frame.n("spm_unit") == 7
+    # FS == 2 clears the transferred True on B's reference unit; group
+    # quarters are False even where the transfer said True; D's only unit is
+    # True.
+    assert frame.n("spm_unit") == 11
+
+
+def test_a_roommate_unit_is_no_longer_forced(anchored) -> None:
+    """microcosm#1062 review: FS == 1 says someone in the housing unit got
+    SNAP, not that every SPM unit did. A's two units hold FS == 1 and the QRF
+    named neither: the reference unit takes the receipt and the roommate's
+    unit, which may buy and prepare food apart, stays a non-reporter for the
+    take-up draw."""
+
+    frame, receipt = anchored
+    snap = frame.table("spm_unit")["receives_snap"].tolist()
+    assert snap[:2] == [True, False]  # A: reference forced, roommate not
+    # F: the QRF named the roommate's unit, which keeps it; the constraint is
+    # met, so the reference unit is not forced.
+    assert snap[7:9] == [False, True]
+    # G: the QRF named the reference unit; the roommate's unit stays False.
+    assert snap[9:11] == [True, False]
+    assert receipt["snap"]["resolution"] == {
+        "single_unit_households": 1,
+        "several_unit_households_met_by_qrf": 2,
+        "several_unit_households_reference_forced": 1,
+        "reference_units_true_via_qrf": 1,
+        "reference_units_forced": 1,
+        "non_reference_units_true_via_qrf": 1,
+        "non_reference_units_false": 2,
+        "reference_units_false": 1,
+        "weighted": {
+            "single_unit_households": 30.0,
+            "several_unit_households_met_by_qrf": 110.0,
+            "several_unit_households_reference_forced": 10.0,
+            "reference_units_true_via_qrf": 60.0,
+            "reference_units_forced": 10.0,
+            "non_reference_units_true_via_qrf": 50.0,
+            "non_reference_units_false": 70.0,
+        },
+    }
+
+
+def test_a_housing_unit_with_no_reference_unit_to_force_is_refused(
+    transferred,
+) -> None:
+    person = transferred.table("person").copy()
+    reference = (person["person_household_id"] == 1) & (person["RELSHIPP"] == 20)
+    person.loc[reference, "RELSHIPP"] = 21
+    with pytest.raises(ValueError, match="no unit holding the reference person"):
+        with_acs_local_snap_receipt_anchor(_with_tables(transferred, person=person))
 
 
 def test_only_receives_snap_changes(anchored, transferred) -> None:
@@ -220,39 +302,45 @@ def test_receipt_counts_the_anchor_and_the_overrides(anchored) -> None:
             "units_anchored",
             "group_quarters_units",
             "non_reference_units_anchored",
+            "several_unit_households_reference_only",
+            "several_unit_households_with_a_reporter",
         )
     } == {
-        "acs_households": 5,
-        "housing_unit_households": 4,
+        "acs_households": 7,
+        "housing_unit_households": 6,
         "group_quarters_households": 1,
-        "fs_yes_households": 2,
+        "fs_yes_households": 4,
         "fs_no_households": 2,
         "group_quarters_fs_coded_ignored": 0,
-        "fs_yes_households_with_several_units": 1,
-        "acs_spm_units": 7,
-        "units_anchored": 3,
+        "fs_yes_households_with_several_units": 3,
+        "acs_spm_units": 11,
+        "units_anchored": 4,
         "group_quarters_units": 1,
         "non_reference_units_anchored": 1,
+        "several_unit_households_reference_only": 2,
+        "several_unit_households_with_a_reporter": 3,
     }
+    # Unit weights: A 10+10, B 20+20, C 7, D 30, E 40, F 50+50, G 60+60.
     assert snap["transferred"] == {
-        "true_units": 3,
+        "true_units": 5,
         "missing_units": 0,
-        "false_to_true": 2,
+        "false_to_true": 1,
         "true_to_false": 2,
         "group_quarters_true_to_false": 1,
-        "unchanged": 3,
+        "unchanged": 8,
         "weighted": {
-            "true_unit_share": pytest.approx(57 / 137),
-            "false_to_true_unit_share": pytest.approx(20 / 137),
-            "true_to_false_unit_share": pytest.approx(27 / 137),
+            "true_unit_share": pytest.approx(167 / 357),
+            "false_to_true_unit_share": pytest.approx(10 / 357),
+            "true_to_false_unit_share": pytest.approx(27 / 357),
         },
     }
     weighted = snap["weighted"]
-    # Housing units A (10), B (20), D (30), E (40); FS == 1 in A and D.
-    assert weighted["housing_unit_households"] == 100.0
-    assert weighted["fs_yes_households"] == 40.0
-    assert weighted["fs_yes_household_share"] == pytest.approx(0.4)
-    assert weighted["anchored_unit_share"] == pytest.approx(50 / 137)
+    # Housing units A (10), B (20), D (30), E (40), F (50), G (60); FS == 1
+    # in A, D, F and G.
+    assert weighted["housing_unit_households"] == 210.0
+    assert weighted["fs_yes_households"] == 150.0
+    assert weighted["fs_yes_household_share"] == pytest.approx(150 / 210)
+    assert weighted["anchored_unit_share"] == pytest.approx(150 / 357)
     reference = snap["household_share_reference"]
     assert reference["value"] == 0.122
     assert reference["band"] == list(ACS_SNAP_HOUSEHOLD_SHARE_BAND)
@@ -270,14 +358,46 @@ def test_receipt_records_pap_against_transferred_tanf(anchored) -> None:
         "pap_recipients": 1,
         "pap_blank_under_min_age": 2,
         "pap_units": 1,
-        "transferred_tanf_units": 2,
+        "transferred_tanf_units": 3,
         "transferred_tanf_units_with_pap": 0,
-        "transferred_tanf_units_without_pap": 2,
+        "transferred_tanf_units_without_pap": 3,
         "pap_units_without_transferred_tanf": 1,
         "transferred_tanf_units_not_snap_anchored": 1,
     }
     assert tanf["weighted"]["pap_recipients"] == 20.0
-    assert tanf["weighted"]["pap_unit_share"] == pytest.approx(20 / 137)
+    assert tanf["weighted"]["pap_unit_share"] == pytest.approx(20 / 357)
+
+
+def test_receipt_carries_the_snap_tanf_crosstab(anchored) -> None:
+    """microcosm#1062 review: the override touches receives_snap alone, so the
+    receipt shows the joint distribution with receives_tanf both ways."""
+
+    _frame, receipt = anchored
+    crosstab = receipt["snap_tanf_crosstab"]
+    assert crosstab["informational"] is True
+    before, after = crosstab["before_override"], crosstab["after_override"]
+    assert before["units"] == {
+        "snap_tanf": 2,
+        "snap_no_tanf": 3,
+        "no_snap_tanf": 1,
+        "no_snap_no_tanf": 5,
+    }
+    assert after["units"] == {
+        "snap_tanf": 2,
+        "snap_no_tanf": 2,
+        "no_snap_tanf": 1,
+        "no_snap_no_tanf": 6,
+    }
+    assert after["weighted_unit_shares"] == {
+        "snap_tanf": pytest.approx(80 / 357),
+        "snap_no_tanf": pytest.approx(70 / 357),
+        "no_snap_tanf": pytest.approx(40 / 357),
+        "no_snap_no_tanf": pytest.approx(167 / 357),
+    }
+    assert before["weighted_unit_shares"]["snap_no_tanf"] == pytest.approx(87 / 357)
+    assert before["tanf_share_of_snap_units"] == pytest.approx(80 / 167)
+    assert after["tanf_share_of_snap_units"] == pytest.approx(80 / 150)
+    assert after["snap_share_of_tanf_units"] == pytest.approx(80 / 120)
 
 
 def test_the_anchor_is_idempotent(anchored) -> None:
@@ -343,7 +463,7 @@ def test_a_housing_unit_without_fs_1_or_2_is_refused(transferred, fs, message):
 def test_an_unreadable_pap_is_refused(transferred, pap, message) -> None:
     person = transferred.table("person").copy()
     person["PAP"] = person["PAP"].astype(float)
-    person.loc[person["RELSHIPP"] == 20, "PAP"] = [pap, 0.0, 0.0, 0.0]
+    person.loc[person["RELSHIPP"] == 20, "PAP"] = [pap] + [0.0] * 5
     frame = _with_tables(transferred, person=person)
     with pytest.raises(ValueError, match=message):
         with_acs_local_snap_receipt_anchor(frame)
@@ -427,13 +547,26 @@ def test_gate_passes_the_anchored_pool_and_leaves_donor_rows_alone(
     assert spm_unit.loc[donor, "receives_snap"].tolist() == [True]
     assert gate.details["donor_spm_units"] == 1
     assert gate.details["donor_receives_snap_unit_share"] == 1.0
-    assert gate.details["snap"]["units_anchored"] == 3
+    assert gate.details["snap"]["units_anchored"] == 4
     assert gate.details["tanf"]["pap_units"] == 1
-    # The FS == 1 share (0.4 here) sits outside the reference band; the band
+    # The FS == 1 share (0.71 here) sits outside the reference band; the band
     # is informational and never fails the gate.
     snap = gate.details["snap"]
-    assert snap["weighted"]["fs_yes_household_share"] == pytest.approx(0.4)
+    assert snap["weighted"]["fs_yes_household_share"] == pytest.approx(150 / 210)
     assert snap["household_share_reference"]["within_band"] is False
+    # The joint SNAP x TANF distribution: the ACS units' after the override,
+    # beside the donor spine's (its one unit reports SNAP, not TANF).
+    crosstab = gate.details["snap_tanf_crosstab"]
+    assert crosstab["informational"] is True
+    assert crosstab[ACS_2024_1YR_SPINE]["weighted_unit_shares"] == pytest.approx(
+        anchored[1]["snap_tanf_crosstab"]["after_override"]["weighted_unit_shares"]
+    )
+    assert crosstab["donor"]["units"] == {
+        "snap_tanf": 0,
+        "snap_no_tanf": 1,
+        "no_snap_tanf": 0,
+        "no_snap_no_tanf": 0,
+    }
 
 
 def test_gate_fails_the_transferred_receipt(anchored, transferred) -> None:
@@ -446,7 +579,45 @@ def test_gate_fails_the_transferred_receipt(anchored, transferred) -> None:
         for f in gate.failures
     ), gate.failures
     assert any(
-        "2 SPM unit(s) of an FS == 1 housing unit do not report" in f
+        "1 FS == 1 housing unit(s) with several SPM units have no unit reporting" in f
+        for f in gate.failures
+    ), gate.failures
+
+
+def test_gate_fails_the_pre_review_every_unit_anchor(pooled, anchored) -> None:
+    """Marking every unit of an FS == 1 housing unit (the pre-review rule)
+    meets the at-least-one constraint, but the receipt does not reconcile:
+    the frame's roommate reporters are not the ones the QRF named."""
+
+    spm_unit = pooled.table("spm_unit").copy()
+    acs = spm_unit[UNIT_TAG].eq(ACS_2024_1YR_SPINE)
+    every = [True, True, False, False, False, True, False, True, True, True, True]
+    spm_unit.loc[acs, "receives_snap"] = every
+    gate = acs_local_receipt_anchor_signal_gate(
+        _with_spm_unit(pooled, spm_unit), receipt=anchored[1]
+    )
+    assert not gate.passed
+    assert any(
+        "snap.units_anchored = 4; the frame holds 7" in f for f in gate.failures
+    ), gate.failures
+    assert any(
+        "snap.non_reference_units_anchored = 1; the frame holds 3" in f
+        for f in gate.failures
+    ), gate.failures
+
+
+def test_gate_fails_a_single_unit_fs_1_household_without_receipt(
+    pooled, anchored
+) -> None:
+    spm_unit = pooled.table("spm_unit").copy()
+    acs = spm_unit[UNIT_TAG].eq(ACS_2024_1YR_SPINE)
+    # D's family is the only SPM unit of its FS == 1 housing unit.
+    spm_unit.loc[spm_unit.index[acs][5], "receives_snap"] = False
+    gate = acs_local_receipt_anchor_signal_gate(
+        _with_spm_unit(pooled, spm_unit), receipt=anchored[1]
+    )
+    assert any(
+        "1 SPM unit(s) alone in an FS == 1 housing unit do not report" in f
         for f in gate.failures
     ), gate.failures
 
@@ -479,7 +650,24 @@ def test_gate_fails_a_missing_acs_cell(pooled, anchored) -> None:
         ({"issue": "microcosm#1019"}, "not microcosm#1022's"),
         ({"method": "reference_unit_only"}, "records method 'reference_unit_only'"),
         ({"snap": None}, "no snap/tanf counts"),
-        ({"snap": {"units_anchored": 4}}, "snap.units_anchored = 4"),
+        ({"snap": {"units_anchored": 5}}, "snap.units_anchored = 5"),
+        (
+            {"snap": {"non_reference_units_anchored": 3}},
+            "snap.non_reference_units_anchored = 3",
+        ),
+        ({"snap": {"resolution": None}}, "does not count how each FS == 1"),
+        (
+            {"snap": {"resolution": {"several_unit_households_reference_forced": 2}}},
+            "resolution does not reconcile",
+        ),
+        (
+            {"snap": {"resolution": {"non_reference_units_true_via_qrf": 3}}},
+            "3 non-reference unit(s) True through the QRF",
+        ),
+        (
+            {"snap": {"resolution": {"single_unit_households": 2}}},
+            "counts 2 single-unit FS == 1",
+        ),
         ({"snap": {"fs_yes_households": "2"}}, "fs_yes_households is not an integer"),
         ({"tanf": {"pap_recipients": 2}}, "tanf.pap_recipients = 2"),
         ({"snap": {"transferred": None}}, "does not count the transferred"),
@@ -494,6 +682,11 @@ def test_gate_fails_a_missing_acs_cell(pooled, anchored) -> None:
         "wrong-method",
         "no-counts",
         "stale-anchors",
+        "stale-non-reference",
+        "no-resolution",
+        "unreconciled-households",
+        "unreconciled-non-reference",
+        "unreconciled-single",
         "untyped",
         "stale-pap",
         "no-overrides",
