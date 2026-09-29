@@ -16,6 +16,10 @@ and the total household mass are conserved exactly; the clone stage then
 gives each copy's clone its own identity-keyed prior, and the redraw's
 wealth-ranked walk places the light rows where it was already placing heavy
 ones.
+
+The support masses are read from the vendored ``hmrc_cgt_conditioning_facts.json``
+(HMRC Table 3, individuals by size of gain and taxable income) through
+``load_hmrc_cgt_joint_distribution``; the stage derives no value from it.
 """
 
 from __future__ import annotations
