@@ -145,12 +145,13 @@ unchanged. PR CI runs every group on the rebased head.
 
 ## Part E: wealth conditioning (WP3)
 
-Not in this branch yet. It needs #1012's household wealth, so the investigation ran on a local tree of
-#1012 (its head before the final review round) and c1 to c4 (c4′), comparing seven arms of the plan's
-three candidates with c4′. c1 to c4 carry over onto that base: against #1012's own control, liability
+Commits c5 (the wealth-blended ranking in the amounts redraw, weight 0.75) and c6 (the stock-conditioned
+odds in the asset-type stage) are on the branch, María's pick of 2026-09-29 from the investigation below.
+The investigation needed #1012's household wealth, so it ran on a local tree of #1012 (its head before the
+final review round) and c1 to c4 (c4′), comparing seven arms of the plan's three candidates with c4′. c1 to c4 carry over onto that base: against #1012's own control, liability
 moves from +12.8 to +3.7 percent, the Table 3 and Table 4.1 rows fit, and the effective sample size is
-5,173 against 5,200. The recommendation, awaiting María's pick: a wealth-blended ranking in the
-amounts redraw and stock-conditioned odds in the asset-type stage, as two commits on this branch; hold
+5,173 against 5,200. The recommendation, which María took: a wealth-blended ranking in the amounts
+redraw and stock-conditioned odds in the asset-type stage, as two commits on this branch; hold
 wealth-coupled incidence until the redraw can place heavy records in the open top bands without
 overshooting them.
 
