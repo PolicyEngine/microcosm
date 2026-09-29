@@ -1,7 +1,7 @@
 {
  "schema_version": 2,
  "generated_by": "experiments/us-release-dry-run-margin-evidence.py",
- "generated_at": "2026-09-28T22:59:01+00:00",
+ "generated_at": "2026-09-29T15:53:50+00:00",
  "run": "route A 310842b986d7, release populace-us-2024-0581707-310842b986d7-20260926T165326Z",
  "inputs": {
   "base_h5_sha256": "0581707e7cb42c93c60c552f7ada3ff617d5d52a16cde0346a499070cf6e9b55",
@@ -676,6 +676,70 @@
   "qrf_tail_register_failures": [
    "farm_income: an unused register entry \u2014 it is thin (469 weighted carriers, under 500); no solve inside the stated margins moves it across a cut. The release refuses it: remove the entry."
   ],
+  "columns_the_release_refused": {
+   "alimony_expense": {
+    "dry_run_status": "AT_RISK",
+    "dry_run_possible_verdicts": [
+     "stale",
+     "used"
+    ],
+    "share_at_base_weights": 0.4452293949909418,
+    "share_recorded_by_the_release": 0.722319233981984
+   },
+   "bond_assets": {
+    "dry_run_status": "AT_RISK",
+    "dry_run_possible_verdicts": [
+     "ok",
+     "unwaived"
+    ],
+    "share_at_base_weights": 0.520150546831057,
+    "share_recorded_by_the_release": 0.7659855279292478
+   },
+   "domestic_production_ald": {
+    "dry_run_status": "AT_RISK",
+    "dry_run_possible_verdicts": [
+     "ok",
+     "unwaived"
+    ],
+    "share_at_base_weights": 0.7724947143411267,
+    "share_recorded_by_the_release": 0.790747256784257
+   },
+   "estate_income": {
+    "dry_run_status": "AT_RISK",
+    "dry_run_possible_verdicts": [
+     "ok",
+     "unwaived"
+    ],
+    "share_at_base_weights": 0.710122120199236,
+    "share_recorded_by_the_release": 0.8151523817739543
+   },
+   "farm_income": {
+    "dry_run_status": "FAIL",
+    "dry_run_possible_verdicts": [
+     "unused"
+    ],
+    "share_at_base_weights": null,
+    "share_recorded_by_the_release": null
+   },
+   "qualified_bdc_income": {
+    "dry_run_status": "AT_RISK",
+    "dry_run_possible_verdicts": [
+     "stale",
+     "used"
+    ],
+    "share_at_base_weights": 0.5491672761459758,
+    "share_recorded_by_the_release": 0.6926995208511781
+   },
+   "w2_wages_from_qualified_business": {
+    "dry_run_status": "AT_RISK",
+    "dry_run_possible_verdicts": [
+     "ok",
+     "unwaived"
+    ],
+    "share_at_base_weights": 0.7335202987401489,
+    "share_recorded_by_the_release": 0.8081686405840927
+   }
+  },
   "staged_frame_sha256": "a385d01ba818b30177acdf2a5a8082603c61e9e0fdc37b958a3ccef505947779",
   "target_frame_checkpoint": {
    "enabled": true,
@@ -685,7 +749,7 @@
    "identity_matches": true
   },
   "seconds_to_stop_point": 17690.6,
-  "grading_seconds": 235.8,
+  "replay_measured_check_seconds": 235.8,
   "differential_against_release_record": {
    "checked_columns_equal": true,
    "dense_columns_equal": true,

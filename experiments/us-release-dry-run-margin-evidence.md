@@ -125,7 +125,7 @@ The dry run was replayed on the run's own release config (`release-config.json`
   own target-frame checkpoint.
 - **Cost.** The replay reached its stop point in at most 17,455 s on a
   saturated host. The report's `seconds_to_stop_point` (17,691 s) was taken
-  after grading (`grading_seconds`, 236 s) and after the replay's own
+  after grading (`replay_measured_check_seconds`, 236 s) and after the replay's own
   differential; later revisions take it before grading. The whole process
   averaged 0.79 CPU-seconds per wall second and was switched out
   involuntarily 115 million times. Its CPU time, 14,046 s including grading

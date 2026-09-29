@@ -289,6 +289,19 @@ def replay() -> dict[str, object]:
 
     wall = re.search(r"([0-9.]+) real\s+([0-9.]+) user\s+([0-9.]+) sys", time_block)
     real, user, system = (float(value) for value in wall.groups())
+    recorded = json.loads((REL / "qrf_tail_concentration.json").read_text())
+    mismatch = recorded["surface"]["register_mismatch"]
+    refused = sorted(
+        {
+            line.split(":", 1)[0]
+            for line in recorded["tail_concentration"]["failures"]
+            if not line.startswith("Stale reviewed exclusions")
+        }
+        | set(mismatch["stale"])
+        | set(mismatch["unused"])
+    )
+    (tail,) = [c for c in report["checks"] if c["name"] == "qrf_tail_register"]
+    rows = {row["column"]: row for row in tail["rows"]}
     return {
         "command": "tools/build_us_fiscal_refresh_release.py <route A release-config argv> "
         "--qrf-tail-concentration-exclusions qrf_tail_exclusions_routea_d177.json "
@@ -302,10 +315,24 @@ def replay() -> dict[str, object]:
             for check in report["checks"]
             if check["name"] == "qrf_tail_register"
         ][0],
+        "columns_the_release_refused": {
+            column: {
+                "dry_run_status": rows[column]["status"],
+                "dry_run_possible_verdicts": rows[column]["possible_verdicts"],
+                "share_at_base_weights": rows[column]["top_share_at_base_weights"],
+                "share_recorded_by_the_release": recorded["tail_concentration"][
+                    "details"
+                ]["top_share"].get(column),
+            }
+            for column in refused
+        },
         "staged_frame_sha256": report["inputs"]["staged_frame_sha256"],
         "target_frame_checkpoint": report["inputs"]["target_frame_checkpoint"],
         "seconds_to_stop_point": report["inputs"]["seconds_to_stop_point"],
-        "grading_seconds": validation["dry_run_checks_seconds"],
+        # Measured by the replay script around the dry run's checks alone; the
+        # report's own seconds_to_stop_point (above) was taken after them at
+        # 21c1f9ba3, so the stop point came at most this much earlier.
+        "replay_measured_check_seconds": validation["dry_run_checks_seconds"],
         "differential_against_release_record": validation["calibrated_differential"],
         "process": {
             "wall_seconds": real,

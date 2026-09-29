@@ -215,7 +215,9 @@ never as a release refusal. The checks:
   that class gives (`used`, `stale`, `unused`, `unwaived`, `waived` or, under
   `--evidence-release`, `owned`), and every verdict the solve could still
   reach. A register file that does not load is a certain failure here: the
-  release reads it only at its terminal gates.
+  release reads it only at its terminal gates. Under `--evidence-release` it
+  is AT-RISK when an owner matches the release's degraded-mode line, because
+  with other terminal failures on record the release ships it.
 - **`export_input_mass`** runs the export input-mass gate with the staged
   frame standing in for the export. It classifies the
   `US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS` register as the gate does: `used`,
@@ -233,7 +235,10 @@ never as a release refusal. The checks:
 - Under `--evidence-release`, a certain failure whose every release line
   matches an owner pattern (the release's own matching rule) becomes AT-RISK,
   marked OWNED, because the evidence tier ships it as a known failure. Any
-  unowned line still refuses.
+  unowned line still refuses. The exception is the input-mass-reference,
+  degenerate-input and eCPS gates when no earlier terminal failure is on
+  record: the release raises on them before the solve, outside the evidence
+  batch, so they stay certain failures.
 - **`not_previewable`** lists every gate that depends on the solve, on target
   materialization or on the written H5, so the report never implies coverage
   it lacks.
