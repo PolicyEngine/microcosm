@@ -1894,7 +1894,9 @@ def _execute_national_build(
     if state is not None:
         append_phase(state, "national_calibration_solved")
     frame = manifest.population(national.population)
-    result, problem = national_result_from_manifest(manifest, store, frame=frame)
+    result, problem = national_result_from_manifest(
+        manifest, store, frame=frame, registry=national_registry
+    )
     evidence = json.loads(
         graph_payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
     )

@@ -782,6 +782,14 @@ def national_calibration_manifest(
     before_kind = problem.problem.initial_weights.kind
     measure_resolution = dict(bindings.get("measure_resolution", {}))
     materialization = measure_resolution.pop("target_materialization", None)
+    # The seam manifest carried the resolution loop's own receipt (attached
+    # routes, rounds, the provider's receipt); the wider engine receipt stays
+    # in the problem bindings.
+    resolutions = measure_resolution.get("resolution")
+    if isinstance(resolutions, list) and len(resolutions) == 1:
+        seam_block = dict(resolutions[0])
+    else:
+        seam_block = measure_resolution
     manifest: dict[str, object] = {
         "activated_reference_count": int(bindings["activated_reference_count"]),
         "resolved_reference_count": int(bindings["resolved_reference_count"]),
@@ -818,7 +826,7 @@ def national_calibration_manifest(
         "parameters": {"doctrine": dict(doctrine)},
     }
     if measure_resolution.get("mode") != "frame_only":
-        manifest["measure_resolution"] = measure_resolution
+        manifest["measure_resolution"] = seam_block
     return manifest
 
 
@@ -1049,8 +1057,17 @@ def graph_payload(manifest, store, node: str, artifact: str) -> bytes:
     return store.load_bytes(manifest.nodes[node].opaque_artifacts[artifact])
 
 
-def national_result_from_manifest(manifest, store, *, frame: Frame):
-    """The dense result and its ordered problem, rebound to the calibrated frame."""
+def national_result_from_manifest(
+    manifest, store, *, frame: Frame, registry: TargetRegistry | None = None
+):
+    """The dense result and its ordered problem, rebound to the calibrated frame.
+
+    With ``registry`` the result's target descriptors are the register's
+    (each spec's entity and column measure), as the seam's result carried
+    them: the graph solves the compiled rows, whose descriptors would
+    otherwise read as callables on the weight entity in the diagnostics.
+    The numbers are the compiled rows' either way.
+    """
 
     problem = decode_problem(
         graph_payload(manifest, store, NATIONAL_PROBLEM_NODE, "problem")
@@ -1077,7 +1094,17 @@ def national_result_from_manifest(manifest, store, *, frame: Frame):
         raise ValueError(
             "Calibrated national population does not carry the bound solution weights."
         )
-    return replace(result, frame=frame), problem
+    result = replace(result, frame=frame)
+    if registry is not None:
+        described = tuple(spec.to_target() for spec in registry.specs)
+        if tuple(target.row_name for target in described) != tuple(
+            result.problem.names
+        ):
+            raise ValueError(
+                "The register's rows do not align with the solved national problem."
+            )
+        result = replace(result, problem=replace(result.problem, targets=described))
+    return result, problem
 
 
 def replay_uk_national_gate_battery(

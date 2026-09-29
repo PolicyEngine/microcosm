@@ -68,6 +68,12 @@ def test_full_measure_reuses_one_resolver(
     )
 
     assert len(constructions) == 1
+    # The resolution loop's own receipt rides the measure receipt, one per
+    # engine block; its shape is the resolver's, checked by its keys here.
+    resolution = receipt.pop("resolution")
+    assert [sorted(entry) for entry in resolution] == [
+        ["attached", "provider", "rounds"]
+    ]
     assert receipt == {
         "mode": "stub",
         "engine_version": "test",
@@ -228,6 +234,7 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
         full_measure,
         "resolve_target_measures",
         lambda _factory, _registry, provider, **kwargs: SimpleNamespace(
+            receipt={"attached": {}, "provider": {}, "rounds": []},
             measure_inputs={
                 ("person", "region"): np.zeros(provider.frame.n("person")),
                 ("household", "raw_engine_input"): provider.frame.table("household")[
@@ -236,7 +243,7 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
                 ("household", "ons/corporate_land_value"): np.ones(
                     provider.frame.n("household")
                 ),
-            }
+            },
         ),
     )
 

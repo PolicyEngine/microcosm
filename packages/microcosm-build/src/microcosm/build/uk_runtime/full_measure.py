@@ -116,6 +116,7 @@ def resolve_uk_full_measures(
     measure_parts: dict[tuple[str, str], list[pd.Series]] = {}
     metric_parts: dict[str, list[pd.DataFrame]] = {grain: [] for grain in local_grains}
     resolver_receipts: list[Mapping[str, Any]] = []
+    resolution_receipts: list[dict[str, Any]] = []
     national_input_keys: set[tuple[str, str]] | None = None
     for clone_index, block_frame in block_frames:
         block_scratch = (
@@ -133,6 +134,7 @@ def resolve_uk_full_measures(
             resolver,
             period=period,
         )
+        resolution_receipts.append(dict(resolution.receipt))
         keys = set(resolution.measure_inputs)
         if national_input_keys is None:
             national_input_keys = keys
@@ -243,6 +245,10 @@ def resolve_uk_full_measures(
         },
         "blocks": blocks,
         "target_materialization": materialized.report(),
+        # The resolution loop's own receipt per block (which measure came from
+        # which provider, the rounds, the provider's receipt): the seam
+        # manifest's ``measure_resolution`` block, one per engine block.
+        "resolution": resolution_receipts,
     }
     if cgt_period_contract is not None:
         receipt["cgt_period_contract"] = cgt_period_contract

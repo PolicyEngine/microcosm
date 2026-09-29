@@ -524,11 +524,12 @@ def test_measure_resolver_injects_columns_then_restores_pristine_output() -> Non
     )
 
     assert resolver.calls == [("benunit", "universal_credit")]
+    # The seam manifest's block: which measure came from which provider, the
+    # rounds and the provider's receipt; the materialisation report is its
+    # own field.
     resolution = solved.manifest["measure_resolution"]
-    assert resolution["national_inputs"] == 1
-    # The materialisation report leaves the resolution block for its own
-    # field, as the seam manifest carried it.
-    assert "target_materialization" not in resolution
+    assert resolution["provider"] == {"provider": "stub_uc"}
+    assert resolution["attached"] == {"benunit.universal_credit": "stub_uc"}
     assert solved.manifest["target_materialization"]["prepared_count"] == 1
     for entity in frame.entities:
         assert set(solved.frame.table(entity).columns) == original_columns[entity]
