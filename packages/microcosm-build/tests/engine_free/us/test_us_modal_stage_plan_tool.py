@@ -8,6 +8,7 @@ client, a Modal connection or the network (git runs against a local repo).
 
 from __future__ import annotations
 
+import collections
 import copy
 import dataclasses
 import hashlib
@@ -324,9 +325,14 @@ def test_argv_paths_are_stable_across_stages() -> None:
 
 
 def test_no_option_maps_to_a_runner_owned_flag() -> None:
+    # Not by name, by an abbreviation argparse would expand, or with '='.
     for tool in plan_lib.TOOLS.values():
         flags = {option.flag for option in tool.options.values()}
         assert not flags & tool.owned_flags
+        for key, option in tool.options.items():
+            assert (
+                plan_lib.option_flag_problem(key, option.flag, tool.owned_flags) is None
+            ), (tool.name, key)
 
 
 def test_build_stage_argv_requires_every_staged_path() -> None:
@@ -852,10 +858,78 @@ def test_tool_environment_strips_credentials_and_stays_offline() -> None:
     assert env["MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES"] == "1"
 
 
-@pytest.mark.parametrize("key", ["HF_HUB_OFFLINE", "HF_TOKEN", "POPULACE_LEDGER_KEY"])
+@pytest.mark.parametrize(
+    "key", ["HF_HUB_OFFLINE", "HF_TOKEN", "POPULACE_LEDGER_KEY", "PYTHONHASHSEED"]
+)
 def test_tool_environment_refuses_an_unvalidated_plan_env(key: str) -> None:
     with pytest.raises(plan_lib.PlanError, match="may not be passed"):
         plan_lib.tool_environment({}, {key: "x"})
+
+
+# A probe value: any hash seed other than the local run's "0".
+_PROBE_SEED = "12345"
+
+
+@pytest.mark.parametrize("container", [None, "0", _PROBE_SEED, "random", ""])
+def test_the_container_s_hash_seed_never_reaches_the_tool(container) -> None:
+    base = {"PATH": "/usr/bin", "HOME": "/root"}
+    if container is not None:
+        base["PYTHONHASHSEED"] = container
+    env, removed = plan_lib.tool_environment(base, {"PYTHONUNBUFFERED": "1"})
+    # Neutralized: whatever the container sets, the tool gets none, so the
+    # base's pinned tool gives its stages "0" (its setdefault), as locally.
+    assert "PYTHONHASHSEED" not in env
+    assert removed == ([] if container is None else ["PYTHONHASHSEED"])
+    assert plan_lib.hash_seed_problem(env) is None
+    base_tool = plan_lib.US_PUF_SUPPORT_BASE
+    assert plan_lib.hash_seed_record(base_tool, base, env) == {
+        "container": container,
+        "passed_to_tool": None,
+        "stages_run_with": "0",
+    }
+    # A tool without its own default: its interpreters pick their own seed.
+    acs = plan_lib.US_ACS_LOCAL_RELEASE
+    assert plan_lib.hash_seed_record(acs, base, env)["stages_run_with"] is None
+
+
+@pytest.mark.parametrize("value", [_PROBE_SEED, "1", "random", "", " 0"])
+def test_a_tool_environment_forcing_another_hash_seed_is_refused(value) -> None:
+    problem = plan_lib.hash_seed_problem({"PYTHONHASHSEED": value})
+    assert problem is not None and f"PYTHONHASHSEED={value!r}" in problem
+    assert plan_lib.hash_seed_problem({"PYTHONHASHSEED": "0"}) is None
+    assert plan_lib.hash_seed_problem({}) is None
+    # No plan can ask for one: it is outside the env allowlist.
+    with pytest.raises(plan_lib.PlanError, match="not allowlisted"):
+        plan_lib.parse_plan(_plan_data(env={"PYTHONHASHSEED": value or "0"}))
+
+
+@settings(max_examples=200, deadline=None)
+@given(
+    base=st.dictionaries(
+        st.sampled_from(
+            ["PATH", "HOME", "PYTHONHASHSEED", "HF_TOKEN", "OMP_NUM_THREADS", "X"]
+        ),
+        st.text(max_size=6),
+        max_size=6,
+    ),
+    plan_env=st.dictionaries(
+        st.sampled_from(["OMP_NUM_THREADS", "PYTHONUNBUFFERED", "MICROCOSM_X"]),
+        st.text(max_size=4),
+        max_size=3,
+    ),
+)
+def test_every_tool_environment_passes_the_hash_seed_check(base, plan_env) -> None:
+    # For any container environment and any allowlisted plan environment,
+    # the tool's environment carries no hash seed, so the runner's refusal
+    # never fires on what tool_environment builds; the record says what the
+    # container had.
+    env, removed = plan_lib.tool_environment(base, plan_env)
+    assert "PYTHONHASHSEED" not in env
+    assert ("PYTHONHASHSEED" in removed) == ("PYTHONHASHSEED" in base)
+    assert plan_lib.hash_seed_problem(env) is None
+    record = plan_lib.hash_seed_record(plan_lib.US_PUF_SUPPORT_BASE, base, env)
+    assert record["container"] == base.get("PYTHONHASHSEED")
+    assert (record["passed_to_tool"], record["stages_run_with"]) == (None, "0")
 
 
 # --------------------------------------------------------------------------- #
@@ -1248,8 +1322,9 @@ def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None
         assert options["retries"] == 0
         # Memory is a request everywhere (an int, never a (request, limit)).
         assert isinstance(options["memory"], int)
-    # The base caps its CPU at its request, so Modal cannot bill it for more
-    # cores than the $15 ceiling counts; the ACS classes keep request-only.
+    # The base sets a CPU limit equal to its request, and Modal throttles CPU
+    # use above the limit, which is what the $15 ceiling counts on; the ACS
+    # classes keep request-only.
     for nonpreemptible in (False, True):
         assert app.RUNNERS[("base", nonpreemptible)].modal_options["cpu"] == (
             4.0,
@@ -1521,6 +1596,24 @@ def test_push_state_copies_first_paths_first_and_after_a_clean_exit_only_them(
     ]
     # Every first-path file comes before every other file.
     assert in_first == sorted(in_first, reverse=True)
+    # And the first paths keep their order: the index in ``first`` of each
+    # file's first matching path (len(first) for a file under none) never
+    # decreases along the push, and the files of one index are sorted.
+    ranks = [
+        next(
+            (
+                index
+                for index, path in enumerate(first)
+                if plan_lib.under_state_path(rel, path)
+            ),
+            len(first),
+        )
+        for rel in order
+    ]
+    assert ranks == sorted(ranks)
+    for rank in set(ranks):
+        group = [rel for rel, r in zip(order, ranks, strict=True) if r == rank]
+        assert group == sorted(group)
     assert copied == [rel for rel in order if rel in set(copied)]
     on_dst = _contents(dst)
     if copy_only is None:
@@ -1851,3 +1944,115 @@ def test_a_stopped_stage_pushes_its_whole_state_first_paths_first(
     assert copied[2] == "ckpt/step1.bin"
     volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
     assert receipt["outputs"] == plan_lib.hash_tree(volume_state)
+
+
+# --------------------------------------------------------------------------- #
+# The hash seed and the disk floor, through the app                           #
+# --------------------------------------------------------------------------- #
+
+# A stand-in tool that records the hash seed its environment gives it.
+_SEED_TOOL = """\
+import json, os, pathlib, sys
+state = pathlib.Path(sys.argv[1])
+(state / "out").mkdir(parents=True, exist_ok=True)
+(state / "out" / "seed.json").write_text(
+    json.dumps({"PYTHONHASHSEED": os.environ.get("PYTHONHASHSEED")})
+)
+"""
+
+
+def _seed_tool(**stage: object) -> plan_lib.ToolSpec:
+    return dataclasses.replace(
+        _fake_tool(**stage),
+        argv_builder=lambda plan, paths, state: ["-c", _SEED_TOOL, state],
+    )
+
+
+def test_the_container_s_hash_seed_is_neutralized_end_to_end(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # The container sets a probe seed; the tool runs without it, and the
+    # receipt says so.
+    monkeypatch.setenv("PYTHONHASHSEED", _PROBE_SEED)
+    app = fake_runner(_seed_tool())
+    receipt = app._run_stage(_fake_plan(max_wall_seconds=600))
+    assert receipt["status"] == "COMPLETED"
+    volume_state = tmp_path / "runs" / "runs" / "fake-run" / "state"
+    seen = json.loads((volume_state / "out" / "seed.json").read_text())
+    assert seen == {"PYTHONHASHSEED": None}
+    assert receipt["runner"]["python_hash_seed"] == {
+        "container": _PROBE_SEED,
+        "passed_to_tool": None,
+        "stages_run_with": None,  # the stand-in sets no default of its own
+    }
+    assert "PYTHONHASHSEED" in receipt["runner"]["tool_env_removed"]
+
+
+def test_a_forced_hash_seed_is_refused_before_anything_is_staged(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    app = fake_runner(_seed_tool())
+    real = plan_lib.tool_environment
+
+    def forced(base, plan_env):
+        env, removed = real(base, plan_env)
+        return {**env, "PYTHONHASHSEED": _PROBE_SEED}, removed
+
+    monkeypatch.setattr(plan_lib, "tool_environment", forced)
+    with pytest.raises(app._Refusal, match=f"PYTHONHASHSEED='{_PROBE_SEED}'"):
+        app._run_stage(_fake_plan(max_wall_seconds=600))
+    ((outcome, finished),) = [
+        (item["outcome"], item["finished"]) for item in _records(tmp_path)
+    ]
+    # A refusal: finished and not charged; nothing pulled, staged or run.
+    assert (outcome, finished) == ("refused", True)
+    assert not (tmp_path / "work" / "inputs").exists()
+    assert not (tmp_path / "work" / "state").exists()
+    run_dir = tmp_path / "runs" / "runs" / "fake-run"
+    assert not (run_dir / "state").exists() and not (run_dir / "receipts").exists()
+
+
+def test_check_stage_fails_when_the_run_would_refuse(
+    fake_runner, tmp_path: Path, monkeypatch
+) -> None:
+    # The check must not say OK for a stage whose paid run would refuse:
+    # a work disk below the stage's floor, or a forced hash seed.
+    app = fake_runner(_seed_tool(min_free_disk_gib=70))
+    # The check reads the clone's tree-file rows too; the stand-in has none.
+    clone = app._git_state(None)
+    monkeypatch.setattr(app, "_git_state", lambda plan: {**clone, "tree_files": []})
+    usage = collections.namedtuple("usage", "total used free")
+    free = {"gib": 20}
+    monkeypatch.setattr(
+        app.shutil,
+        "disk_usage",
+        lambda _path: usage(512 * 1024**3, 0, free["gib"] * 1024**3),
+    )
+    monkeypatch.setenv("PYTHONHASHSEED", _PROBE_SEED)
+    report = app.check_stage(_fake_plan())
+    assert report["work_disk"]["would_refuse"].endswith("needs 70 GiB")
+    assert report["ok"] is False
+    (disk,) = [item for item in report["problems"] if item.startswith("work disk:")]
+    assert "20.0 GiB free" in disk and "check container" in disk
+    # The container's seed is withheld, so it is recorded, not a problem.
+    assert report["python_hash_seed"]["container"] == _PROBE_SEED
+    assert report["python_hash_seed"]["passed_to_tool"] is None
+    assert not [item for item in report["problems"] if "PYTHONHASHSEED" in item]
+
+    free["gib"] = 70
+    report = app.check_stage(_fake_plan())
+    assert report["work_disk"]["would_refuse"] is None
+    assert not [item for item in report["problems"] if item.startswith("work disk")]
+
+    real = plan_lib.tool_environment
+    monkeypatch.setattr(
+        plan_lib,
+        "tool_environment",
+        lambda base, plan_env: (
+            {**real(base, plan_env)[0], "PYTHONHASHSEED": _PROBE_SEED},
+            [],
+        ),
+    )
+    report = app.check_stage(_fake_plan())
+    assert report["ok"] is False
+    assert [item for item in report["problems"] if "PYTHONHASHSEED" in item]

@@ -608,15 +608,24 @@ def check_stage(plan_data: dict) -> dict:
     # (runner.os_cpu_count, cpu_affinity, thread_env); this is an early hint.
     report["check_container_cpu"] = _cpu_visibility()
     # What this (check-class) container's work disk reports. The stage's own
-    # container checks its own disk before staging; this is an early hint.
+    # container checks its own disk before staging; this is an early hint,
+    # but one the check fails on: it must not say OK for a stage whose run
+    # would refuse on a disk like this one.
     work.mkdir(parents=True, exist_ok=True)
     disk = shutil.disk_usage(work)
+    would_refuse = plan_lib.work_disk_problem(plan.stage_spec, disk.free)
     report["work_disk"] = {
         "total_bytes": disk.total,
         "free_bytes": disk.free,
         "stage_needs_gib": plan.stage_spec.min_free_disk_gib,
-        "would_refuse": plan_lib.work_disk_problem(plan.stage_spec, disk.free),
+        "would_refuse": would_refuse,
     }
+    if would_refuse:
+        problems.append(
+            f"work disk: {would_refuse} (measured in the check container; the "
+            "stage's own container measures its disk before staging and refuses "
+            "below the same floor)"
+        )
     # Whether the stage's state could be mirrored inside the runner's reserve
     # after the tool, at the write rate this container sees on the runs volume.
     probe = _write_probe(plan)
@@ -627,6 +636,12 @@ def check_stage(plan_data: dict) -> dict:
     # The probe and the parser run in the environment the stage would get.
     tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
     report["tool_env_removed"] = env_removed
+    report["python_hash_seed"] = plan_lib.hash_seed_record(
+        plan.tool, os.environ, tool_env
+    )
+    seed_problem = plan_lib.hash_seed_problem(tool_env)
+    if seed_problem:
+        problems.append(seed_problem)
     env_probe = subprocess.run(
         [
             f"{plan_lib.IMAGE_VENV}/bin/python",
@@ -817,6 +832,17 @@ def _attempt_stage(
     if disk_problem:
         raise _Refusal(disk_problem)
 
+    # 4c. The tool's environment, fixed before anything is pulled or staged:
+    #     credentials and the container's PYTHONHASHSEED withheld, the Hub
+    #     offline, the plan's overrides last. An environment that would give
+    #     the tool a hash seed other than none or "0" (what Route A's local
+    #     base recorded) is refused here, cheaply.
+    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    hash_seed = plan_lib.hash_seed_record(plan.tool, os.environ, env)
+    seed_problem = plan_lib.hash_seed_problem(env)
+    if seed_problem:
+        raise _Refusal(seed_problem)
+
     # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
     #    hashed as it is copied and verified against the run's latest receipt
     #    before anything uses it (one read of each file); then the inputs to
@@ -844,7 +870,6 @@ def _attempt_stage(
     known = plan_lib.known_hashes(state, pulled_outputs)
     prior = [{"file": name, "sha256": sha} for name, _, sha in receipts]
     inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
-    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
     # Files the tool would otherwise fetch into its home cache, copied from
     # the staged inputs and verified (the base's 2023 ASEC archive).
     home_seeds = plan_lib.seed_home_cache(
@@ -941,6 +966,7 @@ def _attempt_stage(
             "state_pulled": pulled,
             "state_pushed": pushed,
             "tool_env_removed": env_removed,
+            "python_hash_seed": hash_seed,
             "modal": attempt.modal,
             "work_disk": work_disk,
             "home_seeds": home_seeds,
@@ -1035,13 +1061,13 @@ def run_stage_small(plan_data: dict) -> dict:
 
 
 # The PUF-support base's class. Its CPU limit equals its request
-# (plan_lib.BASE.modal_cpu is (4.0, 4.0)): without it Modal's default soft
-# limit is 16 cores above the request and use above the request is billed
-# (modal.com/docs/guide/resources), and the pinned tool sizes its QRF pools
-# from the CPUs it sees. Memory stays request-only (see plan_lib.BASE). No
-# ephemeral_disk: the default per-container quota (512 GiB, same page) holds
-# its ~50 GB, and the stage checks its free space before staging
-# (StageSpec.min_free_disk_gib).
+# (plan_lib.BASE.modal_cpu is (4.0, 4.0)), and Modal throttles CPU use above
+# the limit: without it Modal's default soft limit is 16 cores above the
+# request and use above the request is billed (modal.com/docs/guide/resources),
+# and the pinned tool sizes its QRF pools from the CPUs it sees. Memory stays
+# request-only (see plan_lib.BASE). No ephemeral_disk: the default
+# per-container quota (512 GiB, same page) holds its ~50 GB, and the stage
+# checks its free space before staging (StageSpec.min_free_disk_gib).
 @app.function(
     image=image,
     volumes=VOLUMES,

@@ -8,25 +8,31 @@ value for value, differing only in file paths. These tests hold that with a
 differential test against a tokenized copy of that command, a second one
 through the pinned tool's own parser and per-stage child commands (loaded
 from 4b57d15a2's source; skipped, visibly, in a clone without that commit),
-Hypothesis properties of the argv builder, the plan refusals, the budget
-stop of a multi-process tool, the home-cache seed, the pinned tree file, the
-disk guard, the cost ceiling and CPU limit, the refusal of unfinished
-receipts, the comparison with the local run (its command, inputs and locked
-run config, derived from the Modal argv through the pinned tool's own
-_stage_run_config, and its checkpoints, whose scope is two of 24 outer
-stages), the push order, the upload commands and the write probe. Nothing
-here needs Modal, a country engine or the network.
+Hypothesis properties of the argv builder, the plan refusals (an owned
+flag by name, by an abbreviation argparse would expand, or with '='), the
+budget stop of a multi-process tool, the home-cache seed, the pinned tree
+file, the disk guard, the cost ceiling, the CPU limit and the headroom a
+check shares, the refusal of unfinished receipts, the comparison with the
+local run (its command, inputs and locked run config, derived from the
+Modal argv through the pinned tool's own _stage_run_config, its hash seed,
+and its checkpoints, whose scope is two of 24 outer stages), the push
+order, the upload commands, the write probe, and the runbook's hand-off
+block, run as written. Nothing here needs Modal, a country engine or the
+network.
 """
 
 from __future__ import annotations
 
+import argparse
 import collections
 import dataclasses
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -344,7 +350,8 @@ def test_the_crosswalk_is_the_pinned_tree_s_file_not_an_input() -> None:
     assert (ROOT / plan_lib.CD_VINTAGE_CROSSWALK.path).is_file()
 
 
-def test_the_registered_crosswalk_digest_is_4b57d15a2_s() -> None:
+def test_the_registered_crosswalk_digest_is_4b57d15a2_s(pinned_source: str) -> None:
+    # pinned_source skips this test in a clone without the plan's commit.
     commit = _committed_plan().commit
     shown = subprocess.run(
         [
@@ -356,8 +363,7 @@ def test_the_registered_crosswalk_digest_is_4b57d15a2_s() -> None:
         ],
         capture_output=True,
     )
-    if shown.returncode != 0:
-        pytest.skip("the pinned commit is not in this clone's history")
+    assert shown.returncode == 0, shown.stderr
     assert hashlib.sha256(shown.stdout).hexdigest() == (
         plan_lib.CD_VINTAGE_CROSSWALK.sha256
     )
@@ -694,6 +700,100 @@ def test_an_option_that_maps_to_an_owned_flag_is_refused(monkeypatch, flag) -> N
         plan_lib.planned_argv(plan)
 
 
+_OWNED = (
+    plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS | plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
+)
+
+
+def _abbreviations(flag: str) -> list[str]:
+    """Every proper prefix of ``flag`` after its ``--``."""
+
+    return [flag[:end] for end in range(3, len(flag))]
+
+
+@pytest.mark.parametrize("flag", sorted(plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS))
+def test_an_abbreviation_of_a_withheld_flag_is_refused(monkeypatch, flag) -> None:
+    # The tool's parser (argparse, allow_abbrev on) reads a unique prefix
+    # as the flag it begins, so '--allow-geography' would be
+    # '--allow-geography-ladder-gate-failures'. A registration naming any
+    # prefix of a withheld flag, or any flag with '=' in it, is refused by
+    # the plan and by the argv.
+    rogues = [*_abbreviations(flag), f"{flag}=1", f"{flag[:6]}=x"]
+    for rogue_flag in rogues:
+        for kind, value in ((bool, True), (str, "v")):
+            rogue = dataclasses.replace(
+                BASE, options={"x": plan_lib.OptionFlag(rogue_flag, kind)}
+            )
+            monkeypatch.setitem(plan_lib.TOOLS, BASE.name, rogue)
+            expected = "contains '='" if "=" in rogue_flag else "runner-owned flag"
+            with pytest.raises(plan_lib.PlanError, match=expected):
+                plan_lib.parse_plan(base_plan_data(options={"x": value}))
+            plan = dataclasses.replace(
+                _committed_plan(), tool=rogue, options={"x": value}
+            )
+            with pytest.raises(plan_lib.PlanError, match=expected):
+                plan_lib.planned_argv(plan)
+    # The example the review gave, by name.
+    if flag == "--allow-geography-ladder-gate-failures":
+        assert "--allow-geography" in rogues
+
+
+def _owned_flag_parser():
+    """An argparse parser with the base's 26 owned flags, as the tool's own
+    (4b57d15a2 ``_parse_args``: ``argparse.ArgumentParser()``, so
+    ``allow_abbrev`` is on). Each flag takes an optional value, so a bool
+    flag and a valued one both parse."""
+
+    parser = argparse.ArgumentParser(add_help=False, exit_on_error=False)
+    for owned in sorted(_OWNED):
+        parser.add_argument(owned, nargs="?", const=True, default=None)
+    return parser
+
+
+def test_argparse_expands_each_refused_abbreviation_to_an_owned_flag() -> None:
+    # Why the guard refuses prefixes: argparse itself reads each
+    # unambiguous one as the owned flag it begins.
+    parser = _owned_flag_parser()
+    expanded = 0
+    for flag in sorted(plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS):
+        for prefix in _abbreviations(flag):
+            matches = [item for item in _OWNED if item.startswith(prefix)]
+            if len(matches) != 1:
+                continue  # ambiguous: argparse errors; refused all the same
+            parsed, extra = parser.parse_known_args([prefix, "v"])
+            assert extra == []
+            dest = matches[0].lstrip("-").replace("-", "_")
+            assert getattr(parsed, dest) == "v", prefix
+            expanded += 1
+    assert expanded > 100
+
+
+_FLAG_TEXT = st.text(alphabet="abcdefghilnorstuwx-=0123", max_size=4)
+
+
+@_PROPERTY_SETTINGS
+@given(
+    owned=st.sampled_from(sorted(_OWNED)),
+    cut=st.integers(min_value=0, max_value=45),
+    suffix=_FLAG_TEXT,
+    lead=st.sampled_from(["--", "-", ""]),
+)
+def test_a_flag_the_guard_accepts_never_reaches_an_owned_flag(
+    owned: str, cut: int, suffix: str, lead: str
+) -> None:
+    # Soundness against argparse itself: any flag option_flag_problem
+    # accepts, given to a parser with the owned flags, sets none of them.
+    flag = lead + owned[2 : 2 + cut] + suffix
+    if plan_lib.option_flag_problem("x", flag, BASE.owned_flags) is not None:
+        return
+    parser = _owned_flag_parser()
+    try:
+        parsed, _ = parser.parse_known_args([flag, "v"])
+    except (SystemExit, argparse.ArgumentError):  # a parse error sets nothing
+        return
+    assert all(value is None for value in vars(parsed).values()), flag
+
+
 def test_validate_cli_refuses_a_rogue_registration(
     monkeypatch, tmp_path: Path, capsys
 ) -> None:
@@ -705,11 +805,6 @@ def test_validate_cli_refuses_a_rogue_registration(
     plan_path.write_text(json.dumps(base_plan_data(options={"out": "x"})))
     assert plan_lib.main(["validate", str(plan_path)]) == 2
     assert "runner-owned flag --out" in capsys.readouterr().err
-
-
-_OWNED = (
-    plan_lib.PUF_SUPPORT_BASE_WITHHELD_FLAGS | plan_lib.PUF_SUPPORT_BASE_BUILDER_FLAGS
-)
 
 
 def test_the_owned_flags_are_exactly_the_tool_s_flags() -> None:
@@ -792,6 +887,27 @@ def test_the_class_timeout_keeps_the_ceiling_at_the_request_inside_max_s_cap() -
     assert plan_lib.MEMORY_USD_PER_GIB_SECOND * 3600 * 3.0 == pytest.approx(
         0.024, abs=0.0005
     )
+
+
+def test_the_cap_s_headroom_is_shared_with_the_check() -> None:
+    # The runbook's "How the cap holds": a check lists at up to about $0.08
+    # at its request (2 cores, 8 GiB, its whole 30-minute timeout, always
+    # preemptible), outside the attempt's $14.90, so the $0.10 of headroom
+    # under the $15 cap is shared; one full check leaves about $0.02.
+    check = plan_lib.CHECK
+    assert (check.cpu, check.memory_mib, check.timeout_s) == (2.0, 8 * 1024, 1800)
+    assert check.cpu_limit is None  # use above the request bills above this
+    check_ceiling = check.estimated_usd(check.timeout_s)
+    assert check_ceiling == pytest.approx(0.08, abs=0.005)
+    base_ceiling = plan_lib.estimated_usd_at_timeout(_committed_plan())
+    headroom = plan_lib.BASE_COST_CAP_USD - base_ceiling
+    assert headroom == pytest.approx(0.10, abs=0.005)
+    assert base_ceiling + check_ceiling <= plan_lib.BASE_COST_CAP_USD
+    assert headroom - check_ceiling == pytest.approx(0.02, abs=0.005)
+    # The check class never runs at the non-preemptible price.
+    smoke = json.loads((ROOT / "docs" / "us-modal-stage-smoke-plan.json").read_text())
+    with pytest.raises(plan_lib.PlanError, match="always runs preemptible"):
+        plan_lib.parse_plan({**smoke, "nonpreemptible": True})
 
 
 def test_a_cpu_limit_below_the_request_is_refused() -> None:
@@ -1039,7 +1155,8 @@ def test_an_unsafe_seed_path_is_refused(tmp_path: Path) -> None:
 def test_the_seed_stops_the_tool_s_census_download(tmp_path: Path, monkeypatch) -> None:
     # The base's weeks-unemployed fetcher (unchanged from 4b57d15a2 on main)
     # reads ~/<SEED.path> when it exists and downloads only when it does not.
-    weeks = pytest.importorskip("microcosm.build.us_runtime.weeks_unemployed")
+    from microcosm.build.us_runtime import weeks_unemployed as weeks
+
     assert weeks.ASEC_2023_WEEKS_UNEMPLOYED_ZIP_SHA256 == SEED.sha256
     member = weeks.ASEC_2023_WEEKS_UNEMPLOYED_MEMBER
     archive = tmp_path / "staged.zip"
@@ -1477,13 +1594,45 @@ def test_the_pinned_tool_locks_the_reference_s_run_config_from_the_modal_argv(
     for key in reference["run_config"]["thread_environment"]:
         monkeypatch.delenv(key, raising=False)
     argv = plan_lib.planned_argv(plan, work_root=str(work))
-    config = pinned_tool._stage_run_config(pinned_tool._parse_args(argv[3:]))
+    args = pinned_tool._parse_args(argv[3:])
+    config = pinned_tool._stage_run_config(args)
     assert plan_lib.mask_config_paths(config) == reference["run_config"]
     # And from that config compare-lineage finds nothing to refuse.
+    assert _pinned_lineage(reference, config) == []
+
+    # The hash seed, through the pinned tool. A probe seed in the tool's
+    # environment would reach every stage (its default only fills an unset
+    # value) and be locked in the run config, which compare-lineage refuses.
+    monkeypatch.setenv("PYTHONHASHSEED", "12345")
+    assert pinned_tool._staged_subprocess_environment()["PYTHONHASHSEED"] == "12345"
+    forced = pinned_tool._stage_run_config(args)
+    assert forced["thread_environment"]["PYTHONHASHSEED"] == "12345"
+    assert _pinned_lineage(reference, forced) == [
+        "run_config.thread_environment.PYTHONHASHSEED: Modal '12345', local '0' "
+        "(a determinism input of the tool, compared, never only reported)"
+    ]
+    # The runner's tool environment, from a container with that seed:
+    # without it the tool gives its stages "0" and locks the local config.
+    env, removed = plan_lib.tool_environment(dict(os.environ), plan.env)
+    assert "PYTHONHASHSEED" in removed and "PYTHONHASHSEED" not in env
+    for key in set(os.environ) - set(env):
+        monkeypatch.delenv(key)
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    assert dict(os.environ) == env
+    assert pinned_tool._staged_subprocess_environment()["PYTHONHASHSEED"] == "0"
+    neutral = pinned_tool._stage_run_config(args)
+    assert plan_lib.mask_config_paths(neutral) == reference["run_config"]
+    assert _pinned_lineage(reference, neutral) == []
+
+
+def _pinned_lineage(reference: dict, config: dict) -> list[str]:
+    """lineage_problems of a COMPLETED receipt whose run context locks ``config``."""
+
     context = {"pipeline_sha256": reference["pipeline_sha256"], "run_config": config}
     receipt = _modal_receipt(context)
     context_sha = hashlib.sha256(_context_bytes(context)).hexdigest()
-    assert plan_lib.lineage_problems(receipt, reference, context, context_sha) == []
+    return plan_lib.lineage_problems(receipt, reference, context, context_sha)
 
 
 def _modal_run_config() -> dict:
@@ -1639,6 +1788,39 @@ def test_compare_lineage_passes_a_modal_run_that_reproduces_the_local_bytes(
     assert out["thread_environment_differences"] == {
         key: {"modal": "4", "local": None} for key in sorted(MODAL_THREAD_ENV)
     }
+    # Compared, and equal: the hash seed the tool's stages ran with.
+    assert out["thread_environment_compared"] == {
+        "PYTHONHASHSEED": {"modal": "0", "local": "0"}
+    }
+
+
+@pytest.mark.parametrize("seed", ["12345", "1", None])
+def test_compare_lineage_refuses_another_hash_seed(
+    tmp_path: Path, capsys, seed: str | None
+) -> None:
+    # The hash seed is a determinism input of the pinned tool, so unlike the
+    # thread counts it is refused, not reported: a probe value, another
+    # seed, or none recorded at all.
+    config = _modal_run_config()
+    if seed is None:
+        del config["thread_environment"]["PYTHONHASHSEED"]
+    else:
+        config["thread_environment"]["PYTHONHASHSEED"] = seed
+    receipt_path, context_path = _modal_run(tmp_path, config=config)
+    assert plan_lib.main(_lineage(receipt_path, context_path)) == 1
+    captured = capsys.readouterr()
+    assert captured.err.splitlines() == [
+        f"run_config.thread_environment.PYTHONHASHSEED: Modal {seed!r}, local '0' "
+        "(a determinism input of the tool, compared, never only reported)"
+    ]
+    out = json.loads(captured.out)
+    assert (out["compared_outputs_match"], out["problems"]) == (False, 1)
+    assert out["thread_environment_compared"] == {
+        "PYTHONHASHSEED": {"modal": seed, "local": "0"}
+    }
+    # Refused, so not also listed with the differences that are only reported.
+    assert "PYTHONHASHSEED" not in out["thread_environment_differences"]
+    assert plan_lib.THREAD_ENVIRONMENT_COMPARED == {"PYTHONHASHSEED"}
 
 
 def test_compare_lineage_refuses_a_run_with_another_pipeline(
@@ -1766,7 +1948,7 @@ def test_paths_are_compared_by_file_name_and_the_interpreter_is_not(
     config["acs_h5"] = "/somewhere/else/acs_2022.h5"
     config["asec_h5"][0] = "2024=/elsewhere/census_cps_2024.h5"
     config["builder_code_identity"]["python"] = "3.15.0"
-    config["thread_environment"] = {"OMP_NUM_THREADS": "64"}
+    config["thread_environment"] = {"OMP_NUM_THREADS": "64", "PYTHONHASHSEED": "0"}
     assert _lineage_of(tmp_path / "a", config=config) == []
     config["acs_h5"] = "/work/inputs/acs_2022_h5/acs_2023.h5"
     config["asec_h5"] = list(reversed(config["asec_h5"]))
@@ -2085,3 +2267,200 @@ def test_the_app_s_write_probe_times_a_committed_copy_and_cleans_up(
     acs = dataclasses.replace(_committed_plan(), tool=plan_lib.US_ACS_LOCAL_RELEASE)
     acs = dataclasses.replace(acs, stage="materialize")
     assert "skipped" in app._write_probe(acs)
+
+
+# --------------------------------------------------------------------------- #
+# The runbook: the hand-off block, the registered tools, the pinned tests      #
+# --------------------------------------------------------------------------- #
+
+RUNBOOK = ROOT / "docs" / "us-modal-stage-runbook.md"
+RUN_ID = "route-a-base-4b57d15a287c"
+
+
+def _hand_off_block() -> str:
+    """Step 7 of the runbook's base section, verbatim, as a bash script."""
+
+    text = RUNBOOK.read_text()
+    start = text.index("```bash\n# 7. $RUN is Route A's")
+    end = text.index("\n```", start + 3)
+    block = text[start + len("```bash\n") : end]
+    assert block.count("RUN=<Route A run directory>\n") == 1
+    return block.replace("RUN=<Route A run directory>\n", 'RUN="$HANDOFF_RUN"\n')
+
+
+def _hand_off(tmp_path: Path, *, config: dict | None = None, run: Path | None = None):
+    """Run step 7 against a Modal run of the committed plan and a Route A
+    run directory holding the failed local run's checkpoints."""
+
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    for name in ("tools", "docs"):
+        (checkout / name).symlink_to(ROOT / name)
+    modal_run = checkout / "modal-runs" / RUN_ID
+    base_out = modal_run / "state" / plan_lib.PUF_SUPPORT_BASE_OUT
+    base_out.mkdir(parents=True)
+    (base_out / plan_lib.PUF_SUPPORT_BASE_ARTIFACT).write_bytes(b"\x89HDF base")
+    (base_out / "base_populace_us_2024_puf_support.summary.json").write_text("{}")
+    reference = _reference()
+    context = {
+        "pipeline_sha256": reference["pipeline_sha256"],
+        "run_config": config if config is not None else _modal_run_config(),
+    }
+    (modal_run / "stage_run_context.json").write_bytes(_context_bytes(context))
+    receipt = _modal_receipt(context)
+    receipt["outputs"] += [
+        {**item, "path": f"{plan_lib.PUF_SUPPORT_BASE_OUT}/{item['path']}"}
+        for item in plan_lib.hash_tree(base_out)
+    ]
+    (modal_run / "receipts").mkdir()
+    receipt_name = "all-2026-10-01T120000Z.json"
+    (modal_run / "receipts" / receipt_name).write_text(json.dumps(receipt))
+    if run is None:
+        run = tmp_path / "route-a-run"
+        (run / "base-checkpoints").mkdir(parents=True)
+        (run / "base-checkpoints" / "000_source_construction.frame.h5").write_bytes(
+            b"local"
+        )
+    # python3 is this interpreter (the plan module needs only the standard
+    # library); shasum is the system's, or sha256sum where it is missing.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "python3").symlink_to(sys.executable)
+    if shutil.which("shasum") is None:
+        shim = bin_dir / "shasum"
+        shim.write_text('#!/bin/sh\nshift 2\nexec sha256sum "$@"\n')
+        shim.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+        "R": RUN_ID,
+        "RECEIPT": f"./modal-runs/{RUN_ID}/receipts/{receipt_name}",
+        "HANDOFF_RUN": str(run),
+    }
+    proc = subprocess.run(
+        ["bash", "-c", _hand_off_block()],
+        cwd=checkout,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    return proc, run, modal_run
+
+
+def _result_accepted(result: Path) -> str | None:
+    """route_a.sh's result_accepted for "0": the return code, or None."""
+
+    text = result.read_text()
+    if '"refusal": null' not in text:
+        return None
+    codes = re.findall(r'^ *"returncode": (-?[0-9]*),*$', text, re.MULTILINE)
+    return codes[0] if codes == ["0"] else None
+
+
+def test_the_hand_off_runs_compare_lineage_and_keeps_its_report(
+    tmp_path: Path,
+) -> None:
+    proc, run, modal_run = _hand_off(tmp_path)
+    assert proc.returncode == 0, proc.stderr
+    sup = run / "base-sup"
+    assert sorted(path.name for path in sup.iterdir()) == [
+        "ACCEPTED",
+        "RESULT.json",
+        "compare-lineage.json",
+        "modal-receipt.json",
+        "modal-stage_run_context.json",
+    ]
+    report = json.loads((sup / "compare-lineage.json").read_text())
+    assert (report["compared_outputs_match"], report["problems"]) == (True, 0)
+    assert report["thread_environment_compared"] == {
+        "PYTHONHASHSEED": {"modal": "0", "local": "0"}
+    }
+    assert (sup / "modal-stage_run_context.json").read_bytes() == (
+        modal_run / "stage_run_context.json"
+    ).read_bytes()
+    result = json.loads((sup / "RESULT.json").read_text())
+    assert result["compare_lineage"] == "compare-lineage.json"
+    assert _result_accepted(sup / "RESULT.json") == "0"
+    # The base is the Modal bytes, and the local checkpoints are kept aside.
+    h5 = run / "base-out" / plan_lib.PUF_SUPPORT_BASE_ARTIFACT
+    assert h5.read_bytes() == b"\x89HDF base"
+    digest = hashlib.sha256(h5.read_bytes()).hexdigest()
+    assert (run / "base.sha256").read_text() == f"{digest}  {h5}\n"
+    assert not (run / "base-checkpoints").exists()
+    assert len(list(run.glob("base-checkpoints.local-*"))) == 1
+
+
+@pytest.mark.parametrize("seed", ["12345", None])
+def test_the_hand_off_stops_before_writing_when_compare_lineage_fails(
+    tmp_path: Path, seed: str | None
+) -> None:
+    # A Modal run that is not the local run's build (here: another hash
+    # seed) never reaches Route A: compare-lineage ends the block before
+    # anything under $RUN is written.
+    config = _modal_run_config()
+    if seed is None:
+        del config["thread_environment"]["PYTHONHASHSEED"]
+    else:
+        config["thread_environment"]["PYTHONHASHSEED"] = seed
+    proc, run, modal_run = _hand_off(tmp_path, config=config)
+    assert proc.returncode == 1
+    assert "run_config.thread_environment.PYTHONHASHSEED" in proc.stderr
+    assert sorted(path.name for path in run.iterdir()) == ["base-checkpoints"]
+    assert [p.name for p in (run / "base-checkpoints").iterdir()] == [
+        "000_source_construction.frame.h5"
+    ]
+    report = json.loads((modal_run / "compare-lineage.json").read_text())
+    assert report["compared_outputs_match"] is False
+
+
+def test_the_hand_off_never_overwrites_a_base(tmp_path: Path) -> None:
+    run = tmp_path / "route-a-run"
+    (run / "base-out").mkdir(parents=True)
+    proc, run, modal_run = _hand_off(tmp_path, run=run)
+    assert proc.returncode == 1
+    assert "never overwrite a base" in proc.stderr
+    assert sorted(path.name for path in run.iterdir()) == ["base-out"]
+    # Refused before compare-lineage ran.
+    assert not (modal_run / "compare-lineage.json").exists()
+
+
+def test_the_runbook_names_every_registered_tool() -> None:
+    text = RUNBOOK.read_text()
+    intro = text[: text.index("Two files do the work")]
+    assert len(plan_lib.TOOLS) == 3
+    assert "Three tools are registered" in intro
+    for name, tool in plan_lib.TOOLS.items():
+        assert f"`{name}`" in intro, name
+        if tool.script is not None:
+            assert f"`{tool.script}`" in intro, tool.script
+
+
+#: The tests that read the plan's commit with ``git show`` and skip without
+#: it (CI's depth-1 checkout); the runbook names each.
+PINNED_COMMIT_TESTS = (
+    "test_the_tool_s_own_parser_reads_the_same_build_from_both_commands",
+    "test_the_owned_flags_are_the_pinned_tool_s_flags",
+    "test_the_registered_crosswalk_digest_is_4b57d15a2_s",
+    "test_the_pinned_tool_locks_the_reference_s_run_config_from_the_modal_argv",
+)
+
+
+def test_the_runbook_names_every_pinned_commit_test() -> None:
+    module = sys.modules[__name__]
+    tests = {
+        name: function
+        for name, function in vars(module).items()
+        if name.startswith("test_") and callable(function)
+    }
+    pinned = {"pinned_source", "pinned_tool"}
+    uses_pinned = {
+        name
+        for name, function in tests.items()
+        if pinned & set(inspect.signature(function).parameters)
+    }
+    assert uses_pinned == set(PINNED_COMMIT_TESTS)
+    text = RUNBOOK.read_text()
+    for name in PINNED_COMMIT_TESTS:
+        assert f"`{name}`" in text, name
+    assert "four tests in\n  `test_us_modal_stage_puf_support_base.py`" in text

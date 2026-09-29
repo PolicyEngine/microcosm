@@ -3,11 +3,14 @@
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
 a registered tool run on Modal from a pinned commit, with inputs fetched by
-digest and outputs listed with sha256 receipts. Two tools are registered:
-`tools/build_us_acs_local_release.py` (tool `us-acs-local-release`, stages
-`materialize`, `calibrate`, `qa`, `finalize`, `package`, or `all`) and Route
-A's PUF-support base, `tools/build_us_puf_support_base.py` (tool
-`us-puf-support-base`, stage `all`; see "Route A's base stage").
+digest and outputs listed with sha256 receipts. Three tools are registered
+(`TOOLS` in the plan module): `tools/build_us_acs_local_release.py` (tool
+`us-acs-local-release`, stages `materialize`, `calibrate`, `qa`,
+`finalize`, `package`, or `all`), Route A's PUF-support base,
+`tools/build_us_puf_support_base.py` (tool `us-puf-support-base`, stage
+`all`; see "Route A's base stage"), and `runner-smoke` (stage `smoke`), an
+inline script that proves the run path on any pushed commit (see
+"Commands").
 
 Two files do the work:
 
@@ -38,11 +41,18 @@ release directory onto the runs volume. Publication stays the human step in
    `PYTHONUNBUFFERED`, so a plan can match a local run that set it) come
    from allowlists; an environment variable whose name
    looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSW`, `SIGNING`,
-   `CREDENTIAL`) is refused even under an allowed prefix. The runner sets the
-   flags for input paths, checkpoints and outputs, and a plan cannot pass
-   them. It also cannot pass `--allow-dirty`: every run builds from a clean
-   clone. `"nonpreemptible": true` asks for Modal's non-preemptible
-   placement at three times the list price (see "Preemption and restarts").
+   `CREDENTIAL`) is refused even under an allowed prefix. `PYTHONHASHSEED`
+   is outside the allowlist, so no plan can set it (see "Route A's base
+   stage", Environment). The runner sets the flags for input paths,
+   checkpoints and outputs, and a plan cannot pass them. It also cannot pass
+   `--allow-dirty`: every run builds from a clean clone. A registered
+   option's flag must be a plain long flag with no `=` in it that is neither
+   a runner-owned flag nor a prefix of one: the tools parse with argparse,
+   whose `allow_abbrev` (on by default) reads a unique prefix such as
+   `--allow-geography` as the flag it begins, and `--flag=value` as the flag
+   and a value. The plan and the argv refuse any other registration.
+   `"nonpreemptible": true` asks for Modal's non-preemptible placement at
+   three times the list price (see "Preemption and restarts").
 2. **The image is the commit.** It starts from `debian_slim` with Python
    3.14, the minor version the local US builds record (`runtime.python`
    3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git and uv 0.11.7, makes a shallow
@@ -112,7 +122,13 @@ release directory onto the runs volume. Publication stays the human step in
    - the attempt id and this attempt's share of `max_wall_seconds`;
    - every verified input;
    - the names, never the values, of environment variables withheld from
-     the tool;
+     the tool (credentials, and the container's `PYTHONHASHSEED` if it had
+     one);
+   - `runner.python_hash_seed`: the container's `PYTHONHASHSEED`, what the
+     tool's environment carried (always none or `0`; the runner refuses
+     anything else before staging), and the value the tool's stage
+     interpreters ran with (`0` for the base, whose pinned tool gives its
+     stages `0` when it has none; none for a tool that sets no default);
    - the sha256 of the earlier receipts in the run, and the receipt the
      pulled state matched;
    - every file in the state tree with its bytes and sha256, and which of
@@ -246,7 +262,11 @@ runner uses the token, to download inputs. The tool always runs with
 `HF_HUB_OFFLINE=1` (huggingface_hub then refuses every request) and without
 any variable whose name looks like a credential (`KEY`, `TOKEN`, `SECRET`,
 `PASSW`, `SIGNING`, `CREDENTIAL`); the receipt lists the names removed,
-never their values. A plan cannot set such a variable either.
+never their values. A plan cannot set such a variable either. The tool
+also never gets the container's `PYTHONHASHSEED`: the runner removes it
+(and lists its name with the others), and refuses before pulling or
+staging anything if the tool's environment would still carry a value
+other than `0` (see "Route A's base stage", Environment).
 
 ## First acceptance: replay #974 materialize
 
@@ -439,14 +459,16 @@ executes longer, whatever hangs. A test holds the $14.90 at or below $15
 Modal bills CPU and memory at the higher of the request and actual use
 (modal.com/docs/guide/resources, read 29 September 2026):
 
-- *CPU is capped at the request.* The base's functions pass `cpu=(4.0,
-  4.0)`, a CPU limit equal to the request. Modal's docs say that above a
-  container's CPU limit the host begins to throttle its CPU use, that a
-  function can set the limit explicitly with that tuple, and that without
-  one the default soft limit is 16 physical cores above the request (same
-  page). Without the cap, a stage using 20 cores for the whole
-  timeout would list at $25.28. See "Resources" for why the pinned tool
-  could use more than 4 cores.
+- *CPU use above the request is throttled.* The base's functions pass
+  `cpu=(4.0, 4.0)`, a CPU limit equal to the request. Modal's docs say
+  that above a container's CPU limit the host begins to throttle its CPU
+  use, that a function can set the limit explicitly with that tuple, and
+  that without one the default soft limit is 16 physical cores above the
+  request (same page). So Modal throttles the base above its 4-core
+  request, and the $14.90 counts CPU at the request on that basis. Without
+  the limit, a stage using 20 cores for the whole timeout would list at
+  $25.28. See "Resources" for why the pinned tool could use more than 4
+  cores.
 - *Memory is not capped.* Use above 112 GiB is billed at use, about $0.024
   per GiB-hour non-preemptible. This is the one way an attempt can list
   above $14.90. A memory limit at the request would turn that into an OOM
@@ -460,7 +482,17 @@ Modal bills CPU and memory at the higher of the request and actual use
   between $14.90 and $15 is about 110 seconds of this class.
 - Scheduling is not execution time, and container startup is timed
   separately (`startup_timeout`, which defaults to the function's
-  `timeout`; same page), so neither is inside the execution bound.
+  `timeout`; same page), so neither is inside the execution bound. The
+  $14.90 counts neither of them, nor building the image.
+- *Each check is outside the $14.90 too.* A check (step 3 below) runs in
+  the check class, 2 cores and 8 GiB with a 30-minute timeout, and lists
+  at up to about $0.08 at that request if it runs its whole timeout; more
+  if it uses more than its 2 cores or 8 GiB, since that class sets no
+  limit.
+
+So the $0.10 of headroom is shared: the seconds past the timeout, every
+check, and whatever container startup and image builds add all come out of
+it. One check that ran its whole timeout would leave about $0.02 of it.
 
 The billed figure is in Modal's workspace billing report.
 
@@ -475,8 +507,11 @@ estimators, district seed 0, `--assign-congressional-districts`) are fixed
 in the registration, not plan options: a different setting is a different
 base, and changing it is a reviewed registry change. The tool's other flags
 (`--base-h5`, the smoke limit, the equivalence harness, the ladder escape
-hatches) are runner-owned, so no plan can pass them; a test refuses a
-registry option for each of the 26 owned flags.
+hatches) are runner-owned, so no plan can pass them. A test refuses a
+registry option for each of the 26 owned flags, and another for every
+abbreviation of each withheld flag (argparse would read
+`--allow-geography` as `--allow-geography-ladder-gate-failures`) and for a
+flag with `=` in it.
 
 Two kinds of test hold the command:
 
@@ -484,15 +519,27 @@ Two kinds of test hold the command:
   command with its paths tokenized
   (`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`),
   and the registration's owned flags equal the flags of this tree's tool.
-- Only in a clone that has commit `4b57d15a2`: the tool is loaded from that
-  commit's own source (`git show`), not from this tree's copy, and its
-  `_parse_args` and `_stage_cli_args` read both commands into the same
-  settings and the same child command for every outer stage, paths aside.
-  Its flags must equal the registration's owned flags.
+- Only in a clone that has commit `4b57d15a2`, four tests in
+  `test_us_modal_stage_puf_support_base.py` that read that commit with
+  `git show` and skip without it:
+  - `test_the_tool_s_own_parser_reads_the_same_build_from_both_commands`:
+    the tool is loaded from that commit's own source, not from this tree's
+    copy, and its `_parse_args` and `_stage_cli_args` read both commands
+    into the same settings and the same child command for every outer
+    stage, paths aside;
+  - `test_the_owned_flags_are_the_pinned_tool_s_flags`: its flags equal
+    the registration's owned flags;
+  - `test_the_registered_crosswalk_digest_is_4b57d15a2_s`: the district
+    crosswalk at that commit has the registered sha256;
+  - `test_the_pinned_tool_locks_the_reference_s_run_config_from_the_modal_argv`:
+    its `_stage_run_config` locks, from the Modal argv, the run config the
+    local run locked (paths by file name), including `PYTHONHASHSEED` `0`
+    when the runner's tool environment removed a container's value, and a
+    forced `12345` is what compare-lineage refuses.
 
 CI checks out only the commit under test (`actions/checkout` fetches one
-commit by default), so there the pinned-commit tests report a skip rather
-than pass. Run them in a full clone before a paid run (step 2 below).
+commit by default), so there those four tests report a skip rather than
+pass. Run them in a full clone before a paid run (step 2 below).
 
 The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
 `route-a-base-4b57d15a287c`, branch `main`).
@@ -521,12 +568,27 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   Modal's container defaults apply, and the receipt records them
   (`runner.thread_env`, `os_cpu_count`, `cpu_affinity`), as does the tool's
   own `stage_run_context.json` (`thread_environment`, which step 6 reports
-  next to the local run's without refusing on it). As in every stage, the
-  tool runs with `HF_HUB_OFFLINE=1`, which the local run's recorded
-  environment did not set. The base needs no Hub file: every source is
-  passed as a path, and the only fetch the tool itself calls is the Census
-  download above (the library fetches an ASEC person archive only for an
-  unmapped year, and all three are mapped).
+  next to the local run's, refusing only a different `PYTHONHASHSEED`). As
+  in every stage, the tool runs with `HF_HUB_OFFLINE=1`, which the local
+  run's recorded environment did not set. The base needs no Hub file: every
+  source is passed as a path, and the only fetch the tool itself calls is
+  the Census download above (the library fetches an ASEC person archive
+  only for an unmapped year, and all three are mapped).
+- **The hash seed is held to the local run's.** At `4b57d15a2` the tool's
+  `--stage all` parent runs each outer stage in a child interpreter with
+  `PYTHONHASHSEED` defaulted to `0` (`_staged_subprocess_environment`, a
+  `setdefault`, so a value already in its environment would win), records
+  the value in the run config it locks (`thread_environment`, `0` when
+  unset) and refuses a named stage without one. The local run recorded
+  `0`, and its command set only `PYTHONUNBUFFERED`. So the runner removes
+  any `PYTHONHASHSEED` the container has from the tool's environment, and
+  the tool's default gives its stages `0`. A plan cannot set it. If the
+  tool's environment would still carry another value, the run refuses
+  before pulling or staging anything (a refusal, not charged to the
+  budget) and the check reports a problem. The receipt records the
+  container's value, the tool's and the stages' (`runner.python_hash_seed`),
+  and step 6 refuses a run context whose
+  `thread_environment.PYTHONHASHSEED` is not the local run's `0`.
 - **The interpreter and platform differ; the package versions do not.**
   The local base for `4b57d15a2` ran on free-threaded CPython 3.14.7 on
   macOS arm64. The build worktree's `.venv/pyvenv.cfg` names
@@ -549,15 +611,23 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
 **Resources.** Class `base`: 4 cores, 112 GiB, a 16,500-second timeout.
 
 - *Memory.* The local peak was 72.47 GB (67.5 GiB, `/usr/bin/time -l` of
-  the 16 September run under policyengine-us 1.819.0; not re-measured on
-  2.2.1). On 23 September Modal held 15 to 24 GB more than the build machine
-  at the same point of materialize, so the worst case seen is about 90 GiB;
-  112 GiB leaves about 22 GiB over that. The heavy class's 128 GiB would
+  the 16 September A1d run under policyengine-us 1.819.0). That run is not
+  this build. It ran commit `51c31438` (`_buildq-runtime/RECEIPT-phase2.md`
+  on the build machine), and seven later commits that `4b57d15a2` includes
+  changed the builder itself (`git log 51c3143829..4b57d15a2 --
+  tools/build_us_puf_support_base.py`), among them the SPM independence
+  role stage (`9d26595bc`) and the restored Census person columns
+  (`39b8e7b63`), besides the move to policyengine-us 2.2.1. Route A's own
+  run of `4b57d15a2` stopped after two outer stages, so no peak of this
+  build has been measured: the first Modal receipt's `peak_rss_bytes` is
+  the first. On 23 September Modal held 15 to 24 GB more than the build
+  machine at the same point of materialize, so the worst case seen is about
+  90 GiB; 112 GiB leaves about 22 GiB over that. The heavy class's 128 GiB would
   put the capped run over $15 (below). Memory is a request, not a limit:
   use above 112 GiB is billed at use, above the ceiling (see "How the cap
   holds").
-- *CPU.* The base used 6,238 CPU-s in 2,788 s of wall locally, 2.2 cores on
-  average. That average does not bound what the tool asks for. At
+- *CPU.* The A1d base used 6,238 CPU-s in 2,788 s of wall locally, 2.2
+  cores on average. That average does not bound what the tool asks for. At
   `4b57d15a2`, with `POPULACE_FIT_PREDICT_WORKERS` and
   `POPULACE_FIT_N_JOBS` unset, the primary-QRF draw sizes its thread pool
   from `os.cpu_count()` and the forest fit passes `n_jobs=-1` (microcosm-fit
@@ -578,9 +648,10 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   `os.cpu_count()`, affinity and thread variables (`check_container_cpu`,
   a hint from the check class), and the first measurement in the base's
   container is the receipt's `runner.os_cpu_count` and `cpu_affinity`.
-  Because of that, the base's functions cap CPU at the request (`cpu=(4.0,
-  4.0)`; see "How the cap holds"). The cap may slow phases that ran on more
-  than 4 cores locally. The whole local run's 6,238 CPU-s is 1,560 s of 4
+  Because of that, the base's functions set a CPU limit equal to the
+  request (`cpu=(4.0, 4.0)`), and Modal throttles CPU use above it (see
+  "How the cap holds"). The limit may slow phases that ran on more than 4
+  cores locally. The whole local run's 6,238 CPU-s is 1,560 s of 4
   cores.
 - *Pinning the pools.* Setting `POPULACE_FIT_PREDICT_WORKERS` or
   `POPULACE_FIT_N_JOBS` in the plan would also bound the pools. The cost of
@@ -594,8 +665,9 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   the controls the primary-QRF worker identity records,
   `worker_identity.py`). `compare-lineage` requires the rest of the run
   config to equal the local run's, paths by file name, and reports
-  `thread_environment` without refusing on it (step 6). What is not known is
-  whether the worker count changes the numbers. The pinned code says it
+  `thread_environment` without refusing on it but for `PYTHONHASHSEED`,
+  which the runner holds at the local run's `0` (step 6). What is not known
+  is whether the worker count changes the numbers. The pinned code says it
   does not: the draw's chunking "only changes *when* each row is computed,
   never *what* it is", and the forests are "deterministic per random_state
   regardless of worker count" (microcosm-fit `qrf.py`). No test at
@@ -711,13 +783,14 @@ the check class's 30-minute timeout.
 **Cost.** At the 14,400-second budget plus 30 minutes of runner time, the
 plan's list-price estimate is $14.63 non-preemptible. At the local wall it
 would be $2.52. The ceiling of one attempt at the request, the class
-timeout, lists at $14.90 (`estimated_usd_at_timeout` in `validate`). The
-CPU limit keeps CPU at the request; memory above 112 GiB bills above it
-(see "How the cap holds"). An earlier draft of this class had a 6-hour
-timeout, which listed at $19.51, over the cap. The receipt records the
-container's wall and its list-price cost at the request
-(`estimated_usd_container_at_list_price`) and `runner.tool_budget` (the
-tool's budget and which limit set it).
+timeout, lists at $14.90 (`estimated_usd_at_timeout` in `validate`).
+Modal throttles CPU use above the CPU limit, which equals the request;
+memory above 112 GiB bills above the ceiling (see "How the cap holds").
+Each check lists at up to about $0.08 on top. An earlier draft of this
+class had a 6-hour timeout, which listed at $19.51, over the cap. The
+receipt records the container's wall and its list-price cost at the
+request (`estimated_usd_container_at_list_price`) and `runner.tool_budget`
+(the tool's budget and which limit set it).
 
 **Run it.** From a checkout that has this registration and the full
 history of `main` (so the pinned-commit tests run):
@@ -744,25 +817,29 @@ python3 tools/modal_us_stage_plan.py upload-commands --shell \
 # 2. Validate locally: the argv, class base (cpu_limit 4.0), the $14.63
 #    estimate and the $14.90 ceiling at the request
 #    (estimated_usd_at_timeout). Then run the base's tests, and confirm the
-#    pinned-commit tests passed rather than skipped.
+#    four pinned-commit tests passed rather than skipped (-rs lists skips).
 python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-base-plan.json
 uv run pytest -rs packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py
 
-# 3. Check on Modal (check class, cents). It checks the clone and branch,
-#    the crosswalk digest, the pinned tool's _parse_args on the argv, and
-#    all eleven inputs hashed on the volume. It also probes the runs
-#    volume's write rate (runs_volume_write_probe; the check fails if 50
-#    GiB would not mirror inside the runner's reserve). Its work_disk field
-#    shows what the check container's /work reports against the stage's
-#    70 GiB (a hint: the paid container checks its own disk before staging),
-#    and check_container_cpu its os.cpu_count(), affinity and thread
-#    variables (a hint too: the base's own container is another class).
+# 3. Check on Modal (check class, up to about $0.08). It checks the clone
+#    and branch, the crosswalk digest, the pinned tool's _parse_args on the
+#    argv, and all eleven inputs hashed on the volume. It also probes the
+#    runs volume's write rate (runs_volume_write_probe; the check fails if
+#    50 GiB would not mirror inside the runner's reserve). Its work_disk
+#    field shows what the check container's /work reports against the
+#    stage's 70 GiB, and the check fails when that is less (would_refuse;
+#    the paid container checks its own disk again before staging). It fails
+#    too if the tool's environment would carry a PYTHONHASHSEED other than
+#    none or 0 (python_hash_seed shows the container's and the tool's).
+#    check_container_cpu shows its os.cpu_count(), affinity and thread
+#    variables (a hint: the base's own container is another class).
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
   modal run tools/modal_us_stage.py
 
-# 4. Run it: paid and non-preemptible. The estimate is $14.63; the class
-#    timeout and the CPU limit cap this attempt at $14.90 list, unless it
-#    uses more than 112 GiB of memory.
+# 4. Run it: paid and non-preemptible. The estimate is $14.63. The class
+#    timeout bounds this attempt at $14.90 list at its request; Modal
+#    throttles CPU use above the limit (the request), and memory above
+#    112 GiB would bill above that.
 MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
   modal run --detach tools/modal_us_stage.py --run
 
@@ -821,12 +898,17 @@ python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
   `source_sha256` `c02fd057…` (the digest of the committed tree of
   `4b57d15a2`, so an untracked file in either tree would change it) and the
   same six dependency versions.
+- Of `thread_environment`, `PYTHONHASHSEED` is the local run's `0`. The
+  tool's stage interpreters run with it (see "The hash seed is held to the
+  local run's" above), so a run that recorded another value is not the
+  local run's build, and the report shows both values under
+  `thread_environment_compared`.
 
 Two things are reported and never refused: the interpreter string
-(`python`) and every `thread_environment` variable whose value differs
-(`thread_environment_differences`). The tool reads those variables from its
-environment, Modal sets some of them itself (see "Resources"), and whether
-they change the numbers has not been shown. The report says
+(`python`) and every other `thread_environment` variable whose value
+differs (`thread_environment_differences`). The tool reads those variables
+from its environment, Modal sets some of them itself (see "Resources"), and
+whether they change the numbers has not been shown. The report says
 `compared_outputs_match`, with `stages_compared` 2 of `stages_total` 24 and
 the 22 stages it did not compare (`stages_not_compared`).
 
@@ -859,25 +941,38 @@ would resume from the failed local run's checkpoints in
 `$RUN/base-checkpoints` and write its own H5 into `$RUN/base-out`. The
 release would then certify that local base, not the bytes the Modal receipt
 proves, because `base.sha256` is recomputed from whatever file is there.
-After steps 5 and 6 pass, and before rerunning `route_a.sh`:
+After steps 5 and 6 pass, and before rerunning `route_a.sh`, run step 7. It
+runs step 6's `compare-lineage` again itself, so no base reaches Route A
+without it, whatever was run before:
 
 ```bash
 # 7. $RUN is Route A's run directory for the build commit
 #    (.../overnight-20260923/route-a/run-4b57d15a287c on the build machine).
-#    R and RECEIPT are step 5's. The block runs in a subshell with
-#    `set -euo pipefail`, so the first command that fails (the guard, the
-#    copy, verify-receipt, any write) ends it and nothing after it runs.
+#    R and RECEIPT are step 5's; the run context is step 6's download. The
+#    block runs in a subshell with `set -euo pipefail`, so the first command
+#    that fails (the guard, compare-lineage, the copy, verify-receipt, any
+#    write) ends it and nothing after it runs. compare-lineage runs before
+#    anything under $RUN is written: a Modal run that is not the local run's
+#    build stops the block with $RUN untouched. Its JSON report goes to
+#    ./modal-runs/$R/ first and into base-sup/ as the hand-off's evidence.
 #    ACCEPTED is written last, so a stopped block never hands Route A a
 #    base. What the earlier commands wrote stays (a partial $RUN/base-out,
 #    perhaps base.sha256 or base-sup): look at it, remove it by hand, and
 #    run the block again.
 RUN=<Route A run directory>
+CONTEXT=./modal-runs/$R/stage_run_context.json
+LINEAGE=./modal-runs/$R/compare-lineage.json
 (
   set -euo pipefail
   if [ -e "$RUN/base-sup" ] || [ -e "$RUN/base-out" ]; then
     echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
     exit 1
   fi
+  # Step 6, required: exits 1 (and ends the block) on any problem, which it
+  # prints to stderr; its JSON report goes to $LINEAGE.
+  python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
+    --reference docs/us-modal-stage-route-a-base-local-reference.json \
+    --run-context "$CONTEXT" > "$LINEAGE"
   mkdir -p "$RUN/base-out"
   cp -p ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
   # The copies, in place, against the receipt (COMPLETED only, nothing extra).
@@ -891,8 +986,12 @@ RUN=<Route A run directory>
   fi
   mkdir -p "$RUN/base-sup"
   cp "$RECEIPT" "$RUN/base-sup/modal-receipt.json"
+  # The evidence the hand-off rests on: compare-lineage's report and the
+  # run context it compared.
+  cp "$LINEAGE" "$RUN/base-sup/compare-lineage.json"
+  cp "$CONTEXT" "$RUN/base-sup/modal-stage_run_context.json"
   RECEIPT_SHA=$(shasum -a 256 "$RECEIPT" | cut -c1-64)
-  printf '{\n "status": "MODAL_RECEIPT",\n "returncode": 0,\n "refusal": null,\n "receipt": "%s",\n "receipt_sha256": "%s"\n}\n' \
+  printf '{\n "status": "MODAL_RECEIPT",\n "returncode": 0,\n "refusal": null,\n "receipt": "%s",\n "receipt_sha256": "%s",\n "compare_lineage": "compare-lineage.json"\n}\n' \
     "$(basename "$RECEIPT")" "$RECEIPT_SHA" > "$RUN/base-sup/RESULT.json"
   echo "returncode=0 $(date '+%F %T') modal receipt $(basename "$RECEIPT") sha256 $RECEIPT_SHA" \
     > "$RUN/base-sup/ACCEPTED"
@@ -900,10 +999,13 @@ RUN=<Route A run directory>
 ```
 
 `RESULT.json` has the one-key-per-line shape `route_a.sh`'s
-`result_accepted` reads (`"refusal": null`, `"returncode": 0`). `ACCEPTED`
-is what `stage_done` checks. Then rerun `route_a.sh`. It skips the base,
-keeps `base.sha256` (the H5, copied with its mtime, is not newer than it),
-and logs that digest for the H5 it passes to the preflight and the
+`result_accepted` reads (`"refusal": null`, `"returncode": 0`); the extra
+`compare_lineage` line names the report next to it. `ACCEPTED` is what
+`stage_done` checks. `base-sup/` then holds the receipt, compare-lineage's
+report (`compared_outputs_match` true, 0 problems, the compared hash seed)
+and the run context it compared. Then rerun `route_a.sh`. It skips the
+base, keeps `base.sha256` (the H5, copied with its mtime, is not newer than
+it), and logs that digest for the H5 it passes to the preflight and the
 release.
 
 The release and certification still run locally. Route A's driver takes
@@ -1009,9 +1111,10 @@ TY2015 IRS PUF CSV (`puf_2015.csv`, `--puf-source-year-csv`), both on
 `microcosm-us-stage-inputs` under `cas/sha256/`. The ruling covers that
 workspace's volumes and the base stage; it does not put the PUF anywhere
 else (the Hub, logs, receipts). The base's checkpoints and output on
-`microcosm-us-stage-runs` are built from it, so they fall under the same
-ruling. Logs hold only what the tool prints. Receipts hold digests, sizes
-and paths, never file contents.
+`microcosm-us-stage-runs` are built from the PUF. This change reads the
+ruling as covering them too; that is this change's reading, not Max's
+words, which named the PUF. Logs hold only what the tool prints. Receipts
+hold digests, sizes and paths, never file contents.
 
 ## What this does not cover yet
 
@@ -1022,9 +1125,11 @@ and paths, never file contents.
   and parallel-executor work first, plus a resource class sized from a
   measured full-scale peak.
 - **The base stage on Modal is unmeasured.** It is registered (see
-  "Route A's base stage") and sized from the local run; its Modal wall,
-  peak, CPU visibility (`os.cpu_count()` in its container) and the runner's
-  hashing and mirroring time are estimates until the first receipt. The
+  "Route A's base stage") and sized from an older local run (A1d, seven
+  builder commits before `4b57d15a2`); its Modal wall, peak, CPU visibility
+  (`os.cpu_count()` in its container) and the runner's hashing and
+  mirroring time are estimates until the first receipt, whose
+  `peak_rss_bytes` is the first peak measured for this build. The
   check's write probe is the only measurement of the runs volume's write
   rate before then. Step 6 shows whether the platform reproduces the local
   bytes of the first two outer stages only. The local run left no output

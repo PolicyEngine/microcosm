@@ -119,6 +119,19 @@ _CREDENTIAL_ENV = re.compile(
     r"KEY|TOKEN|SECRET|PASSW|SIGNING|CREDENTIAL", re.IGNORECASE
 )
 _GITHUB_URL = re.compile(r"https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.git")
+#: The hash seed is a determinism input of the base's pinned tool: at
+#: 4b57d15a2 its ``--stage all`` parent starts every outer stage in a child
+#: interpreter with ``PYTHONHASHSEED`` defaulted to "0"
+#: (``_staged_subprocess_environment``: ``setdefault``, so a value already in
+#: its environment wins), records the value in the run config it locks
+#: (``_stage_run_config``, ``thread_environment``; "0" when unset), and
+#: refuses a named stage without one. Route A's local base recorded "0"
+#: (its stage_run_context.json), and its command set only PYTHONUNBUFFERED
+#: (base-config.json). The runner never passes the container's value on (``tool_environment``),
+#: a plan cannot set it (``_ENV_KEY``), and the runner refuses a tool
+#: environment that would carry any other value (``hash_seed_problem``).
+HASH_SEED_ENV = "PYTHONHASHSEED"
+HASH_SEED = "0"
 
 
 class PlanError(ValueError):
@@ -146,9 +159,10 @@ class Resources:
     CPU and memory are billed at the higher of the request and actual use
     (modal.com/docs/guide/resources, read 2026-09-29). So a class without a
     limit can bill CPU above its request, and :meth:`estimated_usd` is then a
-    floor; a class whose limit equals its request cannot, as far as those
-    docs describe the limit. Memory has no limit in any class: use above the
-    request is billed at use.
+    floor. For a class whose limit equals its request, Modal throttles CPU
+    use above the limit, which is the request, and the estimate counts CPU
+    at the request on that basis. Memory has no limit in any class: use
+    above the request is billed at use.
     """
 
     name: str
@@ -193,9 +207,10 @@ CHECK = Resources("check", cpu=2.0, memory_mib=8 * 1024, timeout_s=30 * 60)
 HEAVY = Resources("heavy", cpu=4.0, memory_mib=128 * 1024, timeout_s=8 * 3600)
 LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 # The PUF-support base (tools/build_us_puf_support_base.py, Route A). Its
-# local peak was 72.47 GB (67.5 GiB; MEASURED below) and the runbook saw
-# Modal hold 15 to 24 GB more RSS than local at the same point of another
-# stage, so the worst case seen is about 90 GiB. 112 GiB leaves about 22 GiB
+# local peak was 72.47 GB (67.5 GiB; MEASURED below, on a build seven
+# builder commits older than 4b57d15a2) and the runbook saw Modal hold 15 to
+# 24 GB more RSS than local at the same point of another stage, so the
+# worst case seen is about 90 GiB. 112 GiB leaves about 22 GiB
 # over that and is at least 1.5 times the local peak. It is not HEAVY
 # because Max capped the run at about $15 (2026-09-29, BASE_COST_CAP_USD):
 # non-preemptible, a 4-hour budget plus 30 minutes of runner time
@@ -203,9 +218,10 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 # $14.63 with 112 GiB. Four cores: the base used 6,238 CPU-s in 2,788 s of
 # wall locally, 2.2 cores on average.
 #
-# The CPU limit equals the request. Without it Modal's default soft limit
-# would be 20 cores, and Modal bills the higher of request and use
-# (modal.com/docs/guide/resources, read 2026-09-29). The pinned tool sizes
+# The CPU limit equals the request, and Modal throttles CPU use above the
+# limit. Without it Modal's default soft limit would be 20 cores, and Modal
+# bills the higher of request and use (modal.com/docs/guide/resources, read
+# 2026-09-29). The pinned tool sizes
 # its primary-QRF predict pool from os.cpu_count() and fits with n_jobs=-1
 # when POPULACE_FIT_PREDICT_WORKERS and POPULACE_FIT_N_JOBS are unset, as
 # they were in the local run (4b57d15a2 microcosm-fit qrf.py _fit_n_jobs and
@@ -216,8 +232,9 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 # Pinning would not cost parity with the local run's locked config, which
 # the Modal run never has (the tool locks resolved paths and the thread
 # variables it sees, and Modal sets some of those itself); it would change
-# only the config's thread_environment, which compare-lineage reports and
-# does not compare (RUN_CONFIG_REPORTED_ONLY). What is unknown is whether a
+# only the config's thread_environment, which compare-lineage reports and,
+# but for the hash seed, does not compare (RUN_CONFIG_REPORTED_ONLY,
+# THREAD_ENVIRONMENT_COMPARED). What is unknown is whether a
 # worker count changes the numbers: the pinned qrf.py says it does not, but
 # no test at 4b57d15a2 compares two counts and no run has. So pinning is
 # left to the builder or Max (runbook, "Pinning the pools").
@@ -311,7 +328,15 @@ MEASURED = {
     # /usr/bin/time -l of the 2026-09-16 A1d base (policyengine-us 1.819.0):
     # 2,787.90 s real, 4,876.65 s user + 1,361.52 s sys, maximum resident set
     # size 72,467,169,280 bytes. Route A's driver (route_a.sh section 4)
-    # quotes it; it has not been re-measured on policyengine-us 2.2.1.
+    # quotes it. It is not a measurement of the build this registration
+    # runs: A1d ran commit 51c31438 (_buildq-runtime/RECEIPT-phase2.md), and
+    # seven later commits that 4b57d15a2 includes changed the builder itself
+    # (git log 51c3143829..4b57d15a2 -- tools/build_us_puf_support_base.py),
+    # among them the SPM independence role stage (9d26595bc) and the
+    # restored Census person columns (39b8e7b63), besides the move to
+    # policyengine-us 2.2.1 (6aad4e1bd). Route A's local run of 4b57d15a2
+    # stopped after two outer stages, so the first Modal receipt's
+    # peak_rss_bytes is the first peak measured for this build.
     ("us-puf-support-base", "all"): Measured(
         72_467_169_280,
         2787.9,
@@ -330,6 +355,43 @@ MEASURED = {
 class OptionFlag:
     flag: str
     kind: type
+
+
+_LONG_FLAG = re.compile(r"--[A-Za-z0-9][A-Za-z0-9-]*")
+
+
+def option_flag_problem(key: str, flag: str, owned: frozenset[str]) -> str | None:
+    """Why an allowlisted option's flag could reach a runner-owned flag.
+
+    Exact equality is not enough: the tools parse with argparse, whose
+    ``allow_abbrev`` (on by default, and on in the base's pinned
+    ``_parse_args``) reads a unique prefix of a long flag as that flag, and
+    reads ``--flag=value`` as the flag and a value. So the flag must be a
+    plain long flag, contain no ``=``, and be neither an owned flag nor a
+    prefix of one. A registry error, refused by parse_plan and option_argv.
+    """
+
+    if flag in owned:
+        return f"option {key!r} maps to runner-owned flag {flag}"
+    if "=" in flag:
+        return (
+            f"option {key!r} flag {flag!r} contains '=': argparse reads "
+            "--flag=value as a flag and its value, so a registration names the "
+            "flag alone"
+        )
+    if not _LONG_FLAG.fullmatch(flag):
+        return (
+            f"option {key!r} flag {flag!r} is not a plain long flag "
+            "(--name); a short flag could alias a runner-owned one"
+        )
+    abbreviated = sorted(item for item in owned if item.startswith(flag))
+    if abbreviated:
+        return (
+            f"option {key!r} flag {flag} abbreviates runner-owned flag(s) "
+            f"{', '.join(abbreviated)}: argparse's allow_abbrev reads a unique "
+            "prefix as the flag it begins"
+        )
+    return None
 
 
 @dataclass(frozen=True)
@@ -416,6 +478,10 @@ class ToolSpec:
     parse_function: str | None = None
     tree_files: Mapping[str, TreeFile] = field(default_factory=dict)
     home_seeds: tuple[HomeSeed, ...] = ()
+    # The PYTHONHASHSEED the tool gives its stage interpreters when its own
+    # environment has none (read from the pinned tool), for the receipt's
+    # hash-seed record; None when it sets none.
+    stage_hash_seed_default: str | None = None
 
 
 ACS_LOCAL_RELEASE_ARTIFACT = "populace_us_2024_acs_local.h5"
@@ -762,6 +828,8 @@ US_PUF_SUPPORT_BASE = ToolSpec(
     parse_function="_parse_args",
     tree_files={"cd_vintage_crosswalk": CD_VINTAGE_CROSSWALK},
     home_seeds=(ASEC_2023_ARCHIVE_SEED,),
+    # 4b57d15a2 _staged_subprocess_environment (see HASH_SEED_ENV).
+    stage_hash_seed_default=HASH_SEED,
 )
 
 TOOLS: dict[str, ToolSpec] = {
@@ -1030,8 +1098,10 @@ def parse_plan(data: object) -> Plan:
                 f"option {key!r} is not allowlisted for {tool.name!r}; "
                 f"known: {sorted(tool.options)}"
             )
-        if option.flag in tool.owned_flags:  # a registry error, refused early
-            raise PlanError(f"option {key!r} maps to runner-owned flag {option.flag}")
+        # A registry error, refused early.
+        flag_problem = option_flag_problem(key, option.flag, tool.owned_flags)
+        if flag_problem:
+            raise PlanError(flag_problem)
         value = raw_options[key]
         if option.kind is bool:
             ok = isinstance(value, bool)
@@ -1216,8 +1286,10 @@ def option_argv(plan: Plan) -> list[str]:
     argv: list[str] = []
     for key, value in sorted(plan.options.items()):
         option = plan.tool.options[key]
-        if option.flag in plan.tool.owned_flags:  # registry invariant
-            raise PlanError(f"option {key!r} maps to runner-owned flag {option.flag}")
+        # Registry invariant, held here too for a Plan built without parse_plan.
+        flag_problem = option_flag_problem(key, option.flag, plan.tool.owned_flags)
+        if flag_problem:
+            raise PlanError(flag_problem)
         if option.kind is bool:
             if value:
                 argv.append(option.flag)
@@ -1265,21 +1337,65 @@ def tool_environment(
     """The stage tool's environment, and the names removed from ``base``.
 
     The container's environment without any credential-looking variable
-    (``HF_TOKEN`` from an attached Hub secret, Modal's own tokens), with
-    ``HF_HUB_OFFLINE=1`` so the tool cannot reach the Hub, and with the
-    plan's allowlisted overrides last. Only names are returned, for the
-    receipt; never values.
+    (``HF_TOKEN`` from an attached Hub secret, Modal's own tokens) and
+    without its ``PYTHONHASHSEED`` (HASH_SEED_ENV: with none, the base's
+    pinned tool gives its stages "0", the value Route A's local base
+    recorded), with ``HF_HUB_OFFLINE=1`` so the tool cannot reach the Hub, and
+    with the plan's allowlisted overrides last. Only names are returned, for
+    the receipt; never values.
     """
 
     for key in plan_env:
         if not _ENV_KEY.fullmatch(key) or is_credential_env_key(key):
             raise PlanError(f"env {key!r} may not be passed to the tool")
-    removed = sorted(key for key in base if is_credential_env_key(key))
+    removed = sorted(
+        key for key in base if is_credential_env_key(key) or key == HASH_SEED_ENV
+    )
     dropped = set(removed)
     env = {key: value for key, value in base.items() if key not in dropped}
     env["HF_HUB_OFFLINE"] = "1"
     env.update(plan_env)
     return env, removed
+
+
+def hash_seed_problem(env: Mapping[str, str]) -> str | None:
+    """A refusal when the tool's environment would force another hash seed.
+
+    The tool must run with ``PYTHONHASHSEED`` unset (the base's pinned tool
+    then gives its stage interpreters HASH_SEED) or set to HASH_SEED. Any
+    other value would reach every stage (the pinned tool's default does not
+    override it) and differ from Route A's local run.
+    """
+
+    value = env.get(HASH_SEED_ENV)
+    if value is None or value == HASH_SEED:
+        return None
+    return (
+        f"the tool's environment sets {HASH_SEED_ENV}={value!r}; the tool runs "
+        f"with it unset or {HASH_SEED!r} (Route A's local base recorded "
+        f"{HASH_SEED!r})"
+    )
+
+
+def hash_seed_record(
+    tool: ToolSpec, base: Mapping[str, str], env: Mapping[str, str]
+) -> dict[str, str | None]:
+    """The receipt's ``PYTHONHASHSEED`` record.
+
+    The container's value (which the tool never gets), what the tool's
+    environment carries (None: unset), and the value the tool's stage
+    interpreters run with: the passed value, else the tool's own default
+    (``ToolSpec.stage_hash_seed_default``; None for a tool without one,
+    whose interpreters then pick a random seed each).
+    """
+
+    passed = env.get(HASH_SEED_ENV)
+    stages = tool.stage_hash_seed_default if passed is None else passed
+    return {
+        "container": base.get(HASH_SEED_ENV),
+        "passed_to_tool": passed,
+        "stages_run_with": stages,
+    }
 
 
 def stop_process_group(
@@ -2317,9 +2433,9 @@ def estimated_usd_at_timeout(plan: Plan) -> float:
 
     Modal's timeout bounds a function's execution time
     (modal.com/docs/guide/timeouts). This is the ceiling of one attempt at
-    the request: it holds for CPU only when the class sets a CPU limit equal
-    to its request (``Resources.cpu_limit``), and never for memory used
-    above the request, which is billed at use
+    the request: for CPU it rests on a CPU limit equal to the request
+    (``Resources.cpu_limit``), above which Modal throttles CPU use, and it
+    never holds for memory used above the request, which is billed at use
     (modal.com/docs/guide/resources). Scheduling is outside the timeout,
     container startup is timed separately (``startup_timeout``), and a
     function may run a handful of seconds past its timeout
@@ -2471,14 +2587,20 @@ def upload_script(rows: Sequence[Mapping[str, object]]) -> str:
 
 LOCAL_REFERENCE_SCHEMA = "microcosm-modal-us-stage-local-reference/1"
 
-#: run_config keys compare-lineage reports and does not require to match.
-#: ``thread_environment`` is what the tool read from its own environment
-#: (the BLAS/OpenMP thread counts, POPULACE_FIT_N_JOBS,
-#: POPULACE_FIT_PREDICT_WORKERS and PYTHONHASHSEED; ``_stage_run_config`` at
-#: 4b57d15a2). Modal set four of those thread counts in the check container
-#: where the local run set none (runbook, acceptance attempt), so it differs
-#: from the local run's without any change to the build's inputs or settings.
+#: run_config keys compare-lineage reports and does not require to match,
+#: but for THREAD_ENVIRONMENT_COMPARED. ``thread_environment`` is what the
+#: tool read from its own environment (the BLAS/OpenMP thread counts,
+#: POPULACE_FIT_N_JOBS, POPULACE_FIT_PREDICT_WORKERS and PYTHONHASHSEED;
+#: ``_stage_run_config`` at 4b57d15a2). Modal set four of those thread counts
+#: in the check container where the local run set none (runbook, acceptance
+#: attempt), so it differs from the local run's without any change to the
+#: build's inputs or settings.
 RUN_CONFIG_REPORTED_ONLY = frozenset({"thread_environment"})
+#: ``thread_environment`` variables compare-lineage requires to match: the
+#: hash seed is a determinism input of the pinned tool (HASH_SEED_ENV), and
+#: the runner holds it to the local run's, so a difference means the run is
+#: not the local run's build.
+THREAD_ENVIRONMENT_COMPARED = frozenset({HASH_SEED_ENV})
 #: builder_code_identity keys compare-lineage reports and does not require
 #: to match: the interpreter build string, which differs by design (the image
 #: runs the standard CPython build on Linux, the local run free-threaded
@@ -2566,8 +2688,14 @@ def _argv_problem(tokens: Sequence[str], expected: Sequence[str]) -> str | None:
     )
 
 
+def _thread_environment(config: Mapping) -> Mapping:
+    threads = config.get("thread_environment")
+    return threads if isinstance(threads, Mapping) else {}
+
+
 def _run_config_problems(modal: Mapping, local: Mapping) -> list[str]:
-    """Every run_config key but the reported-only ones, paths masked."""
+    """Every run_config key but the reported-only ones, paths masked, and
+    the THREAD_ENVIRONMENT_COMPARED variables of ``thread_environment``."""
 
     modal = mask_config_paths(modal) if isinstance(modal, Mapping) else {}
     local = mask_config_paths(local) if isinstance(local, Mapping) else {}
@@ -2584,6 +2712,15 @@ def _run_config_problems(modal: Mapping, local: Mapping) -> list[str]:
         elif modal[key] != local[key]:
             problems.append(
                 f"run_config.{key}: Modal {modal[key]!r}, local {local[key]!r}"
+            )
+    modal_threads = _thread_environment(modal)
+    local_threads = _thread_environment(local)
+    for key in sorted(THREAD_ENVIRONMENT_COMPARED):
+        if modal_threads.get(key) != local_threads.get(key):
+            problems.append(
+                f"run_config.thread_environment.{key}: Modal "
+                f"{modal_threads.get(key)!r}, local {local_threads.get(key)!r} "
+                "(a determinism input of the tool, compared, never only reported)"
             )
     identity = modal.get("builder_code_identity") or {}
     expected = local.get("builder_code_identity") or {}
@@ -2619,11 +2756,12 @@ def lineage_problems(
     Modal run's own file, whose sha256 must be the one the receipt lists)
     must lock the same pipeline and the same run config: every key but
     ``thread_environment``, with paths compared by file name, including
-    the builder code identity but for its interpreter string. The plan's
-    environment must match too, except for the variables the tool records
-    in ``thread_environment``. The interpreter, platform and
-    ``thread_environment`` differ by design and are only reported
-    (:func:`lineage_information`).
+    the builder code identity but for its interpreter string, and, of
+    ``thread_environment``, the hash seed (THREAD_ENVIRONMENT_COMPARED). The
+    plan's environment must match too, except for the variables the tool
+    records in ``thread_environment``. The interpreter, platform and the
+    other ``thread_environment`` variables differ by design and are only
+    reported (:func:`lineage_information`).
 
     No problems means the compared outputs match, not that the run
     reproduced the local one: the reference covers only the stages whose
@@ -2716,12 +2854,13 @@ def lineage_problems(
 
 def lineage_information(reference: Mapping, run_context: Mapping | None) -> dict:
     """What compare-lineage reports without refusing: the interpreters, and
-    each ``thread_environment`` variable whose value differs."""
+    each ``thread_environment`` variable whose value differs, but for the
+    ones it compares (THREAD_ENVIRONMENT_COMPARED), which are problems."""
 
     modal_config = (run_context or {}).get("run_config") or {}
     local_config = reference.get("run_config") or {}
-    modal_threads = modal_config.get("thread_environment") or {}
-    local_threads = local_config.get("thread_environment") or {}
+    modal_threads = _thread_environment(modal_config)
+    local_threads = _thread_environment(local_config)
     return {
         "python": {
             "modal": (modal_config.get("builder_code_identity") or {}).get("python"),
@@ -2729,7 +2868,9 @@ def lineage_information(reference: Mapping, run_context: Mapping | None) -> dict
         },
         "thread_environment_differences": {
             key: {"modal": modal_threads.get(key), "local": local_threads.get(key)}
-            for key in sorted(set(modal_threads) | set(local_threads))
+            for key in sorted(
+                (set(modal_threads) | set(local_threads)) - THREAD_ENVIRONMENT_COMPARED
+            )
             if modal_threads.get(key) != local_threads.get(key)
         },
     }
@@ -2866,14 +3007,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "compare-lineage":
         reference = json.loads(args.reference.read_text())
         context_bytes = args.run_context.read_bytes()
+        run_context = json.loads(context_bytes)
         problems = lineage_problems(
             receipt,
             reference,
-            json.loads(context_bytes),
+            run_context,
             hashlib.sha256(context_bytes).hexdigest(),
         )
         for problem in problems:
             print(problem, file=sys.stderr)
+        modal_threads = _thread_environment((run_context or {}).get("run_config") or {})
+        local_threads = _thread_environment(reference.get("run_config") or {})
         print(
             json.dumps(
                 {
@@ -2883,8 +3027,16 @@ def main(argv: list[str] | None = None) -> int:
                     "problems": len(problems),
                     "outputs_compared": sorted(reference.get("outputs", {})),
                     **lineage_scope(reference),
+                    # Compared: a difference is one of the problems.
+                    "thread_environment_compared": {
+                        key: {
+                            "modal": modal_threads.get(key),
+                            "local": local_threads.get(key),
+                        }
+                        for key in sorted(THREAD_ENVIRONMENT_COMPARED)
+                    },
                     # Reported, never refused (lineage_information).
-                    **lineage_information(reference, json.loads(context_bytes)),
+                    **lineage_information(reference, run_context),
                 }
             )
         )
