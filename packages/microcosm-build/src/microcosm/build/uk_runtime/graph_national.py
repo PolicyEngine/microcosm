@@ -583,85 +583,128 @@ class UKNationalProblemKernel(_NationalKernel):
 
     def run(self, context: KernelContext) -> KernelResult:
         frame = context_frame(context)
-        assert_calibration_input_finite(frame)
         registry_document = _registry_artifact(context)
-        national = registry_from_payload(registry_document["national_registry"])
-        band_edges = registry_from_payload(registry_document["band_edge_registry"])
-        period = int(registry_document["calibration_year"])
-        if not len(national.specs):
-            raise ValueError("The national register selects no target.")
         with tempfile.TemporaryDirectory(
             prefix="microcosm-uk-national-measures-"
         ) as scratch:
-            prepared, restore, rows, evidence = materialize_uk_national_rows(
+            payload = encode_uk_national_problem(
                 frame,
-                national,
-                period=period,
-                band_edge_registry=band_edges,
+                national_registry=registry_from_payload(
+                    registry_document["national_registry"]
+                ),
+                band_edge_registry=registry_from_payload(
+                    registry_document["band_edge_registry"]
+                ),
+                period=int(registry_document["calibration_year"]),
+                measure_exclusions=registry_document["measure_exclusions"],
+                doctrine={
+                    "target_weight_rule": str(context.params["target_weight_rule"]),
+                    "target_loss_cap": float(context.params["target_loss_cap"]),
+                    "max_weight_ratio": context.params["max_weight_ratio"],
+                    "l0_lambda": float(context.params["l0_lambda"]),
+                    "mass_rule": str(context.params["mass_rule"]),
+                    "scale_rule": str(context.params["scale_rule"]),
+                },
                 resolver_factory=self.resolver_factory,
                 scratch_dir=Path(scratch),
             )
-            problem = build_constraint_matrix(prepared, rows.targets, "household")
-            if problem.skipped:
-                failures = "; ".join(
-                    f"{item.target.key}: {item.reason}" for item in problem.skipped
-                )
-                raise ValueError("National constraints failed to compile: " + failures)
-            clean = restore(prepared)
-            for entity in frame.entities:
-                pd.testing.assert_frame_equal(clean.table(entity), frame.table(entity))
-        if len(problem.targets) != len(national.specs):
-            raise ValueError(
-                "UK national calibration matrix did not contain every activated "
-                f"reference: declared={len(national.specs)}, rows={len(problem.targets)}."
-            )
-        families = [spec.family for spec in national.specs]
-        rule = str(context.params["target_weight_rule"])
-        target_loss_weights = uk_national_target_loss_weights(families, rule=rule)
-        mass_reason = national_calibration_mass_reason(families)
-        ids = frame.table("household")["household_id"].tolist()
-        levels = national_target_geography_levels(national)
-        target_metadata = [
-            {
-                **spec.metadata,
-                "family": spec.family,
-                "source": spec.source,
-                "geography_level": levels[spec.to_target().row_name],
-                "materialization": NATIONAL_MATERIALIZATION,
-            }
-            for spec in national.specs
-        ]
-        payload = encode_problem(
-            problem,
-            entity_ids=ids,
-            target_metadata=target_metadata,
-            bindings={
-                "release_role": "national",
-                "mass_reason": mass_reason,
-                "mass_rule": str(context.params["mass_rule"]),
-                "max_weight_ratio": context.params["max_weight_ratio"],
-                "target_loss_cap": float(context.params["target_loss_cap"]),
-                "target_loss_weights": (
-                    np.ones(problem.n_targets, dtype=np.float64)
-                    if target_loss_weights is None
-                    else target_loss_weights
-                ).tolist(),
-                "target_weight_rule": rule,
-                "scale_rule": str(context.params["scale_rule"]),
-                "l0_lambda": float(context.params["l0_lambda"]),
-                "bound_families": [
-                    f"national/{family}" for family in sorted(set(families))
-                ],
-                "measure_resolution": _json_safe(evidence),
-                "measure_exclusions": registry_document["measure_exclusions"],
-                "register_sha256": national.version,
-                "band_edge_register_sha256": band_edges.version,
-                "calibration_year": period,
-                "activated_reference_count": len(national.specs),
-                "resolved_reference_count": len(national.specs),
-            },
-        )
         return KernelResult(artifacts={"problem": payload})
+
+
+def encode_uk_national_problem(
+    frame: Frame,
+    *,
+    national_registry: TargetRegistry,
+    band_edge_registry: TargetRegistry,
+    period: int,
+    doctrine: Mapping[str, object],
+    measure_exclusions: Mapping[str, Mapping[str, str]] | None = None,
+    resolver_factory=UKMeasureResolver,
+    scratch_dir: Path | None = None,
+) -> bytes:
+    """One ordered national problem, the doctrine bound into it.
+
+    The seam stage's route up to the solve: refuse non-finite inputs,
+    resolve the engine measures (or materialise from the frame's own
+    columns with ``resolver_factory=None``), materialise the register on
+    the adapter, compile the constraint matrix row for row, restore the
+    pristine tables, and encode the problem with the national doctrine's
+    ``family_equal`` loss weights, mass reason and bounds in its bindings,
+    which the shared dense solve node reads.
+    """
+
+    assert_calibration_input_finite(frame)
+    if not len(national_registry.specs):
+        raise ValueError("The national register selects no target.")
+    prepared, restore, rows, evidence = materialize_uk_national_rows(
+        frame,
+        national_registry,
+        period=period,
+        band_edge_registry=band_edge_registry,
+        resolver_factory=resolver_factory,
+        scratch_dir=scratch_dir,
+    )
+    problem = build_constraint_matrix(prepared, rows.targets, "household")
+    if problem.skipped:
+        failures = "; ".join(
+            f"{item.target.key}: {item.reason}" for item in problem.skipped
+        )
+        raise ValueError("National constraints failed to compile: " + failures)
+    clean = restore(prepared)
+    for entity in frame.entities:
+        pd.testing.assert_frame_equal(clean.table(entity), frame.table(entity))
+    if len(problem.targets) != len(national_registry.specs):
+        raise ValueError(
+            "UK national calibration matrix did not contain every activated "
+            f"reference: declared={len(national_registry.specs)}, "
+            f"rows={len(problem.targets)}."
+        )
+    families = [spec.family for spec in national_registry.specs]
+    rule = str(doctrine["target_weight_rule"])
+    target_loss_weights = uk_national_target_loss_weights(families, rule=rule)
+    mass_reason = national_calibration_mass_reason(families)
+    ids = frame.table("household")["household_id"].tolist()
+    levels = national_target_geography_levels(national_registry)
+    target_metadata = [
+        {
+            **spec.metadata,
+            "family": spec.family,
+            "source": spec.source,
+            "geography_level": levels[spec.to_target().row_name],
+            "materialization": NATIONAL_MATERIALIZATION,
+        }
+        for spec in national_registry.specs
+    ]
+    return encode_problem(
+        problem,
+        entity_ids=ids,
+        target_metadata=target_metadata,
+        bindings={
+            "release_role": "national",
+            "mass_reason": mass_reason,
+            "mass_rule": str(doctrine["mass_rule"]),
+            "max_weight_ratio": doctrine["max_weight_ratio"],
+            "target_loss_cap": float(doctrine["target_loss_cap"]),
+            "target_loss_weights": (
+                np.ones(problem.n_targets, dtype=np.float64)
+                if target_loss_weights is None
+                else target_loss_weights
+            ).tolist(),
+            "target_weight_rule": rule,
+            "scale_rule": str(doctrine["scale_rule"]),
+            "l0_lambda": float(doctrine["l0_lambda"]),
+            "bound_families": [
+                f"national/{family}" for family in sorted(set(families))
+            ],
+            "measure_resolution": _json_safe(evidence),
+            "measure_exclusions": dict(measure_exclusions or {}),
+            "register_sha256": national_registry.version,
+            "band_edge_register_sha256": band_edge_registry.version,
+            "calibration_year": int(period),
+            "activated_reference_count": len(national_registry.specs),
+            "resolved_reference_count": len(national_registry.specs),
+        },
+    )
 
 
 def _axis(frame: Frame) -> list:

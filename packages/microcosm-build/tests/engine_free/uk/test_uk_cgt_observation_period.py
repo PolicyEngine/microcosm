@@ -26,20 +26,36 @@ def test_dated_cgt_fit_restores_base2024_values_with_fitted_weights(
 
     registry = _registry()
     if route == "national":
-        resolver = resolver_factory(
-            frame=original, scratch_dir=tmp_path / "engine", year=2025
-        )
-        stage = UKNationalCalibrationStage(
+        from microcosm.calibrate import build_constraint_matrix, calibrate
+
+        # The graph's national route: resolve on the bound frame, materialise,
+        # compile the rows, solve under the doctrine, restore the pristine
+        # tables around the calibrated weights.
+        prepared, restore, rows, evidence = materialize_uk_national_rows(
+            original,
             registry,
-            band_edge_registry=registry,
             period=2025,
-            doctrine=UKNationalSolveDoctrine(epochs=2),
-            measure_resolver=resolver,
+            band_edge_registry=registry,
+            resolver_factory=resolver_factory,
+            scratch_dir=tmp_path / "engine",
         )
-        fitted = stage(original)
-        receipt = stage.manifest["measure_resolution"]["provider"][
-            "cgt_period_contract"
-        ]
+        problem = build_constraint_matrix(prepared, rows.targets, "household")
+        assert not problem.skipped
+        doctrine = UKNationalSolveDoctrine(epochs=2)
+        result = calibrate(
+            prepared,
+            rows.targets,
+            weight_entity="household",
+            epochs=doctrine.epochs,
+            learning_rate=doctrine.learning_rate,
+            seed=doctrine.seed,
+            mass="free",
+            mass_reason="national doctrine calibration (test)",
+            max_weight_ratio=doctrine.max_weight_ratio,
+            target_loss_cap=doctrine.target_loss_cap,
+        )
+        fitted = restore(result.frame)
+        receipt = evidence["cgt_period_contract"]
     else:
         from microcosm.build.uk_runtime import full_measure
         from microcosm.build.uk_runtime.local_rowwise import (
