@@ -30,9 +30,12 @@ from microcosm.build.us_runtime.acs_local_hours import (
 )
 from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_DONOR_CHANNEL,
+    ACS_LOCAL_INCOME_PREDICTOR_EXTENSIONS,
     acs_local_income_transfer_target_families,
+    map_acs_local_other_income,
     record_acs_local_income_transfer,
     require_acs_local_income_donor,
+    without_acs_local_other_income,
 )
 from microcosm.build.us_runtime.acs_local_work_disability import (
     map_acs_local_work_disability_inputs,
@@ -120,8 +123,11 @@ def build_optional_acs_multispine(
     receipt is ``provenance["acs_local_work_disability"]``.
     ``income_transfer`` (the ACS local lane, microcosm#1022) runs a separate
     ASEC-channel QRF pass for the SNAP-relevant income leaves the shared plan
-    does not carry, with its own local-only plan; its receipt is
-    ``provenance["acs_local_income_transfer"]``.
+    does not carry, with its own local-only plan and two opt-in predictor
+    extensions for that call alone (ACS ``OIP`` for child support, an
+    ACS-aligned ``RETP`` analog for disability and account distributions);
+    the shared transfer and its execution contract are unchanged. Its receipt
+    is ``provenance["acs_local_income_transfer"]``.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -218,8 +224,15 @@ def build_optional_acs_multispine(
     if income_transfer:
         # Local lane only (microcosm#1022): measured ASEC amounts, a plan
         # disjoint from the shared declaration, and the shared null-only merge.
+        # ACS OIP and an ACS-aligned RETP analog enter as opt-in predictor
+        # extensions of this call alone (microcosm#1056 review), so the shared
+        # transfer below keeps its predictors, draws and execution contract.
         income_donor = require_acs_local_income_donor(base)
         acs_persons = mapped_frame.n("person")
+        other_income = map_acs_local_other_income(mapped_frame)
+        other_income_coverage = other_income.coverage
+        mapped_frame = other_income.frame
+        del other_income
         income = transfer_acs_inputs(
             mapped_frame,
             base,
@@ -229,14 +242,18 @@ def build_optional_acs_multispine(
             seed=seed,
             n_estimators=n_estimators,
             max_targets_per_fit=max_targets_per_fit,
+            person_predictor_extensions=ACS_LOCAL_INCOME_PREDICTOR_EXTENSIONS,
         )
-        mapped_frame = income.frame
+        # The mapped OIP is this pass's predictor source only: it never
+        # reaches the shared transfer, the pool or the release.
+        mapped_frame = without_acs_local_other_income(income.frame)
         income_fit_records = tuple(income.fit_records)
         income_imputed_inputs = tuple(income.imputed_inputs)
         income_receipt = record_acs_local_income_transfer(
             income_donor,
             _json_ready_sequence(income_imputed_inputs),
             acs_persons=acs_persons,
+            other_income=other_income_coverage,
         )
         income_receipt["resolved_donor_channel"] = income.resolved_donor_channel
         del income
