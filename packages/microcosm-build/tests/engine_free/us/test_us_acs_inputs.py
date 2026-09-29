@@ -196,6 +196,11 @@ def test_acs_weeks_worked_is_native_paired_and_absent_from_the_shared_mapping():
     assert receipt["observed_rows"] == 1
     assert receipt["missing_rows"] == 1
     assert receipt["reference"] == ACS_WEEKS_WORKED_REFERENCE
+    # The 2024 dictionary codes the 2024 ACS rows (WKWN is on page 45, with WKHP).
+    assert ACS_WEEKS_WORKED_REFERENCE == (
+        "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/"
+        "data_dict/PUMS_Data_Dictionary_2024.pdf#page=45"
+    )
     # The multispine pool shares map_acs_native_inputs; it never maps WKWN.
     shared = map_acs_native_inputs(before)
     assert "weeks_worked" not in shared.frame.person
