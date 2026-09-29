@@ -225,6 +225,30 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
     assert "acs_local_work_disability_signal" in work_disability["treatment"]
     for fragment in ("SSIP > 0 under age 65", "policyengine-us#9660", "MIL == 2"):
         assert fragment in work_disability["reason"]
+    # microcosm#1022: the engine-free fills are a reviewed method, and
+    # Medicare is no longer listed as an engine-default take-up flag.
+    fills = by_id["acs_engine_free_default_fills"]
+    assert fills["status"] == "reviewed_modeling_decision"
+    assert fills["calibration_blocker"] is False
+    assert set(fills["columns"]) == {
+        "is_snap_abawd_discretionary_exempt",
+        "receives_housing_assistance",
+        "takes_up_medicare_if_eligible",
+    }
+    assert "acs_local_take_up_signal" in fills["treatment"]
+    for fragment in (
+        "SERIALNO:SPORDER",
+        "microcosm#975",
+        "HINS3 == 1",
+        "cap-based proxy, not an observed exemption assignment",
+        "upper-bound propensity",
+    ):
+        assert fragment in fills["reason"]
+    assert "Blank and invalid HINS3 counts" in fills["treatment"]
+    defaults = by_id["acs_take_up_engine_defaults"]["reason"]
+    assert "SSI, Head Start" in defaults
+    assert "Medicare take-up is native ACS HINS3" in defaults
+    assert "Medicaid, SSI, Medicare" not in defaults
     # microcosm#1020: the ACS immigration inputs are a reviewed method, not
     # an engine-default gap.
     immigration = by_id["acs_immigration_status_method"]
@@ -413,17 +437,90 @@ def test_reviewed_null_fill_refuses_to_default_fill_take_up(tmp_path) -> None:
     assert spm_unit["takes_up_snap_if_eligible"].isna().sum() == 2
 
 
+#: A current (post-#1022) materialize receipt, as run_identity.json records it.
+_TAKE_UP_RECEIPT = {
+    "seed": 0,
+    "assigned_sha256": "a" * 64,
+    "engine_free_fills": {"issue": "microcosm#1022"},
+}
+
+
 def test_take_up_consumers_refuse_a_checkpoint_without_the_assignment() -> None:
     module = _load_tool_module()
     for identity in (
         {},
-        {"acs_local_take_up": {"seed": "0", "assigned_sha256": "a" * 64}},
-        {"acs_local_take_up": {"seed": 0}},
+        {"acs_local_take_up": {**_TAKE_UP_RECEIPT, "seed": "0"}},
+        {"acs_local_take_up": {"seed": 0, "engine_free_fills": {}}},
     ):
         with pytest.raises(SystemExit, match="Re-run --stage materialize"):
             module._recorded_take_up(identity)
-    recorded = {"seed": 3, "assigned_sha256": "a" * 64}
+    recorded = {**_TAKE_UP_RECEIPT, "seed": 3}
     assert module._recorded_take_up({"acs_local_take_up": recorded}) == recorded
+
+
+@pytest.mark.parametrize(
+    "fills", [None, {}, {"issue": "microcosm#1019"}], ids=["absent", "empty", "stale"]
+)
+def test_take_up_consumers_refuse_a_pre_1022_checkpoint(fills) -> None:
+    """A checkpoint materialized before #1022 calibrated against ACS rows
+    whose three engine-free inputs sat at the engine default."""
+
+    module = _load_tool_module()
+    receipt = {"seed": 0, "assigned_sha256": "a" * 64}
+    if fills is not None:
+        receipt["engine_free_fills"] = fills
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run --stage materialize"):
+        module._recorded_take_up({"acs_local_take_up": receipt})
+
+
+_ENGINE_FREE_FILLS = (
+    ("person", "is_snap_abawd_discretionary_exempt"),
+    ("spm_unit", "receives_housing_assistance"),
+    ("person", "takes_up_medicare_if_eligible"),
+)
+
+
+def test_engine_free_fills_are_never_default_filled() -> None:
+    """microcosm#1022: each engine default biases SNAP on ACS rows."""
+
+    module = _load_tool_module()
+    for key in _ENGINE_FREE_FILLS:
+        assert key in module.NEVER_DEFAULT_FILLED
+        assert "microcosm#1022" in module._NEVER_DEFAULT_FILLED_REASONS[key]
+
+
+@pytest.mark.parametrize("entity,column", _ENGINE_FREE_FILLS)
+def test_reviewed_null_fill_refuses_to_default_fill_engine_free_inputs(
+    tmp_path, entity, column
+) -> None:
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    table = frame.table(entity).assign(**{column: [True, False] * 3 + [np.nan] * 2})
+    frame = Frame(
+        {
+            name: table if name == entity else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {"entity": entity, "column": column, "missing_rows": 2}
+                ]
+            }
+        )
+    )
+    with pytest.raises(
+        module.DeniedDefaultFillError, match=rf"{entity}\.{column} \(2 null rows\)"
+    ):
+        module.fill_reviewed_nulls(frame, summary)
+    assert table[column].isna().sum() == 2
 
 
 _IMMIGRATION_COLUMNS = (
@@ -591,7 +688,7 @@ def test_calibrate_refuses_a_pre_1020_staging_before_solving(
     monkeypatch.setattr(
         module,
         "_verify_run_identity",
-        lambda a: {"acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64}},
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
     )
     monkeypatch.setattr(
         module,
@@ -789,7 +886,7 @@ def test_calibrate_refuses_a_pre_1021_staging_before_solving(
     monkeypatch.setattr(
         module,
         "_verify_run_identity",
-        lambda a: {"acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64}},
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
     )
     monkeypatch.setattr(
         module,
@@ -828,7 +925,7 @@ def test_consumer_export_refuses_a_pre_1021_staging_before_loading_it(
         module._write_calibrated_artifact(
             args,
             np.ones(1),
-            {"acs_local_take_up": {"seed": 0, "assigned_sha256": "a" * 64}},
+            {"acs_local_take_up": _TAKE_UP_RECEIPT},
         )
 
 
@@ -1724,28 +1821,14 @@ def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
 ):
     """The 2026-09-23 release signature: every ACS unit takes SNAP/TANF up."""
 
-    from microcosm.build.us_runtime.base_pool import spine_column
-    from microcosm.frame import Frame
-
     module = _load_tool_module()
     real_gate = module.acs_local_take_up_signal_gate
     args = _finalize_args(module, tmp_path)
-    frame = _plausible_hours_frame()
-    spm_unit = frame.table("spm_unit").assign(
-        **{
-            spine_column("spm_unit"): ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4,
+    frame = _take_up_gate_frame(
+        spm_columns={
             "takes_up_snap_if_eligible": [True, True, True, False] + [True] * 4,
             "takes_up_tanf_if_eligible": [True, False, False, False] + [True] * 4,
-            "receives_snap": [True] + [False] * 7,
         }
-    )
-    frame = Frame(
-        {
-            entity: spm_unit if entity == "spm_unit" else frame.table(entity)
-            for entity in frame.entities
-        },
-        frame.schema,
-        {"household": frame.weights_for("household")},
     )
     _patch_finalize_collaborators(module, monkeypatch, frame)
     monkeypatch.setattr(module, "acs_local_take_up_signal_gate", real_gate)
@@ -1758,6 +1841,82 @@ def test_do_finalize_take_up_gate_fails_on_default_filled_acs_rows(
         "takes_up_snap_if_eligible is constant" in failure
         for failure in gate["failures"]
     )
+
+
+def _take_up_gate_frame(*, spm_columns=(), person_columns=()):
+    """Four donor then four ACS single-person units carrying every column the
+    real take-up gate reads, including the #1022 engine-free fills."""
+
+    from microcosm.build.us_runtime.base_pool import spine_column
+    from microcosm.frame import Frame
+
+    frame = _plausible_hours_frame()
+    spines = ["asec_puf"] * 4 + ["acs_2024_1yr"] * 4
+    housing = [True, False, False, False, True, False, False, False]
+    spm_unit = frame.table("spm_unit").assign(
+        **{
+            spine_column("spm_unit"): spines,
+            "takes_up_snap_if_eligible": [True, True, True, False] * 2,
+            "takes_up_tanf_if_eligible": [True, False, False, False] * 2,
+            "receives_snap": [True] + [False] * 7,
+            "takes_up_housing_assistance_if_eligible": housing,
+            "receives_housing_assistance": housing,
+            **dict(spm_columns),
+        }
+    )
+    person = frame.table("person").assign(
+        **{
+            spine_column("person"): spines,
+            "age": [30.0, 70.0, 40.0, 10.0, 30.0, 70.0, 40.0, 10.0],
+            "HINS3": [np.nan] * 4 + [2, 1, 2, 2],
+            "is_snap_abawd_discretionary_exempt": [True, False, False, False] * 2,
+            "takes_up_medicare_if_eligible": [False, True, False, False] * 2,
+            **dict(person_columns),
+        }
+    )
+    household = frame.table("household").assign(
+        **{spine_column("household"): spines, "TYPEHUGQ": [np.nan] * 4 + [1.0] * 4}
+    )
+    replaced = {"spm_unit": spm_unit, "person": person, "household": household}
+    return Frame(
+        {
+            entity: replaced.get(entity, frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+
+
+def test_do_finalize_take_up_gate_fails_on_engine_default_medicare(
+    tmp_path, monkeypatch
+):
+    """microcosm#1022: every ACS person enrolled in Medicare (the engine
+    default) blocks simulation readiness through the real gate."""
+
+    module = _load_tool_module()
+    real_gate = module.acs_local_take_up_signal_gate
+    args = _finalize_args(module, tmp_path)
+    frame = _take_up_gate_frame(
+        person_columns={
+            "takes_up_medicare_if_eligible": [False, True, False, False] + [True] * 4
+        }
+    )
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    monkeypatch.setattr(module, "acs_local_take_up_signal_gate", real_gate)
+    with pytest.raises(SystemExit, match="acs_local_take_up_signal"):
+        module.do_finalize(args)
+    gate = json.loads(args.gate_report.read_text())["gates"]["acs_local_take_up_signal"]
+    assert gate["passed"] is False
+    assert any(
+        "acs_2024_1yr: takes_up_medicare_if_eligible is constant" in failure
+        for failure in gate["failures"]
+    )
+    assert any(
+        "takes_up_medicare_if_eligible differs from ACS HINS3 == 1 on 3" in failure
+        for failure in gate["failures"]
+    )
+    assert not any(failure.startswith("asec_puf") for failure in gate["failures"])
 
 
 def test_do_finalize_hard_fails_on_a_failed_immigration_gate(tmp_path, monkeypatch):

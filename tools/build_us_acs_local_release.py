@@ -19,9 +19,12 @@ package; each is separately resumable):
                 as explicit opt-ins), refuse a staging run that records no
                 passing ACS local immigration stage (microcosm#1020) or no
                 passing native ACS work/disability stage (microcosm#1021),
-                seed ACS-row SNAP/TANF take-up
-                (microcosm#1019; the consumer export re-derives the same
-                flags), run the household-chunked engine pass under the
+                seed ACS-row SNAP/TANF take-up (microcosm#1019) and fill
+                the ACS rows' discretionary ABAWD exemption (a cap-based
+                upper-bound proxy), housing-assistance receipt and
+                Medicare take-up without the engine
+                (microcosm#1022; the consumer export re-derives the same
+                values), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
                 reviewed-null fill), add PUMA-ladder population marginals
                 (state + congressional district), and write a lean float32
@@ -78,6 +81,8 @@ from microcosm.build.us_runtime.acs_local_immigration import (
     acs_local_immigration_signal_gate,
 )
 from microcosm.build.us_runtime.acs_local_take_up import (
+    ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
+    ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
     ACS_LOCAL_TAKE_UP_COLUMNS,
     ACS_LOCAL_TAKE_UP_GATE_NAME,
     acs_local_take_up_signal_gate,
@@ -374,6 +379,25 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
             "current builder"
         )
         for column in ACS_LOCAL_DISABILITY_COLUMNS
+    },
+    # microcosm#1022: each default biases SNAP on ACS rows; this tool's ACS
+    # take-up stage fills them first, without the engine.
+    **{
+        key: f"{reason} ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); run the ACS local "
+        "take-up stage first"
+        for key, reason in zip(
+            ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
+            (
+                "the engine default False switches the cap-based discretionary "
+                "ABAWD exemption proxy (drawn at the 8% statutory cap) off for "
+                "every ACS adult",
+                "the engine default False drops every ACS housing-assistance "
+                "recipient the transferred take-up flag records",
+                "the engine default True enrolls every Medicare-eligible ACS "
+                "person regardless of measured HINS3 coverage",
+            ),
+            strict=True,
+        )
     },
 }
 NEVER_DEFAULT_FILLED = frozenset(_NEVER_DEFAULT_FILLED_REASONS)
@@ -973,13 +997,26 @@ def _load_staging_frame(path: Path):
 
 
 def _with_local_take_up(frame, *, seed: int):
-    """Seed ACS-row SNAP/TANF take-up before any reviewed-null fill (#1019)."""
+    """Seed ACS-row SNAP/TANF take-up (#1019) and the engine-free fills
+    (#1022) before any reviewed-null fill."""
 
     frame, receipt = with_acs_local_take_up_inputs(frame, seed=seed)
     for column, entry in receipt["programs"].items():
         log(
             f"ACS take-up {column}: filled {entry['filled_rows']:,} rows, "
             f"weighted ACS share {entry['weighted_take_up_share']:.3f}"
+        )
+    for column, entry in receipt["engine_free_fills"]["columns"].items():
+        log(f"ACS engine-free fill {column}: filled {entry['filled_rows']:,} rows")
+    audit = receipt["engine_free_fills"]["columns"]["takes_up_medicare_if_eligible"][
+        "hins3_audit"
+    ]
+    for kind in ("blank", "invalid"):
+        counts = audit[kind]
+        log(
+            f"ACS HINS3 {kind} (read as not covered; informational): "
+            f"{counts['rows']:,} rows, weight {counts['weight']:,.0f}; at 65+ "
+            f"{counts['rows_65_plus']:,} rows, weight {counts['weight_65_plus']:,.0f}"
         )
     return frame, receipt
 
@@ -989,9 +1026,12 @@ def _recorded_take_up(identity: dict) -> dict:
 
     The consumer export re-derives the flags with the recorded seed and must
     reproduce the recorded digest, so both engine passes see the same flags.
+    A receipt without the engine-free fills is a pre-#1022 checkpoint, whose
+    ACS rows reached the engine pass with three SNAP-relevant defaults.
     """
 
     receipt = identity.get("acs_local_take_up")
+    fills = receipt.get("engine_free_fills") if isinstance(receipt, dict) else None
     if (
         not isinstance(receipt, dict)
         or type(receipt.get("seed")) is not int
@@ -1002,6 +1042,17 @@ def _recorded_take_up(identity: dict) -> dict:
             "(microcosm#1019): the checkpoint was materialized with every ACS "
             "SPM unit default-filled to take up SNAP and TANF. Re-run --stage "
             "materialize."
+        )
+    if (
+        not isinstance(fills, dict)
+        or fills.get("issue") != ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE
+    ):
+        raise SystemExit(
+            "run_identity.json records no ACS engine-free fills "
+            f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}): the checkpoint was "
+            "materialized with every ACS row's discretionary ABAWD exemption, "
+            "housing-assistance receipt and Medicare take-up at the engine "
+            "default. Re-run --stage materialize."
         )
     return receipt
 
@@ -1672,12 +1723,48 @@ def finalize_reviewed_limitations(
             "reason": (
                 "SNAP and TANF take-up on ACS rows are seeded by the local "
                 "runtime and gated by acs_local_take_up_signal "
-                "(microcosm#1019). The other runtime-owned takes_up_* flags "
-                "(EITC, ACA, Medicaid, SSI, Medicare, Head Start and the "
-                "rest) are neither transferred nor seeded on ACS rows, so "
+                "(microcosm#1019), and Medicare take-up is native ACS HINS3 "
+                "(acs_engine_free_default_fills). The other runtime-owned "
+                "takes_up_* flags (EITC, ACA, Medicaid, SSI, Head Start and "
+                "the rest) are neither transferred nor seeded on ACS rows, so "
                 "they ship at the engine default, universal take-up."
             ),
             "treatment": "Tracked via microcosm#1022.",
+            "calibration_blocker": False,
+        },
+        {
+            "id": "acs_engine_free_default_fills",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": [column for _, column in ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS],
+            "reason": (
+                "Three SNAP-relevant inputs are filled on ACS rows without the "
+                f"engine ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}) instead of taking "
+                "their engine defaults. is_snap_abawd_discretionary_exempt "
+                "mirrors the donor seeding: every person aged 18-64 draws "
+                "against the snap_abawd_discretionary_exemption manifest rate "
+                "(the statutory cap), keyed on acs_2024_1yr:SERIALNO:SPORDER. "
+                "It is a cap-based proxy, not an observed exemption assignment: "
+                "seeding all adults rather than covered individuals only, at "
+                "the cap rather than actual state usage, makes it an "
+                "upper-bound propensity, as on the donor. "
+                "receives_housing_assistance copies the transferred "
+                "takes_up_housing_assistance_if_eligible (equal on the donor by "
+                "construction) and is False in TYPEHUGQ 2/3 group quarters, "
+                "whose transferred take-up flag is the open transfer-side fix "
+                "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
+                "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
+                "blank or invalid HINS3 reads as not covered."
+            ),
+            "treatment": (
+                "Filled by the release tool before both reviewed-null fills, "
+                "digested in run_identity.json and re-derived at export; gated "
+                "by acs_local_take_up_signal (exempt share of ages 18-64 around "
+                "the manifest rate, receipt equal to the transferred take-up, "
+                "Medicare equal to HINS3 with a high share at 65+). Blank and "
+                "invalid HINS3 counts (unweighted, weighted and at 65+) are "
+                "reported in the receipt and the gate detail, not graded."
+            ),
             "calibration_blocker": False,
         },
         {
@@ -2064,9 +2151,17 @@ def do_finalize(args) -> None:
                 "are reviewed_limitations (calibration_blocker: false) and "
                 "are NOT re-imposed on the ACS spine. Take-up draws are not "
                 "transferred: ACS SNAP/TANF take-up is seeded by this tool "
-                "and gated by acs_local_take_up_signal (microcosm#1019); the "
-                "other ACS take-up flags are the reviewed limitation "
-                "acs_take_up_engine_defaults (microcosm#1022). Immigration "
+                "and gated by acs_local_take_up_signal (microcosm#1019). The "
+                "same stage fills the ACS rows' discretionary ABAWD exemption "
+                "(a cap-based proxy: the donor's seeded 18-64 draw at the "
+                "statutory-cap manifest rate, not an observed assignment), "
+                "housing-assistance receipt (the transferred housing take-up "
+                "flag; False in group quarters) and Medicare take-up (native "
+                "HINS3) without the engine, gated by the same gate "
+                f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}; reviewed limitation "
+                "acs_engine_free_default_fills); the other ACS take-up flags "
+                "are the reviewed limitation acs_take_up_engine_defaults. "
+                "Immigration "
                 "labels are not transferred either: staging derives ACS "
                 "ssn_card_type/immigration_status_str from native ACS fields "
                 "and years_since_us_entry on both spines, gated by "
