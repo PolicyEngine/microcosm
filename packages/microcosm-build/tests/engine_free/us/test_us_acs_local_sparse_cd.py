@@ -441,6 +441,22 @@ def test_every_chunk_rebuilds_each_state_parent_from_its_district_rows(
     assert materialized.carrier_check["parent_block_nonzero_households"] >= 4
 
 
+def test_households_outside_their_states_block_are_named(monkeypatch, tmp_path) -> None:
+    """A household whose district is in no row of its state's block."""
+
+    module = _load_tool_module()
+    import build_us_fiscal_refresh_release as release
+
+    fixtures = _load_fixtures()
+    specs = [
+        spec for spec in _parented_surface_specs(fixtures) if spec.name != "cd_0602_agi"
+    ]
+    with pytest.raises(RuntimeError, match="sit in no district of its block"):
+        _materialize(
+            module, fixtures, release, monkeypatch, tmp_path, specs, hh_chunk=5
+        )
+
+
 def test_a_later_chunk_that_breaks_a_parent_is_refused(monkeypatch, tmp_path) -> None:
     """Corruption past the first chunk escapes the row check, not this one."""
 
@@ -930,6 +946,10 @@ def test_pinned_feed_state_cd_surface_matches_its_contract() -> None:
     # The factor band drops these (state, measure) pairs, and only these:
     # four district blocks whose two publications disagree about the state,
     # and the itemized bridge of two at-large states (no district rows).
+    # The district file agrees with itself in every block, to float precision.
+    internal = receipt["internal_consistency"]
+    assert internal["blocks_checked"] == 2193
+    assert internal["max_relative_gap"] < 1e-12
     band = receipt["factor_band"]
     assert band["tolerance"] == module.cd_surface.STATE_CD_FACTOR_BAND == 1.25
     assert {
@@ -1231,7 +1251,19 @@ def test_resume_refuses_weights_without_the_run_identity_stamp(
             }
         )
     )
-    with pytest.raises(SystemExit, match="or solver settings"):
+    with pytest.raises(SystemExit, match="solver settings or weights"):
+        module.do_calibrate(args)
+    # ... and its weights: a summary from before the weights digest would
+    # otherwise send --resume round the shortcut forever.
+    (checkpoint / "calibration_summary.json").write_text(
+        json.dumps(
+            {
+                "run_identity_sha256": module._run_identity_digest(identity),
+                "solver_settings": settings,
+            }
+        )
+    )
+    with pytest.raises(SystemExit, match="run without --resume"):
         module.do_calibrate(args)
     # A solve deletes every previous calibration output before it starts, so
     # one that stops part way leaves no evidence describing other weights.

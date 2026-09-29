@@ -114,9 +114,10 @@ STATE_CD_EXCLUDED_CD_STATES: Mapping[str, str] = {}
 #: row are dropped and recorded; the Historic Table 2 state row stays.
 STATE_CD_FACTOR_BAND = 1.25
 #: The district file's own state row must equal the sum of its district rows
-#: to this relative tolerance wherever both are present. On the pinned feed
-#: they agree to float precision in every block; a gap means a column or
-#: crosswalk defect inside the file (#1038 class), which no median absorbs.
+#: to this relative tolerance wherever both are present (the receipt records
+#: the largest gap; the feed-gated contract test pins it on the pinned feed).
+#: A gap means a column or crosswalk defect inside the file (#1038 class),
+#: which no median absorbs.
 STATE_CD_INTERNAL_RTOL = 1e-6
 #: The packaged crosswalk the exclusions above were reviewed against. A test
 #: pins it, so regenerating the crosswalk forces a second look at them.
@@ -534,6 +535,7 @@ def state_cd_soi_surface(
         bridge_factors[measure].append(factor)
 
     rebased: dict[str, object] = {}
+    internal_gaps: list[float] = []
     factors_by_measure: dict[str, list[float]] = defaultdict(list)
     parent_basis_counts: Counter = Counter()
     kept_cd_file_parents: set[str] = set()
@@ -601,6 +603,7 @@ def state_cd_soi_surface(
         if cd_state is not None:
             cd_state_value = float(cd_state.value)
             gap = abs(cd_state_value - child_sum)
+            internal_gaps.append(gap / max(abs(cd_state_value), 1.0))
             if gap > STATE_CD_INTERNAL_RTOL * max(abs(cd_state_value), 1.0):
                 raise ValueError(
                     f"District-file state row {cd_state.name}={cd_state_value} "
@@ -702,7 +705,11 @@ def state_cd_soi_surface(
         "unparented_cd_measures": dict(STATE_CD_UNPARENTED_CD_MEASURES),
         "excluded_cd_states": dict(STATE_CD_EXCLUDED_CD_STATES),
         "at_large_on_source_plan": at_large_source_states,
-        "internal_consistency_rtol": STATE_CD_INTERNAL_RTOL,
+        "internal_consistency": {
+            "rtol": STATE_CD_INTERNAL_RTOL,
+            "blocks_checked": len(internal_gaps),
+            "max_relative_gap": max(internal_gaps, default=0.0),
+        },
         "factor_band": {
             "tolerance": factor_band,
             "relative_to": "the measure's median Historic Table 2 / "

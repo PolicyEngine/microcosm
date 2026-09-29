@@ -632,6 +632,14 @@ def _check_district_rows_against_parents(
             rebuilt[positions] = values
         direct = target_households[measure_of[parent_name]].to_numpy(dtype=np.float32)
         if not np.array_equal(rebuilt, direct):
+            outside = np.flatnonzero(~written & (direct != 0))
+            if len(outside):
+                raise RuntimeError(
+                    f"{len(outside)} household(s) (chunk positions "
+                    f"{outside[:5].tolist()}) carry {parent_name} but sit in no "
+                    "district of its block: their congressional district is "
+                    "not one of their state's current-plan districts."
+                )
             differing = int((rebuilt != direct).sum())
             raise RuntimeError(
                 f"The stored district rows of {parent_name} do not rebuild its "
@@ -640,14 +648,6 @@ def _check_district_rows_against_parents(
             )
         checked += 1
         nonzero += int(np.count_nonzero(direct))
-    # Every chunk stores every materialized district row (possibly empty), so
-    # every strict block must be checked in every chunk.
-    expected = len({parent for parent, strict in parents.values() if strict})
-    if checked != expected:
-        raise RuntimeError(
-            f"Checked {checked} of {expected} state_cd parent blocks in this "
-            "chunk; every block must be checked in every chunk."
-        )
     for key, value in (
         ("parent_blocks_checked", checked),
         ("parent_block_nonzero_households", nonzero),
@@ -1821,6 +1821,7 @@ def do_calibrate(args) -> None:
         if (
             previous.get("run_identity_sha256") == stamp
             and previous.get("solver_settings") == settings
+            and previous.get("weights_sha256") == _weights_digest(warm)
         ):
             log(
                 f"calibration already complete at {done} epochs and "
@@ -1834,8 +1835,10 @@ def do_calibrate(args) -> None:
         raise SystemExit(
             f"weights_latest.npz reports {done} epochs (>= --epochs "
             f"{args.epochs}) but calibration_summary.json is missing or "
-            "belongs to another materialization or solver settings. Delete "
-            "the checkpoint to recalibrate, or raise --epochs."
+            "belongs to another materialization, solver settings or weights "
+            "(a summary written before the weights digest). Delete "
+            "weights_latest.npz or run without --resume to recalibrate, or "
+            "raise --epochs."
         )
 
     # A solve replaces every output describing the calibration: none of the

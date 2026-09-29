@@ -222,7 +222,9 @@ two levels differ in sign is a data defect and is refused outright. So is a
 district file that disagrees with itself: wherever the file carries a state
 row beside its district rows, the two must agree to 1e-6
 (`STATE_CD_INTERNAL_RTOL`), since no median absorbs a column or crosswalk
-defect inside the file. On the pinned feed they agree to float precision.
+defect inside the file. On the pinned feed all 2,193 blocks agree to float
+precision (largest relative gap 4e-16; the receipt records it under
+`internal_consistency`, and the feed-gated test pins it).
 
 On the pinned feed the band drops eight:
 
@@ -453,7 +455,10 @@ materialized directly in the same pass (`cd_surface.district_row_parents`):
   same materializer semantics in the same state (in `full`, the district
   file's own state total), on the row's own households, since those blocks
   need not cover the state. A row with no such state row is counted as
-  unchecked.
+  unchecked. This check and the carriers share one key
+  (`soi_materializer_semantics`), so a field the materializer reads that the
+  key omitted would slip past both; the `state_cd` check compares against a
+  named parent and does not share that blind spot.
 
 `materialize_rss.json` → `carrier_check` records the blocks and rows checked,
 the nonzero households they covered, and the unchecked rows. The calibrate
@@ -508,8 +513,11 @@ record one of the four modes, before any release directory exists.
   evidence from another materialization or of other bytes. The H5's path is
   not compared; its sha binds the bytes wherever they are reached from.
 - A new materialize deletes the previous calibration outputs, consumer
-  export, spine QA and gate report, and a solve deletes every output but the
-  resume weights before it starts.
+  export, spine QA and gate report. A solve deletes the previous summary,
+  diagnostics, consumer export, null-fill manifest and spine QA (keeping the
+  resume weights) before it starts; a calibrated H5 or gate report left from
+  before fails the sha checks above. The "already complete" shortcut also
+  requires the summary to record the saved weights' digest.
 - Materialize refuses a district row without a positive ladder district and
   state population, since the pro-rata baseline could not score it.
 - `calibration_summary.json`: `cd_holdout`, `weight_origin` (ESS nationally,
