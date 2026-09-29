@@ -6,6 +6,8 @@ import json
 import os
 
 import pytest
+from hypothesis import example, given, settings
+from hypothesis import strategies as st
 
 from microcosm.graph import (
     Graph,
@@ -463,3 +465,99 @@ def test_expanded_output_budget_is_checked_during_construction(monkeypatch):
     monkeypatch.setattr(explorer, "_field_id", unexpected_field)
     with pytest.raises(ValueError, match="serialized metadata size"):
         explorer.graph_explorer_document(source)
+
+
+_JSON_SCALARS = st.one_of(
+    st.none(),
+    st.booleans(),
+    st.integers(min_value=-(2**1024 - 1), max_value=2**1024 - 1),
+    st.floats(allow_nan=False, allow_infinity=False),
+    st.text(max_size=40),
+)
+_JSON_METADATA = st.recursive(
+    _JSON_SCALARS,
+    lambda children: st.one_of(
+        st.lists(children, max_size=4),
+        st.dictionaries(st.text(max_size=20), children, max_size=4),
+    ),
+    max_leaves=20,
+)
+
+
+@settings(deadline=None)
+@given(value=_JSON_SCALARS)
+@example(value=2**53 - 1)
+@example(value=2**53)
+@example(value=-(2**53 - 1))
+@example(value=-(2**53))
+@example(value=float(2**53 - 1))
+@example(value=float(2**53))
+@example(value=-float(2**53))
+@example(value=-0.0)
+@example(value=True)
+def test_metadata_transport_is_exact_and_detached(value):
+    """Metadata preserves exact scalar values and shares no mutable containers."""
+    source = snapshot()
+    source["extra"] = {"nested": [value]}
+    before = copy.deepcopy(source)
+    doc = explorer.graph_explorer_document(source)
+    rendered = json.loads(explorer.graph_explorer_json(source))
+    transported = rendered["metadata"]["microcosm"]["extra"]["nested"][0]
+
+    if type(value) is int and abs(value) > 2**53 - 1:
+        assert transported == {"integer_literal": str(value)}
+    elif type(value) is float and value.is_integer() and abs(value) > 2**53 - 1:
+        assert transported == {"float_literal": repr(value)}
+    else:
+        assert type(transported) is type(value)
+        assert transported == value
+        if type(value) is float:
+            assert transported.hex() == value.hex()
+    assert doc["metadata"]["microcosm"]["extra"]["nested"] == [transported]
+
+    exported_values = doc["metadata"]["microcosm"]["extra"]["nested"]
+    exported_values.append("output-side mutation")
+    doc["metadata"]["microcosm"]["graph"]["nodes"].clear()
+    assert source == before
+    source["extra"]["nested"].append("input-side mutation")
+    assert exported_values == [transported, "output-side mutation"]
+
+
+def reversed_mapping_order(value):
+    if isinstance(value, dict):
+        return {
+            key: reversed_mapping_order(child)
+            for key, child in reversed(list(value.items()))
+        }
+    if isinstance(value, list):
+        return [reversed_mapping_order(child) for child in value]
+    return value
+
+
+@settings(deadline=None)
+@given(metadata=_JSON_METADATA)
+def test_json_is_invariant_to_mapping_order(metadata):
+    """Equivalent JSON objects produce identical bytes and content revisions."""
+    source = snapshot()
+    source["extra"] = metadata
+    assert explorer.graph_explorer_json(source) == explorer.graph_explorer_json(
+        reversed_mapping_order(source)
+    )
+
+
+@settings(deadline=None)
+@given(metadata=_JSON_METADATA)
+def test_revision_binds_generated_metadata_changes(metadata):
+    """Every metadata change affects the revision without changing graph identity."""
+    source = snapshot()
+    source["compiled"]["extra_declaration"] = {"payload": metadata, "marker": False}
+    before = explorer.graph_explorer_document(source)
+    source["compiled"]["extra_declaration"]["marker"] = True
+    after = explorer.graph_explorer_document(source)
+    assert before["revision"] != after["revision"]
+    assert (
+        before["metadata"]["microcosm"]["graph_sha256"]
+        == after["metadata"]["microcosm"]["graph_sha256"]
+    )
+    assert before["nodes"] == after["nodes"]
+    assert before["edges"] == after["edges"]
