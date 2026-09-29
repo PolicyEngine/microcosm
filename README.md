@@ -279,7 +279,11 @@ The measurements behind them are in
 [experiments/us-release-dry-run-margin-evidence.md](experiments/us-release-dry-run-margin-evidence.md).
 
 **Checked on the failed run.** The dry run was replayed on run 310842b986d7's
-own release config with its d177 register:
+own release config with its d177 register. The replay ran at commit
+`21c1f9ba3`, the first revision of this tool. Later revisions added the
+`export_signal_regrades` check, the L0 bounds, evidence-tier ownership and
+the unloadable-register handling, none of which changes a full-pool,
+non-evidence verdict on a register that loads:
 
 - It exits `1` on `farm_income`, a thin column (469 carriers) whose unused
   entry is certain.
@@ -291,10 +295,16 @@ own release config with its d177 register:
 - Its staged-frame digest matches the identity of the release's own
   target-frame checkpoint.
 
-On a saturated host the replay took 17,691 s to reach its stop point. It got
-0.79 CPU-seconds per second and was switched out 115 million times. Its CPU
-time was 14,046 s; the original run had used about 11,000 CPU-seconds by the
-same point, in at most 2,049 s.
+On a saturated host the replay reached its stop point in at most 17,455 s.
+Its report's 17,691 s was taken after grading (236 s) and the replay's own
+differential. The whole process got 0.79 CPU-seconds per second, was switched
+out 115 million times, and used 14,046 CPU-seconds, grading and differential
+included. The original run had used about 11,000 CPU-seconds by the same
+point, which it reached in at most 2,049 s.
+
+Exit `0` does not certify export input mass: calibration moves a column's drift
+further than the band, so only a structural refusal there is certain (the
+report's `not_previewable` check says so).
 
 **Run it** after the base build exits and before launching the release, with
 the release config you will launch. Run it again after any change to a waiver

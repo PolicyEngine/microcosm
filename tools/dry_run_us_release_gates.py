@@ -13,9 +13,9 @@ composition, zero support and the pre-solve battery. Each one runs through the
 release tool's own gate function.
 
 Route A run 310842b986d7 (2026-09-26) failed after 13,707 s on nothing but a
-stale QRF tail register. The input stages this dry run replays took about an
-hour of that run. Target materialization (about 2 h 20 min) and the solve are
-what it skips.
+stale QRF tail register. By that run's own ``build.timing``, what this dry run
+replays (base load, input stages, pre-solve gates) took at most 2,049 s. What it
+skips, target compilation (9,951 s) and calibration (1,668 s), took the rest.
 
 Examples::
 

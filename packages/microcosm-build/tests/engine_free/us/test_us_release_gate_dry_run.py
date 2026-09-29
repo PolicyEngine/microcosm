@@ -898,6 +898,19 @@ def test_export_input_mass_classifies_each_column() -> None:
     assert gate.details["unused_reviewed_exclusions"] == ["excluded_unused"]
     assert check.status == "FAIL"
     assert [line.split(":", 1)[0] for line in check.failures] == ["absent", "zeroed"]
+    # Only structural refusals are certain; every other verdict, PASS
+    # included, is not certified at base weights.
+    assert {
+        name: rows[name]["certain"] for name in rows if "certain" in rows[name]
+    } == {
+        "absent": True,
+        "zeroed": True,
+        "cancelled": False,
+        "far": False,
+        "edge": False,
+        "fine": False,
+    }
+    assert "not certified" in check.summary
 
     _, waived = _mass_check(candidate, reference, shares, exclusions, allow_drift=True)
     assert waived.status == "PASS" and waived.failures == ()
@@ -1255,6 +1268,15 @@ def test_unloadable_register_is_a_certain_failure_and_crashes_are_not_refusals()
     )
     assert check.status == "FAIL" and check.name == "qrf_tail_register"
     assert "terminal gates" in check.failures[0]
+    # Under --evidence-release the release refuses it only without other
+    # terminal failures; with them, an owner ships the evaluation-error line.
+    evidence = dry.qrf_tail_register_unloadable_check(
+        {"path": "missing.json"},
+        FileNotFoundError("missing.json"),
+        evidence_owner="PolicyEngine/microcosm#481",
+    )
+    assert evidence.status == "AT_RISK" and evidence.failures == ()
+    assert "PolicyEngine/microcosm#481" in evidence.at_risks[0]
     report = dry.post_stop_error_report(RuntimeError("boom"), inputs={})
     assert report.exit_code == 1
     (only,) = report.checks
@@ -1310,6 +1332,8 @@ def test_not_previewable_lists_every_solve_dependent_gate() -> None:
         "calibration_loss",
         "ssi_take_up_delivery",
         "reform_coverage_smoke",
+        "exact_k_puf_capital_gains_tail",
+        "export_input_mass_nonzero_columns",
     } <= gates
 
 
@@ -1594,6 +1618,86 @@ def test_release_dry_run_checks_evidence_tier_missing_register_and_l0(
         line.split(":", 1)[0] for line in l0["input_coverage_register"].at_risks
     ] == ["casualty_loss"]
     assert len(l0) == 11
+
+
+def test_evidence_tier_never_owns_a_refusal_made_before_the_solve(
+    builder, tail_frame, monkeypatch
+) -> None:
+    """Round-2 review finding 1.
+
+    With no earlier terminal failure on record, the release raises at a failing
+    degenerate-input (or input-mass-reference, eCPS) gate before the solve,
+    outside the evidence batch. An owner pattern for that line must not turn
+    the certain refusal into OWNED. With an earlier failure on record, the
+    release batches it and the owner does convert it.
+    """
+
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ("estate_income",))
+    monkeypatch.setattr(builder, "PolicyEngineUSEngine", lambda: None)
+    monkeypatch.setattr(
+        builder,
+        "us_release_input_coverage_gate",
+        lambda frame, engine: GateResult(name="us_release_input_coverage", passed=True),
+    )
+    args = builder._parse_args(
+        [
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "unused-out",
+            "--dense-default-dataset",
+            "--dry-run-gates-report",
+            "r.json",
+        ]
+    )
+    args.evidence_release = True
+    owners = (
+        ("Degenerate input signal failed:", "PolicyEngine/microcosm#9"),
+        ("Retirement-distribution signal failed:", "PolicyEngine/microcosm#8"),
+        *builder.US_EVIDENCE_FAILURE_OWNERS,
+    )
+    failing = GateResult(
+        name="degenerate_input_signal",
+        passed=False,
+        failures=("keogh_distributions: every value equals the default",),
+        details={
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": sorted(
+                builder.US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS
+            ),
+            "default_valued_columns": {"keogh_distributions": 0.0},
+        },
+    )
+
+    def grade(early):
+        return {
+            check.name: check
+            for check in builder._release_dry_run_checks(
+                args,
+                margins=dry.DryRunMargins(),
+                support_fixed=True,
+                base_frame=tail_frame,
+                target_specs=[],
+                early_terminal_gate_failures=early,
+                pre_solve_gates={},
+                input_mass_reference_gate=None,
+                degenerate_input_gate=failing,
+                ecps_parity_gate=GateResult(name="parity", passed=True),
+                evidence_owner_patterns=owners,
+            )
+        }
+
+    clean = grade([])["degenerate_input_register"]
+    assert clean.status == "FAIL"
+    assert "before the solve" in clean.details["evidence_ownership"]
+    batched = grade(["Retirement-distribution signal failed: fixture"])
+    assert batched["degenerate_input_register"].status == "AT_RISK"
+    assert (
+        batched["degenerate_input_register"]
+        .at_risks[0]
+        .startswith("OWNED (PolicyEngine/microcosm#9")
+    )
 
 
 # ---------------------------------------------------------------------------

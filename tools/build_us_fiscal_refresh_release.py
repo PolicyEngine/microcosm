@@ -11451,6 +11451,7 @@ class _ReleaseDryRun:
         # Set once _main reaches the stop point. An error after it is the dry
         # run's own crash, never a refusal the release would share.
         self.stopped = False
+        self.seconds_to_stop_point: float | None = None
 
     @classmethod
     def start(
@@ -11485,7 +11486,10 @@ class _ReleaseDryRun:
                 "allow_input_coverage_gaps": bool(args.allow_input_coverage_gaps),
             },
             "margins": self.margins.to_dict(),
-            "seconds_to_stop_point": round(time.perf_counter() - self.started, 1),
+            # Taken when _main reached the stop point, before any grading;
+            # None when the release refused earlier.
+            "seconds_to_stop_point": self.seconds_to_stop_point,
+            "seconds_elapsed": round(time.perf_counter() - self.started, 1),
         }
 
     def refused(self, error: BaseException) -> int:
@@ -11519,6 +11523,7 @@ class _ReleaseDryRun:
         """Grade the staged frame at its base weights and write the report."""
 
         self.stopped = True
+        self.seconds_to_stop_point = round(time.perf_counter() - self.started, 1)
         support_fixed = _full_pool_calibration(
             self.args, int(base_frame.n("household"))
         )
@@ -11554,6 +11559,9 @@ class _ReleaseDryRun:
             "calibration_path": "full_pool" if support_fixed else "l0_selection",
             "registers": registers,
         }
+        inputs["grading_seconds"] = round(
+            float(inputs["seconds_elapsed"]) - self.seconds_to_stop_point, 1
+        )
         return self._write(ReleaseDryRunReport(checks=tuple(checks), inputs=inputs))
 
     def _write(self, report: ReleaseDryRunReport) -> int:
@@ -11734,9 +11742,19 @@ def _release_dry_run_checks(
         try:
             register = _load_qrf_tail_concentration_exclusions(path)
         except Exception as error:
-            # The release reads this file only at its terminal gates.
+            # The release reads this file only at its terminal gates; under
+            # earlier failures it records this owned-prefix line instead.
             return qrf_tail_register_unloadable_check(
-                _dry_run_register_source(path, guarded=True), error
+                _dry_run_register_source(path, guarded=True),
+                error,
+                evidence_owner=(
+                    owner_of(
+                        "QRF tail concentration failed: evaluation error under "
+                        f"earlier gate failures: {type(error).__name__}: {error}"
+                    )
+                    if args.evidence_release
+                    else None
+                ),
             )
         gate, surface = _qrf_tail_concentration_gate(
             base_frame, reviewed_exclusions=register
@@ -11950,8 +11968,34 @@ def _release_dry_run_checks(
     run("spm_composition", spm_composition)
     run("zero_support_preview", zero_support)
     if args.evidence_release:
+        # With no earlier terminal failure on record, the release raises at the
+        # first failing one of these gates before the solve, outside the
+        # evidence batch, so no owner converts that refusal.
+        refused_before_solve: set[str] = set()
+        if not early_terminal_gate_failures:
+            if (
+                input_mass_reference_gate is not None
+                and not input_mass_reference_gate.passed
+                and not args.allow_input_mass_drift
+            ):
+                refused_before_solve.add("pre_solve_battery")
+            if not degenerate_input_gate.passed:
+                refused_before_solve.add("degenerate_input_register")
+            if not ecps_parity_gate.passed and not args.allow_ecps_parity_gaps:
+                refused_before_solve.add("ecps_parity_register")
         checks = [
-            apply_evidence_ownership(
+            dataclasses.replace(
+                check,
+                details={
+                    **dict(check.details),
+                    "evidence_ownership": (
+                        "not ownable: the release refuses it before the solve, "
+                        "outside the evidence batch"
+                    ),
+                },
+            )
+            if check.name in refused_before_solve
+            else apply_evidence_ownership(
                 check,
                 release_lines=release_lines.get(check.name, ()),
                 owner_of=owner_of,

@@ -123,11 +123,19 @@ The dry run was replayed on the run's own release config (`release-config.json`
   The stop point therefore sees the frame the release calibrated and exported.
 - **Identity.** The staged-frame digest matches the identity of the release's
   own target-frame checkpoint.
-- **Cost.** Grading took 236 s. Reaching the stop point took 17,691 s on a
-  saturated host: the process averaged 0.79 CPU-seconds per wall second and
-  was switched out involuntarily 115 million times. Its CPU time, 14,046 s, is
-  comparable to the roughly 11,000 CPU-seconds the original run had used by
-  the same point, which that run reached in at most 2,049 s.
+- **Cost.** The replay reached its stop point in at most 17,455 s on a
+  saturated host. The report's `seconds_to_stop_point` (17,691 s) was taken
+  after grading (`grading_seconds`, 236 s) and after the replay's own
+  differential; later revisions take it before grading. The whole process
+  averaged 0.79 CPU-seconds per wall second and was switched out
+  involuntarily 115 million times. Its CPU time, 14,046 s including grading
+  and the differential, is comparable to the roughly 11,000 CPU-seconds the
+  original run had used by the same point, which that run reached in at most
+  2,049 s.
+- **Revision.** The replay ran at `21c1f9ba3`, the first revision of the dry
+  run. Later revisions added the `export_signal_regrades` check, the L0
+  bounds, evidence-tier ownership and the unloadable-register handling. None
+  changes a full-pool, non-evidence verdict on a register that loads.
 
 ## L0 (sparse) path
 

@@ -6027,6 +6027,12 @@ def _run_dry_run_release(
     assert not out.exists()
     inputs = payload["inputs"]
     assert inputs["git_dirty"] is True
+    # The stop point's time is taken before any grading.
+    if mode == "dry_run_refusal":
+        assert inputs["seconds_to_stop_point"] is None
+    else:
+        assert inputs["seconds_to_stop_point"] <= inputs["seconds_elapsed"]
+        assert inputs["grading_seconds"] >= 0
     argv = inputs["release_argv"]
     assert argv[argv.index("--dry-run-gates-report") + 1] == str(report_path)
     if mode == "dry_run_refusal":

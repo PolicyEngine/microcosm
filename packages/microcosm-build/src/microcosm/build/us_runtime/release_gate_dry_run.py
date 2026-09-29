@@ -76,7 +76,8 @@ See ``experiments/us-release-dry-run-margin-evidence.md``.
   ``qrf_tail_concentration.json`` exactly for 31 of them. The exception, off
   by 0.0013, is a column a release-time stage rewrites. The shifts
   (calibrated minus base) run from -0.033 to +0.299, median +0.105.
-* **The dry run itself, on that run's config.** At the stop point, the staged
+* **The dry run itself, on that run's config** (at commit ``21c1f9ba3``, the
+  tool's first revision). At the stop point, the staged
   frame with the release's saved final weights attached reproduces the
   release's recorded tail surface exactly: every share, carrier count, refusal
   and register-mismatch entry. ``bond_assets`` moves from 0.520 at base weights
@@ -869,14 +870,44 @@ def qrf_tail_register_check(
 def qrf_tail_register_unloadable_check(
     register_source: Mapping[str, Any],
     error: BaseException,
+    *,
+    evidence_owner: str | None = None,
 ) -> CheckResult:
-    """The QRF tail register does not load: a certain refusal.
+    """The QRF tail register does not load.
 
     The release reads ``--qrf-tail-concentration-exclusions`` only at its
-    terminal gates, after target materialization and the solve, and fails there
-    (``_record_qrf_tail_concentration_gate``).
+    terminal gates, after target materialization and the solve
+    (``_record_qrf_tail_concentration_gate``). On a certified build it fails
+    there: a certain refusal. Under ``--evidence-release`` it refuses only when
+    no other terminal failure is on record; otherwise it records a
+    ``QRF tail concentration failed: evaluation error ...`` line, and if an
+    owner pattern (``evidence_owner``) matches that line the evidence tier
+    ships it. Which case applies depends on the solve, so it is AT-RISK.
     """
 
+    if evidence_owner is not None:
+        return CheckResult(
+            name="qrf_tail_register",
+            status="AT_RISK",
+            summary=(
+                "the per-run register does not load; under --evidence-release "
+                "the release refuses it or ships it as an owned failure, "
+                "depending on the other terminal failures"
+            ),
+            at_risks=(
+                f"{register_source.get('path')}: {type(error).__name__}: {error}. "
+                "The release loads this register at its terminal gates, after the "
+                "solve. With no other terminal failure on record it refuses the "
+                "run there; otherwise it records a 'QRF tail concentration "
+                f"failed: evaluation error' line, which {evidence_owner} owns, "
+                "and the evidence tier ships it. Fix the file (a JSON object of "
+                "column -> non-empty reason).",
+            ),
+            details={
+                "register": dict(register_source),
+                "evidence_owner": evidence_owner,
+            },
+        )
     return CheckResult(
         name="qrf_tail_register",
         status="FAIL",
@@ -1044,6 +1075,9 @@ def export_input_mass_check(
                 "drift_at_base_weights": drift,
                 "verdict": verdict,
                 "status": status,
+                # Only a structural refusal (absent, no nonzero record) is
+                # certain; calibration moves drift further than the band.
+                "certain": status == "FAIL",
             }
         )
         if status == "FAIL":
@@ -1087,7 +1121,8 @@ def export_input_mass_check(
             f"{sum(1 for r in register_rows if r['register_class'] == c)} {c}"
             for c in ("used", "below_reference_floor", "unused")
         )
-        + ")"
+        + "); an in-band column is not certified at base weights (see "
+        "not_previewable)"
     )
     return CheckResult(
         name="export_input_mass",
@@ -1629,6 +1664,19 @@ NOT_PREVIEWABLE_GATES: tuple[tuple[str, str], ...] = (
     (
         "stale_count_calibrated_take_up",
         "post-export: reads take-up diagnostics of the written export",
+    ),
+    (
+        "exact_k_puf_capital_gains_tail",
+        "compares the exact-k ladder's selected support with the pool's PUF "
+        "capital-gains tail (exact-k builds)",
+    ),
+    (
+        "export_input_mass_nonzero_columns",
+        "the export input-mass verdict on a column with nonzero mass: "
+        "calibration moved drift by up to +0.84 on route A run 310842b986d7, "
+        "past the band's own half-width, so an in-band column at base weights "
+        "is not certified (export_input_mass certifies only structural "
+        "refusals)",
     ),
 )
 
