@@ -268,9 +268,10 @@ uv run python tools/build_uk_frs_spine.py \
   --staging-run-id ci-uk-smoke-full-s42
 ```
 
-The `integration-uk` job in `.github/workflows/test.yml` runs on every pull
-request to `main` and every push to `main`, without a path filter. `ci-ok`
-requires the job to pass. Its commands live in `tools/run_integration_tests.sh`.
+The `integration-uk` job in `.github/workflows/test.yml` runs when unified
+changed-path selection includes the UK and on every push to `main`. Its result
+is reported directly as a workflow check. Its commands live in
+`tools/run_integration_tests.sh`.
 The test reports total elapsed time and the elapsed time for each
 transformation.
 
