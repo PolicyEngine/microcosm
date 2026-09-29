@@ -1,0 +1,1823 @@
+#!/usr/bin/env python3
+"""Run the US release's post-export stages on a household subsample of an export.
+
+``tools/build_us_fiscal_refresh_release.py`` runs its post-export stages only
+after a full build: Route A's attempt on build 310842b98 ran 49,304 s before
+its reform-coverage smoke failed on four stale probe definitions (#1046), and
+nothing after the smoke had ever run on a Route A export. This tool runs those
+stages on a subsample written by ``tools/sample_us_export_households.py`` (or
+on any written US release H5), through the release tool's own functions and
+in the order ``_main`` runs them after the export write:
+
+1. ``stored_inputs``: the #1031 stored-input contract. The pre-export gate
+   (``_stored_input_gate_failures``) grades the loaded frame, the written-H5
+   check (``_written_stored_input_verdict_mismatch``) grades the scored file,
+   and the same check grades the source export's own metadata.
+2. ``reform_coverage_smoke``: the smoke gate on the household-batched scorer
+   (``_HouseholdBatchedPostExportScorer``), from the baseline plan the
+   engine-free dry run records.
+3. ``reform_validation``: ``_reform_validation_consumer`` with an empty
+   calibration result (no in-sample fit exists outside a build; its JCT
+   in-sample rows publish null), then the out-of-sample reforms.
+4. ``demographics``: the age distribution and the geography coverage.
+5. ``source_coverage``: ``us_source_coverage_diagnostics`` for the declared
+   ``--target-surface``.
+6. ``take_up_participation``: ``us_take_up_participation_diagnostics`` and the
+   stale count-calibrated check ``_main`` raises on.
+
+A stage that raises is recorded with its traceback and the next stage still
+runs, so one probe names every failure the build would have reached one at a
+time. The batch size must give at least three batches, so the multi-batch
+path (and its population-aggregate refusals) runs.
+
+**Which verdicts transfer to full scale.** A subsample is a stratified,
+ratio-adjusted Horvitz-Thompson sample (see the sampler's docstring). Every
+verdict in the report carries an ``authority``:
+
+- ``authoritative``: the verdict does not depend on the population's size (a
+  stage that raised, a stored column, a probe whose effect clears or misses
+  its floor by at least ``--se-multiplier`` design-based standard errors), or
+  it was computed on the source export itself (``settled_on_source``).
+- ``informational``: scale-dependent. A smoke probe with fewer than
+  ``--min-sampled-carriers`` sampled carrier households (unless every pool
+  carrier was kept at its source weight), a probe within ``k`` standard
+  errors of its floor, unweighted record counts (demographics' ``n_under_50``
+  and ``n_under_100``, a state with no sampled record), a take-up column that
+  is constant on the subsample, and every weighted estimate (reform
+  validation's budget effects, the age bands, take-up shares).
+
+The smoke's standard errors come from the gate's own arrays: each probe's
+baseline and reform values are captured through the ``simulate`` seam, mapped
+to households through the scorer's batch frames (the mapping must reproduce
+the engine's entity weights exactly, and the per-household effects must sum
+to the gate's effect, or no standard error is reported), and fed to the
+linearized variance of the sampler's estimator: zero for a certainty
+household, and ``N_h^2 (1 - n_h / N_h) / n_h * S^2(w (t - R_h))`` per stratum
+for the drawn ones (the ratio estimator's Taylor linearization). A
+``--reference-smoke`` from a full-size run adds each probe's full-scale
+effect and its z-score, with ``--reference-manifest`` marking the probes
+whose definition changed since.
+
+With ``--source-export`` (the receipt's source by default) the tool also
+settles the engine-free scale-dependent verdicts exactly on the source:
+geography record counts and the take-up diagnostics, read column by column.
+
+Every stage records wall time, CPU time and peak resident memory (sampled
+every 0.5 s); every batch-outer scoring pass is one line of ``passes.jsonl``.
+
+Usage::
+
+    .venv/bin/python tools/probe_us_post_export.py \\
+        --export <subsample dir>/populace_us_2024.h5 --out <dir> \\
+        [--sample-receipt <subsample dir>/sample_receipt.json] \\
+        [--target-surface national_state] [--reference-smoke <json>]
+
+writes ``<dir>/probe_report.json``, ``<dir>/passes.jsonl`` and each stage's
+artifact under the release tool's file name (``reform_coverage_smoke.json``,
+``reform_validation.json``, ``demographics.json``, ``us_source_coverage.json``,
+``us_take_up_participation.json``). None of them certifies anything.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import math
+import os
+import platform
+import sys
+import threading
+import time
+import traceback
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+#: Bump with any change to the report layout or the authority rules.
+PROBE_REPORT_SCHEMA_VERSION = 1
+REPORT_FILENAME = "probe_report.json"
+PASSES_FILENAME = "passes.jsonl"
+#: Route A's ``--maximum-microsim-batch-size``; the per-batch cost then
+#: matches the build's.
+DEFAULT_BATCH_SIZE = 2_000
+MINIMUM_BATCHES = 3
+DEFAULT_SE_MULTIPLIER = 3.0
+DEFAULT_MIN_SAMPLED_CARRIERS = 5
+#: Tolerance of the per-household effect decomposition check, relative to
+#: the sum of the probe's two weighted totals.
+DECOMPOSITION_RTOL = 1e-9
+STAGES = (
+    "stored_inputs",
+    "reform_coverage_smoke",
+    "reform_validation",
+    "demographics",
+    "source_coverage",
+    "take_up_participation",
+)
+AUTHORITATIVE = "authoritative"
+INFORMATIONAL = "informational"
+
+_TOOLS = Path(__file__).resolve().parent
+
+
+def _load_tool(module_name: str, filename: str):
+    """Import a sibling tool by path (``tools/`` is not a package)."""
+    spec = importlib.util.spec_from_file_location(module_name, _TOOLS / filename)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {filename}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_sampler():
+    return _load_tool("sample_us_export_households", "sample_us_export_households.py")
+
+
+def load_builder():
+    return _load_tool(
+        "build_us_fiscal_refresh_release", "build_us_fiscal_refresh_release.py"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batch size
+# ---------------------------------------------------------------------------
+
+
+def choose_batch_size(
+    n_households: int,
+    requested: int | None = None,
+    *,
+    minimum_batches: int = MINIMUM_BATCHES,
+) -> int:
+    """The largest batch size up to ``requested`` giving ``minimum_batches``.
+
+    ``_household_position_batches`` cuts ``n`` households into
+    ``ceil(n / size)`` batches, so ``size <= ceil(n / minimum_batches)``
+    guarantees at least ``minimum_batches`` whenever ``n >= minimum_batches``.
+    """
+    n_households = int(n_households)
+    if n_households < minimum_batches:
+        raise ValueError(
+            f"{n_households} household(s) cannot fill {minimum_batches} batches; "
+            "the probe needs the multi-batch scoring path."
+        )
+    ceiling = math.ceil(n_households / minimum_batches)
+    size = ceiling if requested is None else min(int(requested), ceiling)
+    if size < 1:
+        raise ValueError(f"batch size must be positive; got {requested!r}.")
+    return size
+
+
+def batch_count(n_households: int, batch_size: int) -> int:
+    return math.ceil(int(n_households) / int(batch_size))
+
+
+# ---------------------------------------------------------------------------
+# The sample design, rebuilt from the subsample and its receipt
+# ---------------------------------------------------------------------------
+
+
+class SampleDesign:
+    """What the variance formula needs, one entry per sampled household.
+
+    Rebuilt from the subsample itself (household ids, adjusted weights, the
+    stratum columns the receipt used) and the receipt (certainty ids and each
+    stratum's eligible and drawn counts and weight factor). ``verify`` checks
+    the rebuilt design against the receipt's counts and weight totals.
+    """
+
+    def __init__(
+        self,
+        *,
+        household_ids: np.ndarray,
+        labels: np.ndarray,
+        certainty: np.ndarray,
+        adjusted_weights: np.ndarray,
+        source_weights: np.ndarray,
+        strata: Mapping[str, Mapping[str, object]],
+        fraction: float | None,
+    ) -> None:
+        self.household_ids = np.asarray(household_ids, dtype=np.int64)
+        self.labels = np.asarray(labels, dtype=object)
+        self.certainty = np.asarray(certainty, dtype=bool)
+        self.adjusted_weights = np.asarray(adjusted_weights, dtype=np.float64)
+        self.source_weights = np.asarray(source_weights, dtype=np.float64)
+        self.strata = {str(key): dict(value) for key, value in strata.items()}
+        self.fraction = fraction
+        n = len(self.household_ids)
+        for name in ("labels", "certainty", "adjusted_weights", "source_weights"):
+            if len(getattr(self, name)) != n:
+                raise ValueError(f"SampleDesign.{name} is not aligned to its ids.")
+        if len(np.unique(self.household_ids)) != n:
+            raise ValueError("SampleDesign household ids must be unique.")
+        self._position = pd.Series(np.arange(n), index=self.household_ids)
+
+    @property
+    def is_census(self) -> bool:
+        """True when nothing was sampled (a full export: zero design variance)."""
+        return not self.strata or all(
+            int(record["drawn_noncertainty_households"])
+            == int(record["eligible_noncertainty_households"])
+            for record in self.strata.values()
+        )
+
+    def aligned(self, values: pd.Series) -> np.ndarray:
+        """``values`` (indexed by household id) in design order; absent = 0."""
+        series = pd.Series(values, dtype=np.float64)
+        unknown = series.index.difference(self._position.index)
+        if len(unknown):
+            raise ValueError(
+                f"{len(unknown)} household id(s) are not in the sample design."
+            )
+        return series.reindex(self.household_ids).fillna(0.0).to_numpy()
+
+    def total(self, values: pd.Series) -> float:
+        """The estimator ``sum_h W_h y_h`` over the sample (adjusted weights)."""
+        return float(np.dot(self.adjusted_weights, self.aligned(values)))
+
+    def variance(self, values: pd.Series) -> float:
+        """Linearized design variance of :meth:`total` (``nan``: not estimable)."""
+        return stratified_ratio_variance(
+            self.aligned(values),
+            source_weights=self.source_weights,
+            labels=self.labels,
+            certainty=self.certainty,
+            strata=self.strata,
+        )
+
+    def verify(self) -> list[str]:
+        """Disagreements between the rebuilt design and the receipt."""
+        problems: list[str] = []
+        present = set(self.labels.tolist())
+        unknown = sorted(present - set(self.strata))
+        if unknown:
+            problems.append(f"sampled households in unreceipted strata {unknown}")
+        for label, record in self.strata.items():
+            in_stratum = self.labels == label
+            drawn = int((in_stratum & ~self.certainty).sum())
+            certain = int((in_stratum & self.certainty).sum())
+            if drawn != int(record["drawn_noncertainty_households"]):
+                problems.append(
+                    f"stratum {label!r}: {drawn} drawn households in the "
+                    f"subsample, {record['drawn_noncertainty_households']} "
+                    "in the receipt"
+                )
+            if certain != int(record["certainty_households"]):
+                problems.append(
+                    f"stratum {label!r}: {certain} certainty households in the "
+                    f"subsample, {record['certainty_households']} in the receipt"
+                )
+            realized = float(self.adjusted_weights[in_stratum].sum())
+            source = float(record["source_weight_total"])
+            if not math.isclose(realized, source, rel_tol=1e-9, abs_tol=0.0):
+                problems.append(
+                    f"stratum {label!r}: subsample weight total {realized!r} "
+                    f"differs from the receipt's source total {source!r}"
+                )
+        return problems
+
+
+def stratified_ratio_variance(
+    values: np.ndarray,
+    *,
+    source_weights: np.ndarray,
+    labels: np.ndarray,
+    certainty: np.ndarray,
+    strata: Mapping[str, Mapping[str, object]],
+) -> float:
+    """Linearized variance of the sampler's estimator of ``sum w_h y_h``.
+
+    The estimator is ``sum_certainty w y + sum_h X_h * R_h`` with ``X_h`` the
+    stratum's eligible non-certainty weight mass and ``R_h`` the drawn
+    households' weighted mean of ``y`` (the sampler's ratio adjustment). A
+    certainty household contributes no variance. Stratum ``h`` (``n`` of ``N``
+    eligible households drawn without replacement) contributes
+    ``N^2 (1 - n/N) / n * S^2(e)``, ``e = w (y - R_h)`` over its drawn
+    households: the ratio estimator's first-order Taylor linearization.
+    Returns ``nan`` when a stratum drew one household of several (``S^2`` is
+    not estimable).
+    """
+    values = np.asarray(values, dtype=np.float64)
+    source_weights = np.asarray(source_weights, dtype=np.float64)
+    labels = np.asarray(labels, dtype=object)
+    certainty = np.asarray(certainty, dtype=bool)
+    variance = 0.0
+    for label, record in strata.items():
+        drawn = (labels == label) & ~certainty
+        n = int(drawn.sum())
+        eligible = int(record["eligible_noncertainty_households"])
+        if n == 0 or n >= eligible:
+            continue
+        if n < 2:
+            return math.nan
+        weights = source_weights[drawn]
+        y = values[drawn]
+        mass = float(weights.sum())
+        if mass <= 0.0:
+            return math.nan
+        ratio = float(np.dot(weights, y)) / mass
+        residual = weights * (y - ratio)
+        variance += eligible**2 * (1.0 - n / eligible) / n * float(residual.var(ddof=1))
+    return float(variance)
+
+
+def design_from_sample(
+    household: pd.DataFrame,
+    person: pd.DataFrame,
+    adjusted_weights: np.ndarray,
+    receipt: Mapping[str, Any] | None,
+    *,
+    sampler,
+) -> SampleDesign:
+    """Rebuild the design of a subsample (or a census, with no receipt)."""
+    household_ids = household["household_id"].to_numpy()
+    adjusted = np.asarray(adjusted_weights, dtype=np.float64)
+    if receipt is None:
+        return SampleDesign(
+            household_ids=household_ids,
+            labels=np.full(len(household_ids), "all", dtype=object),
+            certainty=np.ones(len(household_ids), dtype=bool),
+            adjusted_weights=adjusted,
+            source_weights=adjusted,
+            strata={},
+            fraction=None,
+        )
+    design = receipt["design"]
+    used = list(design["strata_columns"]["used"])
+    labels, _ = sampler.household_stratum_labels(household, person, used)
+    certain_ids = np.asarray(receipt["certainty"]["household_ids"], dtype=np.int64)
+    certainty = np.isin(household_ids, certain_ids)
+    strata = receipt["strata"]
+    factors = np.asarray(
+        [
+            1.0
+            if is_certain
+            else float(strata[str(label)]["noncertainty_weight_factor"])
+            for label, is_certain in zip(labels, certainty, strict=True)
+        ],
+        dtype=np.float64,
+    )
+    return SampleDesign(
+        household_ids=household_ids,
+        labels=labels,
+        certainty=certainty,
+        adjusted_weights=adjusted,
+        source_weights=adjusted / factors,
+        strata=strata,
+        fraction=float(design["fraction"]),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Capturing the smoke's arrays through the simulate seam
+# ---------------------------------------------------------------------------
+
+
+class SimulateRecorder:
+    """Wraps a consumer's ``simulate`` seam and keeps every scored result.
+
+    ``baseline`` holds the baseline simulation's results by
+    ``(variable, period, map_to)``; ``reforms`` holds one such mapping per
+    ``simulate(reform)`` call, in call order. The smoke gate builds one reform
+    per probe, in probe order, so ``reforms[i]`` is probe ``i``'s.
+    """
+
+    def __init__(self, simulate: Callable[[Any], Any]) -> None:
+        self._simulate = simulate
+        self.baseline: dict[tuple[str, int, str | None], Any] = {}
+        self.reforms: list[dict[tuple[str, int, str | None], Any]] = []
+
+    def __call__(self, reform):
+        simulation = self._simulate(reform)
+        if reform is None:
+            store = self.baseline
+        else:
+            store = {}
+            self.reforms.append(store)
+        return _RecordingSimulation(simulation, store)
+
+
+class _RecordingSimulation:
+    def __init__(self, simulation, store) -> None:
+        self._simulation = simulation
+        self._store = store
+
+    def calculate(self, variable, period=None, map_to=None):
+        if map_to is None:
+            result = self._simulation.calculate(variable, period)
+        else:
+            result = self._simulation.calculate(variable, period, map_to=map_to)
+        self._store[(str(variable), int(str(period)), map_to)] = result
+        return result
+
+
+def _as_float(values) -> np.ndarray:
+    array = np.asarray(values)
+    if array.dtype == bool:
+        return array.astype(np.float64)
+    return np.asarray(pd.to_numeric(pd.Series(array), errors="coerce"), np.float64)
+
+
+class HouseholdRowMap:
+    """Household id of every engine row, per entity, over the scorer's batches.
+
+    The scorer concatenates each batch engine's values in batch order; within
+    a batch the engine keeps the dataset's table order, which is the batch
+    frame's. ``households(entity)`` is that household id per row, and
+    ``weights(entity)`` the household weight each row should carry; a
+    captured result is decomposed only if its weights equal these exactly.
+    """
+
+    def __init__(self, batch_frames: Sequence[Any], *, sampler) -> None:
+        self._batches = tuple(batch_frames)
+        self._sampler = sampler
+        self._cache: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+
+    def _build(self, entity: str) -> tuple[np.ndarray, np.ndarray]:
+        if entity not in self._cache:
+            households: list[np.ndarray] = []
+            weights: list[np.ndarray] = []
+            for batch in self._batches:
+                person = batch.table("person")
+                ids = (
+                    None
+                    if entity == "person"
+                    else batch.table(entity)[f"{entity}_id"].to_numpy()
+                )
+                rows = np.asarray(
+                    self._sampler.household_of_rows(entity, person, ids), np.int64
+                )
+                household_weight = pd.Series(
+                    np.asarray(batch.weights_for("household").values, np.float64),
+                    index=batch.table("household")["household_id"].to_numpy(),
+                )
+                households.append(rows)
+                weights.append(household_weight.reindex(rows).to_numpy())
+            self._cache[entity] = (np.concatenate(households), np.concatenate(weights))
+        return self._cache[entity]
+
+    def households(self, entity: str) -> np.ndarray:
+        return self._build(entity)[0]
+
+    def weights(self, entity: str) -> np.ndarray:
+        return self._build(entity)[1]
+
+    def n_rows(self, entity: str) -> int:
+        return int(sum(batch.n(entity) for batch in self._batches))
+
+
+def household_effects(
+    baseline,
+    reform,
+    *,
+    entity: str | None,
+    row_map: HouseholdRowMap,
+    entities: Iterable[str],
+) -> tuple[pd.Series | None, str | None, str]:
+    """Per-household unweighted effect ``t_h`` of one probe, or why not.
+
+    Returns ``(t, entity, reason)``. ``t`` sums ``reform - baseline`` over the
+    household's rows of the measure's entity, with a missing value counted as
+    0 as ``MicroSeries.sum`` skips it. When ``entity`` is unknown it is
+    inferred from the row count and the weights, and refused if ambiguous.
+    """
+    base_weights = np.asarray(getattr(baseline, "weights", None), dtype=np.float64)
+    reform_weights = np.asarray(getattr(reform, "weights", None), dtype=np.float64)
+    if base_weights.shape != reform_weights.shape or not np.array_equal(
+        base_weights, reform_weights
+    ):
+        return None, entity, "baseline and reform rows carry different weights"
+    n = len(base_weights)
+    candidates = [entity] if entity is not None else list(entities)
+    matches = [
+        candidate
+        for candidate in candidates
+        if row_map.n_rows(candidate) == n
+        and np.array_equal(row_map.weights(candidate), base_weights)
+    ]
+    if not matches:
+        return (
+            None,
+            entity,
+            "no entity's batch-frame household mapping reproduces the engine's "
+            "row weights",
+        )
+    households = row_map.households(matches[0])
+    if any(
+        not np.array_equal(row_map.households(other), households)
+        for other in matches[1:]
+    ):
+        return None, entity, f"row entity is ambiguous among {matches}"
+    difference = np.nan_to_num(_as_float(reform), nan=0.0) - np.nan_to_num(
+        _as_float(baseline), nan=0.0
+    )
+    effects = pd.Series(difference).groupby(households).sum()
+    return effects, matches[0], "decomposed"
+
+
+# ---------------------------------------------------------------------------
+# Authority rules
+# ---------------------------------------------------------------------------
+
+
+def classify_probe(
+    *,
+    signed_magnitude: float,
+    floor: float,
+    standard_error: float | None,
+    take_all: bool,
+    pool_carriers: int | None,
+    sampled_carriers: int | None,
+    census: bool,
+    se_multiplier: float = DEFAULT_SE_MULTIPLIER,
+    min_sampled_carriers: int = DEFAULT_MIN_SAMPLED_CARRIERS,
+) -> tuple[str, str]:
+    """``(authority, reason)`` for one smoke probe's verdict at this sample.
+
+    Rules, in order: a census (no sample) is authoritative; no standard error
+    is informational; a sampled (not take-all) probe with pool carriers but
+    fewer than ``min_sampled_carriers`` sampled carriers is informational; a
+    margin to the floor of at least ``se_multiplier`` standard errors is
+    authoritative; anything nearer is informational.
+    """
+    if census:
+        return AUTHORITATIVE, "scored on the full export (no sample)"
+    if standard_error is None or not math.isfinite(standard_error):
+        return (
+            INFORMATIONAL,
+            "no design-based standard error for this probe, so a full-scale "
+            "verdict cannot be bounded",
+        )
+    if (
+        not take_all
+        and pool_carriers
+        and sampled_carriers is not None
+        and sampled_carriers < min_sampled_carriers
+    ):
+        return (
+            INFORMATIONAL,
+            f"only {sampled_carriers} carrier household(s) sampled (fewer than "
+            f"{min_sampled_carriers}); the standard error is not reliable",
+        )
+    margin = float(signed_magnitude) - float(floor)
+    if abs(margin) >= se_multiplier * standard_error:
+        if standard_error == 0.0:
+            return (
+                AUTHORITATIVE,
+                "zero design variance: every household the effect reaches is a "
+                "certainty household (or the stratum was taken whole)",
+            )
+        return (
+            AUTHORITATIVE,
+            f"the effect is {abs(margin) / standard_error:.1f} standard errors "
+            f"{'above' if margin >= 0 else 'below'} the floor "
+            f"(threshold {se_multiplier:g})",
+        )
+    return (
+        INFORMATIONAL,
+        f"the effect is within {se_multiplier:g} standard errors of the floor "
+        f"({abs(margin) / standard_error:.2f} SE)"
+        if standard_error > 0
+        else "the effect equals the floor",
+    )
+
+
+def signed_magnitude(effect: float, expected_sign: str) -> float:
+    """The gate's direction-normalized magnitude (``us_reform_coverage_smoke_gate``)."""
+    if expected_sign == "either":
+        return abs(float(effect))
+    return float(effect) if expected_sign == "positive" else -float(effect)
+
+
+def probe_definition_digests(payload: Mapping[str, Any]) -> dict[str, str]:
+    """SHA-256 of each probe's canonical JSON in a coverage manifest payload."""
+    return {
+        str(entry["id"]): hashlib.sha256(
+            json.dumps(entry, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        for entry in payload.get("reform_coverage_probes", ())
+    }
+
+
+# ---------------------------------------------------------------------------
+# Timing
+# ---------------------------------------------------------------------------
+
+
+class RssSampler:
+    """Peak resident memory of this process since the last reset."""
+
+    def __init__(self, interval: float = 0.5) -> None:
+        import psutil
+
+        self._process = psutil.Process()
+        self._interval = interval
+        self._peak = 0
+        self._lock = threading.Lock()
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self) -> None:
+        while True:
+            rss = self._process.memory_info().rss
+            with self._lock:
+                self._peak = max(self._peak, rss)
+            time.sleep(self._interval)
+
+    def current(self) -> int:
+        return int(self._process.memory_info().rss)
+
+    def reset(self) -> int:
+        with self._lock:
+            self._peak = self.current()
+            return self._peak
+
+    def peak(self) -> int:
+        with self._lock:
+            return max(self._peak, self.current())
+
+
+def _gib(value: float) -> float:
+    return round(float(value) / 2**30, 3)
+
+
+class StageClock:
+    """Runs each stage, recording wall/CPU/peak RSS and any exception."""
+
+    def __init__(self, sampler: RssSampler | None) -> None:
+        self.sampler = sampler
+        self.current = "setup"
+
+    def run(self, name: str, fn: Callable[[], Mapping[str, Any]]) -> dict[str, Any]:
+        self.current = name
+        before = self.sampler.reset() if self.sampler else 0
+        wall = time.perf_counter()
+        cpu = time.process_time()
+        record: dict[str, Any]
+        try:
+            record = {"status": "completed", **dict(fn() or {})}
+        except Exception as error:  # every stage failure is a finding
+            record = {
+                "status": "error",
+                "error": f"{type(error).__name__}: {error}",
+                "traceback": traceback.format_exc(),
+            }
+        record["timing"] = {
+            "wall_seconds": round(time.perf_counter() - wall, 3),
+            "cpu_seconds": round(time.process_time() - cpu, 3),
+            "rss_before_gib": _gib(before),
+            "peak_rss_gib": _gib(self.sampler.peak()) if self.sampler else None,
+        }
+        print(
+            f"[probe] {name}: {record['status']} in "
+            f"{record['timing']['wall_seconds']:.1f} s",
+            flush=True,
+        )
+        return record
+
+
+def _timed_scorer_class(builder, passes_path: Path, clock: StageClock):
+    """The release scorer, with one ``passes.jsonl`` line per scoring pass."""
+
+    base = builder._HouseholdBatchedPostExportScorer
+
+    class TimedScorer(base):
+        def _score(self, keys, *, label, reform_system=None):
+            sampler = clock.sampler
+            before = sampler.reset() if sampler else 0
+            wall = time.perf_counter()
+            cpu = time.process_time()
+            try:
+                return super()._score(keys, label=label, reform_system=reform_system)
+            finally:
+                row = {
+                    "stage": clock.current,
+                    "label": label,
+                    "keys": len(keys),
+                    "reform": reform_system is not None,
+                    "batches": self.n_batches,
+                    "wall_seconds": round(time.perf_counter() - wall, 3),
+                    "cpu_seconds": round(time.process_time() - cpu, 3),
+                    "rss_before_gib": _gib(before),
+                    "peak_rss_gib": _gib(sampler.peak()) if sampler else None,
+                }
+                with passes_path.open("a") as handle:
+                    handle.write(json.dumps(row) + "\n")
+
+    return TimedScorer
+
+
+# ---------------------------------------------------------------------------
+# Source settlement (engine-free, column by column)
+# ---------------------------------------------------------------------------
+
+
+def source_take_up_frame(source_path: Path, programs, *, sampler, chunk_bytes: int):
+    """The source export restricted to ids, memberships and take-up flags.
+
+    ``us_take_up_participation_diagnostics`` reads only the take-up flag
+    columns and the household weights, so this frame gives the source's exact
+    full-scale diagnostics without loading its 900k-row person table whole.
+    """
+    from microcosm.frame import Frame, WeightKind, Weights
+    from microcosm.frame.units import US_SCHEMA
+
+    wanted: dict[str, list[str]] = {entity: [] for entity in sampler.US_ENTITIES}
+    for program in programs:
+        wanted.setdefault(program.entity, []).append(program.variable)
+    tables: dict[str, pd.DataFrame] = {}
+    with pd.HDFStore(str(source_path), mode="r") as store:
+        for entity in sampler.US_ENTITIES:
+            stored = sampler.table_columns(store, entity)
+            structural = (
+                ["person_id", *sampler.PERSON_MEMBERSHIP_COLUMNS]
+                if entity == "person"
+                else [f"{entity}_id"]
+            )
+            if entity == "household":
+                structural.append(sampler.HOUSEHOLD_WEIGHT_COLUMN)
+            columns = [
+                *structural,
+                *[column for column in wanted.get(entity, ()) if column in stored],
+            ]
+            tables[entity] = sampler.read_table_rows(
+                store,
+                entity,
+                columns=list(dict.fromkeys(columns)),
+                chunk_bytes=chunk_bytes,
+            )
+    weights = tables["household"].pop(sampler.HOUSEHOLD_WEIGHT_COLUMN)
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(weights.to_numpy(np.float64), WeightKind.CALIBRATED)},
+    )
+
+
+def stale_count_calibrated(payload: Mapping[str, Any]) -> list[str]:
+    """``_main``'s stale count-calibrated check over a take-up payload."""
+    return [
+        str(row["variable"])
+        for row in payload["programs"]
+        if row.get("populace_treatment") == "count_calibrated"
+        and row.get("ships_at_engine_default")
+    ]
+
+
+# ---------------------------------------------------------------------------
+# The probe
+# ---------------------------------------------------------------------------
+
+
+def _verdict(
+    stage: str,
+    check: str,
+    verdict: str,
+    authority: str,
+    reason: str,
+    consequence: str,
+) -> dict[str, str]:
+    return {
+        "stage": stage,
+        "check": check,
+        "verdict": verdict,
+        "authority": authority,
+        "reason": reason,
+        "release_consequence": consequence,
+    }
+
+
+def _tool_source() -> dict[str, object]:
+    import subprocess
+
+    root = _TOOLS.parent
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        dirty = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(root),
+                "status",
+                "--porcelain",
+                "--",
+                "tools",
+                "packages",
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return {"commit": None, "dirty": None}
+    return {"commit": head, "dirty": bool(dirty)}
+
+
+def _package_versions() -> dict[str, str | None]:
+    import importlib.metadata as metadata
+
+    versions: dict[str, str | None] = {}
+    for name in ("policyengine-us", "policyengine-core", "numpy", "pandas"):
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            versions[name] = None
+    return versions
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n")
+
+
+class ExportProbe:
+    """One probe run: the stages, their records and the verdicts.
+
+    Construct it, then :meth:`run`. Stage methods run in ``_main``'s order;
+    the frame-based stages (stored inputs, take-up) run while the loaded frame
+    is held and the frame is freed before the scorer loads its own copy.
+    """
+
+    def __init__(
+        self,
+        export_path: Path | str,
+        out_dir: Path | str,
+        *,
+        sample_receipt: Mapping[str, Any] | None = None,
+        receipt_path: Path | None = None,
+        source_export: Path | None = None,
+        source_settlement: bool = True,
+        stages: Sequence[str] = STAGES,
+        batch_size: int | None = DEFAULT_BATCH_SIZE,
+        target_surface: str = "full",
+        dropped_congressional_district_targets: int | None = None,
+        reference_smoke: Mapping[str, Any] | None = None,
+        reference_manifest: Mapping[str, Any] | None = None,
+        se_multiplier: float = DEFAULT_SE_MULTIPLIER,
+        min_sampled_carriers: int = DEFAULT_MIN_SAMPLED_CARRIERS,
+        release_id: str | None = None,
+        probes: Sequence[Any] | None = None,
+        builder=None,
+        sampler=None,
+        scorer_options: Mapping[str, Any] | None = None,
+        load_frame: Callable[..., Any] | None = None,
+        measure_entity: Callable[[str], str | None] | None = None,
+        sample_rss: bool = True,
+        chunk_bytes: int | None = None,
+    ) -> None:
+        self.builder = builder or load_builder()
+        self.sampler = sampler or load_sampler()
+        unknown = sorted(set(stages) - set(STAGES))
+        if unknown:
+            raise ValueError(f"unknown stage(s) {unknown}; choose from {list(STAGES)}.")
+        if target_surface not in self.builder.TARGET_SURFACE_MODES:
+            raise ValueError(
+                f"target_surface must be one of {self.builder.TARGET_SURFACE_MODES}."
+            )
+        if not (math.isfinite(se_multiplier) and se_multiplier > 0):
+            raise ValueError("se_multiplier must be a positive finite number.")
+        self.export_path = Path(export_path).resolve()
+        self.out_dir = Path(out_dir).resolve()
+        self.receipt = sample_receipt
+        self.census = sample_receipt is None
+        if not source_settlement:
+            source_export = None
+        elif source_export is None and sample_receipt is not None:
+            candidate = Path(str(sample_receipt["source"]["path"]))
+            source_export = candidate if candidate.exists() else None
+        self.source_export = (
+            None if source_export is None else Path(source_export).resolve()
+        )
+        self.stages = tuple(stages)
+        self.batch_size_requested = batch_size
+        self.target_surface = target_surface
+        self.dropped_cd_targets = dropped_congressional_district_targets
+        self.reference_smoke = reference_smoke
+        self.reference_manifest = reference_manifest
+        self.se_multiplier = float(se_multiplier)
+        self.min_sampled_carriers = int(min_sampled_carriers)
+        self.release_id = release_id
+        if probes is None:
+            from microcosm.build.us_runtime.release_input_coverage import (
+                us_release_reform_coverage_probes,
+            )
+
+            probes = us_release_reform_coverage_probes()
+        self.probes = tuple(probes)
+        self.scorer_options = dict(scorer_options or {})
+        self.load_frame = load_frame
+        self.measure_entity = measure_entity
+        self.chunk_bytes = int(chunk_bytes or self.sampler.DEFAULT_CHUNK_BYTES)
+        self.clock = StageClock(RssSampler() if sample_rss else None)
+        self.passes_path = self.out_dir / PASSES_FILENAME
+        self.frame = None
+        self.scorer = None
+        self.sha256: str | None = None
+        self.design: SampleDesign | None = None
+        self.design_problems: list[str] = []
+        self.batch_size: int | None = None
+        self.carriers_by_probe: dict[str, np.ndarray] = {}
+        self.verdicts: list[dict[str, str]] = []
+        self.report: dict[str, Any] = self._report_header(receipt_path)
+
+    # ---- plumbing ---------------------------------------------------------
+
+    def _report_header(self, receipt_path: Path | None) -> dict[str, Any]:
+        receipt = self.receipt
+        return {
+            "schema_version": PROBE_REPORT_SCHEMA_VERSION,
+            "tool": "tools/probe_us_post_export.py",
+            "tool_source": _tool_source(),
+            "packages": _package_versions(),
+            "created_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "host": {
+                "platform": platform.platform(),
+                "python": sys.version.split()[0],
+            },
+            "classification": "probe diagnostics (not release evidence)",
+            "export": str(self.export_path),
+            "stages_requested": list(self.stages),
+            "rules": {
+                "se_multiplier": self.se_multiplier,
+                "min_sampled_carriers": self.min_sampled_carriers,
+                "authoritative": (
+                    "does not depend on the population's size, clears or misses "
+                    "its floor by at least se_multiplier design-based standard "
+                    "errors, or was computed on the source export"
+                ),
+                "informational": (
+                    "scale-dependent at this sample: few sampled carriers, "
+                    "within se_multiplier standard errors of the floor, an "
+                    "unweighted record count, a column constant on the "
+                    "subsample, or a weighted estimate"
+                ),
+            },
+            "sample": None
+            if receipt is None
+            else {
+                "receipt_path": None if receipt_path is None else str(receipt_path),
+                "fraction": receipt["design"]["fraction"],
+                "seed": receipt["design"]["seed"],
+                "certainty_threshold": receipt["design"]["certainty_threshold"],
+                "source_sha256": receipt["source"]["sha256"],
+                "source_households": receipt["source"]["rows"]["household"],
+                "sampled_households": receipt["selection"]["households"],
+                "certainty_households": receipt["selection"]["certainty_households"],
+                "subsample_sha256": receipt["output"]["sha256"],
+            },
+            "source_export": None
+            if self.source_export is None
+            else str(self.source_export),
+            "stages": {},
+            "verdicts": self.verdicts,
+        }
+
+    def _write_report(self) -> None:
+        _write_json(self.out_dir / REPORT_FILENAME, self.report)
+
+    def _stage(self, name: str, fn: Callable[[], Mapping[str, Any]], consequence):
+        record = self.clock.run(name, fn)
+        self.report["stages"][name] = record
+        if record["status"] == "error":
+            self.verdicts.append(
+                _verdict(
+                    name,
+                    "the stage runs",
+                    "error",
+                    AUTHORITATIVE,
+                    "the stage raised (a code or definition failure does not "
+                    f"depend on the sample): {record['error']}",
+                    consequence,
+                )
+            )
+        self._write_report()
+        return record
+
+    def _add(self, *args) -> None:
+        self.verdicts.append(_verdict(*args))
+
+    def _release_id(self) -> str:
+        return self.release_id or f"probe-{(self.sha256 or 'unknown')[:12]}"
+
+    # ---- run --------------------------------------------------------------
+
+    def run(self) -> dict[str, Any]:
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.passes_path.write_text("")
+        load = self._stage("load", self._load, "raises")
+        if load["status"] == "completed":
+            if "stored_inputs" in self.stages:
+                self._stage("stored_inputs", self._stored_inputs, "raises")
+            if "take_up_participation" in self.stages:
+                self._stage("take_up_participation", self._take_up, "raises")
+            # Free the loaded frame before the scorer loads its own copy.
+            self.frame = None
+            engine = [
+                stage
+                for stage in (
+                    "reform_coverage_smoke",
+                    "reform_validation",
+                    "demographics",
+                )
+                if stage in self.stages
+            ]
+            if engine:
+                self._stage("open_scorer", self._open_scorer, "raises")
+            if self.scorer is not None:
+                try:
+                    if "reform_coverage_smoke" in self.stages:
+                        self._stage("reform_coverage_smoke", self._smoke, "raises")
+                    if "reform_validation" in self.stages:
+                        self._stage("reform_validation", self._validation, "raises")
+                    if "demographics" in self.stages:
+                        self._stage("demographics", self._demographics, "raises")
+                finally:
+                    builder = self.builder
+                    self.report["post_export_scoring"] = (
+                        builder._post_export_scoring_manifest_block(self.scorer)
+                    )
+                    self.report["scored_dataset_sha256"] = (
+                        builder._close_post_export_scorer(self.scorer)
+                    )
+                    self.scorer = None
+            if "source_coverage" in self.stages:
+                self._stage("source_coverage", self._source_coverage, "recorded")
+        self.report["summary"] = _summary(self.report, self.receipt)
+        self.report["process_peak_rss_gib"] = _gib(self.sampler._rss_peak_bytes())
+        self._write_report()
+        return self.report
+
+    # ---- load ---------------------------------------------------------------
+
+    def _load(self) -> dict[str, Any]:
+        sampler = self.sampler
+        self.sha256 = sampler.sha256_file(self.export_path)
+        if self.receipt is not None and self.receipt["output"]["sha256"] != self.sha256:
+            raise ValueError(
+                f"{self.export_path} (SHA-256 {self.sha256}) is not the subsample "
+                f"the receipt describes ({self.receipt['output']['sha256']})."
+            )
+        load = self.load_frame or self.builder._load_frame
+        frame = load(self.export_path, expected_sha256=self.sha256)
+        self.frame = frame
+        self.design = design_from_sample(
+            frame.table("household"),
+            frame.table("person"),
+            frame.weights_for("household").values,
+            self.receipt,
+            sampler=sampler,
+        )
+        self.design_problems = [] if self.census else self.design.verify()
+        n = int(frame.n("household"))
+        self.batch_size = choose_batch_size(n, self.batch_size_requested)
+        for probe in self.probes:
+            self.carriers_by_probe[str(probe.id)] = probe_carrier_households(
+                frame, probe.binding_inputs, sampler=sampler
+            )
+        return {
+            "sha256": self.sha256,
+            "rows": {entity: int(frame.n(entity)) for entity in frame.entities},
+            "household_weight_total": float(self.design.adjusted_weights.sum()),
+            "batch_size": self.batch_size,
+            "n_batches": batch_count(n, self.batch_size),
+            "design": {
+                "census": self.census,
+                "strata": len(self.design.strata),
+                "verified_against_receipt": not self.design_problems,
+                "problems": self.design_problems,
+            },
+        }
+
+    # ---- 1. stored inputs (#1031) -------------------------------------------
+
+    def _stored_inputs(self) -> dict[str, Any]:
+        builder = self.builder
+        failures, details = builder._stored_input_gate_failures(
+            self.frame, stage="export frame"
+        )
+        written = builder._written_stored_input_verdict_mismatch(
+            self.export_path, details
+        )
+        self._add(
+            "stored_inputs",
+            "pre-export stored-input gate",
+            "fail" if failures else "pass",
+            AUTHORITATIVE,
+            "column names do not depend on the sample: "
+            + ("; ".join(failures) or "no refused stored column"),
+            "raises",
+        )
+        self._add(
+            "stored_inputs",
+            "written-H5 stored-input premise (scored file)",
+            "fail" if written else "pass",
+            AUTHORITATIVE,
+            written or "the written file refuses exactly what the gate refused",
+            "raises",
+        )
+        source = None
+        if self.source_export is not None:
+            source = builder._written_stored_input_verdict_mismatch(
+                self.source_export, details
+            )
+            self._add(
+                "stored_inputs",
+                "written-H5 stored-input premise (source export)",
+                "fail" if source else "pass",
+                AUTHORITATIVE,
+                "settled on the source export's own metadata: "
+                + (source or "the same verdict as the gate"),
+                "raises",
+            )
+        return {
+            "gate_failures": failures,
+            "gate_details": details,
+            "written_mismatch": written,
+            "source_mismatch": source,
+        }
+
+    # ---- take-up participation ------------------------------------------------
+
+    def _take_up(self) -> dict[str, Any]:
+        builder = self.builder
+        payload = builder.us_take_up_participation_diagnostics(self.frame)
+        builder.write_us_take_up_participation_diagnostics(
+            payload, self.out_dir / "us_take_up_participation.json"
+        )
+        stale = stale_count_calibrated(payload)
+        record: dict[str, Any] = {
+            "gate": payload["gate"],
+            "stale_count_calibrated": stale,
+            "seeded_program_count": payload["seeded_program_count"],
+            "shares": _take_up_shares(payload),
+        }
+        # A column that varies on the subsample varies on the pool; a
+        # constant one may not, and a share is a weighted estimate.
+        failures = list(payload["gate"]["failures"])
+        constant = [failure for failure in failures if "constant column" in failure]
+        band = [failure for failure in failures if failure not in constant]
+        scale_note = "" if self.census else " (weighted estimates at this sample)"
+        self._add(
+            "take_up_participation",
+            "take-up signal gate: constant columns",
+            "fail" if constant else "pass",
+            INFORMATIONAL if constant and not self.census else AUTHORITATIVE,
+            "; ".join(constant)
+            or "every seeded column varies here, so it varies on the pool",
+            "diagnostic",
+        )
+        self._add(
+            "take_up_participation",
+            "take-up signal gate: share bands",
+            "fail" if band else "pass",
+            AUTHORITATIVE if self.census else INFORMATIONAL,
+            ("; ".join(band) or "every share inside its band") + scale_note,
+            "diagnostic",
+        )
+        self._add(
+            "take_up_participation",
+            "stale count-calibrated take-up columns",
+            "fail" if stale else "pass",
+            INFORMATIONAL if stale and not self.census else AUTHORITATIVE,
+            f"ship at the engine default: {stale}"
+            if stale
+            else "every count-calibrated column varies here, so it varies on the pool",
+            "raises",
+        )
+        if self.source_export is not None:
+            from microcosm.build.us_runtime.take_up_contract import (
+                load_take_up_contract,
+            )
+
+            source_frame = source_take_up_frame(
+                self.source_export,
+                load_take_up_contract().programs,
+                sampler=self.sampler,
+                chunk_bytes=self.chunk_bytes,
+            )
+            source_payload = builder.us_take_up_participation_diagnostics(source_frame)
+            del source_frame
+            builder.write_us_take_up_participation_diagnostics(
+                source_payload, self.out_dir / "us_take_up_participation.source.json"
+            )
+            source_stale = stale_count_calibrated(source_payload)
+            record["source"] = {
+                "gate": source_payload["gate"],
+                "stale_count_calibrated": source_stale,
+                "shares": _take_up_shares(source_payload),
+            }
+            self._add(
+                "take_up_participation",
+                "take-up signal gate (source export)",
+                "pass" if source_payload["gate"]["passed"] else "fail",
+                AUTHORITATIVE,
+                "settled on the source export: "
+                + ("; ".join(source_payload["gate"]["failures"]) or "passed"),
+                "diagnostic",
+            )
+            self._add(
+                "take_up_participation",
+                "stale count-calibrated take-up columns (source export)",
+                "fail" if source_stale else "pass",
+                AUTHORITATIVE,
+                f"settled on the source export: {source_stale or 'none'}",
+                "raises",
+            )
+        return record
+
+    # ---- the household-batched scorer ----------------------------------------
+
+    def _open_scorer(self) -> dict[str, Any]:
+        scorer_cls = _timed_scorer_class(self.builder, self.passes_path, self.clock)
+        scorer = scorer_cls(
+            self.export_path,
+            maximum_microsim_batch_size=self.batch_size,
+            load_frame=self.load_frame,
+            **self.scorer_options,
+        )
+        if scorer.dataset_sha256 != self.sha256:
+            scorer.close()
+            raise ValueError("The scorer loaded different bytes than the probe.")
+        if scorer.n_batches < MINIMUM_BATCHES:
+            scorer.close()
+            raise ValueError(
+                f"The scorer built {scorer.n_batches} batch(es); the probe needs "
+                f"at least {MINIMUM_BATCHES}."
+            )
+        self.scorer = scorer
+        return {
+            "n_households": scorer.n_households,
+            "n_batches": scorer.n_batches,
+            "max_batch_households": scorer.max_batch_households,
+            "maximum_batch_size": scorer.maximum_batch_size,
+        }
+
+    def _resolve_entity(self, variable: str) -> str | None:
+        if self.measure_entity is not None:
+            return self.measure_entity(variable)
+        system = getattr(
+            getattr(self.scorer, "_microsimulation_cls", None),
+            "default_tax_benefit_system_instance",
+            None,
+        )
+        variables = getattr(system, "variables", None)
+        if variables is None or variable not in variables:
+            return None
+        return str(variables[variable].entity.key)
+
+    # ---- 2. reform-coverage smoke ----------------------------------------------
+
+    def _smoke(self) -> dict[str, Any]:
+        builder = self.builder
+        probes = self.probes
+
+        def gate_for(simulate):
+            return builder.us_reform_coverage_smoke_gate(
+                simulate=simulate, probes=probes, period=builder.PERIOD
+            )
+
+        plan = builder._record_post_export_baseline_plan(gate_for)
+        scoring = self.scorer.open_consumer("reform_coverage_smoke", plan)
+        recorder = SimulateRecorder(scoring.simulate)
+        gate = gate_for(recorder)
+        scoring_record = self.scorer.finish_consumer(scoring)
+        _write_json(
+            self.out_dir / "reform_coverage_smoke.json",
+            {
+                "schema_version": 1,
+                "enforced": True,
+                "reform_coverage_smoke": {
+                    "passed": gate.passed,
+                    "failures": list(gate.failures),
+                    "details": dict(gate.details),
+                },
+                "post_export_scoring": scoring_record,
+            },
+        )
+        if len(recorder.reforms) != len(probes):
+            raise RuntimeError(
+                f"The smoke built {len(recorder.reforms)} reform simulations for "
+                f"{len(probes)} probes."
+            )
+        row_map = HouseholdRowMap(self.scorer._batches(), sampler=self.sampler)
+        current = probe_definition_digests(json.loads(release_input_coverage_text()))
+        reference_digests = (
+            None
+            if self.reference_manifest is None
+            else probe_definition_digests(self.reference_manifest)
+        )
+        reference_results = (
+            {}
+            if self.reference_smoke is None
+            else dict(
+                self.reference_smoke["reform_coverage_smoke"]["details"]["results"]
+            )
+        )
+        rows = []
+        for probe, reform_results in zip(probes, recorder.reforms, strict=True):
+            row = self._smoke_row(
+                probe,
+                gate.details["results"][str(probe.id)],
+                recorder.baseline,
+                reform_results,
+                row_map,
+            )
+            row["definition_sha256"] = current.get(str(probe.id))
+            reference = reference_results.get(str(probe.id))
+            if reference is not None:
+                effect = float(row["effect"])
+                reference_effect = float(reference["effect"])
+                row["reference"] = {
+                    "effect": reference_effect,
+                    "passed": bool(reference["passed"]),
+                    "same_definition": None
+                    if reference_digests is None
+                    else reference_digests.get(str(probe.id))
+                    == current.get(str(probe.id)),
+                    "difference": effect - reference_effect,
+                    "relative_difference": None
+                    if reference_effect == 0.0
+                    else (effect - reference_effect) / abs(reference_effect),
+                    "z": None
+                    if not row["standard_error"]
+                    else (effect - reference_effect) / row["standard_error"],
+                }
+            rows.append(row)
+            self._add(
+                "reform_coverage_smoke",
+                f"probe {probe.id}",
+                "pass" if row["passed"] else "fail",
+                row["authority"],
+                row["authority_reason"],
+                "raises",
+            )
+        return {
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "baseline_keys": len(plan),
+            "reform_passes": scoring_record["reform_passes"],
+            "reform_systems": scoring_record["reform_systems"],
+            "probes": rows,
+        }
+
+    def _smoke_row(self, probe, result, baseline, reform_results, row_map):
+        builder = self.builder
+        key = (probe.budget_measure, int(result["period"]), None)
+        effects, entity, decomposition = household_effects(
+            baseline[key],
+            reform_results[key],
+            entity=self._resolve_entity(probe.budget_measure),
+            row_map=row_map,
+            entities=("person", *builder.US_SCHEMA.group_entities),
+        )
+        direction = 1.0 if probe.effect_direction == "reform_minus_baseline" else -1.0
+        carriers = self.carriers_by_probe[str(probe.id)]
+        standard_error = None
+        noncarrier = None
+        if effects is not None and self.design_problems:
+            decomposition = "the sample design did not verify against its receipt"
+        elif effects is not None:
+            reconstructed = self.design.total(effects)
+            # The gate's effect is a difference of two weighted totals, so its
+            # rounding scales with the totals.
+            scale = abs(float(result["baseline_total"])) + abs(
+                float(result["reform_total"])
+            )
+            if not math.isclose(
+                direction * reconstructed,
+                float(result["effect"]),
+                rel_tol=0.0,
+                abs_tol=DECOMPOSITION_RTOL * scale + 1e-6,
+            ):
+                decomposition = (
+                    f"per-household effects total {direction * reconstructed!r}; "
+                    f"the gate scored {result['effect']!r}"
+                )
+            else:
+                variance = self.design.variance(effects)
+                standard_error = (
+                    math.sqrt(variance) if math.isfinite(variance) else None
+                )
+                noncarrier = direction * self.design.total(
+                    effects[~effects.index.isin(carriers)]
+                )
+        pool = (
+            None
+            if self.receipt is None
+            else {str(r["probe"]): r for r in self.receipt["probes"]}.get(str(probe.id))
+        )
+        take_all = bool(pool and pool["certainty"])
+        magnitude = signed_magnitude(result["effect"], probe.expected_sign)
+        authority, reason = classify_probe(
+            signed_magnitude=magnitude,
+            floor=float(probe.min_abs_effect),
+            standard_error=standard_error,
+            take_all=take_all,
+            pool_carriers=None if pool is None else int(pool["carrier_households"]),
+            sampled_carriers=int(len(carriers)),
+            census=self.census,
+            se_multiplier=self.se_multiplier,
+            min_sampled_carriers=self.min_sampled_carriers,
+        )
+        return {
+            "probe": str(probe.id),
+            "period": int(result["period"]),
+            "budget_measure": probe.budget_measure,
+            "measure_entity": entity,
+            "baseline_total": float(result["baseline_total"]),
+            "reform_total": float(result["reform_total"]),
+            "effect": float(result["effect"]),
+            "min_abs_effect": float(probe.min_abs_effect),
+            "expected_sign": probe.expected_sign,
+            "signed_magnitude": magnitude,
+            "margin_to_floor": magnitude - float(probe.min_abs_effect),
+            "passed": bool(result["passed"]),
+            "standard_error": standard_error,
+            "decomposition": decomposition,
+            "noncarrier_effect": noncarrier,
+            "pool_carrier_households": None
+            if pool is None
+            else int(pool["carrier_households"]),
+            "expected_sampled_carriers": None
+            if pool is None
+            else float(pool["expected_sampled_carriers"]),
+            "take_all": take_all,
+            "sampled_carrier_households": int(len(carriers)),
+            "authority": authority,
+            "authority_reason": reason,
+        }
+
+    # ---- 3. reform validation -----------------------------------------------
+
+    def _validation(self) -> dict[str, Any]:
+        builder = self.builder
+        payload_for = builder._reform_validation_consumer(
+            result=SimpleNamespace(diagnostics=[], problem=SimpleNamespace(targets=[])),
+            release_id=self._release_id(),
+        )
+        plan = builder._record_post_export_baseline_plan(payload_for)
+        scoring = self.scorer.open_consumer("reform_validation", plan)
+        payload = payload_for(scoring.simulate)
+        scoring_record = self.scorer.finish_consumer(scoring)
+        builder.write_reform_validation(
+            payload, self.out_dir / "reform_validation.json"
+        )
+        rows = payload.get("reforms", [])
+        scored = [
+            row
+            for row in rows
+            if (row.get("microcosm") or {}).get("budget_effect") is not None
+        ]
+        self._add(
+            "reform_validation",
+            "every out-of-sample reform scores",
+            "pass",
+            AUTHORITATIVE,
+            "the stage ran every reform through the batched scorer; its budget "
+            "effects are weighted estimates (informational)",
+            "raises",
+        )
+        return {
+            "baseline_keys": len(plan),
+            "reform_passes": scoring_record["reform_passes"],
+            "reform_systems": scoring_record["reform_systems"],
+            "rows": len(rows),
+            "rows_with_budget_effect": len(scored),
+            "in_sample_rows": "null budget effect: no calibration fit outside a build",
+        }
+
+    # ---- 4. demographics ------------------------------------------------------
+
+    def _demographics(self) -> dict[str, Any]:
+        builder = self.builder
+        plan = builder._record_post_export_baseline_plan(builder._demographics_consumer)
+        scoring = self.scorer.open_consumer("demographics", plan)
+        ages, weights = builder._demographics_consumer(scoring.simulate)
+        self.scorer.finish_consumer(scoring)
+        payload = builder.demographics_payload(
+            ages, weights, period=builder.PERIOD, release_id=self._release_id()
+        )
+        payload["geography_coverage"] = builder.geography_coverage_payload(
+            self.export_path
+        )
+        builder.write_demographics(payload, self.out_dir / "demographics.json")
+        geography = payload["geography_coverage"]
+        record: dict[str, Any] = {
+            "total_population": payload["total_population"],
+            "states": _geography_summary(geography["states"]),
+            "congressional_districts": _geography_summary(
+                geography["congressional_districts"]
+            ),
+        }
+        self._add(
+            "demographics",
+            "age distribution and geography coverage",
+            "pass",
+            AUTHORITATIVE,
+            "the stage scored ages through the batched scorer and read the "
+            "geography counts; the age bands are weighted estimates",
+            "raises",
+        )
+        scale = "" if self.census else "; unweighted record counts scale with p"
+        for level in ("states", "congressional_districts"):
+            summary = record[level]
+            if summary is not None:
+                self._add(
+                    "demographics",
+                    f"{level}: geographies under 50 / 100 household records",
+                    f"{summary['n_under_50']} / {summary['n_under_100']}",
+                    AUTHORITATIVE if self.census else INFORMATIONAL,
+                    f"{summary['n_geographies']} geographies{scale}",
+                    "diagnostic",
+                )
+        if self.source_export is not None:
+            source = builder.geography_coverage_payload(self.source_export)
+            record["source"] = {
+                level: _geography_summary(source[level])
+                for level in ("states", "congressional_districts")
+            }
+            for level in ("states", "congressional_districts"):
+                summary = record["source"][level]
+                if summary is not None:
+                    self._add(
+                        "demographics",
+                        f"{level}: geographies under 50 / 100 household records "
+                        "(source export)",
+                        f"{summary['n_under_50']} / {summary['n_under_100']}",
+                        AUTHORITATIVE,
+                        f"settled on the source export: {summary['n_geographies']} "
+                        "geographies",
+                        "diagnostic",
+                    )
+            missing = sorted(
+                set(source["states"]["counts"]) - set(geography["states"]["counts"])
+            )
+            record["states_without_sampled_records"] = missing
+            self._add(
+                "demographics",
+                "states with source records but none sampled",
+                "fail" if missing else "pass",
+                INFORMATIONAL,
+                f"{missing or 'none'}: such a state has zero support only in the "
+                "subsample",
+                "diagnostic",
+            )
+        return record
+
+    # ---- 5. source coverage ---------------------------------------------------
+
+    def _source_coverage(self) -> dict[str, Any]:
+        builder = self.builder
+        reproduced = "complete"
+        if self.target_surface == builder.TARGET_SURFACE_FULL:
+            active, surface_exclusions = builder._source_coverage_aliases(None)
+        elif self.dropped_cd_targets is not None:
+            active, surface_exclusions = builder._source_coverage_aliases(
+                {
+                    "mode": self.target_surface,
+                    "dropped_congressional_district_targets": int(
+                        self.dropped_cd_targets
+                    ),
+                }
+            )
+        else:
+            # The alias sets do not depend on the count; only the reason text
+            # names it, and only the build knows it.
+            active = builder.DIRECT_ACTIVE_ALIASES
+            surface_exclusions = {
+                alias: (
+                    "Not calibrated by this release: --target-surface "
+                    f"{self.target_surface} dropped all congressional-district-"
+                    "classified targets (the count is not known to the probe)."
+                )
+                for alias in builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
+            }
+            reproduced = "gate reproduced; the dropped-target count is not"
+        coverage = builder.us_source_coverage_diagnostics(
+            active_target_aliases=active,
+            reviewed_exclusions={
+                **builder._reviewed_exclusions(active),
+                **surface_exclusions,
+            },
+        )
+        coverage["fiscal_target_support_exclusions"] = [
+            {"source_record_id": source_record_id, "reason": reason}
+            for source_record_id, reason in sorted(
+                builder.US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
+            )
+        ]
+        coverage["probe_not_reproduced"] = [
+            "fiscal_target_sources (needs the compiled target specs)",
+            "congressional_district_vintage_crosswalk (build metadata)",
+            f"{builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY} (build receipt)",
+        ]
+        builder.write_us_source_coverage_diagnostics(
+            coverage, self.out_dir / "us_source_coverage.json"
+        )
+        gate = coverage["gate"]
+        self._add(
+            "source_coverage",
+            "source coverage gate",
+            "pass" if gate["passed"] else "fail",
+            AUTHORITATIVE,
+            "does not read the dataset: " + ("; ".join(gate["failures"]) or "passed"),
+            "recorded (surfaces at publish)",
+        )
+        return {
+            "target_surface": self.target_surface,
+            "reproduced": reproduced,
+            "gate": gate,
+        }
+
+
+def probe_carrier_households(frame, binding_inputs, *, sampler) -> np.ndarray:
+    """Households of ``frame`` with a nonzero value of any binding input.
+
+    The sampler's support semantics (booleans count as 1, missing as 0); a
+    leaf is read from the first entity table storing it.
+    """
+    union: list[np.ndarray] = []
+    person = frame.table("person")
+    for leaf in binding_inputs:
+        for entity in frame.entities:
+            table = frame.table(entity)
+            if leaf not in table.columns:
+                continue
+            ids = None if entity == "person" else table[f"{entity}_id"].to_numpy()
+            households = np.asarray(sampler.household_of_rows(entity, person, ids))
+            nonzero = sampler.numeric_support_values(table[leaf]) != 0.0
+            union.append(np.unique(households[nonzero]))
+            break
+    return np.unique(np.concatenate(union)) if union else np.asarray([], np.int64)
+
+
+def probe_export(export_path, out_dir, **options) -> dict[str, Any]:
+    """Run the probe on ``export_path``; see :class:`ExportProbe`."""
+    return ExportProbe(export_path, out_dir, **options).run()
+
+
+def release_input_coverage_text() -> str:
+    """The packaged US coverage manifest's text (the probes' definitions)."""
+    from microcosm.build.us_runtime import release_input_coverage
+
+    return release_input_coverage._resource_text(
+        release_input_coverage.US_RELEASE_INPUT_COVERAGE_RESOURCE
+    )
+
+
+def _take_up_shares(payload: Mapping[str, Any]) -> dict[str, float]:
+    return {
+        str(row["variable"]): float(row["take_up_share"])
+        for row in payload["programs"]
+        if row.get("take_up_share") is not None
+    }
+
+
+def _geography_summary(summary: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    if summary is None:
+        return None
+    return {key: value for key, value in summary.items() if key != "counts"}
+
+
+def _summary(report: Mapping[str, Any], receipt) -> dict[str, Any]:
+    failing = [row for row in report["verdicts"] if row["verdict"] in ("fail", "error")]
+    summary: dict[str, Any] = {
+        "authoritative_failures": [
+            row for row in failing if row["authority"] == AUTHORITATIVE
+        ],
+        "informational_failures": [
+            row for row in failing if row["authority"] == INFORMATIONAL
+        ],
+        "stage_status": {
+            name: record.get("status") for name, record in report["stages"].items()
+        },
+    }
+    if receipt is not None:
+        ratio = receipt["source"]["rows"]["household"] / max(
+            1, receipt["selection"]["households"]
+        )
+        summary["full_scale_extrapolation"] = {
+            "method": (
+                "stage wall time x source households / sampled households: a "
+                "rough linear extrapolation of the engine stages, not a "
+                "measurement"
+            ),
+            "household_ratio": ratio,
+            "wall_seconds": {
+                name: round(record["timing"]["wall_seconds"] * ratio, 1)
+                for name, record in report["stages"].items()
+                if name
+                in (
+                    "open_scorer",
+                    "reform_coverage_smoke",
+                    "reform_validation",
+                    "demographics",
+                )
+                and "timing" in record
+            },
+        }
+    return summary
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--export", type=Path, required=True, help="H5 to score")
+    parser.add_argument("--out", type=Path, required=True, help="report directory")
+    parser.add_argument(
+        "--sample-receipt",
+        type=Path,
+        default=None,
+        help="the sampler's receipt (default: sample_receipt.json beside "
+        "--export; without one the export is scored as a full population)",
+    )
+    parser.add_argument(
+        "--source-export",
+        type=Path,
+        default=None,
+        help="the sampled export, for settling verdicts (default: the receipt's)",
+    )
+    parser.add_argument(
+        "--no-source-settlement",
+        action="store_true",
+        help="never read the source export",
+    )
+    parser.add_argument("--stages", default=",".join(STAGES))
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    parser.add_argument(
+        "--target-surface", default="full", help="the build's --target-surface"
+    )
+    parser.add_argument(
+        "--dropped-congressional-district-targets", type=int, default=None
+    )
+    parser.add_argument(
+        "--reference-smoke",
+        type=Path,
+        default=None,
+        help="a full-size run's reform_coverage_smoke.json to compare against",
+    )
+    parser.add_argument(
+        "--reference-manifest",
+        type=Path,
+        default=None,
+        help="the release input coverage manifest that reference run used",
+    )
+    parser.add_argument("--se-multiplier", type=float, default=DEFAULT_SE_MULTIPLIER)
+    parser.add_argument(
+        "--min-sampled-carriers", type=int, default=DEFAULT_MIN_SAMPLED_CARRIERS
+    )
+    parser.add_argument("--release-id", default=None)
+    args = parser.parse_args(argv)
+
+    receipt_path = args.sample_receipt
+    if receipt_path is None:
+        candidate = args.export.resolve().parent / "sample_receipt.json"
+        receipt_path = candidate if candidate.exists() else None
+    receipt = None if receipt_path is None else json.loads(receipt_path.read_text())
+    report = probe_export(
+        args.export,
+        args.out,
+        sample_receipt=receipt,
+        receipt_path=receipt_path,
+        source_export=args.source_export,
+        source_settlement=not args.no_source_settlement,
+        stages=tuple(stage.strip() for stage in args.stages.split(",") if stage),
+        batch_size=args.batch_size,
+        target_surface=args.target_surface,
+        dropped_congressional_district_targets=(
+            args.dropped_congressional_district_targets
+        ),
+        reference_smoke=None
+        if args.reference_smoke is None
+        else json.loads(args.reference_smoke.read_text()),
+        reference_manifest=None
+        if args.reference_manifest is None
+        else json.loads(args.reference_manifest.read_text()),
+        se_multiplier=args.se_multiplier,
+        min_sampled_carriers=args.min_sampled_carriers,
+        release_id=args.release_id,
+    )
+    summary = report["summary"]
+    print(
+        f"[probe] {len(summary['authoritative_failures'])} authoritative and "
+        f"{len(summary['informational_failures'])} informational failure(s); "
+        f"report {Path(args.out) / REPORT_FILENAME}",
+        flush=True,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    os.environ.setdefault("PYTHONUNBUFFERED", "1")
+    sys.exit(main())
