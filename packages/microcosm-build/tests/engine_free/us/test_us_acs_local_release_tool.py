@@ -767,6 +767,107 @@ def _work_disability_receipt(**column_overrides) -> dict:
     return receipt
 
 
+_INCOME_TRANSFER_COLUMNS = (
+    "child_support_received",
+    "child_support_expense",
+    "workers_compensation",
+    "disability_benefits",
+    "taxable_401k_distributions",
+    "taxable_403b_distributions",
+    "taxable_sep_distributions",
+    "keogh_distributions",
+    "tax_exempt_ira_distributions",
+)
+
+
+def _income_receipt(**overrides) -> dict:
+    receipt = {
+        "issue": "microcosm#1022",
+        "donor_channel": "asec",
+        "columns": {
+            column: {"imputed_rows": 3, "unmodeled_rows": 0}
+            for column in _INCOME_TRANSFER_COLUMNS
+        },
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def _staging_income_summary(**overrides) -> dict:
+    """A current staging run through the income transfer (microcosm#1022)."""
+
+    summary = _staging_work_disability_summary(
+        acs_local_income_transfer=_income_receipt(),
+        acs_local_income_transfer_gate={
+            "name": "acs_local_income_transfer_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_work_disability_summary(),
+        _staging_income_summary(acs_local_income_transfer_gate=None),
+        _staging_income_summary(acs_local_income_transfer=None),
+        _staging_income_summary(
+            acs_local_income_transfer_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_income_summary(acs_local_income_transfer_gate={"passed": "true"}),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(issue="microcosm#1021")
+        ),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(donor_channel="puf")
+        ),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(
+                columns={
+                    column: {"imputed_rows": 3, "unmodeled_rows": 0}
+                    for column in _INCOME_TRANSFER_COLUMNS[1:]
+                }
+            )
+        ),
+        _staging_income_summary(
+            acs_local_income_transfer=_income_receipt(
+                columns={
+                    column: {"imputed_rows": 3, "unmodeled_rows": 2}
+                    for column in _INCOME_TRANSFER_COLUMNS
+                }
+            )
+        ),
+    ],
+    ids=[
+        "pre-1022-staging",
+        "no-gate",
+        "no-receipt",
+        "failed-gate",
+        "truthy-gate",
+        "wrong-issue",
+        "wrong-donor-channel",
+        "missing-column",
+        "unmodeled-rows",
+    ],
+)
+def test_income_transfer_consumers_refuse_a_staging_run_without_the_pass(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1022.*Re-run"):
+        module._require_local_income_transfer(summary)
+
+
+def test_income_transfer_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_income_summary()
+    assert (
+        module._require_local_income_transfer(summary)
+        == summary["acs_local_income_transfer"]
+    )
+
+
 @pytest.mark.parametrize(
     "summary",
     [
@@ -973,6 +1074,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
         },
         "acs_local_work_disability_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_income_transfer_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -1710,6 +1817,25 @@ def _stub_local_work_disability_gate(
     monkeypatch.setattr(module, "acs_local_work_disability_signal_gate", gate)
 
 
+def _stub_local_income_gate(module, monkeypatch, *, passed=True) -> None:
+    """Make the ACS local income transfer gate pass (or fail); its tests
+    (test_us_acs_local_income.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt):
+        return GateResult(
+            name="acs_local_income_transfer_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: child_support_received has 2 missing row(s).",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_income_transfer_signal_gate", gate)
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -1729,6 +1855,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     _stub_local_take_up_gate(module, monkeypatch)
     _stub_local_immigration_gate(module, monkeypatch)
     _stub_local_work_disability_gate(module, monkeypatch)
+    _stub_local_income_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -2000,6 +2127,51 @@ def test_do_finalize_immigration_gate_fails_on_default_filled_acs_rows(
     )
 
 
+def test_do_finalize_hard_fails_on_a_failed_income_transfer_gate(tmp_path, monkeypatch):
+    """microcosm#1022: a failed income transfer gate blocks simulation
+    readiness and is recorded bound to the evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    _stub_local_income_gate(module, monkeypatch, passed=False)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_income_transfer_signal" in str(exc.value)
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_income_transfer_signal"]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert (
+        "acs_local_income_transfer_signal" in summary["simulation_readiness_blockers"]
+    )
+
+
+@requires_pytables
+@pytest.mark.parametrize("income_state", ["missing", "failed", "truthy", "stale"])
+def test_package_requires_a_current_income_transfer_gate(
+    tmp_path, monkeypatch, income_state
+):
+    """microcosm#1022: a report finalized before the income transfer gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        income_state=income_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_income_transfer_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
 def test_do_finalize_hard_fails_on_a_failed_work_disability_gate(tmp_path, monkeypatch):
     """microcosm#1021: a failed work/disability gate blocks simulation
     readiness and is recorded bound to the evaluated bytes."""
@@ -2226,6 +2398,7 @@ def _package_args_with_hours(
     take_up_state="passed",
     immigration_state="passed",
     work_disability_state="passed",
+    income_state="passed",
 ):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
@@ -2288,6 +2461,15 @@ def _package_args_with_hours(
         work_disability_gate["artifact_sha256"] = "0" * 64
     if gates and work_disability_state != "missing":
         gates["acs_local_work_disability_signal"] = work_disability_gate
+    income_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if income_state == "failed":
+        income_gate.update(passed=False, failures=["invented missing income"])
+    elif income_state == "truthy":
+        income_gate["passed"] = "true"
+    elif income_state == "stale":
+        income_gate["artifact_sha256"] = "0" * 64
+    if gates and income_state != "missing":
+        gates["acs_local_income_transfer_signal"] = income_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {

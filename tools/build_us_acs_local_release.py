@@ -17,9 +17,10 @@ package; each is separately resumable):
                 irs_soi}; ``--soi-mode state`` by default -- Build O's
                 state-geography SOI contract -- with ``totals`` and ``full``
                 as explicit opt-ins), refuse a staging run that records no
-                passing ACS local immigration stage (microcosm#1020) or no
-                passing native ACS work/disability stage (microcosm#1021),
-                seed ACS-row SNAP/TANF take-up (microcosm#1019) and fill
+                passing ACS local immigration stage (microcosm#1020), no
+                passing native ACS work/disability stage (microcosm#1021) or
+                no passing ACS local income transfer (microcosm#1022), seed
+                ACS-row SNAP/TANF take-up (microcosm#1019) and fill
                 the ACS rows' discretionary ABAWD exemption, housing-
                 assistance receipt and Medicare take-up without the engine
                 (microcosm#1022; the consumer export re-derives the same
@@ -78,6 +79,14 @@ from microcosm.build.us_runtime.acs_local_immigration import (
     ACS_LOCAL_IMMIGRATION_GATE_NAME,
     ACS_LOCAL_IMMIGRATION_ISSUE,
     acs_local_immigration_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_income import (
+    ACS_LOCAL_INCOME_DONOR_CHANNEL,
+    ACS_LOCAL_INCOME_SHARED_RETIREMENT_COMPONENTS,
+    ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
+    ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
+    ACS_LOCAL_INCOME_TRANSFER_ISSUE,
+    acs_local_income_transfer_signal_gate,
 )
 from microcosm.build.us_runtime.acs_local_take_up import (
     ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
@@ -393,6 +402,31 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
                 "recipient the transferred take-up flag records",
                 "the engine default True enrolls every Medicare-eligible ACS "
                 "person regardless of measured HINS3 coverage",
+            ),
+            strict=True,
+        )
+    },
+    # microcosm#1022: the income default, 0, drops every ACS recipient's
+    # income; staging's separate ASEC-channel pass fills the ACS rows and the
+    # donor release carries its own measured or imputed amounts.
+    **{
+        ("person", column): (
+            f"the engine default 0 drops {reason} for every ACS recipient "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}); re-run staging with the "
+            "current builder"
+        )
+        for column, reason in zip(
+            ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
+            (
+                "child support received, SNAP and SSI unearned income",
+                "child support paid, the SNAP child-support deduction",
+                "workers' compensation, SNAP and SSI unearned income",
+                "non-SSA disability benefits, SNAP and SSI unearned income",
+                "401(k) distributions, gross and SNAP unearned income",
+                "403(b) distributions, gross and SNAP unearned income",
+                "SEP distributions, gross and SNAP unearned income",
+                "Keogh distributions, gross and SNAP unearned income",
+                "Roth-IRA distributions, SNAP and SSI unearned income",
             ),
             strict=True,
         )
@@ -1071,10 +1105,11 @@ def do_materialize(args) -> None:
             "reviewed_engine_input_nulls register."
         )
     staging_summary = _load_json(summary_path)
-    # microcosm#1020/#1021: refuse a pre-change staging run before hashing or
-    # loading.
+    # microcosm#1020/#1021/#1022: refuse a pre-change staging run before
+    # hashing or loading.
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
     log("hashing staging inputs for the run identity …")
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
@@ -1213,12 +1248,13 @@ def do_calibrate(args) -> None:
     identity = _verify_run_identity(args)
     # Refuse a pre-#1019 checkpoint before hours of solving, not at export.
     _recorded_take_up(identity)
-    # Likewise a checkpoint materialized from a pre-#1020 or pre-#1021
-    # staging run: the consumer export at the end of this stage would refuse
-    # its summary.
+    # Likewise a checkpoint materialized from a pre-#1020, pre-#1021 or
+    # pre-#1022-income staging run: the consumer export at the end of this
+    # stage would refuse its summary.
     staging_summary = _load_json(_staging_summary_path(args))
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
     checkpoint_h5 = args.checkpoint_dir / "target_frame_lean.h5"
     registry_path = args.checkpoint_dir / "target_registry.json"
     registry_sha = _sha256(registry_path)
@@ -1415,6 +1451,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     staging_summary = _load_json(_staging_summary_path(args))
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
+    _require_local_income_transfer(staging_summary)
     frame = _load_staging_frame(args.staging_h5)
     _require_local_hours(frame, staging_summary)
     frame, take_up = _with_local_take_up(frame, seed=recorded_take_up["seed"])
@@ -1811,6 +1848,37 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_local_income_transfer",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "columns": list(ACS_LOCAL_INCOME_TRANSFER_COLUMNS),
+            "reason": (
+                "ACS rows get child support received and paid, workers' "
+                "compensation, non-SSA disability benefits and 401(k)/403(b)/"
+                "SEP/Keogh/Roth-IRA distributions from a separate local-lane "
+                f"QRF pass ({ACS_LOCAL_INCOME_TRANSFER_ISSUE}), outside the "
+                "shared declared transfer plan and its execution contract. "
+                "The ACS asks none of them separately (OIP and RETP are "
+                "combined amounts), so the pass fits on the donor's ASEC "
+                "observation role, the measured CPS values, never the PUF "
+                "clone role's CPS-trained predictions, with the existing "
+                "transfer predictors (ACS RETP among them; OIP is not "
+                "loaded). The shared plan already transfers "
+                + ", ".join(ACS_LOCAL_INCOME_SHARED_RETIREMENT_COMPONENTS)
+                + ", so this pass transfers only the other account types and "
+                "refuses any overlap with the shared plan."
+            ),
+            "treatment": (
+                "Gated by acs_local_income_transfer_signal at staging and "
+                "finalize (complete, non-negative amounts on both spines, "
+                "ACS signal where the donor has recipients, a complete "
+                "ASEC-channel receipt); ACS/donor recipient-share and "
+                "recipient-mean ratios outside the review band are "
+                "reported, not failed."
+            ),
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -1950,6 +2018,43 @@ def _require_local_work_disability(staging_summary: dict) -> dict:
     return receipt
 
 
+def _require_local_income_transfer(staging_summary: dict) -> dict:
+    """The staging income-transfer receipt (microcosm#1022), or refuse it.
+
+    Staging runs a separate ASEC-channel QRF pass for the SNAP-relevant income
+    leaves the shared plan does not carry, and gates them before writing the
+    H5. A summary without a passing receipt and gate is a pre-#1022 staging
+    run, whose ACS rows reach the reviewed-null fill with no child support,
+    workers' compensation, disability benefits or account distributions.
+    """
+
+    receipt = staging_summary.get("acs_local_income_transfer")
+    gate = staging_summary.get("acs_local_income_transfer_gate")
+    columns = receipt.get("columns") if isinstance(receipt, dict) else None
+    complete = isinstance(columns, dict) and all(
+        isinstance(columns.get(column), dict)
+        and type(columns[column].get("imputed_rows")) is int
+        and columns[column].get("unmodeled_rows") == 0
+        for column in ACS_LOCAL_INCOME_TRANSFER_COLUMNS
+    )
+    if (
+        not complete
+        or receipt.get("issue") != ACS_LOCAL_INCOME_TRANSFER_ISSUE
+        or receipt.get("donor_channel") != ACS_LOCAL_INCOME_DONOR_CHANNEL
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS local income transfer "
+            f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}): the ACS rows' child support, "
+            "workers' compensation, disability benefits and 401(k)/403(b)/SEP/"
+            "Keogh/Roth-IRA distributions would be the engine default 0. Re-run "
+            "staging (tools/build_us_acs_multispine_base.py) with the current "
+            "builder."
+        )
+    return receipt
+
+
 def do_finalize(args) -> None:
     from microcosm.build.us_runtime.hours_worked import (
         US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
@@ -2030,6 +2135,12 @@ def do_finalize(args) -> None:
         receipt=staging_summary.get("acs_local_work_disability"),
         require_weeks_worked=False,
     )
+    # microcosm#1022: refuse transferred ACS income leaves that are missing,
+    # negative or carry no signal on the packaged bytes, or a staging receipt
+    # that is not the complete ASEC-channel pass.
+    income_gate = acs_local_income_transfer_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_income_transfer")
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -2094,6 +2205,12 @@ def do_finalize(args) -> None:
             "detail": dict(work_disability_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
+        ACS_LOCAL_INCOME_TRANSFER_GATE_NAME: {
+            "passed": bool(income_gate.passed),
+            "failures": list(income_gate.failures),
+            "detail": dict(income_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
             # per-row losses at the same cap); the solve must also have
@@ -2156,7 +2273,14 @@ def do_finalize(args) -> None:
                 "(microcosm#1021; reviewed limitation "
                 "acs_work_disability_inputs). Native ACS weeks_worked is "
                 "staged but held back from the export until "
-                f"{WEEKS_WORKED_EXPORT_BLOCKER}."
+                f"{WEEKS_WORKED_EXPORT_BLOCKER}. ACS child support "
+                "received/paid, workers' compensation, disability benefits "
+                "and 401(k)/403(b)/SEP/Keogh/Roth-IRA distributions come from "
+                "a separate local QRF pass on the donor's ASEC observation "
+                "role, outside the shared transfer plan, gated by "
+                "acs_local_income_transfer_signal "
+                f"({ACS_LOCAL_INCOME_TRANSFER_ISSUE}; reviewed limitation "
+                "acs_local_income_transfer)."
             ),
         },
         "spine_composition": {
@@ -2207,6 +2331,7 @@ def do_finalize(args) -> None:
             ACS_LOCAL_TAKE_UP_GATE_NAME,
             ACS_LOCAL_IMMIGRATION_GATE_NAME,
             ACS_LOCAL_WORK_DISABILITY_GATE_NAME,
+            ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -2454,6 +2579,9 @@ def do_package(args) -> dict:
     # microcosm#1021: nor, before the work/disability gate existed, for the
     # packaged native ACS disability flags.
     _require_bound_finalize_gate(gates, ACS_LOCAL_WORK_DISABILITY_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the income-transfer gate existed, for the
+    # packaged ACS child support, disability and distribution income.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_INCOME_TRANSFER_GATE_NAME, h5_sha)
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report
