@@ -436,6 +436,19 @@ def test_inverse_cdf_gives_each_block_its_population_share(populations, grid):
     assert edge.tolist() == [0, len(population) - 1]
 
 
+def test_block_intervals_are_half_open_on_the_left() -> None:
+    """Block i owns ``[C_{i-1}, C_i)`` of the cumulative population: a
+    uniform landing exactly on a boundary belongs to the next block, 0 to the
+    first block, and 1 (``stable_identity_uniforms`` can round to 1.0) to
+    the last."""
+
+    population = np.asarray([2.0, 3.0, 5.0])
+    strata = _BlockStrata(np.zeros(3, dtype=np.int64), np.arange(3), population)
+    keys = np.zeros(6, dtype=np.int64)
+    uniforms = np.asarray([0.0, 0.2 - 1e-12, 0.2, 0.5, 0.5 - 1e-12, 1.0])
+    assert strata.draw(keys, uniforms).tolist() == [0, 0, 1, 2, 1, 2]
+
+
 def test_empirical_block_shares_converge_to_population_shares() -> None:
     population = np.asarray([1, 3, 10, 30, 100, 300, 1000, 5, 50, 500], dtype=np.int64)
     blocks = {

@@ -53,7 +53,9 @@ def synthetic_blocks(seed: int = 0, *, states=(1, 2, 36)) -> dict[str, np.ndarra
             county = 1 + 2 * county_index
             cbsa = int(rng.choice([0, 10000 + state * 10 + county_index]))
             for tract_index in range(int(rng.integers(1, 4))):
-                tract = 100 * (tract_index + 1)
+                # Nonzero last digit, so a tract derived from a wrong prefix
+                # length cannot coincide with the true one.
+                tract = 101 * (tract_index + 1)
                 puma = state * 10**5 + 100 + int(rng.integers(0, n_puma))
                 for block_index in range(int(rng.integers(1, 5))):
                     block = int(

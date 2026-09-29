@@ -1397,6 +1397,14 @@ def us_block_location_gate(
                 f"{column}: {int(differs.sum())} row(s) disagree with the block's "
                 "ladder lookup"
             )
+    # Tract and county are structural prefixes of the block geoid; check them
+    # directly too, independently of derive_us_block_geography.
+    for column, width in (("tract_geoid", 11), ("county_fips", 5)):
+        prefixes = text.astype(f"<U{width}")
+        if (household[column].astype(str).to_numpy() != prefixes).any():
+            failures.append(
+                f"{column}: row(s) are not the first {width} digits of block_geoid"
+            )
     state = pd.to_numeric(household[state_fips_column], errors="coerce").to_numpy()
     mismatch = state != (blocks // _BLOCK_STATE_DIVISOR)
     if mismatch.any():
