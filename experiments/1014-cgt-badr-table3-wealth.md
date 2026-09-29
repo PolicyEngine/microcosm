@@ -183,3 +183,25 @@ effective sample size 5,176, liability +3.5 percent, worst tax-by-age row +9.6 p
 the coherence figures above unchanged. Runs `spine-assessment-1014-{ctl1012,c4m1012,wp3m1012}`; outputs
 `phase-b/cgt-phase-b-m1012.json`, `wp3/coherence-m1012.json` and `wp3/calib-summary-m1012.txt` under the
 evidence directory.
+
+## Part F: the student-loans realization gate (microcosm#1049)
+
+Every licensed spine in this lane was built with an uncommitted relaxation of the
+`uk_stage_student_loans_realization` threshold, because since #1006 the gate refused every spine built
+at main's head: PLAN_5's reported England count had risen to 9,183 of the 10,000 SLC liable stock, the
+top-up's shortfall of 817 people was about one survey person's weight, and the Bernoulli draw realised
+it as two rows of 1,718 people (+110 percent against the 1.0 rule) while the final count, 10,901, went
+unchecked. The fix replaces the draw with the identity-keyed greedy walk the gas-connection imposition
+uses and re-bases the gate on what the walk controls; a pool lighter than its shortfall is receipted as
+exhausted rather than refused.
+
+Spine `spine-fix1049` was built at the fix commit with no relaxation: every spine gate passes, the
+student-loans gate included. PLAN_5's walk takes 19 rows for 817.1 people against the
+817.2 shortfall (gap -0.13, lightest skipped weight 0.30), so England ends at
+9,999.9 against the 10,000 stock. PLAN_2's pool of 2,240 rows and 2.04m people is lighter than
+its 7.55m shortfall, so it is taken whole and recorded as exhausted at 38.3 percent of the 8.94m
+stock, the same assignment as before. The calibration against the PR head's arm on the same base (which
+differs only in the PLAN_5 top-up: 19 rows instead of the draw's two): loss 0.0084 against 0.0084,
+effective sample size 5,165 against 5,173, CGT liability GBP 23.30bn against 23.33bn, the
+worst tax-by-age row 7.5 against 7.7 percent, Table 3 within 0.4 and Table 4.1
+within 2.6 percent, and the entrants fence 129,293 against 129,433.
