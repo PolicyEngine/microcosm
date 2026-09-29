@@ -41,7 +41,8 @@ The pool-global `SPM_ID` pattern the brief points at is exactly what
 instead reconstructs source membership through `(source_year, PERIDNUM)`.
 
 **Where they do exist:** the pinned complete Census ASEC person CSVs
-(`pppub23.csv`, `pppub24.csv`, `pppub25.csv`, income years 2022-2024), pinned in
+(`pppub23.csv`, `pppub24.csv`, `pppub25.csv`, income years 2022-2024; since
+2026-09-28 also `pppub26.csv`, income year 2025), pinned in
 `education_assistance_source.ASEC_EDUCATION_ASSISTANCE_ARCHIVES` and re-exposed
 as `spm_role_source.ASEC_SPM_ROLE_SOURCES`, cached by
 `fetch_asec_education_assistance_source` under
@@ -140,7 +141,8 @@ Everything after the read (person count, key, missing-value, integer, role,
 reconciliation and unit-count checks) is shared and unchanged. In an
 independent review on 2026-09-23 (a local run, not a committed receipt), the
 archive and the extracted CSV gave equal frames and equal source checks for
-each of the three pinned vintages: 146,133 / 144,265 / 142,125 persons and
+each of the three Build P vintages (income years 2022-2024):
+146,133 / 144,265 / 142,125 persons and
 59,181 / 58,711 / 58,147 units. `test_us_spm_role_source.py` pins, on a
 synthetic fixture, that the two forms derive identical roles, evidence and
 provenance, and that an unpinned archive, an archive without the pinned
@@ -195,7 +197,8 @@ person/age/unit/role fingerprint agree with the current frame; the column is
 present, Boolean-valued, and not degenerate;
 `check_spm_composition` on the frame reports zero units without a classified
 adult with `role_source == "source_column"`; and two plausibility bands taken
-from the three pinned vintages — the role share among all persons (measured
+from the three Build P vintages (income years 2022-2024) — the role
+share among all persons (measured
 0.601–0.603 per vintage on the phase-2 base, 0.567 on Build P; band 0.40–0.75)
 and among 15-to-17-year-olds (measured 1.49 %–1.73 % per vintage; band
 0.3 %–6 %).

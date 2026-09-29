@@ -191,7 +191,10 @@ def test_raw_bytes_codec_reads_one_regular_file_verbatim(tmp_path: Path) -> None
     payload = b"\x00lookup\xff" * 3
     source = tmp_path / "table.npz"
     source.write_bytes(payload)
-    assert SOURCE_CODECS.bytes_names() == ("raw-bytes-v1",)
+    # The shipped registry is process-global and extensible by design: a country
+    # adapter registers its own raw-byte codecs before its graphs run, so this
+    # checks the shipped codec is present, not that it is alone.
+    assert "raw-bytes-v1" in SOURCE_CODECS.bytes_names()
     assert "raw-bytes-v1" not in SOURCE_CODECS.names()
     assert SOURCE_CODECS.get("raw-bytes-v1") is load_raw_bytes
     assert load_source_bytes("raw-bytes-v1", source) == payload
