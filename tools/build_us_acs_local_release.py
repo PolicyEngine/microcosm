@@ -95,6 +95,7 @@ from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_TRANSFER_COLUMNS,
     ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
     ACS_LOCAL_INCOME_TRANSFER_ISSUE,
+    ACS_LOCAL_INCOME_TRANSFER_METHOD,
     acs_local_income_transfer_signal_gate,
 )
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
@@ -2206,9 +2207,22 @@ def finalize_reviewed_limitations(
                 "The ACS asks none of them separately (OIP and RETP are "
                 "combined amounts), so the pass fits on the donor's ASEC "
                 "observation role, the measured CPS values, never the PUF "
-                "clone role's CPS-trained predictions, with the existing "
-                "transfer predictors (ACS RETP among them; OIP is not "
-                "loaded). The shared plan already transfers "
+                "clone role's CPS-trained predictions. It uses the existing "
+                "transfer predictors plus two local-only predictor "
+                "extensions of its own transfer call, which leave the shared "
+                "execution contract and the shared transfer's draws "
+                "unchanged: ACS OIP (times ADJINC) for the child support "
+                "family only, against a donor analog of UC, workers' "
+                "compensation, VA, child support, alimony, strike and other "
+                "ASEC other income (ASEC FIN_VAL, contributions from outside "
+                "the household, is not carried); and, for the "
+                "work/disability and retirement-distribution families, an "
+                "ACS-aligned RETP analog that adds the five account "
+                "distributions and disability benefits to the shared pension "
+                "and regular-IRA analog (survivor income and other-account "
+                "distributions are not carried). OIP is withheld from "
+                "workers' compensation pending review. The shared plan "
+                "already transfers "
                 + ", ".join(ACS_LOCAL_INCOME_SHARED_RETIREMENT_COMPONENTS)
                 + ", so this pass transfers only the other account types and "
                 "refuses any overlap with the shared plan."
@@ -2217,7 +2231,9 @@ def finalize_reviewed_limitations(
                 "Gated by acs_local_income_transfer_signal at staging and "
                 "finalize (complete, non-negative amounts on both spines, "
                 "ACS signal where the donor has recipients, a complete "
-                "ASEC-channel receipt); ACS/donor recipient-share and "
+                "ASEC-channel receipt with the reviewed method, each "
+                "predictor extension on exactly its own families, and ACS "
+                "OIP and donor coverage); ACS/donor recipient-share and "
                 "recipient-mean ratios outside the review band are "
                 "reported, not failed."
             ),
@@ -2468,7 +2484,9 @@ def _require_local_income_transfer(staging_summary: dict) -> dict:
     leaves the shared plan does not carry, and gates them before writing the
     H5. A summary without a passing receipt and gate is a pre-#1022 staging
     run, whose ACS rows reach the reviewed-null fill with no child support,
-    workers' compensation, disability benefits or account distributions.
+    workers' compensation, disability benefits or account distributions. A
+    receipt with another method predates the reviewed OIP and aligned-RETP
+    predictors and is refused too.
     """
 
     receipt = staging_summary.get("acs_local_income_transfer")
@@ -2483,6 +2501,7 @@ def _require_local_income_transfer(staging_summary: dict) -> dict:
     if (
         not complete
         or receipt.get("issue") != ACS_LOCAL_INCOME_TRANSFER_ISSUE
+        or receipt.get("method") != ACS_LOCAL_INCOME_TRANSFER_METHOD
         or receipt.get("donor_channel") != ACS_LOCAL_INCOME_DONOR_CHANNEL
         or not isinstance(gate, dict)
         or gate.get("passed") is not True
