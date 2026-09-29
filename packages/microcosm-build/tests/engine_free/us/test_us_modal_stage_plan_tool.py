@@ -11,12 +11,10 @@ from __future__ import annotations
 import copy
 import dataclasses
 import hashlib
-import importlib.util
 import json
 import os
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -28,6 +26,8 @@ from test_support.microcosm_build.us_modal_stage_plan_tool import (
     LADDER_SHA,
     ROOT,
     STAGING_SHA,
+    base_plan_data,
+    load_app,
     plan_lib,
 )
 from test_support.microcosm_build.us_modal_stage_plan_tool import (
@@ -40,32 +40,9 @@ from test_support.microcosm_build.us_modal_stage_plan_tool import (
 
 @pytest.fixture
 def app(monkeypatch):
-    """``tools/modal_us_stage.py`` imported against a stub ``modal`` module.
+    """``tools/modal_us_stage.py`` imported against a stub ``modal`` module."""
 
-    The stub answers ``is_local()`` with False, so the module defines its
-    image and functions without reading a plan or contacting Modal; volume
-    calls (commit, reload) are recorded, not performed.
-    """
-
-    stub = MagicMock(name="modal")
-    stub.is_local.return_value = False
-    # @app.function(...) keeps the function and records its Modal options.
-    stub.App.return_value.function.side_effect = lambda **options: (
-        lambda function: setattr(function, "modal_options", options) or function
-    )
-    stub.App.return_value.local_entrypoint.side_effect = lambda **_: lambda f: f
-    stub.current_input_id.return_value = "in-test"
-    stub.current_function_call_id.return_value = "fc-test"
-    monkeypatch.setitem(sys.modules, "modal", stub)
-    monkeypatch.setitem(sys.modules, "modal_us_stage_plan", plan_lib)
-    monkeypatch.setattr(sys, "path", list(sys.path))
-    spec = importlib.util.spec_from_file_location(
-        "modal_us_stage_under_test", ROOT / "tools" / "modal_us_stage.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(module)
-    return module
+    return load_app(monkeypatch)
 
 
 # --------------------------------------------------------------------------- #
@@ -265,6 +242,7 @@ def test_the_committed_plans_parse() -> None:
         "us-modal-stage-example-plan.json",
         "us-modal-stage-smoke-plan.json",
         "us-modal-stage-acceptance-20260923-plan.json",
+        "us-modal-stage-route-a-base-plan.json",
     ):
         plan_lib.parse_plan(json.loads((ROOT / "docs" / name).read_text()))
 
@@ -1067,6 +1045,7 @@ def test_app_run_stage_ends_the_attempt_with_its_outcome(
             "tree_clean": True,
             "branch_verified": True,
             "tool_present": True,
+            "tree_files_verified": True,
         },
     )
     error = app._Refusal("lock held") if raised == "refusal" else OSError("disk full")
@@ -1243,6 +1222,10 @@ def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None
             for flag in (False, True)
         ]
         + [plan_lib.parse_plan(_smoke_plan_data())]
+        + [
+            plan_lib.parse_plan(base_plan_data(nonpreemptible=flag))
+            for flag in (False, True)
+        ]
     }
     assert keys <= set(app.RUNNERS)
     for (name, nonpreemptible), runner in app.RUNNERS.items():

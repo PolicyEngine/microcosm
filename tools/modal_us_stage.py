@@ -137,6 +137,9 @@ def _git(*parts: str) -> str:
 def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
     head = _git("rev-parse", "HEAD")
     clean = _git("status", "--porcelain") == ""
+    # Files of the pinned tree the tool reads by path (the base's district
+    # crosswalk), hashed against the registration.
+    tree_files = plan_lib.tree_file_rows(plan.tool, plan_lib.IMAGE_REPO_ROOT)
     return {
         "head": head,
         "head_matches_plan": head == plan.commit,
@@ -145,6 +148,8 @@ def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
         **_verify_branch(plan),
         "tool_present": plan.tool.script is None
         or (Path(plan_lib.IMAGE_REPO_ROOT) / plan.tool.script).is_file(),
+        "tree_files": tree_files,
+        "tree_files_verified": not any("problem" in row for row in tree_files),
     }
 
 
@@ -348,12 +353,23 @@ def _parse_check(
 
 
 class _BudgetWatch(threading.Thread):
-    """Stop the tool once the plan's max_wall_seconds has passed."""
+    """Stop the tool once the plan's max_wall_seconds has passed.
 
-    def __init__(self, proc: subprocess.Popen, max_wall_seconds: int | None) -> None:
+    The tool runs in its own process group (``process_group=0``), and the
+    whole group is stopped: a tool that runs stages as child interpreters
+    must not leave one running behind the hashing and mirroring.
+    """
+
+    def __init__(
+        self,
+        proc: subprocess.Popen,
+        max_wall_seconds: int | None,
+        grace_seconds: float = 60.0,
+    ) -> None:
         super().__init__(daemon=True)
         self.proc = proc
         self.max_wall_seconds = max_wall_seconds
+        self.grace_seconds = grace_seconds
         self.done = threading.Event()
         self.fired = False
 
@@ -362,11 +378,7 @@ class _BudgetWatch(threading.Thread):
             return
         self.fired = True
         print(f"BUDGET: stopping the tool after {self.max_wall_seconds}s", flush=True)
-        self.proc.terminate()
-        try:
-            self.proc.wait(timeout=60)
-        except subprocess.TimeoutExpired:
-            self.proc.kill()
+        plan_lib.stop_process_group(self.proc, grace_seconds=self.grace_seconds)
 
 
 def _modal_ids() -> dict[str, str | None]:
@@ -526,6 +538,21 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(f"branch not verified: {git['branch_check']}")
     if not git["tool_present"]:
         problems.append(f"{plan.tool.script} is not in commit {plan.commit}")
+    problems += [
+        f"tree file {row['name']} ({row['path']}): {row['problem']}"
+        for row in git["tree_files"]
+        if "problem" in row
+    ]
+    # What this (check-class) container's work disk reports. The stage's own
+    # container checks its own disk before staging; this is an early hint.
+    work.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(work)
+    report["work_disk"] = {
+        "total_bytes": disk.total,
+        "free_bytes": disk.free,
+        "stage_needs_gib": plan.stage_spec.min_free_disk_gib,
+        "would_refuse": plan_lib.work_disk_problem(plan.stage_spec, disk.free),
+    }
 
     # The probe and the parser run in the environment the stage would get.
     tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
@@ -622,6 +649,7 @@ def _run_stage(plan_data: dict) -> dict:
             "tree_clean",
             "branch_verified",
             "tool_present",
+            "tree_files_verified",
         )
     ):
         raise plan_lib.PlanError(f"image clone does not match the plan: {git}")
@@ -710,6 +738,15 @@ def _attempt_stage(
             flush=True,
         )
 
+    # 4b. A stage that declares its scratch need refuses a container whose
+    #     work disk is smaller, before paying to stage anything.
+    work.mkdir(parents=True, exist_ok=True)
+    disk = shutil.disk_usage(work)
+    work_disk = {"total_bytes": disk.total, "free_bytes_before_staging": disk.free}
+    disk_problem = plan_lib.work_disk_problem(plan.stage_spec, disk.free)
+    if disk_problem:
+        raise _Refusal(disk_problem)
+
     # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
     #    verified against the run's latest receipt before anything uses it;
     #    then the inputs to stable local paths, each digest verified.
@@ -727,13 +764,24 @@ def _attempt_stage(
         )
     prior = [{"file": name, "sha256": sha} for name, _, sha in receipts]
     inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
+    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    # Files the tool would otherwise fetch into its home cache, copied from
+    # the staged inputs and verified (the base's 2023 ASEC archive).
+    home_seeds = plan_lib.seed_home_cache(
+        plan,
+        {
+            name: plan_lib.input_local_path(str(work), ref)
+            for name, ref in plan.inputs.items()
+        },
+        env.get("HOME") or Path.home(),
+    )
 
     # 6. The stage itself, in the pinned tree, logged to the state directory.
+    #    Its own process group, so the budget stops every process it spawns.
     argv = plan_lib.planned_argv(plan)
     started_at, started = _now(), time.time()
     log_path = state / "logs" / f"{plan.stage}-{started_at.replace(':', '')}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
     print(f"$ {' '.join(argv)}", flush=True)
     with open(log_path, "w") as log:
         proc = subprocess.Popen(
@@ -741,8 +789,10 @@ def _attempt_stage(
             cwd=plan_lib.IMAGE_REPO_ROOT,
             env=env,
             text=True,
+            stdin=subprocess.DEVNULL,  # a background group must not read a tty
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            process_group=0,
         )
         budget = _BudgetWatch(proc, budget_seconds)
         budget.start()
@@ -778,6 +828,8 @@ def _attempt_stage(
             "state_pushed": pushed,
             "tool_env_removed": env_removed,
             "modal": attempt.modal,
+            "work_disk": work_disk,
+            "home_seeds": home_seeds,
         },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
@@ -866,12 +918,44 @@ def run_stage_small(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
+# The PUF-support base's class. No ephemeral_disk: the default per-container
+# quota (512 GiB, modal.com/docs/guide/resources) holds its ~50 GB, and the
+# stage checks its free space before staging (StageSpec.min_free_disk_gib).
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.BASE.cpu,
+    memory=plan_lib.BASE.memory_mib,
+    timeout=plan_lib.BASE.timeout_s,
+    retries=0,
+)
+def run_stage_base(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.BASE.cpu,
+    memory=plan_lib.BASE.memory_mib,
+    timeout=plan_lib.BASE.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_base_nonpreemptible(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
 RUNNERS = {
     ("heavy", False): run_stage_heavy,
     ("heavy", True): run_stage_heavy_nonpreemptible,
     ("light", False): run_stage_light,
     ("light", True): run_stage_light_nonpreemptible,
     ("check", False): run_stage_small,
+    ("base", False): run_stage_base,
+    ("base", True): run_stage_base_nonpreemptible,
 }
 
 

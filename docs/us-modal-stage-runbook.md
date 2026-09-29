@@ -2,10 +2,12 @@
 
 Epic #956 acceleration item E: heavy US stages should not have to queue on
 the one 128 GiB build machine. This runbook covers the smallest working path:
-one registered tool (`tools/build_us_acs_local_release.py`, stages
-`materialize`, `calibrate`, `qa`, `finalize`, `package`, or `all`) run on
-Modal from a pinned commit, with inputs fetched by digest and outputs listed
-with sha256 receipts.
+a registered tool run on Modal from a pinned commit, with inputs fetched by
+digest and outputs listed with sha256 receipts. Two tools are registered:
+`tools/build_us_acs_local_release.py` (tool `us-acs-local-release`, stages
+`materialize`, `calibrate`, `qa`, `finalize`, `package`, or `all`) and Route
+A's PUF-support base, `tools/build_us_puf_support_base.py` (tool
+`us-puf-support-base`, stage `all`; see "Route A's base stage").
 
 Two files do the work:
 
@@ -13,8 +15,10 @@ Two files do the work:
   inputs, runs the tool and writes the receipt.
 - `tools/modal_us_stage_plan.py` is its pure half, standard library only.
   It validates plans, builds the argv, sizes resources, hashes and mirrors
-  files, and writes and verifies receipts. Unit tests:
-  `packages/microcosm-build/tests/test_us_modal_stage_plan_tool.py`.
+  files, and writes and verifies receipts. Unit tests (engine-free):
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_plan_tool.py`
+  and, for the base,
+  `packages/microcosm-build/tests/engine_free/us/test_us_modal_stage_puf_support_base.py`.
 
 Nothing here uploads to the Hugging Face Hub, touches `latest.json` or
 notifies anyone. The furthest a stage goes is `package`, which writes a
@@ -28,10 +32,11 @@ release directory onto the runs volume. Publication stays the human step in
    `docs/us-modal-stage-example-plan.json`). It names the tool, the stage, a
    `run_id`, a full 40-hex commit and the branch it was pushed on, and every
    input as `{uri, sha256}`. Options (`soi_mode`, `hh_chunk`, `epochs` and
-   so on) and environment overrides (`MICROCOSM_*`, `POPULACE_*`, and the
+   so on) and environment overrides (`MICROCOSM_*`, `POPULACE_*`, the
    thread counts `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
-   `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` and `BLIS_NUM_THREADS`)
-   come from allowlists; an environment variable whose name
+   `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` and `BLIS_NUM_THREADS`, and
+   `PYTHONUNBUFFERED`, so a plan can match a local run that set it) come
+   from allowlists; an environment variable whose name
    looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSW`, `SIGNING`,
    `CREDENTIAL`) is refused even under an allowed prefix. The runner sets the
    flags for input paths, checkpoints and outputs, and a plan cannot pass
@@ -126,16 +131,17 @@ local wall times in this table understate Modal's wall and cost.
 | finalize | 23.3 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | package | 21.8 GB, 79 s | light | 2 cores, 48 GiB | about $0.01 |
 | check | n/a | check | 2 cores, 8 GiB, 30 min timeout | cents |
+| PUF-support base (`all`) | 72.5 GB, 2,788 s wall, 6,238 CPU-s | base | 4 cores, 112 GiB, 6 h timeout | about $0.84 ($2.52 non-preemptible) |
 
 The prices are Modal's list prices for standard compute, read from
-modal.com/pricing on 22 September 2026: $0.0000131 per core-second and
-$0.00000222 per GiB-second. Modal bills the higher of the request and actual
-use. The heavy class costs about $1.21 an hour, so an 8-hour timeout costs at
-most about $9.70. With `"nonpreemptible": true` every figure is three times
+modal.com/pricing on 22 September 2026 and unchanged on 29 September:
+$0.0000131 per core-second and $0.00000222 per GiB-second. Modal bills the
+higher of the request and actual use. The heavy class costs about $1.21 an
+hour, so an 8-hour timeout costs at most about $9.70. With `"nonpreemptible": true` every figure is three times
 higher: about $3.63 an hour for the heavy class. The engine pass in
 materialize is single-threaded (CPU seconds roughly equal wall seconds), so
 extra cores would not speed it up. The table leaves out volume storage and
-image builds.
+image builds. The base class is sized in "Route A's base stage" below.
 
 ## Commands
 
@@ -173,7 +179,10 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 # 4. Run the stage. --detach keeps it running if this terminal goes away;
 #    the receipt lands on the runs volume either way. Set "max_wall_seconds"
 #    in the plan to cap the cost below the class's hard timeout: the runner
-#    stops the tool then, and the receipt says FAILED, stopped_at_budget.
+#    stops the tool then (SIGTERM to the tool's process group, which the
+#    tool runs in alone, so a stage child it spawned stops too; SIGKILL to
+#    whatever is left after 60 s), and the receipt says FAILED,
+#    stopped_at_budget.
 #    The budget covers every attempt that never finished: when Modal
 #    restarts a preempted container, the time the cut-short attempts ran
 #    comes off it (see "Preemption and restarts" below). A stop at the
@@ -376,6 +385,164 @@ loop over 80 chunks of households. If the chunks are independent, which
 this runbook has not checked in `materialize_chunked`, fanning them out
 across containers would let preemption lose one chunk instead of the run.
 
+## Route A's base stage
+
+On 29 September 2026 Max ruled to run only Route A's base stage on Modal:
+non-preemptible, capped at 4 hours of wall, about $15. The release, its
+preflight and certification stay on the build machine.
+
+**What runs.** Tool `us-puf-support-base` runs
+`tools/build_us_puf_support_base.py --stage all` with the command Route A's
+driver built for commit `4b57d15a` (`route_a.sh` section 4, recorded in the
+run directory's `base-config.json`), flag for flag and value for value. Only
+the paths differ: the inputs are staged at `/work/inputs/<role>/<file>`, the
+checkpoints go to `/work/state/base-checkpoints` and the output to
+`/work/state/base-out`. The scalar settings (target year 2024, seed 0, 32
+estimators, district seed 0, `--assign-congressional-districts`) are fixed
+in the registration, not plan options: a different setting is a different
+base, and changing it is a reviewed registry change. The tool's other flags
+(`--base-h5`, the smoke limit, the equivalence harness, the ladder escape
+hatches) are runner-owned, so no plan can pass them. A test holds the built
+argv equal to a copy of the local command with its paths tokenized
+(`packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json`).
+The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
+`route-a-base-4b57d15a287c`, branch `main`).
+
+- **Inputs.** Eleven files, content-addressed on `microcosm-us-stage-inputs`
+  with the digests `route_a.sh` verified on 23 September: the 2024, 2023
+  and 2022 ASEC H5s, `puf_2024.h5`, `puf_2015.csv`, `acs_2022.h5`, the
+  three ASEC Census person archives (`asecpub23csv.zip` to
+  `asecpub25csv.zip`), the Ledger feed `consumer_facts_us_c5e5bf8.jsonl`
+  and the block ladder `us_block_ladder_2020.npz`.
+- **The district crosswalk is not an input.** The tool reads it from the
+  pinned clone. The registration pins its sha256 (`c7cb040b…`, the
+  `4b57d15a` version; main has since changed the file), and the check and
+  the run refuse a clone whose copy differs.
+- **The 2023 ASEC archive is seeded, not downloaded.** Route A passes no
+  `--asec-2023-weeks-unemployed-source`, so the tool looks in
+  `~/.cache/microcosm/cps/asec_2023/` and downloads the archive from
+  www2.census.gov when it is missing. The build machine had it cached. The
+  runner copies the staged `asec_education_2022_zip` input there first (the
+  same file: the tool pins both to `d2e00025…`, and a plan with another
+  digest for that input is refused), so the stage makes no Census request.
+  The tool still verifies the archive itself. The receipt lists the copy
+  under `runner.home_seeds`.
+- **Environment.** The plan sets only `PYTHONUNBUFFERED=1`, as the local
+  run did. It sets no thread counts, because the local run set none;
+  Modal's container defaults apply, and the receipt records them
+  (`runner.thread_env`, `os_cpu_count`, `cpu_affinity`), as does the tool's
+  own `stage_run_context.json`. As in every stage, the tool runs with
+  `HF_HUB_OFFLINE=1`, which the local run's recorded environment did not
+  set. The base needs no Hub file: every source is passed as a path, and
+  the only fetch the tool itself calls is the Census download above (the
+  library fetches an ASEC person archive only for an unmapped year, and all
+  three are mapped).
+
+**Resources.** Class `base`: 4 cores, 112 GiB, a 6-hour timeout.
+
+- *Memory.* The local peak was 72.47 GB (67.5 GiB, `/usr/bin/time -l` of
+  the 16 September run under policyengine-us 1.819.0; not re-measured on
+  2.2.1). On 23 September Modal held 15 to 24 GB more than the build machine
+  at the same point of materialize, so the worst case seen is about 90 GiB;
+  112 GiB leaves about 22 GiB over that. The heavy class's 128 GiB would
+  put the capped run over $15 (below). Memory is a request, not a limit.
+- *CPU.* The base used 6,238 CPU-s in 2,788 s of wall, 2.2 cores on
+  average; 4 cores cover that.
+- *Disk.* The base writes about 50 GB: 44 GB of frame checkpoints, the
+  2.35 GB H5, about 2.4 GB of staged inputs and the seeded archive with its
+  extracted member. Modal gives each container a disk quota of 512 GiB by
+  default (modal.com/docs/guide/resources, read 29 September 2026: "a
+  per-container disk quota that defaults to 512 GiB"), so the function sets
+  no `ephemeral_disk`. The same page says the worker's own SSD also limits
+  writes, so the stage checks first: it refuses before staging anything
+  when `/work` has less than 70 GiB free (the build machine's admission
+  floor for the same command, 69 GiB). That refusal is not charged to the
+  budget, and the receipt records the free space it saw
+  (`runner.work_disk`).
+- *Timeout.* Six hours, the local supervisor's wall limit for the same
+  command. The plan's `max_wall_seconds` (14,400) stops the tool well
+  before; the timeout only bounds a stop or mirror that hangs.
+
+**The checkpoints are mirrored.** They live in the state directory, so the
+runner hashes them into the receipt and copies them to the runs volume when
+the tool exits. The run is non-preemptible, so preemption is not the risk;
+the budget is. At the per-chunk slowdowns measured for materialize on
+Modal (3.3 to 7.6 times the build machine), the 2,788-second local base
+would take 2.6 to 5.9 hours, and a stop at 4 hours without checkpoints
+would lose the whole run. With them, `--stage all` resumes from the last
+completed outer stage (`_run_staged_all`). Every path the tool locks into
+`stage_run_context.json` is the same in every attempt of the run, so a
+relaunch of the same plan resumes rather than refusing. The cost: one more
+hashing pass and one more copy of about 44 GB when the tool exits, the same
+pulled back and verified by a resuming attempt, and about 46 GB on the runs
+volume until it is deleted. The plan's estimate allows 30 minutes of runner
+time for this instead of the usual 15; that is an allowance, not a
+measurement. The `base-out` directory (the H5, its summary JSON and the
+capital-gains tail manifest, which the tool also copies to
+`base-checkpoints/artifacts/`) is mirrored either way.
+
+**The budget stop.** The tool runs in its own process group. At the budget
+the runner sends SIGTERM to the group and SIGKILL to whatever is left 60
+seconds later. `--stage all` runs each outer stage as a child interpreter;
+stopping only the parent (as the runner did before) would leave that child
+running with the log pipe open, and the runner, which reads the pipe to its
+end, would wait out the child's whole stage past the budget. The receipt
+then says FAILED with
+`stopped_at_budget`, and relaunching the same plan gets the whole budget
+again (see "Preemption and restarts"). That relaunch is another paid run
+of up to the same cost and needs Max's go.
+
+**Cost.** At the 14,400-second budget plus 30 minutes of runner time, the
+plan's list-price estimate is $14.63 non-preemptible. At the local wall it
+would be $2.52. A stage that ran into the 6-hour timeout would list at
+$19.51. Modal bills the higher of the request and actual use, so a run
+that bursts above 4 cores costs more than the estimate. The receipt records
+the container's wall and its cost.
+
+**Run it.** From a checkout that has this registration:
+
+```bash
+# 1. Inputs, on the build machine. The script re-hashes each file, refuses a
+#    mismatch with Route A's digest, and skips files already uploaded.
+/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/modal-base/upload_inputs.sh
+
+# 2. Validate locally: the argv, class base, and the $14.63 estimate.
+python3 tools/modal_us_stage_plan.py validate docs/us-modal-stage-route-a-base-plan.json
+
+# 3. Check on Modal (check class, cents): the clone and branch, the
+#    crosswalk digest, the pinned tool's _parse_args on the argv, and all
+#    eleven inputs hashed on the volume. Its work_disk field shows what the
+#    check container's /work reports against the stage's 70 GiB (a hint:
+#    the paid container checks its own disk before staging).
+MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
+  modal run tools/modal_us_stage.py
+
+# 4. Run it (paid, non-preemptible, up to about $15).
+MICROCOSM_MODAL_PLAN=docs/us-modal-stage-route-a-base-plan.json \
+  modal run --detach tools/modal_us_stage.py --run
+
+# 5. Fetch the receipts and base-out only, not the 44 GB of checkpoints,
+#    and verify base-out against the receipt. Check where the files landed
+#    (see Commands step 5) and point --state-root at the directory that
+#    holds base-out/.
+R=route-a-base-4b57d15a287c
+mkdir -p modal-runs/$R/state
+modal volume get microcosm-us-stage-runs runs/$R/receipts ./modal-runs/$R/
+modal volume get microcosm-us-stage-runs runs/$R/state/base-out ./modal-runs/$R/state/
+python3 tools/modal_us_stage_plan.py verify-receipt \
+  ./modal-runs/$R/receipts/all-<utc>.json \
+  --state-root ./modal-runs/$R/state --prefix base-out --strict
+```
+
+The release and certification still run locally: Route A's driver takes
+the base H5 from its run directory and runs the preflight, the release and
+the publisher's `--preflight-only` check on the build machine. The receipt
+proves which bytes Modal produced; it does not certify the base. After the
+release is accepted, delete the checkpoints from the runs volume
+(`modal volume rm -r microcosm-us-stage-runs runs/$R/state/base-checkpoints`).
+The run's state then no longer matches its receipt, so a later stage of the
+same `run_id` would refuse; none is planned.
+
 ## Preemption and restarts
 
 Functions run on Modal's preemptible placement unless the plan sets
@@ -460,10 +627,16 @@ heavy stages (calibrate took 7 minutes locally) are cheaper preemptible.
 ## Data placement
 
 Inputs go to the `policyengine` Modal workspace. Upload only files that are
-allowed there. No registered stage takes the restricted IRS PUF files
-(`--puf-source-year-csv` in `tools/build_us_puf_support_base.py`), and the
-base stage is not registered. Logs hold only what the tool prints. Receipts
-hold digests, sizes and paths, never file contents.
+allowed there. On 29 September 2026 Max ruled that the IRS PUF files may sit
+on the `policyengine` Modal volumes for Route A's base ("puf there is
+fine"): the processed PUF (`puf_2024.h5`, `--puf-h5`) and the restricted
+TY2015 IRS PUF CSV (`puf_2015.csv`, `--puf-source-year-csv`), both on
+`microcosm-us-stage-inputs` under `cas/sha256/`. The ruling covers that
+workspace's volumes and the base stage; it does not put the PUF anywhere
+else (the Hub, logs, receipts). The base's checkpoints and output on
+`microcosm-us-stage-runs` are built from it, so they fall under the same
+ruling. Logs hold only what the tool prints. Receipts hold digests, sizes
+and paths, never file contents.
 
 ## What this does not cover yet
 
@@ -473,19 +646,19 @@ hold digests, sizes and paths, never file contents.
   run peaked at 46.7 GB (#956). A full-source run needs the byte-transport
   and parallel-executor work first, plus a resource class sized from a
   measured full-scale peak.
-- **The base stage (`tools/build_us_puf_support_base.py`)** is not
-  registered. Its peak was reported at 72 GB; this runner has not measured
-  it. It requires the processed PUF (`--puf-h5`), and
-  `--puf-source-year-csv` (the restricted TY2015 IRS PUF CSV) whenever the
-  processed PUF is nonzero. Nobody has decided whether those files may sit
-  on Modal volumes.
+- **The base stage on Modal is unmeasured.** It is registered (see
+  "Route A's base stage") and sized from the local run; its Modal wall,
+  peak and the runner's hashing and mirroring time for 46 GB of state are
+  estimates until the first receipt.
 - **The staging stage (`tools/build_us_acs_multispine_base.py`)** is not
   registered either. It takes a directory input (`--inputs-dir`, the ACS
   PUMS archive cache), which the plan format does not support. Supporting it
   would take an archive digest plus extraction.
 - **Work lost to preemption, and memory kills.** A preempted attempt's
   tool work is lost: the state is mirrored only when the tool exits, and
-  materialize has no resume point inside its chunk loop. Non-preemptible
+  materialize has no resume point inside its chunk loop. (The base resumes
+  from its last completed outer stage, but only from state an earlier
+  attempt mirrored, that is, after the tool exited.) Non-preemptible
   placement avoids preemption (see "Preemption and restarts"). The heavy
   class sets a memory request but no hard limit. What Modal does with a
   container killed for memory has not been observed here.

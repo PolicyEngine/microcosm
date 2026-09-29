@@ -18,7 +18,7 @@ Command line (no Modal needed)::
     python3 tools/modal_us_stage_plan.py validate PLAN.json
     python3 tools/modal_us_stage_plan.py digest FILE [FILE ...]
     python3 tools/modal_us_stage_plan.py verify-receipt RECEIPT.json \\
-        --state-root DIR
+        --state-root DIR [--strict] [--prefix SUBDIR]
 
 See ``docs/us-modal-stage-runbook.md``.
 """
@@ -32,6 +32,8 @@ import os
 import re
 import shlex
 import shutil
+import signal
+import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -78,6 +80,8 @@ _COMMIT = re.compile(r"[0-9a-f]{40}")
 _RUN_ID = re.compile(r"[a-z0-9][a-z0-9._-]{2,79}")
 _BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}")
 _FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+# One component of a home-cache path: a file name that may start with a dot.
+_HOME_PART = re.compile(r"\.?[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 _HF_REPO_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
 _HF_REVISION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 #: The thread-count variables a plan may override. BLIS is here because Modal
@@ -89,8 +93,13 @@ THREAD_ENV_KEYS = (
     "NUMEXPR_NUM_THREADS",
     "BLIS_NUM_THREADS",
 )
+#: PYTHONUNBUFFERED is allowed so a plan can match a local run's environment
+#: exactly (Route A's base ran with only PYTHONUNBUFFERED=1). It changes when
+#: log lines reach the runner, not what the tool computes.
 _ENV_KEY = re.compile(
-    r"(?:MICROCOSM|POPULACE)_[A-Z0-9_]+|(?:OMP|MKL|OPENBLAS|NUMEXPR|BLIS)_NUM_THREADS"
+    r"(?:MICROCOSM|POPULACE)_[A-Z0-9_]+"
+    r"|(?:OMP|MKL|OPENBLAS|NUMEXPR|BLIS)_NUM_THREADS"
+    r"|PYTHONUNBUFFERED"
 )
 # Names that look like credentials. A plan may not set one, even under an
 # allowlisted prefix (its value would be copied into every receipt), and the
@@ -147,7 +156,35 @@ class Resources:
 CHECK = Resources("check", cpu=2.0, memory_mib=8 * 1024, timeout_s=30 * 60)
 HEAVY = Resources("heavy", cpu=4.0, memory_mib=128 * 1024, timeout_s=8 * 3600)
 LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
-RESOURCE_CLASSES = {item.name: item for item in (CHECK, HEAVY, LIGHT)}
+# The PUF-support base (tools/build_us_puf_support_base.py, Route A). Its
+# local peak was 72.47 GB (67.5 GiB; MEASURED below) and the runbook saw
+# Modal hold 15 to 24 GB more RSS than local at the same point of another
+# stage, so the worst case seen is about 90 GiB. 112 GiB leaves about 22 GiB
+# over that and is at least 1.5 times the local peak. It is not HEAVY
+# because Max capped the run at about $15 (2026-09-29): non-preemptible, a
+# 4-hour budget plus 30 minutes of runner time (BASE_RUNNER_OVERHEAD_SECONDS)
+# lists at $16.36 with HEAVY's 128 GiB and $14.63 with 112 GiB. Four
+# cores: the base used 6,238 CPU-s in 2,788 s of wall locally, 2.2 cores on
+# average. The 6-hour timeout is the local supervisor's wall limit for the
+# same command (base-config.json limits.wall_seconds 21,600); the plan's
+# max_wall_seconds stops the tool earlier. No ephemeral_disk request: Modal
+# gives each container a disk quota of 512 GiB by default
+# (modal.com/docs/guide/resources, read 2026-09-29) and the base writes about
+# 50 GB; StageSpec.min_free_disk_gib checks the disk before anything is staged.
+BASE = Resources("base", cpu=4.0, memory_mib=112 * 1024, timeout_s=6 * 3600)
+RESOURCE_CLASSES = {item.name: item for item in (CHECK, HEAVY, LIGHT, BASE)}
+
+# Time the container keeps for staging inputs, hashing and mirroring state,
+# beyond the plan's max_wall_seconds. It bounds max_wall_seconds below the
+# class's timeout and is added to the cost estimate at the budget.
+RUNNER_OVERHEAD_SECONDS = 15 * 60
+# The base mirrors its checkpoints (about 44 GB) and its output (about 2.4 GB)
+# after the tool exits: one hashing pass and one copy to the runs volume. The
+# runbook measured staging inputs from the volume at no less than 58 MB/s
+# (11.4 GB in under 3.5 minutes, container start included), which puts one
+# 46 GB copy at up to about 13 minutes. Thirty minutes is an allowance, not a
+# measurement; the receipt records the container's real wall and cost.
+BASE_RUNNER_OVERHEAD_SECONDS = 30 * 60
 
 
 @dataclass(frozen=True)
@@ -176,6 +213,16 @@ MEASURED = {
         23_333_388_288, 78.9, 74.6, _ACS_974
     ),
     ("us-acs-local-release", "package"): Measured(21_777_367_040, 78.9, 73.7, _ACS_974),
+    # /usr/bin/time -l of the 2026-09-16 A1d base (policyengine-us 1.819.0):
+    # 2,787.90 s real, 4,876.65 s user + 1,361.52 s sys, maximum resident set
+    # size 72,467,169,280 bytes. Route A's driver (route_a.sh section 4)
+    # quotes it; it has not been re-measured on policyengine-us 2.2.1.
+    ("us-puf-support-base", "all"): Measured(
+        72_467_169_280,
+        2787.9,
+        6238.17,
+        "_buildq-runtime/logs/A1d.log (A1d base, 2026-09-16, /usr/bin/time -l)",
+    ),
 }
 
 
@@ -195,6 +242,41 @@ class StageSpec:
     name: str
     resources: Resources
     required_inputs: tuple[str, ...]
+    # Container time beyond max_wall_seconds for staging, hashing and
+    # mirroring; see RUNNER_OVERHEAD_SECONDS.
+    runner_overhead_seconds: int = RUNNER_OVERHEAD_SECONDS
+    # Free space the stage needs under WORK_ROOT before anything is staged;
+    # a container with less refuses (cheaply) instead of failing hours in.
+    min_free_disk_gib: int | None = None
+
+
+@dataclass(frozen=True)
+class TreeFile:
+    """A file of the pinned tree the tool reads by path, pinned by sha256.
+
+    The commit already pins its bytes; the digest makes the registration
+    refuse a plan whose commit carries a different version of the file, and
+    the receipt records what was read.
+    """
+
+    path: str
+    sha256: str
+
+
+@dataclass(frozen=True)
+class HomeSeed:
+    """A staged input the runner also copies into the tool's home cache.
+
+    For a tool that fetches a pinned file into ``~/...`` when it is not
+    already there. Seeding the cache from a content-addressed input keeps the
+    stage off the network; the tool still verifies the file itself.
+    ``sha256`` is the digest the tool pins, and a plan whose input carries a
+    different digest is refused.
+    """
+
+    input: str
+    path: str
+    sha256: str
 
 
 @dataclass(frozen=True)
@@ -210,6 +292,8 @@ class ToolSpec:
     # Name of the tool's own argparse entry point, called by the check to
     # validate the built argv against the pinned commit without running.
     parse_function: str | None = None
+    tree_files: Mapping[str, TreeFile] = field(default_factory=dict)
+    home_seeds: tuple[HomeSeed, ...] = ()
 
 
 ACS_LOCAL_RELEASE_ARTIFACT = "populace_us_2024_acs_local.h5"
@@ -341,8 +425,204 @@ RUNNER_SMOKE = ToolSpec(
     argv_builder=_runner_smoke_argv,
 )
 
+# --- The PUF-support base (Route A) ----------------------------------------
+#
+# tools/build_us_puf_support_base.py builds a US base H5 from raw sources:
+# three pooled ASEC years, the processed PUF and the restricted TY2015 IRS
+# PUF CSV, ACS 2022 rents, the ASEC Census person archives, the Ledger feed
+# (SOI congressional-district return counts) and the block ladder. The
+# registration reproduces Route A's command (route_a.sh section 4,
+# base-config.json for 4b57d15a2) flag for flag: the scalar settings are
+# fixed here, not plan options, because a different seed, year or forest
+# size is a different base than the one Route A certifies, and a change to
+# them should be a reviewed registry change rather than a plan edit.
+#
+# State layout, all under the mirrored state directory:
+#   base-checkpoints/  the frame checkpoint after every outer stage (about
+#                      44 GB in the 2026-09-16 run), stage_run_context.json
+#                      and stage_profile.json
+#   base-out/          the base H5, its summary JSON and the capital-gains
+#                      tail manifest; the release reads this directory
+#
+# The checkpoints are mirrored deliberately. `--stage all` runs each outer
+# stage in a fresh interpreter and resumes from the completed prefix
+# (_run_staged_all), with the inputs, settings and code identity locked in
+# stage_run_context.json. Every path the tool records is the same in every
+# attempt of a run (/work/inputs/..., /work/state/...), so a later attempt
+# of the same run_id resumes where the last one stopped. The placement is
+# non-preemptible, so what this protects against is mostly the budget: at
+# the per-chunk slowdowns the runbook measured for materialize's engine pass
+# on Modal (3.3 to 7.6 times the build machine), the 2,788-second local base
+# would take 2.6 to 5.9 hours, and a stop at the 4-hour budget without the
+# checkpoints would throw the whole run away. (The runner stops the tool's
+# whole process group at the budget, so a stage child cannot outlive its
+# parent and hold the stop past the budget; see stop_process_group.) The cost
+# is one more hashing pass and one more copy of about 44 GB when the tool
+# exits (BASE_RUNNER_OVERHEAD_SECONDS), the same again pulled back by a
+# resuming attempt, and the volume storage until the checkpoints are
+# deleted after the release.
+PUF_SUPPORT_BASE_CHECKPOINTS = "base-checkpoints"
+PUF_SUPPORT_BASE_OUT = "base-out"
+PUF_SUPPORT_BASE_ARTIFACT = "base_populace_us_2024_puf_support.h5"
+PUF_SUPPORT_BASE_TARGET_YEAR = 2024
+# The pooled ASEC order is Route A's: the tool hands the --asec-h5 values to
+# the pooling in the order given and records them in that order in the run
+# context it locks, so the order is part of the build.
+PUF_SUPPORT_BASE_ASEC_YEARS = (2024, 2023, 2022)
+# Income years of the ASEC Census person archives (income year YYYY is the
+# survey-year YYYY+1 archive, asecpubYY+1csv.zip).
+PUF_SUPPORT_BASE_EDUCATION_YEARS = (2022, 2023, 2024)
+PUF_SUPPORT_BASE_SEED = 0
+PUF_SUPPORT_BASE_N_ESTIMATORS = 32
+PUF_SUPPORT_BASE_CD_SEED = 0
+# In-tree at 4b57d15a2; main has since changed it (a347303f... on 2026-09-29).
+CD_VINTAGE_CROSSWALK = TreeFile(
+    path=(
+        "packages/microcosm-build/src/microcosm/build/us_runtime/data/"
+        "congressional_district_vintage_crosswalk.csv"
+    ),
+    sha256="c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec",
+)
+# The 2023 ASEC archive is also the base's weeks-unemployed source. Route A
+# does not pass --asec-2023-weeks-unemployed-source, so the tool looks in
+# ~/.cache/microcosm/cps/asec_2023/ and downloads it from www2.census.gov
+# when it is missing (fetch_asec_2023_weeks_unemployed_source). The build
+# machine had it cached; the runner seeds the same cache from the staged
+# asec_education_2022_zip input, which is the same file (the tool pins
+# both to d2e00025...), so the stage makes no Census request.
+ASEC_2023_ARCHIVE_SEED = HomeSeed(
+    input="asec_education_2022_zip",
+    path=".cache/microcosm/cps/asec_2023/asecpub23csv.zip",
+    sha256="d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+)
+PUF_SUPPORT_BASE_INPUTS = (
+    *(f"asec_{year}_h5" for year in PUF_SUPPORT_BASE_ASEC_YEARS),
+    "puf_2024_h5",
+    "puf_2015_csv",
+    "acs_2022_h5",
+    *(f"asec_education_{year}_zip" for year in PUF_SUPPORT_BASE_EDUCATION_YEARS),
+    "base_ledger_facts",
+    "block_ladder_npz",
+)
+
+
+def _puf_support_base_argv(
+    plan: Plan, input_paths: Mapping[str, str], state_dir: str
+) -> list[str]:
+    state = PurePosixPath(state_dir)
+    argv = [
+        "--stage",
+        plan.stage,
+        "--checkpoint-dir",
+        str(state / PUF_SUPPORT_BASE_CHECKPOINTS),
+    ]
+    for year in PUF_SUPPORT_BASE_ASEC_YEARS:
+        argv += ["--asec-h5", f"{year}={input_paths[f'asec_{year}_h5']}"]
+    for year in PUF_SUPPORT_BASE_ASEC_YEARS:
+        argv += ["--asec-h5-sha256", f"{year}={plan.inputs[f'asec_{year}_h5'].sha256}"]
+    argv += [
+        "--puf-h5",
+        input_paths["puf_2024_h5"],
+        "--puf-source-year-csv",
+        input_paths["puf_2015_csv"],
+        "--acs-h5",
+        input_paths["acs_2022_h5"],
+    ]
+    for year in PUF_SUPPORT_BASE_EDUCATION_YEARS:
+        argv += [
+            "--asec-education-source",
+            f"{year}={input_paths[f'asec_education_{year}_zip']}",
+        ]
+    argv += [
+        "--target-year",
+        str(PUF_SUPPORT_BASE_TARGET_YEAR),
+        "--seed",
+        str(PUF_SUPPORT_BASE_SEED),
+        "--n-estimators",
+        str(PUF_SUPPORT_BASE_N_ESTIMATORS),
+        "--ledger-facts",
+        input_paths["base_ledger_facts"],
+        "--assign-congressional-districts",
+        "--congressional-district-vintage-crosswalk",
+        str(PurePosixPath(IMAGE_REPO_ROOT) / CD_VINTAGE_CROSSWALK.path),
+        "--congressional-district-seed",
+        str(PUF_SUPPORT_BASE_CD_SEED),
+        "--block-ladder-artifact",
+        input_paths["block_ladder_npz"],
+        "--out",
+        str(state / PUF_SUPPORT_BASE_OUT),
+    ]
+    return argv
+
+
+#: Every flag _puf_support_base_argv emits.
+PUF_SUPPORT_BASE_BUILDER_FLAGS = frozenset(
+    {
+        "--stage",
+        "--checkpoint-dir",
+        "--asec-h5",
+        "--asec-h5-sha256",
+        "--puf-h5",
+        "--puf-source-year-csv",
+        "--acs-h5",
+        "--asec-education-source",
+        "--target-year",
+        "--seed",
+        "--n-estimators",
+        "--ledger-facts",
+        "--assign-congressional-districts",
+        "--congressional-district-vintage-crosswalk",
+        "--congressional-district-seed",
+        "--block-ladder-artifact",
+        "--out",
+    }
+)
+#: The tool's other flags (4b57d15a2 _parse_args), which no plan may pass:
+#: an alternative source (--base-h5, --support-spine-spec, the weeks-
+#: unemployed path, which the home seed covers), a smoke limit, the
+#: equivalence-test harness, and the geography-ladder escape hatches.
+PUF_SUPPORT_BASE_WITHHELD_FLAGS = frozenset(
+    {
+        "--base-h5",
+        "--support-spine-spec",
+        "--asec-2023-weeks-unemployed-source",
+        "--asec-max-households",
+        "--equivalence-boundary-dir",
+        "--equivalence-deterministic-h5-metadata",
+        "--without-block-ladder",
+        "--geography-ladder-seed",
+        "--allow-geography-ladder-gate-failures",
+    }
+)
+
+US_PUF_SUPPORT_BASE = ToolSpec(
+    name="us-puf-support-base",
+    script="tools/build_us_puf_support_base.py",
+    inputs=PUF_SUPPORT_BASE_INPUTS,
+    stages={
+        "all": StageSpec(
+            "all",
+            BASE,
+            PUF_SUPPORT_BASE_INPUTS,
+            runner_overhead_seconds=BASE_RUNNER_OVERHEAD_SECONDS,
+            # The build machine's admission floor for the same command
+            # (base-config.json limits.disk_admission_bytes, 69 GiB): 44 GB
+            # of checkpoints, the 2.35 GB H5, about 2.4 GB of inputs and
+            # the 2023 archive with its extracted member, plus headroom.
+            min_free_disk_gib=70,
+        )
+    },
+    options={},
+    owned_flags=PUF_SUPPORT_BASE_BUILDER_FLAGS | PUF_SUPPORT_BASE_WITHHELD_FLAGS,
+    argv_builder=_puf_support_base_argv,
+    parse_function="_parse_args",
+    tree_files={"cd_vintage_crosswalk": CD_VINTAGE_CROSSWALK},
+    home_seeds=(ASEC_2023_ARCHIVE_SEED,),
+)
+
 TOOLS: dict[str, ToolSpec] = {
-    tool.name: tool for tool in (US_ACS_LOCAL_RELEASE, RUNNER_SMOKE)
+    tool.name: tool
+    for tool in (US_ACS_LOCAL_RELEASE, RUNNER_SMOKE, US_PUF_SUPPORT_BASE)
 }
 
 
@@ -525,8 +805,6 @@ _PLAN_KEYS = {
     "max_wall_seconds",
     "nonpreemptible",
 }
-# Time the container keeps for staging inputs, hashing and mirroring state.
-_RUNNER_OVERHEAD_SECONDS = 15 * 60
 
 
 def parse_plan(data: object) -> Plan:
@@ -589,6 +867,13 @@ def parse_plan(data: object) -> Plan:
     local_paths = [input_local_path(WORK_ROOT, ref) for ref in inputs.values()]
     if len(set(local_paths)) != len(local_paths):
         raise PlanError("two inputs would stage to the same path")
+    for seed in tool.home_seeds:
+        ref = inputs.get(seed.input)
+        if ref is not None and ref.sha256 != seed.sha256:
+            raise PlanError(
+                f"input {seed.input!r} is sha256 {ref.sha256}, but the runner seeds "
+                f"~/{seed.path} with it and the tool pins that file to {seed.sha256}"
+            )
 
     raw_options = data.get("options", {})
     if not isinstance(raw_options, Mapping):
@@ -601,6 +886,8 @@ def parse_plan(data: object) -> Plan:
                 f"option {key!r} is not allowlisted for {tool.name!r}; "
                 f"known: {sorted(tool.options)}"
             )
+        if option.flag in tool.owned_flags:  # a registry error, refused early
+            raise PlanError(f"option {key!r} maps to runner-owned flag {option.flag}")
         value = raw_options[key]
         if option.kind is bool:
             ok = isinstance(value, bool)
@@ -636,7 +923,8 @@ def parse_plan(data: object) -> Plan:
         env[key] = raw_env[key]
 
     max_wall = data.get("max_wall_seconds")
-    ceiling = tool.stages[stage].resources.timeout_s - _RUNNER_OVERHEAD_SECONDS
+    stage_spec = tool.stages[stage]
+    ceiling = stage_spec.resources.timeout_s - stage_spec.runner_overhead_seconds
     if max_wall is not None and (
         not isinstance(max_wall, int)
         or isinstance(max_wall, bool)
@@ -845,6 +1133,119 @@ def tool_environment(
     env["HF_HUB_OFFLINE"] = "1"
     env.update(plan_env)
     return env, removed
+
+
+def stop_process_group(
+    proc: subprocess.Popen, *, grace_seconds: float = 60.0
+) -> dict[str, bool]:
+    """Stop a tool started with ``process_group=0`` and everything it spawned.
+
+    ``proc.terminate()`` signals only the tool's own process. A tool that
+    runs its stages as child interpreters (the base's ``--stage all``) would
+    lose its parent while the running stage child carried on with the log
+    pipe open, so the runner, reading that pipe to its end, would wait out
+    the child's whole stage past the budget. SIGTERM goes to the whole
+    group; whatever is left after ``grace_seconds`` gets SIGKILL. Returns
+    which signals were sent.
+    """
+
+    sent = {"sigterm": False, "sigkill": False}
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+        sent["sigterm"] = True
+    except ProcessLookupError:
+        return sent
+    try:
+        proc.wait(timeout=grace_seconds)
+    except subprocess.TimeoutExpired:
+        pass
+    # The group outlives its leader while any member runs.
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+        sent["sigkill"] = True
+    except ProcessLookupError:
+        pass
+    return sent
+
+
+def tree_file_rows(tool: ToolSpec, repo_root: Path | str) -> list[dict[str, object]]:
+    """Hash each of the tool's pinned tree files in the clone at ``repo_root``."""
+
+    rows: list[dict[str, object]] = []
+    for name, tree_file in sorted(tool.tree_files.items()):
+        path = Path(repo_root) / tree_file.path
+        row: dict[str, object] = {
+            "name": name,
+            "path": tree_file.path,
+            "expected": tree_file.sha256,
+        }
+        if not path.is_file():
+            row["problem"] = "not in the pinned tree"
+        else:
+            row["sha256"], row["bytes"] = sha256_file(path)
+            if row["sha256"] != tree_file.sha256:
+                row["problem"] = (
+                    "sha256 differs from the registration; the plan's commit "
+                    "carries another version of this file"
+                )
+        rows.append(row)
+    return rows
+
+
+def home_seed_targets(plan: Plan, home: Path | str) -> list[tuple[HomeSeed, Path]]:
+    """Where each of the plan's home seeds goes under ``home``."""
+
+    targets = []
+    for seed in plan.tool.home_seeds:
+        if seed.input not in plan.inputs:
+            continue
+        # Like _safe_relative_path, but a cache directory may be hidden.
+        parts = seed.path.split("/")
+        if (
+            PurePosixPath(seed.path).is_absolute()
+            or not parts
+            or any(part in {"", ".", ".."} for part in parts)
+            or not all(_HOME_PART.fullmatch(part) for part in parts)
+        ):
+            raise PlanError(
+                f"home seed for {seed.input!r}: {seed.path!r} must be a clean "
+                "relative path"
+            )
+        targets.append((seed, Path(home).joinpath(*parts)))
+    return targets
+
+
+def seed_home_cache(
+    plan: Plan, input_paths: Mapping[str, str], home: Path | str
+) -> list[dict[str, object]]:
+    """Copy each seeded input into the tool's home cache; verify the copy."""
+
+    seeded = []
+    for seed, target in home_seed_targets(plan, home):
+        sha, size = copy_with_sha256(input_paths[seed.input], target)
+        try:
+            verify_digest(plan.inputs[seed.input], sha)
+        except PlanError:
+            target.unlink(missing_ok=True)
+            raise
+        seeded.append(
+            {"input": seed.input, "path": str(target), "sha256": sha, "bytes": size}
+        )
+    return seeded
+
+
+def work_disk_problem(stage: StageSpec, free_bytes: int) -> str | None:
+    """A refusal when the container's work disk is smaller than the stage needs."""
+
+    if stage.min_free_disk_gib is None:
+        return None
+    needed = stage.min_free_disk_gib * 1024**3
+    if free_bytes >= needed:
+        return None
+    return (
+        f"{WORK_ROOT} has {free_bytes / 1024**3:.1f} GiB free; stage "
+        f"{stage.name!r} needs {stage.min_free_disk_gib} GiB"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -1062,17 +1463,41 @@ def build_receipt(
     }
 
 
+def _under_prefix(rel: str, prefix: str | None) -> bool:
+    return prefix is None or rel.startswith(prefix.rstrip("/") + "/")
+
+
 def verify_receipt(
-    receipt: Mapping, state_root: Path | str, *, strict: bool = False
+    receipt: Mapping,
+    state_root: Path | str,
+    *,
+    strict: bool = False,
+    prefix: str | None = None,
 ) -> list[str]:
-    """Re-hash a fetched state tree against a receipt; return the problems."""
+    """Re-hash a fetched state tree against a receipt; return the problems.
+
+    ``prefix`` limits the check to the receipt's outputs under that
+    directory of the state (``base-out`` for the base's release inputs, so
+    its 44 GB of checkpoints need not be fetched); ``strict`` then also
+    limits its extra-file check to that directory. ``state_root`` is still
+    the state directory, not the prefix.
+    """
 
     if receipt.get("schema") != RECEIPT_SCHEMA:
         return [f"not a {RECEIPT_SCHEMA} receipt"]
+    if prefix is not None:
+        _safe_relative_path(prefix.rstrip("/"), "prefix")
     root = Path(state_root)
     problems: list[str] = []
     declared = set()
-    for item in receipt.get("outputs", []):
+    selected = [
+        item
+        for item in receipt.get("outputs", [])
+        if _under_prefix(str(item["path"]), prefix)
+    ]
+    if prefix is not None and not selected:
+        problems.append(f"the receipt lists no outputs under {prefix}/")
+    for item in selected:
         rel = str(item["path"])
         declared.add(rel)
         path = root / rel
@@ -1087,8 +1512,8 @@ def verify_receipt(
         elif sha != item["sha256"]:
             problems.append(f"sha256 mismatch: {rel}")
     if strict:
-        extra = sorted(set(tree_listing(root)) - declared)
-        problems += [f"not in receipt: {rel}" for rel in extra]
+        present = {rel for rel in tree_listing(root) if _under_prefix(rel, prefix)}
+        problems += [f"not in receipt: {rel}" for rel in sorted(present - declared)]
     return problems
 
 
@@ -1353,8 +1778,20 @@ def remaining_wall_seconds(
     return int(plan.max_wall_seconds - spent)
 
 
+def estimated_usd_at_max_wall(plan: Plan) -> float | None:
+    """List-price cost of a stage that runs its whole budget, runner time included."""
+
+    if plan.max_wall_seconds is None:
+        return None
+    return plan.resources.estimated_usd(
+        plan.max_wall_seconds + plan.stage_spec.runner_overhead_seconds,
+        plan.price_multiplier,
+    )
+
+
 def summarize(plan: Plan) -> dict[str, object]:
     resources = plan.resources
+    stage_spec = plan.stage_spec
     measured = MEASURED.get((plan.tool.name, plan.stage))
     summary: dict[str, object] = {
         "tool": plan.tool.name,
@@ -1368,11 +1805,26 @@ def summarize(plan: Plan) -> dict[str, object]:
             "memory_gib": resources.memory_gib,
             "timeout_h": resources.timeout_s / 3600,
             "nonpreemptible": plan.nonpreemptible,
+            "runner_overhead_seconds": stage_spec.runner_overhead_seconds,
+            "min_free_disk_gib": stage_spec.min_free_disk_gib,
         },
+        "max_wall_seconds": plan.max_wall_seconds,
+        "env": dict(plan.env),
         "inputs": {name: ref.to_json() for name, ref in plan.inputs.items()},
         "argv": planned_argv(plan),
         "image_build_commands": image_build_commands(plan),
     }
+    if plan.tool.tree_files:
+        summary["tree_files"] = {
+            name: {"path": item.path, "sha256": item.sha256}
+            for name, item in sorted(plan.tool.tree_files.items())
+        }
+    if plan.tool.home_seeds:
+        summary["home_seeds"] = [
+            {"input": seed.input, "path": f"~/{seed.path}", "sha256": seed.sha256}
+            for seed in plan.tool.home_seeds
+            if seed.input in plan.inputs
+        ]
     if measured is not None:
         summary["measured_locally"] = {
             "peak_rss_gb": round(measured.peak_rss_bytes / 1e9, 1),
@@ -1383,9 +1835,7 @@ def summarize(plan: Plan) -> dict[str, object]:
             measured.wall_seconds, plan.price_multiplier
         )
     if plan.max_wall_seconds is not None:
-        summary["estimated_usd_at_max_wall"] = resources.estimated_usd(
-            plan.max_wall_seconds + _RUNNER_OVERHEAD_SECONDS, plan.price_multiplier
-        )
+        summary["estimated_usd_at_max_wall"] = estimated_usd_at_max_wall(plan)
     return summary
 
 
@@ -1426,29 +1876,46 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("receipt", type=Path)
     verify.add_argument("--state-root", type=Path, required=True)
     verify.add_argument("--strict", action="store_true")
+    verify.add_argument(
+        "--prefix",
+        help="verify only the outputs under this directory of the state "
+        "(e.g. base-out), for a partial fetch",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "validate":
         try:
             _, plan = load_plan(args.plan)
+            summary = summarize(plan)
         except PlanError as error:
             print(f"REFUSED: {error}", file=sys.stderr)
             return 2
-        print(json.dumps(summarize(plan), indent=2))
+        print(json.dumps(summary, indent=2))
         return 0
     if args.command == "digest":
         for line in _digest_lines(args.paths):
             print(line)
         return 0
     receipt = json.loads(args.receipt.read_text())
-    problems = verify_receipt(receipt, args.state_root, strict=args.strict)
+    try:
+        problems = verify_receipt(
+            receipt, args.state_root, strict=args.strict, prefix=args.prefix
+        )
+    except PlanError as error:
+        print(f"REFUSED: {error}", file=sys.stderr)
+        return 2
     for problem in problems:
         print(problem, file=sys.stderr)
+    outputs = [
+        item
+        for item in receipt.get("outputs", [])
+        if _under_prefix(str(item.get("path", "")), args.prefix)
+    ]
     print(
         json.dumps(
             {
                 "verified": not problems,
-                "outputs": len(receipt.get("outputs", [])),
+                "outputs": len(outputs),
                 "problems": len(problems),
             }
         )
