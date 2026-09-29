@@ -146,7 +146,9 @@ __all__ = [
     "UK_CGT_RAKE_TOLERANCE",
     "UK_CGT_REGION_GROUP_LABELS",
     "UK_CGT_REGION_GROUPS",
+    "UK_CGT_PLACEMENT_ROW_TYPES",
     "UK_CGT_REMAINDER_POLICY",
+    "UK_CGT_SUPPORT_COPIES_COLUMN",
     "UKCGTAllocationReport",
     "impute_uk_capital_gains",
     "impute_uk_capital_gains_with_report",
@@ -297,6 +299,18 @@ UK_CGT_INVESTABLE_WEALTH_COLUMNS: tuple[str, ...] = (
     "other_residential_property_value",
     "non_residential_property_value",
 )
+
+#: The household column the support split (``cgt_support_split``,
+#: microcosm#1045) writes: the family's copy count on every member of a split
+#: household, root included, and 1 on every other household. The redraw reads
+#: it for its placement receipts only — a row belongs to a support family when
+#: the count exceeds 1 — and a frame without the column reports every row as
+#: plain. The split stage imports this module, so the name is declared here
+#: and the stage's own constant is bound to it by test.
+UK_CGT_SUPPORT_COPIES_COLUMN = "cgt_support_copies"
+
+#: The row types the placement receipts partition the redraw's rows into.
+UK_CGT_PLACEMENT_ROW_TYPES: tuple[str, ...] = ("plain", "support_family")
 
 
 @dataclass(frozen=True)
@@ -612,7 +626,22 @@ def _band_plans(
 
 @dataclass(frozen=True)
 class UKCGTAllocationReport:
-    """What the rake asked for and what the walk delivered, cell by cell."""
+    """What the rake asked for and what the walk delivered, cell by cell.
+
+    The placement receipts (microcosm#1045) record where the wealth-ranked
+    walk seated the rows it was given, without changing the walk:
+    ``placement_by_row_type`` partitions gainers into plain rows and the
+    support families the split stage created and counts, per initial Table
+    2.1a band of the prior gain, the rows and mass placed in a plan and
+    demoted to the sub-exempt remainder; ``heaviest_placed_weight`` is the
+    heaviest person weight seated in each band of the redrawn gains and in
+    each (gain band, income band) plan; ``income_band_rows`` compares each
+    Table 3 income column's target with its pass-1 and pooled-walk
+    achievement and reports the overshoot; ``open_band`` reads the GBP 5m+
+    band against its published people and gains; and
+    ``placed_share_by_wealth_decile`` is the share of gainer mass placed in
+    each decile of the rank key's investable-wealth component.
+    """
 
     band_rows: tuple[dict[str, object], ...]
     joint_rows: tuple[dict[str, object], ...]
@@ -623,6 +652,11 @@ class UKCGTAllocationReport:
     rounding_carry_out: Mapping[str, Mapping[str, float]] = field(default_factory=dict)
     remainder: Mapping[str, object] = field(default_factory=dict)
     rank_key: Mapping[str, object] = field(default_factory=dict)
+    placement_by_row_type: Mapping[str, object] = field(default_factory=dict)
+    heaviest_placed_weight: Mapping[str, object] = field(default_factory=dict)
+    income_band_rows: tuple[dict[str, object], ...] = ()
+    open_band: Mapping[str, object] = field(default_factory=dict)
+    placed_share_by_wealth_decile: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -639,6 +673,11 @@ class UKCGTAllocationReport:
             "rounding_carry_out": {
                 key: dict(value) for key, value in self.rounding_carry_out.items()
             },
+            "placement_by_row_type": dict(self.placement_by_row_type),
+            "heaviest_placed_weight": dict(self.heaviest_placed_weight),
+            "income_band_rows": [dict(row) for row in self.income_band_rows],
+            "open_band": dict(self.open_band),
+            "placed_share_by_wealth_decile": dict(self.placed_share_by_wealth_decile),
         }
 
 
@@ -1407,6 +1446,271 @@ def _within_band_spearman(
     return {"by_income_band": rows, "mass_weighted": total / mass if mass else None}
 
 
+def _support_family_rows(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> tuple[np.ndarray, bool]:
+    """Which person rows belong to a CGT support family, and whether the column was read.
+
+    A support family is a household the support split (microcosm#1045)
+    divided into copies: ``cgt_support_copies`` above 1 on its root and on
+    every copy alike. A household table without the column — a spine built
+    before the stage, or a fixture without it — marks every row plain. The
+    placement receipts are the only reader; the walk never sees the row type.
+    """
+
+    if UK_CGT_SUPPORT_COPIES_COLUMN not in household.columns:
+        return np.zeros(len(person), dtype=bool), False
+    copies_by_household = pd.Series(
+        pd.to_numeric(household[UK_CGT_SUPPORT_COPIES_COLUMN], errors="raise").to_numpy(
+            dtype=float
+        ),
+        index=household["household_id"],
+    )
+    copies = (
+        person["person_household_id"].map(copies_by_household).to_numpy(dtype=float)
+    )
+    if not np.isfinite(copies).all() or (copies < 1.0).any():
+        raise ValueError(
+            f"Household {UK_CGT_SUPPORT_COPIES_COLUMN} must be a finite copy count "
+            "of at least 1 on every household."
+        )
+    return copies > 1.0, True
+
+
+def _heaviest(weights: np.ndarray, mask: np.ndarray) -> float:
+    """The heaviest weight under ``mask``; 0.0 where nothing is selected."""
+
+    return float(weights[mask].max()) if mask.any() else 0.0
+
+
+def _rows_and_mass(weights: np.ndarray, mask: np.ndarray) -> tuple[int, float]:
+    return int(mask.sum()), float(weights[mask].sum())
+
+
+def _placement_receipts(
+    *,
+    existing: np.ndarray,
+    new_gains: np.ndarray,
+    is_gainer: np.ndarray,
+    assigned: np.ndarray,
+    person_weight: np.ndarray,
+    income_band: np.ndarray,
+    support_family: np.ndarray,
+    support_column_present: bool,
+    members: Mapping[tuple[int, int], Sequence[np.ndarray]],
+    joint: Mapping[tuple[int, int], _CellPlan],
+    pass1_by_band: np.ndarray,
+    achieved_fallback: np.ndarray,
+    band_rows: Sequence[Mapping[str, object]],
+    investable_wealth: np.ndarray,
+) -> dict[str, object]:
+    """Where the walk placed the rows it was given (microcosm#1045).
+
+    Receipts only: every input is what the two passes, the plan draws and
+    the remainder mapping already produced, and nothing here touches
+    ``new_gains`` or the seeded stream. Placed rows are the gainers a pass
+    assigned to a plan; demoted rows are the gainers left to the sub-exempt
+    remainder. The initial band is the Table 2.1a band of the prior gain; the
+    redrawn band is the band of the new amount, which for a placed row is the
+    band of its plan. Rows are person rows. Every value is a plain finite
+    number, string or flag keyed by strings, so the receipt is
+    JSON-serialisable as it stands; a heaviest weight is 0.0 and a share is
+    0.0 where nothing was placed.
+    """
+
+    gains = HMRC_CGT_GAIN_BAND_LOWER_BOUNDS
+    incomes = HMRC_CGT_INCOME_BAND_LOWER_BOUNDS
+    placed = is_gainer & assigned
+    demoted = is_gainer & ~assigned
+    initial_band = np.searchsorted(gains, existing, side="right") - 1
+    redrawn_band = np.searchsorted(gains, new_gains, side="right") - 1
+    row_types = {"plain": ~support_family, "support_family": support_family}
+    if tuple(row_types) != UK_CGT_PLACEMENT_ROW_TYPES:
+        raise RuntimeError("Placement row types must match the declared tuple.")
+
+    by_row_type: dict[str, dict[str, object]] = {}
+    for name, in_type in row_types.items():
+        by_initial_band: dict[str, dict[str, object]] = {}
+        for gi, gain_lower in enumerate(gains):
+            in_band = in_type & (initial_band == gi)
+            placed_rows, placed_mass = _rows_and_mass(person_weight, in_band & placed)
+            demoted_rows, demoted_mass = _rows_and_mass(
+                person_weight, in_band & demoted
+            )
+            by_initial_band[str(gain_lower)] = {
+                "placed_rows": placed_rows,
+                "placed_mass": placed_mass,
+                "demoted_rows": demoted_rows,
+                "demoted_mass": demoted_mass,
+            }
+        persons, person_mass = _rows_and_mass(person_weight, in_type)
+        gainers, gainer_mass = _rows_and_mass(person_weight, in_type & is_gainer)
+        placed_rows, placed_mass = _rows_and_mass(person_weight, in_type & placed)
+        demoted_rows, demoted_mass = _rows_and_mass(person_weight, in_type & demoted)
+        by_row_type[name] = {
+            "persons": persons,
+            "person_mass": person_mass,
+            "gainers": gainers,
+            "gainer_mass": gainer_mass,
+            "placed_rows": placed_rows,
+            "placed_mass": placed_mass,
+            "demoted_rows": demoted_rows,
+            "demoted_mass": demoted_mass,
+            "by_initial_gain_band": by_initial_band,
+        }
+    placement_by_row_type = {
+        "row_type_column": UK_CGT_SUPPORT_COPIES_COLUMN,
+        "row_type_column_present": bool(support_column_present),
+        "gain_band_lower_bounds": [int(gain_lower) for gain_lower in gains],
+        "by_row_type": by_row_type,
+        "remainder_mass_by_row_type": {
+            name: by_row_type[name]["demoted_mass"] for name in row_types
+        },
+    }
+
+    # The plans' members, concatenated once per (gain band, income band).
+    plan_rows: dict[tuple[int, int], np.ndarray] = {}
+    by_cell: dict[str, dict[str, float]] = {}
+    for gain_lower in gains:
+        by_cell[str(gain_lower)] = {}
+        for income_lower in incomes:
+            chunks = members.get((gain_lower, income_lower), ())
+            rows = (
+                np.concatenate(list(chunks))
+                if len(chunks)
+                else np.empty(0, dtype=np.intp)
+            )
+            plan_rows[(gain_lower, income_lower)] = rows
+            by_cell[str(gain_lower)][str(income_lower)] = (
+                float(person_weight[rows].max()) if rows.size else 0.0
+            )
+    heaviest_placed_weight = {
+        "overall": _heaviest(person_weight, placed),
+        "placed_rows": int(placed.sum()),
+        "by_gain_band": {
+            str(gain_lower): _heaviest(person_weight, placed & (redrawn_band == gi))
+            for gi, gain_lower in enumerate(gains)
+        },
+        "by_cell": by_cell,
+    }
+
+    income_band_rows: list[dict[str, object]] = []
+    for ii, income_lower in enumerate(incomes):
+        in_income = income_band == income_lower
+        target = float(
+            sum(
+                joint[(gain_lower, income_lower)].allocation_people
+                for gain_lower in gains
+            )
+        )
+        pass1 = float(pass1_by_band[:, ii].sum())
+        fallback = float(achieved_fallback[:, ii].sum())
+        residual = target - pass1 - fallback
+        gainers, gainer_mass = _rows_and_mass(person_weight, in_income & is_gainer)
+        placed_rows, placed_mass = _rows_and_mass(person_weight, in_income & placed)
+        income_band_rows.append(
+            {
+                "income_lower_bound": int(income_lower),
+                "target_people": target,
+                "achieved_pass1": pass1,
+                "achieved_fallback": fallback,
+                "achieved_people": pass1 + fallback,
+                "residual": residual,
+                "overshoot": max(0.0, -residual),
+                "gainers": gainers,
+                "gainer_mass": gainer_mass,
+                "placed_rows": placed_rows,
+                "placed_mass": placed_mass,
+                "heaviest_placed_weight": _heaviest(person_weight, in_income & placed),
+            }
+        )
+
+    # The open band: achieved against the Table 2.1a 2024-25 row folded onto
+    # it, the figures the stage summary reports as published, and the joint's
+    # target for the band; per income column the plan's target and what the
+    # two passes seated there.
+    top_index = len(gains) - 1
+    top_lower = gains[top_index]
+    top_row = band_rows[top_index]
+    if int(top_row["gain_lower_bound"]) != top_lower:
+        raise RuntimeError("Band rows must be ordered as the gain band bounds.")
+    in_open = new_gains >= float(top_lower)
+    open_by_income: dict[str, dict[str, object]] = {}
+    for ii, income_lower in enumerate(incomes):
+        rows = plan_rows[(top_lower, income_lower)]
+        open_by_income[str(income_lower)] = {
+            "target_people": float(joint[(top_lower, income_lower)].allocation_people),
+            "achieved_people": float(
+                pass1_by_band[top_index, ii] + achieved_fallback[top_index, ii]
+            ),
+            "placed_rows": int(rows.size),
+            "heaviest_placed_weight": (
+                float(person_weight[rows].max()) if rows.size else 0.0
+            ),
+        }
+    open_band = {
+        "gain_lower_bound": int(top_lower),
+        "achieved_people": float(person_weight[in_open].sum()),
+        "achieved_gains": float((new_gains[in_open] * person_weight[in_open]).sum()),
+        "published_people": float(top_row["table2_1a_people"]),
+        "published_gains": float(top_row["table2_1a_gains"]),
+        "target_people": float(top_row["target_people"]),
+        "placed_rows": int(in_open.sum()),
+        "heaviest_placed_weight": _heaviest(person_weight, in_open),
+        "by_income_band": open_by_income,
+    }
+
+    # Deciles of the rank key's wealth component: the average rank of
+    # household investable wealth among gainers, as the key takes it.
+    gainer_rows = np.flatnonzero(is_gainer)
+    decile = np.zeros(len(existing), dtype=int)
+    if gainer_rows.size:
+        wealth_rank = (
+            pd.Series(investable_wealth[gainer_rows]).rank(pct=True).to_numpy()
+        )
+        decile[gainer_rows] = np.clip(np.ceil(wealth_rank * 10.0), 1, 10).astype(int)
+    deciles: dict[str, dict[str, object]] = {}
+    for tenth in range(1, 11):
+        in_decile = decile == tenth
+        gainers, gainer_mass = _rows_and_mass(person_weight, in_decile)
+        placed_rows, placed_mass = _rows_and_mass(person_weight, in_decile & placed)
+        deciles[str(tenth)] = {
+            "gainers": gainers,
+            "gainer_mass": gainer_mass,
+            "placed_rows": placed_rows,
+            "placed_mass": placed_mass,
+            "placed_share": placed_mass / gainer_mass if gainer_mass > 0.0 else 0.0,
+        }
+    share_by_income: dict[str, dict[str, float]] = {}
+    for income_lower in incomes:
+        in_income = income_band == income_lower
+        shares: dict[str, float] = {}
+        for tenth in range(1, 11):
+            in_cell = in_income & (decile == tenth)
+            cell_mass = float(person_weight[in_cell].sum())
+            shares[str(tenth)] = (
+                float(person_weight[in_cell & placed].sum() / cell_mass)
+                if cell_mass > 0.0
+                else 0.0
+            )
+        share_by_income[str(income_lower)] = shares
+    placed_share_by_wealth_decile = {
+        "wealth_measure": "household investable wealth, average rank among gainers",
+        "investable_wealth_columns": list(UK_CGT_INVESTABLE_WEALTH_COLUMNS),
+        "wealth_rank_weight": UK_CGT_WEALTH_RANK_WEIGHT,
+        "deciles": deciles,
+        "by_income_band": share_by_income,
+    }
+
+    return {
+        "placement_by_row_type": placement_by_row_type,
+        "heaviest_placed_weight": heaviest_placed_weight,
+        "income_band_rows": tuple(income_band_rows),
+        "open_band": open_band,
+        "placed_share_by_wealth_decile": placed_share_by_wealth_decile,
+    }
+
+
 def impute_uk_capital_gains_with_report(
     frame: Frame,
     distribution: HMRCCapitalGainsJointDistribution,
@@ -1462,6 +1766,8 @@ def impute_uk_capital_gains_with_report(
     _, age_group, _, region_group = _person_conditioning_cells(person, household)
 
     rank_key, investable_wealth = _allocation_rank_key(person, household, existing)
+    # Receipts only (microcosm#1045): the walk never reads the row type.
+    support_family, support_column_present = _support_family_rows(person, household)
 
     rng = np.random.default_rng((seed, int(time_period)))
     new_gains = existing.copy()
@@ -1674,6 +1980,22 @@ def impute_uk_capital_gains_with_report(
         for gi, gain_lower in enumerate(gains)
     }
     liable_after = assigned & (new_gains > 0)
+    placement = _placement_receipts(
+        existing=existing,
+        new_gains=new_gains,
+        is_gainer=is_gainer,
+        assigned=assigned,
+        person_weight=person_weight,
+        income_band=income_band,
+        support_family=support_family,
+        support_column_present=support_column_present,
+        members=members,
+        joint=joint,
+        pass1_by_band=pass1_by_band,
+        achieved_fallback=achieved_fallback,
+        band_rows=band_rows,
+        investable_wealth=investable_wealth,
+    )
     report = UKCGTAllocationReport(
         remainder=remainder_receipt,
         rank_key={
@@ -1714,6 +2036,11 @@ def impute_uk_capital_gains_with_report(
             "region_groups": dict(UK_CGT_REGION_GROUPS),
             "fallback_policy": UK_CGT_FALLBACK_POLICY,
         },
+        placement_by_row_type=placement["placement_by_row_type"],
+        heaviest_placed_weight=placement["heaviest_placed_weight"],
+        income_band_rows=placement["income_band_rows"],
+        open_band=placement["open_band"],
+        placed_share_by_wealth_decile=placement["placed_share_by_wealth_decile"],
     )
 
     new_person = person.copy()

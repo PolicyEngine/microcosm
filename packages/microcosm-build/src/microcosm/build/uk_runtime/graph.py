@@ -274,11 +274,14 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "cgt_support_split": None,
     "cgt_incidence_clone": None,
     # The amounts redraw conditions on age and household region as well as
-    # the income proxy (microcosm#725), and ranks gainers on household
-    # investable wealth (microcosm#1014); all are context carriers, declared
-    # here so the ownership record names them.
+    # the income proxy (microcosm#725), ranks gainers on household investable
+    # wealth (microcosm#1014) and keys its placement receipts on the support
+    # split's family count (microcosm#1045); all are context carriers,
+    # declared here so the ownership record names them.
     "hmrc_cgt_gains_spine": frozenset(
         {
+            ("household", "household_is_cgt_support_copy"),
+            ("household", "cgt_support_copies"),
             *(
                 ("person", column)
                 for column in (
