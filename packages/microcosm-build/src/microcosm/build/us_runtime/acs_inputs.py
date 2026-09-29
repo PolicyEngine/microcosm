@@ -29,10 +29,12 @@ __all__ = [
     "map_acs_weeks_worked",
 ]
 
-#: Census's own WKWN definition (1-52 weeks; the API's 0 is the FTP file's
-#: blank, NIU: under 16 or no work in the past 12 months).
+#: Census's own WKWN definition in the 2024 ACS PUMS data dictionary, the
+#: vintage of the ACS rows this lane reads: 1-52 weeks, blank (NIU) under 16
+#: or with no work in the past 12 months. The Census API codes that blank 0.
 ACS_WEEKS_WORKED_REFERENCE = (
-    "https://api.census.gov/data/2023/acs/acs1/pums/variables/WKWN.json"
+    "https://www2.census.gov/programs-surveys/acs/tech_docs/pums/"
+    "data_dict/PUMS_Data_Dictionary_2024.pdf#page=45"
 )
 
 _INFLATION_FACTOR_DENOMINATOR = 1_000_000.0

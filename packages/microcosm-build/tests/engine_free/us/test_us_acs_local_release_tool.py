@@ -236,8 +236,15 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "takes_up_medicare_if_eligible",
     }
     assert "acs_local_take_up_signal" in fills["treatment"]
-    for fragment in ("SERIALNO:SPORDER", "microcosm#975", "HINS3 == 1"):
+    for fragment in (
+        "SERIALNO:SPORDER",
+        "microcosm#975",
+        "HINS3 == 1",
+        "cap-based proxy, not an observed exemption assignment",
+        "upper-bound propensity",
+    ):
         assert fragment in fills["reason"]
+    assert "Blank and invalid HINS3 counts" in fills["treatment"]
     # microcosm#1022: the ACS SSI disability criteria are a reviewed method,
     # and SSI take-up still ships at the engine default.
     ssi = by_id["acs_local_ssi_disability_criteria"]

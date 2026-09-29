@@ -22,8 +22,9 @@ package; each is separately resumable):
                 passing ACS local income transfer or no passing ACS local SSI
                 disability-criteria stage (microcosm#1022), seed
                 ACS-row SNAP/TANF take-up (microcosm#1019) and fill
-                the ACS rows' discretionary ABAWD exemption, housing-
-                assistance receipt and Medicare take-up without the engine
+                the ACS rows' discretionary ABAWD exemption (a cap-based
+                upper-bound proxy), housing-assistance receipt and
+                Medicare take-up without the engine
                 (microcosm#1022; the consumer export re-derives the same
                 values), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
@@ -407,8 +408,9 @@ _NEVER_DEFAULT_FILLED_REASONS: dict[tuple[str, str], str] = {
         for key, reason in zip(
             ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS,
             (
-                "the engine default False switches the 8% discretionary ABAWD "
-                "exemption off for every ACS adult",
+                "the engine default False switches the cap-based discretionary "
+                "ABAWD exemption proxy (drawn at the 8% statutory cap) off for "
+                "every ACS adult",
                 "the engine default False drops every ACS housing-assistance "
                 "recipient the transferred take-up flag records",
                 "the engine default True enrolls every Medicare-eligible ACS "
@@ -1059,6 +1061,16 @@ def _with_local_take_up(frame, *, seed: int):
         )
     for column, entry in receipt["engine_free_fills"]["columns"].items():
         log(f"ACS engine-free fill {column}: filled {entry['filled_rows']:,} rows")
+    audit = receipt["engine_free_fills"]["columns"]["takes_up_medicare_if_eligible"][
+        "hins3_audit"
+    ]
+    for kind in ("blank", "invalid"):
+        counts = audit[kind]
+        log(
+            f"ACS HINS3 {kind} (read as not covered; informational): "
+            f"{counts['rows']:,} rows, weight {counts['weight']:,.0f}; at 65+ "
+            f"{counts['rows_65_plus']:,} rows, weight {counts['weight_65_plus']:,.0f}"
+        )
     return frame, receipt
 
 
@@ -1791,22 +1803,26 @@ def finalize_reviewed_limitations(
                 "mirrors the donor seeding: every person aged 18-64 draws "
                 "against the snap_abawd_discretionary_exemption manifest rate "
                 "(the statutory cap), keyed on acs_2024_1yr:SERIALNO:SPORDER. "
-                "Seeding all adults rather than covered individuals only, at "
-                "the cap rather than actual state usage, makes it an upper "
-                "bound, as on the donor. receives_housing_assistance copies "
-                "the transferred takes_up_housing_assistance_if_eligible (equal "
-                "on the donor by construction) and is False in TYPEHUGQ 2/3 "
-                "group quarters, whose transferred take-up flag microcosm#975 "
-                "owns. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
+                "It is a cap-based proxy, not an observed exemption assignment: "
+                "seeding all adults rather than covered individuals only, at "
+                "the cap rather than actual state usage, makes it an "
+                "upper-bound propensity, as on the donor. "
+                "receives_housing_assistance copies the transferred "
+                "takes_up_housing_assistance_if_eligible (equal on the donor by "
+                "construction) and is False in TYPEHUGQ 2/3 group quarters, "
+                "whose transferred take-up flag is the open transfer-side fix "
+                "microcosm#975. takes_up_medicare_if_eligible is ACS HINS3 == 1 "
                 "(coverage at interview), as the donor maps ASEC MCARE == 1; a "
-                "blank HINS3 reads as not covered."
+                "blank or invalid HINS3 reads as not covered."
             ),
             "treatment": (
                 "Filled by the release tool before both reviewed-null fills, "
                 "digested in run_identity.json and re-derived at export; gated "
                 "by acs_local_take_up_signal (exempt share of ages 18-64 around "
                 "the manifest rate, receipt equal to the transferred take-up, "
-                "Medicare equal to HINS3 with a high share at 65+)."
+                "Medicare equal to HINS3 with a high share at 65+). Blank and "
+                "invalid HINS3 counts (unweighted, weighted and at 65+) are "
+                "reported in the receipt and the gate detail, not graded."
             ),
             "calibration_blocker": False,
         },
@@ -2357,7 +2373,8 @@ def do_finalize(args) -> None:
                 "transferred: ACS SNAP/TANF take-up is seeded by this tool "
                 "and gated by acs_local_take_up_signal (microcosm#1019). The "
                 "same stage fills the ACS rows' discretionary ABAWD exemption "
-                "(the donor's seeded 18-64 draw at the manifest rate), "
+                "(a cap-based proxy: the donor's seeded 18-64 draw at the "
+                "statutory-cap manifest rate, not an observed assignment), "
                 "housing-assistance receipt (the transferred housing take-up "
                 "flag; False in group quarters) and Medicare take-up (native "
                 "HINS3) without the engine, gated by the same gate "
