@@ -40,6 +40,13 @@ from microcosm.build.us_runtime.acs_local_immigration import (
     require_acs_local_immigration_donor,
     with_acs_local_immigration_inputs,
 )
+from microcosm.build.us_runtime.acs_local_work_disability import (
+    ACS_DISABILITY_ITEMS,
+    ACS_LOCAL_DISABILITY_COLUMNS,
+    ACS_LOCAL_WORK_DISABILITY_ISSUE,
+    ACS_NATIVE_PROVENANCE,
+    acs_local_work_disability_signal_gate,
+)
 from microcosm.build.us_runtime.acs_multispine import (
     AcsMultispineResult,
     build_optional_acs_multispine,
@@ -91,6 +98,11 @@ _STAGING_EXPORT_FIXED_OVERHEAD_BYTES = 512 * 1024**2
 _PACKAGED_MANIFEST_REFERENCE = (
     "package:microcosm.build.us_runtime/acs_2024_1yr_sources.json"
 )
+#: The raw ACS items a native disability receipt must name (microcosm#1021).
+_NATIVE_DISABILITY_SOURCES: dict[str, tuple[str, ...]] = {
+    "is_disabled": ACS_DISABILITY_ITEMS,
+    "is_blind": ("DEYE",),
+}
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -275,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
             donor, seed=args.seed, period=args.period
         ),
         hours_under15_policy=args.hours_under15_policy,
+        work_disability_inputs=True,
         donor_channel=args.donor_channel,
         seed=args.seed,
         n_estimators=args.n_estimators,
@@ -303,6 +316,10 @@ def main(argv: list[str] | None = None) -> int:
     result, immigration = _with_local_immigration(
         result, seed=args.seed, period=args.period
     )
+    gc.collect()
+    # microcosm#1021: the ACS rows' is_disabled/is_blind/weeks_worked were
+    # mapped natively before the transfer; gate them on the pooled frame.
+    work_disability = _require_local_work_disability(result)
     gc.collect()
     input_null_audit = _engine_input_null_audit(result.frame)
     gc.collect()
@@ -344,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
         "details": dict(hours_gate.details),
     }
     summary.update(immigration)
+    summary.update(work_disability)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     rendered = json.dumps(summary, indent=2, sort_keys=True, allow_nan=False) + "\n"
     summary_path.write_text(rendered, encoding="utf-8")
@@ -434,6 +452,39 @@ def _with_local_immigration(
     return replace(result, frame=frame), {
         "acs_local_immigration": receipt,
         "acs_local_immigration_gate": {
+            "name": gate.name,
+            "passed": gate.passed,
+            "failures": list(gate.failures),
+            "details": dict(gate.details),
+        },
+    }
+
+
+def _require_local_work_disability(result: AcsMultispineResult) -> dict[str, object]:
+    """Gate the ACS local work/disability inputs; return the summary entries.
+
+    ``build_optional_acs_multispine(work_disability_inputs=True)`` maps them
+    natively before the transfer and records the receipt in its provenance.
+    The gate must pass before the staging H5 is written, and the release tool
+    refuses a staging summary without both entries
+    (``acs_local_work_disability`` and ``acs_local_work_disability_gate``).
+    """
+
+    receipt = result.provenance.get("acs_local_work_disability")
+    if not isinstance(receipt, dict):
+        raise SystemExit(
+            "ACS multispine recorded no native work/disability receipt "
+            f"({ACS_LOCAL_WORK_DISABILITY_ISSUE}); the ACS rows' is_disabled "
+            "and is_blind would be ASEC-imputed and weeks_worked absent."
+        )
+    gate = acs_local_work_disability_signal_gate(result.frame, receipt=receipt)
+    if not gate.passed:
+        raise SystemExit(
+            "Local staging work/disability gate failed: " + "; ".join(gate.failures)
+        )
+    return {
+        "acs_local_work_disability": receipt,
+        "acs_local_work_disability_gate": {
             "name": gate.name,
             "passed": gate.passed,
             "failures": list(gate.failures),
@@ -652,6 +703,29 @@ def _require_default_transfer_coverage(
         and native_hours["missing_rows"] == modeled_rows
     ):
         native_complete[native_hours_column] = native_hours
+    # microcosm#1021: the local lane maps is_disabled/is_blind natively on
+    # every ACS row (the six difficulty items, plus SSIP for is_disabled), so
+    # the null-only transfer has nothing to fit. Accept only an exact,
+    # complete native receipt; a partial or non-native one still needs a fit.
+    native_modeled_rows = {native_hours_column: modeled_rows}
+    for column in ACS_LOCAL_DISABILITY_COLUMNS:
+        native_flag = (
+            native_inputs.get(column) if isinstance(native_inputs, dict) else None
+        )
+        if (
+            column in expected
+            and isinstance(native_flag, dict)
+            and native_flag.get("entity") == "person"
+            and native_flag.get("provenance") == ACS_NATIVE_PROVENANCE
+            and isinstance(native_flag.get("source_columns"), list)
+            and set(_NATIVE_DISABILITY_SOURCES[column]).issubset(
+                native_flag["source_columns"]
+            )
+            and type(native_flag.get("missing_rows")) is int
+            and native_flag["missing_rows"] == 0
+        ):
+            native_complete[column] = native_flag
+            native_modeled_rows[column] = 0
     missing = sorted(set(expected) - set(entries) - set(native_complete))
     if missing:
         raise SystemExit(
@@ -681,11 +755,15 @@ def _require_default_transfer_coverage(
             raw_unmodeled = entries[column].get("unmodeled_recipient_rows", 0)
         else:
             receipt = native_complete[column]
+            native_modeled = native_modeled_rows[column]
             if type(receipt.get("observed_rows")) is not int or receipt[
                 "observed_rows"
-            ] + modeled_rows != int(acs_mask.sum()):
-                raise SystemExit("ACS native hours receipt has incorrect row coverage.")
-            raw_unmodeled = receipt["missing_rows"] - modeled_rows
+            ] + native_modeled != int(acs_mask.sum()):
+                label = "hours" if column == native_hours_column else column
+                raise SystemExit(
+                    f"ACS native {label} receipt has incorrect row coverage."
+                )
+            raw_unmodeled = receipt["missing_rows"] - native_modeled
         if type(raw_unmodeled) is not int or raw_unmodeled < 0:
             raise SystemExit(
                 f"ACS imputation provenance for {column!r} has invalid "
