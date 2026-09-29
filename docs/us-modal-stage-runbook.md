@@ -147,11 +147,14 @@ local wall times in this table understate Modal's wall and cost.
 The prices are Modal's list prices for standard compute, read from
 modal.com/pricing on 22 September 2026 and unchanged on 29 September:
 $0.0000131 per core-second and $0.00000222 per GiB-second. Modal bills the
-higher of the request and actual use. The heavy class costs about $1.21 an
-hour, so an 8-hour timeout costs at most about $9.70. With `"nonpreemptible": true` every figure is three times
+higher of the request and actual use (modal.com/docs/guide/resources). The
+heavy class costs about $1.21 an hour at its request, so an 8-hour timeout
+costs about $9.70 at the request; CPU or memory used above the request
+bills above that. With `"nonpreemptible": true` every figure is three times
 higher: about $3.63 an hour for the heavy class. Only the base class sets
-a CPU limit (equal to its request); the others are request-only, so a
-stage that used more cores would be billed for them. The engine pass in
+a CPU limit (equal to its request); the others are request-only for CPU,
+and every class is request-only for memory, so a stage that used more cores
+or more memory than its request would be billed for them. The engine pass in
 materialize is single-threaded (CPU seconds roughly equal wall seconds), so
 extra cores would not speed it up. The table leaves out volume storage and
 image builds. The base class is sized in "Route A's base stage" below.
@@ -517,12 +520,13 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   run did. It sets no thread counts, because the local run set none;
   Modal's container defaults apply, and the receipt records them
   (`runner.thread_env`, `os_cpu_count`, `cpu_affinity`), as does the tool's
-  own `stage_run_context.json`. As in every stage, the tool runs with
-  `HF_HUB_OFFLINE=1`, which the local run's recorded environment did not
-  set. The base needs no Hub file: every source is passed as a path, and
-  the only fetch the tool itself calls is the Census download above (the
-  library fetches an ASEC person archive only for an unmapped year, and all
-  three are mapped).
+  own `stage_run_context.json` (`thread_environment`, which step 6 reports
+  next to the local run's without refusing on it). As in every stage, the
+  tool runs with `HF_HUB_OFFLINE=1`, which the local run's recorded
+  environment did not set. The base needs no Hub file: every source is
+  passed as a path, and the only fetch the tool itself calls is the Census
+  download above (the library fetches an ASEC person archive only for an
+  unmapped year, and all three are mapped).
 - **The interpreter and platform differ; the package versions do not.**
   The local base for `4b57d15a2` ran on free-threaded CPython 3.14.7 on
   macOS arm64. The build worktree's `.venv/pyvenv.cfg` names
@@ -576,12 +580,31 @@ The plan is `docs/us-modal-stage-route-a-base-plan.json` (run
   container is the receipt's `runner.os_cpu_count` and `cpu_affinity`.
   Because of that, the base's functions cap CPU at the request (`cpu=(4.0,
   4.0)`; see "How the cap holds"). The cap may slow phases that ran on more
-  than 4 cores locally; it does not change what the tool computes. The whole
-  local run's 6,238 CPU-s is 1,560 s of 4 cores. Pinning
-  `POPULACE_FIT_PREDICT_WORKERS` or `POPULACE_FIT_N_JOBS` in the plan would
-  also bound the pools, but the tool binds both into its locked run config,
-  so the Modal run would no longer have the local run's config. That is a
-  call for the builder or Max, not a plan edit.
+  than 4 cores locally. The whole local run's 6,238 CPU-s is 1,560 s of 4
+  cores.
+- *Pinning the pools.* Setting `POPULACE_FIT_PREDICT_WORKERS` or
+  `POPULACE_FIT_N_JOBS` in the plan would also bound the pools. The cost of
+  that is not parity with the local run's locked config, which the Modal
+  run never has: at `4b57d15a2` the tool locks resolved paths (`/work/...`
+  on Modal, `/Users/...` locally) and the thread variables it reads from its
+  environment (`thread_environment`: the BLAS and OpenMP counts, both
+  `POPULACE_FIT_*` variables and `PYTHONHASHSEED`; `_stage_run_config`), and
+  Modal set four of those thread counts in the check container where the
+  local run set none. Pinning would change only `thread_environment` (and
+  the controls the primary-QRF worker identity records,
+  `worker_identity.py`). `compare-lineage` requires the rest of the run
+  config to equal the local run's, paths by file name, and reports
+  `thread_environment` without refusing on it (step 6). What is not known is
+  whether the worker count changes the numbers. The pinned code says it
+  does not: the draw's chunking "only changes *when* each row is computed,
+  never *what* it is", and the forests are "deterministic per random_state
+  regardless of worker count" (microcosm-fit `qrf.py`). No test at
+  `4b57d15a2` compares two worker counts (its QRF tests pin both variables
+  to 1), and no run has. The local run left both unset, so its predict pool
+  was `os.cpu_count()` wide; an unpinned Modal run's pool is whatever its
+  container reports. If the CPU limit changes what `os.cpu_count()` returns
+  (not observed either way), the same question applies to it. Pinning is a
+  call for the builder or Max, not a plan edit made here.
 - *Disk.* The base writes about 50 GB: 44 GB of frame checkpoints, the
   2.35 GB H5, about 2.4 GB of staged inputs and the seeded archive with its
   extracted member. Modal gives each container a disk quota of 512 GiB by
@@ -758,11 +781,12 @@ python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
   --state-root ./modal-runs/$R/state --prefix base-out --strict
 
 # 6. Required before the base is used: compare the Modal run with the local
-#    run of the same commit and inputs, as far as the local run went. It
-#    stopped after its first two outer stages, whose frame checkpoints are
-#    deterministic (written without HDF5 timestamps, with no paths or
-#    platform strings in them). The comparison needs their sha256 in the
-#    receipt, and the Modal run's own stage_run_context.json, whose sha256
+#    run of the same commit and inputs: its command, its inputs, the run
+#    config its tool locked, and its outputs as far as the local run went.
+#    It stopped after its first two outer stages, whose frame checkpoints
+#    are deterministic (written without HDF5 timestamps, with no paths or
+#    platform strings in them). The comparison needs the COMPLETED receipt
+#    of step 5 and the Modal run's own stage_run_context.json, whose sha256
 #    must be the one the receipt lists. The reference is
 #    docs/us-modal-stage-route-a-base-local-reference.json.
 modal volume get microcosm-us-stage-runs \
@@ -772,15 +796,39 @@ python3 tools/modal_us_stage_plan.py compare-lineage "$RECEIPT" \
   --run-context ./modal-runs/$R/stage_run_context.json
 ```
 
-`compare-lineage` exits 0 when the receipt's `000_source_construction` and
-`001_pre_clone_enrichment` checkpoints have the local run's sha256
-(`be8c2689…` and `5a52f337…`) and the Modal run locked the local run's
-outer-stage pipeline (`pipeline_sha256` `906c9c02…`, 24 stages) and code
-identity: `source_sha256` `c02fd057…` (the digest of the committed tree of
-`4b57d15a2`, so an untracked file in either tree would change it) and the
-same six dependency versions. Its report says `compared_outputs_match`,
-with `stages_compared` 2 of `stages_total` 24 and the 22 stages it did not
-compare (`stages_not_compared`).
+`compare-lineage` exits 0 only when all of these hold:
+
+- The receipt says `COMPLETED` and not `stopped_at_budget` (the same test
+  as `verify-receipt`).
+- Its argv, with the container's paths turned into the fixture's tokens
+  (`<python>`, `<input:ROLE>/<file>`, `<state>`, `<repo>`), is the local
+  run's command token for token (the reference's `argv`, a copy of the
+  fixture). The plan's environment is the local run's (`PYTHONUNBUFFERED=1`),
+  apart from the variables the tool records in `thread_environment`.
+- Each of the eleven inputs the receipt verified has the sha256 the local
+  run used.
+- The `000_source_construction` and `001_pre_clone_enrichment` checkpoints
+  have the local run's sha256 (`be8c2689…` and `5a52f337…`).
+- The Modal run locked the local run's outer-stage pipeline
+  (`pipeline_sha256` `906c9c02…`, 24 stages) and the local run's run
+  config. The reference keeps all 27 keys of that config
+  (`_stage_run_config` at `4b57d15a2`) with each path cut to its file name
+  and `YEAR=` prefixes kept, and the Modal config is compared the same way,
+  so another directory is the same file and another file name is not. That
+  covers every setting: seed, estimators, target year, district and ladder
+  seeds, district assignment, the ladder escape hatches, the ASEC order and
+  pins, and the PUF digests. It covers the code identity too:
+  `source_sha256` `c02fd057…` (the digest of the committed tree of
+  `4b57d15a2`, so an untracked file in either tree would change it) and the
+  same six dependency versions.
+
+Two things are reported and never refused: the interpreter string
+(`python`) and every `thread_environment` variable whose value differs
+(`thread_environment_differences`). The tool reads those variables from its
+environment, Modal sets some of them itself (see "Resources"), and whether
+they change the numbers has not been shown. The report says
+`compared_outputs_match`, with `stages_compared` 2 of `stages_total` 24 and
+the 22 stages it did not compare (`stages_not_compared`).
 
 Read a match for what it is. It shows that the Modal platform reproduced
 source construction and pre-clone enrichment byte for byte. That is real
@@ -800,8 +848,9 @@ the Mac's bytes. That can be the numbers or the HDF5 layout; a
 dataset-by-dataset comparison tells which (the push keeps both compared
 checkpoints on the volume even after a clean exit). Either way, stop:
 record it in the run's notes, do not hand the base to Route A, and get
-Max's call before the base is used. The report also prints both
-interpreters, which differ by design.
+Max's call before the base is used. The same holds for any other problem
+it reports: a different command, input, setting or code identity means the
+Modal run is not the local run's build.
 
 **Hand the base to Route A.** Route A's driver skips its base stage only
 when `$RUN/base-sup/ACCEPTED` exists (`stage_done base` in `route_a.sh`).
@@ -815,24 +864,39 @@ After steps 5 and 6 pass, and before rerunning `route_a.sh`:
 ```bash
 # 7. $RUN is Route A's run directory for the build commit
 #    (.../overnight-20260923/route-a/run-4b57d15a287c on the build machine).
+#    R and RECEIPT are step 5's. The block runs in a subshell with
+#    `set -euo pipefail`, so the first command that fails (the guard, the
+#    copy, verify-receipt, any write) ends it and nothing after it runs.
+#    ACCEPTED is written last, so a stopped block never hands Route A a
+#    base. What the earlier commands wrote stays (a partial $RUN/base-out,
+#    perhaps base.sha256 or base-sup): look at it, remove it by hand, and
+#    run the block again.
 RUN=<Route A run directory>
-test ! -e "$RUN/base-sup" && test ! -e "$RUN/base-out"   # never overwrite a base
-mkdir -p "$RUN/base-out"
-cp -p ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
-# The copies, in place, against the receipt (COMPLETED only, nothing extra).
-python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
-  --state-root "$RUN" --prefix base-out --strict
-H5=$RUN/base-out/base_populace_us_2024_puf_support.h5
-echo "$(shasum -a 256 "$H5" | cut -c1-64)  $H5" > "$RUN/base.sha256"
-# The failed local run's partial checkpoints: keep them, out of the way.
-mv "$RUN/base-checkpoints" "$RUN/base-checkpoints.local-$(date +%s)"
-mkdir -p "$RUN/base-sup"
-cp "$RECEIPT" "$RUN/base-sup/modal-receipt.json"
-RECEIPT_SHA=$(shasum -a 256 "$RECEIPT" | cut -c1-64)
-printf '{\n "status": "MODAL_RECEIPT",\n "returncode": 0,\n "refusal": null,\n "receipt": "%s",\n "receipt_sha256": "%s"\n}\n' \
-  "$(basename "$RECEIPT")" "$RECEIPT_SHA" > "$RUN/base-sup/RESULT.json"
-echo "returncode=0 $(date '+%F %T') modal receipt $(basename "$RECEIPT") sha256 $RECEIPT_SHA" \
-  > "$RUN/base-sup/ACCEPTED"
+(
+  set -euo pipefail
+  if [ -e "$RUN/base-sup" ] || [ -e "$RUN/base-out" ]; then
+    echo "refusing: $RUN already has base-sup or base-out; never overwrite a base" >&2
+    exit 1
+  fi
+  mkdir -p "$RUN/base-out"
+  cp -p ./modal-runs/$R/state/base-out/* "$RUN/base-out/"
+  # The copies, in place, against the receipt (COMPLETED only, nothing extra).
+  python3 tools/modal_us_stage_plan.py verify-receipt "$RECEIPT" \
+    --state-root "$RUN" --prefix base-out --strict
+  H5=$RUN/base-out/base_populace_us_2024_puf_support.h5
+  echo "$(shasum -a 256 "$H5" | cut -c1-64)  $H5" > "$RUN/base.sha256"
+  # The failed local run's partial checkpoints: keep them, out of the way.
+  if [ -e "$RUN/base-checkpoints" ]; then
+    mv "$RUN/base-checkpoints" "$RUN/base-checkpoints.local-$(date +%s)"
+  fi
+  mkdir -p "$RUN/base-sup"
+  cp "$RECEIPT" "$RUN/base-sup/modal-receipt.json"
+  RECEIPT_SHA=$(shasum -a 256 "$RECEIPT" | cut -c1-64)
+  printf '{\n "status": "MODAL_RECEIPT",\n "returncode": 0,\n "refusal": null,\n "receipt": "%s",\n "receipt_sha256": "%s"\n}\n' \
+    "$(basename "$RECEIPT")" "$RECEIPT_SHA" > "$RUN/base-sup/RESULT.json"
+  echo "returncode=0 $(date '+%F %T') modal receipt $(basename "$RECEIPT") sha256 $RECEIPT_SHA" \
+    > "$RUN/base-sup/ACCEPTED"
+)
 ```
 
 `RESULT.json` has the one-key-per-line shape `route_a.sh`'s

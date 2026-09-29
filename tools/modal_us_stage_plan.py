@@ -43,6 +43,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from itertools import zip_longest
 from pathlib import Path, PurePosixPath
 
 PLAN_SCHEMA = "microcosm-modal-us-stage-plan/1"
@@ -210,11 +211,16 @@ LIGHT = Resources("light", cpu=2.0, memory_mib=48 * 1024, timeout_s=4 * 3600)
 # they were in the local run (4b57d15a2 microcosm-fit qrf.py _fit_n_jobs and
 # _predict_workers). Without the limit the container could therefore be
 # billed above the 4-core request: at 20 cores for the whole timeout one
-# attempt would list at $25.28. The limit
-# may lengthen phases that used more than 4 cores locally; it does not
-# change what the tool computes. The plan does not pin those two variables,
-# because the tool binds them into its locked run config and the Modal run
-# would then diverge from the local run's.
+# attempt would list at $25.28. The limit may lengthen phases that used more
+# than 4 cores locally. The plan does not pin those two variables either.
+# Pinning would not cost parity with the local run's locked config, which
+# the Modal run never has (the tool locks resolved paths and the thread
+# variables it sees, and Modal sets some of those itself); it would change
+# only the config's thread_environment, which compare-lineage reports and
+# does not compare (RUN_CONFIG_REPORTED_ONLY). What is unknown is whether a
+# worker count changes the numbers: the pinned qrf.py says it does not, but
+# no test at 4b57d15a2 compares two counts and no run has. So pinning is
+# left to the builder or Max (runbook, "Pinning the pools").
 #
 # The timeout sets the ceiling at the request, and it is chosen so that
 # ceiling stays inside the cap: Modal's timeout bounds a function's
@@ -2465,6 +2471,134 @@ def upload_script(rows: Sequence[Mapping[str, object]]) -> str:
 
 LOCAL_REFERENCE_SCHEMA = "microcosm-modal-us-stage-local-reference/1"
 
+#: run_config keys compare-lineage reports and does not require to match.
+#: ``thread_environment`` is what the tool read from its own environment
+#: (the BLAS/OpenMP thread counts, POPULACE_FIT_N_JOBS,
+#: POPULACE_FIT_PREDICT_WORKERS and PYTHONHASHSEED; ``_stage_run_config`` at
+#: 4b57d15a2). Modal set four of those thread counts in the check container
+#: where the local run set none (runbook, acceptance attempt), so it differs
+#: from the local run's without any change to the build's inputs or settings.
+RUN_CONFIG_REPORTED_ONLY = frozenset({"thread_environment"})
+#: builder_code_identity keys compare-lineage reports and does not require
+#: to match: the interpreter build string, which differs by design (the image
+#: runs the standard CPython build on Linux, the local run free-threaded
+#: CPython on macOS).
+CODE_IDENTITY_REPORTED_ONLY = frozenset({"python"})
+_YEAR_PATH = re.compile(r"(\d{4})=(/.*)", re.DOTALL)
+
+
+def mask_config_paths(value: object) -> object:
+    """A run config with each absolute path cut to its file name.
+
+    The base's tool records resolved paths in the run config it locks
+    (``_stage_run_config`` at 4b57d15a2), so one build differs by directory
+    between machines: ``/Users/...`` on the Mac, ``/work/inputs/<role>/`` and
+    ``/work/state/`` on Modal. A ``YEAR=PATH`` entry keeps its year. Mapping
+    keys, numbers, booleans, digests and every other string are kept, so a
+    relative path (which the tool never records) would still differ.
+    """
+
+    if isinstance(value, Mapping):
+        return {str(key): mask_config_paths(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [mask_config_paths(item) for item in value]
+    if isinstance(value, str):
+        match = _YEAR_PATH.fullmatch(value)
+        if match:
+            return f"{match[1]}={PurePosixPath(match[2]).name}"
+        if value.startswith("/"):
+            return PurePosixPath(value).name
+    return value
+
+
+def tokenize_stage_argv(argv: Sequence[str], work_root: str | None = None) -> list[str]:
+    """A container argv in the tokens of a local command's fixture.
+
+    ``<python>`` for the image's venv interpreter, ``<input:ROLE>/<file>``
+    for a staged input, ``<state>`` for the state directory and ``<repo>``
+    for the pinned clone; a ``YEAR=`` prefix is kept. Anything else is kept
+    verbatim, so a path the runner did not build still shows as a
+    difference. The tokens are those of
+    ``packages/microcosm-build/tests/fixtures/modal_us_stage/
+    route_a_base_command_4b57d15a287c.json``.
+    """
+
+    work_root = WORK_ROOT if work_root is None else work_root
+    inputs_root = PurePosixPath(work_root) / "inputs"
+    state = str(PurePosixPath(work_root) / "state")
+    python = f"{IMAGE_VENV}/bin/python"
+
+    def token(value: str) -> str:
+        year, eq, rest = value.partition("=")
+        if eq and year.isdigit() and rest.startswith("/"):
+            return f"{year}={token(rest)}"
+        if not value.startswith("/"):
+            return value
+        path = PurePosixPath(value)
+        if path.is_relative_to(inputs_root):
+            parts = path.relative_to(inputs_root).parts
+            if len(parts) == 2:
+                return f"<input:{parts[0]}>/{parts[1]}"
+            return value
+        for root, name in ((state, "<state>"), (IMAGE_REPO_ROOT, "<repo>")):
+            if path.is_relative_to(root):
+                return name + value[len(root) :]
+        return value
+
+    return [
+        "<python>" if index == 0 and value == python else token(value)
+        for index, value in enumerate(argv)
+    ]
+
+
+def _argv_problem(tokens: Sequence[str], expected: Sequence[str]) -> str | None:
+    if list(tokens) == list(expected):
+        return None
+    diffs = [
+        f"[{index}] Modal {modal!r}, local {local!r}"
+        for index, (modal, local) in enumerate(zip_longest(tokens, expected))
+        if modal != local
+    ]
+    more = f"; and {len(diffs) - 5} more" if len(diffs) > 5 else ""
+    return (
+        f"argv: the receipt's command (tokenized, {len(tokens)} elements) is not "
+        f"the local run's ({len(expected)}): " + "; ".join(diffs[:5]) + more
+    )
+
+
+def _run_config_problems(modal: Mapping, local: Mapping) -> list[str]:
+    """Every run_config key but the reported-only ones, paths masked."""
+
+    modal = mask_config_paths(modal) if isinstance(modal, Mapping) else {}
+    local = mask_config_paths(local) if isinstance(local, Mapping) else {}
+    problems: list[str] = []
+    skip = RUN_CONFIG_REPORTED_ONLY | {"builder_code_identity"}
+    for key in sorted((set(modal) | set(local)) - skip):
+        if key not in modal:
+            problems.append(f"run_config.{key}: not in the Modal run's config")
+        elif key not in local:
+            problems.append(
+                f"run_config.{key}: not in the local run's config "
+                f"(Modal {modal[key]!r})"
+            )
+        elif modal[key] != local[key]:
+            problems.append(
+                f"run_config.{key}: Modal {modal[key]!r}, local {local[key]!r}"
+            )
+    identity = modal.get("builder_code_identity") or {}
+    expected = local.get("builder_code_identity") or {}
+    first = ("source_sha256", "dependency_versions")
+    rest = sorted((set(identity) | set(expected)) - set(first))
+    for key in (*first, *rest):
+        if key in CODE_IDENTITY_REPORTED_ONLY:
+            continue
+        if identity.get(key) != expected.get(key):
+            problems.append(
+                f"builder_code_identity.{key}: Modal {identity.get(key)!r}, "
+                f"local {expected.get(key)!r}"
+            )
+    return problems
+
 
 def lineage_problems(
     receipt: Mapping,
@@ -2475,14 +2609,21 @@ def lineage_problems(
     """Where a Modal run departs from a local run of the same commit and inputs.
 
     ``reference`` (``microcosm-modal-us-stage-local-reference/1``) records
-    what the local run wrote: the sha256 of deterministic outputs (the base's
-    frame checkpoints, written without HDF5 timestamps), the outer-stage
-    pipeline its run context locked, and the builder code identity. The
-    receipt must list the same bytes for each output, and ``run_context``
-    (the Modal run's own file, whose sha256 must be the one the receipt
-    lists) must lock the same pipeline, source digest and dependency
-    versions. The interpreter and platform differ by design and are only
-    reported.
+    the local run: its command (``argv``, paths tokenized as in the fixture,
+    and ``env``), its inputs' sha256, the sha256 of deterministic outputs
+    (the base's frame checkpoints, written without HDF5 timestamps), and the
+    run config its tool locked (``run_config``, paths cut to file names;
+    ``pipeline`` and ``pipeline_sha256``). The receipt must say COMPLETED
+    (:func:`receipt_status_problems`), carry the same command and input
+    digests and list the same bytes for each output. ``run_context`` (the
+    Modal run's own file, whose sha256 must be the one the receipt lists)
+    must lock the same pipeline and the same run config: every key but
+    ``thread_environment``, with paths compared by file name, including
+    the builder code identity but for its interpreter string. The plan's
+    environment must match too, except for the variables the tool records
+    in ``thread_environment``. The interpreter, platform and
+    ``thread_environment`` differ by design and are only reported
+    (:func:`lineage_information`).
 
     No problems means the compared outputs match, not that the run
     reproduced the local one: the reference covers only the stages whose
@@ -2493,7 +2634,7 @@ def lineage_problems(
         return [f"not a {LOCAL_REFERENCE_SCHEMA} reference"]
     if receipt.get("schema") != RECEIPT_SCHEMA:
         return [f"not a {RECEIPT_SCHEMA} receipt"]
-    problems: list[str] = []
+    problems: list[str] = receipt_status_problems(receipt)
     for key in ("tool", "stage"):
         if receipt.get(key) != reference.get(key):
             problems.append(
@@ -2505,6 +2646,44 @@ def lineage_problems(
         problems.append(
             f"commit: the receipt's {commit}, the local run's {reference.get('commit')}"
         )
+    argv_problem = _argv_problem(
+        tokenize_stage_argv([str(item) for item in receipt.get("argv") or []]),
+        [str(item) for item in reference.get("argv") or []],
+    )
+    if argv_problem:
+        problems.append(argv_problem)
+    local_config = reference.get("run_config") or {}
+    recorded_env = set(local_config.get("thread_environment") or {})
+    plan_env = {
+        key: value
+        for key, value in sorted(((receipt.get("plan") or {}).get("env") or {}).items())
+        if key not in recorded_env
+    }
+    local_env = {
+        key: value
+        for key, value in sorted((reference.get("env") or {}).items())
+        if key not in recorded_env
+    }
+    if plan_env != local_env:
+        problems.append(
+            f"env: the Modal plan sets {plan_env}, the local run set {local_env} "
+            "(the thread and worker variables the run context records aside)"
+        )
+    staged = {
+        str(item.get("name")): item.get("sha256")
+        for item in receipt.get("inputs") or []
+    }
+    local_inputs = dict(reference.get("inputs") or {})
+    for role in sorted(set(staged) | set(local_inputs)):
+        if role not in staged:
+            problems.append(f"input {role}: not among the receipt's verified inputs")
+        elif role not in local_inputs:
+            problems.append(f"input {role}: the local run had no such input")
+        elif staged[role] != local_inputs[role]:
+            problems.append(
+                f"input {role}: Modal staged sha256 {staged[role]}, the local run "
+                f"used {local_inputs[role]}"
+            )
     listed = {str(item["path"]): item for item in receipt.get("outputs", [])}
     for rel, local_sha in sorted(dict(reference.get("outputs", {})).items()):
         item = listed.get(rel)
@@ -2529,17 +2708,31 @@ def lineage_problems(
             f"pipeline_sha256: Modal {pipeline_sha256!r}, local "
             f"{reference.get('pipeline_sha256')!r} (a different outer-stage list)"
         )
-    identity = ((run_context or {}).get("run_config") or {}).get(
-        "builder_code_identity"
-    ) or {}
-    expected = reference.get("builder_code_identity") or {}
-    for key in ("source_sha256", "dependency_versions"):
-        if identity.get(key) != expected.get(key):
-            problems.append(
-                f"builder_code_identity.{key}: Modal {identity.get(key)!r}, "
-                f"local {expected.get(key)!r}"
-            )
+    problems += _run_config_problems(
+        (run_context or {}).get("run_config") or {}, local_config
+    )
     return problems
+
+
+def lineage_information(reference: Mapping, run_context: Mapping | None) -> dict:
+    """What compare-lineage reports without refusing: the interpreters, and
+    each ``thread_environment`` variable whose value differs."""
+
+    modal_config = (run_context or {}).get("run_config") or {}
+    local_config = reference.get("run_config") or {}
+    modal_threads = modal_config.get("thread_environment") or {}
+    local_threads = local_config.get("thread_environment") or {}
+    return {
+        "python": {
+            "modal": (modal_config.get("builder_code_identity") or {}).get("python"),
+            "local": (local_config.get("builder_code_identity") or {}).get("python"),
+        },
+        "thread_environment_differences": {
+            key: {"modal": modal_threads.get(key), "local": local_threads.get(key)}
+            for key in sorted(set(modal_threads) | set(local_threads))
+            if modal_threads.get(key) != local_threads.get(key)
+        },
+    }
 
 
 def lineage_scope(reference: Mapping) -> dict[str, object]:
@@ -2681,9 +2874,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         for problem in problems:
             print(problem, file=sys.stderr)
-        identity = (json.loads(context_bytes).get("run_config") or {}).get(
-            "builder_code_identity"
-        ) or {}
         print(
             json.dumps(
                 {
@@ -2693,10 +2883,8 @@ def main(argv: list[str] | None = None) -> int:
                     "problems": len(problems),
                     "outputs_compared": sorted(reference.get("outputs", {})),
                     **lineage_scope(reference),
-                    "python": {
-                        "modal": identity.get("python"),
-                        "local": (reference.get("local_platform") or {}).get("python"),
-                    },
+                    # Reported, never refused (lineage_information).
+                    **lineage_information(reference, json.loads(context_bytes)),
                 }
             )
         )

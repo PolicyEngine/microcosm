@@ -1,9 +1,75 @@
 {
   "schema": "microcosm-modal-us-stage-local-reference/1",
-  "description": "What Route A's local base run for commit 4b57d15a2 wrote before it stopped, for comparing the Modal base with it (tools/modal_us_stage_plan.py compare-lineage; runbook, Route A's base stage, step 6). The local run (route_a.sh section 4, run directory run-4b57d15a287c, 2026-09-28) completed its first two outer stages and was then stopped by its supervisor's disk floor (base-sup.failed-1790651711/RESULT.json: refusal DISK_FLOOR, returncode -9). Its base-checkpoints/stage_run_context.json records both completed stages with these checkpoint sha256, and the files hashed to the same values on 2026-09-29. The frame checkpoint writer sets track_times=False on every HDF5 object (packages/microcosm-build/src/microcosm/build/frame_checkpoint.py at 4b57d15a2), and neither file contains the machine's paths, interpreter or platform strings, so equal inputs and equal numerics give equal bytes. source_sha256 equals microcosm.build.code_identity's digest recomputed over the committed tree of 4b57d15a2, so a clean clone of that commit gives the same value. The local run's pipeline (24 outer stages, pipeline_sha256 906c9c02...) is copied from that stage_run_context.json. Only its first two stages (stages_compared) have outputs here: a Modal run that matches them reproduced source construction and pre-clone enrichment byte for byte, and stages 002 onward (clone_feature_extraction through final_export, the primary PUF QRF chain included) have no local output to compare with.",
+  "description": "What Route A's local base run for commit 4b57d15a2 ran and wrote before it stopped, for comparing the Modal base with it (tools/modal_us_stage_plan.py compare-lineage; runbook, Route A's base stage, step 6). The local run (route_a.sh section 4, run directory run-4b57d15a287c, 2026-09-28) completed its first two outer stages and was then stopped by its supervisor's disk floor (base-sup.failed-1790651711/RESULT.json: refusal DISK_FLOOR, returncode -9). argv and env are its command from base-config.json with paths tokenized, a copy of packages/microcosm-build/tests/fixtures/modal_us_stage/route_a_base_command_4b57d15a287c.json. inputs are the sha256 route_a.sh input_rows() verified for each role. run_config is the config its tool locked, copied from its base-checkpoints/stage_run_context.json (sha256 0f23db47... on 2026-09-29) with every absolute path cut to its file name (mask_config_paths; YEAR= prefixes kept): all 27 keys, thread_environment and builder_code_identity included. The outputs are the two frame checkpoints that file records, which hashed to the same values on 2026-09-29. The frame checkpoint writer sets track_times=False on every HDF5 object (packages/microcosm-build/src/microcosm/build/frame_checkpoint.py at 4b57d15a2), and neither file contains the machine's paths, interpreter or platform strings, so equal inputs and equal numerics give equal bytes. builder_code_identity.source_sha256 equals microcosm.build.code_identity's digest recomputed over the committed tree of 4b57d15a2, so a clean clone of that commit gives the same value. The pipeline (24 outer stages, pipeline_sha256 906c9c02...) is copied from the same file. Only its first two stages (stages_compared) have outputs here: a Modal run that matches them reproduced source construction and pre-clone enrichment byte for byte, and stages 002 onward (clone_feature_extraction through final_export, the primary PUF QRF chain included) have no local output to compare with.",
   "tool": "us-puf-support-base",
   "stage": "all",
   "commit": "4b57d15a287c4a1729bad362a2f6d57c4de9059e",
+  "argv": [
+    "<python>",
+    "-B",
+    "tools/build_us_puf_support_base.py",
+    "--stage",
+    "all",
+    "--checkpoint-dir",
+    "<state>/base-checkpoints",
+    "--asec-h5",
+    "2024=<input:asec_2024_h5>/census_cps_2024.h5",
+    "--asec-h5",
+    "2023=<input:asec_2023_h5>/census_cps_2023.h5",
+    "--asec-h5",
+    "2022=<input:asec_2022_h5>/census_cps_2022.h5",
+    "--asec-h5-sha256",
+    "2024=ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+    "--asec-h5-sha256",
+    "2023=cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+    "--asec-h5-sha256",
+    "2022=7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+    "--puf-h5",
+    "<input:puf_2024_h5>/puf_2024.h5",
+    "--puf-source-year-csv",
+    "<input:puf_2015_csv>/puf_2015.csv",
+    "--acs-h5",
+    "<input:acs_2022_h5>/acs_2022.h5",
+    "--asec-education-source",
+    "2022=<input:asec_education_2022_zip>/asecpub23csv.zip",
+    "--asec-education-source",
+    "2023=<input:asec_education_2023_zip>/asecpub24csv.zip",
+    "--asec-education-source",
+    "2024=<input:asec_education_2024_zip>/asecpub25csv.zip",
+    "--target-year",
+    "2024",
+    "--seed",
+    "0",
+    "--n-estimators",
+    "32",
+    "--ledger-facts",
+    "<input:base_ledger_facts>/consumer_facts_us_c5e5bf8.jsonl",
+    "--assign-congressional-districts",
+    "--congressional-district-vintage-crosswalk",
+    "<repo>/packages/microcosm-build/src/microcosm/build/us_runtime/data/congressional_district_vintage_crosswalk.csv",
+    "--congressional-district-seed",
+    "0",
+    "--block-ladder-artifact",
+    "<input:block_ladder_npz>/us_block_ladder_2020.npz",
+    "--out",
+    "<state>/base-out"
+  ],
+  "env": {
+    "PYTHONUNBUFFERED": "1"
+  },
+  "inputs": {
+    "acs_2022_h5": "0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4",
+    "asec_2022_h5": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+    "asec_2023_h5": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+    "asec_2024_h5": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d",
+    "asec_education_2022_zip": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+    "asec_education_2023_zip": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+    "asec_education_2024_zip": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+    "base_ledger_facts": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+    "block_ladder_npz": "7ba39b959068181b56a7ce1dc8f2477b31af33f28d0a1803ff6cba84cdfab06b",
+    "puf_2015_csv": "0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df",
+    "puf_2024_h5": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df"
+  },
   "outputs": {
     "base-checkpoints/000_source_construction.frame.h5": "be8c268930ff90a46af5225cc95244cc3db9f66ff37b26211d7515b75d2338cf",
     "base-checkpoints/001_pre_clone_enrichment.frame.h5": "5a52f337a44aa8fdfbcf4ce36b391f1b59a246ce82dd736f25e0d4ca8051ce9f"
@@ -114,16 +180,67 @@
       }
     ]
   },
-  "builder_code_identity": {
-    "source_sha256": "c02fd0576a158da00951c15ad505d022174e321f30bf36ebd664bb199c6604ec",
-    "dependency_versions": {
-      "h5py": "3.16.0",
-      "numpy": "2.4.6",
-      "pandas": "3.0.3",
-      "policyengine-us": "2.2.1",
-      "quantile-forest": "1.4.2",
-      "scikit-learn": "1.8.0"
-    }
+  "run_config": {
+    "acs_h5": "acs_2022.h5",
+    "allow_geography_ladder_gate_failures": false,
+    "asec_2023_weeks_unemployed_source": null,
+    "asec_education_source": {
+      "2022": "asecpub23csv.zip",
+      "2023": "asecpub24csv.zip",
+      "2024": "asecpub25csv.zip"
+    },
+    "asec_h5": [
+      "2024=census_cps_2024.h5",
+      "2023=census_cps_2023.h5",
+      "2022=census_cps_2022.h5"
+    ],
+    "asec_h5_sha256": {
+      "2022": "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",
+      "2023": "cb57817327799f42b741caed5f9be94d04021c2e6809c1ad7bd0686da5428d88",
+      "2024": "ec36604cb735a660b51b0b2f90be27d803b5878f3464fb30d0eacead59c1260d"
+    },
+    "asec_max_households": null,
+    "assign_congressional_districts": true,
+    "base_h5": null,
+    "block_ladder_artifact": "us_block_ladder_2020.npz",
+    "builder_code_identity": {
+      "dependency_versions": {
+        "h5py": "3.16.0",
+        "numpy": "2.4.6",
+        "pandas": "3.0.3",
+        "policyengine-us": "2.2.1",
+        "quantile-forest": "1.4.2",
+        "scikit-learn": "1.8.0"
+      },
+      "python": "3.14.7 free-threading build (main, Sep  1 2026, 14:07:44) [Clang 22.1.3 ]",
+      "source_sha256": "c02fd0576a158da00951c15ad505d022174e321f30bf36ebd664bb199c6604ec"
+    },
+    "congressional_district_seed": 0,
+    "congressional_district_vintage_crosswalk": "congressional_district_vintage_crosswalk.csv",
+    "equivalence_deterministic_h5_metadata": false,
+    "geography_ladder_seed": 0,
+    "ledger_facts": "consumer_facts_us_c5e5bf8.jsonl",
+    "n_estimators": 32,
+    "out": "base-out",
+    "puf_h5": "puf_2024.h5",
+    "puf_h5_sha256": "7669f5b5281f20080e77204f9bd4aabfad0aa101fa283e22caf9ba8d61d4d6df",
+    "puf_source_year_csv": "puf_2015.csv",
+    "puf_source_year_csv_sha256": "0a7fd643edb1acc55c507db795914b41d232922be78c149b58d111f4672499df",
+    "seed": 0,
+    "support_spine_spec": null,
+    "target_year": 2024,
+    "thread_environment": {
+      "BLIS_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null,
+      "OMP_NUM_THREADS": null,
+      "OPENBLAS_NUM_THREADS": null,
+      "POPULACE_FIT_N_JOBS": null,
+      "POPULACE_FIT_PREDICT_WORKERS": null,
+      "PYTHONHASHSEED": "0",
+      "VECLIB_MAXIMUM_THREADS": null
+    },
+    "without_block_ladder": false
   },
   "local_platform": {
     "python": "3.14.7 free-threading build (main, Sep  1 2026, 14:07:44) [Clang 22.1.3 ]",

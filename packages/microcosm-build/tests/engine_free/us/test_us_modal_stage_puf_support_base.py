@@ -11,9 +11,11 @@ from 4b57d15a2's source; skipped, visibly, in a clone without that commit),
 Hypothesis properties of the argv builder, the plan refusals, the budget
 stop of a multi-process tool, the home-cache seed, the pinned tree file, the
 disk guard, the cost ceiling and CPU limit, the refusal of unfinished
-receipts, the comparison with the local run's checkpoints and its scope
-(two of 24 outer stages), the push order, the upload commands and the write
-probe. Nothing here needs Modal, a country engine or the network.
+receipts, the comparison with the local run (its command, inputs and locked
+run config, derived from the Modal argv through the pinned tool's own
+_stage_run_config, and its checkpoints, whose scope is two of 24 outer
+stages), the push order, the upload commands and the write probe. Nothing
+here needs Modal, a country engine or the network.
 """
 
 from __future__ import annotations
@@ -111,31 +113,6 @@ def _committed_plan() -> plan_lib.Plan:
 
 def _fixture() -> dict:
     return json.loads(ROUTE_A_BASE_COMMAND.read_text())
-
-
-def _tokenize(argv: list[str], plan: plan_lib.Plan, work_root: str) -> list[str]:
-    """The Modal argv in the fixture's tokens: paths become their roles."""
-
-    inputs_root = PurePosixPath(work_root) / "inputs"
-    state = str(PurePosixPath(work_root) / "state")
-
-    def token(value: str) -> str:
-        year, eq, rest = value.partition("=")
-        if eq and year.isdigit() and rest.startswith("/"):
-            return f"{year}={token(rest)}"
-        path = PurePosixPath(value)
-        if path.is_relative_to(inputs_root):
-            role, name = path.relative_to(inputs_root).parts
-            assert role in plan.inputs
-            return f"<input:{role}>/{name}"
-        if path.is_relative_to(state):
-            return "<state>" + value[len(state) :]
-        if path.is_relative_to(plan_lib.IMAGE_REPO_ROOT):
-            return "<repo>" + value[len(plan_lib.IMAGE_REPO_ROOT) :]
-        assert not value.startswith("/"), value
-        return value
-
-    return ["<python>", *(token(value) for value in argv[1:])]
 
 
 def _flags(argv: list[str]) -> list[str]:
@@ -257,7 +234,16 @@ def test_committed_plan_argv_equals_route_a_base_config() -> None:
     fixture = _fixture()
     plan = _committed_plan()
     argv = plan_lib.planned_argv(plan)
-    assert _tokenize(argv, plan, plan_lib.WORK_ROOT) == fixture["argv"]
+    # The tokenizer compare-lineage applies to a receipt's argv.
+    tokens = plan_lib.tokenize_stage_argv(argv)
+    assert tokens == fixture["argv"]
+    # Every path became a token: none of the container's paths is left.
+    assert not [value for value in tokens if "/work/" in value or "/opt/" in value]
+    assert {
+        match
+        for value in tokens
+        for match in re.findall(r"<input:([a-z0-9_]+)>", value)
+    } == set(plan.inputs)
     # The one environment variable the local run set, and nothing else.
     assert dict(plan.env) == fixture["env"] == {"PYTHONUNBUFFERED": "1"}
     # The build commit the local driver recorded is the plan's commit.
@@ -490,6 +476,71 @@ def test_planned_argv_never_depends_on_the_file_names_for_its_shape(
     assert shape == [
         (a.startswith("--"), a if a.startswith("--") else None) for a in committed
     ]
+
+
+@_PROPERTY_SETTINGS
+@given(work_root=_ROOT_DIR)
+def test_the_tokenized_argv_is_route_a_s_wherever_the_work_root_is(
+    work_root: str,
+) -> None:
+    # Differential, for any work root: the committed plan's argv, tokenized
+    # as compare-lineage tokenizes a receipt's, is Route A's local command.
+    argv = plan_lib.planned_argv(_committed_plan(), work_root=work_root)
+    assert plan_lib.tokenize_stage_argv(argv, work_root) == _fixture()["argv"]
+
+
+# Run-config values as the tool records them: plain scalars, digests, and
+# paths drawn as (directory, file name) or (year, directory, file name).
+_CONFIG_LEAF = st.one_of(
+    st.none(),
+    st.booleans(),
+    st.integers(min_value=-(10**6), max_value=10**6),
+    _DIGEST,
+    _FILE_NAME,
+    st.tuples(_ROOT_DIR, _FILE_NAME),
+    st.tuples(st.integers(min_value=1990, max_value=2100), _ROOT_DIR, _FILE_NAME),
+)
+_CONFIG_TREE = st.recursive(
+    _CONFIG_LEAF,
+    lambda children: st.one_of(
+        st.lists(children, max_size=4),
+        st.dictionaries(_SEGMENT, children, max_size=4),
+    ),
+    max_leaves=20,
+)
+
+
+def _render(tree: object, *, root: str | None = None, names_only: bool = False):
+    """The tree with its path leaves written out (under ``root`` if given)."""
+
+    if isinstance(tree, dict):
+        return {
+            k: _render(v, root=root, names_only=names_only) for k, v in tree.items()
+        }
+    if isinstance(tree, list):
+        return [_render(v, root=root, names_only=names_only) for v in tree]
+    if isinstance(tree, tuple):
+        *year, directory, name = tree
+        path = name if names_only else f"{root or directory}/{name}"
+        return f"{year[0]}={path}" if year else path
+    return tree
+
+
+@_PROPERTY_SETTINGS
+@given(tree=_CONFIG_TREE, other_root=_ROOT_DIR)
+def test_masking_a_run_config_keeps_everything_but_the_directories(
+    tree: object, other_root: str
+) -> None:
+    config = _render(tree)
+    masked = plan_lib.mask_config_paths(config)
+    # Each path becomes its file name, a YEAR= prefix kept; nothing else moves.
+    assert masked == _render(tree, names_only=True)
+    # So two machines' configs of one build (same files, other directories)
+    # mask equal, and masking twice changes nothing.
+    assert plan_lib.mask_config_paths(_render(tree, root=other_root)) == masked
+    assert plan_lib.mask_config_paths(masked) == masked
+    # No absolute path is left anywhere.
+    assert "/" not in json.dumps(masked)
 
 
 @_PROPERTY_SETTINGS
@@ -1248,6 +1299,18 @@ def test_verify_receipt_cli_refuses_a_stage_that_did_not_finish(
 # --------------------------------------------------------------------------- #
 
 LOCAL_REFERENCE = ROOT / "docs" / "us-modal-stage-route-a-base-local-reference.json"
+#: The thread counts Modal set in the check container (runbook, acceptance
+#: attempt), at this class's request.
+MODAL_THREAD_ENV = {
+    key: "4"
+    for key in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "BLIS_NUM_THREADS",
+    )
+}
+MODAL_PYTHON = "3.14.2 (main) [GCC]"
 
 
 def _reference() -> dict:
@@ -1257,9 +1320,19 @@ def _reference() -> dict:
 def test_the_local_reference_matches_the_plan_and_the_fixture() -> None:
     reference = _reference()
     plan = _committed_plan()
+    fixture = _fixture()
     assert reference["schema"] == plan_lib.LOCAL_REFERENCE_SCHEMA
     assert (reference["tool"], reference["stage"]) == (BASE.name, plan.stage)
-    assert reference["commit"] == plan.commit == _fixture()["build_commit"]
+    assert reference["commit"] == plan.commit == fixture["build_commit"]
+    # The local run's command is the fixture's, and its inputs are Route A's
+    # (and so the plan's), digest for digest.
+    assert reference["argv"] == fixture["argv"]
+    assert reference["env"] == fixture["env"]
+    assert (
+        reference["inputs"]
+        == {role: sha256 for role, (_, sha256) in ROUTE_A_BASE_INPUTS.items()}
+        == {role: ref.sha256 for role, ref in plan.inputs.items()}
+    )
     # The outputs are frame checkpoints under the plan's checkpoint dir.
     checkpoints = plan_lib.PUF_SUPPORT_BASE_CHECKPOINTS
     assert sorted(reference["outputs"]) == [
@@ -1299,8 +1372,63 @@ def test_the_local_reference_matches_the_plan_and_the_fixture() -> None:
     stage = BASE.stages["all"]
     for rel in [*reference["outputs"], reference["run_context_path"]]:
         assert any(plan_lib.under_state_path(rel, p) for p in stage.mirror_first)
-    # The six distributions the tool fingerprints, pinned once each.
-    assert set(reference["builder_code_identity"]["dependency_versions"]) == {
+
+
+def test_the_local_run_config_is_the_registration_s_build() -> None:
+    # The run config the local run's tool locked, as the reference keeps it
+    # (paths cut to file names), is the build this registration runs: the
+    # plan's files and digests in Route A's order, the registry's settings,
+    # every escape hatch at its default. Without the pinned commit this is
+    # what holds it; with it, the next test derives it from the Modal argv.
+    reference = _reference()
+    config = reference["run_config"]
+    plan = _committed_plan()
+    # The 27 keys of _stage_run_config at 4b57d15a2, already masked.
+    assert len(config) == 27
+    assert plan_lib.mask_config_paths(config) == config
+    name = {role: ref.filename for role, ref in plan.inputs.items()}
+    sha = {role: ref.sha256 for role, ref in plan.inputs.items()}
+    asec_years = plan_lib.PUF_SUPPORT_BASE_ASEC_YEARS
+    education_years = plan_lib.PUF_SUPPORT_BASE_EDUCATION_YEARS
+    identity = config.pop("builder_code_identity")
+    threads = config.pop("thread_environment")
+    assert config == {
+        "acs_h5": name["acs_2022_h5"],
+        "allow_geography_ladder_gate_failures": False,
+        "asec_2023_weeks_unemployed_source": None,
+        "asec_education_source": {
+            str(year): name[f"asec_education_{year}_zip"] for year in education_years
+        },
+        "asec_h5": [f"{year}={name[f'asec_{year}_h5']}" for year in asec_years],
+        "asec_h5_sha256": {
+            str(year): sha[f"asec_{year}_h5"] for year in sorted(asec_years)
+        },
+        "asec_max_households": None,
+        "assign_congressional_districts": True,
+        "base_h5": None,
+        "block_ladder_artifact": name["block_ladder_npz"],
+        "congressional_district_seed": plan_lib.PUF_SUPPORT_BASE_CD_SEED,
+        "congressional_district_vintage_crosswalk": PurePosixPath(
+            plan_lib.CD_VINTAGE_CROSSWALK.path
+        ).name,
+        "equivalence_deterministic_h5_metadata": False,
+        "geography_ladder_seed": 0,
+        "ledger_facts": name["base_ledger_facts"],
+        "n_estimators": plan_lib.PUF_SUPPORT_BASE_N_ESTIMATORS,
+        "out": plan_lib.PUF_SUPPORT_BASE_OUT,
+        "puf_h5": name["puf_2024_h5"],
+        "puf_h5_sha256": sha["puf_2024_h5"],
+        "puf_source_year_csv": name["puf_2015_csv"],
+        "puf_source_year_csv_sha256": sha["puf_2015_csv"],
+        "seed": plan_lib.PUF_SUPPORT_BASE_SEED,
+        "support_spine_spec": None,
+        "target_year": plan_lib.PUF_SUPPORT_BASE_TARGET_YEAR,
+        "without_block_ladder": False,
+    }
+    # The six distributions the tool fingerprints, pinned once each, and the
+    # local interpreter the report prints.
+    assert set(identity) == {"dependency_versions", "python", "source_sha256"}
+    assert set(identity["dependency_versions"]) == {
         "h5py",
         "numpy",
         "pandas",
@@ -1308,24 +1436,105 @@ def test_the_local_reference_matches_the_plan_and_the_fixture() -> None:
         "quantile-forest",
         "scikit-learn",
     }
+    assert identity["python"] == reference["local_platform"]["python"]
+    # The local run set no thread or worker variable; the tool records
+    # PYTHONHASHSEED as 0 when it is unset.
+    assert threads == {
+        "BLIS_NUM_THREADS": None,
+        "MKL_NUM_THREADS": None,
+        "NUMEXPR_NUM_THREADS": None,
+        "OMP_NUM_THREADS": None,
+        "OPENBLAS_NUM_THREADS": None,
+        "POPULACE_FIT_N_JOBS": None,
+        "POPULACE_FIT_PREDICT_WORKERS": None,
+        "PYTHONHASHSEED": "0",
+        "VECLIB_MAXIMUM_THREADS": None,
+    }
 
 
-def _modal_run(
-    tmp_path: Path, *, frames: dict[str, str] | None = None, identity: dict | None
-) -> tuple[Path, Path]:
-    """A receipt and run context for a Modal run with the given frame hashes."""
+def test_the_pinned_tool_locks_the_reference_s_run_config_from_the_modal_argv(
+    pinned_tool, tmp_path: Path, monkeypatch
+) -> None:
+    # Differential through the pinned tool (4b57d15a2's _parse_args and
+    # _stage_run_config): the config it locks from the Modal argv, paths
+    # masked, is the local run's. The staged files are empty stand-ins, so
+    # the tool's file digest returns the plan's digest by file name, and its
+    # code identity (a digest of the clone it runs from) is the local run's;
+    # compare-lineage checks both in the Modal run's own context. With no
+    # thread variable set, as in the local run, the config is equal
+    # including thread_environment.
+    reference = _reference()
+    plan = _committed_plan()
+    work = tmp_path / "work"
+    for ref in plan.inputs.values():
+        staged = Path(plan_lib.input_local_path(str(work), ref))
+        staged.parent.mkdir(parents=True, exist_ok=True)
+        staged.write_bytes(b"")
+    digests = {ref.filename: ref.sha256 for ref in plan.inputs.values()}
+    monkeypatch.setattr(pinned_tool, "_sha256", lambda path: digests[Path(path).name])
+    identity = dict(reference["run_config"]["builder_code_identity"])
+    monkeypatch.setattr(pinned_tool, "_builder_code_identity", lambda: dict(identity))
+    for key in reference["run_config"]["thread_environment"]:
+        monkeypatch.delenv(key, raising=False)
+    argv = plan_lib.planned_argv(plan, work_root=str(work))
+    config = pinned_tool._stage_run_config(pinned_tool._parse_args(argv[3:]))
+    assert plan_lib.mask_config_paths(config) == reference["run_config"]
+    # And from that config compare-lineage finds nothing to refuse.
+    context = {"pipeline_sha256": reference["pipeline_sha256"], "run_config": config}
+    receipt = _modal_receipt(context)
+    context_sha = hashlib.sha256(_context_bytes(context)).hexdigest()
+    assert plan_lib.lineage_problems(receipt, reference, context, context_sha) == []
+
+
+def _modal_run_config() -> dict:
+    """The run config the pinned tool would lock on Modal.
+
+    The local run's, with each file at the path the runner stages it (read
+    from the committed plan's argv), Modal's interpreter and the thread
+    counts Modal set in its containers.
+    """
+
+    full: dict[str, str] = {}
+    for value in plan_lib.planned_argv(_committed_plan()):
+        path = value.partition("=")[2] if re.fullmatch(r"\d{4}=/.*", value) else value
+        if path.startswith("/"):
+            full[PurePosixPath(path).name] = path
+
+    def relocate(value: object) -> object:
+        if isinstance(value, dict):
+            return {key: relocate(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [relocate(item) for item in value]
+        if isinstance(value, str):
+            year, eq, rest = value.partition("=")
+            if eq and year.isdigit() and rest in full:
+                return f"{year}={full[rest]}"
+            return full.get(value, value)
+        return value
+
+    config = relocate(_reference()["run_config"])
+    assert isinstance(config, dict)
+    assert (
+        config["out"] == f"{plan_lib.WORK_ROOT}/state/{plan_lib.PUF_SUPPORT_BASE_OUT}"
+    )
+    config["builder_code_identity"]["python"] = MODAL_PYTHON
+    config["thread_environment"].update(MODAL_THREAD_ENV)
+    return config
+
+
+def _context_bytes(context: dict) -> bytes:
+    return json.dumps(context, indent=2).encode()
+
+
+def _modal_receipt(
+    context: dict, *, frames: dict[str, str] | None = None, **overrides
+) -> dict:
+    """A COMPLETED receipt of the committed plan listing ``context``."""
 
     reference = _reference()
-    context = {
-        "pipeline_sha256": reference["pipeline_sha256"],
-        "run_config": {
-            "builder_code_identity": {
-                "python": "3.14.2 (main) [GCC]",
-                **(identity or {}),
-            }
-        },
-    }
-    context_bytes = json.dumps(context).encode()
+    data = base_plan_data()
+    plan = plan_lib.parse_plan(data)
+    context_bytes = _context_bytes(context)
     outputs = [
         {"path": rel, "bytes": 1, "sha256": sha}
         for rel, sha in (frames or reference["outputs"]).items()
@@ -1337,17 +1546,47 @@ def _modal_run(
             "sha256": hashlib.sha256(context_bytes).hexdigest(),
         }
     )
-    receipt = {
-        "schema": plan_lib.RECEIPT_SCHEMA,
-        "tool": BASE.name,
-        "stage": "all",
-        "source": {"commit": reference["commit"]},
-        "outputs": outputs,
-    }
+    receipt = plan_lib.build_receipt(
+        plan,
+        data,
+        argv=plan_lib.planned_argv(plan),
+        returncode=overrides.pop("returncode", 0),
+        stopped_at_budget=overrides.pop("stopped_at_budget", False),
+        started_at="2026-09-29T12:00:00Z",
+        finished_at="2026-09-29T15:00:00Z",
+        wall_seconds=10_800.0,
+        peak_rss_bytes=None,
+        inputs_verified=[
+            {"name": role, "uri": ref.uri, "sha256": ref.sha256, "bytes": 1}
+            for role, ref in plan.inputs.items()
+        ],
+        outputs=outputs,
+        git={},
+        runner={},
+    )
+    receipt.update(overrides)
+    return json.loads(json.dumps(receipt))
+
+
+def _modal_run(
+    tmp_path: Path,
+    *,
+    frames: dict[str, str] | None = None,
+    identity: dict | None = None,
+    config: dict | None = None,
+    **receipt_overrides,
+) -> tuple[Path, Path]:
+    """A receipt and run context for a Modal run of the committed plan."""
+
+    reference = _reference()
+    config = config if config is not None else _modal_run_config()
+    config["builder_code_identity"].update(identity or {})
+    context = {"pipeline_sha256": reference["pipeline_sha256"], "run_config": config}
+    receipt = _modal_receipt(context, frames=frames, **receipt_overrides)
     receipt_path = tmp_path / "receipt.json"
     receipt_path.write_text(json.dumps(receipt))
     context_path = tmp_path / "stage_run_context.json"
-    context_path.write_bytes(context_bytes)
+    context_path.write_bytes(_context_bytes(context))
     return receipt_path, context_path
 
 
@@ -1362,11 +1601,24 @@ def _lineage(receipt_path: Path, context_path: Path) -> list[str]:
     ]
 
 
+def _lineage_of(tmp_path: Path, **kwargs) -> list[str]:
+    """lineage_problems of a Modal run built by :func:`_modal_run`."""
+
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    receipt_path, context_path = _modal_run(tmp_path, **kwargs)
+    context_bytes = context_path.read_bytes()
+    return plan_lib.lineage_problems(
+        json.loads(receipt_path.read_text()),
+        _reference(),
+        json.loads(context_bytes),
+        hashlib.sha256(context_bytes).hexdigest(),
+    )
+
+
 def test_compare_lineage_passes_a_modal_run_that_reproduces_the_local_bytes(
     tmp_path: Path, capsys
 ) -> None:
-    identity = _reference()["builder_code_identity"]
-    receipt_path, context_path = _modal_run(tmp_path, identity=identity)
+    receipt_path, context_path = _modal_run(tmp_path)
     assert plan_lib.main(_lineage(receipt_path, context_path)) == 0
     out = json.loads(capsys.readouterr().out)
     # A match covers the compared outputs only: two of 24 outer stages.
@@ -1381,8 +1633,12 @@ def test_compare_lineage_passes_a_modal_run_that_reproduces_the_local_bytes(
     assert out["stages_not_compared"][0] == "clone_feature_extraction"
     assert "primary_qrf_chain" in out["stages_not_compared"]
     assert out["stages_not_compared"][-1] == "final_export"
+    # Reported, not refused: the interpreters and the thread variables.
     assert out["python"]["local"].startswith("3.14.7 free-threading build")
-    assert out["python"]["modal"] == "3.14.2 (main) [GCC]"
+    assert out["python"]["modal"] == MODAL_PYTHON
+    assert out["thread_environment_differences"] == {
+        key: {"modal": "4", "local": None} for key in sorted(MODAL_THREAD_ENV)
+    }
 
 
 def test_compare_lineage_refuses_a_run_with_another_pipeline(
@@ -1390,8 +1646,7 @@ def test_compare_lineage_refuses_a_run_with_another_pipeline(
 ) -> None:
     # The stage counts are the local pipeline's, so a Modal run whose tool
     # locked a different outer-stage list is refused.
-    identity = _reference()["builder_code_identity"]
-    receipt_path, context_path = _modal_run(tmp_path, identity=identity)
+    receipt_path, context_path = _modal_run(tmp_path)
     context = json.loads(context_path.read_text())
     context["pipeline_sha256"] = "2" * 64
     context_bytes = json.dumps(context).encode()
@@ -1415,7 +1670,7 @@ def test_compare_lineage_reports_every_departure(tmp_path: Path, capsys) -> None
     identity = {
         "source_sha256": "1" * 64,
         "dependency_versions": {
-            **reference["builder_code_identity"]["dependency_versions"],
+            **reference["run_config"]["builder_code_identity"]["dependency_versions"],
             "numpy": "2.4.5",
         },
     }
@@ -1434,10 +1689,158 @@ def test_compare_lineage_reports_every_departure(tmp_path: Path, capsys) -> None
     assert "the file given is sha256" in capsys.readouterr().err
 
 
+def test_compare_lineage_refuses_a_run_with_other_settings(
+    tmp_path: Path, capsys
+) -> None:
+    # The review's probe: none of these settings reaches stages 000 or 001,
+    # so matching checkpoints cannot catch them. The run config, the
+    # receipt's status and its argv do.
+    config = _modal_run_config()
+    changed = {
+        "n_estimators": 64,
+        "congressional_district_seed": 7,
+        "geography_ladder_seed": 3,
+        "assign_congressional_districts": False,
+        "without_block_ladder": True,
+        "allow_geography_ladder_gate_failures": True,
+    }
+    config.update(changed)
+    config["thread_environment"]["POPULACE_FIT_N_JOBS"] = "1"
+    receipt_path, context_path = _modal_run(
+        tmp_path,
+        config=config,
+        returncode=1,
+        status="FAILED",
+        argv=["--n-estimators", "64"],
+    )
+    assert plan_lib.main(_lineage(receipt_path, context_path)) == 1
+    captured = capsys.readouterr()
+    err = captured.err.splitlines()
+    assert err[0] == "the receipt's status is 'FAILED', not 'COMPLETED' (returncode 1)"
+    assert err[1].startswith(
+        "argv: the receipt's command (tokenized, 2 elements) is not the local "
+        f"run's ({len(_fixture()['argv'])}): [0] Modal '--n-estimators', local "
+        "'<python>'"
+    )
+    for key, value in changed.items():
+        local = _reference()["run_config"][key]
+        assert f"run_config.{key}: Modal {value!r}, local {local!r}" in err
+    assert len(err) == 2 + len(changed)
+    out = json.loads(captured.out)
+    assert (out["compared_outputs_match"], out["problems"]) == (False, len(err))
+    # A pinned worker count is reported, not refused.
+    assert out["thread_environment_differences"]["POPULACE_FIT_N_JOBS"] == {
+        "modal": "1",
+        "local": None,
+    }
+
+
+_COMPARED_KEYS = sorted(
+    set(json.loads(LOCAL_REFERENCE.read_text())["run_config"])
+    - plan_lib.RUN_CONFIG_REPORTED_ONLY
+    - {"builder_code_identity"}
+)
+
+
+@pytest.mark.parametrize("key", _COMPARED_KEYS)
+def test_every_run_config_key_but_the_thread_variables_is_compared(
+    tmp_path: Path, key: str
+) -> None:
+    assert len(_COMPARED_KEYS) == 25  # 27 keys less the two handled apart
+    config = _modal_run_config()
+    config[key] = "changed"
+    problems = _lineage_of(tmp_path / "changed", config=config)
+    assert len(problems) == 1 and problems[0].startswith(f"run_config.{key}: Modal ")
+    config = _modal_run_config()
+    del config[key]
+    assert _lineage_of(tmp_path / "missing", config=config) == [
+        f"run_config.{key}: not in the Modal run's config"
+    ]
+
+
+def test_paths_are_compared_by_file_name_and_the_interpreter_is_not(
+    tmp_path: Path,
+) -> None:
+    # Another directory is the same file; another file name is not.
+    config = _modal_run_config()
+    config["acs_h5"] = "/somewhere/else/acs_2022.h5"
+    config["asec_h5"][0] = "2024=/elsewhere/census_cps_2024.h5"
+    config["builder_code_identity"]["python"] = "3.15.0"
+    config["thread_environment"] = {"OMP_NUM_THREADS": "64"}
+    assert _lineage_of(tmp_path / "a", config=config) == []
+    config["acs_h5"] = "/work/inputs/acs_2022_h5/acs_2023.h5"
+    config["asec_h5"] = list(reversed(config["asec_h5"]))
+    problems = _lineage_of(tmp_path / "b", config=config)
+    assert problems == [
+        "run_config.acs_h5: Modal 'acs_2023.h5', local 'acs_2022.h5'",
+        "run_config.asec_h5: Modal ['2022=census_cps_2022.h5', "
+        "'2023=census_cps_2023.h5', '2024=census_cps_2024.h5'], local "
+        "['2024=census_cps_2024.h5', '2023=census_cps_2023.h5', "
+        "'2022=census_cps_2022.h5']",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "problem"),
+    [
+        (
+            {"stopped_at_budget": True, "returncode": 0},
+            "the stage was stopped at its budget (stopped_at_budget)",
+        ),
+        (
+            {"returncode": -9},
+            "the receipt's status is 'FAILED', not 'COMPLETED' (returncode -9)",
+        ),
+    ],
+)
+def test_compare_lineage_refuses_a_stage_that_did_not_finish(
+    tmp_path: Path, overrides: dict, problem: str
+) -> None:
+    assert problem in _lineage_of(tmp_path, **overrides)
+
+
+def test_compare_lineage_refuses_another_command_env_or_input(tmp_path: Path) -> None:
+    plan = _committed_plan()
+    argv = plan_lib.planned_argv(plan)
+    # The ASEC years pooled in another order.
+    swapped = list(argv)
+    i2024 = argv.index(next(item for item in argv if item.startswith("2024=/")))
+    i2023 = argv.index(next(item for item in argv if item.startswith("2023=/")))
+    swapped[i2024], swapped[i2023] = argv[i2023], argv[i2024]
+    problems = _lineage_of(tmp_path / "argv", argv=swapped)
+    assert len(problems) == 1 and problems[0].startswith("argv: ")
+    swapped_in = f"[{i2024}] Modal '2023=<input:asec_2023_h5>/census_cps_2023.h5'"
+    assert swapped_in in problems[0]
+    # A path the runner did not build is kept verbatim, so it differs.
+    moved = [item.replace("/work/state/", "/scratch/") for item in argv]
+    problems = _lineage_of(tmp_path / "moved", argv=moved)
+    assert len(problems) == 1 and "'/scratch/base-checkpoints'" in problems[0]
+    # A plan environment variable the local run did not set is refused,
+    # unless the tool records it in thread_environment (reported instead).
+    data = base_plan_data(env={"PYTHONUNBUFFERED": "1", "MICROCOSM_X": "1"})
+    assert _lineage_of(tmp_path / "env", plan=data) == [
+        "env: the Modal plan sets {'MICROCOSM_X': '1', 'PYTHONUNBUFFERED': '1'}, "
+        "the local run set {'PYTHONUNBUFFERED': '1'} (the thread and worker "
+        "variables the run context records aside)"
+    ]
+    data = base_plan_data(env={"PYTHONUNBUFFERED": "1", "POPULACE_FIT_N_JOBS": "4"})
+    assert _lineage_of(tmp_path / "pinned", plan=data) == []
+    # An input the local run did not use, or one the receipt did not verify.
+    inputs = [{"name": role, "sha256": ref.sha256} for role, ref in plan.inputs.items()]
+    inputs[0] = {"name": inputs[0]["name"], "sha256": "e" * 64}
+    assert (inputs[0]["name"], inputs[-1]["name"]) == ("acs_2022_h5", "puf_2024_h5")
+    assert _lineage_of(tmp_path / "inputs", inputs=inputs[:-1]) == [
+        f"input acs_2022_h5: Modal staged sha256 {'e' * 64}, the local run used "
+        f"{plan.inputs['acs_2022_h5'].sha256}",
+        "input puf_2024_h5: not among the receipt's verified inputs",
+    ]
+
+
 def test_lineage_problems_refuses_the_wrong_run() -> None:
     reference = _reference()
     receipt = {
         "schema": plan_lib.RECEIPT_SCHEMA,
+        "status": "COMPLETED",
         "tool": BASE.name,
         "stage": "all",
         "source": {"commit": "f" * 40},
