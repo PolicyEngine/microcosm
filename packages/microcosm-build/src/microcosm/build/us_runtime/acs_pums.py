@@ -294,7 +294,15 @@ def build_acs_pums_unit_frame(
     *,
     chunksize: int = DEFAULT_CHUNKSIZE,
 ) -> tuple[Frame, dict[str, Any]]:
-    """Construct the ACS 2024 1-year US entity frame."""
+    """Construct the ACS 2024 1-year US entity frame.
+
+    The ACS carries no SPM unit id, so each household is one SPM unit (the
+    frame's documented fallback), adult roommates included. The pool lane
+    keeps that partition; the ACS local lane splits adult nonrelatives into
+    their own units afterwards
+    (:func:`~microcosm.build.us_runtime.acs_local_spm_units.
+    split_acs_adult_nonrelative_spm_units`, microcosm#1023).
+    """
 
     tables, metadata = load_acs_pums_tables(source, chunksize=chunksize)
     household = tables["household"].copy()

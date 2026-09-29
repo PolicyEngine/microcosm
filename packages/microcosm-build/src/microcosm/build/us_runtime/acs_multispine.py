@@ -34,6 +34,9 @@ from microcosm.build.us_runtime.acs_local_income import (
     record_acs_local_income_transfer,
     require_acs_local_income_donor,
 )
+from microcosm.build.us_runtime.acs_local_spm_units import (
+    split_acs_adult_nonrelative_spm_units,
+)
 from microcosm.build.us_runtime.acs_local_work_disability import (
     map_acs_local_work_disability_inputs,
     record_acs_local_work_disability_transfer,
@@ -95,6 +98,7 @@ def build_optional_acs_multispine(
     hours_under15_policy: str | None = None,
     work_disability_inputs: bool = False,
     income_transfer: bool = False,
+    split_adult_nonrelative_spm_units: bool = False,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -122,6 +126,12 @@ def build_optional_acs_multispine(
     ASEC-channel QRF pass for the SNAP-relevant income leaves the shared plan
     does not carry, with its own local-only plan; its receipt is
     ``provenance["acs_local_income_transfer"]``.
+    ``split_adult_nonrelative_spm_units`` (the ACS local lane, microcosm#1023)
+    gives every ACS roommate and other nonrelative aged 15 or over an SPM unit
+    of their own, per the Census SPM unit definition, on the loader frame
+    before any mapping or transfer; its receipt is
+    ``provenance["acs_local_spm_units"]``. The default keeps the loader's one
+    SPM unit per ACS household, which the pool lane still uses.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -140,6 +150,13 @@ def build_optional_acs_multispine(
         chunksize=chunksize,
     )
     loader_provenance = _json_ready_mapping(loader_metadata)
+    spm_units = None
+    if split_adult_nonrelative_spm_units:
+        # Local lane only (microcosm#1023): the loader is shared with the pool
+        # and keeps one SPM unit per household. The split lands before the
+        # native mapping, so tenure maps through the new SPM membership, and
+        # before the transfers, so SPM-unit targets are fit to the new units.
+        raw_acs, spm_units = split_acs_adult_nonrelative_spm_units(raw_acs)
 
     mapped = map_acs_native_inputs(raw_acs)
     del raw_acs
@@ -315,6 +332,8 @@ def build_optional_acs_multispine(
             "resolved_donor_channel"
         ]
         provenance["acs_local_income_transfer"] = _json_ready_mapping(income_receipt)
+    if spm_units is not None:
+        provenance["acs_local_spm_units"] = _json_ready_mapping(spm_units)
     if work_disability is not None:
         provenance["acs_local_work_disability"] = _json_ready_mapping(
             record_acs_local_work_disability_transfer(
