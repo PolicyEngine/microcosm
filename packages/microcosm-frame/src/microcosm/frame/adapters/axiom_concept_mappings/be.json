@@ -1,0 +1,1790 @@
+{
+ "bindings": [
+  {
+   "canonical_input": "be-bru:regulations/housing/rent_and_relocation_allowances#input.brussels_housing_dwelling_managed_by_public_social_housing_or_social_rental_agency",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Household",
+   "engine_input": "brussels_housing_dwelling_managed_by_public_social_housing_or_social_rental_agency",
+   "module": "be-bru/regulations/housing/rent_and_relocation_allowances.yaml",
+   "note": "be-bru/regulations/housing/rent_and_relocation_allowances.yaml, rule brussels_housing_rent_allowance_housing_conditions_met requires 'not brussels_housing_dwelling_managed_by_public_social_housing_or_social_rental_agency and ... not brussels_housing_dwelling_has_socialized_public_housing_rent' (Brussels Government order of 15 July 2021, article 3 section 3). brussels_housing_relocation_housing_conditions_met (order of 13 October 2022, article 3 section 3) and brussels_housing_relocation_rent_support_extinction_condition_applies (article 7) test the same pair, and every one of the three formulas uses only the union of the two inputs. Tenure's two social-rent categories stand in for this input. The concept splits social renting by landlord type (public authority or non-profit), while the input names who manages the dwelling (public social housing or a social rental agency). Public-authority renting at a socialized rent belongs to the separate input brussels_housing_dwelling_has_socialized_public_housing_rent, which is left uncovered, but it is flagged here instead. Because the consuming formulas read only the union, results are the same as long as that input stays false. A public-authority dwelling that is neither managed by a social housing operator nor let at a socialized rent is also flagged true. The concept is the state at the survey reference date; the rules are evaluated per month (period Month).",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "rented_public_authority",
+       "rented_nonprofit_social"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-bru:regulations/housing/rent_and_relocation_allowances#input.brussels_housing_monthly_rent_at_lease_start",
+   "concepts": [
+    "fact:household.rent"
+   ],
+   "engine_entity": "Household",
+   "engine_input": "brussels_housing_monthly_rent_at_lease_start",
+   "module": "be-bru/regulations/housing/rent_and_relocation_allowances.yaml",
+   "note": "be-bru/regulations/housing/rent_and_relocation_allowances.yaml: brussels_housing_rent_allowance_monthly_amount = 'min(brussels_housing_monthly_rent_at_lease_start, brussels_housing_rent_allowance_uncapped_indexed_monthly_amount)' when eligible (Brussels Government order of 15 July 2021, articles 2, 3, 4 and 29). brussels_housing_relocation_monthly_rent_intervention_amount caps its amount with the same input (order of 13 October 2022, articles 2, 4, 7 and 19). Transform: monthly = annual / 12. The input is the monthly rent fixed when the lease began. The concept is the contract rent charged over the reference year, which includes any change since the lease began, so for older leases the two can differ. The concept excludes separately billed utilities and service charges, and the module does not say whether the lease-start rent includes charges. The concept is zero for owners and rent-free occupiers, for whom the allowances' lease conditions fail anyway.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be-bru:regulations/housing/rent_and_relocation_allowances#input.brussels_housing_principal_residence_lease",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Household",
+   "engine_input": "brussels_housing_principal_residence_lease",
+   "module": "be-bru/regulations/housing/rent_and_relocation_allowances.yaml",
+   "note": "be-bru/regulations/housing/rent_and_relocation_allowances.yaml, rule brussels_housing_rent_allowance_housing_conditions_met begins 'brussels_housing_principal_residence_lease and brussels_housing_rented_dwelling_in_brussels and ...' (Brussels Government order of 15 July 2021, article 3 section 3). brussels_housing_relocation_housing_conditions_met requires '(brussels_housing_principal_residence_lease or brussels_housing_transit_housing_occupancy_agreement)' (order of 13 October 2022, article 3 section 3). Renting tenure, in any of the three rented categories, stands in for holding a principal-residence lease. The input is a legal lease category that the module does not define, while tenure says only that the household rents the dwelling it lives in, not under which lease regime. A renter under another arrangement is flagged true here, for example a transit-housing occupancy agreement, which the relocation rule lists separately. Owners and rent-free occupiers are false.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "rented_public_authority",
+       "rented_nonprofit_social",
+       "rented_private"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/disability/elderly_care_allowance#input.brussels_apa_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "brussels_apa_age_years",
+   "module": "be-bru/statutes/disability/elderly_care_allowance.yaml",
+   "note": "be-bru/statutes/disability/elderly_care_allowance.yaml, rule brussels_apa_age_condition_met (COCOM ordinance of 10 December 2020 on APA, article 4 item 1 as amended by ordinance of 12 February 2026, articles 7 to 9; version effective 2026-02-20): 'brussels_apa_age_years >= belgium_disability_elderly_care_allowance_min_age_years'. That threshold is imported from be/statutes/disability/allowances.yaml as 65 (federal law of 27 February 1987, article 2 section 3), with excerpt 'accordée à la personne handicapée âgée d'au moins 65 ans'. Difference: the module does not say at which date (application or decision) age is read. The concept is completed years at the survey reference date.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/disability/elderly_care_allowance#input.brussels_apa_cohabits_with_person_who_is_not_close_relative",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "brussels_apa_cohabits_with_person_who_is_not_close_relative",
+   "module": "be-bru/statutes/disability/elderly_care_allowance.yaml",
+   "note": "be-bru/statutes/disability/elderly_care_allowance.yaml, rule brussels_apa_household_exists (COCOM order of 28 January 2021, article 4): 'if brussels_apa_cohabits_with_person_who_is_not_close_relative and not brussels_apa_household_member_detained_or_in_social_defense: 1'. brussels_apa_household_exists has two effects. It makes brussels_apa_income_disregard_category_code select the article 24 category B disregard rather than category A (17,762.27 rather than 14,214.53 EUR before indexation). When both members are entitled, it also triggers the article 5 section 2 half-income split (excerpt 'la personne avec laquelle il forme un ménage'). The module does not excerpt article 4's definition of which relatives are excluded. Differences: (1) the concept flags only a co-resident spouse, civil partner or cohabiting partner, so the input is broader than the concept. A claimant sharing the dwelling with a non-partner who is not a close relative, such as a friend or lodger, is missed. (2) The concept does not itself test the relative-degree exclusion. (3) The concept is the state at the survey reference date; the rule is annual.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/disability/elderly_care_allowance#input.brussels_apa_dependent_child_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "brussels_apa_dependent_child_count",
+   "module": "be-bru/statutes/disability/elderly_care_allowance.yaml",
+   "note": "be-bru/statutes/disability/elderly_care_allowance.yaml, rule brussels_apa_built_property_cadastral_income_exemption_amount (COCOM order of 28 January 2021, article 9): 'brussels_apa_built_property_cadastral_income_exemption + brussels_apa_built_property_cadastral_income_exemption_per_dependent_child * brussels_apa_dependent_child_count'. The excerpt reads 'Ce montant est majoré de 250,00 EUR pour chaque enfant à charge.' brussels_apa_built_property_deemed_annual_income subtracts the exemption from built-property cadastral income under max(0, ...), so the count has no effect while brussels_apa_built_property_cadastral_income is zero. Differences: (1) co-resident persons of any age who name the claimant as a parent stand in for children 'à charge', which the module does not define. Dependent children living elsewhere are missed, and co-resident adult children who are not dependent are counted. APA claimants are 65 or older (brussels_apa_age_condition_met), so their co-resident children are usually adults, and this over-count is the main error. (2) Children of a co-resident partner who do not name the claimant as a parent are not counted.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/disability/elderly_care_allowance#input.brussels_apa_eligible_annual_mortgage_interest",
+   "concepts": [
+    "fact:household.mortgage_interest"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "brussels_apa_eligible_annual_mortgage_interest",
+   "module": "be-bru/statutes/disability/elderly_care_allowance.yaml",
+   "note": "be-bru/statutes/disability/elderly_care_allowance.yaml, rule brussels_apa_property_deemed_annual_income (COCOM order of 28 January 2021, article 15): 'max(0, brussels_apa_property_deemed_annual_income_before_mortgage_interest - brussels_apa_eligible_annual_mortgage_interest)'. The interest is deducted from the deemed income of built and unbuilt property. The article 9 excerpt counts 'biens immobiliers bâtis que le bénéficiaire ou la personne avec laquelle il forme un ménage possède'. brussels_apa_annual_income_before_disregard then multiplies the summed income by brussels_apa_household_income_split_factor, so each claimant's input is the amount for the claimant together with the person with whom the claimant forms a household. Article 15's eligibility conditions are not excerpted in the module. Both values are annual. Differences: (1) the concept is interest on loans secured on the household's own dwelling only, while the rule may also cover loans on other property. (2) The household amount is placed on the household reference person, following the policyengine-us binding of home_mortgage_interest. A claimant who is the reference person's partner receives zero, although the shared mortgage counts for both partners in the rule. A claimant living in an adult child's home also receives zero. That matches the rule when the loan is the child's, because the APA household requires cohabitation with a person who is not a close relative. (3) Until brussels_apa_built_property_cadastral_income and brussels_apa_unbuilt_property_cadastral_income are bound, the deduction floors at zero and has no effect.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "allocate_to_reference_person"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/basic_amounts.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: it tests 'brussels_family_benefits_child_age_years < brussels_family_benefits_age_12_years', '< brussels_family_benefits_age_18_years' and '> brussels_family_benefits_age_24_years' to pick the article 7(b) band (excerpt: 150 euros for ages 0 to 11, 160 for 12 to 17, 170 or 160 for 18 to 24). In eligibility.yaml, brussels_family_benefits_article_25_age_or_status_condition_met tests it against the article 25 section 2 limit of 25. The rule period is Month, so it reads the child's age in the benefit month. The concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_enrolled_in_higher_education",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_enrolled_in_higher_education",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/basic_amounts.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: for ages 18 to 24, 'if brussels_family_benefits_child_enrolled_in_higher_education: brussels_family_benefits_18_to_24_higher_education_monthly_amount' (170), otherwise 160. Article 7(b) excerpt: 'de 18 à 24 ans, au plus tôt à partir du 1er septembre, s'il est inscrit dans l'enseignement supérieur'. The input is read as enrollment at ISCED 5-8, the concept's tertiary band. Differences: 'enseignement supérieur' is a Belgian category, and the module does not state its boundary against ISCED 5. The concept is enrollment at the survey reference date, while the rule reads the benefit month. The excerpt's 1 September timing is in neither the formula nor the concept. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/eligibility#input.brussels_family_benefits_child_age_on_august_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_age_on_august_31_years",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+   "note": "be-bru/statutes/family_benefits/eligibility.yaml, rule brussels_family_benefits_article_25_age_or_status_condition_met: 'if brussels_family_benefits_child_age_on_august_31_years < brussels_family_benefits_article_25_unconditional_age_years: 1' (limit 18). Article 25 section 1 excerpt: 'jusqu'au 31 août de l'année civile au cours de laquelle il atteint l'âge de 18 ans'. It also reaches be/statutes/family_benefits/regional_routing.yaml through that module's import. The concept is age in completed years at the survey reference date, while the input is age on a 31 August. The two can differ by up to a year depending on birth date and reference date, and the schema holds no birth date. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: it tests 'brussels_family_benefits_child_age_years < brussels_family_benefits_age_12_years', '< brussels_family_benefits_age_18_years' and '> brussels_family_benefits_age_24_years' to pick the article 7(b) band (excerpt: 150 euros for ages 0 to 11, 160 for 12 to 17, 170 or 160 for 18 to 24). In eligibility.yaml, brussels_family_benefits_article_25_age_or_status_condition_met tests it against the article 25 section 2 limit of 25. The rule period is Month, so it reads the child's age in the benefit month. The concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_enrolled_in_higher_education",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_enrolled_in_higher_education",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: for ages 18 to 24, 'if brussels_family_benefits_child_enrolled_in_higher_education: brussels_family_benefits_18_to_24_higher_education_monthly_amount' (170), otherwise 160. Article 7(b) excerpt: 'de 18 à 24 ans, au plus tôt à partir du 1er septembre, s'il est inscrit dans l'enseignement supérieur'. The input is read as enrollment at ISCED 5-8, the concept's tertiary band. Differences: 'enseignement supérieur' is a Belgian category, and the module does not state its boundary against ISCED 5. The concept is enrollment at the survey reference date, while the rule reads the benefit month. The excerpt's 1 September timing is in neither the formula nor the concept. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_social_supplement_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/eligibility.yaml",
+   "note": "be-bru/statutes/family_benefits/social_supplements.yaml, rule brussels_family_benefits_article_9_social_supplement_monthly_amount returns 0 when 'brussels_family_benefits_social_supplement_child_age_years > brussels_family_benefits_social_supplement_age_24_years'. Its test '< brussels_family_benefits_social_supplement_age_12_years' picks the ages 0-11 amounts over the 12-24 amounts (article 9 excerpt: 'pour un enfant de 0 à 11 ans' and 'pour un enfant de 12 à 24 ans'). This is a separate input from brussels_family_benefits_child_age_years but holds the same fact. The rule period is Month (age in the benefit month); the concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/selected_amount.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: it tests 'brussels_family_benefits_child_age_years < brussels_family_benefits_age_12_years', '< brussels_family_benefits_age_18_years' and '> brussels_family_benefits_age_24_years' to pick the article 7(b) band (excerpt: 150 euros for ages 0 to 11, 160 for 12 to 17, 170 or 160 for 18 to 24). In eligibility.yaml, brussels_family_benefits_article_25_age_or_status_condition_met tests it against the article 25 section 2 limit of 25. The rule period is Month, so it reads the child's age in the benefit month. The concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_enrolled_in_higher_education",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_enrolled_in_higher_education",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/selected_amount.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: for ages 18 to 24, 'if brussels_family_benefits_child_enrolled_in_higher_education: brussels_family_benefits_18_to_24_higher_education_monthly_amount' (170), otherwise 160. Article 7(b) excerpt: 'de 18 à 24 ans, au plus tôt à partir du 1er septembre, s'il est inscrit dans l'enseignement supérieur'. The input is read as enrollment at ISCED 5-8, the concept's tertiary band. Differences: 'enseignement supérieur' is a Belgian category, and the module does not state its boundary against ISCED 5. The concept is enrollment at the survey reference date, while the rule reads the benefit month. The excerpt's 1 September timing is in neither the formula nor the concept. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_social_supplement_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/selected_amount.yaml",
+   "note": "be-bru/statutes/family_benefits/social_supplements.yaml, rule brussels_family_benefits_article_9_social_supplement_monthly_amount returns 0 when 'brussels_family_benefits_social_supplement_child_age_years > brussels_family_benefits_social_supplement_age_24_years'. Its test '< brussels_family_benefits_social_supplement_age_12_years' picks the ages 0-11 amounts over the 12-24 amounts (article 9 excerpt: 'pour un enfant de 0 à 11 ans' and 'pour un enfant de 12 à 24 ans'). This is a separate input from brussels_family_benefits_child_age_years but holds the same fact. The rule period is Month (age in the benefit month); the concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_social_supplement_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-bru/statutes/family_benefits/social_supplements.yaml",
+   "note": "be-bru/statutes/family_benefits/social_supplements.yaml, rule brussels_family_benefits_article_9_social_supplement_monthly_amount returns 0 when 'brussels_family_benefits_social_supplement_child_age_years > brussels_family_benefits_social_supplement_age_24_years'. Its test '< brussels_family_benefits_social_supplement_age_12_years' picks the ages 0-11 amounts over the 12-24 amounts (article 9 excerpt: 'pour un enfant de 0 à 11 ans' and 'pour un enfant de 12 à 24 ans'). This is a separate input from brussels_family_benefits_child_age_years but holds the same fact. The rule period is Month (age in the benefit month); the concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/property_tax/be_home_premium#input.brussels_be_home_household_has_member_with_real_right",
+   "concepts": [
+    "fact:household.tenure"
+   ],
+   "engine_entity": "Property",
+   "engine_input": "brussels_be_home_household_has_member_with_real_right",
+   "group_rule": "household_value",
+   "module": "be-bru/statutes/property_tax/be_home_premium.yaml",
+   "note": "be-bru/statutes/property_tax/be_home_premium.yaml, rule brussels_be_home_household_conditions_met = 'brussels_be_home_household_has_member_with_real_right and brussels_be_home_household_domiciled_in_dwelling and brussels_be_home_situation_is_january_1' (Brussels ordinance of 23 November 2017, article 14, paragraphs 1 and 4). The module summary describes the premium as for 'a dwelling where the household is domiciled and at least one household member holds a real right'. The binding reads the Property row as the household's own dwelling. That is the only row where the premium can be nonzero, because the household must be domiciled there. The module itself does not assume this: brussels_be_home_household_domiciled_in_dwelling is a separate input. So the binding holds only when the adapter builds the Property row as the household's own dwelling. Owner tenure (owned_outright or owned_with_mortgage) stands in for 'a household member holds a real right'. The ordinance's real right is a legal category that the module does not define, and tenure records only ownership of the occupied dwelling. The concept is the state at the survey reference date; the rule uses the 1 January situation.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:household.tenure",
+      [
+       "owned_outright",
+       "owned_with_mortgage"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/property_tax/be_home_premium#input.brussels_be_home_property_tax_before_premium",
+   "concepts": [
+    "fact:household.property_tax"
+   ],
+   "engine_entity": "Property",
+   "engine_input": "brussels_be_home_property_tax_before_premium",
+   "group_rule": "allocate_to_reference_unit",
+   "module": "be-bru/statutes/property_tax/be_home_premium.yaml",
+   "note": "be-bru/statutes/property_tax/be_home_premium.yaml (Brussels ordinance of 23 November 2017, article 14). brussels_be_home_property_tax_deduction = 'min(max(0, brussels_be_home_property_tax_before_premium), brussels_be_home_premium_amount)' and brussels_be_home_property_tax_after_premium = 'max(0, brussels_be_home_property_tax_before_premium - brussels_be_home_property_tax_deduction)'. The module summary calls this 'a property-tax notice deduction interface' for the BE HOME premium, which is paid for 'a dwelling where the household is domiciled and at least one household member holds a real right'. The concept's own definition names the Belgian withholding tax on immovable property as the owner-liable recurrent tax on the dwelling. Group rule: Property is not a person unit, so this binding holds only if the adapter builds the household's own dwelling as a Property row and treats it as the unit containing the reference person. That is the same premise as this mapping's household_value binding brussels_be_home_household_has_member_with_real_right. household_value is rejected for amounts, and allocate_to_reference_unit also keeps the amount off any other Property row the household may have. Differences: (1) The concept is before all rebates or reductions, and the module does not say which reductions the notice amount already reflects, so the concept can exceed the input. (2) The concept is the household's own liability, so it is 0 for renters, whereas the notice on a rented dwelling carries the landlord's tax. The premium is unaffected because renters fail the real-right gate, but brussels_be_home_property_tax_after_premium reads 0 on such rows. (3) The premium uses the 1 January situation (brussels_be_home_situation_is_january_1); the concept is the reference year's liability.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-dg:statutes/family_benefits/eligibility#input.german_speaking_community_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "german_speaking_community_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-dg/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-dg/statutes/family_benefits/eligibility.yaml by german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met (Month). With the german_speaking_community_family_benefits_ prefix dropped from every name, it tests 'child_age_years < standard_age_years' (18, art 9 s1), then '< disability_extension_age_years' (21, art 9 s2) and '< final_age_cap_years' (25, art 14). It is also consumed by german_speaking_community_family_benefits_article_12_13_missing_or_abducted_condition_met, and it reaches be/statutes/family_benefits/regional_routing.yaml through that module's import of be-dg eligibility. Each Child row takes the child person's own age. The rule reads age in completed years in the benefit month. The concept is age at the survey reference date, so it can be one year off in months on the other side of the child's birthday.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-dg:statutes/family_benefits/eligibility#input.german_speaking_community_family_benefits_child_in_training",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "german_speaking_community_family_benefits_child_in_training",
+   "group_rule": "person_role",
+   "module": "be-dg/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-dg/statutes/family_benefits/eligibility.yaml by german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met (Month; decree of 23 April 2018 articles 9, 10, 11 and 14). With the german_speaking_community_family_benefits_ prefix dropped from every name, the branch reads 'child_age_years < final_age_cap_years and child_in_training and not employment_suspends_training_or_extension_entitlement'. It is reached only when the child is 18 or older and the disability branch fails. The module summary says 'Delegated residence, training, employment, and impairment proof rules remain supplied inputs'. The decree (article 9 section 3) leaves what counts as training to the Government, and the module does not encode that definition. The binding reads training as current enrollment in any ISCED programme at the reference date, not in the benefit month. The concept does not observe whatever programme-type or minimum-intensity conditions the delegated rules impose, and part-time enrollment counts as enrolled here. The employment-suspension input stays uncovered.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:regulations/social_security/flemish_social_protection/premium#input.flanders_social_protection_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "flanders_social_protection_age_years",
+   "module": "be-vlg/regulations/social_security/flemish_social_protection/premium.yaml",
+   "note": "Consumed in be-vlg/regulations/social_security/flemish_social_protection/premium.yaml by flanders_social_protection_annual_premium (Year): 'if flanders_social_protection_is_subject_to_premium: if flanders_social_protection_age_years > flanders_social_protection_premium_age_threshold_exclusive: ...'. The threshold is flanders_social_protection_premium_start_age_years (26) - 1, source 'Flemish Social Protection public rule for annual premium from older than 25 years, implementing Decree article 45'. The input is age in years for an annual premium and names no reference date. The concept is completed years at the survey reference date, so the two can differ by one year for a person whose birthday in the premium year falls on the other side of that date, which matters only at the 25/26 boundary.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/education/school_allowance#input.flanders_school_allowance_education_level",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "flanders_school_allowance_education_level",
+   "module": "be-vlg/statutes/education/school_allowance.yaml",
+   "note": "Consumed in be-vlg/statutes/education/school_allowance.yaml by flanders_school_allowance_amount (Year; Groeipakket decree arts 46-48). The formula first tests 'flanders_school_allowance_education_level == flanders_school_level_code_preschool' (code 1) and then pays flanders_school_allowance_indexed_preschool_amount. Otherwise it pays 0 when flanders_school_allowance_type equals flanders_school_type_code_none. Otherwise it tests 'flanders_school_allowance_education_level == flanders_school_level_code_primary' (code 2) for the primary amounts, and every other code gets the secondary amounts. flanders_school_level_code_secondary is 3. The module summary limits the allowance to pupils in preschool (kleuteronderwijs), primary (lager onderwijs) and secondary (secundair onderwijs) education. ISCED enrollment maps early_childhood to 1, primary to 2 and lower/upper secondary to 3. The rule has no code for a non-pupil, so not_enrolled, post_secondary_non_tertiary and tertiary get 0. Code 0 falls through to the secondary branch, so a non-pupil row is paid the secondary amount unless its allowance type is none. These rows need a pupil/eligibility gate that this module does not encode. The concept's early_childhood band also covers ISCED 01 provision for children under 3, which is not kleuteronderwijs, and the preschool branch pays with no income test. Period: the concept is point-in-time enrollment at the reference date, while the rule is annual.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "recode",
+    "pairs": [
+     [
+      "not_enrolled",
+      0
+     ],
+     [
+      "early_childhood",
+      1
+     ],
+     [
+      "primary",
+      2
+     ],
+     [
+      "lower_secondary",
+      3
+     ],
+     [
+      "upper_secondary",
+      3
+     ],
+     [
+      "post_secondary_non_tertiary",
+      0
+     ],
+     [
+      "tertiary",
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/amounts#input.flanders_family_benefits_age_on_december_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_age_on_december_31_years",
+   "group_rule": "person_role",
+   "module": "be-vlg/statutes/family_benefits/amounts.yaml",
+   "note": "be-vlg/statutes/family_benefits/amounts.yaml, rule flanders_family_benefits_universal_participation_annual_amount picks the articles 19-22 participation supplement from 'flanders_family_benefits_age_on_december_31_years' against limits 4, 11, 17 and 25, and returns 0 when that age is below 0. Article 19 excerpt: 'op 31 december van het kalenderjaar voor het kalenderjaar waarin de toeslag verschuldigd is'. That is read as 31 December of the calendar year before the year the supplement is due. The concept is age at the survey reference date. When the frame's reference year is the year the supplement is due, the concept equals the input or is one year higher. A child born during that year has a negative age on that date, for which the rule pays nothing, but a concept age of 0, which pays the under-4 amount. The schema holds no birth date. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/amounts#input.flanders_family_benefits_age_on_december_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_age_on_december_31_years",
+   "group_rule": "person_role",
+   "module": "be-vlg/statutes/family_benefits/eligibility.yaml",
+   "note": "be-vlg/statutes/family_benefits/amounts.yaml, rule flanders_family_benefits_universal_participation_annual_amount picks the articles 19-22 participation supplement from 'flanders_family_benefits_age_on_december_31_years' against limits 4, 11, 17 and 25, and returns 0 when that age is below 0. Article 19 excerpt: 'op 31 december van het kalenderjaar voor het kalenderjaar waarin de toeslag verschuldigd is'. That is read as 31 December of the calendar year before the year the supplement is due. The concept is age at the survey reference date. When the frame's reference year is the year the supplement is due, the concept equals the input or is one year higher. A child born during that year has a negative age on that date, for which the rule pays nothing, but a concept age of 0, which pays the under-4 amount. The schema holds no birth date. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/eligibility#input.flanders_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-vlg/statutes/family_benefits/eligibility.yaml",
+   "note": "be-vlg/statutes/family_benefits/eligibility.yaml, rule flanders_family_benefits_age_or_status_condition_met: 'flanders_family_benefits_child_age_years < flanders_family_benefits_standard_age_limit_years' (18). The limit is 21 for a child with a specific support need and 25 for a pupil, student, intern or school leaver (source: Flemish Groeipakket decree article 8 section 2, age and status windows). The rule period is Month (age in the benefit month); the concept is completed years at the survey reference date. The difference is timing only, at most a year. The companion inputs flanders_family_benefits_child_in_month_turning_18, _21 and _25 need a birth month and stay uncovered. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/education/study_allowance#input.study_allowance_is_higher_education",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "study_allowance_is_higher_education",
+   "module": "be-wal/statutes/education/study_allowance.yaml",
+   "note": "Consumed in be-wal/statutes/education/study_allowance.yaml by study_allowance_income_ceiling (Year; order of 21 September 2016 art 2: 'if study_allowance_is_higher_education:' selects the higher-education rather than the secondary resource ceilings) and study_allowance_max_amount (art 3 s1). The module summary says the decree of 18 November 2021 article 1er 'sets the covered secondary and higher-education levels'. The binding reads higher education as ISCED 5-8 (tertiary) enrollment at the reference date. The input is the French-Community programme level of an allowance candidate, and the module does not define it beyond that. A non-enrolled person gets false, which selects the secondary branch, so candidacy and eligibility must be gated elsewhere (the summary leaves 'Eligibility beyond the means test' to other surfaces).",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/amounts#input.wallonia_family_benefits_age_on_december_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_age_on_december_31_years",
+   "group_rule": "person_role",
+   "module": "be-wal/statutes/family_benefits/amounts.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/amounts.yaml by wallonia_family_benefits_age_supplement_annual_amount (Year; Walloon decree of 8 February 2018 art 17). The input surface also lists it for be-wal eligibility.yaml and be/statutes/family_benefits/regional_routing.yaml, which reach amounts.yaml through their imports. The bands are: under 5 pays 20; 5-10 pays 30; 11-16 pays 50; 17 and over pays 80 (scalar limits 5, 11 and 17); and '< 0' pays 0. The art 17 excerpt measures age 'le 31 décembre de l'année civile précédant celle au cours de laquelle ce supplément est dû'. The concept is completed years at the survey reference date. When the frame's reference year is the year the supplement is due, the input equals the concept or is one year lower, depending on whether the birthday falls between 1 January and the reference date. A child born during that year is not yet born on that 31 December, so the rule's '< 0' branch pays nothing, but the concept age of 0 pays the under-5 amount. The schema has no birth date to resolve this. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/amounts#input.wallonia_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-wal/statutes/family_benefits/amounts.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/amounts.yaml by wallonia_family_benefits_base_monthly_amount (Month; art 9). After the double-orphan branch, 'wallonia_family_benefits_child_age_years < wallonia_family_benefits_base_monthly_amount_scalar_limit' (18) pays the under-18 amount, and '< wallonia_family_benefits_base_monthly_amount_scalar_limit_2' (25) pays the 18-24 amount. The art 9 excerpt pays 155 EUR 'jusqu'à la fin du mois au cours duquel il atteint l'âge de dix-huit ans'. It is also consumed in eligibility.yaml by wallonia_family_benefits_article_5_age_or_status_condition_met ('< wallonia_family_benefits_intermediate_age_years', 21; '< wallonia_family_benefits_extended_age_years', 25) and by wallonia_family_benefits_article_6_disappeared_child_condition_met ('< wallonia_family_benefits_unconditional_age_years', 18). The rule reads completed years in the benefit month, while the concept is age at the survey reference date, so the two can differ by one year in months on the other side of the birthday. The art 9 end-of-birthday-month rule is not reproduced. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/amounts#input.wallonia_family_benefits_age_on_december_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_age_on_december_31_years",
+   "group_rule": "person_role",
+   "module": "be-wal/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/amounts.yaml by wallonia_family_benefits_age_supplement_annual_amount (Year; Walloon decree of 8 February 2018 art 17). The input surface also lists it for be-wal eligibility.yaml and be/statutes/family_benefits/regional_routing.yaml, which reach amounts.yaml through their imports. The bands are: under 5 pays 20; 5-10 pays 30; 11-16 pays 50; 17 and over pays 80 (scalar limits 5, 11 and 17); and '< 0' pays 0. The art 17 excerpt measures age 'le 31 décembre de l'année civile précédant celle au cours de laquelle ce supplément est dû'. The concept is completed years at the survey reference date. When the frame's reference year is the year the supplement is due, the input equals the concept or is one year lower, depending on whether the birthday falls between 1 January and the reference date. A child born during that year is not yet born on that 31 December, so the rule's '< 0' branch pays nothing, but the concept age of 0 pays the under-5 amount. The schema has no birth date to resolve this. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/eligibility#input.wallonia_family_benefits_child_age_on_august_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_child_age_on_august_31_years",
+   "group_rule": "person_role",
+   "module": "be-wal/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/eligibility.yaml by wallonia_family_benefits_article_5_age_or_status_condition_met (Month). The rule returns 1 when 'wallonia_family_benefits_child_age_on_august_31_years < wallonia_family_benefits_unconditional_age_years' (limit 18). It reaches be/statutes/family_benefits/regional_routing.yaml through that module's import. The art 5 excerpt grants benefits unconditionally 'jusqu'au 31 août de l'année civile au cours de laquelle il atteint l'âge de dix-huit ans'. The input is age on a 31 August that the input name does not date. The concept is completed years at the survey reference date, which can differ from it by a year depending on the birthday. The schema has no birth date. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/amounts#input.wallonia_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be-wal/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/amounts.yaml by wallonia_family_benefits_base_monthly_amount (Month; art 9). After the double-orphan branch, 'wallonia_family_benefits_child_age_years < wallonia_family_benefits_base_monthly_amount_scalar_limit' (18) pays the under-18 amount, and '< wallonia_family_benefits_base_monthly_amount_scalar_limit_2' (25) pays the 18-24 amount. The art 9 excerpt pays 155 EUR 'jusqu'à la fin du mois au cours duquel il atteint l'âge de dix-huit ans'. It is also consumed in eligibility.yaml by wallonia_family_benefits_article_5_age_or_status_condition_met ('< wallonia_family_benefits_intermediate_age_years', 21; '< wallonia_family_benefits_extended_age_years', 25) and by wallonia_family_benefits_article_6_disappeared_child_condition_met ('< wallonia_family_benefits_unconditional_age_years', 18). The rule reads completed years in the benefit month, while the concept is age at the survey reference date, so the two can differ by one year in months on the other side of the birthday. The art 9 end-of-birthday-month rule is not reproduced. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/eligibility#input.wallonia_family_benefits_child_in_qualifying_courses_or_stage",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_child_in_qualifying_courses_or_stage",
+   "group_rule": "person_role",
+   "module": "be-wal/statutes/family_benefits/eligibility.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/eligibility.yaml by wallonia_family_benefits_article_5_age_or_status_condition_met (Month): 'wallonia_family_benefits_child_age_years < wallonia_family_benefits_extended_age_years and (wallonia_family_benefits_child_is_apprentice or wallonia_family_benefits_child_in_qualifying_courses_or_stage or wallonia_family_benefits_child_in_qualifying_diploma_training or wallonia_family_benefits_child_registered_jobseeker_after_studies_or_apprenticeship or wallonia_family_benefits_government_derogation_applies)'. That branch is reached only after three earlier branches fail: the 31 August unconditional limit, the disability branch, and the under-21 no-obstacle branch. The module summary says 'Delegated obstacles, education proof, individual derogations, and payment procedures remain supplied inputs', and the module does not define 'qualifying'. The binding reads the input as current enrollment in any ISCED programme at the reference date. The concept does not observe the delegated qualifying conditions, such as intensity, and it does not see traineeships ('stage') outside an education programme. Part-time enrollment counts. The sibling inputs wallonia_family_benefits_child_in_qualifying_diploma_training and wallonia_family_benefits_child_is_apprentice stay uncovered, so enrollment the law classifies under those headings lands here. The OR in the rule makes that harmless to the result, but not to the input's meaning.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/policies/euromod_disposable_income_list.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/policies/euromod_tax_income_list.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/pensions/workers/retirement_and_survivor#input.belgium_worker_pension_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_worker_pension_age_years",
+   "module": "be/regulations/pensions/workers/retirement_and_survivor.yaml",
+   "note": "be/regulations/pensions/workers/retirement_and_survivor.yaml, rule belgium_worker_pension_current_early_retirement_eligible (Royal Decree of 23 December 1996, article 4 sections 1 to 3, rules for pensions first taking effect from 2019): 'belgium_worker_pension_career_years_for_early_retirement >= belgium_worker_pension_current_early_retirement_eligible_scalar_limit and belgium_worker_pension_age_years >= belgium_worker_pension_current_early_retirement_minimum_age_years'. The career limit is 42 years. The minimum age is 60 with a career of at least 44 years, 61 with at least 43, and 63 otherwise. Difference: the parameter excerpts tie the age to the pension's start ('sa pension de retraite anticipée peut prendre cours au premier jour du mois suivant celui au cours duquel il atteint l'âge de 60 ans'), and the 42-year excerpt concerns 'pensions qui prennent cours effectivement' from 2019. The formula reads the input without naming a date. The concept is completed years at the survey reference date.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_integration/resource_calculation#input.belgium_social_integration_eligible_annual_mortgage_interest_on_property",
+   "concepts": [
+    "fact:household.mortgage_interest"
+   ],
+   "engine_entity": "Household",
+   "engine_input": "belgium_social_integration_eligible_annual_mortgage_interest_on_property",
+   "module": "be/regulations/social_integration/resource_calculation.yaml",
+   "note": "regulations/social_integration/resource_calculation.belgium_social_integration_article_25_property_resource_after_mortgage_interest ('Royal Decree of 11 July 2002 ... article 25 section 4') = max(0, belgium_social_integration_article_25_built_property_resource + belgium_social_integration_article_25_unbuilt_property_resource - belgium_social_integration_eligible_annual_mortgage_interest_on_property). The input is annual mortgage interest on property the household holds, set against the cadastral-income resource. Both it and the concept are household amounts. Differences: the Article 25 resource covers any built or unbuilt property the applicant holds a right in, while the concept covers only loans secured on the household's own dwelling. The 'eligible' conditions of section 4 are not stated in the rule text read. The property resources come from belgium_social_integration_built_property_cadastral_income, which stays uncovered, so the binding has no effect until that input is supplied.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/self_employed/contributions#input.belgium_self_employed_gross_professional_income",
+   "concepts": [
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_self_employed_gross_professional_income",
+   "module": "be/regulations/social_security/self_employed/contributions.yaml",
+   "note": "self_employed/contributions.belgium_self_employed_article_11_professional_income_base ('Royal Decree No. 38 ... article 11 section 2') = max(0, belgium_self_employed_gross_professional_income - belgium_self_employed_professional_expenses - belgium_self_employed_professional_losses + ...). In self_employed_oracle_pipeline, the gross amount less the selected social contribution (and business purchase costs) becomes the Article 51 forfait base. So the input is gross of business expenses, while the concepts are net profit. The repo's own EUROMOD tests feed a net-of-costs amount here. self_employed_oracle_pipeline.test.yaml says 'EUROMOD treats yse as already net of non-SSC business costs, so the Article 49 boundary is true with zero additional actual costs'. It sets belgium_self_employed_professional_expenses 0 and belgium_pit_self_employment_actual_professional_expenses_are_justified true with 0 justified expenses. The binding is valid only under that convention: left false, the justified flag makes the pipeline deduct the Article 51 forfait from an amount already net of expenses. Farm and non-farm profit both enter, because the RD 38 module has one gross-income input for all self-employed activity. The pipeline then splits 'benefices' (industrial, commercial or agricultural) from other profits through a separate category flag. Differences: signed concepts pass negative profit into a 'gross' input. The Article 11 base floors at zero, and the pipeline test file documents a EUR 1000 divergence from EUROMOD on negative yse. Both are annual and per person.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/self_employed/contributions#input.belgium_self_employed_receives_retirement_or_survivor_pension",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_self_employed_receives_retirement_or_survivor_pension",
+   "module": "be/regulations/social_security/self_employed/contributions.yaml",
+   "note": "self_employed/contributions.belgium_self_employed_selected_annual_social_contribution ('Royal Decree No. 38 ... articles 12, 12bis, and 13') reads it only inside 'if belgium_self_employed_has_reached_pension_age:'. There it chooses the Article 13 section 1 post-pension-with-pension contribution over the section 2 pension-age-without-retirement-pension contribution. Positive public old-age pension income flags receipt of a retirement pension. Differences: the input also covers survivor pensions, which the old-age concept excludes, and the timing of receipt within the year is not modelled. The gating pension-age flag is uncovered, so the binding has no effect until it is supplied. Public pension income is a donor-program receipt that transport drops.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/workers/employee_contributions#input.belgium_employee_social_security_contribution_base",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_employee_social_security_contribution_base",
+   "module": "be/regulations/social_security/workers/employee_contributions.yaml",
+   "note": "Consumed in be/regulations/social_security/workers/employee_contributions.yaml by belgium_employee_social_security_article_38_contribution_before_reductions (Person, Year; Law of 29 June 1981 art. 38 section 2): `belgium_employee_social_security_contribution_base * belgium_article_38_section_2_ordinary_worker_total_contribution_rate`. Also consumed in work_bonus.yaml, where the annual work-bonus remuneration is `max(0, belgium_employee_social_security_contribution_base)` unless belgium_worker_work_bonus_supplied_reference_annual_remuneration > 0. The module summary calls the input 'a supplied contribution base determined under the 27 June 1969 workers law and its 28 November 1969 implementing decree'. Its proof excerpt (RD 28 Nov 1969 art. 19) counts as remuneration the part of holiday pay that corresponds to normal remuneration. Differences: (1) The input is the legal ONSS remuneration base, with Article 19 inclusions and exclusions; remuneration_base.yaml encodes some of them (ONVA holiday pay, mobility indemnities, gifts, employee discounts, copyright compensation). The concept is survey gross wages and salaries from all employee jobs, including bonuses and excluding benefits in kind. (2) The module covers ordinary workers only. Student and flexi-job categories are left out, and work_bonus.yaml also leaves out manual-worker multipliers, so workers under special regimes are fed the concept too. Both amounts are annual, so no scaling.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/workers/employer_contributions#input.belgium_employer_social_security_contribution_base",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_employer_social_security_contribution_base",
+   "module": "be/regulations/social_security/workers/employer_contributions.yaml",
+   "note": "Consumed in be/regulations/social_security/workers/employer_contributions.yaml by belgium_employer_social_security_basic_contribution (Person, Year): `max(0, belgium_employer_social_security_contribution_base) * belgium_employer_social_security_ordinary_worker_basic_rate_after_tax_shift`. Its source is 'ONSS DmfA 2025 Q1 ... 19.88 percent basic employer rate'. The wage-moderation, 1.60 percent (10+ workers) and FFE contributions use the same base. The module summary scopes it to 2025 private-sector commercial employers and leaves public-sector regimes, special employer categories, manual-worker vacation contributions and reduced structural contributions to separate surfaces. Differences: the input is the ONSS remuneration base the employer contributes on, a legal base with statutory inclusions and exclusions. The concept is survey gross employee pay from all jobs, including public-sector jobs this module does not model. Both are annual.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/workers/remuneration_base#input.belgium_social_security_article_19_dependent_child_count_for_holiday_gifts",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_social_security_article_19_dependent_child_count_for_holiday_gifts",
+   "module": "be/regulations/social_security/workers/remuneration_base.yaml",
+   "note": "be/regulations/social_security/workers/remuneration_base.yaml, rule belgium_social_security_article_19_holiday_gift_cap (RD of 28 Nov 1969, art. 19 s.2 item 14(a)): 'belgium_social_security_article_19_gift_worker_holiday_cap + belgium_social_security_article_19_dependent_child_count_for_holiday_gifts * belgium_social_security_article_19_gift_dependent_child_holiday_cap'. The per-child cap's excerpt reads 'EUR par enfant a charge du travailleur' for Saint-Nicolas, Christmas or New Year gifts. Differences: the count is of co-resident persons of any age who name the worker as a parent, standing in for children 'a charge du travailleur', which the module does not define. Dependent children living elsewhere are missed. Co-resident adult children who are not dependent are counted. The count is taken at the reference date, not at the gift date.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/workers/work_bonus#input.belgium_employee_social_security_contribution_base",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_employee_social_security_contribution_base",
+   "module": "be/regulations/social_security/workers/work_bonus.yaml",
+   "note": "Consumed in be/regulations/social_security/workers/employee_contributions.yaml by belgium_employee_social_security_article_38_contribution_before_reductions (Person, Year; Law of 29 June 1981 art. 38 section 2): `belgium_employee_social_security_contribution_base * belgium_article_38_section_2_ordinary_worker_total_contribution_rate`. Also consumed in work_bonus.yaml, where the annual work-bonus remuneration is `max(0, belgium_employee_social_security_contribution_base)` unless belgium_worker_work_bonus_supplied_reference_annual_remuneration > 0. The module summary calls the input 'a supplied contribution base determined under the 27 June 1969 workers law and its 28 November 1969 implementing decree'. Its proof excerpt (RD 28 Nov 1969 art. 19) counts as remuneration the part of holiday pay that corresponds to normal remuneration. Differences: (1) The input is the legal ONSS remuneration base, with Article 19 inclusions and exclusions; remuneration_base.yaml encodes some of them (ONVA holiday pay, mobility indemnities, gifts, employee discounts, copyright compensation). The concept is survey gross wages and salaries from all employee jobs, including bonuses and excluding benefits in kind. (2) The module covers ordinary workers only. Student and flexi-job categories are left out, and work_bonus.yaml also leaves out manual-worker multipliers, so workers under special regimes are fed the concept too. Both amounts are annual, so no scaling.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/unemployment/admission#input.belgium_unemployment_article_33_average_weekly_hours",
+   "concepts": [
+    "fact:person.usual_weekly_hours"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_unemployment_article_33_average_weekly_hours",
+   "module": "be/regulations/unemployment/admission.yaml",
+   "note": "be/regulations/unemployment/admission.yaml, rule belgium_unemployment_article_33_weekly_hours_condition_met (RD of 25 Nov 1991, art. 33 item 1): 'belgium_unemployment_article_33_average_weekly_hours >= belgium_unemployment_article_33_min_weekly_hours' (12; excerpt 'au moins 12 heures de travail par semaine'). The alternative test is at least one third of the reference person's average weekly hours. The condition is read only inside belgium_unemployment_article_33_voluntary_part_time_admission_condition_met, which is gated on belgium_unemployment_article_33_worker_is_voluntary_part_time. benefit_amount.yaml imports the admission result. Differences: (1) the input is the voluntary part-time worker's average weekly working time in the part-time job that grounds admission. The concept is usual hours across all jobs and self-employment in the reference year's weeks worked. (2) The concept is zero for someone who did not work in the reference year, even when an earlier part-time job would qualify.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/unemployment/benefit_amount#input.belgium_unemployment_article_114_age_years_at_claim",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_unemployment_article_114_age_years_at_claim",
+   "module": "be/regulations/unemployment/benefit_amount.yaml",
+   "note": "be/regulations/unemployment/benefit_amount.yaml, rule belgium_unemployment_article_114_unlimited_time_condition_met (RD of 25 Nov 1991, art. 114 s.2): 'belgium_unemployment_article_114_age_years_at_claim >= belgium_unemployment_article_114_unlimited_time_condition_met_scalar_limit' (55), combined with a sufficient professional past. The excerpt reads 'au moment de la demande d'allocations a la suite de laquelle le droit aux allocations a ete constate ... a atteint l'age de 55 ans'. Difference: the input is age at the claim that opened the right, while the concept is completed years at the survey reference date. For a claim opened before the reference date the concept can exceed the claim age. So a person who claimed at 53 or 54 and is 55 or older at the reference date would wrongly pass the 55 test.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/unemployment/benefit_amount#input.belgium_unemployment_article_116_part_time_weekly_hours",
+   "concepts": [
+    "fact:person.usual_weekly_hours"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_unemployment_article_116_part_time_weekly_hours",
+   "module": "be/regulations/unemployment/benefit_amount.yaml",
+   "note": "be/regulations/unemployment/benefit_amount.yaml, rule belgium_unemployment_article_116_income_guarantee_can_continue_after_expiry (RD of 25 Nov 1991, art. 116 s.3). The rule is read only when belgium_unemployment_article_116_receives_income_guarantee_allowance_at_expiry holds: 'belgium_unemployment_article_116_part_time_weekly_hours >= belgium_unemployment_article_116_income_guarantee_min_weekly_hours' (19), or at least the reference-person half-hours input. The excerpt reads 'le regime de travail a temps partiel comporte ... normalement en moyenne par semaine au moins 19 heures'. Differences: the input is the normal average weekly hours of the part-time work regime over the uninterrupted part-time period. The concept is usual hours across all jobs and self-employment, in the weeks worked during the reference year.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/unemployment/admission#input.belgium_unemployment_article_33_average_weekly_hours",
+   "concepts": [
+    "fact:person.usual_weekly_hours"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_unemployment_article_33_average_weekly_hours",
+   "module": "be/regulations/unemployment/benefit_amount.yaml",
+   "note": "be/regulations/unemployment/admission.yaml, rule belgium_unemployment_article_33_weekly_hours_condition_met (RD of 25 Nov 1991, art. 33 item 1): 'belgium_unemployment_article_33_average_weekly_hours >= belgium_unemployment_article_33_min_weekly_hours' (12; excerpt 'au moins 12 heures de travail par semaine'). The alternative test is at least one third of the reference person's average weekly hours. The condition is read only inside belgium_unemployment_article_33_voluntary_part_time_admission_condition_met, which is gated on belgium_unemployment_article_33_worker_is_voluntary_part_time. benefit_amount.yaml imports the admission result. Differences: (1) the input is the voluntary part-time worker's average weekly working time in the part-time job that grounds admission. The concept is usual hours across all jobs and self-employment in the reference year's weeks worked. (2) The concept is zero for someone who did not work in the reference year, even when an earlier part-time job would qualify.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/family_benefits/lgaf_amounts#input.belgium_lgaf_child_age_on_december_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "belgium_lgaf_child_age_on_december_31_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/lgaf_amounts.yaml",
+   "note": "Consumed in be/statutes/family_benefits/lgaf_amounts.yaml by belgium_lgaf_article_44ter_annual_age_supplement_base_amount (Child, Year; source 'LGAF article 44ter'). The formula returns 0 for age `< 0`, then applies bands `< 5`, `< 11` and `< 17`; 17+ is paid only when belgium_lgaf_child_is_article_62_or_63_beneficiary is true. One Child row per child person takes that person's own age. Difference: the input is the child's age on 31 December of the benefit year. The concept is age in completed years at the survey reference date, so the two can differ by one year depending on the birthday relative to the reference date.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/family_benefits/lgaf_amounts#input.belgium_lgaf_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "belgium_lgaf_child_age_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/lgaf_amounts.yaml",
+   "note": "Consumed in be/statutes/family_benefits/lgaf_amounts.yaml by belgium_lgaf_article_44_monthly_age_supplement_base_amount (Child, Month; source 'LGAF article 44'). The rule gives 0 while belgium_lgaf_child_age_years is below belgium_lgaf_article_44_monthly_age_supplement_base_amount_scalar_limit (6). It then pays age-6, age-12 (scalar_limit_2) or age-18 (scalar_limit_3) supplements. Each band takes the low amount when the child's effective rank is 1 with no Article 41, 42bis, 47 or 50ter supplement, and the high amount otherwise. One Child row per child person takes that person's own age. Difference: the input is the child's age in the benefit month (Month period). The concept is age in completed years at the survey reference date, held constant across the year, so months on the other side of a birthday from the reference date read one year off.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/eligibility#input.brussels_family_benefits_child_age_on_august_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_age_on_august_31_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "be-bru/statutes/family_benefits/eligibility.yaml, rule brussels_family_benefits_article_25_age_or_status_condition_met: 'if brussels_family_benefits_child_age_on_august_31_years < brussels_family_benefits_article_25_unconditional_age_years: 1' (limit 18). Article 25 section 1 excerpt: 'jusqu'au 31 août de l'année civile au cours de laquelle il atteint l'âge de 18 ans'. It also reaches be/statutes/family_benefits/regional_routing.yaml through that module's import. The concept is age in completed years at the survey reference date, while the input is age on a 31 August. The two can differ by up to a year depending on birth date and reference date, and the schema holds no birth date. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: it tests 'brussels_family_benefits_child_age_years < brussels_family_benefits_age_12_years', '< brussels_family_benefits_age_18_years' and '> brussels_family_benefits_age_24_years' to pick the article 7(b) band (excerpt: 150 euros for ages 0 to 11, 160 for 12 to 17, 170 or 160 for 18 to 24). In eligibility.yaml, brussels_family_benefits_article_25_age_or_status_condition_met tests it against the article 25 section 2 limit of 25. The rule period is Month, so it reads the child's age in the benefit month. The concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/basic_amounts#input.brussels_family_benefits_child_enrolled_in_higher_education",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_child_enrolled_in_higher_education",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "be-bru/statutes/family_benefits/basic_amounts.yaml, rule brussels_family_benefits_article_7_base_monthly_amount: for ages 18 to 24, 'if brussels_family_benefits_child_enrolled_in_higher_education: brussels_family_benefits_18_to_24_higher_education_monthly_amount' (170), otherwise 160. Article 7(b) excerpt: 'de 18 à 24 ans, au plus tôt à partir du 1er septembre, s'il est inscrit dans l'enseignement supérieur'. The input is read as enrollment at ISCED 5-8, the concept's tertiary band. Differences: 'enseignement supérieur' is a Belgian category, and the module does not state its boundary against ISCED 5. The concept is enrollment at the survey reference date, while the rule reads the benefit month. The excerpt's 1 September timing is in neither the formula nor the concept. Each Child row takes that child's own enrollment.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-bru:statutes/family_benefits/social_supplements#input.brussels_family_benefits_social_supplement_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "brussels_family_benefits_social_supplement_child_age_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "be-bru/statutes/family_benefits/social_supplements.yaml, rule brussels_family_benefits_article_9_social_supplement_monthly_amount returns 0 when 'brussels_family_benefits_social_supplement_child_age_years > brussels_family_benefits_social_supplement_age_24_years'. Its test '< brussels_family_benefits_social_supplement_age_12_years' picks the ages 0-11 amounts over the 12-24 amounts (article 9 excerpt: 'pour un enfant de 0 à 11 ans' and 'pour un enfant de 12 à 24 ans'). This is a separate input from brussels_family_benefits_child_age_years but holds the same fact. The rule period is Month (age in the benefit month); the concept is completed years at the survey reference date. The difference is timing only, at most a year. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/amounts#input.flanders_family_benefits_age_on_december_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_age_on_december_31_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "be-vlg/statutes/family_benefits/amounts.yaml, rule flanders_family_benefits_universal_participation_annual_amount picks the articles 19-22 participation supplement from 'flanders_family_benefits_age_on_december_31_years' against limits 4, 11, 17 and 25, and returns 0 when that age is below 0. Article 19 excerpt: 'op 31 december van het kalenderjaar voor het kalenderjaar waarin de toeslag verschuldigd is'. That is read as 31 December of the calendar year before the year the supplement is due. The concept is age at the survey reference date. When the frame's reference year is the year the supplement is due, the concept equals the input or is one year higher. A child born during that year has a negative age on that date, for which the rule pays nothing, but a concept age of 0, which pays the under-4 amount. The schema holds no birth date. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-vlg:statutes/family_benefits/eligibility#input.flanders_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "flanders_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "be-vlg/statutes/family_benefits/eligibility.yaml, rule flanders_family_benefits_age_or_status_condition_met: 'flanders_family_benefits_child_age_years < flanders_family_benefits_standard_age_limit_years' (18). The limit is 21 for a child with a specific support need and 25 for a pupil, student, intern or school leaver (source: Flemish Groeipakket decree article 8 section 2, age and status windows). The rule period is Month (age in the benefit month); the concept is completed years at the survey reference date. The difference is timing only, at most a year. The companion inputs flanders_family_benefits_child_in_month_turning_18, _21 and _25 need a birth month and stay uncovered. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-dg:statutes/family_benefits/eligibility#input.german_speaking_community_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "german_speaking_community_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-dg/statutes/family_benefits/eligibility.yaml by german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met (Month). With the german_speaking_community_family_benefits_ prefix dropped from every name, it tests 'child_age_years < standard_age_years' (18, art 9 s1), then '< disability_extension_age_years' (21, art 9 s2) and '< final_age_cap_years' (25, art 14). It is also consumed by german_speaking_community_family_benefits_article_12_13_missing_or_abducted_condition_met, and it reaches be/statutes/family_benefits/regional_routing.yaml through that module's import of be-dg eligibility. Each Child row takes the child person's own age. The rule reads age in completed years in the benefit month. The concept is age at the survey reference date, so it can be one year off in months on the other side of the child's birthday.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-dg:statutes/family_benefits/eligibility#input.german_speaking_community_family_benefits_child_in_training",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "german_speaking_community_family_benefits_child_in_training",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-dg/statutes/family_benefits/eligibility.yaml by german_speaking_community_family_benefits_article_9_10_age_or_status_condition_met (Month; decree of 23 April 2018 articles 9, 10, 11 and 14). With the german_speaking_community_family_benefits_ prefix dropped from every name, the branch reads 'child_age_years < final_age_cap_years and child_in_training and not employment_suspends_training_or_extension_entitlement'. It is reached only when the child is 18 or older and the disability branch fails. The module summary says 'Delegated residence, training, employment, and impairment proof rules remain supplied inputs'. The decree (article 9 section 3) leaves what counts as training to the Government, and the module does not encode that definition. The binding reads training as current enrollment in any ISCED programme at the reference date, not in the benefit month. The concept does not observe whatever programme-type or minimum-intensity conditions the delegated rules impose, and part-time enrollment counts as enrolled here. The employment-suspension input stays uncovered.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/amounts#input.wallonia_family_benefits_age_on_december_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_age_on_december_31_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/amounts.yaml by wallonia_family_benefits_age_supplement_annual_amount (Year; Walloon decree of 8 February 2018 art 17). The input surface also lists it for be-wal eligibility.yaml and be/statutes/family_benefits/regional_routing.yaml, which reach amounts.yaml through their imports. The bands are: under 5 pays 20; 5-10 pays 30; 11-16 pays 50; 17 and over pays 80 (scalar limits 5, 11 and 17); and '< 0' pays 0. The art 17 excerpt measures age 'le 31 décembre de l'année civile précédant celle au cours de laquelle ce supplément est dû'. The concept is completed years at the survey reference date. When the frame's reference year is the year the supplement is due, the input equals the concept or is one year lower, depending on whether the birthday falls between 1 January and the reference date. A child born during that year is not yet born on that 31 December, so the rule's '< 0' branch pays nothing, but the concept age of 0 pays the under-5 amount. The schema has no birth date to resolve this. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/eligibility#input.wallonia_family_benefits_child_age_on_august_31_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_child_age_on_august_31_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/eligibility.yaml by wallonia_family_benefits_article_5_age_or_status_condition_met (Month). The rule returns 1 when 'wallonia_family_benefits_child_age_on_august_31_years < wallonia_family_benefits_unconditional_age_years' (limit 18). It reaches be/statutes/family_benefits/regional_routing.yaml through that module's import. The art 5 excerpt grants benefits unconditionally 'jusqu'au 31 août de l'année civile au cours de laquelle il atteint l'âge de dix-huit ans'. The input is age on a 31 August that the input name does not date. The concept is completed years at the survey reference date, which can differ from it by a year depending on the birthday. The schema has no birth date. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/amounts#input.wallonia_family_benefits_child_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_child_age_years",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/amounts.yaml by wallonia_family_benefits_base_monthly_amount (Month; art 9). After the double-orphan branch, 'wallonia_family_benefits_child_age_years < wallonia_family_benefits_base_monthly_amount_scalar_limit' (18) pays the under-18 amount, and '< wallonia_family_benefits_base_monthly_amount_scalar_limit_2' (25) pays the 18-24 amount. The art 9 excerpt pays 155 EUR 'jusqu'à la fin du mois au cours duquel il atteint l'âge de dix-huit ans'. It is also consumed in eligibility.yaml by wallonia_family_benefits_article_5_age_or_status_condition_met ('< wallonia_family_benefits_intermediate_age_years', 21; '< wallonia_family_benefits_extended_age_years', 25) and by wallonia_family_benefits_article_6_disappeared_child_condition_met ('< wallonia_family_benefits_unconditional_age_years', 18). The rule reads completed years in the benefit month, while the concept is age at the survey reference date, so the two can differ by one year in months on the other side of the birthday. The art 9 end-of-birthday-month rule is not reproduced. Each Child row takes that child's own age.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be-wal:statutes/family_benefits/eligibility#input.wallonia_family_benefits_child_in_qualifying_courses_or_stage",
+   "concepts": [
+    "fact:person.education_enrollment"
+   ],
+   "engine_entity": "Child",
+   "engine_input": "wallonia_family_benefits_child_in_qualifying_courses_or_stage",
+   "group_rule": "person_role",
+   "module": "be/statutes/family_benefits/regional_routing.yaml",
+   "note": "Consumed in be-wal/statutes/family_benefits/eligibility.yaml by wallonia_family_benefits_article_5_age_or_status_condition_met (Month): 'wallonia_family_benefits_child_age_years < wallonia_family_benefits_extended_age_years and (wallonia_family_benefits_child_is_apprentice or wallonia_family_benefits_child_in_qualifying_courses_or_stage or wallonia_family_benefits_child_in_qualifying_diploma_training or wallonia_family_benefits_child_registered_jobseeker_after_studies_or_apprenticeship or wallonia_family_benefits_government_derogation_applies)'. That branch is reached only after three earlier branches fail: the 31 August unconditional limit, the disability branch, and the under-21 no-obstacle branch. The module summary says 'Delegated obstacles, education proof, individual derogations, and payment procedures remain supplied inputs', and the module does not define 'qualifying'. The binding reads the input as current enrollment in any ISCED programme at the reference date. The concept does not observe the delegated qualifying conditions, such as intensity, and it does not see traineeships ('stage') outside an education programme. Part-time enrollment counts. The sibling inputs wallonia_family_benefits_child_in_qualifying_diploma_training and wallonia_family_benefits_child_is_apprentice stay uncovered, so enrollment the law classifies under those headings lands here. The OR in the rule makes that harmless to the result, but not to the input's meaning.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.education_enrollment",
+      [
+       "early_childhood",
+       "primary",
+       "lower_secondary",
+       "upper_secondary",
+       "post_secondary_non_tertiary",
+       "tertiary"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_guarantee_for_elderly/resources#input.belgium_grapa_shares_principal_residence_with_spouse_or_legal_cohabitant",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_grapa_shares_principal_residence_with_spouse_or_legal_cohabitant",
+   "module": "be/statutes/income_guarantee_for_elderly/payable_amount.yaml",
+   "note": "Consumed in be/statutes/income_guarantee_for_elderly/resources.yaml by belgium_grapa_article_7_countable_resources_and_pensions (Person, Year; Federal law of 22 March 2001, article 7). When the input is true the rule returns belgium_grapa_personal_resources_and_pensions_after_exclusions + belgium_grapa_spouse_or_legal_cohabitant_resources_and_pensions_after_exclusions, otherwise belgium_grapa_personal_resources_and_pensions_after_exclusions. The proof excerpt counts the resources of the 'conjoint ou cohabitant légal avec lequel il partage la même résidence principale'. payable_amount.yaml consumes the resulting Article 11 reduction through its import of belgium_grapa_article_11_resource_reduction. has_partner is true for any co-resident spouse, civil partner or cohabiting partner. Differences: (1) The input is true only for a spouse or legal cohabitant. A de facto cohabiting partner without legal cohabitation makes has_partner true where the law counts only personal resources. (2) The law tests sharing the same principal residence, a legal notion, while the concept is co-residence as the survey records it. A spouse living elsewhere is false under both.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_guarantee_for_elderly/resources#input.belgium_grapa_shares_principal_residence_with_spouse_or_legal_cohabitant",
+   "concepts": [
+    "fact:person.partner_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_grapa_shares_principal_residence_with_spouse_or_legal_cohabitant",
+   "module": "be/statutes/income_guarantee_for_elderly/resources.yaml",
+   "note": "Consumed in be/statutes/income_guarantee_for_elderly/resources.yaml by belgium_grapa_article_7_countable_resources_and_pensions (Person, Year; Federal law of 22 March 2001, article 7). When the input is true the rule returns belgium_grapa_personal_resources_and_pensions_after_exclusions + belgium_grapa_spouse_or_legal_cohabitant_resources_and_pensions_after_exclusions, otherwise belgium_grapa_personal_resources_and_pensions_after_exclusions. The proof excerpt counts the resources of the 'conjoint ou cohabitant légal avec lequel il partage la même résidence principale'. payable_amount.yaml consumes the resulting Article 11 reduction through its import of belgium_grapa_article_11_resource_reduction. has_partner is true for any co-resident spouse, civil partner or cohabiting partner. Differences: (1) The input is true only for a spouse or legal cohabitant. A de facto cohabiting partner without legal cohabitation makes has_partner true where the law counts only personal resources. (2) The law tests sharing the same principal residence, a legal notion, while the concept is co-residence as the survey records it. A spouse living elsewhere is false under both.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "has_partner"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_article_132_child_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_132_child_count",
+   "module": "be/statutes/income_tax/individual/couple_pit_oracle_pipeline.yaml",
+   "note": "Consumed in be/statutes/income_tax/individual/tax_free_amount.yaml by belgium_pit_article_132_child_tax_free_increase (Person, Year; CIR 1992 article 132). The rule gives 0 for a count <= 0, then the one- to four-child supplements plus a per-child amount beyond four. Its proof excerpt calls these 'suppléments suivants pour personnes à charge'. The couple, pensioner and self-employed pipelines reach the same canonical input through imports. coresident_child_count counts co-resident persons of any age who name this person as a parent; the encoded Article 132 count sets no age limit either. Differences: (1) The input counts dependent ('à charge') children, a legal status the module does not derive. Its summary computes the total before 'shared-custody, childcare-reduction, resource, and household-composition limitations'. The concept count includes adult and earning children and excludes dependants who are not the person's own children. (2) Both co-resident parents get the full count, so summing the Person-level increase over a two-parent household counts each child twice. Under joint assessment, tax_free_amount_tax.yaml gives the Article 132 supplements to one spouse through the Household-level input belgium_pit_joint_article_132_supplements_tax_free_amount and the derived belgium_pit_article_134_joint_article_132_supplements_assigned_to_spouse_a, a path this Person-level count does not feed. (3) Shared-custody (Article 132bis) children are not distinguished.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/statutes/income_tax/individual/couple_pit_oracle_pipeline.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_taxpayer_disability_count",
+   "concepts": [
+    "fact:person.has_disability"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_taxpayer_disability_count",
+   "module": "be/statutes/income_tax/individual/couple_pit_oracle_pipeline.yaml",
+   "note": "be/statutes/income_tax/individual/tax_free_amount.yaml, rule belgium_pit_articles_131_132_tax_free_amount_before_limitations (Person, Year; CIR 1992 articles 131 and 132): 'belgium_pit_base_tax_free_amount + belgium_pit_taxpayer_disability_tax_free_increase * belgium_pit_taxpayer_disability_count + ...'. The increase is the parameter belgium_pit_taxpayer_disability_tax_free_increase (1980), whose art. 131 excerpt reads 'Ce montant est majoré de 1.980 euros (montant indexé) lorsque le contribuable est atteint d'un handicap.' The count is the taxpayer's own status, and the module's test five_children_disability_and_other_dependants sets it to 1. The recode therefore maps true to 1 and false to 0, which is invertible. Differences: 'atteint d'un handicap' is a tax-law status that the module takes as supplied and does not define. The concept is a functional survey measure (difficulty with everyday activities, as survey functional-difficulty items record it), and its own definition says a program's legal disability status is a different concept, so the two populations need not coincide. The policyengine-uk (is_disabled_for_benefits) and policyengine-us (is_disabled) mappings bind this concept to legal or benefit statuses in the same approximate way. The couple, pensioner and self-employed PIT pipelines also list this input as a Person root input. But they import only belgium_pit_base_tax_free_amount from this module, and no module references belgium_pit_articles_131_132_tax_free_amount_before_limitations, so the input affects only tax_free_amount.yaml's own output.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "recode",
+    "pairs": [
+     [
+      true,
+      1
+     ],
+     [
+      false,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/movable_withholding/rates#input.belgium_regulated_savings_deposit_gross_interest",
+   "concepts": [
+    "fact:person.interest_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_regulated_savings_deposit_gross_interest",
+   "module": "be/statutes/income_tax/individual/final_tax.yaml",
+   "note": "movable_withholding/rates.belgium_regulated_savings_deposit_taxable_interest ('CIR 1992 article 21 first paragraph item 5 and article 269 section 1 item 2') = max(0, belgium_regulated_savings_deposit_gross_interest - belgium_regulated_savings_deposit_interest_exemption_amount). The exemption is 1050 ('la premiere tranche de 1.050 euros ... des revenus afferents aux depots d'epargne'), and the rest is withheld at 15%. The input is annual gross interest per person from regulated savings deposits, a subset of interest income. The concept has no account-type split, so a country fraction supplies it. Differences: a flat fraction gives everyone the same regulated share, which misstates who uses the per-person EUR 1050 exemption. In final_tax and tax_liability_pipeline this input sits beside belgium_general_movable_income_subject_to_withholding (30%). Whoever binds that input must exclude this fraction of interest, or the regulated share is withheld twice.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "fraction",
+    "parameter": "be.regulated_savings_deposit_interest_fraction"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/joint_assessment#input.belgium_pit_article_126_married_or_legal_cohabiting",
+   "concepts": [
+    "fact:person.legal_marital_status"
+   ],
+   "engine_entity": "TaxUnit",
+   "engine_input": "belgium_pit_article_126_married_or_legal_cohabiting",
+   "group_rule": "reference_member",
+   "module": "be/statutes/income_tax/individual/joint_assessment.yaml",
+   "note": "Consumed in be/statutes/income_tax/individual/joint_assessment.yaml by belgium_pit_joint_assessment_established (TaxUnit, Year; CIR 1992 art. 126 sections 1-3). The proof excerpt reads 'En cas de mariage ou de cohabitation légale, une imposition commune est établie'. The formula is `if belgium_pit_article_126_married_or_legal_cohabiting: (separate-assessment exceptions) else: 0`. The recode reads the tax unit's reference member: married, which in the concept includes civil partnerships and civil unions, is true. Differences: (1) The input also covers legal cohabitation, a declared status the excerpt names separately from marriage. A legal-cohabitant couple recorded as never_married gets false where the law gives joint assessment. (2) 'separated' is legally still married, so the input would be true. It is recoded false because the art. 126 section 2 separation exceptions (factual separation, year of legal separation) are separate inputs the concepts cannot supply. The recode therefore sends separated persons straight to separate assessment. For these reasons the input's true set is broader than the recode's. (3) The year-of-marriage, year-of-dissolution and death exceptions stay uncovered.",
+   "relation": "broad_match",
+   "transform": {
+    "kind": "recode",
+    "pairs": [
+     [
+      "never_married",
+      false
+     ],
+     [
+      "married",
+      true
+     ],
+     [
+      "separated",
+      false
+     ],
+     [
+      "divorced",
+      false
+     ],
+     [
+      "widowed",
+      false
+     ]
+    ]
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/movable_income#input.belgium_pit_article_17_interest_income",
+   "concepts": [
+    "fact:person.interest_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_17_interest_income",
+   "module": "be/statutes/income_tax/individual/movable_income.yaml",
+   "note": "movable_income.belgium_pit_article_17_gross_movable_income ('CIR 1992 article 17 paragraph 1') = belgium_pit_article_18_dividend_income + belgium_pit_article_17_interest_income + the other Article 17 categories. The module summary says it encodes the category aggregation 'for supplied amounts' and not special inclusions, exemptions, expense deductions or withholding reconciliation. So the input is gross annual interest per person, like the concept. Differences: the input is the Article 17 legal interest category. Interest on advances that Article 18 recharacterizes as dividends is a separate input (belgium_pit_article_18_recharacterized_excess_advance_interest). The Article 21 regulated-savings-deposit exemption is applied elsewhere (movable_withholding/rates). The concept counts all interest received whatever the payer's jurisdiction.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/movable_income#input.belgium_pit_article_18_share_advantages",
+   "concepts": [
+    "fact:person.dividend_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_18_share_advantages",
+   "module": "be/statutes/income_tax/individual/movable_income.yaml",
+   "note": "movable_income.belgium_pit_article_18_dividend_income ('CIR 1992 article 18, dividend components'; proof excerpt 'Les dividendes comprennent:') = belgium_pit_article_18_share_advantages + taxable capital repayments + taxable share-premium repayments + liquidation or own-share acquisition income + legal-construction distributions + attributed undistributed legal-construction profit + recharacterized excess advance interest. The concept (gross dividends and other distributions from corporations and investment funds, annual, per person) is bound whole to the share-advantages component. The other six components are specific distribution types left uncovered. Differences: survey dividends can include liquidation bonuses, capital or share-premium repayments and fund or legal-construction distributions, which Article 18 places in those other components. The binding puts them all in this leaf; the total belgium_pit_article_18_dividend_income is unaffected.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "concepts": [
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/income_tax/individual/pensioner_pit_oracle_pipeline.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. The module summary describes the Article 68 withholding base as the 'total monthly gross amount of legal and complementary pensions'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is regular income from employer-sponsored and personal pension schemes and annuities. The module does not say that personal pensions or private annuities count as complementary pensions, so the concept can include amounts outside the input. (2) Non-monthly periodic pensions have their own monthly-equivalent input. The concept includes them, so it overstates this leaf, though the Article 68 total is unchanged. Capital pensions enter through a separate fictive-monthly-rent input, which the concept does not supply because it excludes lump sums. (3) The statutory tables apply per beneficiary; the pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (4) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/income_tax/individual/pensioner_pit_oracle_pipeline.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. That total feeds belgium_pension_solidarity_article_68_monthly_withholding and belgium_health_insurance_article_191_monthly_pension_withholding. The module summary describes a withholding 'on the total monthly gross amount of legal and complementary pensions, with different tables for isolated beneficiaries and beneficiaries with family charge'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is an old-age pension from a social-insurance or state scheme. The Article 191 proof excerpt in pension_health_insurance_article_191.yaml lists legal, regulatory or statutory old-age, retirement, seniority and survivor pensions. If Article 68 legal pensions have the same scope, survivor pensions are in the input but outside the concept. (2) The statutory tables apply per beneficiary. The pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary' and keeps this module's entity-level originals for 'cumulated pension stacks spanning several payers'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (3) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year. (4) public_pension_income is a donor-program receipt that transport drops. Encode computes a binding only when its concept is present, so under transport this input is not fed.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_article_132_child_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_132_child_count",
+   "module": "be/statutes/income_tax/individual/pensioner_pit_oracle_pipeline.yaml",
+   "note": "Consumed in be/statutes/income_tax/individual/tax_free_amount.yaml by belgium_pit_article_132_child_tax_free_increase (Person, Year; CIR 1992 article 132). The rule gives 0 for a count <= 0, then the one- to four-child supplements plus a per-child amount beyond four. Its proof excerpt calls these 'suppléments suivants pour personnes à charge'. The couple, pensioner and self-employed pipelines reach the same canonical input through imports. coresident_child_count counts co-resident persons of any age who name this person as a parent; the encoded Article 132 count sets no age limit either. Differences: (1) The input counts dependent ('à charge') children, a legal status the module does not derive. Its summary computes the total before 'shared-custody, childcare-reduction, resource, and household-composition limitations'. The concept count includes adult and earning children and excludes dependants who are not the person's own children. (2) Both co-resident parents get the full count, so summing the Person-level increase over a two-parent household counts each child twice. Under joint assessment, tax_free_amount_tax.yaml gives the Article 132 supplements to one spouse through the Household-level input belgium_pit_joint_article_132_supplements_tax_free_amount and the derived belgium_pit_article_134_joint_article_132_supplements_assigned_to_spouse_a, a path this Person-level count does not feed. (3) Shared-custody (Article 132bis) children are not distinguished.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/statutes/income_tax/individual/pensioner_pit_oracle_pipeline.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pensioner_pit_oracle_pipeline#input.belgium_pit_pensioner_annual_gross_pension",
+   "concepts": [
+    "fact:person.public_pension_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_pensioner_annual_gross_pension",
+   "module": "be/statutes/income_tax/individual/pensioner_pit_oracle_pipeline.yaml",
+   "note": "pensioner_pit_oracle_pipeline summary: 'The gross Article 34 input remains the total pension income, including complementary pension'. belgium_pit_pensioner_net_pension = max(0, belgium_pit_pensioner_annual_gross_pension - belgium_pit_pensioner_annual_social_withholding) ('CIR 1992 article 23 paragraph 2 item 1 netting of the article 52 item 7 personal social-legislation withholdings against the gross Article 34 pension category'). belgium_pit_pensioner_monthly_gross_pension divides the annual amount by belgium_pensioner_health_and_solidarity_months_in_year ('an annual gross Article 34 pension paid in equal monthly amounts'). So the input is annual, per person and gross of social withholdings, covering legal plus complementary pensions: the public plus private pension concepts. Differences: survivor pensions are in the Belgian gross pension but not in public_pension_income (old-age only). The monthly withholding tables assume equal monthly payments, which the annual concept does not state. Public pension income is a donor-program receipt that transport drops.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pensioner_pit_oracle_pipeline#input.belgium_pit_pensioner_annual_legal_pension",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_pensioner_annual_legal_pension",
+   "module": "be/statutes/income_tax/individual/pensioner_pit_oracle_pipeline.yaml",
+   "note": "pensioner_pit_oracle_pipeline summary: 'a distinct supplied legal-pension amount governs the Article 147 item 2 b and c activity-income exclusions'. belgium_pit_pensioner_article_147_excluded_activity_income tests belgium_pit_pensioner_has_reached_legal_retirement_age and belgium_pit_pensioner_annual_legal_pension <= belgium_pit_article_1511_additional_phaseout_start. Proof excerpt: 'b) des revenus d'activites, dans le cas de l'obtention par un contribuable qui a atteint l'age legal de la retraite, d'une pension legale qui ne depasse pas 19.630 euros'. The input is the annual statutory ('legal') pension per person, and public_pension_income (social-insurance or state old-age pension) is the matching concept. Differences: a Belgian legal pension also covers survivor pensions, which the old-age concept excludes. The rule reads it only when the uncovered legal-retirement-age flag is true. Public pension income is a donor-program receipt that transport drops.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_taxpayer_disability_count",
+   "concepts": [
+    "fact:person.has_disability"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_taxpayer_disability_count",
+   "module": "be/statutes/income_tax/individual/pensioner_pit_oracle_pipeline.yaml",
+   "note": "be/statutes/income_tax/individual/tax_free_amount.yaml, rule belgium_pit_articles_131_132_tax_free_amount_before_limitations (Person, Year; CIR 1992 articles 131 and 132): 'belgium_pit_base_tax_free_amount + belgium_pit_taxpayer_disability_tax_free_increase * belgium_pit_taxpayer_disability_count + ...'. The increase is the parameter belgium_pit_taxpayer_disability_tax_free_increase (1980), whose art. 131 excerpt reads 'Ce montant est majoré de 1.980 euros (montant indexé) lorsque le contribuable est atteint d'un handicap.' The count is the taxpayer's own status, and the module's test five_children_disability_and_other_dependants sets it to 1. The recode therefore maps true to 1 and false to 0, which is invertible. Differences: 'atteint d'un handicap' is a tax-law status that the module takes as supplied and does not define. The concept is a functional survey measure (difficulty with everyday activities, as survey functional-difficulty items record it), and its own definition says a program's legal disability status is a different concept, so the two populations need not coincide. The policyengine-uk (is_disabled_for_benefits) and policyengine-us (is_disabled) mappings bind this concept to legal or benefit statuses in the same approximate way. The couple, pensioner and self-employed PIT pipelines also list this input as a Person root input. But they import only belgium_pit_base_tax_free_amount from this module, and no module references belgium_pit_articles_131_132_tax_free_amount_before_limitations, so the input affects only tax_free_amount.yaml's own output.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "recode",
+    "pairs": [
+     [
+      true,
+      1
+     ],
+     [
+      false,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/statutes/income_tax/individual/pilot_worker_oracle_pipeline.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/professional_income#input.belgium_pit_article_23_pension_annuity_or_equivalent_allowance",
+   "concepts": [
+    "fact:person.public_pension_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_pension_annuity_or_equivalent_allowance",
+   "module": "be/statutes/income_tax/individual/professional_income.yaml",
+   "note": "professional_income.belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1') adds belgium_pit_article_23_pension_annuity_or_equivalent_allowance to the other Article 23 categories. It then subtracts exempt income, the Article 49/51 expenses (whose forfait bases are separate inputs) and losses. The input is the annual pensions, annuities and equivalent-allowances category per person. Public (social-insurance) plus private (occupational and personal) pension income is its closest concept content. Differences: public_pension_income is old-age only, so survivor pensions and other 'equivalent allowances' in the legal category are missed. Private pension income as defined includes personal annuities that Belgian law may tax as movable income (Article 17 has a separate life-or-temporary-annuity input). Public pension income is a donor-program receipt that transport drops. Encode computes a binding only when all its concepts are present, so under transport this sum is not computed and the input is not fed; the private part does not reach it on its own.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/professional_income#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/statutes/income_tax/individual/professional_income.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_article_132_child_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_132_child_count",
+   "module": "be/statutes/income_tax/individual/self_employed_oracle_pipeline.yaml",
+   "note": "Consumed in be/statutes/income_tax/individual/tax_free_amount.yaml by belgium_pit_article_132_child_tax_free_increase (Person, Year; CIR 1992 article 132). The rule gives 0 for a count <= 0, then the one- to four-child supplements plus a per-child amount beyond four. Its proof excerpt calls these 'suppléments suivants pour personnes à charge'. The couple, pensioner and self-employed pipelines reach the same canonical input through imports. coresident_child_count counts co-resident persons of any age who name this person as a parent; the encoded Article 132 count sets no age limit either. Differences: (1) The input counts dependent ('à charge') children, a legal status the module does not derive. Its summary computes the total before 'shared-custody, childcare-reduction, resource, and household-composition limitations'. The concept count includes adult and earning children and excludes dependants who are not the person's own children. (2) Both co-resident parents get the full count, so summing the Person-level increase over a two-parent household counts each child twice. Under joint assessment, tax_free_amount_tax.yaml gives the Article 132 supplements to one spouse through the Household-level input belgium_pit_joint_article_132_supplements_tax_free_amount and the derived belgium_pit_article_134_joint_article_132_supplements_assigned_to_spouse_a, a path this Person-level count does not feed. (3) Shared-custody (Article 132bis) children are not distinguished.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/pilot_worker_oracle_pipeline#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/statutes/income_tax/individual/self_employed_oracle_pipeline.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_taxpayer_disability_count",
+   "concepts": [
+    "fact:person.has_disability"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_taxpayer_disability_count",
+   "module": "be/statutes/income_tax/individual/self_employed_oracle_pipeline.yaml",
+   "note": "be/statutes/income_tax/individual/tax_free_amount.yaml, rule belgium_pit_articles_131_132_tax_free_amount_before_limitations (Person, Year; CIR 1992 articles 131 and 132): 'belgium_pit_base_tax_free_amount + belgium_pit_taxpayer_disability_tax_free_increase * belgium_pit_taxpayer_disability_count + ...'. The increase is the parameter belgium_pit_taxpayer_disability_tax_free_increase (1980), whose art. 131 excerpt reads 'Ce montant est majoré de 1.980 euros (montant indexé) lorsque le contribuable est atteint d'un handicap.' The count is the taxpayer's own status, and the module's test five_children_disability_and_other_dependants sets it to 1. The recode therefore maps true to 1 and false to 0, which is invertible. Differences: 'atteint d'un handicap' is a tax-law status that the module takes as supplied and does not define. The concept is a functional survey measure (difficulty with everyday activities, as survey functional-difficulty items record it), and its own definition says a program's legal disability status is a different concept, so the two populations need not coincide. The policyengine-uk (is_disabled_for_benefits) and policyengine-us (is_disabled) mappings bind this concept to legal or benefit statuses in the same approximate way. The couple, pensioner and self-employed PIT pipelines also list this input as a Person root input. But they import only belgium_pit_base_tax_free_amount from this module, and no module references belgium_pit_articles_131_132_tax_free_amount_before_limitations, so the input affects only tax_free_amount.yaml's own output.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "recode",
+    "pairs": [
+     [
+      true,
+      1
+     ],
+     [
+      false,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/self_employed/contributions#input.belgium_self_employed_gross_professional_income",
+   "concepts": [
+    "fact:person.nonfarm_self_employment_income",
+    "fact:person.farm_self_employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_self_employed_gross_professional_income",
+   "module": "be/statutes/income_tax/individual/self_employed_oracle_pipeline.yaml",
+   "note": "self_employed/contributions.belgium_self_employed_article_11_professional_income_base ('Royal Decree No. 38 ... article 11 section 2') = max(0, belgium_self_employed_gross_professional_income - belgium_self_employed_professional_expenses - belgium_self_employed_professional_losses + ...). In self_employed_oracle_pipeline, the gross amount less the selected social contribution (and business purchase costs) becomes the Article 51 forfait base. So the input is gross of business expenses, while the concepts are net profit. The repo's own EUROMOD tests feed a net-of-costs amount here. self_employed_oracle_pipeline.test.yaml says 'EUROMOD treats yse as already net of non-SSC business costs, so the Article 49 boundary is true with zero additional actual costs'. It sets belgium_self_employed_professional_expenses 0 and belgium_pit_self_employment_actual_professional_expenses_are_justified true with 0 justified expenses. The binding is valid only under that convention: left false, the justified flag makes the pipeline deduct the Article 51 forfait from an amount already net of expenses. Farm and non-farm profit both enter, because the RD 38 module has one gross-income input for all self-employed activity. The pipeline then splits 'benefices' (industrial, commercial or agricultural) from other profits through a separate category flag. Differences: signed concepts pass negative profit into a 'gross' input. The Article 11 base floors at zero, and the pipeline test file documents a EUR 1000 divergence from EUROMOD on negative yse. Both are annual and per person.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_security/self_employed/contributions#input.belgium_self_employed_receives_retirement_or_survivor_pension",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_self_employed_receives_retirement_or_survivor_pension",
+   "module": "be/statutes/income_tax/individual/self_employed_oracle_pipeline.yaml",
+   "note": "self_employed/contributions.belgium_self_employed_selected_annual_social_contribution ('Royal Decree No. 38 ... articles 12, 12bis, and 13') reads it only inside 'if belgium_self_employed_has_reached_pension_age:'. There it chooses the Article 13 section 1 post-pension-with-pension contribution over the section 2 pension-age-without-retirement-pension contribution. Positive public old-age pension income flags receipt of a retirement pension. Differences: the input also covers survivor pensions, which the old-age concept excludes, and the timing of receipt within the year is not modelled. The gating pension-age flag is uncovered, so the binding has no effect until it is supplied. Public pension income is a donor-program receipt that transport drops.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "positive"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_article_132_child_count",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_132_child_count",
+   "module": "be/statutes/income_tax/individual/tax_free_amount.yaml",
+   "note": "Consumed in be/statutes/income_tax/individual/tax_free_amount.yaml by belgium_pit_article_132_child_tax_free_increase (Person, Year; CIR 1992 article 132). The rule gives 0 for a count <= 0, then the one- to four-child supplements plus a per-child amount beyond four. Its proof excerpt calls these 'suppléments suivants pour personnes à charge'. The couple, pensioner and self-employed pipelines reach the same canonical input through imports. coresident_child_count counts co-resident persons of any age who name this person as a parent; the encoded Article 132 count sets no age limit either. Differences: (1) The input counts dependent ('à charge') children, a legal status the module does not derive. Its summary computes the total before 'shared-custody, childcare-reduction, resource, and household-composition limitations'. The concept count includes adult and earning children and excludes dependants who are not the person's own children. (2) Both co-resident parents get the full count, so summing the Person-level increase over a two-parent household counts each child twice. Under joint assessment, tax_free_amount_tax.yaml gives the Article 132 supplements to one spouse through the Household-level input belgium_pit_joint_article_132_supplements_tax_free_amount and the derived belgium_pit_article_134_joint_article_132_supplements_assigned_to_spouse_a, a path this Person-level count does not feed. (3) Shared-custody (Article 132bis) children are not distinguished.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "coresident_child_count"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/tax_free_amount#input.belgium_pit_taxpayer_disability_count",
+   "concepts": [
+    "fact:person.has_disability"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_taxpayer_disability_count",
+   "module": "be/statutes/income_tax/individual/tax_free_amount.yaml",
+   "note": "be/statutes/income_tax/individual/tax_free_amount.yaml, rule belgium_pit_articles_131_132_tax_free_amount_before_limitations (Person, Year; CIR 1992 articles 131 and 132): 'belgium_pit_base_tax_free_amount + belgium_pit_taxpayer_disability_tax_free_increase * belgium_pit_taxpayer_disability_count + ...'. The increase is the parameter belgium_pit_taxpayer_disability_tax_free_increase (1980), whose art. 131 excerpt reads 'Ce montant est majoré de 1.980 euros (montant indexé) lorsque le contribuable est atteint d'un handicap.' The count is the taxpayer's own status, and the module's test five_children_disability_and_other_dependants sets it to 1. The recode therefore maps true to 1 and false to 0, which is invertible. Differences: 'atteint d'un handicap' is a tax-law status that the module takes as supplied and does not define. The concept is a functional survey measure (difficulty with everyday activities, as survey functional-difficulty items record it), and its own definition says a program's legal disability status is a different concept, so the two populations need not coincide. The policyengine-uk (is_disabled_for_benefits) and policyengine-us (is_disabled) mappings bind this concept to legal or benefit statuses in the same approximate way. The couple, pensioner and self-employed PIT pipelines also list this input as a Person root input. But they import only belgium_pit_base_tax_free_amount from this module, and no module references belgium_pit_articles_131_132_tax_free_amount_before_limitations, so the input affects only tax_free_amount.yaml's own output.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "recode",
+    "pairs": [
+     [
+      true,
+      1
+     ],
+     [
+      false,
+      0
+     ]
+    ]
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/professional_income#input.belgium_pit_article_23_pension_annuity_or_equivalent_allowance",
+   "concepts": [
+    "fact:person.public_pension_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_pension_annuity_or_equivalent_allowance",
+   "module": "be/statutes/income_tax/individual/tax_liability_pipeline.yaml",
+   "note": "professional_income.belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1') adds belgium_pit_article_23_pension_annuity_or_equivalent_allowance to the other Article 23 categories. It then subtracts exempt income, the Article 49/51 expenses (whose forfait bases are separate inputs) and losses. The input is the annual pensions, annuities and equivalent-allowances category per person. Public (social-insurance) plus private (occupational and personal) pension income is its closest concept content. Differences: public_pension_income is old-age only, so survivor pensions and other 'equivalent allowances' in the legal category are missed. Private pension income as defined includes personal annuities that Belgian law may tax as movable income (Article 17 has a separate life-or-temporary-annuity input). Public pension income is a donor-program receipt that transport drops. Encode computes a binding only when all its concepts are present, so under transport this sum is not computed and the input is not fed; the private part does not reach it on its own.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/professional_income#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/statutes/income_tax/individual/tax_liability_pipeline.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/movable_withholding/rates#input.belgium_regulated_savings_deposit_gross_interest",
+   "concepts": [
+    "fact:person.interest_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_regulated_savings_deposit_gross_interest",
+   "module": "be/statutes/income_tax/individual/tax_liability_pipeline.yaml",
+   "note": "movable_withholding/rates.belgium_regulated_savings_deposit_taxable_interest ('CIR 1992 article 21 first paragraph item 5 and article 269 section 1 item 2') = max(0, belgium_regulated_savings_deposit_gross_interest - belgium_regulated_savings_deposit_interest_exemption_amount). The exemption is 1050 ('la premiere tranche de 1.050 euros ... des revenus afferents aux depots d'epargne'), and the rest is withheld at 15%. The input is annual gross interest per person from regulated savings deposits, a subset of interest income. The concept has no account-type split, so a country fraction supplies it. Differences: a flat fraction gives everyone the same regulated share, which misstates who uses the per-person EUR 1050 exemption. In final_tax and tax_liability_pipeline this input sits beside belgium_general_movable_income_subject_to_withholding (30%). Whoever binds that input must exclude this fraction of interest, or the regulated share is withheld twice.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "fraction",
+    "parameter": "be.regulated_savings_deposit_interest_fraction"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/professional_income#input.belgium_pit_article_23_pension_annuity_or_equivalent_allowance",
+   "concepts": [
+    "fact:person.public_pension_income",
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_pension_annuity_or_equivalent_allowance",
+   "module": "be/statutes/income_tax/individual/taxable_income.yaml",
+   "note": "professional_income.belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1') adds belgium_pit_article_23_pension_annuity_or_equivalent_allowance to the other Article 23 categories. It then subtracts exempt income, the Article 49/51 expenses (whose forfait bases are separate inputs) and losses. The input is the annual pensions, annuities and equivalent-allowances category per person. Public (social-insurance) plus private (occupational and personal) pension income is its closest concept content. Differences: public_pension_income is old-age only, so survivor pensions and other 'equivalent allowances' in the legal category are missed. Private pension income as defined includes personal annuities that Belgian law may tax as movable income (Article 17 has a separate life-or-temporary-annuity input). Public pension income is a donor-program receipt that transport drops. Encode computes a binding only when all its concepts are present, so under transport this sum is not computed and the input is not fed; the private part does not reach it on its own.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "sum"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/individual/professional_income#input.belgium_pit_article_23_worker_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_pit_article_23_worker_remuneration",
+   "module": "be/statutes/income_tax/individual/taxable_income.yaml",
+   "note": "Consumed as gross pay. pilot_worker_oracle_pipeline sets belgium_employee_social_security_contribution_base = belgium_pit_article_23_worker_remuneration and computes belgium_pit_pilot_worker_remuneration_after_employee_social_security = max(0, belgium_pit_article_23_worker_remuneration - belgium_employee_social_security_ordinary_worker_contribution) ('CIR 1992 article 23 paragraph 2 professional-income netting after ordinary employee social-security contribution'). professional_income adds it into belgium_pit_article_23_gross_professional_income_before_exemptions ('CIR 1992 article 23 paragraph 1'). data/coverage/pilot-slice-coverage.json lists it as a root input with euromod_anchor 'yem', and its notes anchor oracle comparisons on EUROMOD's gross yem. So the input is annual, per person and gross of employee social contributions, like the concept. Differences: it is the Article 23 worker-remuneration category only. Company-director remuneration (belgium_pit_article_23_company_director_remuneration) and other remuneration (belgium_pit_article_23_other_remuneration) are separate inputs, so survey employee pay that Belgian law classes as director pay lands here. Which benefits in kind or exempt items the legal category includes is set by provisions these modules do not encode; the concept excludes benefits in kind. Path caveat: professional_income.yaml, which taxable_income and tax_liability_pipeline import, nets only exempt income, the Article 49 or 51 expenses and losses, with no employee social-contribution step. On that path the gross feed is not reduced by personal social contributions unless they are supplied as justified Article 49 expenses. The pilot pipeline does deduct them.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/income_tax/movable_withholding/rates#input.belgium_regulated_savings_deposit_gross_interest",
+   "concepts": [
+    "fact:person.interest_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_regulated_savings_deposit_gross_interest",
+   "module": "be/statutes/income_tax/movable_withholding/rates.yaml",
+   "note": "movable_withholding/rates.belgium_regulated_savings_deposit_taxable_interest ('CIR 1992 article 21 first paragraph item 5 and article 269 section 1 item 2') = max(0, belgium_regulated_savings_deposit_gross_interest - belgium_regulated_savings_deposit_interest_exemption_amount). The exemption is 1050 ('la premiere tranche de 1.050 euros ... des revenus afferents aux depots d'epargne'), and the rest is withheld at 15%. The input is annual gross interest per person from regulated savings deposits, a subset of interest income. The concept has no account-type split, so a country fraction supplies it. Differences: a flat fraction gives everyone the same regulated share, which misstates who uses the per-person EUR 1050 exemption. In final_tax and tax_liability_pipeline this input sits beside belgium_general_movable_income_subject_to_withholding (30%). Whoever binds that input must exclude this fraction of interest, or the regulated share is withheld twice.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "fraction",
+    "parameter": "be.regulated_savings_deposit_interest_fraction"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/loi/1978/07/03/1978070303/article/30ter#input.monthly_brute_remuneration",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "monthly_brute_remuneration",
+   "module": "be/statutes/loi/1978/07/03/1978070303/article/30ter.yaml",
+   "note": "Monthly = annual employment income / 12. Consumed in be/statutes/loi/1978/07/03/1978070303/article/30ter.yaml by unlawful_dismissal_for_adoption_leave_indemnity_amount ('monthly_brute_remuneration * unlawful_dismissal_indemnity_months_brute_remuneration', 6 months, Art. 30ter s4 al. 3-4) and unlawful_nonrenewal_for_adoption_leave_indemnity_amount (3 months, 'rémunération brute de trois mois', s5 al. 2-3). Both rules have Day period and pay only when the dismissal or non-renewal conditions (uncovered) hold. The input is gross monthly pay under the contract with the employer concerned, at the time of the act. The concept is annual gross wages from all employee jobs in the reference year, so annual/12 differs for multiple-job holders, part-year workers (including anyone whose job ended) and pay changes. The module does not define 'rémunération brute'. Whether it includes items the concept excludes, such as benefits in kind, is not stated there. This is a stand-in.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_integration/eligibility#input.belgium_social_integration_age_years",
+   "concepts": [
+    "fact:person.age"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_social_integration_age_years",
+   "module": "be/statutes/social_integration/eligibility.yaml",
+   "note": "social_integration/eligibility.belgium_social_integration_adult_or_assimilated_condition_met ('Federal law of 26 May 2002 concerning the right to social integration, article 3 item 2 and article 7'; Day period) is 'if belgium_social_integration_age_years >= belgium_social_integration_adult_age_years: 1 else belgium_social_integration_minor_assimilated_to_adult_condition_met'. Proof excerpt: 'La majorite est fixee a dix-huit ans accomplis'. The input is age in completed years on the day the rule evaluates. The concept is completed years at the survey reference date, so the two can differ by up to a year around the 18th birthday.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_integration/eligibility#input.belgium_social_integration_minor_emancipated_by_marriage",
+   "concepts": [
+    "fact:person.legal_marital_status"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_social_integration_minor_emancipated_by_marriage",
+   "module": "be/statutes/social_integration/eligibility.yaml",
+   "note": "be/statutes/social_integration/eligibility.yaml, rule belgium_social_integration_minor_assimilated_to_adult_condition_met (law of 26 May 2002, art. 7): 'if belgium_social_integration_minor_emancipated_by_marriage: 1'. The proof excerpt reads 'la personne mineure d'age qui soit est emancipee par mariage'. That rule is reached only through belgium_social_integration_adult_or_assimilated_condition_met, which returns 1 when age_years >= 18 before it consults the minor branch. So the predicate also being true for married adults has no effect. Differences: (1) the concept's 'married' includes civil partnerships and civil unions, and the input names emancipation by marriage only. (2) 'separated' is included on the reading that a separated person is still married. (3) Divorced and widowed minors are left false, because this module does not encode whether emancipation survives the end of a marriage. (4) Survey marital status at the reference date stands in for the civil-law status on the rule's Day period.",
+   "relation": "approximate",
+   "transform": {
+    "clauses": [
+     [
+      "fact:person.legal_marital_status",
+      [
+       "married",
+       "separated"
+      ]
+     ]
+    ],
+    "kind": "predicate"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_integration/eligibility#input.belgium_social_integration_minor_has_dependent_child",
+   "concepts": [
+    "fact:person.parent_1_person_id",
+    "fact:person.parent_2_person_id"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_social_integration_minor_has_dependent_child",
+   "module": "be/statutes/social_integration/eligibility.yaml",
+   "note": "be/statutes/social_integration/eligibility.yaml, rule belgium_social_integration_minor_assimilated_to_adult_condition_met (law of 26 May 2002, art. 7): 'if belgium_social_integration_minor_has_dependent_child: 1'. The excerpt reads 'a un ou plusieurs enfants a sa charge'. The rule is read only for persons under 18 (see belgium_social_integration_adult_or_assimilated_condition_met), so the flag being true for adult parents has no effect. Differences: being named as a parent by a co-resident person (birth, adoptive or step child) stands in for having a child 'a sa charge'. A minor who supports a child living elsewhere is missed, and a co-resident child who is not in the minor's charge is counted. The value is point-in-time at the survey reference date.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "relationship_role",
+    "role": "parent_of_coresident_child"
+   }
+  },
+  {
+   "canonical_input": "be:regulations/social_integration/resource_calculation#input.belgium_social_integration_eligible_annual_mortgage_interest_on_property",
+   "concepts": [
+    "fact:household.mortgage_interest"
+   ],
+   "engine_entity": "Household",
+   "engine_input": "belgium_social_integration_eligible_annual_mortgage_interest_on_property",
+   "module": "be/statutes/social_integration/payable_amount.yaml",
+   "note": "regulations/social_integration/resource_calculation.belgium_social_integration_article_25_property_resource_after_mortgage_interest ('Royal Decree of 11 July 2002 ... article 25 section 4') = max(0, belgium_social_integration_article_25_built_property_resource + belgium_social_integration_article_25_unbuilt_property_resource - belgium_social_integration_eligible_annual_mortgage_interest_on_property). The input is annual mortgage interest on property the household holds, set against the cadastral-income resource. Both it and the concept are household amounts. Differences: the Article 25 resource covers any built or unbuilt property the applicant holds a right in, while the concept covers only loans secured on the household's own dwelling. The 'eligible' conditions of section 4 are not stated in the rule text read. The property resources come from belgium_social_integration_built_property_cadastral_income, which stays uncovered, so the binding has no effect until that input is supplied.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "concepts": [
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/social_security/non_labour_income_contributions.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. The module summary describes the Article 68 withholding base as the 'total monthly gross amount of legal and complementary pensions'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is regular income from employer-sponsored and personal pension schemes and annuities. The module does not say that personal pensions or private annuities count as complementary pensions, so the concept can include amounts outside the input. (2) Non-monthly periodic pensions have their own monthly-equivalent input. The concept includes them, so it overstates this leaf, though the Article 68 total is unchanged. Capital pensions enter through a separate fictive-monthly-rent input, which the concept does not supply because it excludes lump sums. (3) The statutory tables apply per beneficiary; the pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (4) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/social_security/non_labour_income_contributions.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. That total feeds belgium_pension_solidarity_article_68_monthly_withholding and belgium_health_insurance_article_191_monthly_pension_withholding. The module summary describes a withholding 'on the total monthly gross amount of legal and complementary pensions, with different tables for isolated beneficiaries and beneficiaries with family charge'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is an old-age pension from a social-insurance or state scheme. The Article 191 proof excerpt in pension_health_insurance_article_191.yaml lists legal, regulatory or statutory old-age, retirement, seniority and survivor pensions. If Article 68 legal pensions have the same scope, survivor pensions are in the input but outside the concept. (2) The statutory tables apply per beneficiary. The pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary' and keeps this module's entity-level originals for 'cumulated pension stacks spanning several payers'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (3) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year. (4) public_pension_income is a donor-program receipt that transport drops. Encode computes a binding only when its concept is present, so under transport this input is not fed.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "concepts": [
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/social_security/pension_health_insurance_article_191.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. The module summary describes the Article 68 withholding base as the 'total monthly gross amount of legal and complementary pensions'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is regular income from employer-sponsored and personal pension schemes and annuities. The module does not say that personal pensions or private annuities count as complementary pensions, so the concept can include amounts outside the input. (2) Non-monthly periodic pensions have their own monthly-equivalent input. The concept includes them, so it overstates this leaf, though the Article 68 total is unchanged. Capital pensions enter through a separate fictive-monthly-rent input, which the concept does not supply because it excludes lump sums. (3) The statutory tables apply per beneficiary; the pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (4) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/social_security/pension_health_insurance_article_191.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. That total feeds belgium_pension_solidarity_article_68_monthly_withholding and belgium_health_insurance_article_191_monthly_pension_withholding. The module summary describes a withholding 'on the total monthly gross amount of legal and complementary pensions, with different tables for isolated beneficiaries and beneficiaries with family charge'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is an old-age pension from a social-insurance or state scheme. The Article 191 proof excerpt in pension_health_insurance_article_191.yaml lists legal, regulatory or statutory old-age, retirement, seniority and survivor pensions. If Article 68 legal pensions have the same scope, survivor pensions are in the input but outside the concept. (2) The statutory tables apply per beneficiary. The pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary' and keeps this module's entity-level originals for 'cumulated pension stacks spanning several payers'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (3) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year. (4) public_pension_income is a donor-program receipt that transport drops. Encode computes a binding only when its concept is present, so under transport this input is not fed.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "concepts": [
+    "fact:person.private_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_complementary_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/social_security/pension_solidarity_article_68.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. The module summary describes the Article 68 withholding base as the 'total monthly gross amount of legal and complementary pensions'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is regular income from employer-sponsored and personal pension schemes and annuities. The module does not say that personal pensions or private annuities count as complementary pensions, so the concept can include amounts outside the input. (2) Non-monthly periodic pensions have their own monthly-equivalent input. The concept includes them, so it overstates this leaf, though the Article 68 total is unchanged. Capital pensions enter through a separate fictive-monthly-rent input, which the concept does not supply because it excludes lump sums. (3) The statutory tables apply per beneficiary; the pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (4) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/non_labour_income_contributions#input.belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "concepts": [
+    "fact:person.public_pension_income"
+   ],
+   "engine_entity": "Family",
+   "engine_input": "belgium_pension_solidarity_monthly_gross_legal_pensions",
+   "group_rule": "sum_over_members",
+   "module": "be/statutes/social_security/pension_solidarity_article_68.yaml",
+   "note": "Consumed in be/statutes/social_security/non_labour_income_contributions.yaml by belgium_pension_solidarity_article_68_total_monthly_gross_pensions (Family, Month; Law of 30 March 1994 on social provisions, article 68 section 2): `belgium_pension_solidarity_monthly_gross_legal_pensions + belgium_pension_solidarity_monthly_gross_complementary_pensions + belgium_pension_solidarity_nonmonthly_periodic_pensions_monthly_equivalent + belgium_pension_solidarity_capital_pensions_fictive_monthly_rent`. That total feeds belgium_pension_solidarity_article_68_monthly_withholding and belgium_health_insurance_article_191_monthly_pension_withholding. The module summary describes a withholding 'on the total monthly gross amount of legal and complementary pensions, with different tables for isolated beneficiaries and beneficiaries with family charge'. The other listed modules reach the input through imports of the same canonical input. Monthly = annual / 12. Differences: (1) The concept is an old-age pension from a social-insurance or state scheme. The Article 191 proof excerpt in pension_health_insurance_article_191.yaml lists legal, regulatory or statutory old-age, retirement, seniority and survivor pensions. If Article 68 legal pensions have the same scope, survivor pensions are in the input but outside the concept. (2) The statutory tables apply per beneficiary. The pensioner_pit_oracle_pipeline summary re-applies them 'per beneficiary' and keeps this module's entity-level originals for 'cumulated pension stacks spanning several payers'. So sum_over_members is exact only when each Family unit holds one pension beneficiary; a unit holding two pensioners pools their pensions against one beneficiary's thresholds. (3) Spreading an annual amount over 12 months misstates the monthly amount of a pension paid for part of the year. (4) public_pension_income is a donor-program receipt that transport drops. Encode computes a binding only when its concept is present, so under transport this input is not fed.",
+   "relation": "approximate",
+   "transform": {
+    "factor": 0.08333333333333333,
+    "kind": "scale"
+   }
+  },
+  {
+   "canonical_input": "be:statutes/social_security/workers/contribution_rates#input.belgium_social_security_article_17_uncapped_contribution_base",
+   "concepts": [
+    "fact:person.employment_income"
+   ],
+   "engine_entity": "Person",
+   "engine_input": "belgium_social_security_article_17_uncapped_contribution_base",
+   "module": "be/statutes/social_security/workers/contribution_rates.yaml",
+   "note": "be/statutes/social_security/workers/contribution_rates.yaml, rules belgium_worker_article_17_uncapped_component_contribution and belgium_employer_article_17_uncapped_component_contribution (law of 27 June 1969, art. 17): 'belgium_social_security_article_17_uncapped_contribution_base * belgium_worker_article_17_uncapped_component_rate'. The component rates are excerpted as 'p.c. du montant de sa remuneration'. The module summary calls the input 'a supplied Article 17 contribution base'. Both are annual. Differences: (1) The legal base is the worker's social-security remuneration, which the Article 19 rules in be/regulations/social_security/workers/remuneration_base.yaml adjust: the 8 p.c. ONVA holiday-pay add-on, excess gifts, employee discounts, mobility, bicycle and copyright items. The concept is cash wages and excludes benefits in kind. (2) The module does not say which employments the base covers, while the concept sums every employee job. The engine's own worker pipeline (be/statutes/income_tax/individual/pilot_worker_oracle_pipeline.yaml) sets belgium_employee_social_security_contribution_base to belgium_pit_article_23_worker_remuneration, which is the same gross-remuneration reading.",
+   "relation": "approximate",
+   "transform": {
+    "kind": "identity"
+   }
+  }
+ ],
+ "engine": "axiom:be",
+ "engine_version": "b105e2b3a3086ddd2de447d58a9b951346870dd1",
+ "entity_correspondence": {
+  "household": "Household",
+  "person": "Person"
+ },
+ "format": "microcosm.concept_mapping.v1",
+ "input_declaration": "usage_inferred",
+ "structural_inputs": [],
+ "unmapped": {
+  "fact:household.mortgage_principal": "rulespec-be at b105e2b3 has no input for mortgage capital repayments. The only housing-loan inputs are the interest deductions belgium_social_integration_eligible_annual_mortgage_interest_on_property (RIS art. 25 §4) and brussels_apa_eligible_annual_mortgage_interest (APA art. 15), which this mapping feeds from mortgage_interest. No non-test rule text mentions capital repayment, and the PIT reductions module takes no loan input.",
+  "fact:person.educational_attainment": "rulespec-be has no input that reads completed education. No non-test rule text mentions an attainment level, certificate or ISCED level. Every education input describes current enrollment or training: flanders_school_allowance_education_level, study_allowance_is_higher_education, and the Child-entity family-benefit training flags, including wallonia_family_benefits_child_in_qualifying_diploma_training. Where this mapping binds these, it feeds them from education_enrollment.",
+  "fact:person.enrolled_full_time": "rulespec-be has no input that tests full-time enrollment. The full-time wording in non-test rule text concerns work regimes (parental leave, the work bonus, unemployment admission, the Flemish jobbonus). The one exception is a Flemish school-allowance parameter citing 'voltijds secundair onderwijs', and that module selects it by education level alone. The student statuses the tree does take are supplied legal statuses, and the rules that consume them contain no full-time test: belgium_self_employed_is_student (RD 38 art. 12bis) and the Child-entity family-benefit training and 'qualifying' flags.",
+  "fact:person.realized_capital_gains": "rulespec-be at b105e2b3 encodes no capital-gains rule: no non-test module mentions capital gains, plus-values or meerwaarden. The nearest inputs are legal net-income categories that realized gains do not determine. One is belgium_pit_net_miscellaneous_income (Person, CIR art. 6 in taxable_income.yaml), which the module takes as already determined under category-specific rules. The others are the TaxUnit belgium_pit_spouse_{a,b}_article_90_items_1_to_4_and_12_income slots in the art. 127 joint-assessment allocation.",
+  "fact:person.rental_income": "rulespec-be at b105e2b3 has no input that net rental income determines. (1) belgium_pit_net_immovable_income (Person, CIR art. 6) is a net-income category that taxable_income.yaml 'expects ... to have already been determined under the category-specific CIR 1992 rules', and no module derives it. (2) belgium_social_integration_annual_property_rent (RIS art. 26) lives on Household, and no transform puts a person amount on a Household input. (3) belgium_pit_article_17_non_copyright_movable_property_rental_use_or_concession_income is income from movable property, which is outside the concept's land-and-buildings scope.",
+  "fact:person.sex": "rulespec-be at b105e2b3 has no input that reads sex. No surface input name and no non-test rule text mentions sex or gender. The one sex-dependent provision found, Brussels social-housing child-bedroom pairing, is left out of the module: social_housing_rental.yaml lists 'exact child-room pairing from person-level sex/age arrays' among what it leaves to separate surfaces. It enters only as the supplied Household count brussels_social_housing_child_bedrooms_required.",
+  "fact:person.take_up_seed": "rulespec-be computes legal entitlements and has no take-up or participation input. Its only claim-type inputs are eligibility conditions or elections, not decisions to take up the program the rule computes: belgium_social_integration_social_benefit_rights_asserted (a RIS art. 3-4 condition), brussels_apa_required_other_benefit_rights_claimed (an APA eligibility conjunct), and belgium_pit_article_1458_pension_savings_reduction_claimed (a non-cumulation election against the art. 145/7 reduction that also needs pension-savings payments).",
+  "fact:person.weeks_worked": "rulespec-be has no input for weeks worked in a year. Its work-history inputs are day or hour counts over windows that run back from a claim. Examples: belgium_unemployment_article_30_countable_work_days_since_prior_admission_in_extended_reference_period (312 work days within a 36-month reference period, admission.yaml), and belgium_health_waiting_stage_assimilated_work_days/_hours (windows of one to 36 months, with the length supplied as the separate input belgium_health_waiting_stage_reference_months, waiting_stage.yaml). These need a claim date, count days rather than weeks, and depend on an assimilated-day classification that the module leaves to separate surfaces. Multiplying weekly hours by weeks (a Product transform) would still give annual hours, not hours inside the claim window."
+ }
+}

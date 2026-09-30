@@ -14,12 +14,21 @@ from typing import Any
 
 import numpy as np
 
+from microcosm.frame.adapters.policyengine_uk_concepts import (
+    POLICYENGINE_UK_CONCEPT_MAPPING,
+)
 from microcosm.frame.bundle import Frame
+from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import engine_tables
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
-__all__ = ["PolicyEngineUKEngine", "UK_SCHEMA", "validate_uc_claimant_input"]
+__all__ = [
+    "POLICYENGINE_UK_CONCEPT_MAPPING",
+    "PolicyEngineUKEngine",
+    "UK_SCHEMA",
+    "validate_uc_claimant_input",
+]
 
 UK_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
 _PERSON_TABLE = "person"
@@ -67,6 +76,11 @@ class PolicyEngineUKEngine:
         """Return the UK national entity schema."""
 
         return UK_SCHEMA
+
+    def concept_mapping(self) -> ConceptMapping:
+        """Return the concept-to-input mapping (no engine import required)."""
+
+        return POLICYENGINE_UK_CONCEPT_MAPPING
 
     def materialize(
         self,

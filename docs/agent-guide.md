@@ -251,6 +251,24 @@ acceptance checks within the normal release gates. Annual cuts use one pinned
 pointers. Qualify source-enrichment bases before adding annual metadata; use
 the candidate guide's qualification order and tag-only publication route.
 
+## Concept schema and engine mappings
+
+`microcosm.frame.concepts` is the engine-neutral content layer; each adapter's
+`concept_mapping()` maps it onto that engine's inputs (see
+[the ADR](concept-schema-transport-adr.md)). Builds do not use it yet.
+Each PolicyEngine mapping (`adapters/policyengine_{us,uk}_concepts.py`) names
+the engine version it was reviewed against, and the engine tests compare it
+with the committed coverage golden in
+`packages/microcosm-frame/tests/golden/concept-coverage/`. After bumping
+policyengine-us or policyengine-uk, review the mapping against the new engine,
+update its `engine_version`, and regenerate the golden and the readable report
+(`docs/concept-coverage/`) in that engine's environment with
+`uv run --no-sync python tools/refresh_concept_coverage.py --engine <engine>`.
+Axiom mappings are data (`adapters/axiom_concept_mappings/<country>.json`),
+checked against the engine-generated input surfaces in
+`packages/microcosm-frame/tests/fixtures/axiom_input_surfaces/` (regenerate with
+`tools/refresh_axiom_input_surface.py`; it needs a real Axiom engine build).
+
 ## Root journals are history, not state
 
 The root `PROGRESS*.md`, `FINAL_REPORT.md`, `*_COVERAGE_PROGRESS.md`, and
