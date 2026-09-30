@@ -149,6 +149,14 @@ unknown type remain inside gross financial wealth only.
 - Balances are April 2020 to March 2022 pounds from a Great Britain donor and
   are not uprated to the spine year. LISA holdings have grown since; a
   published LISA stock or count series would be needed to uprate them.
+- WAS undercounts LISA holders against HMRC's record. The donor implies about
+  447,000 holders in Great Britain over April 2020 to March 2022. HMRC counts
+  553,000 LISA accounts subscribed to in 2020-21 and 662,000 in 2021-22 across
+  the UK, and every subscriber is a holder (a person can pay into one LISA a
+  year). For 2024-25 HMRC's provisional count is 1.14 million, against the
+  candidate spine's 660,000 holders
+  ([Individual Savings Account statistics, September 2026](https://www.gov.uk/government/statistics/annual-savings-statistics-2026),
+  Table 9.4; receipts, Part F).
 - Northern Ireland adults are predicted from the Great Britain model.
 - Conditional ownership odds from 2020-22 are applied to the 2024-25 spine. A
   holder in 2024-25 can be up to about 47; the donor, interviewed earlier,

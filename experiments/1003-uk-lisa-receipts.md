@@ -365,6 +365,37 @@ Three options, measured or implied on the same inputs:
     HMRC reports LISA subscriptions 20.1% (£472 million) higher in 2024 to 2025
     ([annual savings statistics, September 2026 commentary](https://www.gov.uk/government/statistics/annual-savings-statistics-2026/commentary-for-annual-savings-statistics-september-2026)).
 
+Against HMRC's administrative count (review round 1, item 2). HMRC's Individual Savings Account
+statistics (September 2026 release, Table 9.4, adult ISAs) report the number of Lifetime ISA
+accounts subscribed to in each tax year, across the UK. A person can pay into only one LISA a
+year, so each subscribed account is a distinct subscriber, and every subscriber is a holder.
+
+| Tax year | LISA accounts subscribed to | Amount subscribed |
+| --- | --- | --- |
+| 2020 to 2021 | 553,000 | £1,482 million |
+| 2021 to 2022 | 662,000 | £1,700 million |
+| 2023 to 2024 | 964,000 | £2,346 million |
+| 2024 to 2025 (provisional) | 1,136,000 | £2,818 million |
+
+- **The donor.** The WAS donor implies about 447,000 holders in Great Britain over April 2020 to
+  March 2022 (467,000 before the credibility rule). That is below the subscribers alone in either
+  fieldwork year: 81% of 2020-21's and 68% of 2021-22's. Northern Ireland is about 3% of UK
+  adults, so the survey undercounts LISA holders against the administrative record, by a margin
+  the non-subscribing holders only widen.
+- **The spine year.** For 2024-25 the subscribers alone number 1.14 million.
+  - The approved design's 660,000 holders are 58% of that.
+  - Arm B's 560,000 are 49%.
+  - Option (c)'s 430,000 are 38%.
+- **The stock.** The government reports over 1.3 million LISA accounts open in 2023-24 (its
+  response to the Treasury Committee, 11 September 2025, recommendation 2). A person can hold
+  several accounts.
+- **Market value.** Table 9.6 publishes no separate LISA market value: LISAs sit inside the cash
+  and stocks-and-shares totals. So there is no administrative check on the £4.45 billion.
+- **What follows for the options.** Every option leaves the spine below the administrative level,
+  and option (c), which re-anchors to the donor's rate, moves furthest from it. A level fixed by
+  HMRC's counts would need those counts vendored through Chronicle, as every calibration fact is.
+  That is a question for the ruling, not something this PR does.
+
 Whichever option she picks, the `was_wealth` level is a follow-up in its own right: it moves every
 reader of the financial draws, not only this stage.
 
