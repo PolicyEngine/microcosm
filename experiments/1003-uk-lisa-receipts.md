@@ -373,8 +373,11 @@ Four options, measured or implied on the same inputs:
   - The model's expected share falls from 1.36% to 1.32%, and ownership from 1.25% to 1.23%
     (650,000 holders). The youngest group falls from 4.14% to 4.07%, 25–34 is 2.96% and 35–44 is
     2.58%.
-  - The coefficients are unchanged, since the standardisation absorbs the shift; only the
-    spine's incomes read lower against the donor's.
+  - The coefficients are nearly unchanged: none moves by more than 0.002. For positive incomes
+    the uprating is close to a constant shift of about 0.17 in log(1 + x), which the
+    standardisation absorbs. Zero incomes stay at zero, so the donor's mean of log(1 + earnings)
+    moves by only 0.08 and its spread changes too. The effect comes almost entirely from the
+    spine's incomes reading lower against the donor's.
   - Balances stay as in (a): median £6,500, p90 £15,000. The cap binds on 10 households and
     removes 0.6% of the LISA mass.
   - So the nominal income basis explains about 0.02 of the 0.36 points between the spine and
