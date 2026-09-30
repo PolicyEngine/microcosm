@@ -674,20 +674,25 @@ def test_uk_national_role_marks_the_staging_run_failed_on_a_refusal(
 
 def test_uk_national_role_refuses_an_occupied_output_directory(monkeypatch, tmp_path):
     """The seam refused to overwrite an existing candidate artifact; the graph
-    driver keeps that refusal before any work, so a second run into the same
-    ``--out`` leaves the first candidate's bytes under its Logbook row."""
+    driver refuses it with the other argument refusals, before the attempt
+    opens, so a second run into the same ``--out`` leaves the first candidate's
+    directory exactly as it was: no failure sidecar, no second Logbook row
+    (microcosm#1057 review round 2, item 9)."""
     pytest.importorskip("tables")
     builder = candidate._load_builder_module()
     input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
     out = tmp_path / "national"
     assert builder.main(_argv(input_h5, out, "--no-staging", "--epochs", "5")) == 0
-    first = {
-        name: _sha(out / name)
-        for name in ("microcosm_uk_2024_25.h5", "build_record.json", "build.json")
+    before = {
+        str(path.relative_to(out)): _sha(path)
+        for path in sorted(out.rglob("*"))
+        if path.is_file()
     }
     head = load_spool_rows(out / "logbook-spool")[0].row_digest
 
-    assert (
+    with pytest.raises(
+        FileExistsError, match="refusing to overwrite existing candidate artifact"
+    ):
         builder.main(
             _argv(
                 input_h5,
@@ -699,16 +704,16 @@ def test_uk_national_role_refuses_an_occupied_output_directory(monkeypatch, tmp_
                 head,
             )
         )
-        == 1
-    )
 
-    failure = json.loads((out / "failure.json").read_text())
-    assert failure["error_type"] == "FileExistsError"
-    assert "refusing to overwrite existing candidate artifact" in failure["message"]
-    assert {name: _sha(out / name) for name in first} == first
+    after = {
+        str(path.relative_to(out)): _sha(path)
+        for path in sorted(out.rglob("*"))
+        if path.is_file()
+    }
+    assert after == before
+    assert not (out / "failure.json").exists()
     rows = load_spool_rows(out / "logbook-spool")
-    assert [row.disposition for row in rows] == ["iterating", "failed"]
-    assert "input_sha_verified" not in rows[1].phases_reached
+    assert [row.disposition for row in rows] == ["iterating"]
 
 
 def test_uk_national_role_blocks_on_a_failed_seam_gate(monkeypatch, tmp_path):
