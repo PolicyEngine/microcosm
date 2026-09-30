@@ -98,6 +98,12 @@ from microcosm.build.us_runtime.acs_local_income import (
     ACS_LOCAL_INCOME_TRANSFER_METHOD,
     acs_local_income_transfer_signal_gate,
 )
+from microcosm.build.us_runtime.acs_local_spm_units import (
+    ACS_LOCAL_SPM_UNIT_GATE_NAME,
+    ACS_LOCAL_SPM_UNIT_ISSUE,
+    ACS_LOCAL_SPM_UNIT_METHOD,
+    acs_local_spm_unit_signal_gate,
+)
 from microcosm.build.us_runtime.acs_local_ssi_disability import (
     ACS_LOCAL_SSI_DISABILITY_COLUMN,
     ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
@@ -1405,12 +1411,13 @@ def do_materialize(args) -> None:
             "reviewed_engine_input_nulls register."
         )
     staging_summary = _load_json(summary_path)
-    # microcosm#1020/#1021/#1022: refuse a pre-change staging run before
-    # hashing or loading.
+    # microcosm#1020/#1021/#1022/#1023: refuse a pre-change staging run
+    # before hashing or loading.
     _require_local_immigration(staging_summary)
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
+    _require_local_spm_units(staging_summary)
     # microcosm#1022: the SSI and Medicaid take-up counts, from the same feed
     # and compile path, before the staging frame is loaded.
     ssi_medicaid_targets = acs_local_ssi_medicaid_take_up_targets(args.feed)
@@ -1581,6 +1588,7 @@ def do_calibrate(args) -> None:
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
+    _require_local_spm_units(staging_summary)
     # microcosm#1022: and a checkpoint without the recorded ACS SSI/Medicaid
     # take-up the export must apply.
     _recorded_ssi_medicaid_take_up(identity, args.checkpoint_dir)
@@ -1782,6 +1790,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     _require_local_work_disability(staging_summary)
     _require_local_income_transfer(staging_summary)
     _require_local_ssi_disability(staging_summary)
+    _require_local_spm_units(staging_summary)
     ssi_medicaid, ssi_medicaid_path = _recorded_ssi_medicaid_take_up(
         identity, args.checkpoint_dir
     )
@@ -2338,6 +2347,53 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_spm_unit_adult_nonrelatives",
+            "status": "reviewed_modeling_decision",
+            "affected_spines": ["acs_2024_1yr"],
+            "reason": (
+                "The ACS has no SPM unit id, so the loader makes each ACS "
+                "housing unit one SPM unit. Staging "
+                f"({ACS_LOCAL_SPM_UNIT_ISSUE}) gives every roommate or "
+                "housemate (RELSHIPP 34) aged 15 or over an SPM unit of their "
+                "own, per the Census SPM unit definition (related people, "
+                "co-resident unrelated children cared for by the family, and "
+                "cohabiting partners and their children and relatives). An "
+                "other nonrelative (36) aged 15 or over gets their own unit "
+                "only when the household has no unmarried partner (22 or "
+                "24): the ACS records relationship to the householder only, "
+                "so a partner's child or relative is coded 36, and with a "
+                "partner present a 36 stays with the reference person and "
+                "the partner (microcosm#1061 review). RELSHIPP relates each "
+                "person to the reference person only, so a couple or a "
+                "parent and child among the nonrelatives is not "
+                "identifiable: each mover is a one-person unit, and a 36 "
+                "moved from a household that also holds a roommate, who may "
+                "be the roommate's child, is counted in the staging receipt, "
+                "with the unit-size sensitivity under the 34-only and "
+                "34-and-every-36 rules. Nonrelatives under 15 stay in the "
+                "reference person's unit, whose tax unit claims them. "
+                "Unmarried partners (22, 24), foster children (35) and every "
+                "relative stay with the reference person. New units take the "
+                "household's tenure through SPM membership; the household's "
+                "measured housing amounts stay on the reference person, and "
+                "the transferred pre_subsidy_rent is a person-level fit. "
+                "ACS families remain whole households. Related adults who "
+                "buy and prepare food apart are not split: SNAP-unit "
+                "construction is option 2 of the same issue."
+            ),
+            "treatment": (
+                "Gated by acs_local_spm_unit_signal at staging and finalize: "
+                "no ACS SPM unit holds a mover (a roommate, or an other "
+                "nonrelative with no partner in the household) together with "
+                "the reference person, no other nonrelative in a partner's "
+                "household is outside the reference person's unit, the ACS "
+                "partition is exactly the rule, ACS tax units nest in SPM "
+                "units, and the staging receipt moved and kept as many "
+                "people as the packaged ACS rows hold."
+            ),
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -2552,6 +2608,43 @@ def _require_local_ssi_disability(staging_summary: dict) -> dict:
     return receipt
 
 
+def _require_local_spm_units(staging_summary: dict) -> dict:
+    """The staging ACS SPM-unit receipt (microcosm#1023), or refuse it.
+
+    Staging gives every ACS roommate (``RELSHIPP`` 34) aged 15 or over, and
+    every other nonrelative (36) aged 15 or over in a household with no
+    unmarried partner (22/24), an SPM unit of their own, per the Census SPM
+    unit definition, and gates the partition before writing the H5. A summary
+    without a passing receipt and gate, or with an earlier method, is a
+    pre-change staging run: whole-household ACS SPM units, or a partner's
+    child or relative split from the partner.
+    """
+
+    receipt = staging_summary.get("acs_local_spm_units")
+    gate = staging_summary.get("acs_local_spm_units_gate")
+    counted = (
+        isinstance(receipt, dict)
+        and type(receipt.get("persons_moved")) is int
+        and type(receipt.get("units_created")) is int
+        and receipt["persons_moved"] == receipt["units_created"]
+    )
+    if (
+        not counted
+        or receipt.get("issue") != ACS_LOCAL_SPM_UNIT_ISSUE
+        or receipt.get("method") != ACS_LOCAL_SPM_UNIT_METHOD
+        or not isinstance(gate, dict)
+        or gate.get("passed") is not True
+    ):
+        raise SystemExit(
+            "The staging summary records no passing ACS SPM-unit split "
+            f"({ACS_LOCAL_SPM_UNIT_ISSUE}): every ACS household would be one "
+            "SPM unit, with adult roommates and other nonrelatives in the "
+            "reference person's unit. Re-run staging "
+            "(tools/build_us_acs_multispine_base.py) with the current builder."
+        )
+    return receipt
+
+
 def _recorded_ssi_take_up_handling(identity: dict, checkpoint_dir: Path) -> dict | None:
     """The run's recorded SSI take-up handling for ACS rows, or ``None``.
 
@@ -2727,6 +2820,12 @@ def do_finalize(args) -> None:
     ssi_medicaid_gate = acs_local_ssi_medicaid_take_up_signal_gate(
         frame, receipt=identity.get("acs_local_ssi_medicaid_take_up")
     )
+    # microcosm#1023: refuse ACS SPM units that keep an adult roommate or
+    # other nonrelative with the reference person on the packaged bytes, or a
+    # staging receipt that did not split them.
+    spm_unit_gate = acs_local_spm_unit_signal_gate(
+        frame, receipt=staging_summary.get("acs_local_spm_units")
+    )
     del frame
     gc.collect()
     if _sha256(args.out_h5) != hours_artifact_sha:
@@ -2807,6 +2906,12 @@ def do_finalize(args) -> None:
             "passed": bool(ssi_medicaid_gate.passed),
             "failures": list(ssi_medicaid_gate.failures),
             "detail": dict(ssi_medicaid_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_SPM_UNIT_GATE_NAME: {
+            "passed": bool(spm_unit_gate.passed),
+            "failures": list(spm_unit_gate.failures),
+            "detail": dict(spm_unit_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
@@ -2892,7 +2997,12 @@ def do_finalize(args) -> None:
                 "band and CMS state counts scaled to the ACS rows' weight "
                 "share, gated by acs_local_ssi_medicaid_take_up_signal "
                 f"({ACS_LOCAL_SSI_MEDICAID_TAKE_UP_ISSUE}; reviewed limitation "
-                "acs_local_ssi_medicaid_take_up)."
+                "acs_local_ssi_medicaid_take_up). ACS SPM units are not the "
+                "loader's whole households: staging gives each ACS roommate "
+                "and other nonrelative aged 15 or over an SPM unit of their "
+                "own before the transfer, gated by acs_local_spm_unit_signal "
+                f"({ACS_LOCAL_SPM_UNIT_ISSUE}; reviewed limitation "
+                "acs_spm_unit_adult_nonrelatives)."
             ),
         },
         "spine_composition": {
@@ -2946,6 +3056,7 @@ def do_finalize(args) -> None:
             ACS_LOCAL_INCOME_TRANSFER_GATE_NAME,
             ACS_LOCAL_SSI_DISABILITY_GATE_NAME,
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
+            ACS_LOCAL_SPM_UNIT_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -3209,6 +3320,9 @@ def do_package(args) -> dict:
     _require_bound_finalize_gate(
         gates, ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME, h5_sha
     )
+    # microcosm#1023: nor, before the SPM-unit gate existed, for the packaged
+    # ACS SPM units.
+    _require_bound_finalize_gate(gates, ACS_LOCAL_SPM_UNIT_GATE_NAME, h5_sha)
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report

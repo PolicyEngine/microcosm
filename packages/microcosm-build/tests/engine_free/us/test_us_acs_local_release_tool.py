@@ -215,9 +215,24 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "acs_immigration_status_method",
         "acs_work_disability_inputs",
         "acs_local_ssi_medicaid_take_up",
+        "acs_spm_unit_adult_nonrelatives",
     ):
         assert required in by_id, required
         assert by_id[required]["calibration_blocker"] is False
+    # microcosm#1023: adult nonrelatives' own SPM units are a reviewed method.
+    spm_units = by_id["acs_spm_unit_adult_nonrelatives"]
+    assert spm_units["status"] == "reviewed_modeling_decision"
+    assert spm_units["affected_spines"] == ["acs_2024_1yr"]
+    assert "acs_local_spm_unit_signal" in spm_units["treatment"]
+    for fragment in (
+        "microcosm#1023",
+        "RELSHIPP 34",
+        "under 15",
+        "foster",
+        "no unmarried partner (22 or 24)",
+        "the roommate's child",
+    ):
+        assert fragment in spm_units["reason"]
     # microcosm#1021: native ACS disability is a reviewed method; weeks worked
     # is staged only, and is_veteran is documented, not exported.
     work_disability = by_id["acs_work_disability_inputs"]
@@ -1033,6 +1048,92 @@ def test_ssi_disability_criteria_are_never_default_filled() -> None:
     assert ("person", "meets_ssi_disability_criteria") in module.NEVER_DEFAULT_FILLED
 
 
+# ---------------------------------------------------------------------------
+# microcosm#1023: ACS adult-nonrelative SPM units
+# ---------------------------------------------------------------------------
+
+
+def _spm_unit_receipt(**overrides) -> dict:
+    receipt = {
+        "issue": "microcosm#1023",
+        "method": "roommates_and_unpartnered_other_nonrelatives_own_spm_unit",
+        "persons_moved": 3,
+        "units_created": 3,
+    }
+    receipt.update(overrides)
+    return receipt
+
+
+def _staging_spm_unit_summary(**overrides) -> dict:
+    """A current staging run through the SPM-unit split (microcosm#1023)."""
+
+    summary = _staging_ssi_disability_summary(
+        acs_local_spm_units=_spm_unit_receipt(),
+        acs_local_spm_units_gate={
+            "name": "acs_local_spm_unit_signal",
+            "passed": True,
+            "failures": [],
+        },
+    )
+    summary.update(overrides)
+    return summary
+
+
+@pytest.mark.parametrize(
+    "summary",
+    [
+        _staging_ssi_disability_summary(),
+        _staging_spm_unit_summary(acs_local_spm_units_gate=None),
+        _staging_spm_unit_summary(acs_local_spm_units=None),
+        _staging_spm_unit_summary(
+            acs_local_spm_units_gate={"passed": False, "failures": ["x"]}
+        ),
+        _staging_spm_unit_summary(acs_local_spm_units_gate={"passed": "true"}),
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(issue="microcosm#1022")
+        ),
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(method="household")
+        ),
+        # microcosm#1061 review: staging split with the pre-review rule, which
+        # moved a partner's child coded 36 out of the partner's unit.
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(
+                method="adult_nonrelative_own_spm_unit"
+            )
+        ),
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(persons_moved="3")
+        ),
+        _staging_spm_unit_summary(
+            acs_local_spm_units=_spm_unit_receipt(units_created=2)
+        ),
+    ],
+    ids=[
+        "pre-1023-staging",
+        "no-gate",
+        "no-receipt",
+        "failed-gate",
+        "truthy-gate",
+        "wrong-issue",
+        "wrong-method",
+        "pre-review-method",
+        "untyped-count",
+        "unit-count-mismatch",
+    ],
+)
+def test_spm_unit_consumers_refuse_a_staging_run_without_the_split(summary):
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match=r"microcosm#1023.*Re-run staging"):
+        module._require_local_spm_units(summary)
+
+
+def test_spm_unit_consumers_accept_a_current_staging_run() -> None:
+    module = _load_tool_module()
+    summary = _staging_spm_unit_summary()
+    assert module._require_local_spm_units(summary) == summary["acs_local_spm_units"]
+
+
 def test_materialize_refuses_a_pre_ssi_disability_staging_before_hashing_it(
     tmp_path, monkeypatch
 ) -> None:
@@ -1111,6 +1212,78 @@ def test_consumer_export_refuses_a_pre_ssi_disability_staging_before_loading_it(
         lambda *a, **k: pytest.fail("the export loaded the staging frame"),
     )
     with pytest.raises(SystemExit, match=r"SSI disability-criteria stage"):
+        module._write_calibrated_artifact(
+            args,
+            np.ones(1),
+            {"acs_local_take_up": _TAKE_UP_RECEIPT},
+        )
+
+
+def test_materialize_refuses_a_pre_spm_unit_staging_before_hashing_it(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1023: a staging run whose ACS SPM units are whole
+    households is refused before the staging H5 is hashed or loaded."""
+
+    module = _load_tool_module()
+    args = module._parse_args(_materialize_argv(tmp_path))
+    (tmp_path / "staging.h5").write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [{"entity": "person"}],
+                **_staging_ssi_disability_summary(),
+            }
+        )
+    )
+    monkeypatch.setattr(module, "state_admin_specs", lambda *a, **k: ([], []))
+    touched = []
+    monkeypatch.setattr(module, "_sha256", lambda path: touched.append(path))
+    monkeypatch.setattr(
+        module, "_load_staging_frame", lambda path: touched.append(path)
+    )
+    with pytest.raises(SystemExit, match=r"ACS SPM-unit split \(microcosm#1023\)"):
+        module.do_materialize(args)
+    assert touched == []
+    assert not (args.checkpoint_dir / "run_identity.json").exists()
+
+
+def test_calibrate_refuses_a_pre_spm_unit_staging_before_solving(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_ssi_disability_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"acs_local_take_up": _TAKE_UP_RECEIPT},
+    )
+    monkeypatch.setattr(
+        module,
+        "load_lean_frame",
+        lambda *a, **k: pytest.fail("calibrate loaded the checkpoint"),
+    )
+    with pytest.raises(SystemExit, match=r"ACS SPM-unit split \(microcosm#1023\)"):
+        module.do_calibrate(args)
+
+
+def test_consumer_export_refuses_a_pre_spm_unit_staging_before_loading_it(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = module._parse_args(_calibrate_argv(tmp_path))
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(_staging_ssi_disability_summary())
+    )
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda *a, **k: pytest.fail("the export loaded the staging frame"),
+    )
+    with pytest.raises(SystemExit, match=r"ACS SPM-unit split \(microcosm#1023\)"):
         module._write_calibrated_artifact(
             args,
             np.ones(1),
@@ -1262,7 +1435,7 @@ def test_materialize_resolves_the_take_up_counts_before_hashing_the_staging_h5(
         json.dumps(
             {
                 "reviewed_engine_input_nulls": [{"entity": "person"}],
-                **_staging_ssi_disability_summary(),
+                **_staging_spm_unit_summary(),
             }
         )
     )
@@ -1288,7 +1461,7 @@ def test_calibrate_refuses_a_checkpoint_without_the_ssi_medicaid_assignment(
     module = _load_tool_module()
     args = module._parse_args(_calibrate_argv(tmp_path))
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps(_staging_ssi_disability_summary())
+        json.dumps(_staging_spm_unit_summary())
     )
     monkeypatch.setattr(
         module,
@@ -1310,7 +1483,7 @@ def test_consumer_export_refuses_a_checkpoint_without_the_ssi_medicaid_assignmen
     module = _load_tool_module()
     args = module._parse_args(_calibrate_argv(tmp_path))
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps(_staging_ssi_disability_summary())
+        json.dumps(_staging_spm_unit_summary())
     )
     monkeypatch.setattr(
         module,
@@ -1703,6 +1876,12 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
             "artifact_sha256": artifact_sha,
         },
         "acs_local_ssi_medicaid_take_up_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+        "acs_local_spm_unit_signal": {
             "passed": True,
             "failures": [],
             "detail": {},
@@ -2509,6 +2688,29 @@ def _stub_local_ssi_medicaid_take_up_gate(
     monkeypatch.setattr(module, "acs_local_ssi_medicaid_take_up_signal_gate", gate)
 
 
+def _stub_local_spm_unit_gate(
+    module, monkeypatch, *, passed=True, receipts=None
+) -> None:
+    """Make the ACS SPM-unit gate pass (or fail); its tests
+    (test_us_acs_local_spm_units.py) cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    def gate(frame, *, receipt):
+        if receipts is not None:
+            receipts.append(receipt)
+        return GateResult(
+            name="acs_local_spm_unit_signal",
+            passed=passed,
+            failures=()
+            if passed
+            else ("acs_2024_1yr: 3 adult roommate(s) share an SPM unit",),
+            details={},
+        )
+
+    monkeypatch.setattr(module, "acs_local_spm_unit_signal_gate", gate)
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -2531,6 +2733,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
     _stub_local_income_gate(module, monkeypatch)
     _stub_local_ssi_disability_gate(module, monkeypatch)
     _stub_local_ssi_medicaid_take_up_gate(module, monkeypatch)
+    _stub_local_spm_unit_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -2954,6 +3157,56 @@ def test_package_requires_a_current_ssi_medicaid_take_up_gate(
     assert not (args.out / module.ARTIFACT_FILENAME).exists()
 
 
+def test_do_finalize_hard_fails_on_a_failed_spm_unit_gate(tmp_path, monkeypatch):
+    """microcosm#1023: a failed SPM-unit gate, graded against the staging
+    receipt, blocks simulation readiness and is recorded bound to the
+    evaluated bytes."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    summary_path = tmp_path / "staging.summary.json"
+    staging_summary = json.loads(summary_path.read_text())
+    staging_summary["acs_local_spm_units"] = _spm_unit_receipt()
+    summary_path.write_text(json.dumps(staging_summary))
+    _patch_finalize_collaborators(module, monkeypatch, _plausible_hours_frame())
+    receipts: list = []
+    _stub_local_spm_unit_gate(module, monkeypatch, passed=False, receipts=receipts)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    assert "acs_local_spm_unit_signal" in str(exc.value)
+    assert receipts == [_spm_unit_receipt()]
+    report = json.loads(args.gate_report.read_text())
+    gate = report["gates"]["acs_local_spm_unit_signal"]
+    assert gate["passed"] is False
+    assert gate["artifact_sha256"] == module._sha256(args.out_h5)
+    summary = json.loads(args.out_summary.read_text())
+    assert summary["simulation_ready"] is False
+    assert "acs_local_spm_unit_signal" in summary["simulation_readiness_blockers"]
+
+
+@requires_pytables
+@pytest.mark.parametrize("spm_unit_state", ["missing", "failed", "truthy", "stale"])
+def test_package_requires_a_current_spm_unit_gate(
+    tmp_path, monkeypatch, spm_unit_state
+):
+    """microcosm#1023: a report finalized before the SPM-unit gate, or
+    failing it, or bound to other bytes, cannot package."""
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module,
+        tmp_path,
+        monkeypatch,
+        gate_state="passed",
+        spm_unit_state=spm_unit_state,
+    )
+    with pytest.raises(SystemExit, match="acs_local_spm_unit_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
 def _block_evidence_args(module, tmp_path, monkeypatch, *, acs_true_rows: int):
     args = _package_evidence_args(
         module,
@@ -3331,6 +3584,7 @@ def _package_args_with_hours(
     income_state="passed",
     ssi_disability_state="passed",
     ssi_medicaid_state="passed",
+    spm_unit_state="passed",
 ):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
@@ -3424,6 +3678,15 @@ def _package_args_with_hours(
         ssi_medicaid_gate["artifact_sha256"] = "0" * 64
     if gates and ssi_medicaid_state != "missing":
         gates["acs_local_ssi_medicaid_take_up_signal"] = ssi_medicaid_gate
+    spm_unit_gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if spm_unit_state == "failed":
+        spm_unit_gate.update(passed=False, failures=["invented shared unit"])
+    elif spm_unit_state == "truthy":
+        spm_unit_gate["passed"] = "true"
+    elif spm_unit_state == "stale":
+        spm_unit_gate["artifact_sha256"] = "0" * 64
+    if gates and spm_unit_state != "missing":
+        gates["acs_local_spm_unit_signal"] = spm_unit_gate
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {

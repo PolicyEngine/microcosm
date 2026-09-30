@@ -153,6 +153,11 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     monkeypatch.setattr(acs_multispine, "map_acs_native_inputs", fake_map)
     monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", fake_transfer)
     monkeypatch.setattr(acs_multispine, "with_optional_acs_spine", fake_pool)
+    # microcosm#1023: the adult-nonrelative SPM split is local-lane opt-in;
+    # the default (pool) path keeps the loader's one unit per household.
+    monkeypatch.setattr(
+        acs_multispine, "split_acs_adult_nonrelative_spm_units", _must_not_run
+    )
 
     result = acs_multispine.build_optional_acs_multispine(
         cast(Frame, base),
@@ -234,6 +239,64 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
             "n_estimators": 37,
             "max_targets_per_fit": 8,
         },
+    }
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def test__given_spm_split__then_it_runs_on_the_loader_frame_before_mapping(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """microcosm#1023: the local lane splits the loader frame's SPM units
+    before the native mapping and every transfer, and records the receipt."""
+
+    events: list[tuple[Any, ...]] = []
+    raw_acs = object()
+    split_acs = object()
+    receipt = {"issue": "microcosm#1023", "persons_moved": np.int64(3)}
+
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda source, *, chunksize: (raw_acs, {"spine": "acs_2024_1yr"}),
+    )
+
+    def fake_split(frame):
+        events.append(("split", frame))
+        return split_acs, receipt
+
+    def fake_map(frame):
+        events.append(("map", frame))
+        return SimpleNamespace(frame=object(), native_inputs={})
+
+    def fake_transfer(recipient, donor, **kwargs):
+        return SimpleNamespace(
+            frame=SimpleNamespace(table=lambda entity: pd.DataFrame()),
+            imputed_inputs=(),
+            fit_records=(),
+            deferred_inputs=(),
+            resolved_donor_channel="puf_support",
+        )
+
+    monkeypatch.setattr(
+        acs_multispine, "split_acs_adult_nonrelative_spm_units", fake_split
+    )
+    monkeypatch.setattr(acs_multispine, "map_acs_native_inputs", fake_map)
+    monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", fake_transfer)
+    monkeypatch.setattr(
+        acs_multispine, "with_optional_acs_spine", lambda base, acs, **k: object()
+    )
+
+    result = acs_multispine.build_optional_acs_multispine(
+        cast(Frame, object()),
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        split_adult_nonrelative_spm_units=True,
+    )
+
+    assert events == [("split", raw_acs), ("map", split_acs)]
+    assert result.provenance["acs_local_spm_units"] == {
+        "issue": "microcosm#1023",
+        "persons_moved": 3,
     }
     json.dumps(result.provenance, allow_nan=False)
 
