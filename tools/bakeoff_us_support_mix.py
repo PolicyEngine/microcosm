@@ -1416,7 +1416,39 @@ def do_report(args) -> None:
         acs_table.to_csv(args.out / "acs_native_by_level_measure.csv", index=False)
     if not holdout.empty and not acs_native.empty:
         _write_headline(args.out, arms, holdout, acs_native)
+        _write_dimensions(args.out, arms, holdout, acs_native)
     log(f"report: {len(arms)} arm receipts")
+
+
+DIMENSION_COLUMNS = (
+    ("income_components", "state"), ("income_components", "cd"),
+    ("tax_items", "state"), ("tax_items", "cd"),
+    ("program_receipt", "state"), ("demographics_pep", "state"),
+)
+
+
+def _write_dimensions(out: Path, arms: pd.DataFrame, holdout: pd.DataFrame, acs_native: pd.DataFrame) -> None:
+    """Per-dimension held-out error (seed-0 arms; replicate spread alongside)."""
+    by_dim = holdout.groupby(["product", "arm", "dimension", "level"])["capped"].mean()
+    acs = acs_native[acs_native["measure"].isin(HEADLINE_ACS_MEASURES)].copy()
+    acs["capped"] = acs["rel"].clip(upper=1.0)
+    acs = acs.groupby(["product", "arm", "level"])["capped"].mean()
+    rows = []
+    for record in arms.itertuples(index=False):
+        row = {"product": record.product, "arm": record.arm, "budget": record.budget,
+               "cps_years": record.cps_years, "acs_fill_share": record.acs_fill_share,
+               "seed": record.seed, "rows": record.rows_total,
+               "ess_distinct": record.ess_distinct_households}
+        for dimension, level in DIMENSION_COLUMNS:
+            row[f"{dimension}.{level}"] = by_dim.get((record.product, record.arm, dimension, level), np.nan)
+        for level in ("state", "cd", "county"):
+            row[f"acs_native.{level}"] = acs.get((record.product, record.arm, level), np.nan)
+        rows.append(row)
+    table = pd.DataFrame(rows).sort_values(["product", "budget", "cps_years", "acs_fill_share", "seed"])
+    table.to_csv(out / "dimensions_by_arm.csv", index=False)
+    replicate = table[table["arm"].str.contains("b300k") & table["acs_fill_share"].eq(1.0) & table["cps_years"].gt(0)]
+    spread = replicate.groupby(["product", "cps_years"])[[c for c in table.columns if "." in c]].std()
+    spread.to_csv(out / "replicate_spread.csv")
 
 
 HEADLINE_ACS_MEASURES = (
