@@ -419,10 +419,10 @@ _UK_GATE_BATTERY_POLICY_SHA256 = (
     "e729814c1f4fbed346d59bf8713bc2cb342537edd8154b0e72bf049df4e168a9"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "d2313bd1174e8ca28185e555d4e5a34f2502c4f3de0430ea985014af2a4205d0"
+    "dd6afb4c1f95007303413743c702927dae865783da352f37e7c22b139bb7eb8e"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "1f83ce47a85b4e6fae1117dc689c7cc8f23125528960679382ea236e91b0fbbb"
+    "3f7dbdf16de49dfddae3941bbf088df6b9d61f38f10ab09816271b9ffa9aeb5b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -704,9 +704,9 @@ _UK_DENSE_GATE_ENTRY_IDS = frozenset(
 _UK_DENSE_RELEASE_BLOCKING_IDS = _UK_DENSE_GATE_ENTRY_IDS
 _UK_DENSE_GATE_PHASES = ("terminal",)
 _UK_DENSE_GATE_DIGESTS = {
-    "gates_manifest_sha256": "c900204bbc59bb58d5cf0fb0e5c703236f82618c0ebc737279e49774e6641604",
+    "gates_manifest_sha256": "3f0d6cf8ad29f960d3bb1006528a288a360747d203e7ca090a36dbabd781d301",
     "policy_sha256": "ad63a0aa05ac127d45a42d82c5a0e376f23cf0f708c7b6d25958479b3483bbeb",
-    "spec_fingerprint": "33ca1741241fe936d5148bf170b4d040d640df070857822c7d490382778243f0",
+    "spec_fingerprint": "c722d3741e806269d70003fb536947950dabf44bf5b5b1c27e835bdc6d8cdb00",
 }
 _UK_DENSE_SOURCE_COVERAGE_KEYS = (
     "spine",

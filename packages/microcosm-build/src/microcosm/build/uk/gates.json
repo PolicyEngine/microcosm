@@ -1047,7 +1047,7 @@
       "parameters": {
         "maximum_max_to_median_ratio": 100.0
       },
-      "notes": "Maximum-to-median positive weight ratio must not exceed 100.0. Release-blocking following PR #870 review; the numeric threshold is unchanged."
+      "notes": "Maximum-to-median positive weight ratio must not exceed 100.0. Release-blocking following PR #870 review; the numeric threshold is unchanged. Evaluated on family-folded weights since microcosm#1045 (each geographic clone with its own cgt_support_split copies summed; the geographic clone index keeps the K clones apart), with the row-level summary reported beside it."
     },
     {
       "id": "uk_local_weight_ess",
@@ -1057,7 +1057,7 @@
       "parameters": {
         "minimum_ess_fraction": 0.01
       },
-      "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged."
+      "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged. Evaluated on family-folded weights since microcosm#1045 (each geographic clone with its own cgt_support_split copies summed; the geographic clone index keeps the K clones apart), with the row-level summary reported beside it."
     }
   ]
 }

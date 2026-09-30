@@ -927,10 +927,44 @@ class TestSupportFamilyWeights:
                 "household_support_clone_index",
                 "household_is_capital_gains_clone",
             ],
+            "geographic_clone_index_in_key": False,
             "families": 4,
             "support_copy_rows": 4,
             "rows_folded": 4,
         }
+
+    def test_geographic_clones_stay_apart_on_an_expanded_frame(self) -> None:
+        """Round 2 of the #1045 review: the dense line's K clones fold only
+        their own copies, never each other."""
+        from microcosm.build.uk_runtime.diagnostics import (
+            uk_support_family_geographic_clone_column,
+            uk_support_family_weights,
+        )
+
+        base = self._household(copies=True)
+        k = 3
+        clone_column = uk_support_family_geographic_clone_column()
+        expanded = pd.concat(
+            [
+                base.assign(
+                    household_id=base["household_id"] + 1_000 * clone,
+                    household_weight=base["household_weight"] / k,
+                    **{clone_column: clone},
+                )
+                for clone in range(k)
+            ],
+            ignore_index=True,
+        )
+        folded, receipt = uk_support_family_weights(expanded)
+        copies = int(expanded["household_is_cgt_support_copy"].sum())
+        assert receipt["geographic_clone_index_in_key"] is True
+        assert receipt["key_columns"][-1] == clone_column
+        assert receipt["families"] == len(expanded) - copies == 4 * k
+        assert receipt["rows_folded"] == copies == 4 * k
+        np.testing.assert_allclose(
+            sorted(folded.tolist()),
+            sorted([w / k for w in [15.0, 15.0, 30.0, 30.0] * k]),
+        )
 
     def test_a_table_without_copies_folds_to_itself(self) -> None:
         from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights

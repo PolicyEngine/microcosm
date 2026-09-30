@@ -296,6 +296,27 @@ relaxation, and every calibration is the national role's doctrine.
   provenance bytes) and its calibration reproduces every figure above to the digit: all 26 spine gates and all
   7 terminal gates pass, fence 6,711, ratio 1,079.1, effective sample size 5,198.
 
+### Folded readings of the weight fences (Vahid's review, round 1 item 2)
+
+Since 0f3b11b62 the terminal `uk_weight_ratio` and `uk_weight_ess` fences read family-folded weights: each
+root with its copies summed, on each side of the clone, keyed on the explicit lineage (source household,
+support channel, support clone index, clone flag, and on an expanded frame the geographic clone index), with
+the row-level summary reported beside them. Measured with `data/ukds/acceptance/1014-cgt-badr/folded_ratio.py`
+on the arms' artifacts (`spine-ch1`, `spine-h15`, `spine-h125`, `spine-ch3`, and the calibrated
+`runs/uk-623-first-calibrated/spine-assessment-1014-ch3`, build id
+`uk-frs-calibration-attempt-20260929T220929Z-f8e3e66a`, whose datasets are identical to `h125`'s): before
+calibration the row-level ratios 770.6 (`ch1`, headroom 2.0), 505.9 (`h15`, 1.5) and 451.6 (`h125` and
+`ch3`, 1.25) fold to 132.6, 132.7 and 133.0 (medians 173.9, 173.8 and 173.4 over 53,536 families against
+29.9, 45.6 and 51.1 over 61,064, 59,230 and 58,288 rows), so the three headrooms are indistinguishable on the
+fold; after calibration `ch3` reads 608.6 folded against 1,079.1 row-level (maximum 33,975 in both, median
+55.8 against 31.5) and an effective-sample-size fraction of 0.097 (5,191 over 53,536 families) against 0.089
+(5,198 over 58,288 rows). The step from headroom 2.0 to 1.25 was decided on the row-level reading, which the
+copies move mechanically (the maximum unchanged, the median halved by 8,126 light rows on `ch1`); the
+calibrated `ch1` and `h15` artifacts were not kept because that reading failed, so their folded readings after
+calibration come from the two arms queued at the review head (`r1h125` and `r1h2`, headroom 1.25 and 2.0 at
+0f3b11b62), recorded here when they land. Headroom 1.25 stands as the configuration that clears both readings;
+returning to 2.0 on the folded reading is a one-constant follow-up.
+
 The placement replay confirms the mechanism on every arm: the wealth cliff is unchanged for plain clones
 (placed share near zero below the eighth investable-wealth decile, 11 percent in the eighth, 35 in the ninth
 and 70 in the tenth on `ch1`), while the support families, being the wealthiest rows of their columns, are
