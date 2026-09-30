@@ -2316,6 +2316,20 @@ def _national_main(args: argparse.Namespace) -> int:
         return execute_national_build(
             prepared, args, telemetry=telemetry, attempt=attempt
         )
+    except KeyboardInterrupt as interrupt:
+        # An operator interrupt is a discarded attempt, not a failed one; the
+        # seam recorded the row so and re-raised (every terminal disposition
+        # records a row), and the staging run closes as failed.
+        _record_failure(
+            args,
+            interrupt,
+            state=state,
+            attempt=attempt,
+            pipeline=posture.pipeline,
+            disposition="discarded",
+        )
+        fail_staging_telemetry(telemetry, interrupt)
+        raise
     except Exception as error:
         _record_failure(
             args, error, state=state, attempt=attempt, pipeline=posture.pipeline
@@ -2327,15 +2341,22 @@ def _national_main(args: argparse.Namespace) -> int:
 
 def _record_failure(
     args: argparse.Namespace,
-    error: Exception,
+    error: BaseException,
     *,
     state: AttemptState,
     attempt: dict,
     pipeline: str,
+    prepared: PreparedUKFullBuild | None = None,
+    disposition: str = "failed",
 ) -> None:
-    """The failure sidecar and the failed Logbook row, when the output is safe."""
+    """The failure sidecar and the terminal Logbook row, when the output is safe.
+
+    ``disposition`` is ``failed`` for an error and ``discarded`` for an
+    operator interrupt; the dense line passes its ``prepared`` build so the
+    output check sees the declared sources.
+    """
     try:
-        _output_locations(None, args)
+        _output_locations(prepared, args)
     except ValueError:
         return
     materialize_bytes(
@@ -2365,6 +2386,7 @@ def _record_failure(
             spool_dir=args.out.resolve() / "logbook-spool",
             rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
             pipeline=pipeline,
+            disposition=disposition,
         )
 
 
@@ -2437,41 +2459,29 @@ def main(argv: list[str] | None = None) -> int:
     try:
         prepared = prepare_full_build(args, telemetry=telemetry, attempt=attempt)
         return execute_full_build(prepared, args, telemetry=telemetry, attempt=attempt)
+    except KeyboardInterrupt as interrupt:
+        # As on the national line: a discarded row, the staging run failed,
+        # the interrupt re-raised.
+        _record_failure(
+            args,
+            interrupt,
+            state=state,
+            attempt=attempt,
+            pipeline=posture.pipeline,
+            prepared=prepared,
+            disposition="discarded",
+        )
+        fail_staging_telemetry(telemetry, interrupt)
+        raise
     except Exception as error:
-        safe_output = False
-        try:
-            _output_locations(prepared, args)
-            safe_output = True
-        except ValueError:
-            pass
-        if safe_output:
-            materialize_bytes(
-                canonical_json(
-                    {
-                        "schema": "microcosm.uk.full-build-failure.v1",
-                        "error_type": type(error).__name__,
-                        "message": str(error),
-                        "evidence_directory": str(args.attempt_evidence)
-                        if hasattr(args, "attempt_evidence")
-                        else None,
-                        "release_authorized": False,
-                    }
-                ),
-                args.out / "failure.json",
-            )
-            if state.spool_path is None:
-                record_candidate_error(
-                    error=error,
-                    state=state,
-                    started_at=started_at,
-                    started_ts=started_ts,
-                    seed=args.seed,
-                    code_pin=str(attempt["code_pin"]),
-                    predecessor=predecessor,
-                    base_dir=args.out.resolve(),
-                    spool_dir=args.out.resolve() / "logbook-spool",
-                    rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
-                )
+        _record_failure(
+            args,
+            error,
+            state=state,
+            attempt=attempt,
+            pipeline=posture.pipeline,
+            prepared=prepared,
+        )
         fail_staging_telemetry(telemetry, error)
         print(f"UK full build failed: {error}", file=sys.stderr)
         return 1

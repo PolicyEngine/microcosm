@@ -1337,3 +1337,55 @@ def test_dense_completion_marker_binds_the_closed_manifest(tmp_path, monkeypatch
     assert entry["sha256"] == hashlib.sha256(manifest_path.read_bytes()).hexdigest()
     assert entry["size_bytes"] == manifest_path.stat().st_size
     assert "note" not in entry
+
+
+def test_national_interrupt_records_a_discarded_row_and_re_raises(
+    tmp_path, monkeypatch
+):
+    """A Ctrl-C during the national build is a discarded attempt, not a failed
+    one: the seam's terminal-disposition contract, kept by the driver (the
+    failure sidecar names the interrupt, the row says ``discarded``, the
+    interrupt propagates)."""
+    argv = _national_argv(tmp_path)
+    monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
+    monkeypatch.setattr(
+        cli,
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: "prepared",
+    )
+
+    def interrupted(prepared, args, *, telemetry=None, attempt=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "execute_national_build", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main(argv)
+    out = tmp_path / "out"
+    failure = json.loads((out / "failure.json").read_text())
+    assert failure["error_type"] == "KeyboardInterrupt"
+    rows = load_spool_rows(out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["discarded"]
+    assert rows[0].pipeline == "uk-frs-calibration"
+
+
+def test_dense_interrupt_records_a_discarded_row_and_re_raises(tmp_path, monkeypatch):
+    """The dense line closes an interrupted attempt the same way."""
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+    patch_certification(monkeypatch)
+    args = arguments(tmp_path)
+    build = prepared(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli, "prepare_full_build", lambda args, *, telemetry=None, attempt=None: build
+    )
+
+    def interrupted(prepared, args, *, telemetry=None, attempt=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "execute_full_build", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main([])
+    failure = json.loads((args.out / "failure.json").read_text())
+    assert failure["error_type"] == "KeyboardInterrupt"
+    rows = load_spool_rows(args.out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["discarded"]
