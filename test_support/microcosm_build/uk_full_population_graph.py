@@ -57,7 +57,8 @@ def source_frame():
     household["household_support_clone_index"] = np.zeros(len(household), dtype="int64")
     household["household_is_spi_synthetic"] = False
     household["household_is_capital_gains_clone"] = False
-    household["household_is_cgt_band_donor"] = False
+    household["household_is_cgt_support_copy"] = False
+    household["cgt_support_copy_index"] = np.zeros(len(household), dtype="int64")
     return Frame(
         tables,
         original.schema,

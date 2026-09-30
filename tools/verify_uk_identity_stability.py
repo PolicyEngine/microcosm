@@ -1496,6 +1496,21 @@ def _support_copy_lineage(
     if len(np.unique(household_ids)) != len(household_ids):
         raise ValueError("CGT support-copy lineage requires unique household ids.")
     is_copy = household[HOUSEHOLD_IS_CGT_SUPPORT_COPY].to_numpy(dtype=bool)
+    stored_index = None
+    if CGT_SUPPORT_COPY_INDEX_COLUMN in household.columns:
+        # The explicit lineage is authoritative: the flag and the stored index
+        # must agree before any id arithmetic is read.
+        stored_index = (
+            pd.to_numeric(household[CGT_SUPPORT_COPY_INDEX_COLUMN], errors="raise")
+            .astype("int64")
+            .to_numpy()
+        )
+        flag_disagreements = int(((stored_index != 0) != is_copy).sum())
+        if flag_disagreements:
+            raise ValueError(
+                "CGT support-copy flag and stored copy index disagree on "
+                f"{flag_disagreements} household(s)."
+            )
     pre_clone = (
         ~household[HOUSEHOLD_IS_CGT_CLONE].to_numpy(dtype=bool)
         if HOUSEHOLD_IS_CGT_CLONE in household.columns
@@ -1532,18 +1547,7 @@ def _support_copy_lineage(
                 f"{copy_id} (id multiplier {multiplier})."
             )
         root_positions[slot] = root
-    if CGT_SUPPORT_COPY_INDEX_COLUMN in household.columns:
-        stored_index = (
-            pd.to_numeric(household[CGT_SUPPORT_COPY_INDEX_COLUMN], errors="raise")
-            .astype("int64")
-            .to_numpy()
-        )
-        flag_disagreements = int(((stored_index != 0) != is_copy).sum())
-        if flag_disagreements:
-            raise ValueError(
-                "CGT support-copy flag and stored copy index disagree on "
-                f"{flag_disagreements} household(s)."
-            )
+    if stored_index is not None:
         scheme_disagreements = int((stored_index[copy_positions] != copy_index).sum())
         if scheme_disagreements:
             raise ValueError(

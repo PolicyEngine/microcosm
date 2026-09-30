@@ -603,12 +603,24 @@ def test_split_copies_every_column_and_membership_unchanged():
         for k in range(1, copies):
             offset = k * 100
             copy = household.loc[household.household_id == household_id + offset]
+            # The explicit lineage: the root at 0, copy k at k.
+            assert root[CGT_SUPPORT_COPY_INDEX_COLUMN].item() == 0
+            assert copy[CGT_SUPPORT_COPY_INDEX_COLUMN].item() == k
+            assert copy[CGT_SUPPORT_COPY_INDEX_COLUMN].dtype == "int64"
             pd.testing.assert_frame_equal(
                 root.drop(
-                    columns=["household_id", HOUSEHOLD_IS_CGT_SUPPORT_COPY]
+                    columns=[
+                        "household_id",
+                        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+                        CGT_SUPPORT_COPY_INDEX_COLUMN,
+                    ]
                 ).reset_index(drop=True),
                 copy.drop(
-                    columns=["household_id", HOUSEHOLD_IS_CGT_SUPPORT_COPY]
+                    columns=[
+                        "household_id",
+                        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+                        CGT_SUPPORT_COPY_INDEX_COLUMN,
+                    ]
                 ).reset_index(drop=True),
             )
             copy_people = (

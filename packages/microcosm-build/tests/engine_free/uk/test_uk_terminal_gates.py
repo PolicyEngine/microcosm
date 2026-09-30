@@ -722,8 +722,8 @@ def test_weight_gates_evaluate_on_family_folded_weights_and_report_rows_beside()
 ):
     """Item 2 of the #1045 review: the fence reads dispersion, not copy counts.
 
-    Four rows at 1.0 (three of them copies of one root at 3.0 folded) and one
-    at 100.0: the row-level ratio is 100, the folded ratio under two.
+    Four rows at 1.0 (three of them one root's copies, 3.0 folded) and one at
+    100.0: the row-level ratio is 100, the folded ratio 100 / 3.
     """
     rows = [1.0, 1.0, 1.0, 1.0, 100.0]
     folded = [3.0, 1.0, 100.0]
@@ -731,7 +731,7 @@ def test_weight_gates_evaluate_on_family_folded_weights_and_report_rows_beside()
 
     ratio = uk_weight_ratio_gate(
         rows,
-        maximum_max_to_median_ratio=10.0,
+        maximum_max_to_median_ratio=50.0,
         family_weights=folded,
         family_fold=fold,
     )
@@ -744,11 +744,11 @@ def test_weight_gates_evaluate_on_family_folded_weights_and_report_rows_beside()
     )
     assert ratio.details["family_folded"]["n_records"] == 3
     assert ratio.details["family_folded"]["basis"] == "support_family_fold"
-    assert ratio.details["maximum_max_to_median_ratio"] == 10.0
+    assert ratio.details["maximum_max_to_median_ratio"] == 50.0
 
     failing = uk_weight_ratio_gate(
         rows,
-        maximum_max_to_median_ratio=10.0,
+        maximum_max_to_median_ratio=50.0,
         family_weights=[1.0, 1.0, 100.0],
         family_fold=fold,
     )
@@ -771,7 +771,7 @@ def test_weight_gates_evaluate_on_family_folded_weights_and_report_rows_beside()
     if not ess.passed:
         assert "(family-folded)" in ess.failures[0]
 
-    plain = uk_weight_ratio_gate(rows, maximum_max_to_median_ratio=10.0)
+    plain = uk_weight_ratio_gate(rows, maximum_max_to_median_ratio=50.0)
     assert plain.details["evaluated_on"] == "row_weights"
     assert "family_folded" not in plain.details
     assert not plain.passed
