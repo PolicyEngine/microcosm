@@ -59,7 +59,11 @@ validation oracles (microcosm#264), which sequence behind reform modules
 compiled upstream, not behind a protocol change.
 """
 
+import json
+import re
 from collections.abc import Mapping, Sequence
+from functools import cache
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -67,11 +71,17 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.bundle import Frame
+from microcosm.frame.concept_mapping import ConceptMapping
 from microcosm.frame.materialize import engine_tables, put_frame_table, read_frame_table
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
-__all__ = ["AxiomEngine", "AxiomEntityTableDataset", "BE_SCHEMA"]
+__all__ = [
+    "AxiomEngine",
+    "AxiomEntityTableDataset",
+    "BE_SCHEMA",
+    "axiom_concept_mapping",
+]
 
 #: The Belgian frame schema for the populace-be pilot: persons in households.
 #: Belgian PIT is individual with household-level elements (joint assessment,
@@ -98,6 +108,36 @@ _DTYPE_KIND_BY_ENGINE: dict[str, str] = {
 _PERIOD_BY_ENGINE: dict[str, str] = {"year": "year", "month": "month"}
 
 _WEIGHT_COLUMN_SUFFIX = "_weight"
+
+# A rulespec country tree: ``nz``, or a subnational ``be-bru`` under ``be``.
+_COUNTRY_TREE = re.compile(r"^([a-z]{2})(?:-[a-z0-9]+)*$")
+_MAPPINGS_DIRECTORY = "axiom_concept_mappings"
+
+
+@cache
+def axiom_concept_mapping(country: str) -> ConceptMapping:
+    """The committed concept mapping for rulespec ``country``.
+
+    Axiom inputs are module-scoped and untyped (usage-inferred;
+    TheAxiomFoundation/axiom-rules-engine#62), so each binding names its
+    RuleSpec module and the engine's canonical request name, and the mapping
+    records ``input_declaration = usage_inferred``. The household concept
+    entity corresponds to the engine's ``Household`` entity; rulespec-nz has
+    none, so New Zealand household concepts reach it only through ``Family``
+    bindings with group rules. The mapping is data,
+    committed beside this module as ``axiom_concept_mappings/<country>.json``
+    and validated like every other mapping when loaded.
+
+    Raises:
+        FileNotFoundError: If no mapping is committed for ``country``.
+    """
+
+    resource = resources.files(__package__).joinpath(
+        _MAPPINGS_DIRECTORY, f"{country}.json"
+    )
+    if not resource.is_file():
+        raise FileNotFoundError(f"No Axiom concept mapping for {country!r}.")
+    return ConceptMapping.from_dict(json.loads(resource.read_text("utf-8")))
 
 
 class AxiomEngine:
@@ -244,6 +284,45 @@ class AxiomEngine:
     def entity_schema(self) -> EntitySchema:
         """Return the frame entity schema (no engine import required)."""
         return self._schema
+
+    def concept_mapping(self) -> ConceptMapping:
+        """Return the concept mapping for this adapter's rulespec country.
+
+        The country is read from the module's path under its root (see
+        :meth:`rulespec_country`), so no engine import is needed. The
+        mapping is country-wide; each binding names the module whose
+        program takes it.
+
+        Raises:
+            ValueError: If no root contains the module, or it is not under a
+                country tree.
+            FileNotFoundError: If no mapping is committed for that country.
+        """
+        return axiom_concept_mapping(self.rulespec_country())
+
+    def rulespec_country(self) -> str:
+        """The rulespec country whose tree holds the module.
+
+        Read from the module's first path component under its root
+        (``nz/statutes/...`` is New Zealand; ``be-bru/...`` is Belgium), so
+        the root directory's own name (a worktree, a symlink) never matters.
+
+        Raises:
+            ValueError: If no root contains the module.
+        """
+        module = self._module.resolve()
+        for root in self._rulespec_roots:
+            resolved = root.resolve()
+            if module.is_relative_to(resolved):
+                top = module.relative_to(resolved).parts[0]
+                match = _COUNTRY_TREE.match(top)
+                if match is None:
+                    raise ValueError(
+                        f"Module {self._module} is not under a country tree "
+                        f"(found {top!r})."
+                    )
+                return match.group(1)
+        raise ValueError(f"No RuleSpec root contains module {self._module}.")
 
     # ------------------------------------------------------------------
     # Materialization
