@@ -1,29 +1,37 @@
-"""Native vehicle count and Head Start take-up for the ACS rows of the retained
-ACS local lane (microcosm#1022).
+"""ACS vehicle availability and Head Start take-up for the ACS rows of the
+retained ACS local lane (microcosm#1022).
 
-Both reached the engine pass missing on every ACS row, and the reviewed-null
-fill wrote the engine defaults: no ACS household owned a vehicle, and every
-Head Start-eligible ACS child took Head Start up. The ACS local take-up stage
-(:mod:`~microcosm.build.us_runtime.acs_local_take_up`) fills them with the
+Head Start take-up reached the engine pass missing on every ACS row, and the
+reviewed-null fill wrote the engine default: every Head Start-eligible ACS
+child took Head Start up. The ACS local take-up stage
+(:mod:`~microcosm.build.us_runtime.acs_local_take_up`) fills it with the
 helpers here, without the engine, beside its other engine-free fills. Only
 missing ACS cells are filled; donor-spine values and any stored ACS value are
-kept. The helpers read no origin tag: the stage passes the spine masks.
+kept. The same stage records native ACS ``VEH`` as vehicle availability and
+writes it to no engine input. The helpers read no origin tag: the stage
+passes the spine masks.
 
-- ``household_vehicles_owned`` (household) is native ACS ``VEH``, the cars,
-  vans and trucks of one ton or less kept at home for use by household
-  members, 0-6 with 6 meaning six or more. The donor's count
-  (:mod:`~microcosm.build.us_runtime.sipp_vehicles`) is SIPP ``TVEH_NUM``,
-  the cars, trucks or vans owned by the household. ``VEH`` counts vehicles
-  available, so a leased or employer-provided vehicle kept at home counts and
-  an owned vehicle kept elsewhere does not; otherwise the two count the same
-  vehicles, and ``VEH`` is used as the owned count. ``VEH`` is a housing-unit
-  item: group quarters (``TYPEHUGQ`` 2/3) have none and get 0, and a housing
-  unit without a ``VEH`` code is refused, never read as no vehicle.
-- ``household_vehicles_value`` is not filled. The ACS has no vehicle-value
-  item, and in policyengine-us 2.2.1 its only SNAP consumer is Texas's
-  broad-based categorical eligibility asset test; it stays at the reviewed
-  engine default, 0 (reviewed limitation ``acs_household_vehicle_value_default``
-  in the release tool).
+- ``household_vehicles_owned`` (household) is not filled on ACS rows; it
+  keeps the reviewed engine default, 0. ACS ``VEH`` counts the cars, vans and
+  trucks of one ton or less kept at home and available to household members,
+  long-term leased and employer-provided ones included (0-6, 6 meaning six or
+  more; blank in group quarters). The donor's count
+  (:mod:`~microcosm.build.us_runtime.sipp_vehicles`) is SIPP ``TVEH_NUM``, the
+  cars, trucks or vans the household owns, and policyengine-us 2.2.1 reads
+  ``household_vehicles_owned`` as an owned count in rules where the count
+  alone decides eligibility: San Francisco CAAP's one-vehicle limit for a
+  single person (``ca_sf_caap_vehicle_eligible``), Los Angeles General
+  Relief's vehicle cap (``la_general_relief_motor_vehicle_value_eligible``)
+  and ``lives_in_vehicle``. ``VEH`` as the owned count would deny a single San
+  Francisco applicant who leases two cars and owns none (microcosm#1064
+  review). The engine has no vehicles-available input, so ``VEH`` goes only
+  into the stage receipt, as availability (:func:`vehicles_available_summary`),
+  and the gate fails on an ACS owned count other than the default
+  (:func:`grade_vehicles_owned`).
+- ``household_vehicles_value`` is not filled either: the ACS has no
+  vehicle-value item. Both vehicle columns stay at the reviewed engine
+  default, 0, on ACS rows (reviewed limitation
+  ``acs_household_vehicle_value_default`` in the release tool).
 - ``takes_up_head_start_if_eligible`` (person). The donor sets it with the
   measured SIPP model of :mod:`~microcosm.build.us_runtime.sipp_head_start`,
   a weighted QRF over ages 3-5 that is ``False`` at every other age; there is
@@ -68,7 +76,7 @@ __all__ = [
     "grade_head_start",
     "grade_vehicles_owned",
     "head_start_fill",
-    "vehicles_owned_fill",
+    "vehicles_available_summary",
 ]
 
 ACS_LOCAL_VEHICLES_HEAD_START_ISSUE = "microcosm#1022"
@@ -147,78 +155,82 @@ def _keyed_uniforms(keys: Sequence[str], *, seed: int) -> np.ndarray:
     )
 
 
-def vehicles_owned_fill(
-    household: pd.DataFrame, acs_households: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
-    """Missing ACS vehicle counts, their native values, and the receipt entry.
+def vehicles_available_summary(
+    household: pd.DataFrame, rows: np.ndarray, weights: np.ndarray
+) -> dict[str, object]:
+    """ACS ``VEH`` on the selected households, recorded as vehicle availability.
+
+    Information only: ``VEH`` reaches no engine input, and nothing here is
+    refused or graded. Housing units are counted by ``VEH`` code, with the
+    top-coded ones and any without a code 0-6; group quarters (``TYPEHUGQ``
+    2/3), outside the item's universe, are counted apart and any code they
+    carry is ignored. The weighted share of housing units with a vehicle
+    available is recorded beside the donor stage's band for the share owning
+    one, as a reference, not a grade: availability also counts leased and
+    employer-provided vehicles.
 
     Args:
-        household: The household table, with ``household_vehicles_owned``,
-            ``VEH`` and ``TYPEHUGQ``.
-        acs_households: Mask of the ACS-spine households.
+        household: The household table, with ``VEH`` and ``TYPEHUGQ``; a
+            missing column is recorded, not refused.
+        rows: Mask of the households to summarize (the ACS spine's).
+        weights: Household weights aligned to ``household``.
 
     Returns:
-        ``(missing, assigned, entry)``: the ACS cells to fill, the counts to
-        write there (``VEH`` in a housing unit, 0 in group quarters), and a
-        JSON-ready receipt entry.
-
-    Raises:
-        ValueError: If a missing ACS household has no ``TYPEHUGQ`` 1/2/3, or
-            a missing ACS housing unit has no ``VEH`` code 0-6.
+        A JSON-ready receipt entry.
     """
-    present = household[_OWNED].notna().to_numpy(dtype=bool)
-    missing = acs_households & ~present
+    entry: dict[str, object] = {
+        "source": (
+            f"ACS {ACS_VEHICLES_AVAILABLE} (cars, vans and trucks of one ton or "
+            "less kept at home and available to household members, long-term "
+            "leased and employer-provided ones included), "
+            f"0-{ACS_VEHICLES_TOP_CODE} with {ACS_VEHICLES_TOP_CODE} meaning "
+            f"{ACS_VEHICLES_TOP_CODE} or more; blank in {_HOUSEHOLD_KIND} 2/3 "
+            "group quarters"
+        ),
+        "treatment": (
+            "recorded as vehicle availability only and written to no engine "
+            "input: policyengine-us 2.2.1 has no vehicles-available input, and "
+            f"{_OWNED} keeps its reviewed engine default, 0, on these rows "
+            "(microcosm#1064 review)"
+        ),
+        "owned_definition": (
+            "SIPP TVEH_NUM, the cars, trucks or vans owned by the household "
+            f"(the donor spine's {_OWNED}, sipp_vehicles)"
+        ),
+        "households": int(rows.sum()),
+    }
+    absent = [
+        column
+        for column in (ACS_VEHICLES_AVAILABLE, _HOUSEHOLD_KIND)
+        if column not in household
+    ]
+    if absent:
+        entry["missing_columns"] = absent
+        return entry
     kinds = _numeric(household[_HOUSEHOLD_KIND])
-    unknown = missing & ~np.isin(kinds, _HOUSEHOLD_KINDS)
-    if unknown.any():
-        raise ValueError(
-            f"{int(unknown.sum())} ACS household(s) have no {_HOUSEHOLD_KIND} 1/2/3; "
-            "the vehicle count cannot tell a housing unit from group quarters."
-        )
-    group_quarters = np.isin(kinds, _GROUP_QUARTERS_KINDS)
-    housing_units = kinds == _HOUSING_UNIT
-    codes = _vehicle_codes(household)
-    uncoded = missing & housing_units & np.isnan(codes)
-    if uncoded.any():
-        raise ValueError(
-            f"{int(uncoded.sum())} ACS housing unit(s) have no {ACS_VEHICLES_AVAILABLE} "
-            f"code 0-{ACS_VEHICLES_TOP_CODE}; a blank must not read as no vehicle."
-        )
-    assigned = np.where(group_quarters, 0.0, codes)
-    filled_units = missing & housing_units
+    housing_units = rows & (kinds == _HOUSING_UNIT)
+    group_quarters = rows & np.isin(kinds, _GROUP_QUARTERS_KINDS)
     raw = _numeric(household[ACS_VEHICLES_AVAILABLE])
-    return (
-        missing,
-        assigned,
-        {
-            "source": (
-                f"ACS {ACS_VEHICLES_AVAILABLE} (cars, vans and trucks of one ton or "
-                "less kept at home for household use, leased and employer-provided "
-                f"ones included), 0-{ACS_VEHICLES_TOP_CODE} with "
-                f"{ACS_VEHICLES_TOP_CODE} meaning {ACS_VEHICLES_TOP_CODE} or more; 0 "
-                f"in {_HOUSEHOLD_KIND} 2/3 group quarters"
-            ),
-            "donor_definition": (
-                "SIPP TVEH_NUM, the cars, trucks or vans owned by the household "
-                "(sipp_vehicles)"
-            ),
-            "filled_rows": int(missing.sum()),
-            "preserved_rows": int((acs_households & present).sum()),
-            "housing_unit_filled_rows": int(filled_units.sum()),
-            "group_quarters_zero_rows": int((missing & group_quarters).sum()),
-            # VEH is blank in group quarters; a code there is ignored.
-            "group_quarters_coded_rows": int(
-                (missing & group_quarters & ~np.isnan(raw)).sum()
-            ),
-            "top_coded_rows": int(
-                (filled_units & (codes == ACS_VEHICLES_TOP_CODE)).sum()
-            ),
-            "code_counts": {
-                str(int(code)): int((filled_units & (codes == code)).sum())
-                for code in _VEHICLE_CODES
-            },
+    codes = _vehicle_codes(household)
+    share = _share(weights[housing_units], (codes > 0)[housing_units])
+    low, high = _OWNED_NONZERO_SHARE_BAND
+    entry.update(
+        housing_units=int(housing_units.sum()),
+        group_quarters=int(group_quarters.sum()),
+        unknown_kind_rows=int((rows & ~np.isin(kinds, _HOUSEHOLD_KINDS)).sum()),
+        # VEH is blank in group quarters; a code there is ignored.
+        group_quarters_coded_rows=int((group_quarters & ~np.isnan(raw)).sum()),
+        housing_units_without_veh=int((housing_units & np.isnan(codes)).sum()),
+        top_coded_rows=int((housing_units & (codes == ACS_VEHICLES_TOP_CODE)).sum()),
+        code_counts={
+            str(int(code)): int((housing_units & (codes == code)).sum())
+            for code in _VEHICLE_CODES
         },
+        weighted_housing_unit_share_with_vehicle_available=share,
+        reference_owned_share_band=[low, high],
+        within_reference_band=bool(housing_units.any() and low <= share <= high),
     )
+    return entry
 
 
 def donor_head_start_share(
@@ -335,12 +347,15 @@ def grade_vehicles_owned(
     *,
     graded: bool,
 ) -> list[str]:
-    """Grade one spine's vehicle counts; record the evidence in ``entry``.
+    """Grade one spine's owned vehicle counts; record the evidence in ``entry``.
 
-    Every spine must carry complete, non-negative whole counts that vary.
-    Only ``graded`` (ACS) rows are held to the fill: ``VEH`` in every housing
-    unit, 0 in group quarters, and a weighted share of housing units with a
-    vehicle inside the donor stage's band.
+    Donor rows (``graded`` False) carry the donor release's SIPP counts, which
+    must be complete, non-negative whole numbers that vary; otherwise the
+    donor release ran without its ``sipp_vehicles`` stage. ACS rows
+    (``graded``) must carry no owned count but the reviewed default: missing
+    before the reviewed-null fill and 0 after it. ``VEH`` counts vehicles
+    available, not owned, so it is recorded beside them as information
+    (:func:`vehicles_available_summary`) and never compared with the count.
     """
     values = _numeric(household[_OWNED])
     present = ~np.isnan(values)
@@ -351,6 +366,22 @@ def grade_vehicles_owned(
         unique_values=int(len(np.unique(values[present]))),
         weighted_share_with_vehicle=_share(weights, present & (values > 0)),
     )
+    if graded:
+        not_default = int((present & (values != 0)).sum())
+        entry.update(
+            not_default_rows=not_default,
+            vehicles_available=vehicles_available_summary(
+                household, np.ones(len(household), dtype=bool), weights
+            ),
+        )
+        if not_default:
+            return [
+                f"{_OWNED} is not the reviewed default 0 in {not_default} "
+                f"household(s); ACS {ACS_VEHICLES_AVAILABLE} counts vehicles "
+                "available, leased and employer-provided ones included, and must "
+                "not be written as the owned count."
+            ]
+        return []
     failures = []
     if not present.all():
         failures.append(
@@ -364,49 +395,6 @@ def grade_vehicles_owned(
     if entry["unique_values"] < 2:
         failures.append(
             f"{_OWNED} is constant; the engine default is the same landmine."
-        )
-    if not graded:
-        return failures
-    for column in (ACS_VEHICLES_AVAILABLE, _HOUSEHOLD_KIND):
-        if column not in household:
-            return [*failures, f"missing {column}; {_OWNED} cannot be checked."]
-    kinds = _numeric(household[_HOUSEHOLD_KIND])
-    housing_units = kinds == _HOUSING_UNIT
-    group_quarters = np.isin(kinds, _GROUP_QUARTERS_KINDS)
-    codes = _vehicle_codes(household)
-    unknown = int((~np.isin(kinds, _HOUSEHOLD_KINDS)).sum())
-    uncoded = int((housing_units & np.isnan(codes)).sum())
-    differs = int((housing_units & ~np.isnan(codes) & (values != codes)).sum())
-    group_quarters_owning = int((group_quarters & (values != 0)).sum())
-    share = _share(weights[housing_units], (values > 0)[housing_units])
-    low, high = _OWNED_NONZERO_SHARE_BAND
-    entry.update(
-        differs_from_native_veh=differs,
-        housing_units_without_veh=uncoded,
-        group_quarters_with_vehicles=group_quarters_owning,
-        housing_unit_share_with_vehicle=share,
-        share_band=[low, high],
-    )
-    if unknown:
-        failures.append(f"{unknown} household(s) have no {_HOUSEHOLD_KIND} 1/2/3.")
-    if uncoded:
-        failures.append(
-            f"{uncoded} housing unit(s) have no {ACS_VEHICLES_AVAILABLE} code "
-            f"0-{ACS_VEHICLES_TOP_CODE}."
-        )
-    if differs:
-        failures.append(
-            f"{_OWNED} differs from ACS {ACS_VEHICLES_AVAILABLE} in {differs} "
-            "housing unit(s)."
-        )
-    if group_quarters_owning:
-        failures.append(
-            f"{group_quarters_owning} group-quarters household(s) own vehicles."
-        )
-    if housing_units.any() and not low <= share <= high:
-        failures.append(
-            f"weighted share of housing units with a vehicle is {share:.3f}, "
-            f"outside [{low}, {high}]."
         )
     return failures
 

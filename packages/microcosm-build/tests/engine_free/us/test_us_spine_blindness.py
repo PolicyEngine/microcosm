@@ -281,9 +281,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Legacy local-lane native FS receipt anchor and release gate (#1022);
         # outside the registry.
         "acs_local_receipt_anchors.py",
-        # Legacy local-lane native vehicle-count and Head Start take-up fill
-        # and grade helpers (#1022); tag-free, the take-up stage passes the
-        # spine masks. Outside the registry.
+        # Legacy local-lane Head Start take-up fill, ACS VEH availability
+        # receipt and grade helpers (#1022); tag-free, the take-up stage
+        # passes the spine masks. Outside the registry.
         "acs_local_vehicles_head_start.py",
         # Reviewed-fill consumer register loader, dependency walk and release
         # gate (#1022); reads fill manifests and the packaged register, never a
@@ -3482,8 +3482,9 @@ def test_acs_local_take_up_provenance_is_limited_to_reviewed_boundaries() -> Non
     """Pin the ACS-row take-up fill and per-origin take-up gate (#1019).
 
     Each boundary reads exactly three origin tags, spm_unit, person and
-    household: the engine-free fills (#1022) are person-, SPM-unit- and (the
-    vehicle count) household-level. Their helpers, including the tag-free
+    household: the engine-free fills (#1022) are person- and SPM-unit-level,
+    and the ACS VEH availability receipt and owned-count grade are
+    household-level. Their helpers, including the tag-free
     acs_local_vehicles_head_start module, receive the resulting masks and
     read no tag themselves.
     """

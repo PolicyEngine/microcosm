@@ -1,5 +1,5 @@
-"""Native ACS vehicle counts and Head Start take-up for the ACS rows of the
-retained ACS local lane (microcosm#1022).
+"""ACS vehicle availability, the owned vehicle count grade and Head Start
+take-up for the ACS rows of the retained ACS local lane (microcosm#1022).
 
 The helpers are tag-free: these tests hand them spine masks directly. The
 take-up stage that wires them in is covered in test_us_acs_local_take_up.py.
@@ -22,7 +22,7 @@ from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
     grade_head_start,
     grade_vehicles_owned,
     head_start_fill,
-    vehicles_owned_fill,
+    vehicles_available_summary,
 )
 from microcosm.build.us_runtime.sipp_head_start import (
     US_SIPP_HEAD_START_OUTPUT_COLUMNS,
@@ -40,7 +40,7 @@ def test_columns_are_the_donor_stages_outputs() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Vehicle count
+# Vehicle availability and the owned count
 # ---------------------------------------------------------------------------
 
 
@@ -70,78 +70,88 @@ def _households(n_donor: int = 20, n_acs: int = 80) -> tuple[pd.DataFrame, np.nd
     return household, acs
 
 
-def test_vehicle_count_is_native_veh_and_zero_in_group_quarters() -> None:
+def _summary(household: pd.DataFrame, rows: np.ndarray) -> dict[str, object]:
+    return vehicles_available_summary(household, rows, np.ones(len(household)))
+
+
+def test_availability_counts_veh_codes_in_housing_units_only() -> None:
     household, acs = _households()
-    missing, assigned, entry = vehicles_owned_fill(household, acs)
-    assert np.array_equal(missing, acs)
+    entry = _summary(household, acs)
     kinds = household["TYPEHUGQ"].to_numpy()
     housing_units = acs & (kinds == 1)
     group_quarters = acs & np.isin(kinds, (2, 3))
-    assert np.array_equal(assigned[housing_units], household["VEH"][housing_units])
-    assert (assigned[group_quarters] == 0).all()
-    assert entry["filled_rows"] == int(acs.sum())
-    assert entry["preserved_rows"] == 0
-    assert entry["housing_unit_filled_rows"] == int(housing_units.sum())
-    assert entry["group_quarters_zero_rows"] == int(group_quarters.sum())
+    veh = household["VEH"].to_numpy()
+    assert entry["households"] == int(acs.sum())
+    assert entry["housing_units"] == int(housing_units.sum())
+    assert entry["group_quarters"] == int(group_quarters.sum())
+    assert entry["unknown_kind_rows"] == 0
     assert entry["group_quarters_coded_rows"] == 0
-    assert entry["top_coded_rows"] == int((household["VEH"][housing_units] == 6).sum())
-    assert sum(entry["code_counts"].values()) == int(housing_units.sum())
-    assert set(entry["code_counts"]) == {str(code) for code in range(7)}
-    assert "TVEH_NUM" in entry["donor_definition"]
+    assert entry["housing_units_without_veh"] == 0
+    assert entry["top_coded_rows"] == int((veh[housing_units] == 6).sum())
+    assert entry["code_counts"] == {
+        str(code): int((veh[housing_units] == code).sum()) for code in range(7)
+    }
+    assert entry["weighted_housing_unit_share_with_vehicle_available"] == pytest.approx(
+        float((veh[housing_units] > 0).mean())
+    )
+    assert entry["reference_owned_share_band"] == [0.40, 0.99]
+    assert entry["within_reference_band"] is True
+    assert "leased and employer-provided" in entry["source"]
+    assert "TVEH_NUM" in entry["owned_definition"]
+    assert "written to no engine input" in entry["treatment"]
+    assert "microcosm#1064 review" in entry["treatment"]
 
 
-def test_vehicle_count_fills_only_missing_acs_cells() -> None:
+def test_two_vehicles_available_are_recorded_and_no_count_is_written() -> None:
+    """microcosm#1064 review: VEH 2 (say, two leased cars) is two vehicles
+    available. The summary records it and leaves the owned count alone."""
+
     household, acs = _households()
-    stored = int(np.flatnonzero(acs)[0])
-    household.loc[stored, OWNED] = 2.0
-    missing, _, entry = vehicles_owned_fill(household, acs)
-    # Donor cells and the stored ACS cell are not the fill's.
-    assert not missing[~acs].any()
-    assert not missing[stored]
-    assert entry["preserved_rows"] == 1
+    housing_units = acs & (household["TYPEHUGQ"] == 1).to_numpy()
+    household["VEH"] = household["VEH"].where(~housing_units, 0.0)
+    unit = int(np.flatnonzero(housing_units)[0])
+    household.loc[unit, "VEH"] = 2.0
+    before = household.copy(deep=True)
+    entry = _summary(household, acs)
+    pd.testing.assert_frame_equal(household, before)
+    assert pd.isna(household.loc[unit, OWNED])
+    assert entry["code_counts"]["2"] == 1
+    assert entry["code_counts"]["0"] == int(housing_units.sum()) - 1
+    assert entry["weighted_housing_unit_share_with_vehicle_available"] == pytest.approx(
+        1 / int(housing_units.sum())
+    )
+    # The donor band is a reference, not a grade.
+    assert entry["within_reference_band"] is False
 
 
-def test_vehicle_count_ignores_a_group_quarters_code() -> None:
+def test_availability_ignores_a_group_quarters_code_and_counts_unknown_kinds() -> None:
     household, acs = _households()
     gq = int(np.flatnonzero(acs & (household["TYPEHUGQ"] == 3).to_numpy())[0])
     household.loc[gq, "VEH"] = 3.0
-    _, assigned, entry = vehicles_owned_fill(household, acs)
-    assert assigned[gq] == 0
+    household.loc[int(np.flatnonzero(acs)[0]), "TYPEHUGQ"] = np.nan
+    entry = _summary(household, acs)
     assert entry["group_quarters_coded_rows"] == 1
+    assert entry["unknown_kind_rows"] == 1
+    assert sum(entry["code_counts"].values()) == entry["housing_units"]
 
 
 @pytest.mark.parametrize("code", [np.nan, 7.0, -1.0, 2.5])
-def test_vehicle_count_refuses_a_housing_unit_without_a_veh_code(code) -> None:
+def test_availability_counts_a_housing_unit_without_a_veh_code(code) -> None:
+    """Counted for review, not refused: VEH reaches no engine input."""
+
     household, acs = _households()
     unit = int(np.flatnonzero(acs & (household["TYPEHUGQ"] == 1).to_numpy())[0])
     household.loc[unit, "VEH"] = code
-    with pytest.raises(ValueError, match="no VEH code 0-6"):
-        vehicles_owned_fill(household, acs)
+    entry = _summary(household, acs)
+    assert entry["housing_units_without_veh"] == 1
+    assert sum(entry["code_counts"].values()) == entry["housing_units"] - 1
 
 
-def test_vehicle_count_refuses_an_unknown_household_kind() -> None:
+def test_availability_records_a_missing_column_instead_of_refusing() -> None:
     household, acs = _households()
-    household.loc[int(np.flatnonzero(acs)[0]), "TYPEHUGQ"] = np.nan
-    with pytest.raises(ValueError, match="TYPEHUGQ 1/2/3"):
-        vehicles_owned_fill(household, acs)
-
-
-def test_a_stored_acs_household_needs_no_codes() -> None:
-    """Only a cell the fill writes must be readable."""
-
-    household, acs = _households()
-    household[OWNED] = household[OWNED].fillna(1.0)
-    household.loc[int(np.flatnonzero(acs)[0]), "TYPEHUGQ"] = np.nan
-    missing, _, entry = vehicles_owned_fill(household, acs)
-    assert not missing.any()
-    assert entry["filled_rows"] == 0
-
-
-def _filled_households() -> tuple[pd.DataFrame, np.ndarray]:
-    household, acs = _households()
-    missing, assigned, _ = vehicles_owned_fill(household, acs)
-    household.loc[missing, OWNED] = assigned[missing]
-    return household, acs
+    entry = _summary(household.drop(columns="VEH"), acs)
+    assert entry["missing_columns"] == ["VEH"]
+    assert "code_counts" not in entry
 
 
 def _grade(household: pd.DataFrame, rows: np.ndarray, *, graded: bool):
@@ -152,52 +162,58 @@ def _grade(household: pd.DataFrame, rows: np.ndarray, *, graded: bool):
     return failures, entry
 
 
-def test_vehicle_grade_passes_on_the_filled_counts() -> None:
-    household, acs = _filled_households()
+def test_owned_grade_passes_on_acs_rows_at_the_reviewed_default() -> None:
+    """Missing before the reviewed-null fill and 0 after it; VEH is
+    recorded beside the count as availability."""
+
+    household, acs = _households()
     failures, entry = _grade(household, acs, graded=True)
     assert failures == []
-    assert entry["differs_from_native_veh"] == 0
-    assert entry["group_quarters_with_vehicles"] == 0
-    assert 0.4 <= entry["housing_unit_share_with_vehicle"] <= 0.99
-    donor_failures, donor = _grade(household, ~acs, graded=False)
-    assert donor_failures == []
-    assert "differs_from_native_veh" not in donor
+    assert entry["not_default_rows"] == 0
+    assert entry["missing_rows"] == int(acs.sum())
+    housing_units = acs & (household["TYPEHUGQ"] == 1).to_numpy()
+    assert entry["vehicles_available"]["housing_units"] == int(housing_units.sum())
+    household[OWNED] = household[OWNED].where(~acs, 0.0)
+    failures, entry = _grade(household, acs, graded=True)
+    assert failures == []
+    assert entry["unique_values"] == 1
+    assert entry["weighted_share_with_vehicle"] == 0.0
 
 
-def test_vehicle_grade_fails_on_counts_that_are_not_veh() -> None:
-    household, acs = _filled_households()
-    kinds = household["TYPEHUGQ"].to_numpy()
-    unit = int(np.flatnonzero(acs & (kinds == 1))[0])
-    gq = int(np.flatnonzero(acs & (kinds == 2))[0])
-    household.loc[unit, OWNED] = household.loc[unit, OWNED] + 1
-    household.loc[gq, OWNED] = 1
-    failures = " ".join(_grade(household, acs, graded=True)[0])
-    assert f"{OWNED} differs from ACS VEH in 1 housing unit(s)" in failures
-    assert "1 group-quarters household(s) own vehicles" in failures
+def test_owned_grade_fails_on_veh_written_as_the_owned_count() -> None:
+    """The #1064 review: VEH also counts leased and employer-provided cars."""
+
+    household, acs = _households()
+    household[OWNED] = household[OWNED].where(~acs, household["VEH"].fillna(0.0))
+    written = int((acs & (household["VEH"] > 0).to_numpy()).sum())
+    failures, entry = _grade(household, acs, graded=True)
+    assert entry["not_default_rows"] == written
+    assert len(failures) == 1
+    assert failures[0].startswith(
+        f"{OWNED} is not the reviewed default 0 in {written} household(s)"
+    )
+    assert "must not be written as the owned count" in failures[0]
 
 
-def test_vehicle_grade_fails_on_the_engine_default() -> None:
-    household, acs = _filled_households()
-    household[OWNED] = household[OWNED].where(~acs, 0)
-    failures = " ".join(_grade(household, acs, graded=True)[0])
-    assert f"{OWNED} is constant" in failures
-    assert "share of housing units with a vehicle is 0.000" in failures
-    household[OWNED] = household[OWNED].where(~acs, np.nan)
-    failures = " ".join(_grade(household, acs, graded=True)[0])
-    assert f"{OWNED} has missing rows" in failures
-
-
-def test_vehicle_grade_fails_on_fractional_counts_on_either_spine() -> None:
-    household, acs = _filled_households()
-    household.loc[0, OWNED] = 1.5
-    failures, _ = _grade(household, ~acs, graded=False)
-    assert failures == [f"{OWNED} has 1 negative or fractional value(s)."]
-
-
-def test_vehicle_grade_needs_veh_on_the_graded_spine() -> None:
-    household, acs = _filled_households()
-    failures, _ = _grade(household.drop(columns="VEH"), acs, graded=True)
-    assert failures == [f"missing VEH; {OWNED} cannot be checked."]
+def test_owned_grade_holds_donor_rows_to_complete_varying_counts() -> None:
+    household, acs = _households()
+    failures, entry = _grade(household, ~acs, graded=False)
+    assert failures == []
+    assert "vehicles_available" not in entry
+    assert "not_default_rows" not in entry
+    fractional = household.copy()
+    fractional.loc[0, OWNED] = 1.5
+    assert _grade(fractional, ~acs, graded=False)[0] == [
+        f"{OWNED} has 1 negative or fractional value(s)."
+    ]
+    constant = household.copy()
+    constant.loc[~acs, OWNED] = 0.0
+    assert f"{OWNED} is constant" in " ".join(_grade(constant, ~acs, graded=False)[0])
+    missing = household.copy()
+    missing.loc[0, OWNED] = np.nan
+    assert f"{OWNED} has missing rows" in " ".join(
+        _grade(missing, ~acs, graded=False)[0]
+    )
 
 
 # ---------------------------------------------------------------------------
