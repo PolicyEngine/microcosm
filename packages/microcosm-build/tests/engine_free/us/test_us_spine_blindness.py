@@ -285,6 +285,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # and grade helpers (#1022); tag-free, the take-up stage passes the
         # spine masks. Outside the registry.
         "acs_local_vehicles_head_start.py",
+        # Reviewed-fill consumer register loader, dependency walk and release
+        # gate (#1022); reads fill manifests and the packaged register, never a
+        # frame. Outside the registry.
+        "acs_local_reviewed_fill_consumers.py",
         "acs_multispine.py",
         "acs_pums.py",
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
