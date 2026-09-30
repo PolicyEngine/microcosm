@@ -1,0 +1,57 @@
+{
+ "dimension_counts": {
+  "acs_native/demographics_pep/national": 18,
+  "acs_native/demographics_pep/state": 918,
+  "cps_native/income_components/cd": 8900,
+  "cps_native/income_components/national": 102,
+  "cps_native/income_components/state": 3054,
+  "cps_native/program_receipt/national": 17,
+  "cps_native/program_receipt/state": 467,
+  "cps_native/tax_items/cd": 15440,
+  "cps_native/tax_items/national": 362,
+  "cps_native/tax_items/state": 3563,
+  "other/wealth/national": 1
+ },
+ "excluded": {
+  "excluded:reform_simulation": 11
+ },
+ "feed": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl",
+ "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+ "medicaid_substitutions": 1,
+ "n_concepts": 419,
+ "n_report_concepts": 2,
+ "n_specs": 32842,
+ "national_state_surface": {
+  "calibrated_targets": 5694,
+  "compiled_targets": 32842,
+  "dropped_congressional_district_targets": 27148,
+  "mode": "national_state"
+ },
+ "notes": {},
+ "peak_rss_gb": 3.76,
+ "registry_version": "a0698bc97ff9",
+ "roles": {
+  "holdout": 3470,
+  "sealed": 1661,
+  "train": 27711
+ },
+ "roles_by_level": {
+  "cd": {
+   "holdout": 2647,
+   "sealed": 1242,
+   "train": 20451
+  },
+  "national": {
+   "holdout": 36,
+   "sealed": 24,
+   "train": 440
+  },
+  "state": {
+   "holdout": 787,
+   "sealed": 395,
+   "train": 6820
+  }
+ },
+ "split_note": "Mirrors the unmerged us-target-roles-holdout split (salts, \\x1f hash, group keys) without its pins; see support_mix.py.",
+ "wall_s": 22.6
+}
