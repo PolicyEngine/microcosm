@@ -180,6 +180,14 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.clone_index",
     "household.constituency_code_oa",
     "household.consumer_debt",
+    # microcosm#932: the five nation-native aliases of the atomic assignment
+    # (output_area_code, data_zone_code, intermediate_zone_code,
+    # super_data_zone_code, district_electoral_area_code) never reach an
+    # artifact: graph_terminal._tables drops them at the single-year export
+    # boundary. They are listed because the full-build export-surface gate
+    # reads the graph frame's in-memory columns (full_gates.py,
+    # ``parity_evidence.candidate_columns``) before that boundary, and would
+    # otherwise flag them as unreviewed extras (the F8 gap on #932).
     "household.data_zone_code",
     "household.district_electoral_area_code",
     "household.electricity_consumption",

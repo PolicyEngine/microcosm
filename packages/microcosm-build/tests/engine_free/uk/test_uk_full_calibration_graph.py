@@ -431,7 +431,7 @@ def test_blocking_preflight_refuses_before_dense_or_checkpoint_work(imported):
         # decoding an imported solution, just as it must before optimization.
         artifacts["imported_dense"] = SimpleNamespace(payload=b"must not read")
     with pytest.raises(ValueError, match="refused by the source preflight"):
-        UKDenseSolveKernel().run(SimpleNamespace(artifacts=artifacts))
+        UKDenseSolveKernel().run(SimpleNamespace(artifacts=artifacts, params={}))
 
 
 def test_size_kernels_forward_phased_epochs_to_the_registered_observer(

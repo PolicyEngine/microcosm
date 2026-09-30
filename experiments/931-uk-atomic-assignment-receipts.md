@@ -17,7 +17,7 @@ Disclosure: the committed 1 % evidence and this file report population aggregate
 
 ## R1 — f001 (1 %, sample seed 578; committed evidence)
 
-Evidence: `docs/evidence/uk-931/atomic-assignment-cells.json`, sha256 `32f494dff98e81c58fbaa8c03d1a425c1684277e36d4b62757a50f66f44a2a49` (4 cells × 1,011 areas; 985 area counts suppressed as `<3`).
+Evidence: `docs/evidence/uk-931/atomic-assignment-cells.json`, sha256 `7d120d529da618edebd5b96b9bbddfcca28ed2e06e6c9bbbebacab5b1a0322e8` (4 cells × 1,011 areas; 985 area counts suppressed as `<3`, their z-scores blanked with them since the round-1 review of #932 found the counts recoverable from `expected_rows` and `z`; the file was re-suppressed in place under the harness's rule, no cell regenerated, from sha256 `32f494df…`).
 
 | law | K | rows | source hh | gate | shared gate | London share | const. min rows / ESS / sources | const. max abs z / share abs z>3 (n) | const. breaches | LA min rows / ESS / sources | LA max abs z / share>3 (n) | LA breaches | identity stable | K-growth nested |
 |---|---:|---:|---:|---|---|---:|---|---|---:|---|---|---:|---|---|

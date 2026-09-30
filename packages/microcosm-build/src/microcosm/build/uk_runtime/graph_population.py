@@ -495,9 +495,15 @@ class UKPoolCheckpointKernel(_PopulationKernel):
     """Checkpoint the complete pool; refuse unless the shared atomic gate passed.
 
     The shared ``geography.gate@1`` result is a platform-scoped typed artifact
-    (amendment 17). This FILTER node consumes it and emits no typed artifact of
-    its own, so the scope stops here instead of laundering into the bitwise
-    UK target and calibration chain through a gate report.
+    (amendment 17), and a bitwise UK kernel consuming it as a typed input
+    would be refused. This FILTER node consumes it and emits no typed
+    artifact of its own, so that refusal is avoided here. It is only the
+    typed-artifact edge that stops: the shared assignment kernels are
+    ``platform_bitwise`` too, and their columns reach the UK target and
+    calibration chain through population slices, which the executor already
+    reads at platform scope. Whether the shared kernels can honestly declare
+    ``bitwise`` (exact keyed draws, integer inverse CDF) is the open question
+    recorded on microcosm#932.
     """
 
     ref = "uk.full.pool@1"

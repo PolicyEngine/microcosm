@@ -295,12 +295,15 @@ def record_candidate_attempt(
     predecessor: str | None,
     spool_dir: Path,
     rung: str = "f100",
+    pipeline: str = UK_CANDIDATE_PIPELINE,
 ) -> Path:
+    """Record the attempt on the role's Logbook pipeline (the dense one by default)."""
+
     return record_terminal_attempt(
         state=state,
         started_at=started_at,
         started_ts=started_ts,
-        pipeline=UK_CANDIDATE_PIPELINE,
+        pipeline=pipeline,
         rung=rung,
         seed=seed,
         code_pin=code_pin,
@@ -325,11 +328,18 @@ def record_candidate_error(
     base_dir: Path,
     spool_dir: Path,
     rung: str = "f100",
+    pipeline: str = UK_CANDIDATE_PIPELINE,
+    disposition: str = "failed",
 ) -> None:
+    """The error receipt and the terminal row of an attempt that did not complete.
+
+    ``disposition`` is ``failed`` for an error and ``discarded`` for an
+    operator interrupt (the seam's ``_record_failed_attempt`` distinction).
+    """
     error_path = write_error_receipt(
         error_receipt_path(base_dir, build_id=state.build_id),
         state=state,
-        pipeline=UK_CANDIDATE_PIPELINE,
+        pipeline=pipeline,
         error=error,
     )
     apply_error_verdict(
@@ -342,10 +352,11 @@ def record_candidate_error(
         started_ts=started_ts,
         seed=seed,
         code_pin=code_pin,
-        disposition="failed",
+        disposition=disposition,
         predecessor=predecessor,
         spool_dir=spool_dir,
         rung=rung,
+        pipeline=pipeline,
     )
 
 

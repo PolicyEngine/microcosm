@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.graph import ContentStore, compile_graph, run_graph
 from test_support.microcosm_build.uk_atomic_support_fixtures import write_toy_supports
 from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
+from test_support.microcosm_build.uk_full_build_cli import patch_support_register
 from test_support.microcosm_build.uk_full_population_graph import source_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
@@ -151,3 +152,56 @@ def test_prepare_refuses_checkpoint_drift_before_registering_a_full_build(
     with pytest.raises(ValueError, match="identity mismatch|SHA-256 mismatch"):
         cli.prepare_full_build(args)
     assert not args.out.exists()
+
+
+def test_prepare_release_candidate_requires_the_registered_supports(
+    checkpoint_request, monkeypatch
+):
+    """Under ``--release-candidate`` the operator's support pins must be the
+    sources.yaml rows (microcosm#932 round 1): a pin that proves the bytes are
+    the ones requested is not proof they are the ones reviewed."""
+    import hashlib
+    from pathlib import Path
+
+    args, sidecar_path, gates_path = checkpoint_request
+
+    def sha(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    argv = [
+        "--release-role",
+        "dense",
+        "--input-h5",
+        str(args.input_h5),
+        "--input-sha256",
+        sha(Path(args.input_h5)),
+        "--input-sidecar",
+        str(sidecar_path),
+        "--input-spine-gates",
+        str(gates_path),
+        "--ladder",
+        str(args.ladder),
+        "--ladder-sha256",
+        sha(Path(args.ladder)),
+        "--ledger-facts",
+        str(args.ledger_facts),
+        "--out",
+        str(args.out),
+        "--release-candidate",
+    ]
+    pins = {}
+    for system, label in cli._SUPPORT_ARGUMENTS.items():
+        path = Path(getattr(args, f"atomic_support_{label}"))
+        pins[system] = {"sha256": sha(path), "size_bytes": path.stat().st_size}
+        argv += [
+            f"--atomic-support-{label}",
+            str(path),
+            f"--atomic-support-sha256-{label}",
+            pins[system]["sha256"],
+        ]
+    release = cli.parse_args(argv)
+    with pytest.raises(ValueError, match="sources.yaml"):
+        cli.prepare_full_build(release)
+    patch_support_register(monkeypatch, pins)
+    prepared = cli.prepare_full_build(release)
+    assert prepared.bindings["geography"]["support_pins"] == pins

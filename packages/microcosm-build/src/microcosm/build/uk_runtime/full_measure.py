@@ -33,6 +33,35 @@ UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = (
 )
 
 
+def _without_scratch_paths(value, scratch_dir: Path):
+    """Record scratch-relative paths in a receipt, never the scratch root.
+
+    A scratch-mode resolver names the file it simulated from (its
+    ``source_path``), which lies under the per-run temporary directory the
+    measure node creates. The receipt rides into the problem's bindings and
+    the stored measure artifact, so an absolute scratch path would change a
+    deterministic node's output between identical runs; the path is kept
+    relative to the scratch root, which is stable (``simulation-input.h5``,
+    ``clone-0/simulation-input.h5``).
+    """
+    if isinstance(value, Mapping):
+        return {
+            key: _without_scratch_paths(item, scratch_dir)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_without_scratch_paths(item, scratch_dir) for item in value]
+    if isinstance(value, str) and value:
+        root = scratch_dir.resolve()
+        candidate = Path(value)
+        if candidate.is_absolute():
+            try:
+                return str(candidate.resolve().relative_to(root))
+            except ValueError:
+                return value
+    return value
+
+
 def resolve_uk_full_measures(
     frame,
     national_registry,
@@ -116,6 +145,7 @@ def resolve_uk_full_measures(
     measure_parts: dict[tuple[str, str], list[pd.Series]] = {}
     metric_parts: dict[str, list[pd.DataFrame]] = {grain: [] for grain in local_grains}
     resolver_receipts: list[Mapping[str, Any]] = []
+    resolution_receipts: list[dict[str, Any]] = []
     national_input_keys: set[tuple[str, str]] | None = None
     for clone_index, block_frame in block_frames:
         block_scratch = (
@@ -132,6 +162,9 @@ def resolve_uk_full_measures(
             national_registry,
             resolver,
             period=period,
+        )
+        resolution_receipts.append(
+            _without_scratch_paths(dict(resolution.receipt), scratch_dir)
         )
         keys = set(resolution.measure_inputs)
         if national_input_keys is None:
@@ -159,7 +192,9 @@ def resolve_uk_full_measures(
                     household_ids=block_household_ids,
                 )
             )
-        resolver_receipts.append(resolver.receipt())
+        resolver_receipts.append(
+            _without_scratch_paths(dict(resolver.receipt()), scratch_dir)
+        )
         del resolver
         simulation_input = block_scratch / "simulation-input.h5"
         simulation_input.unlink(missing_ok=True)
@@ -242,6 +277,11 @@ def resolve_uk_full_measures(
             for area_type, metrics in local_metrics.items()
         },
         "blocks": blocks,
+        "target_materialization": materialized.report(),
+        # The resolution loop's own receipt per block (which measure came from
+        # which provider, the rounds, the provider's receipt): the seam
+        # manifest's ``measure_resolution`` block, one per engine block.
+        "resolution": resolution_receipts,
     }
     if cgt_period_contract is not None:
         receipt["cgt_period_contract"] = cgt_period_contract

@@ -174,6 +174,18 @@ def test_breach_tables_and_disclosure_suppression(harness, toy_ladder):
     assert harness._suppress(2.0, 3) == "<3"
     assert harness._suppress(0.0, 3) == 0.0
     assert harness._suppress(3.0, 3) == 3.0
+    # z is a function of the suppressed count, so it is blanked with it
+    # (#932 round 1: the counts were recoverable from expected_rows and z).
+    row = {"rows": 2.0, "ess": 1.5, "sources": 2.0, "z": 0.3, "expected_rows": 1.0}
+    assert harness._suppressed_area(row, 3) == {
+        **row,
+        "rows": "<3",
+        "ess": "<3",
+        "sources": "<3",
+        "z": None,
+    }
+    assert harness._suppressed_area({**row, "rows": 3.0}, 3)["z"] == 0.3
+    assert harness._suppressed_area({**row, "rows": 0.0}, 3)["z"] == 0.3
 
 
 def test_committed_931_evidence_is_internally_consistent():
@@ -197,6 +209,8 @@ def test_committed_931_evidence_is_internally_consistent():
                     assert value == f"<{evidence['minimum_count']}"
                 else:
                     assert value == 0 or value >= evidence["minimum_count"]
+            if isinstance(area["rows"], str):
+                assert area["z"] is None
             assert "household_id" not in area and "source_household_id" not in area
         if cell["law"] == "keyed":
             assert all(cell["identity_stability"].values())

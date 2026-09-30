@@ -340,6 +340,33 @@ class _ObservedSolveKernel(_CalibrationKernel):
         self.progress_callback = progress_callback
 
 
+#: The doctrine fields the dense node does not pass to the solver, with the
+#: one value it solves under: free mass, the default target-loss scales and
+#: no L0 penalty. A problem that binds another value would record a doctrine
+#: the solve did not honour, so the node refuses it instead.
+UK_DENSE_SOLVE_FIXED_DOCTRINE: Mapping[str, object] = {
+    "mass_rule": "free",
+    "scale_rule": "default_target_loss_scales",
+    "l0_lambda": 0.0,
+}
+
+
+def refuse_unhonoured_solve_doctrine(binding: Mapping[str, object]) -> None:
+    """Refuse a problem whose bound doctrine the dense solve cannot honour."""
+
+    for key, honoured in UK_DENSE_SOLVE_FIXED_DOCTRINE.items():
+        if key not in binding:
+            continue
+        bound = binding[key]
+        if key == "l0_lambda":
+            bound = float(bound)
+        if bound != honoured:
+            raise ValueError(
+                f"UK dense solve cannot honour {key}={binding[key]!r}: it solves "
+                f"under {honoured!r}."
+            )
+
+
 class UKDenseSolveKernel(_ObservedSolveKernel):
     ref = "uk.full.dense@1"
     capabilities = Capabilities(
@@ -348,9 +375,34 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
         dependencies=_DEPENDENCIES,
     )
 
-    def run(self, context):
+    @staticmethod
+    def _admit(context) -> None:
+        """The solve's admission, declared by the node.
+
+        The dense line (the default, ``admission`` absent) solves only after
+        its source preflight battery permitted the artifact. The national
+        line (``admission="bound_spine"``) runs no pre-solve battery: it
+        solves the bound spine checkpoint, whose provenance artifact the
+        bound-spine node emits only after the sidecar, content identity and
+        gate report authenticated (microcosm#823 through the graph).
+        """
         from .graph_terminal import decode_full_gate_report
 
+        admission = str(context.params.get("admission", "preflight"))
+        if admission == "bound_spine":
+            if "spine_provenance" not in context.artifacts:
+                raise ValueError(
+                    "National calibration requires the bound spine's provenance artifact."
+                )
+            provenance = json.loads(context.artifacts["spine_provenance"].payload)
+            binding = provenance.get("spine_gate_report")
+            if not isinstance(binding, Mapping) or not binding.get("sha256"):
+                raise ValueError(
+                    "National calibration requires a spine provenance bound to its gate report."
+                )
+            return
+        if admission != "preflight":
+            raise ValueError(f"Unknown dense calibration admission {admission!r}.")
         if "preflight" not in context.artifacts:
             raise ValueError(
                 "Dense calibration requires its source preflight artifact."
@@ -362,6 +414,9 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
             raise ValueError("Dense calibration requires a preflight phase report.")
         if not classification["artifact_permitted"]:
             raise ValueError("Dense calibration refused by the source preflight.")
+
+    def run(self, context):
+        self._admit(context)
         frame, problem = _inputs(context)
         if "imported_dense" in context.artifacts:
             result = decode_calibration_result(
@@ -386,6 +441,7 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
         }
         if not required <= set(binding):
             raise ValueError("UK ordered problem is missing its solve doctrine.")
+        refuse_unhonoured_solve_doctrine(binding)
         result = calibrate(
             frame,
             problem.to_target_set(),

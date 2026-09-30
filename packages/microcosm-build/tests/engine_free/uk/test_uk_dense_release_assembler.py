@@ -15,6 +15,10 @@ from microcosm.build.gate_battery import _canonical_json_bytes, _canonical_sha25
 from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 from microcosm.data import contract as dc
+from test_support.microcosm_build.uk_full_build_cli import (
+    patch_support_register,
+    synthetic_geography_binding,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -95,6 +99,14 @@ def _signed_report():
         KEY_BYTES, _canonical_json_bytes(report), hashlib.sha256
     ).hexdigest()
     return report
+
+
+@pytest.fixture(autouse=True)
+def _registered_supports(monkeypatch) -> None:
+    """The assembler runs the release pre-flight, which checks the candidate's
+    geography support pins against the register; the synthetic candidates
+    bind the synthetic pins, so register those."""
+    patch_support_register(monkeypatch)
 
 
 def _staging_delivery(**overrides) -> dict:
@@ -286,6 +298,7 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
             }
         },
         "staging_delivery": _staging_delivery(),
+        "geography": {"assignment": synthetic_geography_binding()},
         "identity": {
             "spine": {
                 "pin_verified": True,

@@ -6,15 +6,17 @@ stored artifacts. Publication and signing remain explicit external services.
 
 ``--release-role`` declares which UK dataset line the run builds and is
 required (microcosm#823): ``dense`` is the K-clone joint national + local
-surface under the local doctrine, built here through the graph; ``national``
-is parsed and validated by the same posture-aware validator and then
-dispatched, before any graph preparation, to the retained calibration seam
-through :mod:`microcosm.build.uk_runtime.national_role` (its Logbook row,
-staging telemetry, manifest and staged bundle live there). The role supplies
-every unset solve default and refuses the other role's flags through
-:mod:`microcosm.build.uk_runtime.rowwise_cli`. ``tools/build_uk_rowwise_candidate.py``
-and ``tools/build_uk_full.py`` are stubs over :func:`main`, so every UK line
-is built by this one command.
+surface under the local doctrine; ``national`` is the certified national
+line, the bound spine checkpoint solved as bound under the national doctrine
+(:mod:`microcosm.build.uk_runtime.graph_national`), with the seam-shaped
+evidence (``build_record.json``, the signed calibration-seam gate report,
+the diagnostics, the frozen registries, the schema-4 national manifest;
+:mod:`microcosm.build.uk_runtime.national_role`) materialised from the
+graph's stored artifacts. Both lines are built here through the graph. The
+role supplies every unset solve default and refuses the other role's flags
+through :mod:`microcosm.build.uk_runtime.rowwise_cli`.
+``tools/build_uk_rowwise_candidate.py`` and ``tools/build_uk_full.py`` are
+stubs over :func:`main`, so every UK line is built by this one command.
 
 A non-dry dense run is wrapped in the rowwise tool's operational envelope:
 the Logbook attempt (a spooled row under ``<out>/logbook-spool`` on every
@@ -39,6 +41,7 @@ import sys
 import tempfile
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -76,7 +79,7 @@ from ..staging_cli import (
     validate_staging_arguments,
 )
 from ..staging_dataset import SHA256SUMS_FILENAME, refresh_sha256sums_entry
-from . import national_role
+from . import country_adapter, national_role
 from .atomic_area_support import (
     IDENTITY_COLUMN,
     uk_atomic_assignment_definition,
@@ -87,7 +90,13 @@ from .atomic_area_support import (
 from .atomic_area_support import (
     SYSTEMS as ATOMIC_SUPPORT_SYSTEMS,
 )
-from .calibration_run import runtime_provenance
+from .calibration_run import (
+    _write_json,
+    load_bound_spine_checkpoint,
+    new_uk_calibration_attempt_id,
+    runtime_provenance,
+    spine_provenance_from_sidecar,
+)
 from .chronicle_feed import load_uk_chronicle_feed
 from .frs_release import load_uk_frs_release
 from .full_certification import (
@@ -103,8 +112,23 @@ from .graph_build import (
     uk_full_graph,
 )
 from .graph_calibration import UKGraphCalibrationConfig
+from .graph_national import (
+    NATIONAL_GATES_NODE,
+    NATIONAL_READBACK_NODE,
+    NATIONAL_TARGETS_NODE,
+    UKNationalBuildConfig,
+    UKNationalGraph,
+    add_uk_national_readback,
+    graph_payload,
+    national_build_record,
+    national_result_from_manifest,
+    national_run_config,
+    register_uk_national_kernels,
+    replay_uk_national_gate_battery,
+    uk_national_graph,
+)
 from .graph_population import GEOGRAPHY_ASSIGNMENTS
-from .graph_targets import TARGET_SELECTION_TYPE
+from .graph_targets import TARGET_SELECTION_TYPE, registry_from_payload
 from .graph_terminal import (
     FULL_DIAGNOSTICS_CSV_TYPE,
     FULL_DIAGNOSTICS_TYPE,
@@ -121,7 +145,8 @@ from .graph_terminal import (
     register_uk_terminal_kernels,
     rowwise_candidate_manifest_from_graph,
 )
-from .national_frame import load_uk_national_frame
+from .national_doctrine import uk_doctrine_with_overrides
+from .national_frame import load_uk_national_frame, write_uk_national_frame
 from .national_sampling import UK_SAMPLE_RUNG_TOKENS
 from .rowwise_cli import (
     MANIFEST_FILENAME,
@@ -132,11 +157,13 @@ from .rowwise_cli import (
     git_dirty,
     json_text,
     new_candidate_build_id,
+    output_paths,
     posture_of,
     record_candidate_attempt,
     record_candidate_error,
     refuse_national_role_arguments,
     resolve_role_arguments,
+    rowwise_parameters,
     validate_cli_args,
 )
 from .rowwise_posture import (
@@ -169,10 +196,13 @@ _refuse_national_role_arguments = refuse_national_role_arguments
 __all__ = [
     "UK_ROWWISE_DENSE_POSTURE",
     "PreparedUKFullBuild",
+    "PreparedUKNationalBuild",
     "execute_full_build",
+    "execute_national_build",
     "main",
     "parse_args",
     "prepare_full_build",
+    "prepare_national_build",
     "uk_rowwise_posture",
 ]
 
@@ -475,6 +505,14 @@ def _prepare_geography(
     """
     if args.geography_assignment != "atomic":
         return None, {"assignment": "legacy"}
+    # A release candidate builds on the registered supports (sources.yaml,
+    # the provenance register): the operator's pin proves the bytes are the
+    # ones requested, the register proves they are the ones reviewed.
+    register = (
+        country_adapter.uk_atomic_support_register()
+        if getattr(args, "release_candidate", False)
+        else None
+    )
     support_pins = {}
     payloads = {}
     for system, label in _SUPPORT_ARGUMENTS.items():
@@ -485,6 +523,13 @@ def _prepare_geography(
                 "--atomic-support-scotland and --atomic-support-ni."
             )
         pin = _pin(path, getattr(args, f"atomic_support_sha256_{label}"))
+        if register is not None and pin != register[system]:
+            raise ValueError(
+                f"--release-candidate requires the registered atomic-area support "
+                f"for --atomic-support-{label}: sha256 {pin['sha256']} "
+                f"({pin['size_bytes']} bytes) is not the sources.yaml row "
+                f"{register[system]['sha256']} ({register[system]['size_bytes']} bytes)."
+            )
         pins[ATOMIC_SUPPORT_SOURCES[system]] = pin
         support_pins[system] = pin
         payloads[system] = load_raw_bytes(path)
@@ -1032,6 +1077,25 @@ def execute_full_build(
     return status
 
 
+def _refresh_completion(output: Path, roles: Mapping[str, Path]) -> None:
+    """Re-issue the completion marker over the files the close step rewrote.
+
+    ``publish_staged_bundle`` places ``build.json`` last, binding the staged
+    bytes. The close step then appends the staging receipts to the rowwise
+    manifest (both lines) and the delivery summary to the build record (the
+    national line, whose release assembler reads it there), so the marker is
+    re-issued with those files' final digests: it stays the bundle's binding
+    of what is on disk rather than of what was published a moment earlier.
+    """
+    marker = output / "build.json"
+    completion = json.loads(marker.read_text())
+    for role, path in roles.items():
+        entry = dict(completion.get(role) or {})
+        entry.pop("note", None)
+        completion[role] = {**entry, **file_artifact(path)}
+    materialize_bytes(canonical_json(completion), marker)
+
+
 def _close_attempt(
     args: argparse.Namespace,
     attempt: dict,
@@ -1065,6 +1129,9 @@ def _close_attempt(
             replace_manifest(output / MANIFEST_FILENAME, manifest)
             if (output / SHA256SUMS_FILENAME).is_file():
                 refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+            _refresh_completion(
+                output, {"rowwise_candidate_manifest": output / MANIFEST_FILENAME}
+            )
         state.artifact_location = local_artifact_reference(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
@@ -1526,6 +1593,818 @@ def _execute_full_build(
     )
 
 
+# ---------------------------------------------------------------------------
+# The national release role through the graph
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class PreparedUKNationalBuild:
+    national: UKNationalGraph
+    kernels: KernelRegistry
+    sources: dict[str, Path]
+    bindings: dict
+    pins: dict
+    inputs: dict
+    sidecar_path: Path
+    gates_path: Path
+    engine_identity: str
+    source_pins: dict
+
+
+def _ledger_facts_pin(path: Path) -> dict:
+    facts = path / "consumer_facts.jsonl" if path.is_dir() else path
+    artifact = file_artifact(facts)
+    return {"sha256": artifact["sha256"], "size_bytes": int(artifact["size_bytes"])}
+
+
+def prepare_national_build(
+    args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
+) -> PreparedUKNationalBuild:
+    """Bind the national request to its graph: the checkpoint, the doctrine, the register."""
+    from .spine_build import _rules_engine, _rules_engine_provenance
+
+    posture = posture_of(args)
+    national_role.require_bound_input(args)
+    release = load_uk_frs_release()
+    input_h5 = national_role.require_file(args.input_h5, label="--input-h5")
+    pins = {"dataset": _pin(input_h5, args.input_sha256)}
+    inputs = {"dataset": _input_record(input_h5, pins["dataset"], pinned=True)}
+    frame, _ = load_uk_national_frame(input_h5)
+    sidecar_path = args.input_sidecar or input_h5.with_suffix(".build.json")
+    gates_path = args.input_spine_gates or input_h5.with_suffix(".spine_gates.json")
+    load_bound_spine_checkpoint(sidecar_path, frame, gate_report_path=gates_path)
+    spine = bound_spine_graph(frame)
+    _rules_engine()  # the uk extra must be installed; the identity is provenance
+    engine_identity = hashlib.sha256(
+        canonical_json(_rules_engine_provenance())
+    ).hexdigest()
+    stage(
+        telemetry,
+        "input_pinning",
+        "completed",
+        dataset_sha256=pins["dataset"]["sha256"],
+    )
+    time_period = str(frame.metadata["time_period"])
+    calibration_year = int(args.calibration_year or release.calibration_year)
+    doctrine, overrides = uk_doctrine_with_overrides(
+        **national_role.national_doctrine_overrides(args)
+    )
+    if doctrine.target_weight_rule != args.target_weight_rule:
+        raise RuntimeError(
+            "national doctrine override did not bind the requested rule."
+        )
+    args._calibration_year = calibration_year
+    args._frs_vintage = str(release.vintage)
+    args._doctrine_override_receipt = overrides
+    if not args.dry_run:
+        # The seam refused an occupied output directory before any work
+        # (``_validate_output_paths`` in ``_run_national_attempt``); the
+        # publication step replaces whatever is at ``--out``, so without this
+        # a second run would silently replace the first candidate's bytes
+        # under the Logbook row that names them.
+        national_role.validate_output_paths(
+            output_paths(args.out, posture=posture, vintage=args._frs_vintage),
+            input_h5=input_h5,
+            ladder_path=None,
+        )
+    config = UKNationalBuildConfig(
+        calibration_year=calibration_year,
+        time_period=time_period,
+        source_year=national_role.source_year(
+            args.source_year, time_period=str(release.time_period)
+        ),
+        doctrine=doctrine,
+        doctrine_overrides=overrides,
+        allow_unpinned_feed=bool(args.allow_unpinned_feed),
+    )
+    sources = {
+        "uk_spine": input_h5,
+        "uk_spine_evidence": sidecar_path,
+        "uk_spine_gates": gates_path,
+        "uk_ledger_facts": args.ledger_facts,
+    }
+    optional = []
+    for name, path in (
+        ("uk_measure_exclusions", args.measure_exclusions),
+        ("uk_frozen_register", args.register_json),
+    ):
+        if path is not None:
+            sources[name] = path
+            optional.append(name)
+    national = uk_national_graph(
+        config,
+        spine=spine,
+        spine_population="uk.full.spine_checkpoint",
+        optional_target_sources=tuple(optional),
+        review_date=args.review_date.isoformat(),
+        posture=posture,
+        ledger_pins={
+            "facts_sha256": args.ledger_facts_sha256,
+            "manifest_sha256": args.ledger_manifest_sha256,
+        },
+    )
+    kernels = KernelRegistry()
+    register_uk_full_kernels(
+        kernels,
+        progress_callback=None if args.dry_run else _solve_observer(args, telemetry),
+    )
+    register_uk_national_kernels(kernels)
+    compile_graph(national.graph)
+    source_pins = {
+        "input_h5": {
+            "sha256": pins["dataset"]["sha256"],
+            "size_bytes": int(pins["dataset"]["size_bytes"]),
+        },
+        "ledger_facts": _ledger_facts_pin(Path(args.ledger_facts)),
+    }
+    bindings = {
+        "schema": "microcosm.uk.national-build-request.v1",
+        "release_role": posture.role,
+        "release_id": posture.release_id,
+        "configuration": config.payload(),
+        "review_date": args.review_date.isoformat(),
+        "engine_identity": engine_identity,
+        "inputs": inputs,
+        "targets": {"ledger": dict(source_pins["ledger_facts"])},
+    }
+    if attempt is not None:
+        state = attempt["state"]
+        attempt["code_pin"] = git_code_pin(REPOSITORY)
+        state.input_pins_digest = role_pins_digest(source_pins)
+        append_phase(state, "configured")
+        append_phase(state, "input_sha_verified")
+        append_phase(state, "input_loaded")
+        append_phase(state, "input_sidecar_bound")
+    return PreparedUKNationalBuild(
+        national,
+        kernels,
+        sources,
+        bindings,
+        pins,
+        inputs,
+        sidecar_path,
+        gates_path,
+        engine_identity,
+        source_pins,
+    )
+
+
+def execute_national_build(
+    prepared: PreparedUKNationalBuild,
+    args: argparse.Namespace,
+    *,
+    telemetry=None,
+    attempt: dict | None = None,
+) -> int:
+    """Stage complete files, then publish their completion marker last."""
+    if args.dry_run:
+        return _execute_national_build(prepared, args)
+    from microcosm.build.artifact_files import publish_staged_bundle
+
+    stage_sample(telemetry, sample_fraction=args.sample_fraction)
+    output, graph_store = _output_locations(None, args)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    args.attempt_evidence = graph_store / "uk-national-attempts" / uuid.uuid4().hex
+    record: dict = {}
+    with tempfile.TemporaryDirectory(
+        prefix=f".{output.name}.national-build-", dir=output.parent
+    ) as temporary:
+        staged_args = argparse.Namespace(**vars(args))
+        staged_args.out = Path(temporary)
+        staged_args.graph_store = graph_store
+        staged_args.published_out = output
+        status = _execute_national_build(
+            prepared, staged_args, telemetry=telemetry, attempt=attempt, record=record
+        )
+        if not (staged_args.out / "build.json").exists():
+            materialize_bytes(
+                canonical_json(
+                    {
+                        "schema_version": 1,
+                        "kind": "uk_national_build_refused",
+                        "request": prepared.bindings,
+                        "release_authorized": False,
+                        "artifact_permitted": False,
+                    }
+                ),
+                staged_args.out / "build.json",
+            )
+        staged = {
+            ("manifest" if path.name == "build.json" else path.name): path
+            for path in staged_args.out.iterdir()
+            if path.is_file()
+        }
+        destinations = {role: output / path.name for role, path in staged.items()}
+        publish_staged_bundle(staged, destinations, completion_role="manifest")
+    if status == 0:
+        print(
+            f"UK national build: {output / record['dataset_name']}; the "
+            "release verdict is tools/certify_uk_release_cut.py's.",
+            file=sys.stderr,
+        )
+    if attempt is not None:
+        _close_national_attempt(
+            args,
+            attempt,
+            output=output,
+            status=status,
+            record=record,
+            telemetry=telemetry,
+        )
+    return status
+
+
+def _execute_national_build(
+    prepared: PreparedUKNationalBuild,
+    args: argparse.Namespace,
+    *,
+    telemetry=None,
+    attempt: dict | None = None,
+    record: dict | None = None,
+) -> int:
+    from microcosm.build.gate_battery import GateBatteryBlockedError
+    from microcosm.build.logbook import canonical_json_bytes
+    from microcosm.diagnostics import DiagnosticsWriteFailure
+
+    from .diagnostics import write_uk_calibration_diagnostics
+    from .target_support import write_uk_target_support_sidecars
+
+    national, kernels, sources = prepared.national, prepared.kernels, prepared.sources
+    if args.dry_run:
+        print(json.dumps(national.operation_inventory(), indent=2))
+        return 0
+    posture = posture_of(args)
+    state: AttemptState | None = None if attempt is None else attempt["state"]
+    record = {} if record is None else record
+    vintage = args._frs_vintage
+    paths = output_paths(args.out, posture=posture, vintage=vintage)
+    published_root = Path(getattr(args, "published_out", args.out))
+    published = output_paths(published_root, posture=posture, vintage=vintage)
+    record["dataset_name"] = paths["dataset"].name
+    args.out.mkdir(parents=True, exist_ok=True)
+    store = ContentStore(args.graph_store or args.out / ".graph-store")
+    graph = national.graph
+    materialize_bytes(graph_to_json(graph).encode(), args.out / "graph.json")
+    materialize_bytes(
+        canonical_json(national.operation_inventory()), args.out / "operations.json"
+    )
+    materialize_bytes(
+        canonical_json(prepared.bindings), args.attempt_evidence / "request.json"
+    )
+    build_id = "dry-run" if state is None else state.build_id
+    resume = args.resume
+    # 1. The bound checkpoint: its provenance artifact is the solve's admission.
+    stage(telemetry, "input_loading", "started")
+    checkpoint = run_graph(
+        compile_graph(_through(graph, "uk.full.spine_checkpoint")),
+        sources=sources,
+        store=store,
+        kernels=kernels,
+        resume=resume,
+    )
+    _persist_checkpoint(checkpoint, store, args, "uk.full.spine_checkpoint")
+    resume = "require" if args.resume == "require" else "auto"
+    spine_frame = checkpoint.population("uk.full.spine_checkpoint")
+    stage(
+        telemetry,
+        "input_loading",
+        "completed",
+        entity_row_counts={
+            entity: int(len(spine_frame.table(entity)))
+            for entity in spine_frame.entities
+        },
+    )
+    # 2. The register: compiled inside the graph, frozen beside the outputs.
+    stage(telemetry, "target_compilation", "started")
+    targets = run_graph(
+        compile_graph(_through(graph, NATIONAL_TARGETS_NODE)),
+        sources=sources,
+        store=store,
+        kernels=kernels,
+        resume=resume,
+    )
+    registry_document = json.loads(
+        graph_payload(targets, store, NATIONAL_TARGETS_NODE, "registry")
+    )
+    national_registry = registry_from_payload(registry_document["national_registry"])
+    band_edge_registry = registry_from_payload(registry_document["band_edge_registry"])
+    stage(
+        telemetry,
+        "target_compilation",
+        "completed",
+        compiled_target_count=len(band_edge_registry.specs),
+        active_target_count=len(national_registry.specs),
+    )
+    # The frozen register is the scorer's input: the same artifact this run
+    # solved against, by content hash; the full compiled register beside it
+    # keeps the band edges a pruned scoring surface must never redraw (#803).
+    national_registry.to_json(paths["national_registry"])
+    band_edge_registry.to_json(paths["contract_registry"])
+    source_year = national.config.source_year
+    run_config = national_run_config(
+        posture=posture,
+        config=national.config,
+        registry_document=registry_document,
+        driver_parameters=rowwise_parameters(args, source_year=source_year),
+    )
+    if state is not None:
+        state.identity_digest = hashlib.sha256(
+            canonical_json_bytes(run_config)
+        ).hexdigest()
+        append_phase(state, "targets_bound")
+    inputs = {
+        "national_registry": national_registry,
+        "band_edge_registry": band_edge_registry,
+        "calibration_year": int(registry_document["calibration_year"]),
+        "measure_exclusions": dict(registry_document["measure_exclusions"]),
+        "chronicle_provenance": dict(registry_document["chronicle_provenance"]),
+    }
+    record["inputs"] = inputs
+    record["incumbent"] = national_role.incumbent_arguments(args)
+    # 3. The solve and the seam battery, evaluated in the graph.
+    stage(
+        telemetry,
+        "calibration",
+        "started",
+        epochs=int(args.epochs),
+        epoch_every=staging_epoch_every(args),
+    )
+    manifest = run_graph(
+        compile_graph(_through(graph, NATIONAL_GATES_NODE)),
+        sources=sources,
+        store=store,
+        kernels=kernels,
+        resume=resume,
+    )
+    _persist_checkpoint(manifest, store, args, "numerical")
+    _materialize_evidence(manifest, store, args.out)
+    _require_gate_kernel_completed(manifest, NATIONAL_GATES_NODE)
+    if state is not None:
+        append_phase(state, "national_calibration_solved")
+    frame = manifest.population(national.population)
+    result, problem = national_result_from_manifest(
+        manifest, store, frame=frame, registry=national_registry
+    )
+    evidence = json.loads(
+        graph_payload(manifest, store, NATIONAL_GATES_NODE, "calibration_evidence")
+    )
+    gate_document = json.loads(
+        graph_payload(manifest, store, NATIONAL_GATES_NODE, "gate_report")
+    )
+    stage(
+        telemetry,
+        "calibration",
+        "completed",
+        target_count=len(national_registry.specs),
+        entity_row_counts={
+            entity: int(len(frame.table(entity))) for entity in frame.entities
+        },
+    )
+    # 4. The seam diagnostics, written through the seam writer with the
+    # build block; the digest is measured from the file, never declared.
+    sidecar = json.loads(prepared.sidecar_path.read_text(encoding="utf-8"))
+    spine_provenance = spine_provenance_from_sidecar(prepared.sidecar_path, sidecar)
+    input_posture = {
+        "tier": "staging_candidate",
+        "sha256": prepared.source_pins["input_h5"]["sha256"],
+        "size_bytes": prepared.source_pins["input_h5"]["size_bytes"],
+    }
+    build_block = {
+        "build_id": build_id,
+        "code_pin": "unresolved-local-git-code-pin"
+        if attempt is None
+        else str(attempt["code_pin"]),
+        "runtime": runtime_provenance(),
+        "source_pins": dict(prepared.source_pins),
+        "ledger": run_config["ledger"],
+        "input_posture": input_posture,
+        "doctrine": run_config["doctrine"],
+        "doctrine_overrides": run_config["doctrine_overrides"],
+        "measure_exclusions": inputs["measure_exclusions"],
+        "measure_resolution": evidence["calibration"].get("measure_resolution"),
+        "register": evidence["register"],
+        "spine_provenance": spine_provenance,
+        "score_vs_enhanced_frs": None,
+    }
+    stage(telemetry, "diagnostics", "started")
+    diagnostics_outcome = write_uk_calibration_diagnostics(
+        result,
+        paths["calibration_diagnostics"],
+        frame,
+        target_geography_levels=evidence["target_geography_levels"],
+        target_registry=national_registry,
+        build=build_block,
+    )
+    if isinstance(diagnostics_outcome, DiagnosticsWriteFailure):
+        raise RuntimeError(
+            "UK release validation requires calibration diagnostics, but their "
+            f"canonical write failed [{diagnostics_outcome.error_code}]: "
+            f"{diagnostics_outcome.message}"
+        )
+    diagnostics_sha = diagnostics_outcome.sha256
+    if state is not None:
+        append_phase(state, "diagnostics_written")
+    stage(
+        telemetry,
+        "diagnostics",
+        "completed",
+        target_count=len(evidence["diagnostics"]),
+    )
+    # 5. The solve's compiled system beside the diagnostics, before the
+    # terminal battery, so a blocked attempt keeps its anatomy readable.
+    stage(telemetry, "target_support_sidecars", "started")
+    sidecars = write_uk_target_support_sidecars(result, args.out)
+    if state is not None:
+        append_phase(state, "target_support_sidecars_written")
+    stage(
+        telemetry,
+        "target_support_sidecars",
+        "completed",
+        files=sorted(str(path.name) for path in sidecars.values()),
+    )
+    # 6. The seam battery, replayed from the graph's phase report and signed.
+    stage(telemetry, "release_check_evaluation", "started")
+    gate_report_path = paths["terminal_gates"]
+    try:
+        gate_report = replay_uk_national_gate_battery(
+            gate_document,
+            report_path=gate_report_path,
+            release_id=posture.release_id,
+            diagnostics_sha256=diagnostics_sha,
+            posture=posture,
+        )
+    except GateBatteryBlockedError as blocked:
+        record["blocking_failures"] = list(blocked.failures)
+        written = json.loads(gate_report_path.read_text(encoding="utf-8"))
+        gate_rows = written.get("gates", {})
+        record["gate_report"] = written
+        if state is not None:
+            _apply_graph_gate_verdicts(
+                state, gate_rows, published_root / gate_report_path.name
+            )
+            append_phase(state, "calibration_gates_evaluated")
+            append_phase(state, "candidate_blocked")
+        stage(
+            telemetry,
+            "release_check_evaluation",
+            "completed",
+            check_count=len(gate_rows),
+            blocking_failure_count=len(blocked.failures),
+        )
+        print(
+            "Calibration-seam battery blocked the national artifact; evidence "
+            f"bundle written, no H5: {blocked.failures[:5]}",
+            file=sys.stderr,
+        )
+        return 1
+    gate_rows = gate_report["gates"]
+    record["gate_report"] = gate_report
+    if state is not None:
+        _apply_graph_gate_verdicts(
+            state, gate_rows, published_root / gate_report_path.name
+        )
+        append_phase(state, "calibration_gates_evaluated")
+    stage(
+        telemetry,
+        "release_check_evaluation",
+        "completed",
+        check_count=len(gate_rows),
+    )
+    # 7. The H5, then the graph's readback of it.
+    stage(telemetry, "candidate_h5_creation", "started")
+    write_uk_national_frame(frame, paths["dataset"])
+    if state is not None:
+        append_phase(state, "staging_h5_written")
+    stage(
+        telemetry,
+        "candidate_h5_creation",
+        "completed",
+        size_bytes=paths["dataset"].stat().st_size,
+    )
+    continued = add_uk_national_readback(graph, population=national.population)
+    final = run_graph(
+        compile_graph(continued),
+        sources={**sources, "exported_dataset": paths["dataset"]},
+        store=store,
+        kernels=kernels,
+        resume="auto",
+    )
+    _require_gate_kernel_completed(final, NATIONAL_READBACK_NODE)
+    readback = json.loads(
+        graph_payload(final, store, NATIONAL_READBACK_NODE, "readback")
+    )
+    if not readback["passed"]:
+        raise RuntimeError(
+            "UK national H5 readback failed: " + "; ".join(readback["failures"])
+        )
+    final.save(args.out / "build.graph.json")
+    _materialize_evidence(final, store, args.out)
+    # 8. The build record the release-cut certifier reads.
+    stage(telemetry, "build_record_creation", "started")
+    artifacts = {
+        "staging_h5": {
+            "path": str(published["dataset"]),
+            "sha256": file_artifact(paths["dataset"])["sha256"],
+        },
+        "diagnostics_json": {
+            "path": str(published["calibration_diagnostics"]),
+            "sha256": diagnostics_sha,
+        },
+        "terminal_gate_json": {
+            "path": str(published["terminal_gates"]),
+            "sha256": file_artifact(gate_report_path)["sha256"],
+        },
+    }
+    graph_keys = {
+        node_id: dict(receipt.opaque_artifacts)
+        for node_id, receipt in final.nodes.items()
+    }
+    build_record = national_build_record(
+        posture=posture,
+        build_id=build_id,
+        run_config=run_config,
+        source_pins=prepared.source_pins,
+        input_posture=input_posture,
+        spine_provenance=spine_provenance,
+        register=evidence["register"],
+        calibration=evidence["calibration"],
+        gate_report=gate_report,
+        artifacts=artifacts,
+        staging_delivery=staging_delivery(telemetry),
+        graph={"artifacts": graph_keys, "readback": readback},
+    )
+    _write_json(paths["build_record"], build_record)
+    if state is not None:
+        append_phase(state, "build_record_written")
+        state.artifact_location = local_artifact_reference(
+            published["dataset"], repository_hint=REPOSITORY
+        )
+    stage(
+        telemetry,
+        "build_record_creation",
+        "completed",
+        size_bytes=paths["build_record"].stat().st_size,
+    )
+    # 9. The national manifest over the seam-shaped evidence.
+    diagnostics = json.loads(paths["calibration_diagnostics"].read_text())
+    manifest_payload = national_role.national_manifest(
+        args,
+        posture=posture,
+        build_id=build_id,
+        build_record=build_record,
+        build_record_path=paths["build_record"],
+        gate_report=gate_report,
+        diagnostics=diagnostics,
+        inputs=inputs,
+        doctrine_overrides=national.config.doctrine_overrides,
+        output_paths=paths,
+        input_artifact=prepared.inputs["dataset"],
+        source_year=source_year,
+        reported_paths=published,
+        graph={"artifacts": graph_keys, "readback": readback},
+    )
+    materialize_bytes(json_text(manifest_payload).encode(), paths["manifest"])
+    record["manifest"] = manifest_payload
+    record["build_record"] = build_record
+    completion = {
+        "schema_version": 1,
+        "kind": "uk_national_build_completion",
+        "release_role": posture.role,
+        "release_id": posture.release_id,
+        "build_id": build_id,
+        "dataset": {
+            **file_artifact(paths["dataset"]),
+            "path": str(published["dataset"]),
+        },
+        "build_record": {
+            **file_artifact(paths["build_record"]),
+            "path": str(published["build_record"]),
+        },
+        "rowwise_candidate_manifest": {
+            **file_artifact(paths["manifest"]),
+            "note": "staging receipts are appended after publication",
+        },
+        "graph": {"artifacts": graph_keys, "readback": readback},
+        "release_authorized": False,
+    }
+    materialize_bytes(canonical_json(completion), args.out / "build.json")
+    return 0
+
+
+def _close_national_attempt(
+    args: argparse.Namespace,
+    attempt: dict,
+    *,
+    output: Path,
+    status: int,
+    record: dict,
+    telemetry,
+) -> None:
+    """Stage the published bundle, evaluate, close the telemetry, spool the row.
+
+    The seam's order: the manifest and the staged bundle first, the
+    incumbent evaluation after the bundle is on the Hub and before the
+    telemetry completes, then the build record and the manifest rewritten
+    with the delivery summary and the sums refreshed.
+    """
+    from microcosm.build.staging_v2 import validate_staging_delivery
+
+    posture = posture_of(args)
+    state: AttemptState = attempt["state"]
+    manifest = record.get("manifest")
+    blocked = bool(record.get("blocking_failures"))
+    paths = output_paths(output, posture=posture, vintage=args._frs_vintage)
+    if manifest is not None:
+        append_phase(state, "published")
+        args._gate_report = record["gate_report"]
+        staged_dataset = stage_dataset(
+            args,
+            manifest=manifest,
+            output_paths=paths,
+            run_id=state.build_id if telemetry is None else telemetry.run_id,
+            telemetry=telemetry,
+        )
+        append_phase(state, STAGED_DATASET_PHASES[staged_dataset["status"]])
+        evaluation = national_role.evaluate_against_incumbent(
+            args,
+            incumbent=record.get("incumbent"),
+            inputs=record["inputs"],
+            output_paths=paths,
+            telemetry=telemetry,
+            calibration_year=int(record["inputs"]["calibration_year"]),
+            out_dir=output,
+        )
+        try:
+            finalize_staging_telemetry(args, telemetry)
+        finally:
+            delivery = staging_delivery(telemetry)
+            build_record = json.loads(paths["build_record"].read_text())
+            build_record["staging_delivery"] = validate_staging_delivery(delivery)
+            _write_json(paths["build_record"], build_record)
+            manifest["outputs"]["build_record"] = national_role.artifact_info(
+                paths["build_record"]
+            )
+            manifest["build_record"] = {
+                "path": str(paths["build_record"]),
+                "sha256": manifest["outputs"]["build_record"]["sha256"],
+            }
+            manifest["staging_delivery"] = delivery
+            manifest["staged_dataset"] = staged_dataset
+            manifest["evaluation"] = evaluation
+            if evaluation.get("status") == "completed":
+                manifest["outputs"]["score_receipt"] = evaluation["receipt"]
+            replace_manifest(paths["manifest"], manifest)
+            if (output / SHA256SUMS_FILENAME).is_file():
+                refresh_sha256sums_entry(output, paths["build_record"].name)
+                if evaluation.get("status") == "completed":
+                    national_role.list_sha256sums_entry(
+                        output, paths["score_receipt"].name
+                    )
+                refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+            _refresh_completion(
+                output,
+                {
+                    "build_record": paths["build_record"],
+                    "rowwise_candidate_manifest": paths["manifest"],
+                },
+            )
+    else:
+        finalize_staging_telemetry(args, telemetry)
+    spool_path = record_candidate_attempt(
+        state=state,
+        started_at=attempt["started_at"],
+        started_ts=attempt["started_ts"],
+        seed=args.seed,
+        code_pin=str(attempt["code_pin"]),
+        disposition="failed" if (blocked or status != 0) else "iterating",
+        predecessor=attempt["predecessor"],
+        spool_dir=output / "logbook-spool",
+        rung="f100",
+        pipeline=posture.pipeline,
+    )
+    print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
+    if manifest is not None:
+        print(json_text(manifest), end="")
+
+
+def _national_main(args: argparse.Namespace) -> int:
+    """The national role's envelope: the seam's attempt id and pipeline, the graph build."""
+    posture = posture_of(args)
+    national_role.require_bound_input(args)
+    if args.dry_run:
+        return national_role.national_dry_run(
+            args,
+            operation_inventory=lambda: prepare_national_build(
+                args
+            ).national.operation_inventory(),
+        )
+    preflight_staged_dataset(args)
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
+    digest = preflight_digest(posture.pipeline)
+    state = AttemptState(
+        # The attempt id is minted before telemetry opens so the staging run
+        # id and the Logbook row agree, as the seam minted it.
+        build_id=new_uk_calibration_attempt_id(timestamp=started_ts),
+        identity_digest=digest,
+        input_pins_digest=digest,
+        phases_reached=["attempt_started"],
+        gate_verdicts={
+            "pipeline": {
+                "verdict": "running",
+                "receipt": "pending-build-scoped-terminal-receipt",
+            }
+        },
+    )
+    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+    telemetry = create_staging_telemetry(args, build_id=state.build_id)
+    attempt = {
+        "state": state,
+        "started_at": started_at,
+        "started_ts": started_ts,
+        "code_pin": "unresolved-local-git-code-pin",
+        "predecessor": predecessor,
+    }
+    try:
+        prepared = prepare_national_build(args, telemetry=telemetry, attempt=attempt)
+        return execute_national_build(
+            prepared, args, telemetry=telemetry, attempt=attempt
+        )
+    except KeyboardInterrupt as interrupt:
+        # An operator interrupt is a discarded attempt, not a failed one; the
+        # seam recorded the row so and re-raised (every terminal disposition
+        # records a row), and the staging run closes as failed.
+        _record_failure(
+            args,
+            interrupt,
+            state=state,
+            attempt=attempt,
+            pipeline=posture.pipeline,
+            disposition="discarded",
+        )
+        fail_staging_telemetry(telemetry, interrupt)
+        raise
+    except Exception as error:
+        _record_failure(
+            args, error, state=state, attempt=attempt, pipeline=posture.pipeline
+        )
+        fail_staging_telemetry(telemetry, error)
+        print(f"UK national build failed: {error}", file=sys.stderr)
+        return 1
+
+
+def _record_failure(
+    args: argparse.Namespace,
+    error: BaseException,
+    *,
+    state: AttemptState,
+    attempt: dict,
+    pipeline: str,
+    prepared: PreparedUKFullBuild | None = None,
+    disposition: str = "failed",
+) -> None:
+    """The failure sidecar and the terminal Logbook row, when the output is safe.
+
+    ``disposition`` is ``failed`` for an error and ``discarded`` for an
+    operator interrupt; the dense line passes its ``prepared`` build so the
+    output check sees the declared sources.
+    """
+    try:
+        _output_locations(prepared, args)
+    except ValueError:
+        return
+    materialize_bytes(
+        canonical_json(
+            {
+                "schema": "microcosm.uk.full-build-failure.v1",
+                "error_type": type(error).__name__,
+                "message": str(error),
+                "evidence_directory": str(args.attempt_evidence)
+                if hasattr(args, "attempt_evidence")
+                else None,
+                "release_authorized": False,
+            }
+        ),
+        args.out / "failure.json",
+    )
+    if state.spool_path is None:
+        record_candidate_error(
+            error=error,
+            state=state,
+            started_at=attempt["started_at"],
+            started_ts=attempt["started_ts"],
+            seed=args.seed,
+            code_pin=str(attempt["code_pin"]),
+            predecessor=attempt["predecessor"],
+            base_dir=args.out.resolve(),
+            spool_dir=args.out.resolve() / "logbook-spool",
+            rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+            pipeline=pipeline,
+            disposition=disposition,
+        )
+
+
 def _dry_run(args: argparse.Namespace) -> int:
     """Plan without solving or writing; loop over candidate clone counts."""
     counts = args.candidate_clone_counts
@@ -1548,9 +2427,9 @@ def main(argv: list[str] | None = None) -> int:
     validate_cli_args(args)
     posture = posture_of(args)
     if posture.role == "national":
-        # The national line is the retained calibration seam under the
-        # driver's posture (microcosm#823); no graph is prepared for it.
-        return national_role.run_national_role(args)
+        # The national line: the bound checkpoint solved as bound under the
+        # national doctrine, on the same graph (microcosm#823 line).
+        return _national_main(args)
     if args.candidate_clone_counts is not None and not args.dry_run:
         raise ValueError("--candidate-clone-counts is valid only with --dry-run.")
     if args.dry_run:
@@ -1595,41 +2474,29 @@ def main(argv: list[str] | None = None) -> int:
     try:
         prepared = prepare_full_build(args, telemetry=telemetry, attempt=attempt)
         return execute_full_build(prepared, args, telemetry=telemetry, attempt=attempt)
+    except KeyboardInterrupt as interrupt:
+        # As on the national line: a discarded row, the staging run failed,
+        # the interrupt re-raised.
+        _record_failure(
+            args,
+            interrupt,
+            state=state,
+            attempt=attempt,
+            pipeline=posture.pipeline,
+            prepared=prepared,
+            disposition="discarded",
+        )
+        fail_staging_telemetry(telemetry, interrupt)
+        raise
     except Exception as error:
-        safe_output = False
-        try:
-            _output_locations(prepared, args)
-            safe_output = True
-        except ValueError:
-            pass
-        if safe_output:
-            materialize_bytes(
-                canonical_json(
-                    {
-                        "schema": "microcosm.uk.full-build-failure.v1",
-                        "error_type": type(error).__name__,
-                        "message": str(error),
-                        "evidence_directory": str(args.attempt_evidence)
-                        if hasattr(args, "attempt_evidence")
-                        else None,
-                        "release_authorized": False,
-                    }
-                ),
-                args.out / "failure.json",
-            )
-            if state.spool_path is None:
-                record_candidate_error(
-                    error=error,
-                    state=state,
-                    started_at=started_at,
-                    started_ts=started_ts,
-                    seed=args.seed,
-                    code_pin=str(attempt["code_pin"]),
-                    predecessor=predecessor,
-                    base_dir=args.out.resolve(),
-                    spool_dir=args.out.resolve() / "logbook-spool",
-                    rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
-                )
+        _record_failure(
+            args,
+            error,
+            state=state,
+            attempt=attempt,
+            pipeline=posture.pipeline,
+            prepared=prepared,
+        )
         fail_staging_telemetry(telemetry, error)
         print(f"UK full build failed: {error}", file=sys.stderr)
         return 1

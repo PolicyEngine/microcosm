@@ -89,6 +89,38 @@ def validate_uk_country_source_projection(spec: CountrySpec) -> None:
         )
 
 
+def uk_atomic_support_register(
+    spec: CountrySpec | None = None,
+) -> dict[str, dict[str, object]]:
+    """The committed identity of each atomic-area support, by system.
+
+    ``sources.yaml`` pins every support's ``sha256`` and ``byte_size`` (the
+    provenance register carries the same values). A release candidate must
+    build on exactly these bytes, whatever digest the operator pinned on
+    the command line; the dense release pre-flight reads the same register
+    against the manifest's ``geography.assignment.support_pins``.
+    """
+    from .atomic_area_support import SOURCES
+
+    spec = load_country_spec("uk") if spec is None else spec
+    if spec.resolved_spec is None:
+        raise ValueError("The atomic-area support register needs a resolved UK spec.")
+    rows = spec.resolved_spec.resource("sources").domain.to_wire()["sources"]
+    by_id = {row["id"]: row for row in rows if row["role"] == "uk_atomic_area_support"}
+    register = {}
+    for system, source in SOURCES.items():
+        row = by_id.get(source)
+        if row is None:
+            raise ValueError(
+                f"sources.yaml declares no atomic-area support {source!r}."
+            )
+        register[system] = {
+            "sha256": str(row["sha256"]),
+            "size_bytes": int(row["byte_size"]),
+        }
+    return register
+
+
 def build_uk_country_graph(
     config: UKFullBuildConfig | None = None,
     *,

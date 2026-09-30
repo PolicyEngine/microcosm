@@ -1,6 +1,8 @@
 """The canonical CLI restores declared files and preserves failure/scope semantics."""
 
 # ruff: noqa: F403, F405
+from types import SimpleNamespace
+
 from test_support.microcosm_build.uk_full_build_cli import *
 
 
@@ -39,8 +41,9 @@ def test_geography_assignment_arguments_are_closed(tmp_path):
     release = arguments(tmp_path, "--release-candidate")
     assert release.release_candidate and release.geography_assignment == "atomic"
     cli.validate_cli_args(release)
-    # The national role is dispatched to the seam: the supports are refused
-    # by name with the other dense-only flags, and its default needs none.
+    # The national role builds on the bound checkpoint with no geography
+    # assignment: the supports are refused by name with the other dense-only
+    # flags, and its default needs none.
     cli.validate_cli_args(cli.parse_args(_national_argv(tmp_path)))
     national = cli.parse_args(
         _national_argv(tmp_path, "--atomic-support-sha256-ni", "e" * 64)
@@ -163,12 +166,13 @@ def test_dense_role_requires_the_ladder_and_the_pins(tmp_path):
     cli.validate_cli_args(cli.parse_args(request))
 
 
-def test_national_role_is_validated_then_dispatched_to_the_seam(tmp_path, monkeypatch):
-    """The national line never prepares a graph (microcosm#901 phase 4).
+def test_national_role_is_validated_then_built_through_the_graph(tmp_path, monkeypatch):
+    """The national line prepares the national graph, never the dense one.
 
-    The validated request goes to ``national_role.run_national_role`` after
-    the role tables have run; the seam's own pre-flight, Logbook, staging
-    and manifest live behind that call.
+    The validated request goes to ``prepare_national_build`` /
+    ``execute_national_build`` after the role tables have run; the seam's
+    attempt id, the Hub pre-flight, the Logbook and the staging telemetry
+    live in the driver's national envelope.
     """
     argv = _national_argv(tmp_path)
     national = cli.parse_args(argv)
@@ -178,58 +182,89 @@ def test_national_role_is_validated_then_dispatched_to_the_seam(tmp_path, monkey
     cli.validate_cli_args(national)
     served = []
     monkeypatch.setattr(
-        cli.national_role, "run_national_role", lambda args: served.append(args) or 7
+        cli, "preflight_staged_dataset", lambda args: served.append("preflight")
     )
     monkeypatch.setattr(
         cli,
-        "prepare_full_build",
-        lambda *a, **k: pytest.fail("the national role prepared a graph"),
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: served.append(args) or "prepared",
     )
     monkeypatch.setattr(
         cli,
-        "preflight_staged_dataset",
-        lambda args: pytest.fail("the driver pre-flighted before dispatching"),
-    )
-    assert cli.main(argv) == 7
-    (args,) = served
-    assert args.release_role == "national"
-    assert args._posture is national._posture
-    assert not (tmp_path / "out").exists()
-    # The dense refusal table still applies before the dispatch.
-    with pytest.raises(ValueError, match="--release-role national refuses"):
-        cli.main([*argv, "--ladder", str(tmp_path / "ladder.npz")])
-    assert served == [args]
-
-
-def test_national_dry_run_dispatches_to_the_seam_plan(tmp_path, monkeypatch, capsys):
-    """``--dry-run`` on the national role plans through ``national_dry_run``:
-    no graph, no staged-dataset pre-flight, nothing written."""
-    monkeypatch.setattr(
-        cli.national_role,
-        "national_dry_run",
-        lambda args: (
-            print(json.dumps({"dry_run": args.dry_run, "role": args.release_role})) or 0
+        "execute_national_build",
+        lambda prepared, args, *, telemetry=None, attempt=None: (
+            served.append(prepared) or 7
         ),
     )
     monkeypatch.setattr(
         cli,
         "prepare_full_build",
-        lambda *a, **k: pytest.fail("the national dry run prepared a graph"),
+        lambda *a, **k: pytest.fail("the national role prepared the dense graph"),
     )
+    assert cli.main(argv) == 7
+    assert served[0] == "preflight"
+    args = served[1]
+    assert args.release_role == "national"
+    assert args._posture is national._posture
+    assert served[2] == "prepared"
+    # The dense refusal table still applies before anything is prepared.
+    with pytest.raises(ValueError, match="--release-role national refuses"):
+        cli.main([*argv, "--ladder", str(tmp_path / "ladder.npz")])
+    assert len(served) == 3
+
+
+def test_national_dry_run_plans_with_the_graph_inventory(tmp_path, monkeypatch, capsys):
+    """``--dry-run`` on the national role plans through ``national_dry_run``
+    with the compiled graph's inventory: no solve, no staged-dataset
+    pre-flight, nothing written."""
     monkeypatch.setattr(
         cli.national_role,
+        "national_dry_run",
+        lambda args, *, operation_inventory=None: (
+            print(
+                json.dumps(
+                    {
+                        "dry_run": args.dry_run,
+                        "role": args.release_role,
+                        "graph": operation_inventory(),
+                    }
+                )
+            )
+            or 0
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: SimpleNamespace(
+            national=SimpleNamespace(
+                operation_inventory=lambda: {"nodes": ["uk.full.national_problem"]}
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        cli,
+        "prepare_full_build",
+        lambda *a, **k: pytest.fail("the national dry run prepared the dense graph"),
+    )
+    monkeypatch.setattr(
+        cli,
         "preflight_staged_dataset",
         lambda args: pytest.fail("a dry run reached the Hub pre-flight"),
     )
     assert cli.main(_national_argv(tmp_path, "--dry-run")) == 0
-    assert json.loads(capsys.readouterr().out) == {"dry_run": True, "role": "national"}
+    assert json.loads(capsys.readouterr().out) == {
+        "dry_run": True,
+        "role": "national",
+        "graph": {"nodes": ["uk.full.national_problem"]},
+    }
     assert not (tmp_path / "out").exists()
 
 
 def test_national_role_refuses_a_spine_request(tmp_path, monkeypatch):
-    """The seam engine reads a bound spine; ``--spine-request`` is dense-only."""
+    """The national line solves a bound spine; ``--spine-request`` is dense-only."""
     monkeypatch.setattr(
-        cli.national_role,
+        cli,
         "preflight_staged_dataset",
         lambda args: pytest.fail("the refusal must precede the Hub pre-flight"),
     )
@@ -1288,3 +1323,70 @@ def test_gate_battery_recorded_exception_is_named_not_a_missing_artifact():
         }
     )
     cli._require_gate_kernel_completed(passed, "uk.full.gates.calibrated")
+
+
+def test_dense_completion_marker_binds_the_closed_manifest(tmp_path, monkeypatch):
+    """``build.json`` is re-issued after the close step appends the staging
+    receipts to the manifest, so its digest is the manifest's final bytes."""
+    status, out = run_dense_main(tmp_path, monkeypatch)
+    assert status == 0
+    completion = json.loads((out / "build.json").read_text())
+    entry = completion["rowwise_candidate_manifest"]
+    manifest_path = out / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert "staged_dataset" in manifest and "staging_delivery" in manifest
+    assert entry["sha256"] == hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    assert entry["size_bytes"] == manifest_path.stat().st_size
+    assert "note" not in entry
+
+
+def test_national_interrupt_records_a_discarded_row_and_re_raises(
+    tmp_path, monkeypatch
+):
+    """A Ctrl-C during the national build is a discarded attempt, not a failed
+    one: the seam's terminal-disposition contract, kept by the driver (the
+    failure sidecar names the interrupt, the row says ``discarded``, the
+    interrupt propagates)."""
+    argv = _national_argv(tmp_path)
+    monkeypatch.setattr(cli, "preflight_staged_dataset", lambda args: None)
+    monkeypatch.setattr(
+        cli,
+        "prepare_national_build",
+        lambda args, *, telemetry=None, attempt=None: "prepared",
+    )
+
+    def interrupted(prepared, args, *, telemetry=None, attempt=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "execute_national_build", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main(argv)
+    out = tmp_path / "out"
+    failure = json.loads((out / "failure.json").read_text())
+    assert failure["error_type"] == "KeyboardInterrupt"
+    rows = load_spool_rows(out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["discarded"]
+    assert rows[0].pipeline == "uk-frs-calibration"
+
+
+def test_dense_interrupt_records_a_discarded_row_and_re_raises(tmp_path, monkeypatch):
+    """The dense line closes an interrupted attempt the same way."""
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+    patch_certification(monkeypatch)
+    args = arguments(tmp_path)
+    build = prepared(tmp_path)
+    monkeypatch.setattr(cli, "parse_args", lambda argv: args)
+    monkeypatch.setattr(
+        cli, "prepare_full_build", lambda args, *, telemetry=None, attempt=None: build
+    )
+
+    def interrupted(prepared, args, *, telemetry=None, attempt=None):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "execute_full_build", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        cli.main([])
+    failure = json.loads((args.out / "failure.json").read_text())
+    assert failure["error_type"] == "KeyboardInterrupt"
+    rows = load_spool_rows(args.out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["discarded"]
