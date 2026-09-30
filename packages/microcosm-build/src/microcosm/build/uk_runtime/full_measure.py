@@ -33,6 +33,35 @@ UK_BLOCK_SENSITIVE_MEASURE_COLUMNS = (
 )
 
 
+def _without_scratch_paths(value, scratch_dir: Path):
+    """Record scratch-relative paths in a receipt, never the scratch root.
+
+    A scratch-mode resolver names the file it simulated from (its
+    ``source_path``), which lies under the per-run temporary directory the
+    measure node creates. The receipt rides into the problem's bindings and
+    the stored measure artifact, so an absolute scratch path would change a
+    deterministic node's output between identical runs; the path is kept
+    relative to the scratch root, which is stable (``simulation-input.h5``,
+    ``clone-0/simulation-input.h5``).
+    """
+    if isinstance(value, Mapping):
+        return {
+            key: _without_scratch_paths(item, scratch_dir)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_without_scratch_paths(item, scratch_dir) for item in value]
+    if isinstance(value, str) and value:
+        root = scratch_dir.resolve()
+        candidate = Path(value)
+        if candidate.is_absolute():
+            try:
+                return str(candidate.resolve().relative_to(root))
+            except ValueError:
+                return value
+    return value
+
+
 def resolve_uk_full_measures(
     frame,
     national_registry,
@@ -134,7 +163,9 @@ def resolve_uk_full_measures(
             resolver,
             period=period,
         )
-        resolution_receipts.append(dict(resolution.receipt))
+        resolution_receipts.append(
+            _without_scratch_paths(dict(resolution.receipt), scratch_dir)
+        )
         keys = set(resolution.measure_inputs)
         if national_input_keys is None:
             national_input_keys = keys
@@ -161,7 +192,9 @@ def resolve_uk_full_measures(
                     household_ids=block_household_ids,
                 )
             )
-        resolver_receipts.append(resolver.receipt())
+        resolver_receipts.append(
+            _without_scratch_paths(dict(resolver.receipt()), scratch_dir)
+        )
         del resolver
         simulation_input = block_scratch / "simulation-input.h5"
         simulation_input.unlink(missing_ok=True)

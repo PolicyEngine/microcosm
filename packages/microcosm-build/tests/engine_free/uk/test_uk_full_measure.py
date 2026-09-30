@@ -287,3 +287,51 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
         assert receipt["block_sensitivity"]["present_in_this_run"] == [
             "ons/corporate_land_value"
         ]
+
+
+def test_scratch_paths_are_recorded_relative_to_the_scratch_root(monkeypatch, tmp_path):
+    """A scratch-mode resolver names the file it simulated from, under the
+    per-run temporary directory; the measure receipt records that path
+    relative to the scratch root, so two identical resolutions in different
+    scratch directories yield the same receipt (the measure and national
+    problem nodes are declared deterministic; #1057 round 1)."""
+    import json
+
+    frame = source_frame()
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            self.scratch_dir = kwargs["scratch_dir"]
+            self.simulation = object()
+            self.contract_targets = {}
+
+        def receipt(self):
+            return {
+                "mode": "scratch_frame_export",
+                "source_path": str(self.scratch_dir / "simulation-input.h5"),
+                "policyengine_uk_version": "test",
+            }
+
+    monkeypatch.setattr(
+        full_measure,
+        "compute_household_metrics",
+        lambda _simulation, area_type, *, household_ids, **_kwargs: pd.DataFrame(
+            {f"{area_type}_metric": np.ones(len(household_ids))},
+            index=household_ids,
+        ),
+    )
+    registry = TargetRegistry([], country="uk")
+    receipts = []
+    for name in ("first", "second"):
+        _, _, _, _, receipt = full_measure.resolve_uk_full_measures(
+            frame,
+            registry,
+            period=2025,
+            scratch_dir=tmp_path / name,
+            resolver_factory=StubResolver,
+        )
+        receipts.append(receipt)
+    assert receipts[0] == receipts[1]
+    provider = receipts[0]["resolution"][0]["provider"]
+    assert provider["source_path"] == "simulation-input.h5"
+    assert str(tmp_path) not in json.dumps(receipts[0])
