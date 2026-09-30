@@ -12,7 +12,6 @@ import h5py
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.staging_v2 import validate_v2_bundle
-from microcosm.build.uk_runtime.graph import UK_SPINE_EXCLUSIONS
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -94,11 +93,7 @@ def test_uk_staging_smoke_command_runs_every_spine_stage(tmp_path: Path) -> None
     assert manifest["delivery"]["upload_attempts"] == 0
 
     spec = load_country_spec("uk")
-    expected = [
-        stage.stage
-        for stage in spec.sources.stages
-        if stage.stage not in UK_SPINE_EXCLUSIONS
-    ]
+    expected = [stage.stage for stage in spec.sources.stages]
     events = bundle["events"]
     for stage in expected:
         transitions = [

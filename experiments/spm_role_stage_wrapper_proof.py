@@ -250,6 +250,7 @@ def prove(mode: str, state: dict[str, str], source: dict[str, Any]) -> dict[str,
     )
     from microcosm.build.us_runtime.spm_role_source import (
         ASEC_SPM_ROLE_SOURCES,
+        BUILDP_SPM_ROLE_INCOME_YEARS,
         EVIDENCE_SPM_ROLE,
         NATIVE_SPM_ROLE,
         derive_spm_role_source,
@@ -268,7 +269,8 @@ def prove(mode: str, state: dict[str, str], source: dict[str, Any]) -> dict[str,
         _require(input_sha == PARENT_DATASET_SHA256, "buildp_parent_pin_drift")
     source_paths = {}
     inputs = {"population": (input_path, input_sha)}
-    for year, pin in ASEC_SPM_ROLE_SOURCES.items():
+    for year in BUILDP_SPM_ROLE_INCOME_YEARS:
+        pin = ASEC_SPM_ROLE_SOURCES[year]
         recorded = base_receipt["source_csvs"][str(year)]
         _require(recorded["pinned_sha256"] == pin.csv_sha256, "source_pin_drift")
         _require(recorded["size_bytes"] == pin.csv_size_bytes, "source_size_pin_drift")

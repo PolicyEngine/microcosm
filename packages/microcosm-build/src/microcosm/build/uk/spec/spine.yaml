@@ -1,6 +1,20 @@
 channels:
 - id: frs
-  source: uk_national_candidate_2023
+  source:
+  - frs_accounts
+  - frs_adult
+  - frs_benefits
+  - frs_benunit
+  - frs_child
+  - frs_chldcare
+  - frs_extchild
+  - frs_househol
+  - frs_job
+  - frs_maint
+  - frs_mortgage
+  - frs_oddjob
+  - frs_penprov
+  - frs_pension
   observed_geography: region
 assembly:
   mass_anchor_channel: frs

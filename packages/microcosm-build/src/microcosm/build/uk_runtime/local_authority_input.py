@@ -43,6 +43,18 @@ UK_LOCAL_AUTHORITY_NAMES_RESOURCE = "local_authority_names.json"
 UK_LOCAL_AUTHORITY_NAMES_KIND = "uk_local_authority_names"
 UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION = 1
 UK_LOCAL_AUTHORITY_VINTAGE = "2023_april_lad"
+#: The composite vintage ``tools/build_uk_oa_ladder_artifact.py`` writes on
+#: the ``local_authority`` layer of a full-UK ladder: the April 2023 LAD list
+#: is exactly the England and Wales LADs plus the 2019 Scottish council areas
+#: plus the 2014 Northern Ireland LGDs, which is what the names resource
+#: enumerates. An England-and-Wales-only ladder carries the plain vintage.
+UK_LOCAL_AUTHORITY_LADDER_VINTAGE = (
+    "ew:2023_april_lad;scotland:2019_council_area;ni:2014_lgd"
+)
+#: Ladder ``local_authority`` vintages that resolve through the names resource.
+UK_LOCAL_AUTHORITY_LADDER_VINTAGES: frozenset[str] = frozenset(
+    {UK_LOCAL_AUTHORITY_VINTAGE, UK_LOCAL_AUTHORITY_LADDER_VINTAGE}
+)
 
 #: ONS display names whose ``LocalAuthority`` member name is not the
 #: mechanical rule's output. The engine drops the apostrophe where the rule

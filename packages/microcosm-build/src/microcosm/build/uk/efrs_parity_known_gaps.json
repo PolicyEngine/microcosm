@@ -638,6 +638,7 @@
  "known_gaps": {},
  "restored_required_columns": {
   "charitable_investment_gifts": {
+   "current_producer_stage": "hmrc_spi_income_spine",
    "effective_signal_mass_share": 0.00028055329260683216,
    "minimum_nondefault_mass_share": 1e-06,
    "positive_mass_signal_rows": 294,
@@ -647,6 +648,7 @@
    "support_channel": "spi"
   },
   "gift_aid": {
+   "current_producer_stage": "hmrc_spi_income_spine",
    "effective_signal_mass_share": 0.01330315665904484,
    "minimum_nondefault_mass_share": 1e-06,
    "positive_mass_signal_rows": 12894,
