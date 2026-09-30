@@ -129,6 +129,32 @@
         "dimension": "cgt_gain_band",
         "value": "gain_0_to_2999"
       }
+    },
+    {
+      "target_id": "hmrc.cgt.badr_ir_taxpayers_by_band",
+      "reason_id": "individuals_total_restates_the_bands",
+      "rationale": "HMRC Table 4.1's individuals total row (61,000 claimants, GBP 18,443m of qualifying gains and GBP 1,821m of tax in 2024-25) is the sum of the eight published bands and carries no band edge, so it cannot be measured as a band row. Signed out of the band fan-out; the eight bands stay bound.",
+      "tracking": "microcosm#1014",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-26",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1014",
+      "row": {
+        "dimension": "cgt_badr_ir_gain_band",
+        "value": "total"
+      }
+    },
+    {
+      "target_id": "hmrc.cgt.badr_ir_qualifying_gains_by_band",
+      "reason_id": "individuals_total_restates_the_bands",
+      "rationale": "HMRC Table 4.1's individuals total row (61,000 claimants, GBP 18,443m of qualifying gains and GBP 1,821m of tax in 2024-25) is the sum of the eight published bands and carries no band edge, so it cannot be measured as a band row. Signed out of the band fan-out; the eight bands stay bound.",
+      "tracking": "microcosm#1014",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-26",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/issues/1014",
+      "row": {
+        "dimension": "cgt_badr_ir_gain_band",
+        "value": "total"
+      }
     }
   ]
 }

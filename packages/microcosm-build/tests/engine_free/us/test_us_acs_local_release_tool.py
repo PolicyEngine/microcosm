@@ -19,6 +19,9 @@ from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
 
+#: The sampling block a full-scale materialize records in run_identity.json.
+_FULL_RUNG = {"sample_fraction": 1.0, "rung": "f100", "sampled": False}
+
 # Tests that write real H5 bytes go through pandas' HDFStore, which needs
 # pytables; the base wheel gate installs the shards without it.
 requires_pytables = pytest.mark.skipif(
@@ -407,6 +410,7 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         "run_identity.json": {
             "staging_sha256": module._sha256(staging),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
@@ -587,6 +591,7 @@ def _package_args_before_evidence(
             {
                 "staging_sha256": module._sha256(staging),
                 "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
             }
         )
     )
@@ -676,6 +681,7 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
             {
                 "staging_sha256": module._sha256(staging),
                 "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
             }
         )
     )
@@ -739,10 +745,10 @@ def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
     asking for them."""
 
     module = _load_tool_module()
-    assert module.SOI_MODES == ("state", "totals", "full")
+    assert module.SOI_MODES == ("state", "totals", "full", "state_cd")
     assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
     assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
-    for mode in ("totals", "full"):
+    for mode in ("totals", "full", "state_cd"):
         assert (
             module._parse_args(_materialize_argv(tmp_path, "--soi-mode", mode)).soi_mode
             == mode
@@ -1214,6 +1220,7 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
             "staging_sha256": module._sha256(args.staging_h5),
             "ladder_sha256": module._sha256(args.ladder),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
@@ -1244,6 +1251,96 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
         == module._sha256(Path(result["root_artifact"]["local_path"]))
         == artifact_sha
     )
+
+
+def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
+    tmp_path, monkeypatch
+) -> None:
+    """The run-identity, weights and QA bindings at their real call sites.
+
+    A sparse-era checkpoint (its identity records the roles digest) round-trips
+    when every piece of evidence names the same materialization, weights and
+    bytes; an interrupted recalibration (the export's weights differ from the
+    summary's) or QA of other bytes is refused before any gate report or
+    release directory is written.
+    """
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    ckpt = args.checkpoint_dir
+    for name, content in (
+        ("target_registry.json", "{}"),
+        (module.TARGET_ROLES_FILENAME, "[]"),
+        (module.TARGET_MATRIX_FILENAME, "matrix"),
+    ):
+        (ckpt / name).write_text(content)
+    identity = {
+        "staging_sha256": module._sha256(args.staging_h5),
+        "ladder_sha256": module._sha256(args.ladder),
+        "population_cells_dropped": [],
+        "sampling": _FULL_RUNG,
+        "target_registry_sha256": module._sha256(ckpt / "target_registry.json"),
+        "target_roles_sha256": module._sha256(ckpt / module.TARGET_ROLES_FILENAME),
+        "target_matrix": {
+            "sha256": module._sha256(ckpt / module.TARGET_MATRIX_FILENAME)
+        },
+    }
+    stamp = module._run_identity_digest(identity)
+    summary = {
+        **json.loads((ckpt / "calibration_summary.json").read_text()),
+        "run_identity_sha256": stamp,
+        "weights_sha256": "w",
+    }
+    export = {
+        "staging_sha256": artifact_sha,
+        "run_identity_sha256": stamp,
+        "out_h5_sha256": artifact_sha,
+        "weights_sha256": "w",
+    }
+    qa = {
+        "plain_consumption": True,
+        "artifact_sha256": artifact_sha,
+        "per_spine": {},
+        "run_identity_sha256": stamp,
+    }
+    evidence = {
+        "run_identity.json": identity,
+        "calibration_summary.json": summary,
+        "consumer_export.json": export,
+        "spine_qa.json": qa,
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (ckpt / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+
+    # An interrupted recalibration: a new H5 and export, the old summary.
+    (ckpt / "consumer_export.json").write_text(
+        json.dumps({**export, "weights_sha256": "new"})
+    )
+    with pytest.raises(SystemExit, match="describe different weights"):
+        module.do_finalize(args)
+    assert not args.gate_report.exists()
+    (ckpt / "consumer_export.json").write_text(json.dumps(export))
+
+    module.do_finalize(args)
+    assert json.loads(args.out_summary.read_text())["simulation_ready"] is True
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+
+    # QA of the wrong materialization: package refuses before any release dir.
+    (ckpt / "spine_qa.json").write_text(
+        json.dumps({**qa, "run_identity_sha256": "old"})
+    )
+    with pytest.raises(SystemExit, match="another materialization"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    (ckpt / "spine_qa.json").write_text(json.dumps(qa))
+
+    result = module.do_package(args)
+    assert result["root_artifact"]["sha256"] == artifact_sha
 
 
 def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
@@ -1281,6 +1378,7 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
         "run_identity.json": {
             "staging_sha256": module._sha256(args.staging_h5),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
@@ -1594,14 +1692,9 @@ def test_penalty_options_default_to_the_historical_solve(tmp_path: Path) -> None
             module._parse_args(_calibrate_stage_argv(tmp_path, flag, "bogus"))
 
 
-def _stub_calibrate_collaborators(module, monkeypatch, n: int = 30):
-    """A tiny real frame and target set behind do_calibrate's checkpoint I/O.
+def _tiny_calibration_surface(n: int = 30):
+    """A real frame, design weights and target set small enough to solve."""
 
-    The kernel's ``calibrate`` runs for real (wrapped to record its keyword
-    arguments); the run identity, registry, lean checkpoint, diagnostics
-    writer and artifact writer are stand-ins.
-    """
-    import microcosm.calibrate as calibrate_package
     from microcosm.calibrate import Target, TargetSet
     from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
@@ -1628,141 +1721,166 @@ def _stub_calibrate_collaborators(module, monkeypatch, n: int = 30):
             ),
         )
     )
+    return frame, design, targets
+
+
+def _recording_calibrate(monkeypatch) -> list[dict]:
+    """Wrap the kernel's calibrate to record each call's keyword arguments."""
+
+    import microcosm.calibrate as calibrate_package
+
     calls: list[dict] = []
-    real_calibrate = calibrate_package.calibrate
+    real = calibrate_package.calibrate
 
-    def recording_calibrate(*args, **kwargs):
+    def recording(*args, **kwargs):
         calls.append(kwargs)
-        return real_calibrate(*args, **kwargs)
+        return real(*args, **kwargs)
 
-    class Registry:
-        @classmethod
-        def from_json(cls, path):
-            return cls()
+    monkeypatch.setattr(calibrate_package, "calibrate", recording)
+    return calls
 
-        def to_target_set(self):
-            return targets
 
-    identity = {
-        "target_registry_sha256": "registry",
-        "households": n,
-        "staging_sha256": "staging",
-    }
-    monkeypatch.setattr(calibrate_package, "calibrate", recording_calibrate)
-    monkeypatch.setattr(calibrate_package, "TargetRegistry", Registry)
+def test_calibrate_surface_threads_the_penalty_settings(monkeypatch) -> None:
+    module = _load_tool_module()
+    calls = _recording_calibrate(monkeypatch)
+    frame, _design, targets = _tiny_calibration_surface()
+    result, done = module.calibrate_surface(
+        frame,
+        targets,
+        epochs=4,
+        epoch_batch=2,
+        max_weight_ratio=5.0,
+        target_loss_cap=1.0,
+        l2_lambda=0.01,
+        seed=0,
+        l2_basis="chi_square",
+        mass_parametrization="softmax",
+    )
+    assert done == 4 and len(calls) == 2
+    for kwargs in calls:
+        assert kwargs["l2_basis"] == "chi_square"
+        assert kwargs["mass_parametrization"] == "softmax"
+        assert kwargs["l2_lambda"] == 0.01
+    assert result.options["mass_parametrization"] == "softmax"
+    # Callers that pass neither get the historical solve.
+    calls.clear()
+    module.calibrate_surface(
+        frame,
+        targets,
+        epochs=2,
+        epoch_batch=2,
+        max_weight_ratio=5.0,
+        target_loss_cap=1.0,
+        l2_lambda=0.0,
+        seed=0,
+    )
+    assert calls[0]["l2_basis"] == "record"
+    assert calls[0]["mass_parametrization"] == "projection"
+
+
+def test_do_calibrate_stamps_and_records_the_penalty_settings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """The penalty settings reach the solve, its stamp, the checkpoint and summary."""
+
+    from scipy import sparse
+
+    import microcosm.calibrate as calibrate_package
+
+    module = _load_tool_module()
+    calls = _recording_calibrate(monkeypatch)
+    frame, design, targets = _tiny_calibration_surface()
+    identity = {"staging_sha256": "s", "target_roles_sha256": "r"}
+    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
+    monkeypatch.setattr(
+        module,
+        "load_checkpoint_surface",
+        lambda *a, **k: (
+            frame,
+            design,
+            SimpleNamespace(specs=()),
+            [{"name": "income"}],
+            sparse.csr_array((1, len(design)), dtype=np.float32),
+        ),
+    )
+    monkeypatch.setattr(
+        module.cd_surface, "calibration_target_set", lambda *a, **k: targets
+    )
+    monkeypatch.setattr(
+        module,
+        "calibration_evidence",
+        lambda **kwargs: {"cd_holdout": {"n_targets": 0}, "n_holdout_targets": 0},
+    )
+    monkeypatch.setattr(module, "_write_calibrated_artifact", lambda *a, **k: None)
     monkeypatch.setattr(
         calibrate_package,
         "write_calibration_diagnostics",
         lambda *a, **k: SimpleNamespace(
-            status="available", schema_version=4, sha256="diagnostics"
+            status="available", schema_version=8, sha256="diagnostics"
         ),
     )
-    monkeypatch.setattr(module, "_verify_run_identity", lambda args: identity)
-    monkeypatch.setattr(module, "_sha256", lambda path: "registry")
-    monkeypatch.setattr(module, "load_lean_frame", lambda path: (frame, design))
-    monkeypatch.setattr(module, "_write_calibrated_artifact", lambda *a, **k: None)
-    return calls, design
-
-
-def test_do_calibrate_threads_and_records_the_penalty_settings(
-    tmp_path: Path, monkeypatch
-) -> None:
-    module = _load_tool_module()
-    calls, design = _stub_calibrate_collaborators(module, monkeypatch)
-    argv = _calibrate_stage_argv(
-        tmp_path,
-        "--epochs",
-        "4",
-        "--epoch-batch",
-        "2",
-        "--l2-lambda",
-        "0.01",
-        "--l2-basis",
-        "chi_square",
-        "--mass-parametrization",
-        "softmax",
+    args = module._parse_args(
+        _calibrate_stage_argv(
+            tmp_path,
+            "--epochs",
+            "4",
+            "--epoch-batch",
+            "2",
+            "--l2-lambda",
+            "0.01",
+            "--l2-basis",
+            "chi_square",
+            "--mass-parametrization",
+            "softmax",
+        )
     )
-    args = module._parse_args(argv)
     args.checkpoint_dir.mkdir()
     module.do_calibrate(args)
 
     assert len(calls) == 2
     for kwargs in calls:
-        assert kwargs["l2_lambda"] == 0.01
         assert kwargs["l2_basis"] == "chi_square"
         assert kwargs["mass_parametrization"] == "softmax"
-        assert kwargs["mass"] == "conserve"
     summary = json.loads((args.checkpoint_dir / "calibration_summary.json").read_text())
-    assert summary["l2_lambda"] == 0.01
     assert summary["l2_basis"] == "chi_square"
     assert summary["mass_parametrization"] == "softmax"
     assert summary["chi_square_distance"] >= 0.0
+    assert summary["solver_settings"]["l2_basis"] == "chi_square"
+    assert summary["solver_settings"]["mass_parametrization"] == "softmax"
     saved = np.load(args.checkpoint_dir / "weights_latest.npz")
-    assert str(saved["l2_basis"]) == "chi_square"
-    assert str(saved["mass_parametrization"]) == "softmax"
-    assert float(saved["l2_lambda"]) == 0.01
-    assert int(saved["epochs_done"]) == 4
+    stamp = json.loads(str(saved["solver_settings"]))
+    assert stamp["l2_basis"] == "chi_square"
+    assert stamp["mass_parametrization"] == "softmax"
 
-    # Extending the run under different settings is refused before any solve.
+    # Extending the run under another basis is refused before any solve.
     calls.clear()
     args.epochs = 6
     args.resume = True
     args.l2_basis = "record"
-    with pytest.raises(SystemExit, match="l2_basis"):
+    with pytest.raises(SystemExit, match="different solver settings"):
         module.do_calibrate(args)
     assert calls == []
 
 
-@pytest.mark.parametrize(
-    ("recorded", "requested", "refused"),
-    [
-        ({}, {}, None),
-        # With no penalty on either side the basis changes nothing.
-        ({}, {"l2_basis": "chi_square"}, None),
-        ({"l2_basis": "chi_square", "l2_lambda": 0.0}, {}, None),
-        ({}, {"l2_lambda": 0.01}, "predates"),
-        ({}, {"mass_parametrization": "softmax"}, "predates"),
-        (
-            {"l2_basis": "chi_square", "l2_lambda": 0.01},
-            {"l2_basis": "chi_square", "l2_lambda": 0.01},
-            None,
-        ),
-        (
-            {"l2_basis": "chi_square", "l2_lambda": 0.01},
-            {"l2_lambda": 0.01},
-            "l2_basis",
-        ),
-        (
-            {"mass_parametrization": "softmax"},
-            {"mass_parametrization": "projection"},
-            "mass_parametrization",
-        ),
-        ({"l2_lambda": 0.01}, {"l2_lambda": 0.02}, "l2_lambda"),
-    ],
-)
-def test_resume_refuses_weights_solved_under_other_penalty_settings(
-    tmp_path: Path, recorded: dict, requested: dict, refused: str | None
+def test_a_stamp_from_before_the_penalty_settings_reads_as_the_historical_solve(
+    tmp_path: Path,
 ) -> None:
-    """A legacy checkpoint records no settings and resumes only as it was solved."""
-
     module = _load_tool_module()
-    path = tmp_path / "weights_latest.npz"
-    np.savez(
-        path,
-        weights=np.ones(3),
-        **{key: np.asarray(value) for key, value in recorded.items()},
+    defaults = module._parse_args(_calibrate_stage_argv(tmp_path))
+    softmax = module._parse_args(
+        _calibrate_stage_argv(tmp_path, "--mass-parametrization", "softmax")
     )
-    args = SimpleNamespace(
-        l2_lambda=0.0, l2_basis="record", mass_parametrization="projection"
-    )
-    for key, value in requested.items():
-        setattr(args, key, value)
-    saved = np.load(path)
-    if refused is None:
-        module._refuse_resume_with_other_penalty(saved, args)
-    else:
-        with pytest.raises(SystemExit, match=refused):
-            module._refuse_resume_with_other_penalty(saved, args)
+    legacy = {
+        key: value
+        for key, value in module._solver_settings(defaults).items()
+        if key not in ("l2_basis", "mass_parametrization")
+    }
+    assert module._stamped_settings(legacy) == module._solver_settings(defaults)
+    assert module._stamped_settings(legacy) != module._solver_settings(softmax)
+    assert module._stamped_settings(None) is None
+    # A recorded value always wins over the fill.
+    recorded = {**legacy, "mass_parametrization": "softmax"}
+    assert module._stamped_settings(recorded) == module._solver_settings(softmax)
 
 
 def test_package_manifest_records_the_penalty_settings(

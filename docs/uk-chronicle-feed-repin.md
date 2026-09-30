@@ -52,9 +52,12 @@ refuses. The cross-grain legs of English constituencies and authorities come
 from `region_code_by_area` in `local_area_crosswalk.json`, regenerated from
 the sha-pinned ladder with `tools/generate_uk_local_area_crosswalk.py`.
 
-The national calibration runner refuses a feed whose facts or manifest digest
-differs from the committed pin. `--allow-unpinned-feed` is an explicit
-diagnostic override recorded in the run manifest; it is not a re-pin procedure.
+Both release roles of `microcosm-build-uk` refuse a feed whose facts or
+manifest digest differs from the committed pin. On the national role
+`--allow-unpinned-feed` is an explicit diagnostic override recorded in the run
+manifest; it is not a re-pin procedure. The dense role refuses that flag: the
+graph's target compilation checks the supplied hashes and the artifact against
+the committed pin and has no override.
 
 History: the `ec7169b` re-pin (#887/#900) moved census household targets onto
 the same Chronicle compile path as every other bound UK local family; the
@@ -88,3 +91,9 @@ The pin then moved to `5324aa2`, Chronicle main after PR #284 (the validator fix
 needed: `build-consumer-artifact` at `00b4b14` refused every renamed-geography row). The export
 re-run at the fix from the same suite bundle is byte-identical (287,024 rows, the same digests), so
 only the commit and the feed label move: no value, row or receipt changes.
+The `505e0e7` re-pin (microcosm#1014, PolicyEngine/chronicle#287 via #288, on top of `5324aa2`)
+brought HMRC CGT statistics 2026 Table 4 (Business Asset Disposal Relief and Investors' Relief
+claimants, qualifying gains and tax by band of qualifying gain, individuals, trusts and all
+taxpayers, 2021-22 to 2024-25; 287,150 rows). The addition is purely additive: the national and
+local reference files are byte-identical, the vendored resources carry the same rows under the new
+feed identity, and the three compile-parity receipts are unchanged.

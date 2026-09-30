@@ -43,30 +43,10 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.calibrate.target import TargetSet
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_local_rowwise import _assigned, _clone_frame
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
-
-
-def _clone_frame(weights=(1.0, 1.0, 1.0)):
-    return uk_national_frame(
-        person=pd.DataFrame(
-            {
-                "person_id": [1, 2, 3],
-                "person_household_id": [101, 102, 103],
-                "person_benunit_id": [11, 12, 13],
-            }
-        ),
-        benunit=pd.DataFrame({"benunit_id": [11, 12, 13]}),
-        household=pd.DataFrame(
-            {
-                "household_id": [101, 102, 103],
-                "household_weight": list(weights),
-            }
-        ),
-        time_period="2023",
-        weight_kind=WeightKind.IMPORTANCE,
-    )
 
 
 def _metrics() -> pd.DataFrame:
@@ -77,10 +57,6 @@ def _metrics() -> pd.DataFrame:
         },
         index=[101, 102, 103],
     )
-
-
-def _assigned() -> pd.Series:
-    return pd.Series(["E001", "E001", "S001"], index=[101, 102, 103])
 
 
 def _targets() -> pd.DataFrame:
@@ -720,6 +696,38 @@ def test_rowwise_binding_refuses_unknown_family_and_bad_area_type() -> None:
         require_adjudicated_uk_local_binding(
             ["census_households/ward"],
             problem.target_frame,
+        )
+
+
+def test_rowwise_binding_refuses_an_empty_declaration_unless_allowed() -> None:
+    """A declaration that names nothing is refused for every caller by default.
+
+    Only the graph's country-only target selection, whose local surface is
+    empty by construction, passes ``allow_empty``; the keyword excuses the
+    empty declaration alone and every other malformed declaration is still
+    refused (review item 2 on microcosm#901).
+    """
+    from microcosm.build.uk_runtime.local_rowwise import empty_uk_local_problem
+
+    problem = empty_uk_local_problem([1, 2, 3])
+    with pytest.raises(ValueError, match="at least one family/area_type pair"):
+        require_adjudicated_uk_local_binding([], problem.target_frame)
+    with pytest.raises(ValueError, match="at least one family/area_type pair"):
+        require_adjudicated_uk_local_binding((), problem.target_frame, register={})
+
+    receipt = require_adjudicated_uk_local_binding(
+        [], problem.target_frame, allow_empty=True
+    )
+    assert receipt["bound_families"] == []
+    assert receipt["stood_on"] == {}
+    assert receipt["register_resource"] == "local_binding_adjudications.json"
+    with pytest.raises(ValueError, match="unknown census family"):
+        require_adjudicated_uk_local_binding(
+            ["not_a_family/constituency"], problem.target_frame, allow_empty=True
+        )
+    with pytest.raises(ValueError, match="extra.*census_households/constituency"):
+        require_adjudicated_uk_local_binding(
+            ["census_households/constituency"], problem.target_frame, allow_empty=True
         )
 
 

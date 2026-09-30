@@ -1,0 +1,5601 @@
+{
+ "kind": "calibrate",
+ "resumed": false,
+ "release_tag": "populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z",
+ "spec": {
+  "run_id": "soft_chi_s964_0.3",
+  "l2_lambda": 0.3,
+  "l2_basis": "chi_square",
+  "mass_parametrization": "softmax",
+  "epochs": 800,
+  "epoch_batch": 400,
+  "holdout_fold": null,
+  "acs_share": 0.964
+ },
+ "settings": {
+  "method": "adam",
+  "learning_rate": 0.02,
+  "mass": "conserve",
+  "max_weight_ratio": 5.0,
+  "target_loss_cap": 1.0,
+  "seed": 0,
+  "weight_entity": "household"
+ },
+ "release_0923_reference": {
+  "final_loss": 0.015491,
+  "fraction_within_10pct": 0.9758,
+  "effective_sample_size": 13631.3,
+  "initial_loss_second_batch_start": 0.017768
+ },
+ "result": {
+  "final_loss": 0.11444662128373342,
+  "fraction_within_10pct": 0.7232563355012335,
+  "effective_sample_size": 649729.9399781474,
+  "chi_square_distance": 0.18312798638228914,
+  "realized_max_weight_ratio": 4.999983393247857,
+  "top_1pct_weight_share": 0.08492643724561867,
+  "n_targets": 4459,
+  "matrix_nnz": 24773532,
+  "skipped": 0,
+  "initial_loss_last_batch": 0.11792463064193726
+ },
+ "design_loss_first_batch_start": 0.3553781807422638,
+ "options": {
+  "gate_initialization_supplied": false,
+  "budget_basis": "nonzero_count",
+  "feasible_draw_pi_hi": null,
+  "budget_search": null,
+  "method": "adam",
+  "epochs": 400,
+  "learning_rate": 0.02,
+  "iterate_selection": "closing_state",
+  "iterate_selection_receipt": {},
+  "mass": "conserve",
+  "mass_reason": null,
+  "mass_parametrization": "softmax",
+  "max_weight_ratio": 5.0,
+  "target_records": null,
+  "l1_lambda": 0.0,
+  "l1_penalty": "mean_initial_weight_ratio_abs",
+  "l2_lambda": 0.3,
+  "l2_anchor": "initial",
+  "l2_anchor_weights_supplied": false,
+  "l2_basis": "chi_square",
+  "l2_penalty": "chi_square_initial_pre_gate_weight_distance",
+  "seed": 0,
+  "target_loss_weights": {
+   "kind": "uniform"
+  },
+  "target_loss_scales": {
+   "kind": "default_target",
+   "formula": "weighted_mean(min(abs((estimate - target) / scale), cap))",
+   "cap": 1.0,
+   "n": 4459,
+   "min": 985.6399586501911,
+   "median": 1490944.7107848558,
+   "max": 2226128237277.734
+  },
+  "warm_start_weights": {
+   "enabled": true,
+   "kind": "explicit"
+  },
+  "matrix_format": "sparse_csr"
+ },
+ "batches": [
+  {
+   "batch": 0,
+   "epochs": 400,
+   "epochs_done": 400,
+   "wall_seconds": 635.0697705745697,
+   "compile_seconds": 61.308518171310425,
+   "optimize_seconds": 571.6104753017426,
+   "seconds_per_epoch": 1.4326077075231642,
+   "post_seconds": 2.1507771015167236,
+   "start_loss": 0.3553781807422638,
+   "last_trajectory_loss": 0.11793649941682816,
+   "final_loss": 0.11792496060780806,
+   "fraction_within_10pct": 0.7165283695895941,
+   "effective_sample_size": 651256.5575092314,
+   "chi_square_distance": 0.1798709550298894,
+   "realized_max_weight_ratio": 4.999992432810882,
+   "peak_rss_gb": 3.640514373779297
+  },
+  {
+   "batch": 1,
+   "epochs": 400,
+   "epochs_done": 800,
+   "wall_seconds": 618.3155391216278,
+   "compile_seconds": 47.103145360946655,
+   "optimize_seconds": 568.8729157447815,
+   "seconds_per_epoch": 1.4257466560019587,
+   "post_seconds": 2.339478015899658,
+   "start_loss": 0.11792463064193726,
+   "last_trajectory_loss": 0.1144029051065445,
+   "final_loss": 0.11444662128373342,
+   "fraction_within_10pct": 0.7232563355012335,
+   "effective_sample_size": 649729.9399781474,
+   "chi_square_distance": 0.18312798638228914,
+   "realized_max_weight_ratio": 4.999983393247857,
+   "peak_rss_gb": 3.70068359375
+  }
+ ],
+ "consistency": {
+  "recomputed_final_loss": 0.11444662128373342,
+  "recomputed_minus_result_final_loss": 0.0,
+  "fit_train_fraction_within_minus_result": 0.0,
+  "mass_conserved_ratio": 1.0,
+  "max_ratio_to_prior": 4.999983393247857
+ },
+ "metrics": {
+  "concentration": {
+   "national": {
+    "households": 1588854,
+    "total_weight": 122537091.8856833,
+    "mass_conserved_ratio": 1.0,
+    "kish_ess": 649729.9399781474,
+    "kish_ess_design": 778147.5341503691,
+    "ess_fraction": 0.4089299205453411,
+    "top_1pct_weight_share": 0.08492643724561869,
+    "chi_square_distance": 0.18312798638228914,
+    "realized_max_weight_ratio": 4.999983393247857,
+    "realized_min_weight_ratio": 0.0012905255235789773,
+    "share_of_design_mass_with_ratio_below_0_1": 0.0181226437032931,
+    "share_of_design_mass_with_ratio_below_0_01": 0.0016321032519002524,
+    "share_of_design_mass_at_cap": 0.0,
+    "n_records_at_cap": 0,
+    "n_records_holding_half_weight": 273944,
+    "weight_ratio_quantiles": {
+     "0.01": 0.04616723018473446,
+     "0.1": 0.6121786769503615,
+     "0.25": 0.7857451570555186,
+     "0.5": 0.926640154153431,
+     "0.75": 1.12611121014133,
+     "0.9": 1.4504343806400923,
+     "0.99": 2.491784727735238
+    },
+    "design_weighted_mean_log_ratio": -0.11872685080975773
+   },
+   "per_spine": {
+    "acs_2024_1yr": {
+     "n": 1531614,
+     "mass_share": 0.9529261850173488,
+     "design_mass_share": 0.964,
+     "kish_ess": 699934.613503126,
+     "kish_ess_design": 812434.4564852872,
+     "n_records_holding_half_weight": 286620
+    },
+    "asec_puf": {
+     "n": 57240,
+     "mass_share": 0.04707381498265106,
+     "design_mass_share": 0.03600000000000003,
+     "kish_ess": 9166.666156056028,
+     "kish_ess_design": 9174.432030037513,
+     "n_records_holding_half_weight": 3538
+    }
+   },
+   "state_summary": {
+    "n_groups": 51,
+    "kish_ess": {
+     "min": 925.4707069268893,
+     "p10": 1335.2605840763308,
+     "median": 8163.601858949222,
+     "max": 85259.2389355427,
+     "argmin": "38",
+     "argmax": "06"
+    },
+    "kish_ess_design": {
+     "min": 1351.0757867161867,
+     "p10": 2117.7345997369885,
+     "median": 11182.605502563829,
+     "max": 89094.991166029,
+     "argmin": "02",
+     "argmax": "06"
+    },
+    "kish_ess_ratio": {
+     "min": 0.5781687749912109,
+     "p10": 0.6105844469358507,
+     "median": 0.7562994907101053,
+     "max": 0.9569476108557174,
+     "argmin": "56",
+     "argmax": "06"
+    },
+    "n_records_holding_half_weight": {
+     "min": 378.0,
+     "p10": 557.0,
+     "median": 3512.0,
+     "max": 33974.0,
+     "argmin": "02",
+     "argmax": "06"
+    },
+    "mass_ratio_vs_design": {
+     "min": 0.9506323116143486,
+     "p10": 0.967885823183803,
+     "median": 1.007616759042734,
+     "max": 1.0626311777151773,
+     "argmin": "11",
+     "argmax": "41"
+    }
+   },
+   "cd_summary": {
+    "n_groups": 436,
+    "kish_ess": {
+     "min": 725.4048179370421,
+     "p10": 1198.1680895477293,
+     "median": 1527.6868009739833,
+     "max": 2652.455282644301,
+     "argmin": "4202",
+     "argmax": "3621"
+    },
+    "kish_ess_design": {
+     "min": 837.1792219429982,
+     "p10": 1426.9514174296223,
+     "median": 1822.136894334874,
+     "max": 3064.7244436886353,
+     "argmin": "4202",
+     "argmax": "2601"
+    },
+    "kish_ess_ratio": {
+     "min": 0.5749990548841947,
+     "p10": 0.7134956907502046,
+     "median": 0.8611508431731958,
+     "max": 1.0038034604158357,
+     "argmin": "3001",
+     "argmax": "0617"
+    },
+    "n_records_holding_half_weight": {
+     "min": 291.0,
+     "p10": 486.5,
+     "median": 641.5,
+     "max": 1233.0,
+     "argmin": "4202",
+     "argmax": "3624"
+    },
+    "mass_ratio_vs_design": {
+     "min": 0.8963671867937072,
+     "p10": 0.9633230302655689,
+     "median": 0.9977398977080927,
+     "max": 1.092315901825531,
+     "argmin": "0409",
+     "argmax": "3603"
+    }
+   },
+   "massachusetts": {
+    "state": {
+     "n": 36578,
+     "kish_ess": 16480.966018077925,
+     "kish_ess_design": 19640.00594027502,
+     "kish_ess_ratio": 0.8391528021018074,
+     "mass_ratio_vs_design": 1.0452779024302337,
+     "top_1pct_share": 0.07735725945983472,
+     "n_records_holding_half_weight": 6922,
+     "n_records_holding_half_weight_design": 7963
+    },
+    "districts": {
+     "2501": {
+      "n": 4439,
+      "kish_ess": 1690.0415542137964,
+      "kish_ess_design": 2152.3024294461393,
+      "kish_ess_ratio": 0.7852249438052726,
+      "mass_ratio_vs_design": 1.0620937289123824,
+      "top_1pct_share": 0.09541934653710585,
+      "n_records_holding_half_weight": 756,
+      "n_records_holding_half_weight_design": 893
+     },
+     "2502": {
+      "n": 4671,
+      "kish_ess": 1924.244655648004,
+      "kish_ess_design": 2345.4739019045082,
+      "kish_ess_ratio": 0.8204076174480266,
+      "mass_ratio_vs_design": 1.028693530754512,
+      "top_1pct_share": 0.0864152567635073,
+      "n_records_holding_half_weight": 824,
+      "n_records_holding_half_weight_design": 972
+     },
+     "2503": {
+      "n": 3646,
+      "kish_ess": 1676.2106253117772,
+      "kish_ess_design": 2010.0148442537652,
+      "kish_ess_ratio": 0.8339294757467746,
+      "mass_ratio_vs_design": 1.0568706458353287,
+      "top_1pct_share": 0.07313649443229701,
+      "n_records_holding_half_weight": 689,
+      "n_records_holding_half_weight_design": 802
+     },
+     "2504": {
+      "n": 4058,
+      "kish_ess": 1893.759570237949,
+      "kish_ess_design": 2264.8192323452813,
+      "kish_ess_ratio": 0.8361636739886343,
+      "mass_ratio_vs_design": 1.0301111614079428,
+      "top_1pct_share": 0.07585860094340127,
+      "n_records_holding_half_weight": 809,
+      "n_records_holding_half_weight_design": 941
+     },
+     "2505": {
+      "n": 4045,
+      "kish_ess": 1900.350457069072,
+      "kish_ess_design": 2293.919542939528,
+      "kish_ess_ratio": 0.8284294289737296,
+      "mass_ratio_vs_design": 1.0661729923522838,
+      "top_1pct_share": 0.07572576879998225,
+      "n_records_holding_half_weight": 810,
+      "n_records_holding_half_weight_design": 949
+     },
+     "2506": {
+      "n": 3846,
+      "kish_ess": 1894.8043439630812,
+      "kish_ess_design": 2203.7150856802805,
+      "kish_ess_ratio": 0.8598227403694342,
+      "mass_ratio_vs_design": 1.0523770605377167,
+      "top_1pct_share": 0.07124458665848239,
+      "n_records_holding_half_weight": 788,
+      "n_records_holding_half_weight_design": 895
+     },
+     "2507": {
+      "n": 4538,
+      "kish_ess": 2045.8926995185395,
+      "kish_ess_design": 2399.162681235094,
+      "kish_ess_ratio": 0.8527528022673767,
+      "mass_ratio_vs_design": 0.9922457263128959,
+      "top_1pct_share": 0.07764341323203654,
+      "n_records_holding_half_weight": 843,
+      "n_records_holding_half_weight_design": 950
+     },
+     "2508": {
+      "n": 3558,
+      "kish_ess": 1682.4083942178179,
+      "kish_ess_design": 1983.2309633753787,
+      "kish_ess_ratio": 0.8483169259088347,
+      "mass_ratio_vs_design": 1.0684847970198024,
+      "top_1pct_share": 0.07183913334810767,
+      "n_records_holding_half_weight": 675,
+      "n_records_holding_half_weight_design": 770
+     },
+     "2509": {
+      "n": 3777,
+      "kish_ess": 1833.4240917230486,
+      "kish_ess_design": 2044.555548819955,
+      "kish_ess_ratio": 0.8967347904933354,
+      "mass_ratio_vs_design": 1.0597372273224546,
+      "top_1pct_share": 0.0711759894746147,
+      "n_records_holding_half_weight": 759,
+      "n_records_holding_half_weight_design": 829
+     }
+    }
+   },
+   "per_state": {
+    "01": {
+     "n": 26552,
+     "kish_ess": 9356.248176180608,
+     "kish_ess_design": 12776.773584278908,
+     "kish_ess_ratio": 0.7322856677755438,
+     "mass_ratio_vs_design": 0.9719347995086953,
+     "top_1pct_share": 0.09296332595167274,
+     "n_records_holding_half_weight": 3798,
+     "n_records_holding_half_weight_design": 4999
+    },
+    "02": {
+     "n": 3904,
+     "kish_ess": 940.6709565570638,
+     "kish_ess_design": 1351.0757867161867,
+     "kish_ess_ratio": 0.696238483292918,
+     "mass_ratio_vs_design": 1.022097203733429,
+     "top_1pct_share": 0.12643846024027453,
+     "n_records_holding_half_weight": 378,
+     "n_records_holding_half_weight_design": 541
+    },
+    "04": {
+     "n": 35091,
+     "kish_ess": 14313.473039087896,
+     "kish_ess_design": 18003.820458441176,
+     "kish_ess_ratio": 0.7950242045641461,
+     "mass_ratio_vs_design": 0.967885823183803,
+     "top_1pct_share": 0.08548744923112253,
+     "n_records_holding_half_weight": 6101,
+     "n_records_holding_half_weight_design": 7331
+    },
+    "05": {
+     "n": 15919,
+     "kish_ess": 5216.9634811816795,
+     "kish_ess_design": 7559.107388875027,
+     "kish_ess_ratio": 0.690156021445025,
+     "mass_ratio_vs_design": 0.9774050589607418,
+     "top_1pct_share": 0.09708676131438655,
+     "n_records_holding_half_weight": 2114,
+     "n_records_holding_half_weight_design": 3005
+    },
+    "06": {
+     "n": 163211,
+     "kish_ess": 85259.2389355427,
+     "kish_ess_design": 89094.991166029,
+     "kish_ess_ratio": 0.9569476108557174,
+     "mass_ratio_vs_design": 0.9858855974205446,
+     "top_1pct_share": 0.06491437451610939,
+     "n_records_holding_half_weight": 33974,
+     "n_records_holding_half_weight_design": 34878
+    },
+    "08": {
+     "n": 30079,
+     "kish_ess": 11692.629594338865,
+     "kish_ess_design": 14837.15066167797,
+     "kish_ess_ratio": 0.788064356894285,
+     "mass_ratio_vs_design": 1.0097067628901002,
+     "top_1pct_share": 0.09167555363484296,
+     "n_records_holding_half_weight": 5222,
+     "n_records_holding_half_weight_design": 6238
+    },
+    "09": {
+     "n": 18358,
+     "kish_ess": 7195.7758084217385,
+     "kish_ess_design": 9715.365093247874,
+     "kish_ess_ratio": 0.7406593307978476,
+     "mass_ratio_vs_design": 1.0301855673435336,
+     "top_1pct_share": 0.08965910922792322,
+     "n_records_holding_half_weight": 3062,
+     "n_records_holding_half_weight_design": 3912
+    },
+    "10": {
+     "n": 5594,
+     "kish_ess": 1466.7442058450793,
+     "kish_ess_design": 2440.218209392005,
+     "kish_ess_ratio": 0.6010709207069344,
+     "mass_ratio_vs_design": 1.003087488321875,
+     "top_1pct_share": 0.11691287707651302,
+     "n_records_holding_half_weight": 603,
+     "n_records_holding_half_weight_design": 975
+    },
+    "11": {
+     "n": 4228,
+     "kish_ess": 1335.2605840763308,
+     "kish_ess_design": 2117.7345997369885,
+     "kish_ess_ratio": 0.6305136556026252,
+     "mass_ratio_vs_design": 0.9506323116143486,
+     "top_1pct_share": 0.10167525610481218,
+     "n_records_holding_half_weight": 557,
+     "n_records_holding_half_weight_design": 889
+    },
+    "12": {
+     "n": 99898,
+     "kish_ess": 47922.01499859749,
+     "kish_ess_design": 51764.47969301492,
+     "kish_ess_ratio": 0.9257702440514258,
+     "mass_ratio_vs_design": 0.9869624495177128,
+     "top_1pct_share": 0.07361324911720317,
+     "n_records_holding_half_weight": 20130,
+     "n_records_holding_half_weight_design": 21108
+    },
+    "13": {
+     "n": 50241,
+     "kish_ess": 21496.146322672033,
+     "kish_ess_design": 24842.560451682722,
+     "kish_ess_ratio": 0.8652951198199049,
+     "mass_ratio_vs_design": 0.97937952957178,
+     "top_1pct_share": 0.08188477745981732,
+     "n_records_holding_half_weight": 9010,
+     "n_records_holding_half_weight_design": 9826
+    },
+    "15": {
+     "n": 6789,
+     "kish_ess": 2219.304983164954,
+     "kish_ess_design": 3330.5094903223862,
+     "kish_ess_ratio": 0.6663560003698203,
+     "mass_ratio_vs_design": 1.057157480244621,
+     "top_1pct_share": 0.1032072300428336,
+     "n_records_holding_half_weight": 936,
+     "n_records_holding_half_weight_design": 1343
+    },
+    "16": {
+     "n": 9678,
+     "kish_ess": 3601.386386099056,
+     "kish_ess_design": 5147.991452883423,
+     "kish_ess_ratio": 0.6995711665531023,
+     "mass_ratio_vs_design": 0.9910977634201678,
+     "top_1pct_share": 0.08518854741137807,
+     "n_records_holding_half_weight": 1426,
+     "n_records_holding_half_weight_design": 2084
+    },
+    "17": {
+     "n": 59602,
+     "kish_ess": 23933.872228747132,
+     "kish_ess_design": 27570.395583793666,
+     "kish_ess_ratio": 0.8681004288098012,
+     "mass_ratio_vs_design": 1.0108285635040741,
+     "top_1pct_share": 0.08745545108865459,
+     "n_records_holding_half_weight": 10357,
+     "n_records_holding_half_weight_design": 11531
+    },
+    "18": {
+     "n": 33243,
+     "kish_ess": 12993.322349265643,
+     "kish_ess_design": 16354.133023673414,
+     "kish_ess_ratio": 0.7944977780514056,
+     "mass_ratio_vs_design": 1.02867092971433,
+     "top_1pct_share": 0.0904545211602176,
+     "n_records_holding_half_weight": 5708,
+     "n_records_holding_half_weight_design": 6885
+    },
+    "19": {
+     "n": 17112,
+     "kish_ess": 5539.581120500534,
+     "kish_ess_design": 7406.39470972931,
+     "kish_ess_ratio": 0.747945706056354,
+     "mass_ratio_vs_design": 1.0046054996516742,
+     "top_1pct_share": 0.09725836825710225,
+     "n_records_holding_half_weight": 2195,
+     "n_records_holding_half_weight_design": 2974
+    },
+    "20": {
+     "n": 15117,
+     "kish_ess": 5259.350691447043,
+     "kish_ess_design": 7215.271611036244,
+     "kish_ess_ratio": 0.7289192943759055,
+     "mass_ratio_vs_design": 1.0184344147695328,
+     "top_1pct_share": 0.09363104160297264,
+     "n_records_holding_half_weight": 2116,
+     "n_records_holding_half_weight_design": 2868
+    },
+    "21": {
+     "n": 22707,
+     "kish_ess": 8026.631715732936,
+     "kish_ess_design": 11182.605502563829,
+     "kish_ess_ratio": 0.7177783132824166,
+     "mass_ratio_vs_design": 0.9558627593370358,
+     "top_1pct_share": 0.09764693000528533,
+     "n_records_holding_half_weight": 3444,
+     "n_records_holding_half_weight_design": 4526
+    },
+    "22": {
+     "n": 22445,
+     "kish_ess": 8470.362752922772,
+     "kish_ess_design": 11199.746736533927,
+     "kish_ess_ratio": 0.7562994907101053,
+     "mass_ratio_vs_design": 1.0070441747408148,
+     "top_1pct_share": 0.08762893534215357,
+     "n_records_holding_half_weight": 3515,
+     "n_records_holding_half_weight_design": 4349
+    },
+    "23": {
+     "n": 8223,
+     "kish_ess": 2241.409187812401,
+     "kish_ess_design": 3541.2033653456924,
+     "kish_ess_ratio": 0.6329512757575261,
+     "mass_ratio_vs_design": 0.9942546463602454,
+     "top_1pct_share": 0.11323502390041242,
+     "n_records_holding_half_weight": 897,
+     "n_records_holding_half_weight_design": 1409
+    },
+    "24": {
+     "n": 28418,
+     "kish_ess": 11613.515651996573,
+     "kish_ess_design": 14130.559110404016,
+     "kish_ess_ratio": 0.8218723379067004,
+     "mass_ratio_vs_design": 1.0249002923763917,
+     "top_1pct_share": 0.08919783956744445,
+     "n_records_holding_half_weight": 5172,
+     "n_records_holding_half_weight_design": 5818
+    },
+    "25": {
+     "n": 36578,
+     "kish_ess": 16480.966018077925,
+     "kish_ess_design": 19640.00594027502,
+     "kish_ess_ratio": 0.8391528021018074,
+     "mass_ratio_vs_design": 1.0452779024302337,
+     "top_1pct_share": 0.07735725945983472,
+     "n_records_holding_half_weight": 6922,
+     "n_records_holding_half_weight_design": 7963
+    },
+    "26": {
+     "n": 48700,
+     "kish_ess": 19597.51139846593,
+     "kish_ess_design": 23170.66535561064,
+     "kish_ess_ratio": 0.845789756042569,
+     "mass_ratio_vs_design": 1.0106808047702744,
+     "top_1pct_share": 0.0878073582539929,
+     "n_records_holding_half_weight": 8410,
+     "n_records_holding_half_weight_design": 9540
+    },
+    "27": {
+     "n": 28328,
+     "kish_ess": 8163.601858949222,
+     "kish_ess_design": 10556.521522876383,
+     "kish_ess_ratio": 0.7733230914424214,
+     "mass_ratio_vs_design": 1.0078301496979654,
+     "top_1pct_share": 0.11244866686864101,
+     "n_records_holding_half_weight": 3512,
+     "n_records_holding_half_weight_design": 4383
+    },
+    "28": {
+     "n": 14891,
+     "kish_ess": 5192.192604891751,
+     "kish_ess_design": 7532.913346240097,
+     "kish_ess_ratio": 0.689267533853065,
+     "mass_ratio_vs_design": 1.007616759042734,
+     "top_1pct_share": 0.09380184760541482,
+     "n_records_holding_half_weight": 2080,
+     "n_records_holding_half_weight_design": 2926
+    },
+    "29": {
+     "n": 31234,
+     "kish_ess": 11916.136172286479,
+     "kish_ess_design": 14898.697443792067,
+     "kish_ess_ratio": 0.7998106020504262,
+     "mass_ratio_vs_design": 1.0341286105014404,
+     "top_1pct_share": 0.09219381633531701,
+     "n_records_holding_half_weight": 5153,
+     "n_records_holding_half_weight_design": 6193
+    },
+    "30": {
+     "n": 6055,
+     "kish_ess": 1496.2479885772464,
+     "kish_ess_design": 2584.456789641677,
+     "kish_ess_ratio": 0.5789409962565845,
+     "mass_ratio_vs_design": 0.9681127754210449,
+     "top_1pct_share": 0.11950418817957285,
+     "n_records_holding_half_weight": 631,
+     "n_records_holding_half_weight_design": 1061
+    },
+    "31": {
+     "n": 10177,
+     "kish_ess": 3115.1382746596205,
+     "kish_ess_design": 4568.159429599924,
+     "kish_ess_ratio": 0.6819241584421764,
+     "mass_ratio_vs_design": 1.0011412513537519,
+     "top_1pct_share": 0.0987836225987137,
+     "n_records_holding_half_weight": 1233,
+     "n_records_holding_half_weight_design": 1815
+    },
+    "32": {
+     "n": 14335,
+     "kish_ess": 5654.008654834811,
+     "kish_ess_design": 8089.067519406405,
+     "kish_ess_ratio": 0.6989691508038883,
+     "mass_ratio_vs_design": 1.0470547218330732,
+     "top_1pct_share": 0.08491766606303952,
+     "n_records_holding_half_weight": 2344,
+     "n_records_holding_half_weight_design": 3008
+    },
+    "33": {
+     "n": 7609,
+     "kish_ess": 2339.227061735544,
+     "kish_ess_design": 3848.235983548971,
+     "kish_ess_ratio": 0.6078699621685443,
+     "mass_ratio_vs_design": 1.0246924128257318,
+     "top_1pct_share": 0.09790290796702897,
+     "n_records_holding_half_weight": 919,
+     "n_records_holding_half_weight_design": 1532
+    },
+    "34": {
+     "n": 41000,
+     "kish_ess": 18177.83660868162,
+     "kish_ess_design": 21238.904646395065,
+     "kish_ess_ratio": 0.8558744865294639,
+     "mass_ratio_vs_design": 1.030772887734528,
+     "top_1pct_share": 0.08141203887977953,
+     "n_records_holding_half_weight": 8015,
+     "n_records_holding_half_weight_design": 8871
+    },
+    "35": {
+     "n": 10436,
+     "kish_ess": 3759.073884917129,
+     "kish_ess_design": 5102.1909398454345,
+     "kish_ess_ratio": 0.7367568029570853,
+     "mass_ratio_vs_design": 1.0171428138924028,
+     "top_1pct_share": 0.0879024542312933,
+     "n_records_holding_half_weight": 1489,
+     "n_records_holding_half_weight_design": 1963
+    },
+    "36": {
+     "n": 98626,
+     "kish_ess": 42031.05702888198,
+     "kish_ess_design": 46386.346032799294,
+     "kish_ess_ratio": 0.9061083836860585,
+     "mass_ratio_vs_design": 0.9978568020896971,
+     "top_1pct_share": 0.08288099813422936,
+     "n_records_holding_half_weight": 17763,
+     "n_records_holding_half_weight_design": 19071
+    },
+    "37": {
+     "n": 55403,
+     "kish_ess": 23564.154483844628,
+     "kish_ess_design": 26912.258030358076,
+     "kish_ess_ratio": 0.8755918755410023,
+     "mass_ratio_vs_design": 0.9789689048931572,
+     "top_1pct_share": 0.08269140343645905,
+     "n_records_holding_half_weight": 9923,
+     "n_records_holding_half_weight_design": 10959
+    },
+    "38": {
+     "n": 4724,
+     "kish_ess": 925.4707069268893,
+     "kish_ess_design": 1597.0107458349278,
+     "kish_ess_ratio": 0.579501865808077,
+     "mass_ratio_vs_design": 0.9618726995441709,
+     "top_1pct_share": 0.1388099632756133,
+     "n_records_holding_half_weight": 418,
+     "n_records_holding_half_weight_design": 664
+    },
+    "39": {
+     "n": 57885,
+     "kish_ess": 25088.76672468566,
+     "kish_ess_design": 29257.843628632465,
+     "kish_ess_ratio": 0.8575056673053362,
+     "mass_ratio_vs_design": 0.992748755884097,
+     "top_1pct_share": 0.08252268304687699,
+     "n_records_holding_half_weight": 11024,
+     "n_records_holding_half_weight_design": 12432
+    },
+    "40": {
+     "n": 18643,
+     "kish_ess": 7126.589875654415,
+     "kish_ess_design": 9433.443227664586,
+     "kish_ess_ratio": 0.7554600906225761,
+     "mass_ratio_vs_design": 1.0141425355071707,
+     "top_1pct_share": 0.08712050860760233,
+     "n_records_holding_half_weight": 2923,
+     "n_records_holding_half_weight_design": 3902
+    },
+    "41": {
+     "n": 21739,
+     "kish_ess": 9761.383026542708,
+     "kish_ess_design": 11654.935534835888,
+     "kish_ess_ratio": 0.8375321336927632,
+     "mass_ratio_vs_design": 1.0626311777151773,
+     "top_1pct_share": 0.07597587064543607,
+     "n_records_holding_half_weight": 4039,
+     "n_records_holding_half_weight_design": 4706
+    },
+    "42": {
+     "n": 65026,
+     "kish_ess": 24942.292140931873,
+     "kish_ess_design": 28568.047981031974,
+     "kish_ess_ratio": 0.8730835287553614,
+     "mass_ratio_vs_design": 1.008823122323081,
+     "top_1pct_share": 0.09250238645428759,
+     "n_records_holding_half_weight": 10905,
+     "n_records_holding_half_weight_design": 12133
+    },
+    "44": {
+     "n": 5817,
+     "kish_ess": 1934.0021089029074,
+     "kish_ess_design": 2956.341920713801,
+     "kish_ess_ratio": 0.6541875604280399,
+     "mass_ratio_vs_design": 1.0622782067969414,
+     "top_1pct_share": 0.09919773016125943,
+     "n_records_holding_half_weight": 776,
+     "n_records_holding_half_weight_design": 1188
+    },
+    "45": {
+     "n": 27605,
+     "kish_ess": 10255.322812777187,
+     "kish_ess_design": 13552.88779765575,
+     "kish_ess_ratio": 0.7566891252911468,
+     "mass_ratio_vs_design": 0.9799111207982777,
+     "top_1pct_share": 0.09285029577124691,
+     "n_records_holding_half_weight": 4337,
+     "n_records_holding_half_weight_design": 5443
+    },
+    "46": {
+     "n": 5278,
+     "kish_ess": 1282.6150901462631,
+     "kish_ess_design": 2100.6350498819984,
+     "kish_ess_ratio": 0.6105844469358507,
+     "mass_ratio_vs_design": 1.0304100044505593,
+     "top_1pct_share": 0.11476259065434571,
+     "n_records_holding_half_weight": 493,
+     "n_records_holding_half_weight_design": 849
+    },
+    "47": {
+     "n": 34751,
+     "kish_ess": 14422.62566805248,
+     "kish_ess_design": 17761.710869213242,
+     "kish_ess_ratio": 0.812006555801532,
+     "mass_ratio_vs_design": 1.008768568944648,
+     "top_1pct_share": 0.08388631247330762,
+     "n_records_holding_half_weight": 6121,
+     "n_records_holding_half_weight_design": 7214
+    },
+    "48": {
+     "n": 125924,
+     "kish_ess": 56905.26249715467,
+     "kish_ess_design": 60625.87225272694,
+     "kish_ess_ratio": 0.9386300004053976,
+     "mass_ratio_vs_design": 0.9676160204757407,
+     "top_1pct_share": 0.07649497852569395,
+     "n_records_holding_half_weight": 23194,
+     "n_records_holding_half_weight_design": 24165
+    },
+    "49": {
+     "n": 14551,
+     "kish_ess": 5994.712509606554,
+     "kish_ess_design": 7712.259523377096,
+     "kish_ess_ratio": 0.7772965226903501,
+     "mass_ratio_vs_design": 1.0186101273478378,
+     "top_1pct_share": 0.08054475980153324,
+     "n_records_holding_half_weight": 2446,
+     "n_records_holding_half_weight_design": 3082
+    },
+    "50": {
+     "n": 3893,
+     "kish_ess": 1027.4646940123935,
+     "kish_ess_design": 1640.0488968823217,
+     "kish_ess_ratio": 0.6264841834689012,
+     "mass_ratio_vs_design": 0.9956471640982937,
+     "top_1pct_share": 0.11708909541918325,
+     "n_records_holding_half_weight": 425,
+     "n_records_holding_half_weight_design": 680
+    },
+    "51": {
+     "n": 41729,
+     "kish_ess": 18336.452726418225,
+     "kish_ess_design": 22046.58085887813,
+     "kish_ess_ratio": 0.8317141258225608,
+     "mass_ratio_vs_design": 0.9951737659027728,
+     "top_1pct_share": 0.08249099916265804,
+     "n_records_holding_half_weight": 7946,
+     "n_records_holding_half_weight_design": 9109
+    },
+    "53": {
+     "n": 37953,
+     "kish_ess": 17129.697600608895,
+     "kish_ess_design": 19850.396863469512,
+     "kish_ess_ratio": 0.8629398051044767,
+     "mass_ratio_vs_design": 1.0323889375844124,
+     "top_1pct_share": 0.07746157364516394,
+     "n_records_holding_half_weight": 7255,
+     "n_records_holding_half_weight_design": 8166
+    },
+    "54": {
+     "n": 9619,
+     "kish_ess": 3380.4983510356733,
+     "kish_ess_design": 5156.5389026751955,
+     "kish_ess_ratio": 0.6555750697976663,
+     "mass_ratio_vs_design": 0.9674678094046433,
+     "top_1pct_share": 0.08768941683929217,
+     "n_records_holding_half_weight": 1319,
+     "n_records_holding_half_weight_design": 2064
+    },
+    "55": {
+     "n": 30578,
+     "kish_ess": 10493.257555882674,
+     "kish_ess_design": 12106.086849883412,
+     "kish_ess_ratio": 0.8667753408677825,
+     "mass_ratio_vs_design": 1.052547485980522,
+     "top_1pct_share": 0.09794643971147096,
+     "n_records_holding_half_weight": 4352,
+     "n_records_holding_half_weight_design": 4905
+    },
+    "56": {
+     "n": 3358,
+     "kish_ess": 944.7368719248072,
+     "kish_ess_design": 1634.0157282606083,
+     "kish_ess_ratio": 0.5781687749912109,
+     "mass_ratio_vs_design": 0.9883941729769936,
+     "top_1pct_share": 0.1076343789764927,
+     "n_records_holding_half_weight": 387,
+     "n_records_holding_half_weight_design": 637
+    }
+   },
+   "per_cd": {
+    "0101": {
+     "n": 4359,
+     "kish_ess": 1290.0854612339976,
+     "kish_ess_design": 1857.234734765042,
+     "kish_ess_ratio": 0.6946270372211221,
+     "mass_ratio_vs_design": 0.9995973284058185,
+     "top_1pct_share": 0.11094128607591619,
+     "n_records_holding_half_weight": 547,
+     "n_records_holding_half_weight_design": 734
+    },
+    "0102": {
+     "n": 3599,
+     "kish_ess": 1175.3977323975068,
+     "kish_ess_design": 1682.1680463023342,
+     "kish_ess_ratio": 0.6987397810707515,
+     "mass_ratio_vs_design": 0.9472521316956631,
+     "top_1pct_share": 0.1020454417590065,
+     "n_records_holding_half_weight": 482,
+     "n_records_holding_half_weight_design": 638
+    },
+    "0103": {
+     "n": 3830,
+     "kish_ess": 1434.6327852394056,
+     "kish_ess_design": 1953.4144863228025,
+     "kish_ess_ratio": 0.7344231320512138,
+     "mass_ratio_vs_design": 0.9832023747192755,
+     "top_1pct_share": 0.08738418053209192,
+     "n_records_holding_half_weight": 563,
+     "n_records_holding_half_weight_design": 749
+    },
+    "0104": {
+     "n": 4173,
+     "kish_ess": 1422.8483660827924,
+     "kish_ess_design": 1892.2662830608917,
+     "kish_ess_ratio": 0.7519281925698225,
+     "mass_ratio_vs_design": 0.9641916356998456,
+     "top_1pct_share": 0.09451777955004369,
+     "n_records_holding_half_weight": 583,
+     "n_records_holding_half_weight_design": 750
+    },
+    "0105": {
+     "n": 3559,
+     "kish_ess": 1423.906117495692,
+     "kish_ess_design": 1868.1128074399014,
+     "kish_ess_ratio": 0.7622163457286292,
+     "mass_ratio_vs_design": 0.9703952064664094,
+     "top_1pct_share": 0.08428458783181361,
+     "n_records_holding_half_weight": 579,
+     "n_records_holding_half_weight_design": 755
+    },
+    "0106": {
+     "n": 3395,
+     "kish_ess": 1276.661357384192,
+     "kish_ess_design": 1713.0340854633034,
+     "kish_ess_ratio": 0.7452632543729618,
+     "mass_ratio_vs_design": 0.997765443357527,
+     "top_1pct_share": 0.0868519559625731,
+     "n_records_holding_half_weight": 517,
+     "n_records_holding_half_weight_design": 674
+    },
+    "0107": {
+     "n": 3637,
+     "kish_ess": 1367.2068332678293,
+     "kish_ess_design": 1839.5553248513288,
+     "kish_ess_ratio": 0.7432268085649045,
+     "mass_ratio_vs_design": 0.9425401219146924,
+     "top_1pct_share": 0.08549517990892919,
+     "n_records_holding_half_weight": 537,
+     "n_records_holding_half_weight_design": 712
+    },
+    "0200": {
+     "n": 3904,
+     "kish_ess": 940.6709565570638,
+     "kish_ess_design": 1351.0757867161867,
+     "kish_ess_ratio": 0.696238483292918,
+     "mass_ratio_vs_design": 1.022097203733429,
+     "top_1pct_share": 0.12643846024027453,
+     "n_records_holding_half_weight": 378,
+     "n_records_holding_half_weight_design": 541
+    },
+    "0401": {
+     "n": 3883,
+     "kish_ess": 1673.5259304772032,
+     "kish_ess_design": 2132.648728552099,
+     "kish_ess_ratio": 0.7847171022925075,
+     "mass_ratio_vs_design": 0.9868036549444378,
+     "top_1pct_share": 0.08104042481880351,
+     "n_records_holding_half_weight": 738,
+     "n_records_holding_half_weight_design": 886
+    },
+    "0402": {
+     "n": 5019,
+     "kish_ess": 1929.6199620932287,
+     "kish_ess_design": 2367.820234167364,
+     "kish_ess_ratio": 0.8149351603001961,
+     "mass_ratio_vs_design": 0.9536892073135582,
+     "top_1pct_share": 0.0925574529252618,
+     "n_records_holding_half_weight": 804,
+     "n_records_holding_half_weight_design": 966
+    },
+    "0403": {
+     "n": 2802,
+     "kish_ess": 1317.3817562789413,
+     "kish_ess_design": 1618.8338326023234,
+     "kish_ess_ratio": 0.8137844229269727,
+     "mass_ratio_vs_design": 0.9669711577870452,
+     "top_1pct_share": 0.0719022631439026,
+     "n_records_holding_half_weight": 515,
+     "n_records_holding_half_weight_design": 616
+    },
+    "0404": {
+     "n": 3595,
+     "kish_ess": 1484.4457694499774,
+     "kish_ess_design": 1816.9296430844272,
+     "kish_ess_ratio": 0.8170078434792755,
+     "mass_ratio_vs_design": 0.9848206369410974,
+     "top_1pct_share": 0.08593143099473186,
+     "n_records_holding_half_weight": 640,
+     "n_records_holding_half_weight_design": 727
+    },
+    "0405": {
+     "n": 3790,
+     "kish_ess": 1652.3102342676284,
+     "kish_ess_design": 2046.292815907277,
+     "kish_ess_ratio": 0.8074651982468276,
+     "mass_ratio_vs_design": 0.981591232717693,
+     "top_1pct_share": 0.08057717718086349,
+     "n_records_holding_half_weight": 724,
+     "n_records_holding_half_weight_design": 853
+    },
+    "0406": {
+     "n": 4530,
+     "kish_ess": 1998.93074038825,
+     "kish_ess_design": 2527.8189225547703,
+     "kish_ess_ratio": 0.7907729159523842,
+     "mass_ratio_vs_design": 0.9691931182703798,
+     "top_1pct_share": 0.07881349414965194,
+     "n_records_holding_half_weight": 859,
+     "n_records_holding_half_weight_design": 1045
+    },
+    "0407": {
+     "n": 3834,
+     "kish_ess": 1412.637746848929,
+     "kish_ess_design": 1865.2468267736192,
+     "kish_ess_ratio": 0.7573462807023865,
+     "mass_ratio_vs_design": 0.9756684981579993,
+     "top_1pct_share": 0.09679588950539383,
+     "n_records_holding_half_weight": 621,
+     "n_records_holding_half_weight_design": 763
+    },
+    "0408": {
+     "n": 3630,
+     "kish_ess": 1455.5071993756096,
+     "kish_ess_design": 1785.751529977273,
+     "kish_ess_ratio": 0.8150670319706423,
+     "mass_ratio_vs_design": 1.0053030987234974,
+     "top_1pct_share": 0.08875823158440542,
+     "n_records_holding_half_weight": 617,
+     "n_records_holding_half_weight_design": 749
+    },
+    "0409": {
+     "n": 4008,
+     "kish_ess": 1546.2907707534544,
+     "kish_ess_design": 2018.6775329883292,
+     "kish_ess_ratio": 0.7659919652766027,
+     "mass_ratio_vs_design": 0.8963671867937072,
+     "top_1pct_share": 0.0902628916039541,
+     "n_records_holding_half_weight": 652,
+     "n_records_holding_half_weight_design": 827
+    },
+    "0501": {
+     "n": 4472,
+     "kish_ess": 1377.9157237440443,
+     "kish_ess_design": 2028.1399420744174,
+     "kish_ess_ratio": 0.679398741259781,
+     "mass_ratio_vs_design": 0.973048372357878,
+     "top_1pct_share": 0.10427481307778579,
+     "n_records_holding_half_weight": 558,
+     "n_records_holding_half_weight_design": 818
+    },
+    "0502": {
+     "n": 3639,
+     "kish_ess": 1338.1811446271984,
+     "kish_ess_design": 1685.7652608294493,
+     "kish_ess_ratio": 0.7938122677701707,
+     "mass_ratio_vs_design": 0.9756439794045545,
+     "top_1pct_share": 0.08387412564683715,
+     "n_records_holding_half_weight": 524,
+     "n_records_holding_half_weight_design": 676
+    },
+    "0503": {
+     "n": 3433,
+     "kish_ess": 1182.4526694174217,
+     "kish_ess_design": 1798.474810495712,
+     "kish_ess_ratio": 0.6574752465348699,
+     "mass_ratio_vs_design": 0.9881470012679505,
+     "top_1pct_share": 0.09376108783053934,
+     "n_records_holding_half_weight": 480,
+     "n_records_holding_half_weight_design": 706
+    },
+    "0504": {
+     "n": 4375,
+     "kish_ess": 1336.5026210507538,
+     "kish_ess_design": 2137.946388458473,
+     "kish_ess_ratio": 0.6251338332269475,
+     "mass_ratio_vs_design": 0.9729846805822783,
+     "top_1pct_share": 0.10709435948702768,
+     "n_records_holding_half_weight": 563,
+     "n_records_holding_half_weight_design": 832
+    },
+    "0601": {
+     "n": 3984,
+     "kish_ess": 1720.821735683701,
+     "kish_ess_design": 1817.340440005628,
+     "kish_ess_ratio": 0.9468901356084786,
+     "mass_ratio_vs_design": 0.96352989076412,
+     "top_1pct_share": 0.07738607173779773,
+     "n_records_holding_half_weight": 685,
+     "n_records_holding_half_weight_design": 711
+    },
+    "0602": {
+     "n": 3889,
+     "kish_ess": 1836.9058294918236,
+     "kish_ess_design": 1958.4862620050455,
+     "kish_ess_ratio": 0.9379212226953529,
+     "mass_ratio_vs_design": 0.9908186446039497,
+     "top_1pct_share": 0.07299623942514963,
+     "n_records_holding_half_weight": 773,
+     "n_records_holding_half_weight_design": 802
+    },
+    "0603": {
+     "n": 3673,
+     "kish_ess": 2028.1326478175276,
+     "kish_ess_design": 2095.699519917906,
+     "kish_ess_ratio": 0.9677592749064403,
+     "mass_ratio_vs_design": 0.9867030253771624,
+     "top_1pct_share": 0.0602451834871769,
+     "n_records_holding_half_weight": 829,
+     "n_records_holding_half_weight_design": 853
+    },
+    "0604": {
+     "n": 3694,
+     "kish_ess": 1925.3263816205863,
+     "kish_ess_design": 2011.5799121594287,
+     "kish_ess_ratio": 0.9571214993660137,
+     "mass_ratio_vs_design": 0.976401104891565,
+     "top_1pct_share": 0.06327071861452584,
+     "n_records_holding_half_weight": 768,
+     "n_records_holding_half_weight_design": 799
+    },
+    "0605": {
+     "n": 3299,
+     "kish_ess": 1634.4314724688666,
+     "kish_ess_design": 1702.1507879352082,
+     "kish_ess_ratio": 0.9602154427525845,
+     "mass_ratio_vs_design": 0.979980839522408,
+     "top_1pct_share": 0.064909141698129,
+     "n_records_holding_half_weight": 634,
+     "n_records_holding_half_weight_design": 653
+    },
+    "0606": {
+     "n": 3032,
+     "kish_ess": 1638.9059318433353,
+     "kish_ess_design": 1726.7467557128618,
+     "kish_ess_ratio": 0.9491292955501962,
+     "mass_ratio_vs_design": 0.9708253722920019,
+     "top_1pct_share": 0.06262758276399107,
+     "n_records_holding_half_weight": 650,
+     "n_records_holding_half_weight_design": 667
+    },
+    "0607": {
+     "n": 3317,
+     "kish_ess": 1818.752985542108,
+     "kish_ess_design": 1915.541419289514,
+     "kish_ess_ratio": 0.9494720224930948,
+     "mass_ratio_vs_design": 0.9805896406375139,
+     "top_1pct_share": 0.06412852736461751,
+     "n_records_holding_half_weight": 738,
+     "n_records_holding_half_weight_design": 759
+    },
+    "0608": {
+     "n": 2806,
+     "kish_ess": 1491.314972163898,
+     "kish_ess_design": 1545.0242167381007,
+     "kish_ess_ratio": 0.9652372797834876,
+     "mass_ratio_vs_design": 0.9720953828431245,
+     "top_1pct_share": 0.06500972176914455,
+     "n_records_holding_half_weight": 585,
+     "n_records_holding_half_weight_design": 587
+    },
+    "0609": {
+     "n": 2704,
+     "kish_ess": 1512.3013776365085,
+     "kish_ess_design": 1596.8512238079113,
+     "kish_ess_ratio": 0.9470521455531831,
+     "mass_ratio_vs_design": 0.9963500554261132,
+     "top_1pct_share": 0.05749615631283009,
+     "n_records_holding_half_weight": 577,
+     "n_records_holding_half_weight_design": 595
+    },
+    "0610": {
+     "n": 3245,
+     "kish_ess": 1629.9475662618358,
+     "kish_ess_design": 1792.760183683422,
+     "kish_ess_ratio": 0.9091832700751588,
+     "mass_ratio_vs_design": 1.0136652162714332,
+     "top_1pct_share": 0.07075741374287726,
+     "n_records_holding_half_weight": 724,
+     "n_records_holding_half_weight_design": 749
+    },
+    "0611": {
+     "n": 3916,
+     "kish_ess": 2238.377478900347,
+     "kish_ess_design": 2325.3193830953146,
+     "kish_ess_ratio": 0.9626107687283644,
+     "mass_ratio_vs_design": 0.9532431100047768,
+     "top_1pct_share": 0.060571010243716014,
+     "n_records_holding_half_weight": 905,
+     "n_records_holding_half_weight_design": 916
+    },
+    "0612": {
+     "n": 3496,
+     "kish_ess": 1943.3192975417564,
+     "kish_ess_design": 1964.3736877092736,
+     "kish_ess_ratio": 0.9892818813959632,
+     "mass_ratio_vs_design": 0.96127711913213,
+     "top_1pct_share": 0.060067094158960874,
+     "n_records_holding_half_weight": 774,
+     "n_records_holding_half_weight_design": 775
+    },
+    "0613": {
+     "n": 2759,
+     "kish_ess": 1375.020161719269,
+     "kish_ess_design": 1444.5172767389352,
+     "kish_ess_ratio": 0.9518890385468015,
+     "mass_ratio_vs_design": 0.9881655714047106,
+     "top_1pct_share": 0.07110070034167434,
+     "n_records_holding_half_weight": 553,
+     "n_records_holding_half_weight_design": 570
+    },
+    "0614": {
+     "n": 2949,
+     "kish_ess": 1515.77182728671,
+     "kish_ess_design": 1545.1356895653698,
+     "kish_ess_ratio": 0.9809959329287646,
+     "mass_ratio_vs_design": 0.9979297448813491,
+     "top_1pct_share": 0.06904981265196047,
+     "n_records_holding_half_weight": 630,
+     "n_records_holding_half_weight_design": 638
+    },
+    "0615": {
+     "n": 3164,
+     "kish_ess": 1732.953600664469,
+     "kish_ess_design": 1820.5503977107232,
+     "kish_ess_ratio": 0.951884442662832,
+     "mass_ratio_vs_design": 1.016611195654844,
+     "top_1pct_share": 0.06454869091305936,
+     "n_records_holding_half_weight": 718,
+     "n_records_holding_half_weight_design": 735
+    },
+    "0616": {
+     "n": 3528,
+     "kish_ess": 1890.420607860467,
+     "kish_ess_design": 1911.539292609345,
+     "kish_ess_ratio": 0.988952000709308,
+     "mass_ratio_vs_design": 1.010703004455214,
+     "top_1pct_share": 0.07096068318481297,
+     "n_records_holding_half_weight": 822,
+     "n_records_holding_half_weight_design": 839
+    },
+    "0617": {
+     "n": 3260,
+     "kish_ess": 1799.2889237439424,
+     "kish_ess_design": 1792.4713299937905,
+     "kish_ess_ratio": 1.0038034604158357,
+     "mass_ratio_vs_design": 0.9979538304542804,
+     "top_1pct_share": 0.06645220033803131,
+     "n_records_holding_half_weight": 756,
+     "n_records_holding_half_weight_design": 750
+    },
+    "0618": {
+     "n": 2970,
+     "kish_ess": 1547.2497080599578,
+     "kish_ess_design": 1598.6358587372872,
+     "kish_ess_ratio": 0.9678562504422253,
+     "mass_ratio_vs_design": 0.9984955465843546,
+     "top_1pct_share": 0.06299588985150258,
+     "n_records_holding_half_weight": 612,
+     "n_records_holding_half_weight_design": 634
+    },
+    "0619": {
+     "n": 3808,
+     "kish_ess": 1851.5717083639422,
+     "kish_ess_design": 1945.202157738853,
+     "kish_ess_ratio": 0.9518659543932704,
+     "mass_ratio_vs_design": 1.001899843044714,
+     "top_1pct_share": 0.0754727460424205,
+     "n_records_holding_half_weight": 761,
+     "n_records_holding_half_weight_design": 790
+    },
+    "0620": {
+     "n": 3219,
+     "kish_ess": 1685.8560027653925,
+     "kish_ess_design": 1739.4714126521649,
+     "kish_ess_ratio": 0.9691771825068254,
+     "mass_ratio_vs_design": 0.9798280831275926,
+     "top_1pct_share": 0.0643878182527788,
+     "n_records_holding_half_weight": 646,
+     "n_records_holding_half_weight_design": 667
+    },
+    "0621": {
+     "n": 2724,
+     "kish_ess": 1396.678969011909,
+     "kish_ess_design": 1502.8143580477174,
+     "kish_ess_ratio": 0.9293755822417832,
+     "mass_ratio_vs_design": 0.9984715943517344,
+     "top_1pct_share": 0.06671748892733192,
+     "n_records_holding_half_weight": 546,
+     "n_records_holding_half_weight_design": 579
+    },
+    "0622": {
+     "n": 3205,
+     "kish_ess": 1643.3055633884173,
+     "kish_ess_design": 1764.5431957968003,
+     "kish_ess_ratio": 0.931292340874865,
+     "mass_ratio_vs_design": 0.9861392382326778,
+     "top_1pct_share": 0.06475711883616483,
+     "n_records_holding_half_weight": 628,
+     "n_records_holding_half_weight_design": 664
+    },
+    "0623": {
+     "n": 2716,
+     "kish_ess": 1398.4015144785212,
+     "kish_ess_design": 1493.064208858964,
+     "kish_ess_ratio": 0.9365983768020356,
+     "mass_ratio_vs_design": 0.981163534720703,
+     "top_1pct_share": 0.06550010157140784,
+     "n_records_holding_half_weight": 534,
+     "n_records_holding_half_weight_design": 559
+    },
+    "0624": {
+     "n": 3860,
+     "kish_ess": 1912.81321969461,
+     "kish_ess_design": 2083.235978563643,
+     "kish_ess_ratio": 0.9181932528898926,
+     "mass_ratio_vs_design": 0.9931162249374775,
+     "top_1pct_share": 0.07231623792567517,
+     "n_records_holding_half_weight": 803,
+     "n_records_holding_half_weight_design": 861
+    },
+    "0625": {
+     "n": 3284,
+     "kish_ess": 1514.916548940221,
+     "kish_ess_design": 1594.534944975057,
+     "kish_ess_ratio": 0.9500679516082469,
+     "mass_ratio_vs_design": 0.9909012027261302,
+     "top_1pct_share": 0.06981292073034553,
+     "n_records_holding_half_weight": 585,
+     "n_records_holding_half_weight_design": 610
+    },
+    "0626": {
+     "n": 3114,
+     "kish_ess": 1685.5721836109342,
+     "kish_ess_design": 1754.5153092243436,
+     "kish_ess_ratio": 0.9607053154504029,
+     "mass_ratio_vs_design": 1.0130642624743658,
+     "top_1pct_share": 0.06269739313394088,
+     "n_records_holding_half_weight": 676,
+     "n_records_holding_half_weight_design": 705
+    },
+    "0627": {
+     "n": 2608,
+     "kish_ess": 1342.440275631849,
+     "kish_ess_design": 1404.858420815041,
+     "kish_ess_ratio": 0.9555697967436608,
+     "mass_ratio_vs_design": 0.9952949530831964,
+     "top_1pct_share": 0.06423975385904605,
+     "n_records_holding_half_weight": 520,
+     "n_records_holding_half_weight_design": 536
+    },
+    "0628": {
+     "n": 3449,
+     "kish_ess": 1836.3592545955828,
+     "kish_ess_design": 1908.0559843884766,
+     "kish_ess_ratio": 0.9624242001390372,
+     "mass_ratio_vs_design": 0.9803086383200428,
+     "top_1pct_share": 0.06632773258759365,
+     "n_records_holding_half_weight": 754,
+     "n_records_holding_half_weight_design": 762
+    },
+    "0629": {
+     "n": 2958,
+     "kish_ess": 1746.2138676647533,
+     "kish_ess_design": 1809.5298973116144,
+     "kish_ess_ratio": 0.9650096802816419,
+     "mass_ratio_vs_design": 0.972302482105792,
+     "top_1pct_share": 0.054887959533541086,
+     "n_records_holding_half_weight": 664,
+     "n_records_holding_half_weight_design": 678
+    },
+    "0630": {
+     "n": 3387,
+     "kish_ess": 1878.144663729234,
+     "kish_ess_design": 1957.3825123380852,
+     "kish_ess_ratio": 0.9595184650371674,
+     "mass_ratio_vs_design": 0.9375218094367893,
+     "top_1pct_share": 0.05986001970229308,
+     "n_records_holding_half_weight": 738,
+     "n_records_holding_half_weight_design": 750
+    },
+    "0631": {
+     "n": 2856,
+     "kish_ess": 1415.3056852252969,
+     "kish_ess_design": 1578.2696223614885,
+     "kish_ess_ratio": 0.8967451854694152,
+     "mass_ratio_vs_design": 1.0165423114622878,
+     "top_1pct_share": 0.06919756447396867,
+     "n_records_holding_half_weight": 566,
+     "n_records_holding_half_weight_design": 601
+    },
+    "0632": {
+     "n": 3558,
+     "kish_ess": 1927.3172578116087,
+     "kish_ess_design": 1980.9593534444314,
+     "kish_ess_ratio": 0.9729211528042958,
+     "mass_ratio_vs_design": 0.974517152758512,
+     "top_1pct_share": 0.06049702464708935,
+     "n_records_holding_half_weight": 747,
+     "n_records_holding_half_weight_design": 750
+    },
+    "0633": {
+     "n": 2498,
+     "kish_ess": 1390.9883772797386,
+     "kish_ess_design": 1467.5008431707695,
+     "kish_ess_ratio": 0.9478620634208881,
+     "mass_ratio_vs_design": 1.0038536847789905,
+     "top_1pct_share": 0.05657764242872599,
+     "n_records_holding_half_weight": 532,
+     "n_records_holding_half_weight_design": 553
+    },
+    "0634": {
+     "n": 3337,
+     "kish_ess": 1971.3679378044483,
+     "kish_ess_design": 2035.085468905079,
+     "kish_ess_ratio": 0.9686904888889447,
+     "mass_ratio_vs_design": 0.9418635586308948,
+     "top_1pct_share": 0.055305418240331534,
+     "n_records_holding_half_weight": 756,
+     "n_records_holding_half_weight_design": 770
+    },
+    "0635": {
+     "n": 2525,
+     "kish_ess": 1417.461369255872,
+     "kish_ess_design": 1486.0766503363227,
+     "kish_ess_ratio": 0.9538278990757831,
+     "mass_ratio_vs_design": 1.0088987305448005,
+     "top_1pct_share": 0.05575086289946403,
+     "n_records_holding_half_weight": 529,
+     "n_records_holding_half_weight_design": 548
+    },
+    "0636": {
+     "n": 3726,
+     "kish_ess": 2015.1430126419214,
+     "kish_ess_design": 2029.0469581496702,
+     "kish_ess_ratio": 0.9931475486794903,
+     "mass_ratio_vs_design": 0.9543989283308114,
+     "top_1pct_share": 0.06197673270138156,
+     "n_records_holding_half_weight": 810,
+     "n_records_holding_half_weight_design": 812
+    },
+    "0637": {
+     "n": 2867,
+     "kish_ess": 1634.6107200873196,
+     "kish_ess_design": 1722.7483561166043,
+     "kish_ess_ratio": 0.9488389376682016,
+     "mass_ratio_vs_design": 0.9681978643426085,
+     "top_1pct_share": 0.062333161651540736,
+     "n_records_holding_half_weight": 657,
+     "n_records_holding_half_weight_design": 685
+    },
+    "0638": {
+     "n": 2760,
+     "kish_ess": 1402.5899426326102,
+     "kish_ess_design": 1481.6193077485184,
+     "kish_ess_ratio": 0.9466601408994852,
+     "mass_ratio_vs_design": 1.0052764679965307,
+     "top_1pct_share": 0.06826941281705548,
+     "n_records_holding_half_weight": 552,
+     "n_records_holding_half_weight_design": 571
+    },
+    "0639": {
+     "n": 2442,
+     "kish_ess": 1251.2811295545648,
+     "kish_ess_design": 1292.1099777103702,
+     "kish_ess_ratio": 0.9684014140745554,
+     "mass_ratio_vs_design": 1.000801788458077,
+     "top_1pct_share": 0.06642527876858989,
+     "n_records_holding_half_weight": 488,
+     "n_records_holding_half_weight_design": 503
+    },
+    "0640": {
+     "n": 2897,
+     "kish_ess": 1501.6425826733857,
+     "kish_ess_design": 1522.8322943666146,
+     "kish_ess_ratio": 0.986085328127322,
+     "mass_ratio_vs_design": 1.0005388734009135,
+     "top_1pct_share": 0.0659987764329196,
+     "n_records_holding_half_weight": 605,
+     "n_records_holding_half_weight_design": 614
+    },
+    "0641": {
+     "n": 2992,
+     "kish_ess": 1357.7959077017454,
+     "kish_ess_design": 1477.0957474729307,
+     "kish_ess_ratio": 0.9192335094219262,
+     "mass_ratio_vs_design": 0.9987620997106422,
+     "top_1pct_share": 0.07434442453707873,
+     "n_records_holding_half_weight": 536,
+     "n_records_holding_half_weight_design": 552
+    },
+    "0642": {
+     "n": 2673,
+     "kish_ess": 1607.2201135247747,
+     "kish_ess_design": 1637.0462391149251,
+     "kish_ess_ratio": 0.9817805234345268,
+     "mass_ratio_vs_design": 0.9788890738576811,
+     "top_1pct_share": 0.05389736775000117,
+     "n_records_holding_half_weight": 626,
+     "n_records_holding_half_weight_design": 637
+    },
+    "0643": {
+     "n": 2448,
+     "kish_ess": 1431.2986579074193,
+     "kish_ess_design": 1485.5679674578066,
+     "kish_ess_ratio": 0.9634689824099693,
+     "mass_ratio_vs_design": 0.9879717636533374,
+     "top_1pct_share": 0.0548246081860424,
+     "n_records_holding_half_weight": 554,
+     "n_records_holding_half_weight_design": 570
+    },
+    "0644": {
+     "n": 2613,
+     "kish_ess": 1471.6308118973982,
+     "kish_ess_design": 1567.7918117515019,
+     "kish_ess_ratio": 0.9386646880451079,
+     "mass_ratio_vs_design": 0.9866670116251046,
+     "top_1pct_share": 0.06229572010525088,
+     "n_records_holding_half_weight": 575,
+     "n_records_holding_half_weight_design": 591
+    },
+    "0645": {
+     "n": 2786,
+     "kish_ess": 1473.514192891691,
+     "kish_ess_design": 1499.8812999600211,
+     "kish_ess_ratio": 0.9824205374991788,
+     "mass_ratio_vs_design": 0.9982355674752251,
+     "top_1pct_share": 0.06612977662148899,
+     "n_records_holding_half_weight": 585,
+     "n_records_holding_half_weight_design": 592
+    },
+    "0646": {
+     "n": 2465,
+     "kish_ess": 1272.3679712860999,
+     "kish_ess_design": 1342.3442459201856,
+     "kish_ess_ratio": 0.9478700975202404,
+     "mass_ratio_vs_design": 1.009275028632833,
+     "top_1pct_share": 0.06654963321704584,
+     "n_records_holding_half_weight": 499,
+     "n_records_holding_half_weight_design": 521
+    },
+    "0647": {
+     "n": 3189,
+     "kish_ess": 1668.2258794859595,
+     "kish_ess_design": 1709.666402753873,
+     "kish_ess_ratio": 0.9757610471837298,
+     "mass_ratio_vs_design": 0.9879722312456652,
+     "top_1pct_share": 0.06375929169073663,
+     "n_records_holding_half_weight": 670,
+     "n_records_holding_half_weight_design": 687
+    },
+    "0648": {
+     "n": 2943,
+     "kish_ess": 1479.5839887038146,
+     "kish_ess_design": 1544.565631735172,
+     "kish_ess_ratio": 0.9579288560510331,
+     "mass_ratio_vs_design": 1.003492430006746,
+     "top_1pct_share": 0.06500720284835788,
+     "n_records_holding_half_weight": 572,
+     "n_records_holding_half_weight_design": 589
+    },
+    "0649": {
+     "n": 3411,
+     "kish_ess": 1641.4695592617345,
+     "kish_ess_design": 1725.9641424975969,
+     "kish_ess_ratio": 0.9510449949941645,
+     "mass_ratio_vs_design": 0.9981700470741939,
+     "top_1pct_share": 0.07344515482238562,
+     "n_records_holding_half_weight": 698,
+     "n_records_holding_half_weight_design": 729
+    },
+    "0650": {
+     "n": 3942,
+     "kish_ess": 2044.9073706720621,
+     "kish_ess_design": 2097.8108859434205,
+     "kish_ess_ratio": 0.9747815612809317,
+     "mass_ratio_vs_design": 0.9682001449337443,
+     "top_1pct_share": 0.06979962833174637,
+     "n_records_holding_half_weight": 882,
+     "n_records_holding_half_weight_design": 901
+    },
+    "0651": {
+     "n": 3443,
+     "kish_ess": 1813.5025260000582,
+     "kish_ess_design": 1874.7401097103066,
+     "kish_ess_ratio": 0.9673354277784609,
+     "mass_ratio_vs_design": 0.9746900437032047,
+     "top_1pct_share": 0.06490946119909656,
+     "n_records_holding_half_weight": 739,
+     "n_records_holding_half_weight_design": 761
+    },
+    "0652": {
+     "n": 2823,
+     "kish_ess": 1373.977167019137,
+     "kish_ess_design": 1456.9666397983108,
+     "kish_ess_ratio": 0.9430395518248365,
+     "mass_ratio_vs_design": 0.9839974797951601,
+     "top_1pct_share": 0.0714954196840808,
+     "n_records_holding_half_weight": 536,
+     "n_records_holding_half_weight_design": 561
+    },
+    "0801": {
+     "n": 3573,
+     "kish_ess": 1392.0772000323961,
+     "kish_ess_design": 1794.956727096717,
+     "kish_ess_ratio": 0.7755491700816849,
+     "mass_ratio_vs_design": 1.0053078032168412,
+     "top_1pct_share": 0.09251388929657552,
+     "n_records_holding_half_weight": 616,
+     "n_records_holding_half_weight_design": 728
+    },
+    "0802": {
+     "n": 3900,
+     "kish_ess": 1568.335795688469,
+     "kish_ess_design": 1921.4803417907403,
+     "kish_ess_ratio": 0.8162122513451503,
+     "mass_ratio_vs_design": 1.0273959932328123,
+     "top_1pct_share": 0.08916990167076379,
+     "n_records_holding_half_weight": 710,
+     "n_records_holding_half_weight_design": 836
+    },
+    "0803": {
+     "n": 4424,
+     "kish_ess": 1507.0336055286314,
+     "kish_ess_design": 1992.1472649584414,
+     "kish_ess_ratio": 0.7564870489431763,
+     "mass_ratio_vs_design": 0.9951630037813427,
+     "top_1pct_share": 0.10178006959047549,
+     "n_records_holding_half_weight": 682,
+     "n_records_holding_half_weight_design": 833
+    },
+    "0804": {
+     "n": 4116,
+     "kish_ess": 1597.237097623357,
+     "kish_ess_design": 1990.4632478796552,
+     "kish_ess_ratio": 0.8024449079001166,
+     "mass_ratio_vs_design": 0.9911385428028097,
+     "top_1pct_share": 0.09228143964296731,
+     "n_records_holding_half_weight": 714,
+     "n_records_holding_half_weight_design": 848
+    },
+    "0805": {
+     "n": 3581,
+     "kish_ess": 1399.146928457346,
+     "kish_ess_design": 1864.771043289012,
+     "kish_ess_ratio": 0.7503049414525357,
+     "mass_ratio_vs_design": 0.9751240255897634,
+     "top_1pct_share": 0.09157180874654669,
+     "n_records_holding_half_weight": 635,
+     "n_records_holding_half_weight_design": 786
+    },
+    "0806": {
+     "n": 3377,
+     "kish_ess": 1350.126608067737,
+     "kish_ess_design": 1706.2545203561435,
+     "kish_ess_ratio": 0.791280897404408,
+     "mass_ratio_vs_design": 1.0427257311625322,
+     "top_1pct_share": 0.09206158153122874,
+     "n_records_holding_half_weight": 596,
+     "n_records_holding_half_weight_design": 698
+    },
+    "0807": {
+     "n": 4189,
+     "kish_ess": 1805.916735211746,
+     "kish_ess_design": 2207.2962175184025,
+     "kish_ess_ratio": 0.8181578534312375,
+     "mass_ratio_vs_design": 1.0401134967961783,
+     "top_1pct_share": 0.08487222684130555,
+     "n_records_holding_half_weight": 797,
+     "n_records_holding_half_weight_design": 959
+    },
+    "0808": {
+     "n": 2919,
+     "kish_ess": 1201.6732863031843,
+     "kish_ess_design": 1497.75828193605,
+     "kish_ess_ratio": 0.8023145662395291,
+     "mass_ratio_vs_design": 1.0020937437472552,
+     "top_1pct_share": 0.08706752433294064,
+     "n_records_holding_half_weight": 509,
+     "n_records_holding_half_weight_design": 607
+    },
+    "0901": {
+     "n": 3852,
+     "kish_ess": 1432.486139254454,
+     "kish_ess_design": 2102.6354118768427,
+     "kish_ess_ratio": 0.6812812773736157,
+     "mass_ratio_vs_design": 1.0295078474865504,
+     "top_1pct_share": 0.09773208778125195,
+     "n_records_holding_half_weight": 631,
+     "n_records_holding_half_weight_design": 841
+    },
+    "0902": {
+     "n": 4223,
+     "kish_ess": 1767.502443154165,
+     "kish_ess_design": 2275.9802795238397,
+     "kish_ess_ratio": 0.7765895245471749,
+     "mass_ratio_vs_design": 1.0410213049069847,
+     "top_1pct_share": 0.0852257544084085,
+     "n_records_holding_half_weight": 760,
+     "n_records_holding_half_weight_design": 944
+    },
+    "0903": {
+     "n": 3531,
+     "kish_ess": 1385.862530707692,
+     "kish_ess_design": 1909.454230636784,
+     "kish_ess_ratio": 0.7257898662726892,
+     "mass_ratio_vs_design": 1.0034023882274161,
+     "top_1pct_share": 0.0909052000245389,
+     "n_records_holding_half_weight": 578,
+     "n_records_holding_half_weight_design": 762
+    },
+    "0904": {
+     "n": 3368,
+     "kish_ess": 1345.2162796698096,
+     "kish_ess_design": 1797.506301787434,
+     "kish_ess_ratio": 0.7483791730421925,
+     "mass_ratio_vs_design": 1.0406332945005603,
+     "top_1pct_share": 0.08573212231011597,
+     "n_records_holding_half_weight": 568,
+     "n_records_holding_half_weight_design": 698
+    },
+    "0905": {
+     "n": 3384,
+     "kish_ess": 1312.430061235741,
+     "kish_ess_design": 1695.7720468761306,
+     "kish_ess_ratio": 0.7739425022681771,
+     "mass_ratio_vs_design": 1.0377257195339833,
+     "top_1pct_share": 0.08883570217706868,
+     "n_records_holding_half_weight": 544,
+     "n_records_holding_half_weight_design": 686
+    },
+    "1000": {
+     "n": 5594,
+     "kish_ess": 1466.7442058450793,
+     "kish_ess_design": 2440.218209392005,
+     "kish_ess_ratio": 0.6010709207069344,
+     "mass_ratio_vs_design": 1.003087488321875,
+     "top_1pct_share": 0.11691287707651302,
+     "n_records_holding_half_weight": 603,
+     "n_records_holding_half_weight_design": 975
+    },
+    "1100": {
+     "n": 4228,
+     "kish_ess": 1335.2605840763308,
+     "kish_ess_design": 2117.7345997369885,
+     "kish_ess_ratio": 0.6305136556026252,
+     "mass_ratio_vs_design": 0.9506323116143486,
+     "top_1pct_share": 0.10167525610481218,
+     "n_records_holding_half_weight": 557,
+     "n_records_holding_half_weight_design": 889
+    },
+    "1201": {
+     "n": 3909,
+     "kish_ess": 1857.4617299716772,
+     "kish_ess_design": 2060.9662438728133,
+     "kish_ess_ratio": 0.9012577161289523,
+     "mass_ratio_vs_design": 1.0061418257016421,
+     "top_1pct_share": 0.07668645010571155,
+     "n_records_holding_half_weight": 793,
+     "n_records_holding_half_weight_design": 871
+    },
+    "1202": {
+     "n": 5035,
+     "kish_ess": 2276.750937264732,
+     "kish_ess_design": 2450.2464042966276,
+     "kish_ess_ratio": 0.929192644981475,
+     "mass_ratio_vs_design": 0.9666805386565516,
+     "top_1pct_share": 0.0761566631697241,
+     "n_records_holding_half_weight": 935,
+     "n_records_holding_half_weight_design": 996
+    },
+    "1203": {
+     "n": 4311,
+     "kish_ess": 1721.6164416179731,
+     "kish_ess_design": 1998.5640254917678,
+     "kish_ess_ratio": 0.8614267142101446,
+     "mass_ratio_vs_design": 0.9646569728487677,
+     "top_1pct_share": 0.09048956641078963,
+     "n_records_holding_half_weight": 768,
+     "n_records_holding_half_weight_design": 835
+    },
+    "1204": {
+     "n": 3228,
+     "kish_ess": 1429.7395840121715,
+     "kish_ess_design": 1570.0824309612171,
+     "kish_ess_ratio": 0.9106143447111075,
+     "mass_ratio_vs_design": 0.9839510517395123,
+     "top_1pct_share": 0.08070738427418724,
+     "n_records_holding_half_weight": 592,
+     "n_records_holding_half_weight_design": 628
+    },
+    "1205": {
+     "n": 3256,
+     "kish_ess": 1518.6837515766226,
+     "kish_ess_design": 1661.2768004681386,
+     "kish_ess_ratio": 0.9141665923154203,
+     "mass_ratio_vs_design": 0.9618191014860972,
+     "top_1pct_share": 0.07516345773395455,
+     "n_records_holding_half_weight": 640,
+     "n_records_holding_half_weight_design": 677
+    },
+    "1206": {
+     "n": 4030,
+     "kish_ess": 2029.0026757631363,
+     "kish_ess_design": 2146.1112334861878,
+     "kish_ess_ratio": 0.9454322050526627,
+     "mass_ratio_vs_design": 0.9742886946441153,
+     "top_1pct_share": 0.0701460456482601,
+     "n_records_holding_half_weight": 845,
+     "n_records_holding_half_weight_design": 895
+    },
+    "1207": {
+     "n": 3300,
+     "kish_ess": 1737.1862547108713,
+     "kish_ess_design": 1829.1648483294641,
+     "kish_ess_ratio": 0.949715525255914,
+     "mass_ratio_vs_design": 0.9972351974867208,
+     "top_1pct_share": 0.06399174698956063,
+     "n_records_holding_half_weight": 717,
+     "n_records_holding_half_weight_design": 740
+    },
+    "1208": {
+     "n": 4026,
+     "kish_ess": 1875.1029800965084,
+     "kish_ess_design": 2180.3947683935426,
+     "kish_ess_ratio": 0.8599832504083813,
+     "mass_ratio_vs_design": 1.0102097893515927,
+     "top_1pct_share": 0.08059704789701917,
+     "n_records_holding_half_weight": 869,
+     "n_records_holding_half_weight_design": 935
+    },
+    "1209": {
+     "n": 2295,
+     "kish_ess": 1063.0168195143622,
+     "kish_ess_design": 1160.054907039679,
+     "kish_ess_ratio": 0.9163504357108869,
+     "mass_ratio_vs_design": 0.9155415870643876,
+     "top_1pct_share": 0.0709413009837576,
+     "n_records_holding_half_weight": 414,
+     "n_records_holding_half_weight_design": 437
+    },
+    "1210": {
+     "n": 3138,
+     "kish_ess": 1552.34370998461,
+     "kish_ess_design": 1682.9518998683882,
+     "kish_ess_ratio": 0.9223933911040523,
+     "mass_ratio_vs_design": 0.9813211962260272,
+     "top_1pct_share": 0.06839045537064829,
+     "n_records_holding_half_weight": 624,
+     "n_records_holding_half_weight_design": 663
+    },
+    "1211": {
+     "n": 3336,
+     "kish_ess": 1455.083858317523,
+     "kish_ess_design": 1647.7339175772674,
+     "kish_ess_ratio": 0.8830818148460488,
+     "mass_ratio_vs_design": 0.9775552018007807,
+     "top_1pct_share": 0.08142292054083924,
+     "n_records_holding_half_weight": 655,
+     "n_records_holding_half_weight_design": 686
+    },
+    "1212": {
+     "n": 3867,
+     "kish_ess": 2032.9145151642176,
+     "kish_ess_design": 2162.8266949920994,
+     "kish_ess_ratio": 0.939934077876565,
+     "mass_ratio_vs_design": 0.9926387975317573,
+     "top_1pct_share": 0.07158807275357737,
+     "n_records_holding_half_weight": 878,
+     "n_records_holding_half_weight_design": 935
+    },
+    "1213": {
+     "n": 4493,
+     "kish_ess": 2128.647801619299,
+     "kish_ess_design": 2350.3635715177365,
+     "kish_ess_ratio": 0.9056674581816866,
+     "mass_ratio_vs_design": 0.9842007883775361,
+     "top_1pct_share": 0.0803799114265547,
+     "n_records_holding_half_weight": 989,
+     "n_records_holding_half_weight_design": 1051
+    },
+    "1214": {
+     "n": 3570,
+     "kish_ess": 1782.5666737210088,
+     "kish_ess_design": 1869.4163229484975,
+     "kish_ess_ratio": 0.9535418364751909,
+     "mass_ratio_vs_design": 0.9729931627194723,
+     "top_1pct_share": 0.06900355562609092,
+     "n_records_holding_half_weight": 725,
+     "n_records_holding_half_weight_design": 756
+    },
+    "1215": {
+     "n": 3459,
+     "kish_ess": 1754.1972521208343,
+     "kish_ess_design": 1864.0326894288837,
+     "kish_ess_ratio": 0.9410764425264979,
+     "mass_ratio_vs_design": 0.9928401801291294,
+     "top_1pct_share": 0.06668164066970642,
+     "n_records_holding_half_weight": 711,
+     "n_records_holding_half_weight_design": 753
+    },
+    "1216": {
+     "n": 3351,
+     "kish_ess": 1627.2828694458783,
+     "kish_ess_design": 1734.1532404650384,
+     "kish_ess_ratio": 0.9383731676501085,
+     "mass_ratio_vs_design": 0.9801288057147509,
+     "top_1pct_share": 0.07516486328849128,
+     "n_records_holding_half_weight": 688,
+     "n_records_holding_half_weight_design": 719
+    },
+    "1217": {
+     "n": 4421,
+     "kish_ess": 2402.915959240413,
+     "kish_ess_design": 2602.7504010707694,
+     "kish_ess_ratio": 0.9232218188312853,
+     "mass_ratio_vs_design": 0.9833418332659034,
+     "top_1pct_share": 0.06521294384115806,
+     "n_records_holding_half_weight": 1008,
+     "n_records_holding_half_weight_design": 1083
+    },
+    "1218": {
+     "n": 3793,
+     "kish_ess": 1588.2808683525686,
+     "kish_ess_design": 1720.9165763630424,
+     "kish_ess_ratio": 0.9229272877998631,
+     "mass_ratio_vs_design": 0.9232214400607883,
+     "top_1pct_share": 0.08608576525938175,
+     "n_records_holding_half_weight": 675,
+     "n_records_holding_half_weight_design": 704
+    },
+    "1219": {
+     "n": 4227,
+     "kish_ess": 2092.5426847006324,
+     "kish_ess_design": 2271.146350148307,
+     "kish_ess_ratio": 0.921359684532874,
+     "mass_ratio_vs_design": 1.0244611978797251,
+     "top_1pct_share": 0.07993759952394812,
+     "n_records_holding_half_weight": 981,
+     "n_records_holding_half_weight_design": 1025
+    },
+    "1220": {
+     "n": 3016,
+     "kish_ess": 1546.3129877012514,
+     "kish_ess_design": 1642.9552864061625,
+     "kish_ess_ratio": 0.9411777669760516,
+     "mass_ratio_vs_design": 0.9927866416226571,
+     "top_1pct_share": 0.06583729936488254,
+     "n_records_holding_half_weight": 594,
+     "n_records_holding_half_weight_design": 613
+    },
+    "1221": {
+     "n": 3504,
+     "kish_ess": 1720.8099927934811,
+     "kish_ess_design": 1899.9347385117142,
+     "kish_ess_ratio": 0.9057205797192025,
+     "mass_ratio_vs_design": 1.0135984576717383,
+     "top_1pct_share": 0.07156167155319428,
+     "n_records_holding_half_weight": 721,
+     "n_records_holding_half_weight_design": 769
+    },
+    "1222": {
+     "n": 3509,
+     "kish_ess": 1755.1148029087115,
+     "kish_ess_design": 1865.4917966271964,
+     "kish_ess_ratio": 0.9408322277706896,
+     "mass_ratio_vs_design": 1.0216813643869114,
+     "top_1pct_share": 0.06964900013663083,
+     "n_records_holding_half_weight": 706,
+     "n_records_holding_half_weight_design": 739
+    },
+    "1223": {
+     "n": 3389,
+     "kish_ess": 1654.3897781094759,
+     "kish_ess_design": 1770.9141340190138,
+     "kish_ess_ratio": 0.9342010130976306,
+     "mass_ratio_vs_design": 1.0181122332930561,
+     "top_1pct_share": 0.07024383932766394,
+     "n_records_holding_half_weight": 658,
+     "n_records_holding_half_weight_design": 701
+    },
+    "1224": {
+     "n": 2819,
+     "kish_ess": 1436.498062483508,
+     "kish_ess_design": 1582.6178268124065,
+     "kish_ess_ratio": 0.907672110187712,
+     "mass_ratio_vs_design": 0.9928284483435525,
+     "top_1pct_share": 0.06768211795410703,
+     "n_records_holding_half_weight": 582,
+     "n_records_holding_half_weight_design": 613
+    },
+    "1225": {
+     "n": 2813,
+     "kish_ess": 1460.4696385165255,
+     "kish_ess_design": 1551.167872394867,
+     "kish_ess_ratio": 0.9415290662652062,
+     "mass_ratio_vs_design": 1.0149985783551196,
+     "top_1pct_share": 0.06400720048677948,
+     "n_records_holding_half_weight": 572,
+     "n_records_holding_half_weight_design": 593
+    },
+    "1226": {
+     "n": 3326,
+     "kish_ess": 1777.372151991212,
+     "kish_ess_design": 1823.402316825668,
+     "kish_ess_ratio": 0.9747558920981358,
+     "mass_ratio_vs_design": 1.0126409500979445,
+     "top_1pct_share": 0.06674465097136069,
+     "n_records_holding_half_weight": 735,
+     "n_records_holding_half_weight_design": 746
+    },
+    "1227": {
+     "n": 3460,
+     "kish_ess": 1769.3303561295115,
+     "kish_ess_design": 1904.5257105434505,
+     "kish_ess_ratio": 0.92901363648414,
+     "mass_ratio_vs_design": 0.9937683465825073,
+     "top_1pct_share": 0.07197027386544656,
+     "n_records_holding_half_weight": 735,
+     "n_records_holding_half_weight_design": 744
+    },
+    "1228": {
+     "n": 3017,
+     "kish_ess": 1656.690727366027,
+     "kish_ess_design": 1719.5303086989572,
+     "kish_ess_ratio": 0.9634553802192202,
+     "mass_ratio_vs_design": 1.0002820610839116,
+     "top_1pct_share": 0.06151783304139871,
+     "n_records_holding_half_weight": 645,
+     "n_records_holding_half_weight_design": 664
+    },
+    "1301": {
+     "n": 3926,
+     "kish_ess": 1555.3100167711143,
+     "kish_ess_design": 1915.8395932895332,
+     "kish_ess_ratio": 0.8118164079178556,
+     "mass_ratio_vs_design": 0.9879039134694932,
+     "top_1pct_share": 0.09037327358830799,
+     "n_records_holding_half_weight": 684,
+     "n_records_holding_half_weight_design": 775
+    },
+    "1302": {
+     "n": 3914,
+     "kish_ess": 1649.3508675327214,
+     "kish_ess_design": 1913.311141759259,
+     "kish_ess_ratio": 0.8620400684104988,
+     "mass_ratio_vs_design": 0.9540447160422396,
+     "top_1pct_share": 0.08274126008107846,
+     "n_records_holding_half_weight": 676,
+     "n_records_holding_half_weight_design": 758
+    },
+    "1303": {
+     "n": 3479,
+     "kish_ess": 1488.3012641611276,
+     "kish_ess_design": 1693.7908341222071,
+     "kish_ess_ratio": 0.8786806695245977,
+     "mass_ratio_vs_design": 0.9834279136956247,
+     "top_1pct_share": 0.07954659306764468,
+     "n_records_holding_half_weight": 618,
+     "n_records_holding_half_weight_design": 671
+    },
+    "1304": {
+     "n": 3018,
+     "kish_ess": 1363.0859948879156,
+     "kish_ess_design": 1526.0441163698204,
+     "kish_ess_ratio": 0.8932153273068197,
+     "mass_ratio_vs_design": 0.9804753235157103,
+     "top_1pct_share": 0.07812743682965544,
+     "n_records_holding_half_weight": 556,
+     "n_records_holding_half_weight_design": 596
+    },
+    "1305": {
+     "n": 3402,
+     "kish_ess": 1541.8822263468612,
+     "kish_ess_design": 1773.1510486623565,
+     "kish_ess_ratio": 0.8695718435888687,
+     "mass_ratio_vs_design": 0.9306495032139904,
+     "top_1pct_share": 0.07918025820209097,
+     "n_records_holding_half_weight": 651,
+     "n_records_holding_half_weight_design": 695
+    },
+    "1306": {
+     "n": 3196,
+     "kish_ess": 1352.2990629530982,
+     "kish_ess_design": 1598.9303750400752,
+     "kish_ess_ratio": 0.8457523129605968,
+     "mass_ratio_vs_design": 0.9772991128207335,
+     "top_1pct_share": 0.0845356355137944,
+     "n_records_holding_half_weight": 580,
+     "n_records_holding_half_weight_design": 626
+    },
+    "1307": {
+     "n": 3797,
+     "kish_ess": 1729.858658766412,
+     "kish_ess_design": 1990.095523348568,
+     "kish_ess_ratio": 0.8692339832289673,
+     "mass_ratio_vs_design": 1.0363894432821226,
+     "top_1pct_share": 0.07901449642147482,
+     "n_records_holding_half_weight": 764,
+     "n_records_holding_half_weight_design": 834
+    },
+    "1308": {
+     "n": 3985,
+     "kish_ess": 1631.6364885932858,
+     "kish_ess_design": 1900.035704938583,
+     "kish_ess_ratio": 0.8587399091250377,
+     "mass_ratio_vs_design": 0.9737229478789515,
+     "top_1pct_share": 0.08731842611960003,
+     "n_records_holding_half_weight": 685,
+     "n_records_holding_half_weight_design": 753
+    },
+    "1309": {
+     "n": 3904,
+     "kish_ess": 1716.8785803261055,
+     "kish_ess_design": 1952.402716838061,
+     "kish_ess_ratio": 0.8793670309507715,
+     "mass_ratio_vs_design": 0.9670945604946863,
+     "top_1pct_share": 0.07919469814039133,
+     "n_records_holding_half_weight": 690,
+     "n_records_holding_half_weight_design": 757
+    },
+    "1310": {
+     "n": 3885,
+     "kish_ess": 1684.433324025018,
+     "kish_ess_design": 1871.6485547050966,
+     "kish_ess_ratio": 0.899973085112885,
+     "mass_ratio_vs_design": 0.9882871759691073,
+     "top_1pct_share": 0.07968382237765483,
+     "n_records_holding_half_weight": 693,
+     "n_records_holding_half_weight_design": 742
+    },
+    "1311": {
+     "n": 3581,
+     "kish_ess": 1630.0865484552107,
+     "kish_ess_design": 1872.1064233994955,
+     "kish_ess_ratio": 0.8707232281673342,
+     "mass_ratio_vs_design": 1.0020049413811465,
+     "top_1pct_share": 0.07867617410244485,
+     "n_records_holding_half_weight": 699,
+     "n_records_holding_half_weight_design": 759
+    },
+    "1312": {
+     "n": 3932,
+     "kish_ess": 1447.5512791572962,
+     "kish_ess_design": 1851.0553454679587,
+     "kish_ess_ratio": 0.7820140455018896,
+     "mass_ratio_vs_design": 0.9891221566249802,
+     "top_1pct_share": 0.09517273779397467,
+     "n_records_holding_half_weight": 627,
+     "n_records_holding_half_weight_design": 732
+    },
+    "1313": {
+     "n": 2722,
+     "kish_ess": 1255.7265284553698,
+     "kish_ess_design": 1373.3815537125731,
+     "kish_ess_ratio": 0.9143318730769653,
+     "mass_ratio_vs_design": 0.97596538979949,
+     "top_1pct_share": 0.07498291651313586,
+     "n_records_holding_half_weight": 503,
+     "n_records_holding_half_weight_design": 536
+    },
+    "1314": {
+     "n": 3500,
+     "kish_ess": 1653.283307274116,
+     "kish_ess_design": 1825.4253664918904,
+     "kish_ess_ratio": 0.9056975637691517,
+     "mass_ratio_vs_design": 0.9719162423100298,
+     "top_1pct_share": 0.07245889407445519,
+     "n_records_holding_half_weight": 662,
+     "n_records_holding_half_weight_design": 713
+    },
+    "1501": {
+     "n": 3544,
+     "kish_ess": 1257.5829321033923,
+     "kish_ess_design": 1864.1592665184064,
+     "kish_ess_ratio": 0.6746113138992221,
+     "mass_ratio_vs_design": 1.0577573136295007,
+     "top_1pct_share": 0.09506526521212748,
+     "n_records_holding_half_weight": 520,
+     "n_records_holding_half_weight_design": 767
+    },
+    "1502": {
+     "n": 3245,
+     "kish_ess": 983.727009154708,
+     "kish_ess_design": 1492.4418229250268,
+     "kish_ess_ratio": 0.6591392669676784,
+     "mass_ratio_vs_design": 1.0565296863146367,
+     "top_1pct_share": 0.11154623736901537,
+     "n_records_holding_half_weight": 420,
+     "n_records_holding_half_weight_design": 585
+    },
+    "1601": {
+     "n": 4967,
+     "kish_ess": 1851.8827511946752,
+     "kish_ess_design": 2612.5529706478715,
+     "kish_ess_ratio": 0.7088402692694257,
+     "mass_ratio_vs_design": 0.9664049995116099,
+     "top_1pct_share": 0.08283146911274553,
+     "n_records_holding_half_weight": 719,
+     "n_records_holding_half_weight_design": 1061
+    },
+    "1602": {
+     "n": 4711,
+     "kish_ess": 1750.754111426828,
+     "kish_ess_design": 2537.643022716707,
+     "kish_ess_ratio": 0.6899134731537359,
+     "mass_ratio_vs_design": 1.017594266787838,
+     "top_1pct_share": 0.08888239058311648,
+     "n_records_holding_half_weight": 708,
+     "n_records_holding_half_weight_design": 1023
+    },
+    "1701": {
+     "n": 2649,
+     "kish_ess": 1136.2139503310764,
+     "kish_ess_design": 1305.1326307541588,
+     "kish_ess_ratio": 0.8705735521105818,
+     "mass_ratio_vs_design": 1.0031028523810517,
+     "top_1pct_share": 0.08304558068608459,
+     "n_records_holding_half_weight": 466,
+     "n_records_holding_half_weight_design": 514
+    },
+    "1702": {
+     "n": 3261,
+     "kish_ess": 1076.4311966366972,
+     "kish_ess_design": 1327.2581439622973,
+     "kish_ess_ratio": 0.8110187166930466,
+     "mass_ratio_vs_design": 0.994264033195777,
+     "top_1pct_share": 0.09878605608447297,
+     "n_records_holding_half_weight": 470,
+     "n_records_holding_half_weight_design": 530
+    },
+    "1703": {
+     "n": 2595,
+     "kish_ess": 1285.9461636183903,
+     "kish_ess_design": 1464.983670617204,
+     "kish_ess_ratio": 0.8777887354038667,
+     "mass_ratio_vs_design": 1.02649987365613,
+     "top_1pct_share": 0.06818255707129536,
+     "n_records_holding_half_weight": 516,
+     "n_records_holding_half_weight_design": 562
+    },
+    "1704": {
+     "n": 2030,
+     "kish_ess": 979.2997169045589,
+     "kish_ess_design": 1127.9470258713457,
+     "kish_ess_ratio": 0.868214281737251,
+     "mass_ratio_vs_design": 1.0518647319093692,
+     "top_1pct_share": 0.06651186820924303,
+     "n_records_holding_half_weight": 374,
+     "n_records_holding_half_weight_design": 430
+    },
+    "1705": {
+     "n": 3066,
+     "kish_ess": 1289.0291770508413,
+     "kish_ess_design": 1533.3790098987197,
+     "kish_ess_ratio": 0.8406461603618679,
+     "mass_ratio_vs_design": 1.0055451326178728,
+     "top_1pct_share": 0.08597092300604478,
+     "n_records_holding_half_weight": 578,
+     "n_records_holding_half_weight_design": 647
+    },
+    "1706": {
+     "n": 2913,
+     "kish_ess": 1389.7929002043052,
+     "kish_ess_design": 1610.8036606800388,
+     "kish_ess_ratio": 0.8627947242295012,
+     "mass_ratio_vs_design": 1.0347627894469908,
+     "top_1pct_share": 0.07726204621442465,
+     "n_records_holding_half_weight": 602,
+     "n_records_holding_half_weight_design": 651
+    },
+    "1707": {
+     "n": 2540,
+     "kish_ess": 1117.1527162303184,
+     "kish_ess_design": 1254.0504400105326,
+     "kish_ess_ratio": 0.8908355522134624,
+     "mass_ratio_vs_design": 0.9719608339308503,
+     "top_1pct_share": 0.07684715702091083,
+     "n_records_holding_half_weight": 454,
+     "n_records_holding_half_weight_design": 502
+    },
+    "1708": {
+     "n": 2760,
+     "kish_ess": 1265.994231627789,
+     "kish_ess_design": 1469.6186426986528,
+     "kish_ess_ratio": 0.8614440473503049,
+     "mass_ratio_vs_design": 1.0354230472788382,
+     "top_1pct_share": 0.0804420536808237,
+     "n_records_holding_half_weight": 559,
+     "n_records_holding_half_weight_design": 619
+    },
+    "1709": {
+     "n": 3220,
+     "kish_ess": 1577.8442985462295,
+     "kish_ess_design": 1721.9795850044827,
+     "kish_ess_ratio": 0.9162967507202602,
+     "mass_ratio_vs_design": 1.001635975280198,
+     "top_1pct_share": 0.07229279858762404,
+     "n_records_holding_half_weight": 662,
+     "n_records_holding_half_weight_design": 711
+    },
+    "1710": {
+     "n": 3031,
+     "kish_ess": 1380.4732866739346,
+     "kish_ess_design": 1602.8433781695435,
+     "kish_ess_ratio": 0.8612652399328269,
+     "mass_ratio_vs_design": 1.051666319731705,
+     "top_1pct_share": 0.0799364596045949,
+     "n_records_holding_half_weight": 599,
+     "n_records_holding_half_weight_design": 684
+    },
+    "1711": {
+     "n": 3036,
+     "kish_ess": 1493.7293606665241,
+     "kish_ess_design": 1639.9790321529808,
+     "kish_ess_ratio": 0.9108222308827579,
+     "mass_ratio_vs_design": 1.037665306706131,
+     "top_1pct_share": 0.07360409875198783,
+     "n_records_holding_half_weight": 621,
+     "n_records_holding_half_weight_design": 681
+    },
+    "1712": {
+     "n": 5771,
+     "kish_ess": 2181.599966888787,
+     "kish_ess_design": 2480.719182144434,
+     "kish_ess_ratio": 0.8794223798450753,
+     "mass_ratio_vs_design": 1.004871262878264,
+     "top_1pct_share": 0.09192305792350126,
+     "n_records_holding_half_weight": 961,
+     "n_records_holding_half_weight_design": 1095
+    },
+    "1713": {
+     "n": 3957,
+     "kish_ess": 1643.0820038238292,
+     "kish_ess_design": 1877.2839774896265,
+     "kish_ess_ratio": 0.8752442483534213,
+     "mass_ratio_vs_design": 0.982499339371447,
+     "top_1pct_share": 0.08817162023984185,
+     "n_records_holding_half_weight": 710,
+     "n_records_holding_half_weight_design": 801
+    },
+    "1714": {
+     "n": 3463,
+     "kish_ess": 1482.2944081779447,
+     "kish_ess_design": 1668.4579043966983,
+     "kish_ess_ratio": 0.888421820096163,
+     "mass_ratio_vs_design": 1.0269683706406818,
+     "top_1pct_share": 0.08444123713989998,
+     "n_records_holding_half_weight": 658,
+     "n_records_holding_half_weight_design": 731
+    },
+    "1715": {
+     "n": 5734,
+     "kish_ess": 1895.3620961037539,
+     "kish_ess_design": 2278.898261911973,
+     "kish_ess_ratio": 0.8317010582620586,
+     "mass_ratio_vs_design": 0.9889222276911246,
+     "top_1pct_share": 0.10735579737116487,
+     "n_records_holding_half_weight": 905,
+     "n_records_holding_half_weight_design": 1006
+    },
+    "1716": {
+     "n": 4816,
+     "kish_ess": 1725.2767301399183,
+     "kish_ess_design": 2032.8259348911283,
+     "kish_ess_ratio": 0.8487085394413362,
+     "mass_ratio_vs_design": 0.9975925799031281,
+     "top_1pct_share": 0.1017207709279186,
+     "n_records_holding_half_weight": 801,
+     "n_records_holding_half_weight_design": 890
+    },
+    "1717": {
+     "n": 4760,
+     "kish_ess": 1843.2049696360407,
+     "kish_ess_design": 2123.1334983525107,
+     "kish_ess_ratio": 0.8681531194653156,
+     "mass_ratio_vs_design": 0.999273632012008,
+     "top_1pct_share": 0.09411586413888279,
+     "n_records_holding_half_weight": 829,
+     "n_records_holding_half_weight_design": 927
+    },
+    "1801": {
+     "n": 3327,
+     "kish_ess": 1459.4557889258633,
+     "kish_ess_design": 1780.4857156999353,
+     "kish_ess_ratio": 0.8196953090141078,
+     "mass_ratio_vs_design": 1.0527158583140057,
+     "top_1pct_share": 0.08014098675779857,
+     "n_records_holding_half_weight": 610,
+     "n_records_holding_half_weight_design": 722
+    },
+    "1802": {
+     "n": 3917,
+     "kish_ess": 1520.9946960655695,
+     "kish_ess_design": 1937.4603697930152,
+     "kish_ess_ratio": 0.7850455781080374,
+     "mass_ratio_vs_design": 1.0587536231367625,
+     "top_1pct_share": 0.09541173537436591,
+     "n_records_holding_half_weight": 691,
+     "n_records_holding_half_weight_design": 829
+    },
+    "1803": {
+     "n": 3841,
+     "kish_ess": 1580.4011407930154,
+     "kish_ess_design": 2037.1980560373142,
+     "kish_ess_ratio": 0.7757719658672539,
+     "mass_ratio_vs_design": 1.035974882853573,
+     "top_1pct_share": 0.08749012030336234,
+     "n_records_holding_half_weight": 700,
+     "n_records_holding_half_weight_design": 851
+    },
+    "1804": {
+     "n": 4127,
+     "kish_ess": 1585.9732148690307,
+     "kish_ess_design": 1983.8139535103678,
+     "kish_ess_ratio": 0.7994566285122876,
+     "mass_ratio_vs_design": 0.9822195944279977,
+     "top_1pct_share": 0.09443563414890044,
+     "n_records_holding_half_weight": 683,
+     "n_records_holding_half_weight_design": 835
+    },
+    "1805": {
+     "n": 3667,
+     "kish_ess": 1527.7831037660878,
+     "kish_ess_design": 1862.791940542822,
+     "kish_ess_ratio": 0.8201576732830872,
+     "mass_ratio_vs_design": 1.0167775903506546,
+     "top_1pct_share": 0.08235794716550868,
+     "n_records_holding_half_weight": 645,
+     "n_records_holding_half_weight_design": 786
+    },
+    "1806": {
+     "n": 3286,
+     "kish_ess": 1193.9396426072196,
+     "kish_ess_design": 1549.5242725526675,
+     "kish_ess_ratio": 0.7705201291492763,
+     "mass_ratio_vs_design": 1.03801967057844,
+     "top_1pct_share": 0.09679697170508779,
+     "n_records_holding_half_weight": 538,
+     "n_records_holding_half_weight_design": 665
+    },
+    "1807": {
+     "n": 2853,
+     "kish_ess": 1069.2207476650597,
+     "kish_ess_design": 1339.4416794765905,
+     "kish_ess_ratio": 0.7982585311835867,
+     "mass_ratio_vs_design": 1.03071928910837,
+     "top_1pct_share": 0.09522256759178203,
+     "n_records_holding_half_weight": 460,
+     "n_records_holding_half_weight_design": 554
+    },
+    "1808": {
+     "n": 4493,
+     "kish_ess": 1744.9469669062005,
+     "kish_ess_design": 2298.362656025898,
+     "kish_ess_ratio": 0.7592130695002636,
+     "mass_ratio_vs_design": 1.0234070844783882,
+     "top_1pct_share": 0.08899560508973364,
+     "n_records_holding_half_weight": 784,
+     "n_records_holding_half_weight_design": 937
+    },
+    "1809": {
+     "n": 3732,
+     "kish_ess": 1583.2238527492234,
+     "kish_ess_design": 1928.486105815502,
+     "kish_ess_ratio": 0.8209672073731239,
+     "mass_ratio_vs_design": 1.0255697277097888,
+     "top_1pct_share": 0.0824607534626071,
+     "n_records_holding_half_weight": 672,
+     "n_records_holding_half_weight_design": 801
+    },
+    "1901": {
+     "n": 4027,
+     "kish_ess": 1371.2593230585499,
+     "kish_ess_design": 1845.5973694573438,
+     "kish_ess_ratio": 0.7429894221521012,
+     "mass_ratio_vs_design": 1.0025678444710473,
+     "top_1pct_share": 0.09293893479261396,
+     "n_records_holding_half_weight": 551,
+     "n_records_holding_half_weight_design": 743
+    },
+    "1902": {
+     "n": 4405,
+     "kish_ess": 1414.7207734184065,
+     "kish_ess_design": 1918.8289380696444,
+     "kish_ess_ratio": 0.7372834260263063,
+     "mass_ratio_vs_design": 1.0341516560993105,
+     "top_1pct_share": 0.10169632460627025,
+     "n_records_holding_half_weight": 570,
+     "n_records_holding_half_weight_design": 792
+    },
+    "1903": {
+     "n": 3511,
+     "kish_ess": 1174.881701148404,
+     "kish_ess_design": 1527.6790408335837,
+     "kish_ess_ratio": 0.7690631799905597,
+     "mass_ratio_vs_design": 0.9770545632148343,
+     "top_1pct_share": 0.0930378567920549,
+     "n_records_holding_half_weight": 454,
+     "n_records_holding_half_weight_design": 590
+    },
+    "1904": {
+     "n": 5169,
+     "kish_ess": 1663.0099943714372,
+     "kish_ess_design": 2287.1030351359404,
+     "kish_ess_ratio": 0.7271250874242277,
+     "mass_ratio_vs_design": 1.0045959484813616,
+     "top_1pct_share": 0.09979940099830373,
+     "n_records_holding_half_weight": 661,
+     "n_records_holding_half_weight_design": 912
+    },
+    "2001": {
+     "n": 4687,
+     "kish_ess": 1498.1899434866905,
+     "kish_ess_design": 1951.4819032104956,
+     "kish_ess_ratio": 0.7677191067065146,
+     "mass_ratio_vs_design": 0.9977143520586583,
+     "top_1pct_share": 0.0985746027338151,
+     "n_records_holding_half_weight": 593,
+     "n_records_holding_half_weight_design": 786
+    },
+    "2002": {
+     "n": 4056,
+     "kish_ess": 1325.3062504446198,
+     "kish_ess_design": 1906.8857797399348,
+     "kish_ess_ratio": 0.6950108205355476,
+     "mass_ratio_vs_design": 1.0121813376820865,
+     "top_1pct_share": 0.10014436162886561,
+     "n_records_holding_half_weight": 540,
+     "n_records_holding_half_weight_design": 748
+    },
+    "2003": {
+     "n": 2925,
+     "kish_ess": 1247.5553569476492,
+     "kish_ess_design": 1669.3948982383984,
+     "kish_ess_ratio": 0.7473099134687134,
+     "mass_ratio_vs_design": 1.0343453489624856,
+     "top_1pct_share": 0.07861002498448734,
+     "n_records_holding_half_weight": 501,
+     "n_records_holding_half_weight_design": 676
+    },
+    "2004": {
+     "n": 3449,
+     "kish_ess": 1215.654136497789,
+     "kish_ess_design": 1704.8220120194305,
+     "kish_ess_ratio": 0.7130680668874034,
+     "mass_ratio_vs_design": 1.030850779379462,
+     "top_1pct_share": 0.09485069386208744,
+     "n_records_holding_half_weight": 494,
+     "n_records_holding_half_weight_design": 668
+    },
+    "2101": {
+     "n": 4128,
+     "kish_ess": 1461.7740972616111,
+     "kish_ess_design": 2047.5225662772907,
+     "kish_ess_ratio": 0.7139233146130057,
+     "mass_ratio_vs_design": 0.9730773508464492,
+     "top_1pct_share": 0.10069805610346547,
+     "n_records_holding_half_weight": 632,
+     "n_records_holding_half_weight_design": 836
+    },
+    "2102": {
+     "n": 3491,
+     "kish_ess": 1108.525365110506,
+     "kish_ess_design": 1623.7568300942983,
+     "kish_ess_ratio": 0.6826917334944355,
+     "mass_ratio_vs_design": 0.97802892141613,
+     "top_1pct_share": 0.10941570726190451,
+     "n_records_holding_half_weight": 487,
+     "n_records_holding_half_weight_design": 685
+    },
+    "2103": {
+     "n": 3816,
+     "kish_ess": 1305.841405430749,
+     "kish_ess_design": 1787.5083303654153,
+     "kish_ess_ratio": 0.7305372418397623,
+     "mass_ratio_vs_design": 0.931772063456183,
+     "top_1pct_share": 0.10058604253358688,
+     "n_records_holding_half_weight": 557,
+     "n_records_holding_half_weight_design": 710
+    },
+    "2104": {
+     "n": 3724,
+     "kish_ess": 1435.4519703021647,
+     "kish_ess_design": 1953.4191417265815,
+     "kish_ess_ratio": 0.7348407413646014,
+     "mass_ratio_vs_design": 0.98569031511703,
+     "top_1pct_share": 0.08788723828217784,
+     "n_records_holding_half_weight": 618,
+     "n_records_holding_half_weight_design": 796
+    },
+    "2105": {
+     "n": 3728,
+     "kish_ess": 1381.3367003590163,
+     "kish_ess_design": 1942.5139938694513,
+     "kish_ess_ratio": 0.7111077216012326,
+     "mass_ratio_vs_design": 0.9030524241345467,
+     "top_1pct_share": 0.09244711206817408,
+     "n_records_holding_half_weight": 569,
+     "n_records_holding_half_weight_design": 749
+    },
+    "2106": {
+     "n": 3820,
+     "kish_ess": 1416.3182947012137,
+     "kish_ess_design": 1900.126786362535,
+     "kish_ess_ratio": 0.7453809424014861,
+     "mass_ratio_vs_design": 0.9628662541999998,
+     "top_1pct_share": 0.09546324578418744,
+     "n_records_holding_half_weight": 590,
+     "n_records_holding_half_weight_design": 768
+    },
+    "2201": {
+     "n": 3467,
+     "kish_ess": 1465.0836158129096,
+     "kish_ess_design": 1834.2593721686812,
+     "kish_ess_ratio": 0.7987330679852066,
+     "mass_ratio_vs_design": 1.048772992431472,
+     "top_1pct_share": 0.07565112666338361,
+     "n_records_holding_half_weight": 581,
+     "n_records_holding_half_weight_design": 707
+    },
+    "2202": {
+     "n": 3586,
+     "kish_ess": 1394.0791649284895,
+     "kish_ess_design": 1836.7681228284343,
+     "kish_ess_ratio": 0.7589848427801277,
+     "mass_ratio_vs_design": 0.9729744719720775,
+     "top_1pct_share": 0.08637365970097842,
+     "n_records_holding_half_weight": 594,
+     "n_records_holding_half_weight_design": 726
+    },
+    "2203": {
+     "n": 3606,
+     "kish_ess": 1307.3242789441638,
+     "kish_ess_design": 1822.5223055733297,
+     "kish_ess_ratio": 0.7173159280115945,
+     "mass_ratio_vs_design": 1.0095905610443663,
+     "top_1pct_share": 0.09228403273968687,
+     "n_records_holding_half_weight": 558,
+     "n_records_holding_half_weight_design": 697
+    },
+    "2204": {
+     "n": 4359,
+     "kish_ess": 1591.846689179651,
+     "kish_ess_design": 2102.4601381667712,
+     "kish_ess_ratio": 0.7571352532598564,
+     "mass_ratio_vs_design": 1.0029581680041157,
+     "top_1pct_share": 0.0910080023161365,
+     "n_records_holding_half_weight": 658,
+     "n_records_holding_half_weight_design": 820
+    },
+    "2205": {
+     "n": 3643,
+     "kish_ess": 1449.8258839314387,
+     "kish_ess_design": 1837.4688517787954,
+     "kish_ess_ratio": 0.7890342644599979,
+     "mass_ratio_vs_design": 1.0002377035129761,
+     "top_1pct_share": 0.08228261489966379,
+     "n_records_holding_half_weight": 585,
+     "n_records_holding_half_weight_design": 707
+    },
+    "2206": {
+     "n": 3784,
+     "kish_ess": 1301.2584428525468,
+     "kish_ess_design": 1799.984612991346,
+     "kish_ess_ratio": 0.7229275369693413,
+     "mass_ratio_vs_design": 1.007190012341692,
+     "top_1pct_share": 0.09710539392556058,
+     "n_records_holding_half_weight": 553,
+     "n_records_holding_half_weight_design": 705
+    },
+    "2301": {
+     "n": 3405,
+     "kish_ess": 1079.8515953591161,
+     "kish_ess_design": 1609.4624419825598,
+     "kish_ess_ratio": 0.6709392945068907,
+     "mass_ratio_vs_design": 1.018135068157041,
+     "top_1pct_share": 0.09905484243519648,
+     "n_records_holding_half_weight": 427,
+     "n_records_holding_half_weight_design": 648
+    },
+    "2302": {
+     "n": 4818,
+     "kish_ess": 1170.330963894166,
+     "kish_ess_design": 1966.1489749772563,
+     "kish_ess_ratio": 0.5952402278711886,
+     "mass_ratio_vs_design": 0.9704540825714092,
+     "top_1pct_share": 0.1256280969138389,
+     "n_records_holding_half_weight": 481,
+     "n_records_holding_half_weight_design": 778
+    },
+    "2401": {
+     "n": 4238,
+     "kish_ess": 1545.6075496593758,
+     "kish_ess_design": 1967.130189275378,
+     "kish_ess_ratio": 0.7857169586872761,
+     "mass_ratio_vs_design": 1.0145391593727604,
+     "top_1pct_share": 0.10159871489715584,
+     "n_records_holding_half_weight": 740,
+     "n_records_holding_half_weight_design": 851
+    },
+    "2402": {
+     "n": 3649,
+     "kish_ess": 1452.6760323376307,
+     "kish_ess_design": 1812.617152643751,
+     "kish_ess_ratio": 0.8014246307990981,
+     "mass_ratio_vs_design": 1.02976219960037,
+     "top_1pct_share": 0.09607079950302994,
+     "n_records_holding_half_weight": 690,
+     "n_records_holding_half_weight_design": 772
+    },
+    "2403": {
+     "n": 3419,
+     "kish_ess": 1624.8543417395472,
+     "kish_ess_design": 1925.5397691094618,
+     "kish_ess_ratio": 0.8438435641820174,
+     "mass_ratio_vs_design": 1.0743942729143687,
+     "top_1pct_share": 0.0773696604659853,
+     "n_records_holding_half_weight": 713,
+     "n_records_holding_half_weight_design": 800
+    },
+    "2404": {
+     "n": 2776,
+     "kish_ess": 1176.620124574449,
+     "kish_ess_design": 1383.7290500704542,
+     "kish_ess_ratio": 0.8503255203860467,
+     "mass_ratio_vs_design": 0.9888238266716721,
+     "top_1pct_share": 0.07946952334584273,
+     "n_records_holding_half_weight": 473,
+     "n_records_holding_half_weight_design": 524
+    },
+    "2405": {
+     "n": 3098,
+     "kish_ess": 1377.8002458702936,
+     "kish_ess_design": 1648.4616796031055,
+     "kish_ess_ratio": 0.8358096902816824,
+     "mass_ratio_vs_design": 1.0553717168867887,
+     "top_1pct_share": 0.07870314693455312,
+     "n_records_holding_half_weight": 585,
+     "n_records_holding_half_weight_design": 653
+    },
+    "2406": {
+     "n": 4242,
+     "kish_ess": 1795.0088485491226,
+     "kish_ess_design": 2215.4460219305315,
+     "kish_ess_ratio": 0.8102245916986768,
+     "mass_ratio_vs_design": 1.0481120909164356,
+     "top_1pct_share": 0.08748398660427686,
+     "n_records_holding_half_weight": 789,
+     "n_records_holding_half_weight_design": 944
+    },
+    "2407": {
+     "n": 3312,
+     "kish_ess": 1352.21262287571,
+     "kish_ess_design": 1664.506976708128,
+     "kish_ess_ratio": 0.8123802674290749,
+     "mass_ratio_vs_design": 0.944850488453505,
+     "top_1pct_share": 0.09007551581646256,
+     "n_records_holding_half_weight": 578,
+     "n_records_holding_half_weight_design": 650
+    },
+    "2408": {
+     "n": 3684,
+     "kish_ess": 1394.5109769748885,
+     "kish_ess_design": 1742.9622747605213,
+     "kish_ess_ratio": 0.8000809869315679,
+     "mass_ratio_vs_design": 1.0551499879377628,
+     "top_1pct_share": 0.10129505462182428,
+     "n_records_holding_half_weight": 687,
+     "n_records_holding_half_weight_design": 778
+    },
+    "2501": {
+     "n": 4439,
+     "kish_ess": 1690.0415542137964,
+     "kish_ess_design": 2152.3024294461393,
+     "kish_ess_ratio": 0.7852249438052726,
+     "mass_ratio_vs_design": 1.0620937289123824,
+     "top_1pct_share": 0.09541934653710585,
+     "n_records_holding_half_weight": 756,
+     "n_records_holding_half_weight_design": 893
+    },
+    "2502": {
+     "n": 4671,
+     "kish_ess": 1924.244655648004,
+     "kish_ess_design": 2345.4739019045082,
+     "kish_ess_ratio": 0.8204076174480266,
+     "mass_ratio_vs_design": 1.028693530754512,
+     "top_1pct_share": 0.0864152567635073,
+     "n_records_holding_half_weight": 824,
+     "n_records_holding_half_weight_design": 972
+    },
+    "2503": {
+     "n": 3646,
+     "kish_ess": 1676.2106253117772,
+     "kish_ess_design": 2010.0148442537652,
+     "kish_ess_ratio": 0.8339294757467746,
+     "mass_ratio_vs_design": 1.0568706458353287,
+     "top_1pct_share": 0.07313649443229701,
+     "n_records_holding_half_weight": 689,
+     "n_records_holding_half_weight_design": 802
+    },
+    "2504": {
+     "n": 4058,
+     "kish_ess": 1893.759570237949,
+     "kish_ess_design": 2264.8192323452813,
+     "kish_ess_ratio": 0.8361636739886343,
+     "mass_ratio_vs_design": 1.0301111614079428,
+     "top_1pct_share": 0.07585860094340127,
+     "n_records_holding_half_weight": 809,
+     "n_records_holding_half_weight_design": 941
+    },
+    "2505": {
+     "n": 4045,
+     "kish_ess": 1900.350457069072,
+     "kish_ess_design": 2293.919542939528,
+     "kish_ess_ratio": 0.8284294289737296,
+     "mass_ratio_vs_design": 1.0661729923522838,
+     "top_1pct_share": 0.07572576879998225,
+     "n_records_holding_half_weight": 810,
+     "n_records_holding_half_weight_design": 949
+    },
+    "2506": {
+     "n": 3846,
+     "kish_ess": 1894.8043439630812,
+     "kish_ess_design": 2203.7150856802805,
+     "kish_ess_ratio": 0.8598227403694342,
+     "mass_ratio_vs_design": 1.0523770605377167,
+     "top_1pct_share": 0.07124458665848239,
+     "n_records_holding_half_weight": 788,
+     "n_records_holding_half_weight_design": 895
+    },
+    "2507": {
+     "n": 4538,
+     "kish_ess": 2045.8926995185395,
+     "kish_ess_design": 2399.162681235094,
+     "kish_ess_ratio": 0.8527528022673767,
+     "mass_ratio_vs_design": 0.9922457263128959,
+     "top_1pct_share": 0.07764341323203654,
+     "n_records_holding_half_weight": 843,
+     "n_records_holding_half_weight_design": 950
+    },
+    "2508": {
+     "n": 3558,
+     "kish_ess": 1682.4083942178179,
+     "kish_ess_design": 1983.2309633753787,
+     "kish_ess_ratio": 0.8483169259088347,
+     "mass_ratio_vs_design": 1.0684847970198024,
+     "top_1pct_share": 0.07183913334810767,
+     "n_records_holding_half_weight": 675,
+     "n_records_holding_half_weight_design": 770
+    },
+    "2509": {
+     "n": 3777,
+     "kish_ess": 1833.4240917230486,
+     "kish_ess_design": 2044.555548819955,
+     "kish_ess_ratio": 0.8967347904933354,
+     "mass_ratio_vs_design": 1.0597372273224546,
+     "top_1pct_share": 0.0711759894746147,
+     "n_records_holding_half_weight": 759,
+     "n_records_holding_half_weight_design": 829
+    },
+    "2601": {
+     "n": 7255,
+     "kish_ess": 2490.5667760499036,
+     "kish_ess_design": 3064.7244436886353,
+     "kish_ess_ratio": 0.812656022364057,
+     "mass_ratio_vs_design": 1.007185894104747,
+     "top_1pct_share": 0.10422094985370517,
+     "n_records_holding_half_weight": 1158,
+     "n_records_holding_half_weight_design": 1330
+    },
+    "2602": {
+     "n": 5603,
+     "kish_ess": 1681.0063911927334,
+     "kish_ess_design": 2300.952902348942,
+     "kish_ess_ratio": 0.7305696650621,
+     "mass_ratio_vs_design": 1.0183003988593902,
+     "top_1pct_share": 0.11990003429062926,
+     "n_records_holding_half_weight": 861,
+     "n_records_holding_half_weight_design": 1035
+    },
+    "2603": {
+     "n": 2842,
+     "kish_ess": 1264.8210519223398,
+     "kish_ess_design": 1558.779227593402,
+     "kish_ess_ratio": 0.8114176976011517,
+     "mass_ratio_vs_design": 1.0239681801361438,
+     "top_1pct_share": 0.08428309508688683,
+     "n_records_holding_half_weight": 568,
+     "n_records_holding_half_weight_design": 676
+    },
+    "2604": {
+     "n": 3547,
+     "kish_ess": 1556.8266675084544,
+     "kish_ess_design": 1846.0818380979224,
+     "kish_ess_ratio": 0.8433140044931611,
+     "mass_ratio_vs_design": 1.0209902274239722,
+     "top_1pct_share": 0.08115866496598137,
+     "n_records_holding_half_weight": 664,
+     "n_records_holding_half_weight_design": 764
+    },
+    "2605": {
+     "n": 4450,
+     "kish_ess": 1831.575707929425,
+     "kish_ess_design": 2227.2054426267205,
+     "kish_ess_ratio": 0.8223649569432187,
+     "mass_ratio_vs_design": 1.0207797656061286,
+     "top_1pct_share": 0.08707010777178605,
+     "n_records_holding_half_weight": 778,
+     "n_records_holding_half_weight_design": 914
+    },
+    "2606": {
+     "n": 3127,
+     "kish_ess": 1437.9367384001503,
+     "kish_ess_design": 1657.4304834560353,
+     "kish_ess_ratio": 0.8675698635648346,
+     "mass_ratio_vs_design": 1.018234428888882,
+     "top_1pct_share": 0.08074156875569077,
+     "n_records_holding_half_weight": 627,
+     "n_records_holding_half_weight_design": 708
+    },
+    "2607": {
+     "n": 3628,
+     "kish_ess": 1642.0224653286423,
+     "kish_ess_design": 1843.1485686855826,
+     "kish_ess_ratio": 0.8908790605521448,
+     "mass_ratio_vs_design": 1.0136158628192573,
+     "top_1pct_share": 0.08047674854568682,
+     "n_records_holding_half_weight": 701,
+     "n_records_holding_half_weight_design": 776
+    },
+    "2608": {
+     "n": 3631,
+     "kish_ess": 1371.325415990669,
+     "kish_ess_design": 1673.6640417990056,
+     "kish_ess_ratio": 0.8193552479723734,
+     "mass_ratio_vs_design": 1.013527606269036,
+     "top_1pct_share": 0.09825884160012474,
+     "n_records_holding_half_weight": 601,
+     "n_records_holding_half_weight_design": 695
+    },
+    "2609": {
+     "n": 3939,
+     "kish_ess": 1667.1246664375542,
+     "kish_ess_design": 1832.848170835647,
+     "kish_ess_ratio": 0.9095814334023452,
+     "mass_ratio_vs_design": 1.023813370760296,
+     "top_1pct_share": 0.0833796885599492,
+     "n_records_holding_half_weight": 705,
+     "n_records_holding_half_weight_design": 786
+    },
+    "2610": {
+     "n": 2757,
+     "kish_ess": 1363.9622594594625,
+     "kish_ess_design": 1530.966953977082,
+     "kish_ess_ratio": 0.8909155458360601,
+     "mass_ratio_vs_design": 1.0053837520323998,
+     "top_1pct_share": 0.06984186962413506,
+     "n_records_holding_half_weight": 563,
+     "n_records_holding_half_weight_design": 619
+    },
+    "2611": {
+     "n": 3020,
+     "kish_ess": 1539.1536671604897,
+     "kish_ess_design": 1740.8039097979677,
+     "kish_ess_ratio": 0.8841625748296482,
+     "mass_ratio_vs_design": 0.9994821045679666,
+     "top_1pct_share": 0.06910817707482073,
+     "n_records_holding_half_weight": 637,
+     "n_records_holding_half_weight_design": 704
+    },
+    "2612": {
+     "n": 2414,
+     "kish_ess": 1121.4282836875639,
+     "kish_ess_design": 1310.9327756424102,
+     "kish_ess_ratio": 0.8554430131918996,
+     "mass_ratio_vs_design": 0.9991038039540261,
+     "top_1pct_share": 0.07357813289902157,
+     "n_records_holding_half_weight": 445,
+     "n_records_holding_half_weight_design": 491
+    },
+    "2613": {
+     "n": 2487,
+     "kish_ess": 1166.5058793984565,
+     "kish_ess_design": 1390.383776658536,
+     "kish_ess_ratio": 0.83898122157458,
+     "mass_ratio_vs_design": 0.9732799828081302,
+     "top_1pct_share": 0.06752083049379652,
+     "n_records_holding_half_weight": 443,
+     "n_records_holding_half_weight_design": 503
+    },
+    "2701": {
+     "n": 4893,
+     "kish_ess": 1085.66700423127,
+     "kish_ess_design": 1548.5237887210844,
+     "kish_ess_ratio": 0.7010980471458661,
+     "mass_ratio_vs_design": 1.0052533715985956,
+     "top_1pct_share": 0.14193886911523415,
+     "n_records_holding_half_weight": 495,
+     "n_records_holding_half_weight_design": 628
+    },
+    "2702": {
+     "n": 2364,
+     "kish_ess": 948.0370302594665,
+     "kish_ess_design": 1134.4389715602922,
+     "kish_ess_ratio": 0.8356879955874127,
+     "mass_ratio_vs_design": 1.0484145127458857,
+     "top_1pct_share": 0.08171575634878843,
+     "n_records_holding_half_weight": 385,
+     "n_records_holding_half_weight_design": 464
+    },
+    "2703": {
+     "n": 2051,
+     "kish_ess": 930.6926048031573,
+     "kish_ess_design": 1122.9945862192396,
+     "kish_ess_ratio": 0.8287596540750023,
+     "mass_ratio_vs_design": 1.0701637935811232,
+     "top_1pct_share": 0.07619063273140635,
+     "n_records_holding_half_weight": 392,
+     "n_records_holding_half_weight_design": 468
+    },
+    "2704": {
+     "n": 2278,
+     "kish_ess": 794.4438234964371,
+     "kish_ess_design": 1107.2160420135733,
+     "kish_ess_ratio": 0.7175147336663119,
+     "mass_ratio_vs_design": 0.9891335339899081,
+     "top_1pct_share": 0.09996884430758547,
+     "n_records_holding_half_weight": 346,
+     "n_records_holding_half_weight_design": 453
+    },
+    "2705": {
+     "n": 2188,
+     "kish_ess": 845.0411759357761,
+     "kish_ess_design": 1056.4108017951028,
+     "kish_ess_ratio": 0.7999172050303183,
+     "mass_ratio_vs_design": 0.9904855251005683,
+     "top_1pct_share": 0.08692745619699113,
+     "n_records_holding_half_weight": 359,
+     "n_records_holding_half_weight_design": 444
+    },
+    "2706": {
+     "n": 2567,
+     "kish_ess": 865.0877635766161,
+     "kish_ess_design": 1085.3465817451633,
+     "kish_ess_ratio": 0.7970613056942732,
+     "mass_ratio_vs_design": 0.9732536695773107,
+     "top_1pct_share": 0.09653100337228059,
+     "n_records_holding_half_weight": 391,
+     "n_records_holding_half_weight_design": 473
+    },
+    "2707": {
+     "n": 6626,
+     "kish_ess": 1670.5752201515309,
+     "kish_ess_design": 2163.917448359521,
+     "kish_ess_ratio": 0.7720143027720415,
+     "mass_ratio_vs_design": 0.9869226296204335,
+     "top_1pct_share": 0.13182704199006146,
+     "n_records_holding_half_weight": 785,
+     "n_records_holding_half_weight_design": 958
+    },
+    "2708": {
+     "n": 5361,
+     "kish_ess": 1539.1712917132793,
+     "kish_ess_design": 2092.470822676638,
+     "kish_ess_ratio": 0.7355759875038108,
+     "mass_ratio_vs_design": 1.0053043651098192,
+     "top_1pct_share": 0.11830707385597225,
+     "n_records_holding_half_weight": 694,
+     "n_records_holding_half_weight_design": 875
+    },
+    "2801": {
+     "n": 3815,
+     "kish_ess": 1340.9433769911473,
+     "kish_ess_design": 1821.7514830964183,
+     "kish_ess_ratio": 0.736073712267249,
+     "mass_ratio_vs_design": 0.9867763863564378,
+     "top_1pct_share": 0.09326106759028105,
+     "n_records_holding_half_weight": 532,
+     "n_records_holding_half_weight_design": 721
+    },
+    "2802": {
+     "n": 3730,
+     "kish_ess": 1264.6743253569603,
+     "kish_ess_design": 1799.0694272272312,
+     "kish_ess_ratio": 0.702960267245554,
+     "mass_ratio_vs_design": 0.9815088027437111,
+     "top_1pct_share": 0.09496700624346353,
+     "n_records_holding_half_weight": 489,
+     "n_records_holding_half_weight_design": 679
+    },
+    "2803": {
+     "n": 3652,
+     "kish_ess": 1194.6628927922745,
+     "kish_ess_design": 1883.71177667755,
+     "kish_ess_ratio": 0.6342068396999646,
+     "mass_ratio_vs_design": 1.0347584625205744,
+     "top_1pct_share": 0.10446131200701513,
+     "n_records_holding_half_weight": 505,
+     "n_records_holding_half_weight_design": 735
+    },
+    "2804": {
+     "n": 3694,
+     "kish_ess": 1407.9622856738386,
+     "kish_ess_design": 2057.17895019713,
+     "kish_ess_ratio": 0.6844141028853713,
+     "mass_ratio_vs_design": 1.0285425673582378,
+     "top_1pct_share": 0.08584333809633699,
+     "n_records_holding_half_weight": 557,
+     "n_records_holding_half_weight_design": 803
+    },
+    "2901": {
+     "n": 2983,
+     "kish_ess": 1143.2510935754444,
+     "kish_ess_design": 1473.2797514416493,
+     "kish_ess_ratio": 0.7759905017745192,
+     "mass_ratio_vs_design": 1.0248692455656272,
+     "top_1pct_share": 0.08777566366068067,
+     "n_records_holding_half_weight": 465,
+     "n_records_holding_half_weight_design": 570
+    },
+    "2902": {
+     "n": 3458,
+     "kish_ess": 1625.6671940841654,
+     "kish_ess_design": 1898.700650647749,
+     "kish_ess_ratio": 0.856199840416952,
+     "mass_ratio_vs_design": 1.0823292443812522,
+     "top_1pct_share": 0.07609885393007265,
+     "n_records_holding_half_weight": 693,
+     "n_records_holding_half_weight_design": 836
+    },
+    "2903": {
+     "n": 3860,
+     "kish_ess": 1520.238119610823,
+     "kish_ess_design": 2005.6106191652702,
+     "kish_ess_ratio": 0.757992655744684,
+     "mass_ratio_vs_design": 1.015329582798998,
+     "top_1pct_share": 0.09016247759281666,
+     "n_records_holding_half_weight": 674,
+     "n_records_holding_half_weight_design": 835
+    },
+    "2904": {
+     "n": 4546,
+     "kish_ess": 1719.8366216250963,
+     "kish_ess_design": 2089.731217646522,
+     "kish_ess_ratio": 0.8229941760462357,
+     "mass_ratio_vs_design": 1.0423547246588836,
+     "top_1pct_share": 0.09070618600285894,
+     "n_records_holding_half_weight": 716,
+     "n_records_holding_half_weight_design": 845
+    },
+    "2905": {
+     "n": 2983,
+     "kish_ess": 1233.877417948404,
+     "kish_ess_design": 1612.4035395792264,
+     "kish_ess_ratio": 0.7652410749919324,
+     "mass_ratio_vs_design": 1.022513324431753,
+     "top_1pct_share": 0.08950482068903641,
+     "n_records_holding_half_weight": 549,
+     "n_records_holding_half_weight_design": 658
+    },
+    "2906": {
+     "n": 5208,
+     "kish_ess": 1807.4830445703858,
+     "kish_ess_design": 2325.3619557747193,
+     "kish_ess_ratio": 0.7772910535849046,
+     "mass_ratio_vs_design": 1.0375013806591202,
+     "top_1pct_share": 0.10080336795091327,
+     "n_records_holding_half_weight": 806,
+     "n_records_holding_half_weight_design": 953
+    },
+    "2907": {
+     "n": 3951,
+     "kish_ess": 1580.5437340519393,
+     "kish_ess_design": 1900.1306788895618,
+     "kish_ess_ratio": 0.831807912798719,
+     "mass_ratio_vs_design": 1.0149355504412492,
+     "top_1pct_share": 0.09012247845477046,
+     "n_records_holding_half_weight": 673,
+     "n_records_holding_half_weight_design": 801
+    },
+    "2908": {
+     "n": 4245,
+     "kish_ess": 1694.3508744853511,
+     "kish_ess_design": 2047.9033589253372,
+     "kish_ess_ratio": 0.8273588043600274,
+     "mass_ratio_vs_design": 1.0382775093355963,
+     "top_1pct_share": 0.08598468556610217,
+     "n_records_holding_half_weight": 694,
+     "n_records_holding_half_weight_design": 837
+    },
+    "3001": {
+     "n": 2829,
+     "kish_ess": 742.7091414229161,
+     "kish_ess_design": 1291.6701951318832,
+     "kish_ess_ratio": 0.5749990548841947,
+     "mass_ratio_vs_design": 0.9693847297790436,
+     "top_1pct_share": 0.11416486661949737,
+     "n_records_holding_half_weight": 321,
+     "n_records_holding_half_weight_design": 525
+    },
+    "3002": {
+     "n": 3226,
+     "kish_ess": 755.0151982539858,
+     "kish_ess_design": 1294.1304708467712,
+     "kish_ess_ratio": 0.5834150537850845,
+     "mass_ratio_vs_design": 0.9667839905078659,
+     "top_1pct_share": 0.12765755190549097,
+     "n_records_holding_half_weight": 312,
+     "n_records_holding_half_weight_design": 540
+    },
+    "3101": {
+     "n": 3172,
+     "kish_ess": 991.0753496405227,
+     "kish_ess_design": 1511.2723073705135,
+     "kish_ess_ratio": 0.6557887316581023,
+     "mass_ratio_vs_design": 0.9849083534392644,
+     "top_1pct_share": 0.09888996591254515,
+     "n_records_holding_half_weight": 396,
+     "n_records_holding_half_weight_design": 603
+    },
+    "3102": {
+     "n": 2379,
+     "kish_ess": 900.6616594692496,
+     "kish_ess_design": 1276.74893820585,
+     "kish_ess_ratio": 0.7054336467550961,
+     "mass_ratio_vs_design": 1.0460138095502167,
+     "top_1pct_share": 0.08109605307816597,
+     "n_records_holding_half_weight": 358,
+     "n_records_holding_half_weight_design": 519
+    },
+    "3103": {
+     "n": 4626,
+     "kish_ess": 1307.24345573262,
+     "kish_ess_design": 1859.5370199309737,
+     "kish_ess_ratio": 0.7029940472930973,
+     "mass_ratio_vs_design": 0.9753535863527603,
+     "top_1pct_share": 0.10867128204734605,
+     "n_records_holding_half_weight": 509,
+     "n_records_holding_half_weight_design": 724
+    },
+    "3201": {
+     "n": 3305,
+     "kish_ess": 1445.0123650893083,
+     "kish_ess_design": 1944.286106670028,
+     "kish_ess_ratio": 0.7432097365362426,
+     "mass_ratio_vs_design": 1.0714847945613108,
+     "top_1pct_share": 0.07481854336989954,
+     "n_records_holding_half_weight": 566,
+     "n_records_holding_half_weight_design": 721
+    },
+    "3202": {
+     "n": 4344,
+     "kish_ess": 1698.8080301603525,
+     "kish_ess_design": 2489.4110559033934,
+     "kish_ess_ratio": 0.6824136279670633,
+     "mass_ratio_vs_design": 1.0380855818247352,
+     "top_1pct_share": 0.08606508573903388,
+     "n_records_holding_half_weight": 724,
+     "n_records_holding_half_weight_design": 949
+    },
+    "3203": {
+     "n": 3496,
+     "kish_ess": 1298.5338104427276,
+     "kish_ess_design": 1932.369626427678,
+     "kish_ess_ratio": 0.6719903856299447,
+     "mass_ratio_vs_design": 1.0280422464044356,
+     "top_1pct_share": 0.09088059801636365,
+     "n_records_holding_half_weight": 558,
+     "n_records_holding_half_weight_design": 705
+    },
+    "3204": {
+     "n": 3190,
+     "kish_ess": 1268.3514348231035,
+     "kish_ess_design": 1799.46528439219,
+     "kish_ess_ratio": 0.7048490714570901,
+     "mass_ratio_vs_design": 1.0541498220436634,
+     "top_1pct_share": 0.0838957373320529,
+     "n_records_holding_half_weight": 515,
+     "n_records_holding_half_weight_design": 667
+    },
+    "3301": {
+     "n": 3387,
+     "kish_ess": 1138.503989763952,
+     "kish_ess_design": 1847.6630740191376,
+     "kish_ess_ratio": 0.6161859300935294,
+     "mass_ratio_vs_design": 1.0417313234628953,
+     "top_1pct_share": 0.08893173570075051,
+     "n_records_holding_half_weight": 448,
+     "n_records_holding_half_weight_design": 733
+    },
+    "3302": {
+     "n": 4222,
+     "kish_ess": 1202.2514950578566,
+     "kish_ess_design": 2002.4722324328013,
+     "kish_ess_ratio": 0.600383603620432,
+     "mass_ratio_vs_design": 1.0082564051038743,
+     "top_1pct_share": 0.10558168320927723,
+     "n_records_holding_half_weight": 474,
+     "n_records_holding_half_weight_design": 803
+    },
+    "3401": {
+     "n": 3732,
+     "kish_ess": 1551.911729463425,
+     "kish_ess_design": 1805.5937953584394,
+     "kish_ess_ratio": 0.8595021391039648,
+     "mass_ratio_vs_design": 1.0154710649331684,
+     "top_1pct_share": 0.08773813134789109,
+     "n_records_holding_half_weight": 706,
+     "n_records_holding_half_weight_design": 786
+    },
+    "3402": {
+     "n": 4158,
+     "kish_ess": 1611.3834944328687,
+     "kish_ess_design": 1868.4352950336938,
+     "kish_ess_ratio": 0.8624240286596654,
+     "mass_ratio_vs_design": 1.0097410030373435,
+     "top_1pct_share": 0.09231541128906855,
+     "n_records_holding_half_weight": 753,
+     "n_records_holding_half_weight_design": 845
+    },
+    "3403": {
+     "n": 3601,
+     "kish_ess": 1679.142846675715,
+     "kish_ess_design": 1843.88511557159,
+     "kish_ess_ratio": 0.9106548084234596,
+     "mass_ratio_vs_design": 1.0416663757870244,
+     "top_1pct_share": 0.07869817635587902,
+     "n_records_holding_half_weight": 729,
+     "n_records_holding_half_weight_design": 804
+    },
+    "3404": {
+     "n": 3474,
+     "kish_ess": 1785.9428345906867,
+     "kish_ess_design": 1993.5884973347277,
+     "kish_ess_ratio": 0.895843268045714,
+     "mass_ratio_vs_design": 1.004708678745264,
+     "top_1pct_share": 0.07107325826937089,
+     "n_records_holding_half_weight": 749,
+     "n_records_holding_half_weight_design": 832
+    },
+    "3405": {
+     "n": 3560,
+     "kish_ess": 1575.6018895293612,
+     "kish_ess_design": 1834.4566967118321,
+     "kish_ess_ratio": 0.858892931271447,
+     "mass_ratio_vs_design": 1.0826955960147764,
+     "top_1pct_share": 0.08703709083142265,
+     "n_records_holding_half_weight": 728,
+     "n_records_holding_half_weight_design": 803
+    },
+    "3406": {
+     "n": 3396,
+     "kish_ess": 1398.8489287329207,
+     "kish_ess_design": 1692.5885121689187,
+     "kish_ess_ratio": 0.8264554076054824,
+     "mass_ratio_vs_design": 1.0208423019198838,
+     "top_1pct_share": 0.08724190205557157,
+     "n_records_holding_half_weight": 632,
+     "n_records_holding_half_weight_design": 722
+    },
+    "3407": {
+     "n": 3922,
+     "kish_ess": 1888.382778239721,
+     "kish_ess_design": 2104.787784236971,
+     "kish_ess_ratio": 0.8971844061344638,
+     "mass_ratio_vs_design": 1.0501591550247533,
+     "top_1pct_share": 0.07703888031227336,
+     "n_records_holding_half_weight": 834,
+     "n_records_holding_half_weight_design": 911
+    },
+    "3408": {
+     "n": 2718,
+     "kish_ess": 1223.2536394650983,
+     "kish_ess_design": 1580.389167195408,
+     "kish_ess_ratio": 0.7740205165009516,
+     "mass_ratio_vs_design": 1.0099563532295546,
+     "top_1pct_share": 0.08340270061526643,
+     "n_records_holding_half_weight": 525,
+     "n_records_holding_half_weight_design": 603
+    },
+    "3409": {
+     "n": 2808,
+     "kish_ess": 1367.7736931705372,
+     "kish_ess_design": 1547.937998178659,
+     "kish_ess_ratio": 0.8836101282996428,
+     "mass_ratio_vs_design": 1.0297712593265302,
+     "top_1pct_share": 0.07258400644999745,
+     "n_records_holding_half_weight": 562,
+     "n_records_holding_half_weight_design": 613
+    },
+    "3410": {
+     "n": 2785,
+     "kish_ess": 1191.9275227994606,
+     "kish_ess_design": 1502.5318994538463,
+     "kish_ess_ratio": 0.7932793461707621,
+     "mass_ratio_vs_design": 0.985661438987637,
+     "top_1pct_share": 0.08269458359766411,
+     "n_records_holding_half_weight": 520,
+     "n_records_holding_half_weight_design": 592
+    },
+    "3411": {
+     "n": 3461,
+     "kish_ess": 1614.4372752382235,
+     "kish_ess_design": 1894.0266646054345,
+     "kish_ess_ratio": 0.8523836044169656,
+     "mass_ratio_vs_design": 1.0761161666574732,
+     "top_1pct_share": 0.08090819949934029,
+     "n_records_holding_half_weight": 745,
+     "n_records_holding_half_weight_design": 824
+    },
+    "3412": {
+     "n": 3385,
+     "kish_ess": 1577.2174781105334,
+     "kish_ess_design": 1787.628883877784,
+     "kish_ess_ratio": 0.8822958122544882,
+     "mass_ratio_vs_design": 1.0475987807070801,
+     "top_1pct_share": 0.07514570295542487,
+     "n_records_holding_half_weight": 660,
+     "n_records_holding_half_weight_design": 735
+    },
+    "3501": {
+     "n": 3392,
+     "kish_ess": 1337.244832917481,
+     "kish_ess_design": 1803.5633410276325,
+     "kish_ess_ratio": 0.7414460044167603,
+     "mass_ratio_vs_design": 1.0113056997630345,
+     "top_1pct_share": 0.08093069680192029,
+     "n_records_holding_half_weight": 538,
+     "n_records_holding_half_weight_design": 713
+    },
+    "3502": {
+     "n": 3046,
+     "kish_ess": 1191.5228877424963,
+     "kish_ess_design": 1549.246912598082,
+     "kish_ess_ratio": 0.7690981199015697,
+     "mass_ratio_vs_design": 1.0130366393953751,
+     "top_1pct_share": 0.08082750801962534,
+     "n_records_holding_half_weight": 452,
+     "n_records_holding_half_weight_design": 579
+    },
+    "3503": {
+     "n": 3998,
+     "kish_ess": 1232.8925356829084,
+     "kish_ess_design": 1755.1293797129306,
+     "kish_ess_ratio": 0.7024510841956053,
+     "mass_ratio_vs_design": 1.0270840229936726,
+     "top_1pct_share": 0.10139251795955413,
+     "n_records_holding_half_weight": 504,
+     "n_records_holding_half_weight_design": 679
+    },
+    "3601": {
+     "n": 3943,
+     "kish_ess": 1550.0435305130156,
+     "kish_ess_design": 1752.490364629551,
+     "kish_ess_ratio": 0.8844804866249125,
+     "mass_ratio_vs_design": 1.0541673285175912,
+     "top_1pct_share": 0.09457426573029415,
+     "n_records_holding_half_weight": 752,
+     "n_records_holding_half_weight_design": 822
+    },
+    "3602": {
+     "n": 2967,
+     "kish_ess": 1266.4594821796854,
+     "kish_ess_design": 1458.4782391623482,
+     "kish_ess_ratio": 0.8683430771699786,
+     "mass_ratio_vs_design": 1.0585406449911339,
+     "top_1pct_share": 0.08893731822267219,
+     "n_records_holding_half_weight": 558,
+     "n_records_holding_half_weight_design": 621
+    },
+    "3603": {
+     "n": 3412,
+     "kish_ess": 1527.590498181879,
+     "kish_ess_design": 1676.7033179384814,
+     "kish_ess_ratio": 0.9110678566915835,
+     "mass_ratio_vs_design": 1.092315901825531,
+     "top_1pct_share": 0.08398463161937604,
+     "n_records_holding_half_weight": 677,
+     "n_records_holding_half_weight_design": 724
+    },
+    "3604": {
+     "n": 2715,
+     "kish_ess": 1234.1391756187816,
+     "kish_ess_design": 1381.9901809562562,
+     "kish_ess_ratio": 0.8930158785678417,
+     "mass_ratio_vs_design": 1.068463018548822,
+     "top_1pct_share": 0.07962803194679638,
+     "n_records_holding_half_weight": 514,
+     "n_records_holding_half_weight_design": 554
+    },
+    "3605": {
+     "n": 2713,
+     "kish_ess": 1220.6388683265757,
+     "kish_ess_design": 1423.9670616495034,
+     "kish_ess_ratio": 0.8572100445305278,
+     "mass_ratio_vs_design": 1.0147653945923354,
+     "top_1pct_share": 0.07929499198321432,
+     "n_records_holding_half_weight": 533,
+     "n_records_holding_half_weight_design": 578
+    },
+    "3606": {
+     "n": 2768,
+     "kish_ess": 1432.456698581705,
+     "kish_ess_design": 1528.2103074627219,
+     "kish_ess_ratio": 0.9373426494943644,
+     "mass_ratio_vs_design": 1.0105577096237879,
+     "top_1pct_share": 0.06363015156562586,
+     "n_records_holding_half_weight": 567,
+     "n_records_holding_half_weight_design": 601
+    },
+    "3607": {
+     "n": 2811,
+     "kish_ess": 1392.4100574052122,
+     "kish_ess_design": 1517.6211002201585,
+     "kish_ess_ratio": 0.9174951884915266,
+     "mass_ratio_vs_design": 0.974413033240095,
+     "top_1pct_share": 0.07257168821567987,
+     "n_records_holding_half_weight": 565,
+     "n_records_holding_half_weight_design": 602
+    },
+    "3608": {
+     "n": 2685,
+     "kish_ess": 1340.8848529491609,
+     "kish_ess_design": 1400.2262079168531,
+     "kish_ess_ratio": 0.9576201654902777,
+     "mass_ratio_vs_design": 0.9724792405510997,
+     "top_1pct_share": 0.06563606721413928,
+     "n_records_holding_half_weight": 520,
+     "n_records_holding_half_weight_design": 543
+    },
+    "3609": {
+     "n": 2764,
+     "kish_ess": 1324.915023583363,
+     "kish_ess_design": 1420.0551225628926,
+     "kish_ess_ratio": 0.9330025310511735,
+     "mass_ratio_vs_design": 0.9900617534809716,
+     "top_1pct_share": 0.07268073886784066,
+     "n_records_holding_half_weight": 537,
+     "n_records_holding_half_weight_design": 571
+    },
+    "3610": {
+     "n": 3189,
+     "kish_ess": 1484.0612937049275,
+     "kish_ess_design": 1624.8638274585712,
+     "kish_ess_ratio": 0.9133450253650663,
+     "mass_ratio_vs_design": 0.9888374347095519,
+     "top_1pct_share": 0.07682602367030197,
+     "n_records_holding_half_weight": 619,
+     "n_records_holding_half_weight_design": 666
+    },
+    "3611": {
+     "n": 2917,
+     "kish_ess": 1344.9883803983203,
+     "kish_ess_design": 1515.9940381624647,
+     "kish_ess_ratio": 0.8871989905900816,
+     "mass_ratio_vs_design": 1.018261161267904,
+     "top_1pct_share": 0.07539677251509086,
+     "n_records_holding_half_weight": 561,
+     "n_records_holding_half_weight_design": 587
+    },
+    "3612": {
+     "n": 2873,
+     "kish_ess": 1429.7151664737576,
+     "kish_ess_design": 1539.8749193451915,
+     "kish_ess_ratio": 0.9284618825285642,
+     "mass_ratio_vs_design": 0.9908337324523352,
+     "top_1pct_share": 0.06669281470534641,
+     "n_records_holding_half_weight": 568,
+     "n_records_holding_half_weight_design": 622
+    },
+    "3613": {
+     "n": 2694,
+     "kish_ess": 1260.0741254550476,
+     "kish_ess_design": 1385.3179453301573,
+     "kish_ess_ratio": 0.9095920035560784,
+     "mass_ratio_vs_design": 0.9379462478736915,
+     "top_1pct_share": 0.06767119545425644,
+     "n_records_holding_half_weight": 475,
+     "n_records_holding_half_weight_design": 508
+    },
+    "3614": {
+     "n": 2406,
+     "kish_ess": 1229.4252578657783,
+     "kish_ess_design": 1350.2434381717203,
+     "kish_ess_ratio": 0.9105211868538801,
+     "mass_ratio_vs_design": 0.9900305909122957,
+     "top_1pct_share": 0.06468754283539142,
+     "n_records_holding_half_weight": 478,
+     "n_records_holding_half_weight_design": 511
+    },
+    "3615": {
+     "n": 2466,
+     "kish_ess": 1276.2679986203946,
+     "kish_ess_design": 1423.310387932007,
+     "kish_ess_ratio": 0.896689864306227,
+     "mass_ratio_vs_design": 0.969844544292781,
+     "top_1pct_share": 0.06296829541286782,
+     "n_records_holding_half_weight": 502,
+     "n_records_holding_half_weight_design": 548
+    },
+    "3616": {
+     "n": 3165,
+     "kish_ess": 1538.8272014025245,
+     "kish_ess_design": 1683.3483552244638,
+     "kish_ess_ratio": 0.9141466153613413,
+     "mass_ratio_vs_design": 1.0296949309372603,
+     "top_1pct_share": 0.07006248714931267,
+     "n_records_holding_half_weight": 622,
+     "n_records_holding_half_weight_design": 657
+    },
+    "3617": {
+     "n": 3448,
+     "kish_ess": 1558.3815631817781,
+     "kish_ess_design": 1717.9070966731947,
+     "kish_ess_ratio": 0.9071396038817553,
+     "mass_ratio_vs_design": 1.033568121612494,
+     "top_1pct_share": 0.08402615240597561,
+     "n_records_holding_half_weight": 694,
+     "n_records_holding_half_weight_design": 748
+    },
+    "3618": {
+     "n": 4208,
+     "kish_ess": 1864.0728268764803,
+     "kish_ess_design": 2057.304039315738,
+     "kish_ess_ratio": 0.9060755198324859,
+     "mass_ratio_vs_design": 0.9891884025220032,
+     "top_1pct_share": 0.08305719399368915,
+     "n_records_holding_half_weight": 770,
+     "n_records_holding_half_weight_design": 828
+    },
+    "3619": {
+     "n": 6313,
+     "kish_ess": 2525.235145115661,
+     "kish_ess_design": 2779.197045121524,
+     "kish_ess_ratio": 0.90862040514484,
+     "mass_ratio_vs_design": 0.9680819389220049,
+     "top_1pct_share": 0.09195989886976137,
+     "n_records_holding_half_weight": 1158,
+     "n_records_holding_half_weight_design": 1247
+    },
+    "3620": {
+     "n": 4633,
+     "kish_ess": 2056.413414394225,
+     "kish_ess_design": 2200.1876606325977,
+     "kish_ess_ratio": 0.9346536439546095,
+     "mass_ratio_vs_design": 0.97553151574649,
+     "top_1pct_share": 0.08449507639526051,
+     "n_records_holding_half_weight": 911,
+     "n_records_holding_half_weight_design": 967
+    },
+    "3621": {
+     "n": 6768,
+     "kish_ess": 2652.455282644301,
+     "kish_ess_design": 3011.956076438476,
+     "kish_ess_ratio": 0.8806420861823221,
+     "mass_ratio_vs_design": 0.9790056140265507,
+     "top_1pct_share": 0.0947662654955727,
+     "n_records_holding_half_weight": 1226,
+     "n_records_holding_half_weight_design": 1330
+    },
+    "3622": {
+     "n": 5889,
+     "kish_ess": 2361.721803301277,
+     "kish_ess_design": 2670.2539865975023,
+     "kish_ess_ratio": 0.8844558664288845,
+     "mass_ratio_vs_design": 0.9782812458255816,
+     "top_1pct_share": 0.09501838465851069,
+     "n_records_holding_half_weight": 1125,
+     "n_records_holding_half_weight_design": 1224
+    },
+    "3623": {
+     "n": 6169,
+     "kish_ess": 2449.875384442205,
+     "kish_ess_design": 2725.8400831794484,
+     "kish_ess_ratio": 0.8987597620123938,
+     "mass_ratio_vs_design": 0.990439911485383,
+     "top_1pct_share": 0.09275895374452296,
+     "n_records_holding_half_weight": 1154,
+     "n_records_holding_half_weight_design": 1255
+    },
+    "3624": {
+     "n": 6442,
+     "kish_ess": 2528.4915168634748,
+     "kish_ess_design": 2855.9038789465476,
+     "kish_ess_ratio": 0.8853559587573218,
+     "mass_ratio_vs_design": 0.9837197431176019,
+     "top_1pct_share": 0.0930999095186262,
+     "n_records_holding_half_weight": 1233,
+     "n_records_holding_half_weight_design": 1316
+    },
+    "3625": {
+     "n": 4389,
+     "kish_ess": 2002.3884522806834,
+     "kish_ess_design": 2255.7898785187544,
+     "kish_ess_ratio": 0.8876662101150729,
+     "mass_ratio_vs_design": 0.988612703152911,
+     "top_1pct_share": 0.0810218876719969,
+     "n_records_holding_half_weight": 928,
+     "n_records_holding_half_weight_design": 1012
+    },
+    "3626": {
+     "n": 3879,
+     "kish_ess": 1938.8409462435282,
+     "kish_ess_design": 2147.104806790207,
+     "kish_ess_ratio": 0.9030024711005976,
+     "mass_ratio_vs_design": 0.9738724650353413,
+     "top_1pct_share": 0.07294278959862703,
+     "n_records_holding_half_weight": 841,
+     "n_records_holding_half_weight_design": 918
+    },
+    "3701": {
+     "n": 4458,
+     "kish_ess": 1685.8280966427194,
+     "kish_ess_design": 1914.4504495413648,
+     "kish_ess_ratio": 0.8805806893809055,
+     "mass_ratio_vs_design": 0.9646292561790348,
+     "top_1pct_share": 0.09125845694606873,
+     "n_records_holding_half_weight": 691,
+     "n_records_holding_half_weight_design": 769
+    },
+    "3702": {
+     "n": 3367,
+     "kish_ess": 1585.7530011915085,
+     "kish_ess_design": 1744.698050506028,
+     "kish_ess_ratio": 0.9088982478839708,
+     "mass_ratio_vs_design": 0.9766194799079914,
+     "top_1pct_share": 0.07384422051697828,
+     "n_records_holding_half_weight": 653,
+     "n_records_holding_half_weight_design": 687
+    },
+    "3703": {
+     "n": 4705,
+     "kish_ess": 1747.524641368657,
+     "kish_ess_design": 2091.7803357702087,
+     "kish_ess_ratio": 0.8354245479247254,
+     "mass_ratio_vs_design": 0.9643393452783381,
+     "top_1pct_share": 0.09624626976660786,
+     "n_records_holding_half_weight": 755,
+     "n_records_holding_half_weight_design": 845
+    },
+    "3704": {
+     "n": 3635,
+     "kish_ess": 1563.8779570668546,
+     "kish_ess_design": 1806.381863482452,
+     "kish_ess_ratio": 0.8657515825872588,
+     "mass_ratio_vs_design": 0.9961803208301779,
+     "top_1pct_share": 0.08558210632758421,
+     "n_records_holding_half_weight": 683,
+     "n_records_holding_half_weight_design": 755
+    },
+    "3705": {
+     "n": 3979,
+     "kish_ess": 1611.2180882325138,
+     "kish_ess_design": 1857.7360484135886,
+     "kish_ess_ratio": 0.8673019450790178,
+     "mass_ratio_vs_design": 0.9678080215143958,
+     "top_1pct_share": 0.08700065279162161,
+     "n_records_holding_half_weight": 661,
+     "n_records_holding_half_weight_design": 743
+    },
+    "3706": {
+     "n": 3380,
+     "kish_ess": 1457.5857219593445,
+     "kish_ess_design": 1684.0011995338546,
+     "kish_ess_ratio": 0.8655490995866371,
+     "mass_ratio_vs_design": 0.982672971065678,
+     "top_1pct_share": 0.07926130673881968,
+     "n_records_holding_half_weight": 608,
+     "n_records_holding_half_weight_design": 670
+    },
+    "3707": {
+     "n": 4655,
+     "kish_ess": 2013.5283693136944,
+     "kish_ess_design": 2412.372680882144,
+     "kish_ess_ratio": 0.8346672076295433,
+     "mass_ratio_vs_design": 0.9828216643504016,
+     "top_1pct_share": 0.0858127124418687,
+     "n_records_holding_half_weight": 905,
+     "n_records_holding_half_weight_design": 1032
+    },
+    "3708": {
+     "n": 3924,
+     "kish_ess": 1619.9045126649378,
+     "kish_ess_design": 1875.8158254913371,
+     "kish_ess_ratio": 0.8635733266834084,
+     "mass_ratio_vs_design": 0.9936634961620231,
+     "top_1pct_share": 0.08641124332506384,
+     "n_records_holding_half_weight": 690,
+     "n_records_holding_half_weight_design": 777
+    },
+    "3709": {
+     "n": 4229,
+     "kish_ess": 1861.8297447420048,
+     "kish_ess_design": 2107.314661773669,
+     "kish_ess_ratio": 0.8835081815332475,
+     "mass_ratio_vs_design": 0.9727429614388399,
+     "top_1pct_share": 0.0817067347450421,
+     "n_records_holding_half_weight": 781,
+     "n_records_holding_half_weight_design": 869
+    },
+    "3710": {
+     "n": 3387,
+     "kish_ess": 1571.313388709372,
+     "kish_ess_design": 1718.4838575012566,
+     "kish_ess_ratio": 0.914360284416127,
+     "mass_ratio_vs_design": 0.9757515429266652,
+     "top_1pct_share": 0.07337293401830701,
+     "n_records_holding_half_weight": 640,
+     "n_records_holding_half_weight_design": 693
+    },
+    "3711": {
+     "n": 4249,
+     "kish_ess": 1814.924301328915,
+     "kish_ess_design": 2073.169364277627,
+     "kish_ess_ratio": 0.8754346521811087,
+     "mass_ratio_vs_design": 0.983990857862804,
+     "top_1pct_share": 0.08743875791884731,
+     "n_records_holding_half_weight": 805,
+     "n_records_holding_half_weight_design": 888
+    },
+    "3712": {
+     "n": 3532,
+     "kish_ess": 1763.501531512689,
+     "kish_ess_design": 1913.904856809553,
+     "kish_ess_ratio": 0.9214154639078644,
+     "mass_ratio_vs_design": 0.9558798904499312,
+     "top_1pct_share": 0.06689727155517107,
+     "n_records_holding_half_weight": 692,
+     "n_records_holding_half_weight_design": 728
+    },
+    "3713": {
+     "n": 3737,
+     "kish_ess": 1608.8280037400466,
+     "kish_ess_design": 1847.8685829195406,
+     "kish_ess_ratio": 0.8706398380333834,
+     "mass_ratio_vs_design": 1.0005815968999543,
+     "top_1pct_share": 0.07911026922211158,
+     "n_records_holding_half_weight": 658,
+     "n_records_holding_half_weight_design": 736
+    },
+    "3714": {
+     "n": 4166,
+     "kish_ess": 1857.4834913574148,
+     "kish_ess_design": 2141.6799521838575,
+     "kish_ess_ratio": 0.8673020865995177,
+     "mass_ratio_vs_design": 0.9909784881998801,
+     "top_1pct_share": 0.07969158303993895,
+     "n_records_holding_half_weight": 786,
+     "n_records_holding_half_weight_design": 863
+    },
+    "3800": {
+     "n": 4724,
+     "kish_ess": 925.4707069268893,
+     "kish_ess_design": 1597.0107458349278,
+     "kish_ess_ratio": 0.579501865808077,
+     "mass_ratio_vs_design": 0.9618726995441709,
+     "top_1pct_share": 0.1388099632756133,
+     "n_records_holding_half_weight": 418,
+     "n_records_holding_half_weight_design": 664
+    },
+    "3901": {
+     "n": 3466,
+     "kish_ess": 1502.5497598298361,
+     "kish_ess_design": 1719.8723444214138,
+     "kish_ess_ratio": 0.8736402819101742,
+     "mass_ratio_vs_design": 0.9903331179601623,
+     "top_1pct_share": 0.08416131289509693,
+     "n_records_holding_half_weight": 669,
+     "n_records_holding_half_weight_design": 743
+    },
+    "3902": {
+     "n": 3782,
+     "kish_ess": 1503.4093468295484,
+     "kish_ess_design": 1817.2880226045772,
+     "kish_ess_ratio": 0.8272818222148568,
+     "mass_ratio_vs_design": 0.9878989863234732,
+     "top_1pct_share": 0.09071364707871049,
+     "n_records_holding_half_weight": 669,
+     "n_records_holding_half_weight_design": 777
+    },
+    "3903": {
+     "n": 3387,
+     "kish_ess": 1637.919976714891,
+     "kish_ess_design": 1844.292701040319,
+     "kish_ess_ratio": 0.8881019676491598,
+     "mass_ratio_vs_design": 0.9757819176896838,
+     "top_1pct_share": 0.06850270252002101,
+     "n_records_holding_half_weight": 652,
+     "n_records_holding_half_weight_design": 731
+    },
+    "3904": {
+     "n": 4164,
+     "kish_ess": 1732.6706016829678,
+     "kish_ess_design": 2022.3477720409903,
+     "kish_ess_ratio": 0.856761940570847,
+     "mass_ratio_vs_design": 0.9948359823322224,
+     "top_1pct_share": 0.08829128586170398,
+     "n_records_holding_half_weight": 776,
+     "n_records_holding_half_weight_design": 891
+    },
+    "3905": {
+     "n": 4461,
+     "kish_ess": 1969.5073784963809,
+     "kish_ess_design": 2194.138525397579,
+     "kish_ess_ratio": 0.897622167287503,
+     "mass_ratio_vs_design": 1.0050799752638564,
+     "top_1pct_share": 0.08105131996625736,
+     "n_records_holding_half_weight": 850,
+     "n_records_holding_half_weight_design": 954
+    },
+    "3906": {
+     "n": 4418,
+     "kish_ess": 1958.9311038034634,
+     "kish_ess_design": 2364.3817980998992,
+     "kish_ess_ratio": 0.8285172493620657,
+     "mass_ratio_vs_design": 0.9918769958654466,
+     "top_1pct_share": 0.07799240634381403,
+     "n_records_holding_half_weight": 844,
+     "n_records_holding_half_weight_design": 973
+    },
+    "3907": {
+     "n": 4063,
+     "kish_ess": 1923.1813140086326,
+     "kish_ess_design": 2226.3492684605076,
+     "kish_ess_ratio": 0.8638273164293256,
+     "mass_ratio_vs_design": 1.004382132281879,
+     "top_1pct_share": 0.07658959682648528,
+     "n_records_holding_half_weight": 862,
+     "n_records_holding_half_weight_design": 968
+    },
+    "3908": {
+     "n": 3354,
+     "kish_ess": 1368.9255001956863,
+     "kish_ess_design": 1621.0088638823497,
+     "kish_ess_ratio": 0.844489830189504,
+     "mass_ratio_vs_design": 1.0202421656194236,
+     "top_1pct_share": 0.08473799178283975,
+     "n_records_holding_half_weight": 638,
+     "n_records_holding_half_weight_design": 717
+    },
+    "3909": {
+     "n": 4325,
+     "kish_ess": 1914.8920409540995,
+     "kish_ess_design": 2238.5102735565292,
+     "kish_ess_ratio": 0.8554314284703874,
+     "mass_ratio_vs_design": 0.9980917380778928,
+     "top_1pct_share": 0.08175559311712137,
+     "n_records_holding_half_weight": 858,
+     "n_records_holding_half_weight_design": 934
+    },
+    "3910": {
+     "n": 3730,
+     "kish_ess": 1628.774750550527,
+     "kish_ess_design": 1928.838840609158,
+     "kish_ess_ratio": 0.8444327832159031,
+     "mass_ratio_vs_design": 0.9724162450937307,
+     "top_1pct_share": 0.08761302803550845,
+     "n_records_holding_half_weight": 751,
+     "n_records_holding_half_weight_design": 839
+    },
+    "3911": {
+     "n": 3713,
+     "kish_ess": 1639.607238891126,
+     "kish_ess_design": 1888.1450180916374,
+     "kish_ess_ratio": 0.8683693377261295,
+     "mass_ratio_vs_design": 0.9623900582855632,
+     "top_1pct_share": 0.07983321690998332,
+     "n_records_holding_half_weight": 671,
+     "n_records_holding_half_weight_design": 744
+    },
+    "3912": {
+     "n": 4121,
+     "kish_ess": 1914.5446128033093,
+     "kish_ess_design": 2194.0529629753946,
+     "kish_ess_ratio": 0.8726063796595689,
+     "mass_ratio_vs_design": 1.001758960473289,
+     "top_1pct_share": 0.07673559872734367,
+     "n_records_holding_half_weight": 801,
+     "n_records_holding_half_weight_design": 917
+    },
+    "3913": {
+     "n": 3562,
+     "kish_ess": 1646.2476686758398,
+     "kish_ess_design": 1877.1712953749452,
+     "kish_ess_ratio": 0.8769831888714339,
+     "mass_ratio_vs_design": 0.9908539119389337,
+     "top_1pct_share": 0.08108869066807432,
+     "n_records_holding_half_weight": 711,
+     "n_records_holding_half_weight_design": 800
+    },
+    "3914": {
+     "n": 3954,
+     "kish_ess": 1757.0126207120209,
+     "kish_ess_design": 2097.8328616511435,
+     "kish_ess_ratio": 0.8375369901151835,
+     "mass_ratio_vs_design": 1.0037872172826299,
+     "top_1pct_share": 0.08317505083482564,
+     "n_records_holding_half_weight": 792,
+     "n_records_holding_half_weight_design": 905
+    },
+    "3915": {
+     "n": 3385,
+     "kish_ess": 1369.6355666932452,
+     "kish_ess_design": 1649.1680748272881,
+     "kish_ess_ratio": 0.8305008977551803,
+     "mass_ratio_vs_design": 0.9967396482464972,
+     "top_1pct_share": 0.08799468635553552,
+     "n_records_holding_half_weight": 598,
+     "n_records_holding_half_weight_design": 685
+    },
+    "4001": {
+     "n": 3219,
+     "kish_ess": 1722.0893571842173,
+     "kish_ess_design": 2321.3976599607595,
+     "kish_ess_ratio": 0.7418329857424458,
+     "mass_ratio_vs_design": 1.0256831073830106,
+     "top_1pct_share": 0.0609071763731943,
+     "n_records_holding_half_weight": 685,
+     "n_records_holding_half_weight_design": 950
+    },
+    "4002": {
+     "n": 5030,
+     "kish_ess": 1843.2707663957003,
+     "kish_ess_design": 2820.4335217121848,
+     "kish_ess_ratio": 0.6535416460646505,
+     "mass_ratio_vs_design": 1.014777558301992,
+     "top_1pct_share": 0.08506846842464394,
+     "n_records_holding_half_weight": 814,
+     "n_records_holding_half_weight_design": 1081
+    },
+    "4003": {
+     "n": 3906,
+     "kish_ess": 1289.7930943089495,
+     "kish_ess_design": 1685.383166578519,
+     "kish_ess_ratio": 0.7652818183341339,
+     "mass_ratio_vs_design": 1.021077309956327,
+     "top_1pct_share": 0.10030930173288567,
+     "n_records_holding_half_weight": 508,
+     "n_records_holding_half_weight_design": 655
+    },
+    "4004": {
+     "n": 3456,
+     "kish_ess": 1323.1987651123236,
+     "kish_ess_design": 1797.291921991324,
+     "kish_ess_ratio": 0.7362180561331823,
+     "mass_ratio_vs_design": 1.0045632163721783,
+     "top_1pct_share": 0.08823202168696867,
+     "n_records_holding_half_weight": 543,
+     "n_records_holding_half_weight_design": 741
+    },
+    "4005": {
+     "n": 3032,
+     "kish_ess": 1176.3039402770469,
+     "kish_ess_design": 1421.003255482776,
+     "kish_ess_ratio": 0.827798202247894,
+     "mass_ratio_vs_design": 1.005291708577849,
+     "top_1pct_share": 0.08557706969455858,
+     "n_records_holding_half_weight": 468,
+     "n_records_holding_half_weight_design": 585
+    },
+    "4101": {
+     "n": 3667,
+     "kish_ess": 1689.4811844474514,
+     "kish_ess_design": 2000.4173679303626,
+     "kish_ess_ratio": 0.8445643451873213,
+     "mass_ratio_vs_design": 1.0628632365533448,
+     "top_1pct_share": 0.07501143205256285,
+     "n_records_holding_half_weight": 694,
+     "n_records_holding_half_weight_design": 819
+    },
+    "4102": {
+     "n": 3967,
+     "kish_ess": 1713.5225204708515,
+     "kish_ess_design": 1980.0588341906332,
+     "kish_ess_ratio": 0.8653896999839751,
+     "mass_ratio_vs_design": 1.061875707047883,
+     "top_1pct_share": 0.07893552491468583,
+     "n_records_holding_half_weight": 697,
+     "n_records_holding_half_weight_design": 786
+    },
+    "4103": {
+     "n": 3270,
+     "kish_ess": 1471.9270054841238,
+     "kish_ess_design": 1818.5328915421815,
+     "kish_ess_ratio": 0.809403565000068,
+     "mass_ratio_vs_design": 1.0455128577859183,
+     "top_1pct_share": 0.07567106238305904,
+     "n_records_holding_half_weight": 606,
+     "n_records_holding_half_weight_design": 712
+    },
+    "4104": {
+     "n": 3928,
+     "kish_ess": 1775.3923925150386,
+     "kish_ess_design": 2104.0453999313477,
+     "kish_ess_ratio": 0.8437994696183683,
+     "mass_ratio_vs_design": 1.0715621316282098,
+     "top_1pct_share": 0.07608561436260748,
+     "n_records_holding_half_weight": 737,
+     "n_records_holding_half_weight_design": 855
+    },
+    "4105": {
+     "n": 3473,
+     "kish_ess": 1671.898419486945,
+     "kish_ess_design": 1925.571147213667,
+     "kish_ess_ratio": 0.8682610465503751,
+     "mass_ratio_vs_design": 1.079988622796042,
+     "top_1pct_share": 0.0712606088860597,
+     "n_records_holding_half_weight": 681,
+     "n_records_holding_half_weight_design": 789
+    },
+    "4106": {
+     "n": 3434,
+     "kish_ess": 1463.3543807397414,
+     "kish_ess_design": 1839.5584319209154,
+     "kish_ess_ratio": 0.7954921982074079,
+     "mass_ratio_vs_design": 1.053625143932295,
+     "top_1pct_share": 0.0805787219433953,
+     "n_records_holding_half_weight": 632,
+     "n_records_holding_half_weight_design": 757
+    },
+    "4201": {
+     "n": 2890,
+     "kish_ess": 1271.770802006333,
+     "kish_ess_design": 1496.9320015017663,
+     "kish_ess_ratio": 0.8495848847712889,
+     "mass_ratio_vs_design": 1.0655457956219696,
+     "top_1pct_share": 0.08399214940554789,
+     "n_records_holding_half_weight": 573,
+     "n_records_holding_half_weight_design": 648
+    },
+    "4202": {
+     "n": 1656,
+     "kish_ess": 725.4048179370421,
+     "kish_ess_design": 837.1792219429982,
+     "kish_ess_ratio": 0.8664868870651851,
+     "mass_ratio_vs_design": 0.996381270867231,
+     "top_1pct_share": 0.07790331300273523,
+     "n_records_holding_half_weight": 291,
+     "n_records_holding_half_weight_design": 329
+    },
+    "4203": {
+     "n": 2330,
+     "kish_ess": 981.3705661451012,
+     "kish_ess_design": 1139.8453726026046,
+     "kish_ess_ratio": 0.8609681538683984,
+     "mass_ratio_vs_design": 0.9550698385103561,
+     "top_1pct_share": 0.08399079562477724,
+     "n_records_holding_half_weight": 404,
+     "n_records_holding_half_weight_design": 443
+    },
+    "4204": {
+     "n": 3160,
+     "kish_ess": 1488.8174769020618,
+     "kish_ess_design": 1686.5753816550061,
+     "kish_ess_ratio": 0.882745884409336,
+     "mass_ratio_vs_design": 1.0409245025152882,
+     "top_1pct_share": 0.07963903394907097,
+     "n_records_holding_half_weight": 659,
+     "n_records_holding_half_weight_design": 728
+    },
+    "4205": {
+     "n": 2942,
+     "kish_ess": 1391.3511871634762,
+     "kish_ess_design": 1541.096029743029,
+     "kish_ess_ratio": 0.9028322442667495,
+     "mass_ratio_vs_design": 1.0204401420205405,
+     "top_1pct_share": 0.07473745304904453,
+     "n_records_holding_half_weight": 572,
+     "n_records_holding_half_weight_design": 620
+    },
+    "4206": {
+     "n": 3075,
+     "kish_ess": 1388.8431949381302,
+     "kish_ess_design": 1598.9793936470915,
+     "kish_ess_ratio": 0.8685810464200765,
+     "mass_ratio_vs_design": 1.0062199596427872,
+     "top_1pct_share": 0.08091991593614838,
+     "n_records_holding_half_weight": 608,
+     "n_records_holding_half_weight_design": 683
+    },
+    "4207": {
+     "n": 3072,
+     "kish_ess": 1336.6952904125717,
+     "kish_ess_design": 1577.7257754503257,
+     "kish_ess_ratio": 0.8472291644161309,
+     "mass_ratio_vs_design": 1.033735811273415,
+     "top_1pct_share": 0.08118961763822316,
+     "n_records_holding_half_weight": 567,
+     "n_records_holding_half_weight_design": 646
+    },
+    "4208": {
+     "n": 3995,
+     "kish_ess": 1533.342423399135,
+     "kish_ess_design": 1774.7494382296493,
+     "kish_ess_ratio": 0.8639768467421953,
+     "mass_ratio_vs_design": 1.007099514027691,
+     "top_1pct_share": 0.09018888216625076,
+     "n_records_holding_half_weight": 642,
+     "n_records_holding_half_weight_design": 717
+    },
+    "4209": {
+     "n": 5693,
+     "kish_ess": 1839.3357545985687,
+     "kish_ess_design": 2271.5349626044,
+     "kish_ess_ratio": 0.8097325310325408,
+     "mass_ratio_vs_design": 1.0255624518730577,
+     "top_1pct_share": 0.11465476192637797,
+     "n_records_holding_half_weight": 857,
+     "n_records_holding_half_weight_design": 962
+    },
+    "4210": {
+     "n": 3186,
+     "kish_ess": 1364.4367251316169,
+     "kish_ess_design": 1513.395005495744,
+     "kish_ess_ratio": 0.9015734293933838,
+     "mass_ratio_vs_design": 1.0005201251738403,
+     "top_1pct_share": 0.08391831673047881,
+     "n_records_holding_half_weight": 580,
+     "n_records_holding_half_weight_design": 640
+    },
+    "4211": {
+     "n": 3053,
+     "kish_ess": 1447.6564734083152,
+     "kish_ess_design": 1649.12448806481,
+     "kish_ess_ratio": 0.8778333496867113,
+     "mass_ratio_vs_design": 1.0053729834658507,
+     "top_1pct_share": 0.0758484657335051,
+     "n_records_holding_half_weight": 623,
+     "n_records_holding_half_weight_design": 705
+    },
+    "4212": {
+     "n": 3735,
+     "kish_ess": 1746.5884723651031,
+     "kish_ess_design": 2013.0451757598578,
+     "kish_ess_ratio": 0.8676350105783512,
+     "mass_ratio_vs_design": 0.9822839523980855,
+     "top_1pct_share": 0.0793611985059015,
+     "n_records_holding_half_weight": 776,
+     "n_records_holding_half_weight_design": 870
+    },
+    "4213": {
+     "n": 5445,
+     "kish_ess": 2145.785506219945,
+     "kish_ess_design": 2411.1498990415485,
+     "kish_ess_ratio": 0.8899428057429827,
+     "mass_ratio_vs_design": 1.0041808818432594,
+     "top_1pct_share": 0.09297053441394787,
+     "n_records_holding_half_weight": 928,
+     "n_records_holding_half_weight_design": 1039
+    },
+    "4214": {
+     "n": 5073,
+     "kish_ess": 1940.709629578542,
+     "kish_ess_design": 2227.3978326567467,
+     "kish_ess_ratio": 0.8712900772035613,
+     "mass_ratio_vs_design": 1.013019822911109,
+     "top_1pct_share": 0.09522082515792832,
+     "n_records_holding_half_weight": 849,
+     "n_records_holding_half_weight_design": 957
+    },
+    "4215": {
+     "n": 6989,
+     "kish_ess": 2529.508838608656,
+     "kish_ess_design": 2774.000330944282,
+     "kish_ess_ratio": 0.9118632072216084,
+     "mass_ratio_vs_design": 0.9795888359354128,
+     "top_1pct_share": 0.10178269452842513,
+     "n_records_holding_half_weight": 1150,
+     "n_records_holding_half_weight_design": 1228
+    },
+    "4216": {
+     "n": 5150,
+     "kish_ess": 2097.0788045849645,
+     "kish_ess_design": 2381.1791703956496,
+     "kish_ess_ratio": 0.8806892108990354,
+     "mass_ratio_vs_design": 1.0031003403057588,
+     "top_1pct_share": 0.08801045888385159,
+     "n_records_holding_half_weight": 917,
+     "n_records_holding_half_weight_design": 1020
+    },
+    "4217": {
+     "n": 3582,
+     "kish_ess": 1585.9564142316822,
+     "kish_ess_design": 1849.7936357545125,
+     "kish_ess_ratio": 0.8573693754680837,
+     "mass_ratio_vs_design": 1.0279230590946817,
+     "top_1pct_share": 0.08206200973835802,
+     "n_records_holding_half_weight": 708,
+     "n_records_holding_half_weight_design": 797
+    },
+    "4401": {
+     "n": 2846,
+     "kish_ess": 889.0881096981637,
+     "kish_ess_design": 1477.1968262801936,
+     "kish_ess_ratio": 0.6018751826979096,
+     "mass_ratio_vs_design": 1.0538354639839103,
+     "top_1pct_share": 0.10607055021783916,
+     "n_records_holding_half_weight": 365,
+     "n_records_holding_half_weight_design": 580
+    },
+    "4402": {
+     "n": 2971,
+     "kish_ess": 1053.702924167444,
+     "kish_ess_design": 1479.3819762365902,
+     "kish_ess_ratio": 0.7122588628854098,
+     "mass_ratio_vs_design": 1.070558892435162,
+     "top_1pct_share": 0.09243495224935049,
+     "n_records_holding_half_weight": 413,
+     "n_records_holding_half_weight_design": 609
+    },
+    "4501": {
+     "n": 3784,
+     "kish_ess": 1468.8654237485696,
+     "kish_ess_design": 1830.6571122349774,
+     "kish_ess_ratio": 0.8023705880973468,
+     "mass_ratio_vs_design": 0.9915669139677552,
+     "top_1pct_share": 0.08632276451541067,
+     "n_records_holding_half_weight": 599,
+     "n_records_holding_half_weight_design": 745
+    },
+    "4502": {
+     "n": 3912,
+     "kish_ess": 1400.6802078755265,
+     "kish_ess_design": 1869.2770226560988,
+     "kish_ess_ratio": 0.7493165490716126,
+     "mass_ratio_vs_design": 0.9531985969143936,
+     "top_1pct_share": 0.09869004012628221,
+     "n_records_holding_half_weight": 612,
+     "n_records_holding_half_weight_design": 755
+    },
+    "4503": {
+     "n": 4396,
+     "kish_ess": 1665.9844597807644,
+     "kish_ess_design": 2275.5890215752693,
+     "kish_ess_ratio": 0.7321113100763212,
+     "mass_ratio_vs_design": 0.9737856339788551,
+     "top_1pct_share": 0.09383609572971151,
+     "n_records_holding_half_weight": 730,
+     "n_records_holding_half_weight_design": 914
+    },
+    "4504": {
+     "n": 3839,
+     "kish_ess": 1558.584055238159,
+     "kish_ess_design": 2012.3971914804938,
+     "kish_ess_ratio": 0.7744912693361142,
+     "mass_ratio_vs_design": 0.9748357788979701,
+     "top_1pct_share": 0.08606741629807171,
+     "n_records_holding_half_weight": 655,
+     "n_records_holding_half_weight_design": 810
+    },
+    "4505": {
+     "n": 3644,
+     "kish_ess": 1432.1070905417716,
+     "kish_ess_design": 1811.5488171392528,
+     "kish_ess_ratio": 0.7905429194026993,
+     "mass_ratio_vs_design": 0.9932239613594817,
+     "top_1pct_share": 0.0855688838589282,
+     "n_records_holding_half_weight": 572,
+     "n_records_holding_half_weight_design": 721
+    },
+    "4506": {
+     "n": 3972,
+     "kish_ess": 1279.0197341819455,
+     "kish_ess_design": 1807.292189861717,
+     "kish_ess_ratio": 0.7076994751356771,
+     "mass_ratio_vs_design": 0.9856150346962248,
+     "top_1pct_share": 0.10608469172407044,
+     "n_records_holding_half_weight": 557,
+     "n_records_holding_half_weight_design": 731
+    },
+    "4507": {
+     "n": 4058,
+     "kish_ess": 1536.8556610131677,
+     "kish_ess_design": 2041.5074349379247,
+     "kish_ess_ratio": 0.7528043418856804,
+     "mass_ratio_vs_design": 0.986964314942017,
+     "top_1pct_share": 0.09206817759571523,
+     "n_records_holding_half_weight": 644,
+     "n_records_holding_half_weight_design": 805
+    },
+    "4600": {
+     "n": 5278,
+     "kish_ess": 1282.6150901462631,
+     "kish_ess_design": 2100.6350498819984,
+     "kish_ess_ratio": 0.6105844469358507,
+     "mass_ratio_vs_design": 1.0304100044505593,
+     "top_1pct_share": 0.11476259065434571,
+     "n_records_holding_half_weight": 493,
+     "n_records_holding_half_weight_design": 849
+    },
+    "4701": {
+     "n": 4146,
+     "kish_ess": 1837.8945713862208,
+     "kish_ess_design": 2210.3456316120432,
+     "kish_ess_ratio": 0.8314964615039923,
+     "mass_ratio_vs_design": 1.031723752690752,
+     "top_1pct_share": 0.07950786436367373,
+     "n_records_holding_half_weight": 773,
+     "n_records_holding_half_weight_design": 906
+    },
+    "4702": {
+     "n": 4154,
+     "kish_ess": 1951.439420952218,
+     "kish_ess_design": 2364.069893315335,
+     "kish_ess_ratio": 0.8254575833270097,
+     "mass_ratio_vs_design": 0.9913365851275964,
+     "top_1pct_share": 0.07396966693346999,
+     "n_records_holding_half_weight": 810,
+     "n_records_holding_half_weight_design": 960
+    },
+    "4703": {
+     "n": 4141,
+     "kish_ess": 1744.9639035969942,
+     "kish_ess_design": 2163.97459790603,
+     "kish_ess_ratio": 0.8063698646395889,
+     "mass_ratio_vs_design": 1.001748363322406,
+     "top_1pct_share": 0.0862775891522501,
+     "n_records_holding_half_weight": 759,
+     "n_records_holding_half_weight_design": 902
+    },
+    "4704": {
+     "n": 3747,
+     "kish_ess": 1466.2991213795117,
+     "kish_ess_design": 1851.178101854074,
+     "kish_ess_ratio": 0.7920897075818468,
+     "mass_ratio_vs_design": 0.9987504572449775,
+     "top_1pct_share": 0.0916269979075308,
+     "n_records_holding_half_weight": 628,
+     "n_records_holding_half_weight_design": 757
+    },
+    "4705": {
+     "n": 3272,
+     "kish_ess": 1396.0944710952078,
+     "kish_ess_design": 1692.7342571205031,
+     "kish_ess_ratio": 0.8247570256361995,
+     "mass_ratio_vs_design": 1.0124706065134559,
+     "top_1pct_share": 0.08016361984324266,
+     "n_records_holding_half_weight": 597,
+     "n_records_holding_half_weight_design": 699
+    },
+    "4706": {
+     "n": 3879,
+     "kish_ess": 1519.0865385471145,
+     "kish_ess_design": 1911.887099365578,
+     "kish_ess_ratio": 0.7945482445334734,
+     "mass_ratio_vs_design": 0.9649132987242661,
+     "top_1pct_share": 0.08764548689499879,
+     "n_records_holding_half_weight": 654,
+     "n_records_holding_half_weight_design": 780
+    },
+    "4707": {
+     "n": 3842,
+     "kish_ess": 1596.3617263300707,
+     "kish_ess_design": 1914.8202144312584,
+     "kish_ess_ratio": 0.8336875254913807,
+     "mass_ratio_vs_design": 0.986105445557316,
+     "top_1pct_share": 0.0866194090731931,
+     "n_records_holding_half_weight": 687,
+     "n_records_holding_half_weight_design": 801
+    },
+    "4708": {
+     "n": 4576,
+     "kish_ess": 1742.604456495787,
+     "kish_ess_design": 2256.61164612085,
+     "kish_ess_ratio": 0.7722216888720533,
+     "mass_ratio_vs_design": 1.0271736225652868,
+     "top_1pct_share": 0.09113285819288038,
+     "n_records_holding_half_weight": 765,
+     "n_records_holding_half_weight_design": 904
+    },
+    "4709": {
+     "n": 2994,
+     "kish_ess": 1341.7352486759266,
+     "kish_ess_design": 1623.104685799156,
+     "kish_ess_ratio": 0.8266473878210181,
+     "mass_ratio_vs_design": 1.0752349784892066,
+     "top_1pct_share": 0.07354474145743364,
+     "n_records_holding_half_weight": 528,
+     "n_records_holding_half_weight_design": 604
+    },
+    "4801": {
+     "n": 4332,
+     "kish_ess": 1782.6218711610354,
+     "kish_ess_design": 1993.4889492257375,
+     "kish_ess_ratio": 0.8942220983233431,
+     "mass_ratio_vs_design": 0.9696875451007688,
+     "top_1pct_share": 0.08545575672178604,
+     "n_records_holding_half_weight": 755,
+     "n_records_holding_half_weight_design": 805
+    },
+    "4802": {
+     "n": 2568,
+     "kish_ess": 1227.5371843699386,
+     "kish_ess_design": 1305.6720342097444,
+     "kish_ess_ratio": 0.9401573689313972,
+     "mass_ratio_vs_design": 0.9847138176459097,
+     "top_1pct_share": 0.07155053498146834,
+     "n_records_holding_half_weight": 484,
+     "n_records_holding_half_weight_design": 496
+    },
+    "4803": {
+     "n": 3208,
+     "kish_ess": 1536.7572504474786,
+     "kish_ess_design": 1610.1040704313582,
+     "kish_ess_ratio": 0.954445913571146,
+     "mass_ratio_vs_design": 0.9351562574459416,
+     "top_1pct_share": 0.07810186481429744,
+     "n_records_holding_half_weight": 657,
+     "n_records_holding_half_weight_design": 671
+    },
+    "4804": {
+     "n": 3871,
+     "kish_ess": 1689.9844107850215,
+     "kish_ess_design": 1781.0754008174056,
+     "kish_ess_ratio": 0.9488561854312407,
+     "mass_ratio_vs_design": 0.95555178567785,
+     "top_1pct_share": 0.08057497255783191,
+     "n_records_holding_half_weight": 710,
+     "n_records_holding_half_weight_design": 743
+    },
+    "4805": {
+     "n": 3335,
+     "kish_ess": 1391.9260690189894,
+     "kish_ess_design": 1486.742415127192,
+     "kish_ess_ratio": 0.936225438150232,
+     "mass_ratio_vs_design": 0.9774483450695874,
+     "top_1pct_share": 0.08232523976464089,
+     "n_records_holding_half_weight": 549,
+     "n_records_holding_half_weight_design": 580
+    },
+    "4806": {
+     "n": 3867,
+     "kish_ess": 1728.6688157971507,
+     "kish_ess_design": 1800.399103762108,
+     "kish_ess_ratio": 0.960158673810118,
+     "mass_ratio_vs_design": 0.9703529541933984,
+     "top_1pct_share": 0.07181012646087051,
+     "n_records_holding_half_weight": 670,
+     "n_records_holding_half_weight_design": 702
+    },
+    "4807": {
+     "n": 2945,
+     "kish_ess": 1513.5263029078933,
+     "kish_ess_design": 1571.7756380746855,
+     "kish_ess_ratio": 0.9629404262569284,
+     "mass_ratio_vs_design": 0.9651900425489972,
+     "top_1pct_share": 0.06490587002298935,
+     "n_records_holding_half_weight": 591,
+     "n_records_holding_half_weight_design": 595
+    },
+    "4808": {
+     "n": 2976,
+     "kish_ess": 1347.1861999620676,
+     "kish_ess_design": 1390.4136152902458,
+     "kish_ess_ratio": 0.9689103912297675,
+     "mass_ratio_vs_design": 0.931775708082013,
+     "top_1pct_share": 0.07426744337050802,
+     "n_records_holding_half_weight": 528,
+     "n_records_holding_half_weight_design": 548
+    },
+    "4809": {
+     "n": 2689,
+     "kish_ess": 1346.7643534561305,
+     "kish_ess_design": 1434.8467160061246,
+     "kish_ess_ratio": 0.9386120053331062,
+     "mass_ratio_vs_design": 0.9792301838913728,
+     "top_1pct_share": 0.06772697250879686,
+     "n_records_holding_half_weight": 531,
+     "n_records_holding_half_weight_design": 553
+    },
+    "4810": {
+     "n": 4076,
+     "kish_ess": 1877.0476348237955,
+     "kish_ess_design": 1958.9338781363133,
+     "kish_ess_ratio": 0.958198566972346,
+     "mass_ratio_vs_design": 0.9441845404273826,
+     "top_1pct_share": 0.07650208572453052,
+     "n_records_holding_half_weight": 791,
+     "n_records_holding_half_weight_design": 832
+    },
+    "4811": {
+     "n": 3434,
+     "kish_ess": 1366.095736216842,
+     "kish_ess_design": 1474.6061760883854,
+     "kish_ess_ratio": 0.9264139526667495,
+     "mass_ratio_vs_design": 0.967511356099901,
+     "top_1pct_share": 0.08936322708412223,
+     "n_records_holding_half_weight": 551,
+     "n_records_holding_half_weight_design": 586
+    },
+    "4812": {
+     "n": 3308,
+     "kish_ess": 1564.0801165694145,
+     "kish_ess_design": 1627.658353792647,
+     "kish_ess_ratio": 0.9609388314967405,
+     "mass_ratio_vs_design": 0.975238959426007,
+     "top_1pct_share": 0.07194856832472575,
+     "n_records_holding_half_weight": 610,
+     "n_records_holding_half_weight_design": 629
+    },
+    "4813": {
+     "n": 4708,
+     "kish_ess": 1900.3976831264142,
+     "kish_ess_design": 2139.657615877482,
+     "kish_ess_ratio": 0.8881784024810221,
+     "mass_ratio_vs_design": 0.9621961286525963,
+     "top_1pct_share": 0.0906603800643963,
+     "n_records_holding_half_weight": 842,
+     "n_records_holding_half_weight_design": 910
+    },
+    "4814": {
+     "n": 3604,
+     "kish_ess": 1808.452681315276,
+     "kish_ess_design": 1865.9627826434385,
+     "kish_ess_ratio": 0.9691793952896048,
+     "mass_ratio_vs_design": 0.9575715284107759,
+     "top_1pct_share": 0.06598172759271376,
+     "n_records_holding_half_weight": 697,
+     "n_records_holding_half_weight_design": 712
+    },
+    "4815": {
+     "n": 3192,
+     "kish_ess": 1577.0252524094724,
+     "kish_ess_design": 1710.4291834024052,
+     "kish_ess_ratio": 0.9220055806534099,
+     "mass_ratio_vs_design": 0.9897443856786832,
+     "top_1pct_share": 0.06940557921023899,
+     "n_records_holding_half_weight": 641,
+     "n_records_holding_half_weight_design": 687
+    },
+    "4816": {
+     "n": 2890,
+     "kish_ess": 1327.986964560221,
+     "kish_ess_design": 1476.185042657874,
+     "kish_ess_ratio": 0.8996073840236031,
+     "mass_ratio_vs_design": 0.9631161697670179,
+     "top_1pct_share": 0.07712767163277298,
+     "n_records_holding_half_weight": 553,
+     "n_records_holding_half_weight_design": 579
+    },
+    "4817": {
+     "n": 4154,
+     "kish_ess": 1688.6136234870628,
+     "kish_ess_design": 1849.5724363608813,
+     "kish_ess_ratio": 0.9129751234882628,
+     "mass_ratio_vs_design": 0.9642876162168746,
+     "top_1pct_share": 0.08726087019971819,
+     "n_records_holding_half_weight": 727,
+     "n_records_holding_half_weight_design": 771
+    },
+    "4818": {
+     "n": 2514,
+     "kish_ess": 1275.3684441522435,
+     "kish_ess_design": 1364.2574536375146,
+     "kish_ess_ratio": 0.934844402536877,
+     "mass_ratio_vs_design": 0.9609739523024357,
+     "top_1pct_share": 0.06773525670203748,
+     "n_records_holding_half_weight": 506,
+     "n_records_holding_half_weight_design": 529
+    },
+    "4819": {
+     "n": 5071,
+     "kish_ess": 2073.6864394155964,
+     "kish_ess_design": 2279.033702494653,
+     "kish_ess_ratio": 0.9098972240497007,
+     "mass_ratio_vs_design": 0.952519058422834,
+     "top_1pct_share": 0.0855229446382288,
+     "n_records_holding_half_weight": 870,
+     "n_records_holding_half_weight_design": 926
+    },
+    "4820": {
+     "n": 2688,
+     "kish_ess": 1275.766710038922,
+     "kish_ess_design": 1378.0663872255989,
+     "kish_ess_ratio": 0.9257657844825369,
+     "mass_ratio_vs_design": 0.9685723271209997,
+     "top_1pct_share": 0.0744328719979223,
+     "n_records_holding_half_weight": 513,
+     "n_records_holding_half_weight_design": 549
+    },
+    "4821": {
+     "n": 3465,
+     "kish_ess": 1650.1597567337321,
+     "kish_ess_design": 1730.931779283309,
+     "kish_ess_ratio": 0.9533361028341507,
+     "mass_ratio_vs_design": 0.9830330371373106,
+     "top_1pct_share": 0.0785451500474332,
+     "n_records_holding_half_weight": 716,
+     "n_records_holding_half_weight_design": 736
+    },
+    "4822": {
+     "n": 2718,
+     "kish_ess": 1193.3880740049526,
+     "kish_ess_design": 1238.60491671195,
+     "kish_ess_ratio": 0.963493732265304,
+     "mass_ratio_vs_design": 0.9592864465229055,
+     "top_1pct_share": 0.07462204123579444,
+     "n_records_holding_half_weight": 470,
+     "n_records_holding_half_weight_design": 482
+    },
+    "4823": {
+     "n": 2875,
+     "kish_ess": 1306.8920327975527,
+     "kish_ess_design": 1413.7230247129878,
+     "kish_ess_ratio": 0.9244328697715567,
+     "mass_ratio_vs_design": 0.9892288467063736,
+     "top_1pct_share": 0.07596934894186845,
+     "n_records_holding_half_weight": 534,
+     "n_records_holding_half_weight_design": 570
+    },
+    "4824": {
+     "n": 3351,
+     "kish_ess": 1664.9341684992253,
+     "kish_ess_design": 1694.4765503623378,
+     "kish_ess_ratio": 0.9825654820323153,
+     "mass_ratio_vs_design": 0.9808229915286185,
+     "top_1pct_share": 0.06976914134287,
+     "n_records_holding_half_weight": 681,
+     "n_records_holding_half_weight_design": 678
+    },
+    "4825": {
+     "n": 3781,
+     "kish_ess": 1584.2894331552566,
+     "kish_ess_design": 1754.2726870147296,
+     "kish_ess_ratio": 0.9031032888343397,
+     "mass_ratio_vs_design": 0.9761140526349708,
+     "top_1pct_share": 0.08395895091384031,
+     "n_records_holding_half_weight": 701,
+     "n_records_holding_half_weight_design": 733
+    },
+    "4826": {
+     "n": 3542,
+     "kish_ess": 1703.323648797254,
+     "kish_ess_design": 1755.2305640431155,
+     "kish_ess_ratio": 0.9704272952458761,
+     "mass_ratio_vs_design": 0.9743220614590801,
+     "top_1pct_share": 0.07319658299753705,
+     "n_records_holding_half_weight": 710,
+     "n_records_holding_half_weight_design": 716
+    },
+    "4827": {
+     "n": 3664,
+     "kish_ess": 1500.4595622350344,
+     "kish_ess_design": 1725.2379849214974,
+     "kish_ess_ratio": 0.8697116428857836,
+     "mass_ratio_vs_design": 0.9761808392459578,
+     "top_1pct_share": 0.08698361456358641,
+     "n_records_holding_half_weight": 635,
+     "n_records_holding_half_weight_design": 680
+    },
+    "4828": {
+     "n": 2872,
+     "kish_ess": 1423.0179911343428,
+     "kish_ess_design": 1515.1582999413329,
+     "kish_ess_ratio": 0.9391876685026523,
+     "mass_ratio_vs_design": 0.9820361070289761,
+     "top_1pct_share": 0.06778205938099965,
+     "n_records_holding_half_weight": 569,
+     "n_records_holding_half_weight_design": 611
+    },
+    "4829": {
+     "n": 2424,
+     "kish_ess": 1229.4680250652361,
+     "kish_ess_design": 1316.6412654871226,
+     "kish_ess_ratio": 0.9337911983264214,
+     "mass_ratio_vs_design": 0.9788199656271604,
+     "top_1pct_share": 0.07174188238625433,
+     "n_records_holding_half_weight": 513,
+     "n_records_holding_half_weight_design": 548
+    },
+    "4830": {
+     "n": 2706,
+     "kish_ess": 1333.256713821701,
+     "kish_ess_design": 1429.9357732097415,
+     "kish_ess_ratio": 0.9323892295029256,
+     "mass_ratio_vs_design": 0.9630157010741679,
+     "top_1pct_share": 0.0699186005554124,
+     "n_records_holding_half_weight": 530,
+     "n_records_holding_half_weight_design": 553
+    },
+    "4831": {
+     "n": 4407,
+     "kish_ess": 1997.6995017292436,
+     "kish_ess_design": 2165.0548902381774,
+     "kish_ess_ratio": 0.9227015493863423,
+     "mass_ratio_vs_design": 0.9474044407248077,
+     "top_1pct_share": 0.07869926793837216,
+     "n_records_holding_half_weight": 880,
+     "n_records_holding_half_weight_design": 914
+    },
+    "4832": {
+     "n": 2948,
+     "kish_ess": 1403.0889834795912,
+     "kish_ess_design": 1473.7223073800633,
+     "kish_ess_ratio": 0.9520714835171072,
+     "mass_ratio_vs_design": 0.9580488968439559,
+     "top_1pct_share": 0.07166198375096389,
+     "n_records_holding_half_weight": 566,
+     "n_records_holding_half_weight_design": 582
+    },
+    "4833": {
+     "n": 2839,
+     "kish_ess": 1409.3497619235784,
+     "kish_ess_design": 1486.9137524449204,
+     "kish_ess_ratio": 0.9478355819940436,
+     "mass_ratio_vs_design": 0.9768479986847416,
+     "top_1pct_share": 0.06967548600990264,
+     "n_records_holding_half_weight": 550,
+     "n_records_holding_half_weight_design": 570
+    },
+    "4834": {
+     "n": 2918,
+     "kish_ess": 1521.5464229901188,
+     "kish_ess_design": 1620.5948996972595,
+     "kish_ess_ratio": 0.9388814090889439,
+     "mass_ratio_vs_design": 0.9926125551492129,
+     "top_1pct_share": 0.06519182641706169,
+     "n_records_holding_half_weight": 604,
+     "n_records_holding_half_weight_design": 636
+    },
+    "4835": {
+     "n": 3021,
+     "kish_ess": 1484.271797663076,
+     "kish_ess_design": 1541.5827568042641,
+     "kish_ess_ratio": 0.9628233003462007,
+     "mass_ratio_vs_design": 0.9451377621638082,
+     "top_1pct_share": 0.06621494969936195,
+     "n_records_holding_half_weight": 580,
+     "n_records_holding_half_weight_design": 597
+    },
+    "4836": {
+     "n": 2915,
+     "kish_ess": 1288.011257575366,
+     "kish_ess_design": 1376.688610388958,
+     "kish_ess_ratio": 0.9355864847399747,
+     "mass_ratio_vs_design": 0.9762656188384781,
+     "top_1pct_share": 0.07627719634390352,
+     "n_records_holding_half_weight": 513,
+     "n_records_holding_half_weight_design": 529
+    },
+    "4837": {
+     "n": 3405,
+     "kish_ess": 1550.5049027940772,
+     "kish_ess_design": 1614.0842766848266,
+     "kish_ess_ratio": 0.9606096318456585,
+     "mass_ratio_vs_design": 0.9596161277192083,
+     "top_1pct_share": 0.08172119567981118,
+     "n_records_holding_half_weight": 660,
+     "n_records_holding_half_weight_design": 671
+    },
+    "4838": {
+     "n": 2643,
+     "kish_ess": 1251.5218484325126,
+     "kish_ess_design": 1339.8986806125981,
+     "kish_ess_ratio": 0.9340421529934787,
+     "mass_ratio_vs_design": 1.0020701611707399,
+     "top_1pct_share": 0.07190307474387046,
+     "n_records_holding_half_weight": 486,
+     "n_records_holding_half_weight_design": 504
+    },
+    "4901": {
+     "n": 3759,
+     "kish_ess": 1613.6220849616086,
+     "kish_ess_design": 1997.0802243777387,
+     "kish_ess_ratio": 0.8079906181357286,
+     "mass_ratio_vs_design": 1.033961695164509,
+     "top_1pct_share": 0.08020270278326175,
+     "n_records_holding_half_weight": 663,
+     "n_records_holding_half_weight_design": 799
+    },
+    "4902": {
+     "n": 3572,
+     "kish_ess": 1391.861541305312,
+     "kish_ess_design": 1816.233997106597,
+     "kish_ess_ratio": 0.7663448341582948,
+     "mass_ratio_vs_design": 1.0171989618368316,
+     "top_1pct_share": 0.08477879873643987,
+     "n_records_holding_half_weight": 560,
+     "n_records_holding_half_weight_design": 732
+    },
+    "4903": {
+     "n": 4028,
+     "kish_ess": 1641.1918899808684,
+     "kish_ess_design": 2165.9816268182003,
+     "kish_ess_ratio": 0.7577127477261931,
+     "mass_ratio_vs_design": 1.037049725277458,
+     "top_1pct_share": 0.08062518052784454,
+     "n_records_holding_half_weight": 669,
+     "n_records_holding_half_weight_design": 863
+    },
+    "4904": {
+     "n": 3192,
+     "kish_ess": 1388.693653284981,
+     "kish_ess_design": 1794.1222148419652,
+     "kish_ess_ratio": 0.7740240000357522,
+     "mass_ratio_vs_design": 0.9842762763218328,
+     "top_1pct_share": 0.07434327504930792,
+     "n_records_holding_half_weight": 570,
+     "n_records_holding_half_weight_design": 717
+    },
+    "5000": {
+     "n": 3893,
+     "kish_ess": 1027.4646940123935,
+     "kish_ess_design": 1640.0488968823217,
+     "kish_ess_ratio": 0.6264841834689012,
+     "mass_ratio_vs_design": 0.9956471640982937,
+     "top_1pct_share": 0.11708909541918325,
+     "n_records_holding_half_weight": 425,
+     "n_records_holding_half_weight_design": 680
+    },
+    "5101": {
+     "n": 3955,
+     "kish_ess": 1761.4323287048064,
+     "kish_ess_design": 2069.8550445859173,
+     "kish_ess_ratio": 0.8509930844249955,
+     "mass_ratio_vs_design": 1.0231139583111502,
+     "top_1pct_share": 0.08112804058188904,
+     "n_records_holding_half_weight": 761,
+     "n_records_holding_half_weight_design": 866
+    },
+    "5102": {
+     "n": 3684,
+     "kish_ess": 1654.645107260198,
+     "kish_ess_design": 1941.72522078077,
+     "kish_ess_ratio": 0.852152039614989,
+     "mass_ratio_vs_design": 1.003101681474813,
+     "top_1pct_share": 0.08007516495566916,
+     "n_records_holding_half_weight": 711,
+     "n_records_holding_half_weight_design": 797
+    },
+    "5103": {
+     "n": 3654,
+     "kish_ess": 1621.1788100991057,
+     "kish_ess_design": 1926.431235955351,
+     "kish_ess_ratio": 0.841545122317919,
+     "mass_ratio_vs_design": 0.9503774876334349,
+     "top_1pct_share": 0.07903116114647864,
+     "n_records_holding_half_weight": 668,
+     "n_records_holding_half_weight_design": 755
+    },
+    "5104": {
+     "n": 3697,
+     "kish_ess": 1549.671538979431,
+     "kish_ess_design": 1878.4688435696826,
+     "kish_ess_ratio": 0.8249652605547436,
+     "mass_ratio_vs_design": 0.9579385559633075,
+     "top_1pct_share": 0.08293176165087521,
+     "n_records_holding_half_weight": 651,
+     "n_records_holding_half_weight_design": 753
+    },
+    "5105": {
+     "n": 4548,
+     "kish_ess": 1848.4363920774795,
+     "kish_ess_design": 2431.502452248821,
+     "kish_ess_ratio": 0.7602033838657732,
+     "mass_ratio_vs_design": 0.967028976191103,
+     "top_1pct_share": 0.09212370361313443,
+     "n_records_holding_half_weight": 860,
+     "n_records_holding_half_weight_design": 1022
+    },
+    "5106": {
+     "n": 4042,
+     "kish_ess": 1832.4426832119295,
+     "kish_ess_design": 2128.633242374516,
+     "kish_ess_ratio": 0.8608541136789809,
+     "mass_ratio_vs_design": 0.9645853570841345,
+     "top_1pct_share": 0.07712880538376887,
+     "n_records_holding_half_weight": 754,
+     "n_records_holding_half_weight_design": 875
+    },
+    "5107": {
+     "n": 3107,
+     "kish_ess": 1279.7825561609275,
+     "kish_ess_design": 1601.0528626486168,
+     "kish_ess_ratio": 0.7993381018311833,
+     "mass_ratio_vs_design": 1.0113772635926408,
+     "top_1pct_share": 0.0914035382223045,
+     "n_records_holding_half_weight": 567,
+     "n_records_holding_half_weight_design": 658
+    },
+    "5108": {
+     "n": 3756,
+     "kish_ess": 1785.9980567202572,
+     "kish_ess_design": 2129.6394328244064,
+     "kish_ess_ratio": 0.8386387053096592,
+     "mass_ratio_vs_design": 1.0402301104369398,
+     "top_1pct_share": 0.07944341580766541,
+     "n_records_holding_half_weight": 786,
+     "n_records_holding_half_weight_design": 884
+    },
+    "5109": {
+     "n": 4854,
+     "kish_ess": 2174.1986007674254,
+     "kish_ess_design": 2612.5388325559593,
+     "kish_ess_ratio": 0.8322167592970525,
+     "mass_ratio_vs_design": 0.9277946994994837,
+     "top_1pct_share": 0.0823466309954544,
+     "n_records_holding_half_weight": 936,
+     "n_records_holding_half_weight_design": 1085
+    },
+    "5110": {
+     "n": 2876,
+     "kish_ess": 1341.465481573394,
+     "kish_ess_design": 1596.6064609299124,
+     "kish_ess_ratio": 0.84019795384774,
+     "mass_ratio_vs_design": 1.0689668442513096,
+     "top_1pct_share": 0.0770456401188794,
+     "n_records_holding_half_weight": 569,
+     "n_records_holding_half_weight_design": 658
+    },
+    "5111": {
+     "n": 3556,
+     "kish_ess": 1739.7839640329707,
+     "kish_ess_design": 1973.509555483326,
+     "kish_ess_ratio": 0.8815685534427958,
+     "mass_ratio_vs_design": 1.0686429920516918,
+     "top_1pct_share": 0.07620859535965722,
+     "n_records_holding_half_weight": 776,
+     "n_records_holding_half_weight_design": 865
+    },
+    "5301": {
+     "n": 3362,
+     "kish_ess": 1586.0749702224023,
+     "kish_ess_design": 1867.1203599247626,
+     "kish_ess_ratio": 0.849476554519664,
+     "mass_ratio_vs_design": 1.0437360217301312,
+     "top_1pct_share": 0.07691566582488307,
+     "n_records_holding_half_weight": 695,
+     "n_records_holding_half_weight_design": 773
+    },
+    "5302": {
+     "n": 4306,
+     "kish_ess": 1879.1110665824435,
+     "kish_ess_design": 2124.704006978969,
+     "kish_ess_ratio": 0.884410751055285,
+     "mass_ratio_vs_design": 1.0554556834130207,
+     "top_1pct_share": 0.08291737043100791,
+     "n_records_holding_half_weight": 807,
+     "n_records_holding_half_weight_design": 893
+    },
+    "5303": {
+     "n": 3666,
+     "kish_ess": 1791.2898613295863,
+     "kish_ess_design": 1991.9686480214286,
+     "kish_ess_ratio": 0.8992560515994208,
+     "mass_ratio_vs_design": 1.0291702407791512,
+     "top_1pct_share": 0.06900826507453385,
+     "n_records_holding_half_weight": 732,
+     "n_records_holding_half_weight_design": 810
+    },
+    "5304": {
+     "n": 3521,
+     "kish_ess": 1460.3831818091924,
+     "kish_ess_design": 1729.024431885235,
+     "kish_ess_ratio": 0.8446284244907224,
+     "mass_ratio_vs_design": 0.9980724622361931,
+     "top_1pct_share": 0.07887140018364003,
+     "n_records_holding_half_weight": 579,
+     "n_records_holding_half_weight_design": 687
+    },
+    "5305": {
+     "n": 4646,
+     "kish_ess": 2016.6866983556404,
+     "kish_ess_design": 2278.294021571149,
+     "kish_ess_ratio": 0.8851740290153155,
+     "mass_ratio_vs_design": 0.9813058330875863,
+     "top_1pct_share": 0.07947957214787983,
+     "n_records_holding_half_weight": 842,
+     "n_records_holding_half_weight_design": 944
+    },
+    "5306": {
+     "n": 4523,
+     "kish_ess": 1927.3842869730108,
+     "kish_ess_design": 2365.529027487737,
+     "kish_ess_ratio": 0.8147793853199725,
+     "mass_ratio_vs_design": 1.024358148206431,
+     "top_1pct_share": 0.08516726095975541,
+     "n_records_holding_half_weight": 834,
+     "n_records_holding_half_weight_design": 978
+    },
+    "5307": {
+     "n": 4121,
+     "kish_ess": 2161.851791308079,
+     "kish_ess_design": 2331.800459595102,
+     "kish_ess_ratio": 0.9271169762456719,
+     "mass_ratio_vs_design": 1.0243556213893363,
+     "top_1pct_share": 0.06595182944857596,
+     "n_records_holding_half_weight": 904,
+     "n_records_holding_half_weight_design": 994
+    },
+    "5308": {
+     "n": 3446,
+     "kish_ess": 1474.0490156053936,
+     "kish_ess_design": 1810.1391267566498,
+     "kish_ess_ratio": 0.8143291274226795,
+     "mass_ratio_vs_design": 1.055862284493949,
+     "top_1pct_share": 0.08598949293665291,
+     "n_records_holding_half_weight": 669,
+     "n_records_holding_half_weight_design": 763
+    },
+    "5309": {
+     "n": 3151,
+     "kish_ess": 1475.1532907081312,
+     "kish_ess_design": 1713.2297905071487,
+     "kish_ess_ratio": 0.8610364464135647,
+     "mass_ratio_vs_design": 1.0625526523362177,
+     "top_1pct_share": 0.0775646771362876,
+     "n_records_holding_half_weight": 620,
+     "n_records_holding_half_weight_design": 672
+    },
+    "5310": {
+     "n": 3211,
+     "kish_ess": 1482.2034839721234,
+     "kish_ess_design": 1726.2709756762292,
+     "kish_ess_ratio": 0.8586157705579811,
+     "mass_ratio_vs_design": 1.0582672449676547,
+     "top_1pct_share": 0.07662325472735405,
+     "n_records_holding_half_weight": 622,
+     "n_records_holding_half_weight_design": 702
+    },
+    "5401": {
+     "n": 4398,
+     "kish_ess": 1546.9591924121992,
+     "kish_ess_design": 2332.4108572160517,
+     "kish_ess_ratio": 0.6632447227838059,
+     "mass_ratio_vs_design": 0.9589244248559952,
+     "top_1pct_share": 0.08518548013414158,
+     "n_records_holding_half_weight": 600,
+     "n_records_holding_half_weight_design": 915
+    },
+    "5402": {
+     "n": 5221,
+     "kish_ess": 1841.0169423385712,
+     "kish_ess_design": 2848.354026644708,
+     "kish_ess_ratio": 0.6463441430092328,
+     "mass_ratio_vs_design": 0.9754912248065508,
+     "top_1pct_share": 0.08931478764422568,
+     "n_records_holding_half_weight": 722,
+     "n_records_holding_half_weight_design": 1163
+    },
+    "5501": {
+     "n": 2496,
+     "kish_ess": 1036.3202775654104,
+     "kish_ess_design": 1233.0257613044923,
+     "kish_ess_ratio": 0.8404692830334904,
+     "mass_ratio_vs_design": 1.0660187316557064,
+     "top_1pct_share": 0.08172125074504152,
+     "n_records_holding_half_weight": 431,
+     "n_records_holding_half_weight_design": 494
+    },
+    "5502": {
+     "n": 3442,
+     "kish_ess": 1250.8921551380522,
+     "kish_ess_design": 1329.982098305366,
+     "kish_ess_ratio": 0.9405330768977354,
+     "mass_ratio_vs_design": 1.0327024164791572,
+     "top_1pct_share": 0.08859841767559136,
+     "n_records_holding_half_weight": 497,
+     "n_records_holding_half_weight_design": 546
+    },
+    "5503": {
+     "n": 5217,
+     "kish_ess": 1737.3662668922098,
+     "kish_ess_design": 1971.4981973056276,
+     "kish_ess_ratio": 0.881241620847842,
+     "mass_ratio_vs_design": 1.0343812010538385,
+     "top_1pct_share": 0.1003306364453328,
+     "n_records_holding_half_weight": 689,
+     "n_records_holding_half_weight_design": 758
+    },
+    "5504": {
+     "n": 2159,
+     "kish_ess": 949.1022342057632,
+     "kish_ess_design": 1122.4549633365893,
+     "kish_ess_ratio": 0.8455593010025801,
+     "mass_ratio_vs_design": 1.047531058385107,
+     "top_1pct_share": 0.0743854316012736,
+     "n_records_holding_half_weight": 372,
+     "n_records_holding_half_weight_design": 429
+    },
+    "5505": {
+     "n": 2831,
+     "kish_ess": 1263.0827990291098,
+     "kish_ess_design": 1476.9726810182128,
+     "kish_ess_ratio": 0.8551835895558684,
+     "mass_ratio_vs_design": 1.0890252709646404,
+     "top_1pct_share": 0.080013461716389,
+     "n_records_holding_half_weight": 538,
+     "n_records_holding_half_weight_design": 614
+    },
+    "5506": {
+     "n": 4114,
+     "kish_ess": 1533.2363021457797,
+     "kish_ess_design": 1736.829486845636,
+     "kish_ess_ratio": 0.8827788299071232,
+     "mass_ratio_vs_design": 1.0553559577521217,
+     "top_1pct_share": 0.09335275128385877,
+     "n_records_holding_half_weight": 634,
+     "n_records_holding_half_weight_design": 696
+    },
+    "5507": {
+     "n": 6327,
+     "kish_ess": 1866.7684434312866,
+     "kish_ess_design": 2213.846297842556,
+     "kish_ess_ratio": 0.8432240509426944,
+     "mass_ratio_vs_design": 1.0293102810711279,
+     "top_1pct_share": 0.12098396944402162,
+     "n_records_holding_half_weight": 884,
+     "n_records_holding_half_weight_design": 985
+    },
+    "5508": {
+     "n": 3992,
+     "kish_ess": 1360.3600373795202,
+     "kish_ess_design": 1585.9994913523628,
+     "kish_ess_ratio": 0.8577304373657506,
+     "mass_ratio_vs_design": 1.070213963245223,
+     "top_1pct_share": 0.10043365290722327,
+     "n_records_holding_half_weight": 571,
+     "n_records_holding_half_weight_design": 640
+    },
+    "5600": {
+     "n": 3358,
+     "kish_ess": 944.7368719248072,
+     "kish_ess_design": 1634.0157282606083,
+     "kish_ess_ratio": 0.5781687749912109,
+     "mass_ratio_vs_design": 0.9883941729769936,
+     "top_1pct_share": 0.1076343789764927,
+     "n_records_holding_half_weight": 387,
+     "n_records_holding_half_weight_design": 637
+    }
+   }
+  },
+  "fit_train": {
+   "overall": {
+    "n_targets": 4459,
+    "fraction_within_10pct": 0.7232563355012335,
+    "mean_abs_rel_error": 0.21488227159583648,
+    "median_abs_rel_error": 0.008490539664951856,
+    "p90_abs_rel_error": 0.40095760202628783,
+    "max_abs_rel_error": 183.27391607604775,
+    "mean_capped_scaled_error": 0.11444662128373342
+   },
+   "per_family": {
+    "medicaid": {
+     "n_targets": 51,
+     "fraction_within_10pct": 0.6078431372549019,
+     "mean_abs_rel_error": 0.10594272919174255,
+     "median_abs_rel_error": 0.05912474931031921,
+     "p90_abs_rel_error": 0.25830947952924505,
+     "max_abs_rel_error": 0.7158398922590837,
+     "mean_capped_scaled_error": 0.10594272919174255
+    },
+    "pop_cd": {
+     "n_targets": 436,
+     "fraction_within_10pct": 0.8532110091743119,
+     "mean_abs_rel_error": 0.04298626722317366,
+     "median_abs_rel_error": 0.023738592997920187,
+     "p90_abs_rel_error": 0.11684688858840471,
+     "max_abs_rel_error": 0.19143499204409462,
+     "mean_capped_scaled_error": 0.04298626722317366
+    },
+    "pop_state": {
+     "n_targets": 51,
+     "fraction_within_10pct": 0.9803921568627451,
+     "mean_abs_rel_error": 0.02539738842867703,
+     "median_abs_rel_error": 0.01671319609898242,
+     "p90_abs_rel_error": 0.05438789005484042,
+     "max_abs_rel_error": 0.10968828373885753,
+     "mean_capped_scaled_error": 0.02539738842867703
+    },
+    "snap": {
+     "n_targets": 102,
+     "fraction_within_10pct": 0.7156862745098039,
+     "mean_abs_rel_error": 0.0826217116460362,
+     "median_abs_rel_error": 0.0024926977567232113,
+     "p90_abs_rel_error": 0.2584169875227871,
+     "max_abs_rel_error": 1.3442021977533527,
+     "mean_capped_scaled_error": 0.07924718029551313
+    },
+    "soi": {
+     "n_targets": 3819,
+     "fraction_within_10pct": 0.7067295103430218,
+     "mean_abs_rel_error": 0.24202468603037286,
+     "median_abs_rel_error": 0.006826317202141069,
+     "p90_abs_rel_error": 0.4400195830155312,
+     "max_abs_rel_error": 183.27391607604775,
+     "mean_capped_scaled_error": 0.12484784325898925
+    }
+   },
+   "per_subfamily": {
+    "medicaid_enrollment": {
+     "n_targets": 51,
+     "fraction_within_10pct": 0.6078431372549019,
+     "mean_abs_rel_error": 0.10594272919174255,
+     "median_abs_rel_error": 0.05912474931031921,
+     "p90_abs_rel_error": 0.25830947952924505,
+     "max_abs_rel_error": 0.7158398922590837,
+     "mean_capped_scaled_error": 0.10594272919174255
+    },
+    "pop_cd": {
+     "n_targets": 436,
+     "fraction_within_10pct": 0.8532110091743119,
+     "mean_abs_rel_error": 0.04298626722317366,
+     "median_abs_rel_error": 0.023738592997920187,
+     "p90_abs_rel_error": 0.11684688858840471,
+     "max_abs_rel_error": 0.19143499204409462,
+     "mean_capped_scaled_error": 0.04298626722317366
+    },
+    "pop_state": {
+     "n_targets": 51,
+     "fraction_within_10pct": 0.9803921568627451,
+     "mean_abs_rel_error": 0.02539738842867703,
+     "median_abs_rel_error": 0.01671319609898242,
+     "p90_abs_rel_error": 0.05438789005484042,
+     "max_abs_rel_error": 0.10968828373885753,
+     "mean_capped_scaled_error": 0.02539738842867703
+    },
+    "snap_benefits": {
+     "n_targets": 51,
+     "fraction_within_10pct": 0.8431372549019608,
+     "mean_abs_rel_error": 0.0300981274803785,
+     "median_abs_rel_error": 0.0013611105213401377,
+     "p90_abs_rel_error": 0.12445031411742827,
+     "max_abs_rel_error": 0.2595460175528896,
+     "mean_capped_scaled_error": 0.0300981274803785
+    },
+    "snap_households": {
+     "n_targets": 51,
+     "fraction_within_10pct": 0.5882352941176471,
+     "mean_abs_rel_error": 0.1351452958116939,
+     "median_abs_rel_error": 0.04367504620915971,
+     "p90_abs_rel_error": 0.32288460007308645,
+     "max_abs_rel_error": 1.3442021977533527,
+     "mean_capped_scaled_error": 0.12839623311064777
+    },
+    "soi_agi_band_amount": {
+     "n_targets": 456,
+     "fraction_within_10pct": 0.8947368421052632,
+     "mean_abs_rel_error": 0.03886503648851762,
+     "median_abs_rel_error": 0.0021416071692369277,
+     "p90_abs_rel_error": 0.11052339257589583,
+     "max_abs_rel_error": 0.9090716021332343,
+     "mean_capped_scaled_error": 0.03886503648851762
+    },
+    "soi_agi_band_count": {
+     "n_targets": 456,
+     "fraction_within_10pct": 0.4166666666666667,
+     "mean_abs_rel_error": 0.24982149022729466,
+     "median_abs_rel_error": 0.20301752462591655,
+     "p90_abs_rel_error": 0.5553221856777533,
+     "max_abs_rel_error": 4.197024073426491,
+     "mean_capped_scaled_error": 0.2395881374006717
+    },
+    "soi_credit_amount": {
+     "n_targets": 153,
+     "fraction_within_10pct": 0.6013071895424836,
+     "mean_abs_rel_error": 0.6637083841859702,
+     "median_abs_rel_error": 0.025501519882995764,
+     "p90_abs_rel_error": 2.0847851094226955,
+     "max_abs_rel_error": 10.015523954241809,
+     "mean_capped_scaled_error": 0.2962442518417096
+    },
+    "soi_credit_count": {
+     "n_targets": 153,
+     "fraction_within_10pct": 0.41830065359477125,
+     "mean_abs_rel_error": 1.0671738725545334,
+     "median_abs_rel_error": 0.12454720600509572,
+     "p90_abs_rel_error": 3.4050220221475835,
+     "max_abs_rel_error": 8.900365791899118,
+     "mean_capped_scaled_error": 0.3740254108679797
+    },
+    "soi_deduction_amount": {
+     "n_targets": 204,
+     "fraction_within_10pct": 0.7892156862745098,
+     "mean_abs_rel_error": 0.08833974235412992,
+     "median_abs_rel_error": 0.003997152817899863,
+     "p90_abs_rel_error": 0.16322778920149983,
+     "max_abs_rel_error": 2.278220107079619,
+     "mean_capped_scaled_error": 0.06878724534076666
+    },
+    "soi_deduction_count": {
+     "n_targets": 153,
+     "fraction_within_10pct": 0.5359477124183006,
+     "mean_abs_rel_error": 0.24320167006772622,
+     "median_abs_rel_error": 0.08323948396216305,
+     "p90_abs_rel_error": 0.6525704060514073,
+     "max_abs_rel_error": 4.120994427206994,
+     "mean_capped_scaled_error": 0.19602033275527786
+    },
+    "soi_eitc_amount": {
+     "n_targets": 255,
+     "fraction_within_10pct": 0.7843137254901961,
+     "mean_abs_rel_error": 0.06552433507410675,
+     "median_abs_rel_error": 0.0031209294299438628,
+     "p90_abs_rel_error": 0.25361260212152564,
+     "max_abs_rel_error": 0.6017082528150991,
+     "mean_capped_scaled_error": 0.06552433507410675
+    },
+    "soi_eitc_count": {
+     "n_targets": 255,
+     "fraction_within_10pct": 0.8313725490196079,
+     "mean_abs_rel_error": 0.054645992782556434,
+     "median_abs_rel_error": 0.003826173103561382,
+     "p90_abs_rel_error": 0.21108090732561197,
+     "max_abs_rel_error": 0.5394983192338227,
+     "mean_capped_scaled_error": 0.054645992782556434
+    },
+    "soi_income_amount": {
+     "n_targets": 714,
+     "fraction_within_10pct": 0.8221288515406162,
+     "mean_abs_rel_error": 0.4493655026846403,
+     "median_abs_rel_error": 0.0034012582690190994,
+     "p90_abs_rel_error": 0.21282380084641464,
+     "max_abs_rel_error": 183.27391607604775,
+     "mean_capped_scaled_error": 0.07368128144614307
+    },
+    "soi_income_count": {
+     "n_targets": 663,
+     "fraction_within_10pct": 0.5867269984917044,
+     "mean_abs_rel_error": 0.16395815893771984,
+     "median_abs_rel_error": 0.05273079836491554,
+     "p90_abs_rel_error": 0.48920435819349123,
+     "max_abs_rel_error": 1.548924839838476,
+     "mean_capped_scaled_error": 0.16228057401397689
+    },
+    "soi_return_count": {
+     "n_targets": 51,
+     "fraction_within_10pct": 0.37254901960784315,
+     "mean_abs_rel_error": 0.11869576092784087,
+     "median_abs_rel_error": 0.12146118371355553,
+     "p90_abs_rel_error": 0.18805758650311227,
+     "max_abs_rel_error": 0.24958636136548965,
+     "mean_capped_scaled_error": 0.11869576092784087
+    },
+    "soi_tax_amount": {
+     "n_targets": 153,
+     "fraction_within_10pct": 0.9281045751633987,
+     "mean_abs_rel_error": 0.028275131828057052,
+     "median_abs_rel_error": 0.016367297053769027,
+     "p90_abs_rel_error": 0.06419450471221073,
+     "max_abs_rel_error": 0.27544868234147984,
+     "mean_capped_scaled_error": 0.028275131828057052
+    },
+    "soi_tax_count": {
+     "n_targets": 153,
+     "fraction_within_10pct": 1.0,
+     "mean_abs_rel_error": 0.013208043481559647,
+     "median_abs_rel_error": 0.006539974707058768,
+     "p90_abs_rel_error": 0.031077702256104137,
+     "max_abs_rel_error": 0.08427557450534569,
+     "mean_capped_scaled_error": 0.013208043481559647
+    }
+   },
+   "worst_targets": [
+    {
+     "row": 46,
+     "name": "usda_snap.fy2024.state_average_monthly_households.wro.id.average_monthly_households",
+     "value": 65297.9167,
+     "estimate": 153071.51983685535,
+     "relative_error": 1.3442021977533527
+    },
+    {
+     "row": 1503,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.or.all.premium_tax_credit_returns",
+     "value": 76890.0,
+     "estimate": 310758.58018451114,
+     "relative_error": 3.041599430153611
+    },
+    {
+     "row": 1591,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.oh.all.medical_dental_expense_returns",
+     "value": 84240.0,
+     "estimate": 179856.92924809086,
+     "relative_error": 1.135053766002978
+    },
+    {
+     "row": 3832,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.md.all.premium_tax_credit_returns",
+     "value": 93610.0,
+     "estimate": 216276.74279545774,
+     "relative_error": 1.3104021236562091
+    },
+    {
+     "row": 2553,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.hi.all.premium_tax_credit_amount",
+     "value": 104470021.45756875,
+     "estimate": 414315869.3050436,
+     "relative_error": 2.9658828774465307
+    },
+    {
+     "row": 2013,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.nc.all.premium_tax_credit_returns",
+     "value": 377140.0,
+     "estimate": 818930.0321069149,
+     "relative_error": 1.1714218383277162
+    },
+    {
+     "row": 2907,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.oh.all.premium_tax_credit_returns",
+     "value": 132590.0,
+     "estimate": 873246.2508184724,
+     "relative_error": 5.586064188992174
+    },
+    {
+     "row": 1571,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.wy.all.premium_tax_credit_returns",
+     "value": 19920.0,
+     "estimate": 70852.7226509797,
+     "relative_error": 2.5568635868965717
+    },
+    {
+     "row": 544,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.nj.all.rental_royalty_income_amount",
+     "value": 89125762.98679338,
+     "estimate": 3190367380.340918,
+     "relative_error": 34.79624200034804
+    },
+    {
+     "row": 1825,
+     "name": "irs_soi.ty2022.historic_table_2.state_broad.me.all.premium_tax_credit_returns",
+     "value": 33940.0,
+     "estimate": 110220.15720414839,
+     "relative_error": 2.247500212261296
+    }
+   ]
+  },
+  "prior": {
+   "acs_share": 0.964,
+   "realized_acs_share": 0.964,
+   "kish_ess_prior": 778147.5341503691,
+   "kish_ess_release_design": 36287.945780887014,
+   "chi_square_distance_prior_from_release_design": 0.861184,
+   "chi_square_distance_from_release_design": 1.1463334826363771
+  },
+  "fit_train_design": {
+   "overall": {
+    "n_targets": 4459,
+    "fraction_within_10pct": 0.17515137923301188,
+    "mean_abs_rel_error": 0.4557763099030034,
+    "median_abs_rel_error": 0.31075093241358065,
+    "p90_abs_rel_error": 0.7049125650889395,
+    "max_abs_rel_error": 125.69251105574948,
+    "mean_capped_scaled_error": 0.3553807254847058
+   }
+  }
+ },
+ "inputs": {
+  "checkpoint": "/sweep/checkpoint",
+  "manifest_sha256": "8a75d1235efa336df1ede147a18cc72f60e8b2fd0cbd7b8574906c4834d5b950",
+  "input_sha256": {
+   "target_matrix.npz": "19bc7dfaab57a380fe3152c9acbbcf99c0ab9369b17f1d7299a74e5607daf504",
+   "households.parquet": "2af66233027e7016b61341382bd62e50f23eaee263a9917e30cd78bf5935c42d",
+   "targets_meta.parquet": "2a69033e1cde2d08d8909c6863a94a41dd79badcda76b48e96f43f137c44ba00",
+   "holdout_folds.npz": "653ea0e8630238b5d7d1972364fac8589ac38f41fa754e1939185704440522d0"
+  },
+  "n_train_targets": 4459,
+  "n_holdout_targets": 0
+ },
+ "provenance": {
+  "hostname": "modal",
+  "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+  "python": "3.13.3",
+  "torch": "2.12.0+cpu",
+  "numpy": "2.4.6",
+  "scipy": "1.17.1",
+  "pandas": "3.0.3",
+  "torch_num_threads": 8,
+  "torch_num_interop_threads": 24,
+  "env": {
+   "OMP_NUM_THREADS": "8",
+   "MKL_NUM_THREADS": "8",
+   "OPENBLAS_NUM_THREADS": "8"
+  },
+  "nice": 0,
+  "kernel_module_sha256": {
+   "microcosm.calibrate.solve": "4e57959efda7e5c0dd64edffaa2ed25bf7deb5f0bed7cf3c782021400f19daaa",
+   "microcosm.calibrate.matrix": "ca609f47ba7f5bf55ab8a0c85c07d2dac9b7a52fffcf0816f8289f143764c55a",
+   "microcosm.calibrate.target": "a833dc34ecc37f6667a9a744c6e33103b8af02cd546e0069b2344a41241ff5f3",
+   "microcosm.frame.bundle": "2acfda18180003898f0453fbf7244540820cdc9ba755f0a917b768055e5b6ff1",
+   "microcosm.frame.weights": "76ac3d735976e807d6df003bb75b901834f0bd1cdc91dfcac9cd903cec518e9d"
+  },
+  "kernel_solve_path": "/usr/local/lib/python3.13/site-packages/microcosm/calibrate/solve.py",
+  "git": {
+   "unavailable": "[Errno 2] No such file or directory: 'git'",
+   "head_from_env": "35ad6657c8a6f119b40a7d4e3a4626066f4203f5"
+  }
+ },
+ "timing": {
+  "total_wall_seconds": 1261.6196420192719,
+  "scoring_seconds": 4.566799640655518
+ },
+ "peak_rss_gb": 3.70068359375
+}

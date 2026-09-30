@@ -113,22 +113,12 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "cgt_band_donor_support_bounds.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "hmrc_income_release_gate_report.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
     {
       "path": "hmrc_income_replay_report.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
-      "path": "hmrc_income_source_stages.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -324,6 +314,11 @@
     },
     {
       "path": "local_authority_names.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "uk_atomic_area_supports.provenance.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

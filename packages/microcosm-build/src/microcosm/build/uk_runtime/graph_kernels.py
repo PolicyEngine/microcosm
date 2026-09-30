@@ -44,7 +44,8 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from . import bus_use_incidence, uc_relationships
+from .. import stage_evidence
+from . import bus_use_incidence, frs_hmrc_source, uc_relationships
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -81,7 +82,7 @@ _STAGE_MODULES = {
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
     "etb_services": "etb_services",
-    "frs_hmrc_spine_leaves": "frs_hmrc_leaves",
+    "frs_hmrc_spine_leaves": "spi_spine",
     "spi_support_channel": "spi_spine",
     "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
@@ -89,8 +90,8 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
     "uc_deduction_attributes": "uc_deduction_attributes",
+    "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
-    "cgt_band_donors": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
     "hmrc_cgt_asset_type_spine": "cgt_asset_type",
@@ -102,6 +103,7 @@ _STAGE_MODULES = {
 # Imported modules are not traversed by ``source_hash``. Bind relationship
 # helpers and the adapter's input-retention checks into every consuming stage.
 _STAGE_HELPER_MODULES = {
+    "frs_hmrc_spine_leaves": (frs_hmrc_source,),
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),
@@ -151,13 +153,24 @@ def _stage_module(stage: str):
 
 
 def _implementation_hash(kernel: object, stage: str, transform: object | None) -> str:
+    from . import graph_evidence
+
     # The stage module is the behavior-bearing source in every mode. Hashing
     # an injected transform's dynamic test wrapper would make
     # hermetic registries unhashable and, more importantly, would fail to bind
-    # production edits made elsewhere in that stage's module.
-    del transform
+    # production edits made elsewhere in that stage's module. A transform may
+    # still declare extra behavior-bearing sources through
+    # ``graph_implementation_dependencies``.
+    dependencies = getattr(transform, "graph_implementation_dependencies", None)
     return source_hash(
-        type(kernel), _stage_module(stage), *_STAGE_HELPER_MODULES.get(stage, ())
+        type(kernel),
+        stage_evidence,
+        graph_evidence,
+        _stage_artifacts,
+        _mass_log_payload,
+        _stage_module(stage),
+        *_STAGE_HELPER_MODULES.get(stage, ()),
+        *(dependencies() if callable(dependencies) else ()),
     )
 
 
@@ -175,6 +188,29 @@ def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
         }
         for record in after.mass_log[prefix_length:]
     ]
+
+
+def _stage_artifacts(
+    stage: str, transform: object | None, before: Frame | None, after: Frame
+) -> dict[str, bytes]:
+    document = stage_evidence.snapshot_stage_evidence(stage, transform)
+    document["frame_mass_log_append"] = (
+        [
+            {
+                "entity": record.entity,
+                "old_total": record.old_total,
+                "new_total": record.new_total,
+                "declared_factor": record.declared_factor,
+                "reason": record.reason,
+            }
+            for record in after.mass_log
+        ]
+        if before is None
+        else _mass_log_payload(before, after)
+    )
+    if before is None:
+        document["frame_context"] = {"metadata": dict(after.metadata)}
+    return {"stage_evidence": stage_evidence.encode_stage_evidence(document)}
 
 
 def _invoke_transform(transform: object, frame: Frame, context: KernelContext):
@@ -296,19 +332,29 @@ def _fixture_cgt_distribution(path: Path):
 
 
 def _fixture_asset_type_facts(path: Path):
-    from .cgt_asset_type import HMRCCGTAssetTypeFacts, HMRCCGTTable7Type
+    from .cgt_asset_type import (
+        HMRCCGTAssetTypeFacts,
+        HMRCCGTBADRBand,
+        HMRCCGTTable7Type,
+    )
 
     payload = dict(_json_mapping(path, label="CGT asset-type facts"))
     raw_rows = payload.pop("table7_types")
-    if not isinstance(raw_rows, list):
+    raw_bands = payload.pop("table4_bands")
+    if not isinstance(raw_rows, list) or not isinstance(raw_bands, list):
         raise ValueError(
-            "UK parity fixture CGT asset-type table7_types must be a list."
+            "UK parity fixture CGT asset-type table7_types and table4_bands must "
+            "be lists."
         )
     return HMRCCGTAssetTypeFacts(
         **payload,
         table7_types=tuple(
             HMRCCGTTable7Type(**dict(_mapping(row, label="Table 7 row")))
             for row in raw_rows
+        ),
+        table4_bands=tuple(
+            HMRCCGTBADRBand(**dict(_mapping(row, label="Table 4.1 band")))
+            for row in raw_bands
         ),
     )
 
@@ -352,13 +398,13 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
-    from .cgt_asset_type import UKCGTAssetTypeStageTransform
+    from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_structure import (
-        UKCGTBandDonorStageTransform,
         UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
     )
+    from .cgt_support import UKCGTSupportSplitStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
@@ -436,6 +482,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
+    )
+    cgt_badr_parameters = UKCGTBADRParameters(
+        **dict(
+            _mapping(descriptor.get("cgt_badr_parameters"), label="CGT BADR parameters")
+        )
     )
 
     engine = PolicyEngineUKEngine()
@@ -543,11 +594,13 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]
             ),
+            "cgt_support_split": UKCGTSupportSplitStageTransform(
+                stage=stages["cgt_support_split"],
+                distribution=cgt_distribution,
+                parameters=cgt_parameters,
+            ),
             "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
                 stage=stages["cgt_incidence_clone"]
-            ),
-            "cgt_band_donors": UKCGTBandDonorStageTransform(
-                stage=stages["cgt_band_donors"]
             ),
             "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
                 stages["hmrc_cgt_gains_spine"],
@@ -558,6 +611,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["hmrc_cgt_asset_type_spine"],
                 facts=cgt_asset_type_facts,
                 parameters=cgt_parameters,
+                badr_parameters=cgt_badr_parameters,
             ),
             "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
                 stage=stages["cgt_incidence_anchor"],
@@ -742,7 +796,10 @@ class UKCreateKernel(KernelBase):
             raise TypeError(
                 f"The UK root transform returned {type(frame).__name__}, not Frame."
             )
-        return KernelResult(frame=_normalize_create_frame(frame, context))
+        return KernelResult(
+            frame=_normalize_create_frame(frame, context),
+            artifacts=_stage_artifacts("frs_spine", self.transform, None, frame),
+        )
 
 
 class UKIdentityKernel(KernelBase):
@@ -805,6 +862,9 @@ class UKStageKernel(KernelBase):
         return _implementation_hash(self, self.stage, self.transform)
 
     def run(self, context: KernelContext) -> KernelResult:
+        from .graph_evidence import require_uk_spine_gate_admission
+
+        require_uk_spine_gate_admission(context)
         transform = self.transform
         if transform is None and self.fixture_resolver is not None:
             transform = self.fixture_resolver.resolve(self.stage, context)
@@ -827,6 +887,7 @@ class UKStageKernel(KernelBase):
         }
         return KernelResult(
             columns=MappingProxyType(columns),
+            artifacts=_stage_artifacts(self.stage, transform, before, after),
             receipt={
                 "stage": self.stage,
                 "frame_mass_log_append": _mass_log_payload(before, after),
@@ -874,10 +935,15 @@ def _source_lineage(
 
         # CGT stages retain long-lived source-id provenance from the SPI
         # support stage, so their immediate clone lineage is the stage's
-        # reviewed ID offset, not that older provenance column.
+        # reviewed ID offset, not that older provenance column.  Copy ``k``
+        # of a CGT structural stage takes ``source + k * offset`` (the clone
+        # stage mints one copy, the support split up to ``ceil(w / cap)``,
+        # microcosm#1045), and every incumbent id lies below the offset, so
+        # the copy index is the integer quotient.
         if id_offset is not None:
-            candidate = target - id_offset
-            if candidate in before_ids:
+            copy_index = int(target) // int(id_offset)
+            candidate = target - copy_index * id_offset
+            if copy_index >= 1 and candidate in before_ids:
                 targets.append(target)
                 values.append(candidate)
                 continue
@@ -923,6 +989,9 @@ class UKExpandStageKernel(KernelBase):
         return _implementation_hash(self, self.stage, self.transform)
 
     def run(self, context: KernelContext) -> KernelResult:
+        from .graph_evidence import require_uk_spine_gate_admission
+
+        require_uk_spine_gate_admission(context)
         transform = self.transform
         if transform is None and self.fixture_resolver is not None:
             transform = self.fixture_resolver.resolve(self.stage, context)
@@ -939,7 +1008,7 @@ class UKExpandStageKernel(KernelBase):
             )
         cells = _expand_cells(context)
         id_offset = None
-        if self.stage in {"cgt_incidence_clone", "cgt_band_donors"}:
+        if self.stage in {"cgt_support_split", "cgt_incidence_clone"}:
             id_offset = id_multiplier_for_values(
                 *(
                     before.table(entity)[before.schema.entity_id_column(entity)]
@@ -984,6 +1053,7 @@ class UKExpandStageKernel(KernelBase):
             columns=MappingProxyType(columns),
             expand=MappingProxyType(expand),
             weights=after_weights,
+            artifacts=_stage_artifacts(self.stage, transform, before, after),
             receipt=receipt,
         )
 
@@ -1062,15 +1132,19 @@ def build_uk_registry(
         if stage in {
             "spi_support_channel",
             "spi_income_band_donors",
+            "cgt_support_split",
             "cgt_incidence_clone",
-            "cgt_band_donors",
             "cgt_incidence_anchor",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:
             registry.register(UKStageKernel(stage, transform, fixture_resolver))
 
-    required = {node.kernel for node in graph.nodes}
+    # Gate bindings carry the live rules engine and are registered separately
+    # after population-stage construction by the composing build.
+    required = {
+        node.kernel for node in graph.nodes if node.kernel != "uk.spine-gates@1"
+    }
     if set(registry.refs()) != required:
         missing = sorted(required - set(registry.refs()))
         extra = sorted(set(registry.refs()) - required)

@@ -4,6 +4,74 @@
 from test_support.microcosm_build.uk_calibration_run import *
 
 
+def test_strict_checkpoint_binds_contents_and_retains_gate_payload(tmp_path):
+    frame = _frame()
+    path, gate_path, _ = _bound_checkpoint(tmp_path, frame)
+    sidecar = calibration_run.load_bound_spine_checkpoint(path, frame)
+    provenance = calibration_run.strict_spine_provenance_from_sidecar(path, sidecar)
+    assert provenance["fit_weight_records"] == sidecar["fit_weight_records"]
+    assert provenance["spine_gate_report"]["payload"] == json.loads(
+        gate_path.read_bytes()
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "missing_identity",
+        "wrong_identity",
+        "bypass",
+        "gate_bytes",
+        "missing_gate_binding",
+        "gate_roster",
+        "gate_policy",
+    ],
+)
+def test_strict_checkpoint_rejects_unbound_or_changed_evidence(tmp_path, mutation):
+    frame = _frame()
+    path, gate_path, sidecar = _bound_checkpoint(tmp_path, frame)
+    if mutation == "missing_identity":
+        sidecar.pop("uk_frame_content_identity")
+    elif mutation == "wrong_identity":
+        sidecar["uk_frame_content_identity"] = "f" * 64
+    elif mutation == "bypass":
+        sidecar["spine_gate_bypass"] = {"reviewed": True, "reason": "historical"}
+    elif mutation == "gate_bytes":
+        gate_path.write_text(gate_path.read_text() + "\n")
+    elif mutation == "missing_gate_binding":
+        sidecar.pop("spine_gate_report")
+    elif mutation == "gate_policy":
+        report = json.loads(gate_path.read_bytes())
+        report["policy_sha256"] = "f" * 64
+        gate_path.write_text(json.dumps(report))
+        sidecar["spine_gate_report"]["sha256"] = hashlib.sha256(
+            gate_path.read_bytes()
+        ).hexdigest()
+    else:
+        report = json.loads(gate_path.read_bytes())
+        report["gates"].pop(next(iter(report["gates"])))
+        gate_path.write_text(json.dumps(report))
+        sidecar["spine_gate_report"]["sha256"] = hashlib.sha256(
+            gate_path.read_bytes()
+        ).hexdigest()
+    path.write_text(json.dumps(sidecar))
+    with pytest.raises(ValueError):
+        calibration_run.load_bound_spine_checkpoint(path, frame)
+
+
+def test_strict_checkpoint_accepts_explicit_declared_gate_path(tmp_path):
+    frame = _frame()
+    path, gate_path, _ = _bound_checkpoint(tmp_path, frame)
+    moved = gate_path.rename(tmp_path / "declared-gates.json")
+    sidecar = calibration_run.load_bound_spine_checkpoint(
+        path, frame, gate_report_path=moved
+    )
+    provenance = calibration_run.strict_spine_provenance_from_sidecar(
+        path, sidecar, gate_report_path=moved
+    )
+    assert provenance["spine_gate_report"]["path"] == str(moved)
+
+
 def test_gate_scope_classifies_every_uk_gate():
     all_ids = {entry.id for entry in load_country_spec("uk").gates.gates}
     assert (
@@ -21,577 +89,6 @@ def test_import_hygiene_does_not_load_national_build_in_fresh_subprocess():
     legacy_module = ".".join(("microcosm", "build", "uk_runtime", "national_build"))
     assert legacy_module not in source
     assert " ".join(("from", legacy_module, "import")) not in source
-
-
-def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: Path):
-    pytest.importorskip("tables")  # pandas HDF backend
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
-    )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    spine_sidecar = _write_spine_sidecar(input_h5, frame)
-    paths = UKCalibrationRunPaths(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staged.h5",
-        diagnostics_json=tmp_path / "diagnostics.json",
-        build_record_json=tmp_path / "build_record.json",
-        terminal_gate_json=tmp_path / "terminal_gates.json",
-    )
-    source_pins = {
-        "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size},
-        "ledger_facts": {"sha256": "a" * 64, "size_bytes": 1},
-    }
-    progress: list[dict[str, object]] = []
-    events: list[tuple[str, str, dict[str, object]]] = []
-    delivery = {
-        "contract_version": 2,
-        "enabled": False,
-        "mode": "disabled",
-        "run_id": None,
-        "configured_repository": None,
-        "upload_attempts": 0,
-        "upload_successes": 0,
-        "read_back": "not_requested",
-        "last_error_code": None,
-        "opt_out_reason": "test",
-    }
-
-    result = run_uk_calibration(
-        paths=paths,
-        input_sha256=_sha(input_h5),
-        ledger_artifact=object(),
-        register_registry=_registry(),
-        band_edge_registry=_registry(),
-        calibration_year=2025,
-        exclusion_receipt={},
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-        doctrine_overrides={},
-        measure_resolver=None,
-        source_pins=source_pins,
-        run_config_extra={"calibration_year": 2025},
-        release_id="test-run",
-        progress_callback=progress.append,
-        event_callback=lambda stage_id, status, details: events.append(
-            (stage_id, status, dict(details))
-        ),
-        staging_delivery=delivery,
-    )
-
-    assert paths.staging_h5.exists()
-    assert paths.diagnostics_json.exists()
-    assert paths.build_record_json.exists()
-    assert paths.terminal_gate_json.exists()
-    assert progress and progress[0]["kind"] == "calibration_epoch"
-    completed = {
-        stage_id for stage_id, status, _details in events if status == "completed"
-    }
-    assert {
-        "input_loading",
-        "calibration_input_validation",
-        "measure_resolution",
-        "target_materialization",
-        "solver_preparation",
-        "solver_execution",
-        "calibration_result_validation",
-        "calibration_evidence_construction",
-        "calibration",
-        "diagnostics",
-        "release_check_evaluation",
-        "candidate_h5_creation",
-        "build_record_creation",
-    } <= completed
-    assert result.build_record["staging_delivery"] == delivery
-    assert result.build_record["artifacts"]["staging_h5"]["sha256"] == _sha(
-        paths.staging_h5
-    )
-    assert result.build_record["artifacts"]["diagnostics_json"]["sha256"] == _sha(
-        paths.diagnostics_json
-    )
-    assert result.build_record["artifacts"]["terminal_gate_json"]["sha256"] == _sha(
-        paths.terminal_gate_json
-    )
-    # The record makes no shippability claim of its own — the hand-written
-    # literal retired with the #757 release-cut audit — and instead points
-    # at the certification artifact whose verdict is authoritative.
-    assert "shippable" not in result.build_record
-    assert "shippable_reason" not in result.build_record
-    certification = result.build_record["certification"]
-    assert certification["producer"] == "tools/certify_uk_release_cut.py"
-    assert certification["expected_artifact"] == str(
-        paths.staging_h5.with_suffix(".release_certification.json")
-    )
-    spine_provenance = result.build_record["spine_provenance"]
-    assert spine_provenance["stages"] == spine_sidecar["stages"]
-    assert spine_provenance["stage_records"] == spine_sidecar["stage_records"]
-    assert spine_provenance["stage_evidence"] == spine_sidecar["stage_evidence"]
-    assert spine_provenance["artifact_pins"] == spine_sidecar["artifact_pins"]
-    assert (
-        spine_provenance["input_artifact_pins"] == spine_sidecar["input_artifact_pins"]
-    )
-    assert spine_provenance["resource_pins"] == spine_sidecar["resource_pins"]
-    assert (
-        spine_provenance["stage_artifact_pins"] == spine_sidecar["stage_artifact_pins"]
-    )
-    assert spine_provenance["declared_seeds"] == spine_sidecar["declared_seeds"]
-    assert spine_provenance["rules_engine"] == spine_sidecar["rules_engine"]
-    assert spine_provenance["source_vintages"] == spine_sidecar["source_vintages"]
-    assert (
-        spine_provenance["stochastic_contract_sha256"]
-        == spine_sidecar["stochastic_contract_sha256"]
-    )
-    diagnostics = json.loads(paths.diagnostics_json.read_text())
-    assert diagnostics["build"]["spine_provenance"] == spine_provenance
-    staged, _ = load_uk_national_frame(paths.staging_h5)
-    assert staged.weights_for("household").kind is WeightKind.CALIBRATED
-    report = json.loads(paths.terminal_gate_json.read_text())
-    assert report["posture"] == "calibration_seam"
-    assert set(report["scope_exclusions"]) == set(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS)
-    attestation = report["attestation"]
-    signature = attestation["signature"]
-    attestation["signature"] = None
-    key = b"0123456789abcdef0123456789abcdef"
-    assert (
-        hmac.new(key, canonical_json_bytes(report), hashlib.sha256).hexdigest()
-        == signature
-    )
-    assert result.logbook_spool.exists()
-
-
-def test_readback_failure_updates_build_record_and_failed_attempt(
-    monkeypatch, tmp_path: Path
-):
-    pytest.importorskip("tables")
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
-    )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame)
-    paths = _paths(tmp_path)
-    initial_delivery = {
-        "contract_version": 2,
-        "enabled": True,
-        "mode": "local_and_remote",
-        "run_id": "readback-failure",
-        "configured_repository": "policyengine/populace-uk-staging",
-        "upload_attempts": 3,
-        "upload_successes": 0,
-        "read_back": "not_requested",
-        "last_error_code": "UPLOAD_FAILED",
-        "opt_out_reason": None,
-    }
-    failed_delivery = {
-        **initial_delivery,
-        "read_back": "failed",
-        "last_error_code": "READ_BACK_FAILED",
-    }
-
-    def fail_readback() -> None:
-        raise StagingReadBackError("authenticated read-back failed")
-
-    with pytest.raises(StagingReadBackError, match="read-back failed"):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256=_sha(input_h5),
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            band_edge_registry=_registry(),
-            calibration_year=2025,
-            exclusion_receipt={},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={
-                "input_h5": {
-                    "sha256": _sha(input_h5),
-                    "size_bytes": input_h5.stat().st_size,
-                }
-            },
-            run_config_extra={"calibration_year": 2025},
-            release_id="readback-failure",
-            staging_delivery=initial_delivery,
-            staging_finalizer=fail_readback,
-            staging_delivery_provider=lambda: failed_delivery,
-        )
-
-    record = json.loads(paths.build_record_json.read_text())
-    assert record["staging_delivery"] == failed_delivery
-    spooled = sorted((tmp_path / "logbook-spool").rglob("*.json"))
-    assert len(spooled) == 1
-    assert json.loads(spooled[0].read_text())["disposition"] == "failed"
-
-
-def test_run_uk_calibration_requires_the_band_edge_register(
-    tmp_path: Path,
-):
-    # Required, never defaulted: an empty receipt is a claim that nothing was
-    # pruned, not permission to skip the reconciliation, so the seam takes no
-    # register-without-edges path at all (#803 review findings 1 and 3).
-    paths = _paths(tmp_path)
-
-    with pytest.raises(TypeError, match="band_edge_registry"):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256="a" * 64,
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            calibration_year=2025,
-            exclusion_receipt={"excluded.target": {"reason": "reviewed"}},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={},
-            run_config_extra={},
-            release_id="pruned-without-edge-register",
-        )
-
-    assert not paths.staging_h5.exists()
-    assert not paths.diagnostics_json.exists()
-    assert not paths.build_record_json.exists()
-
-
-def test_run_uk_calibration_reconciles_an_empty_receipt_as_no_prunes(
-    tmp_path: Path,
-):
-    # A pruned register handed in with an empty receipt must refuse: with
-    # nothing declared excluded, the two rosters have to be name-identical.
-    paths = _paths(tmp_path)
-    full = _registry()
-    pruned = TargetRegistry([], country="uk")
-
-    with pytest.raises(ValueError, match="exclusion receipt"):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256="a" * 64,
-            ledger_artifact=object(),
-            register_registry=pruned,
-            band_edge_registry=full,
-            calibration_year=2025,
-            exclusion_receipt={},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={},
-            run_config_extra={},
-            release_id="empty-receipt-pruned-register",
-        )
-
-    assert not paths.staging_h5.exists()
-    assert not paths.diagnostics_json.exists()
-    assert not paths.build_record_json.exists()
-
-
-def test_run_uk_calibration_refuses_incoherent_band_edge_register(tmp_path: Path):
-    paths = _paths(tmp_path)
-    edge_registry = TargetRegistry(
-        [
-            *_registry().specs,
-            TargetSpec(
-                name="different.excluded",
-                entity="benunit",
-                measure="different/excluded",
-                value=1.0,
-                source="test",
-                metadata={"contract_target_id": "different.excluded"},
-            ),
-        ],
-        country="uk",
-    )
-
-    with pytest.raises(ValueError, match="exclusion receipt"):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256="a" * 64,
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            band_edge_registry=edge_registry,
-            calibration_year=2025,
-            exclusion_receipt={"other.excluded": {"reason": "reviewed"}},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={},
-            run_config_extra={},
-            release_id="incoherent-edge-register",
-        )
-
-    assert not paths.staging_h5.exists()
-    assert not paths.diagnostics_json.exists()
-    assert not paths.build_record_json.exists()
-
-
-def test_run_uk_calibration_records_band_edge_register_sha256(
-    monkeypatch, tmp_path: Path
-):
-    pytest.importorskip("tables")  # pandas HDF backend
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
-    )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame)
-    paths = _paths(tmp_path)
-    register = _registry()
-    edge_registry = TargetRegistry(
-        [
-            TargetSpec(
-                name="dwp.uc.households",
-                entity="benunit",
-                measure="dwp/uc/households",
-                value=99.0,
-                source="test",
-                family="dwp_universal_credit",
-                metadata={"contract_target_id": "dwp.uc.households"},
-                hierarchy=_uc_hierarchy(),
-            )
-        ],
-        country="uk",
-    )
-
-    result = run_uk_calibration(
-        paths=paths,
-        input_sha256=_sha(input_h5),
-        ledger_artifact=object(),
-        register_registry=register,
-        band_edge_registry=edge_registry,
-        calibration_year=2025,
-        exclusion_receipt={},
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-        doctrine_overrides={},
-        measure_resolver=None,
-        source_pins={
-            "input_h5": {
-                "sha256": _sha(input_h5),
-                "size_bytes": input_h5.stat().st_size,
-            }
-        },
-        run_config_extra={},
-        release_id="band-edge-provenance",
-    )
-
-    assert (
-        result.build_record["run_config"]["band_edge_register_sha256"]
-        == edge_registry.version
-    )
-
-
-def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
-    pytest.importorskip("tables")  # pandas HDF backend
-    input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(_frame(), input_h5)
-    paths = UKCalibrationRunPaths(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staged.h5",
-        diagnostics_json=tmp_path / "diagnostics.json",
-        build_record_json=tmp_path / "build_record.json",
-        terminal_gate_json=tmp_path / "terminal_gates.json",
-    )
-    with pytest.raises(ValueError, match="sha mismatch"):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256="0" * 64,
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            band_edge_registry=_registry(),
-            calibration_year=2025,
-            exclusion_receipt={},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={
-                "input_h5": {
-                    "sha256": _sha(input_h5),
-                    "size_bytes": input_h5.stat().st_size,
-                }
-            },
-            run_config_extra={"calibration_year": 2025},
-            release_id="bad-sha",
-        )
-    assert not paths.staging_h5.exists()
-    assert not paths.diagnostics_json.exists()
-
-
-def test_run_uk_calibration_refuses_absent_input_sidecar(tmp_path: Path):
-    pytest.importorskip("tables")  # pandas HDF backend
-    input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(_frame(), input_h5)
-    paths = UKCalibrationRunPaths(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staged.h5",
-        diagnostics_json=tmp_path / "diagnostics.json",
-        build_record_json=tmp_path / "build_record.json",
-        terminal_gate_json=tmp_path / "terminal_gates.json",
-    )
-
-    with pytest.raises(ValueError, match="build sidecar absent"):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256=_sha(input_h5),
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            band_edge_registry=_registry(),
-            calibration_year=2025,
-            exclusion_receipt={},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={
-                "input_h5": {
-                    "sha256": _sha(input_h5),
-                    "size_bytes": input_h5.stat().st_size,
-                }
-            },
-            run_config_extra={"calibration_year": 2025},
-            release_id="missing-sidecar",
-        )
-
-    assert not paths.staging_h5.exists()
-    assert not paths.diagnostics_json.exists()
-    assert not paths.terminal_gate_json.exists()
-
-
-@pytest.mark.parametrize(
-    ("override", "message"),
-    [
-        (
-            {"entity_row_counts": {"person": 999, "benunit": 4, "household": 4}},
-            "row-count mismatch",
-        ),
-        ({"household_weight_total": 1.0}, "household_weight_total mismatch"),
-    ],
-)
-def test_run_uk_calibration_refuses_unbound_input_sidecar(
-    override, message, tmp_path: Path
-):
-    pytest.importorskip("tables")  # pandas HDF backend
-    frame = _frame()
-    input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame, **override)
-    paths = UKCalibrationRunPaths(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staged.h5",
-        diagnostics_json=tmp_path / "diagnostics.json",
-        build_record_json=tmp_path / "build_record.json",
-        terminal_gate_json=tmp_path / "terminal_gates.json",
-    )
-
-    with pytest.raises(ValueError, match=message):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256=_sha(input_h5),
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            band_edge_registry=_registry(),
-            calibration_year=2025,
-            exclusion_receipt={},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={
-                "input_h5": {
-                    "sha256": _sha(input_h5),
-                    "size_bytes": input_h5.stat().st_size,
-                }
-            },
-            run_config_extra={"calibration_year": 2025},
-            release_id="unbound-sidecar",
-        )
-
-    assert not paths.staging_h5.exists()
-    assert not paths.diagnostics_json.exists()
-    assert not paths.terminal_gate_json.exists()
-
-
-def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
-    """The seam's defining invariant: weights move, data never does.
-
-    Every data column of every entity table in the staged H5 must be
-    byte-identical to the input; only the household weights, the weight
-    kind, and exactly one appended mass record may differ.
-    """
-
-    pytest.importorskip("tables")  # pandas HDF backend
-
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
-    )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame)
-    paths = UKCalibrationRunPaths(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staged.h5",
-        diagnostics_json=tmp_path / "diagnostics.json",
-        build_record_json=tmp_path / "build_record.json",
-        terminal_gate_json=tmp_path / "terminal_gates.json",
-    )
-
-    # Target 30 against an initial weighted UC count of 20, so the solve
-    # genuinely has to move weights while the data stays untouched.
-    pulling_registry = TargetRegistry(
-        [
-            TargetSpec(
-                name="dwp.uc.households",
-                entity="benunit",
-                measure="dwp/uc/households",
-                value=30.0,
-                source="test",
-                family="dwp_universal_credit",
-                metadata={"contract_target_id": "dwp.uc.households"},
-                hierarchy=_uc_hierarchy(),
-            )
-        ],
-        country="uk",
-    )
-    run_uk_calibration(
-        paths=paths,
-        input_sha256=_sha(input_h5),
-        ledger_artifact=object(),
-        register_registry=pulling_registry,
-        band_edge_registry=pulling_registry,
-        calibration_year=2025,
-        exclusion_receipt={},
-        doctrine=UKNationalSolveDoctrine(epochs=50),
-        doctrine_overrides={},
-        measure_resolver=None,
-        source_pins={
-            "input_h5": {
-                "sha256": _sha(input_h5),
-                "size_bytes": input_h5.stat().st_size,
-            }
-        },
-        run_config_extra={},
-        release_id="invariant-run",
-    )
-
-    source, _ = load_uk_national_frame(input_h5)
-    staged, _ = load_uk_national_frame(paths.staging_h5)
-    for entity in ("person", "benunit", "household"):
-        left = source.table(entity)
-        right = staged.table(entity)
-        assert list(left.columns) == list(right.columns), entity
-        for column in left.columns:
-            pd.testing.assert_series_equal(left[column], right[column])
-    assert staged.weights_for("household").kind is WeightKind.CALIBRATED
-    assert not np.allclose(
-        staged.weights_for("household").values,
-        source.weights_for("household").values,
-    )
-    assert len(staged.mass_log) == len(source.mass_log) + 1
 
 
 def test_aggregate_admin_measurement_convention_and_refusals():
@@ -667,241 +164,6 @@ def test_seam_pipeline_derives_a_ratified_logbook_scope():
     assert scope in logbook_tool.DECLARED_SCOPES
 
 
-def test_refusal_records_a_failed_attempt_and_stages_nothing(tmp_path: Path):
-    pytest.importorskip("tables")  # pandas HDF backend
-    input_h5 = tmp_path / "input.h5"
-    write_uk_national_frame(_frame(), input_h5)
-    paths = UKCalibrationRunPaths(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staged.h5",
-        diagnostics_json=tmp_path / "diagnostics.json",
-        build_record_json=tmp_path / "build_record.json",
-        terminal_gate_json=tmp_path / "terminal_gates.json",
-    )
-
-    with pytest.raises(ValueError, match="sha mismatch"):
-        run_uk_calibration(
-            paths=paths,
-            input_sha256="0" * 64,
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            band_edge_registry=_registry(),
-            calibration_year=2025,
-            exclusion_receipt={},
-            doctrine=UKNationalSolveDoctrine(epochs=1),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins={
-                "input_h5": {
-                    "sha256": _sha(input_h5),
-                    "size_bytes": input_h5.stat().st_size,
-                }
-            },
-            run_config_extra={"calibration_year": 2025},
-            release_id="refused-run",
-        )
-
-    # Every terminal disposition is a row; a refusal that left the chain
-    # silent would hide the attempt entirely.
-    spooled = sorted((tmp_path / "logbook-spool").rglob("*.json"))
-    assert spooled, "refusal recorded no Logbook row"
-    rows = [json.loads(path.read_text()) for path in spooled]
-    assert [row["disposition"] for row in rows] == ["failed"]
-    assert rows[0]["pipeline"] == calibration_run._PIPELINE
-    # The refusal is explained on disk, not only in the row.
-    receipts = sorted((tmp_path / "logbook-receipts").rglob("error.json"))
-    assert len(receipts) == 1
-    assert not paths.staging_h5.exists()
-    assert not paths.diagnostics_json.exists()
-    assert not paths.terminal_gate_json.exists()
-
-
-def test_attempt_ids_are_unique_across_reruns_of_one_release(
-    monkeypatch, tmp_path: Path
-):
-    pytest.importorskip("tables")  # pandas HDF backend
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
-    )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame)
-    source_pins = {
-        "input_h5": {"sha256": _sha(input_h5), "size_bytes": input_h5.stat().st_size}
-    }
-    build_ids = []
-    for attempt in ("a", "b"):
-        run_dir = tmp_path / attempt
-        run_dir.mkdir()
-        result = run_uk_calibration(
-            paths=UKCalibrationRunPaths(
-                input_h5=input_h5,
-                staging_h5=run_dir / "staged.h5",
-                diagnostics_json=run_dir / "diagnostics.json",
-                build_record_json=run_dir / "build_record.json",
-                terminal_gate_json=run_dir / "terminal_gates.json",
-            ),
-            input_sha256=_sha(input_h5),
-            ledger_artifact=object(),
-            register_registry=_registry(),
-            band_edge_registry=_registry(),
-            calibration_year=2025,
-            exclusion_receipt={},
-            doctrine=UKNationalSolveDoctrine(epochs=5),
-            doctrine_overrides={},
-            measure_resolver=None,
-            source_pins=source_pins,
-            run_config_extra={"calibration_year": 2025},
-            release_id="one-release-id",
-        )
-        build_ids.append(result.build_record["build_id"])
-
-    # Both the local chain and the store reject a duplicate build id, so one
-    # release re-run twice must not collide.
-    assert build_ids[0] != build_ids[1]
-    assert all(value.startswith("uk-frs-calibration-attempt-") for value in build_ids)
-
-
-def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path: Path):
-    pytest.importorskip("tables")  # pandas HDF backend
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
-    )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame)
-    artifact = SimpleNamespace(
-        facts_sha256="d" * 64,
-        fact_row_count=107_550,
-        manifest_sha256="e" * 64,
-        manifest={
-            "artifact_id": "chronicle-uk-artifact-1cab809",
-            "profile": "uk-national",
-            "schema_version": 1,
-            "unrelated": "not carried",
-        },
-    )
-
-    result = run_uk_calibration(
-        paths=UKCalibrationRunPaths(
-            input_h5=input_h5,
-            staging_h5=tmp_path / "staged.h5",
-            diagnostics_json=tmp_path / "diagnostics.json",
-            build_record_json=tmp_path / "build_record.json",
-            terminal_gate_json=tmp_path / "terminal_gates.json",
-        ),
-        input_sha256=_sha(input_h5),
-        ledger_artifact=artifact,
-        register_registry=_registry(),
-        band_edge_registry=_registry(),
-        calibration_year=2025,
-        exclusion_receipt={},
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-        doctrine_overrides={},
-        measure_resolver=None,
-        source_pins={
-            "input_h5": {
-                "sha256": _sha(input_h5),
-                "size_bytes": input_h5.stat().st_size,
-            }
-        },
-        run_config_extra={"calibration_year": 2025},
-        release_id="ledger-identity",
-    )
-
-    ledger = result.build_record["run_config"]["ledger"]
-    assert ledger["facts_sha256"] == "d" * 64
-    assert ledger["manifest_sha256"] == "e" * 64
-    assert ledger["fact_row_count"] == 107_550
-    assert ledger["manifest"] == {
-        "artifact_id": "chronicle-uk-artifact-1cab809",
-        "profile": "uk-national",
-        "schema_version": 1,
-    }
-    # A bare feed carries no manifest, and that absence is recorded rather
-    # than invented.
-    assert calibration_run._ledger_provenance(object())["manifest_sha256"] is None
-
-
-def test_mixed_epoch_feed_epochs_reach_the_uk_release_evidence(monkeypatch, tmp_path):
-    """A UK run says which Chronicle era resolved its targets.
-
-    The run's own provenance block used to be assembled field by field from
-    the artifact, which is how it came to carry the hashes but not the epoch
-    witnesses the loader had already computed. It now delegates to the shared
-    block, so a cutover-window feed is visible in the signed diagnostics and
-    in the build record — including the one Chronicle-namespace spelling this
-    build does not declare, named rather than folded into an era.
-    """
-    pytest.importorskip("tables")  # pandas HDF backend
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
-    )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame)
-    artifact = load_ledger_consumer_artifact(_mixed_epoch_artifact_dir(tmp_path))
-    diagnostics_json = tmp_path / "diagnostics.json"
-
-    result = run_uk_calibration(
-        paths=UKCalibrationRunPaths(
-            input_h5=input_h5,
-            staging_h5=tmp_path / "staged.h5",
-            diagnostics_json=diagnostics_json,
-            build_record_json=tmp_path / "build_record.json",
-            terminal_gate_json=tmp_path / "terminal_gates.json",
-        ),
-        input_sha256=_sha(input_h5),
-        ledger_artifact=artifact,
-        register_registry=_registry(),
-        band_edge_registry=_registry(),
-        calibration_year=2025,
-        exclusion_receipt={},
-        doctrine=UKNationalSolveDoctrine(epochs=5),
-        doctrine_overrides={},
-        measure_resolver=None,
-        source_pins={
-            "input_h5": {
-                "sha256": _sha(input_h5),
-                "size_bytes": input_h5.stat().st_size,
-            }
-        },
-        run_config_extra={"calibration_year": 2025},
-        release_id="chronicle-mixed-epoch",
-    )
-
-    ledger = result.build_record["run_config"]["ledger"]
-    # The observed manifest id, verbatim, and the era it belongs to.
-    assert ledger["manifest"]["schema_version"] == (
-        PUBLISHED_CONSUMER_ARTIFACT_SCHEMA_VERSION
-    )
-    assert ledger["schema_epoch"] == "ledger"
-    # The feed straddles the cutover, and says so rather than reporting one era.
-    assert ledger["fact_key_epochs"] == ["ledger", "chronicle", "undeclared"]
-    assert ledger["undeclared_fact_key_domains"] == ["chronicle.source_release.v9"]
-    assert ledger["fact_schema_versions"] == [
-        CHRONICLE_CONSUMER_FACT_SCHEMA_VERSION,
-        LEDGER_CONSUMER_FACT_SCHEMA_VERSION,
-    ]
-    # The hashes the block always carried are unchanged by the delegation.
-    assert ledger["facts_sha256"] == artifact.facts_sha256
-    assert ledger["fact_row_count"] == 3
-
-    # The same block is what the signed diagnostics carry, so the evidence a
-    # release assembler reads witnesses the era too.
-    diagnostics = json.loads(diagnostics_json.read_text())
-    assert diagnostics["build"]["ledger"] == ledger
-
-
 def test_the_uk_block_delegates_rather_than_reassembling_the_shared_one(tmp_path):
     """Every field of the shared provenance block reaches the UK block.
 
@@ -923,51 +185,56 @@ def test_the_uk_block_delegates_rather_than_reassembling_the_shared_one(tmp_path
     assert block["manifest"]["schema_version"] == shared["schema_version"]
 
 
-def test_run_uk_calibration_accepts_a_caller_minted_attempt_id(monkeypatch, tmp_path):
-    """The rowwise driver mints the id before telemetry opens (microcosm#823)."""
+# --- The contracts the graph's national path still stands on --------------
 
-    pytest.importorskip("tables")
-    monkeypatch.setattr(
-        calibration_run,
-        "uk_aggregate_admin_totals",
-        lambda frame, manifest: (_admin_anchor_values(), []),
+
+def _spec(name: str) -> TargetSpec:
+    return TargetSpec(
+        name=name,
+        entity="benunit",
+        measure=f"test/{name}",
+        value=1.0,
+        source="test",
+        family="test",
+        metadata={"contract_target_id": name},
     )
-    input_h5 = tmp_path / "input.h5"
-    frame = _frame()
-    write_uk_national_frame(frame, input_h5)
-    _write_spine_sidecar(input_h5, frame)
-    paths = _paths(tmp_path)
-    paths = UKCalibrationRunPaths(
-        input_h5=input_h5,
-        staging_h5=paths.staging_h5,
-        diagnostics_json=paths.diagnostics_json,
-        build_record_json=paths.build_record_json,
-        terminal_gate_json=paths.terminal_gate_json,
+
+
+def test_band_edge_register_must_reconstitute_the_compiled_roster():
+    """The reconciliation always runs: an empty receipt claims nothing was
+    pruned, so the two rosters must then be name-identical; a receipt that
+    disagrees with the pruned names refuses. The graph's national target
+    node and the dense target compiler both stand on this check."""
+    compiled = TargetRegistry([_spec("a"), _spec("b")], country="uk")
+    pruned = TargetRegistry([_spec("a")], country="uk")
+    calibration_run._validate_band_edge_registry(
+        register_registry=pruned,
+        band_edge_registry=compiled,
+        exclusion_receipt={"b": {"reason": "test"}},
     )
-    minted = calibration_run.new_uk_calibration_attempt_id(
-        timestamp=__import__("datetime").datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    calibration_run._validate_band_edge_registry(
+        register_registry=compiled, band_edge_registry=compiled, exclusion_receipt={}
     )
-    assert minted.startswith("uk-frs-calibration-attempt-20260920T120000Z-")
-    common = dict(
-        paths=paths,
-        input_sha256=_sha(input_h5),
-        ledger_artifact=object(),
-        register_registry=_registry(),
-        band_edge_registry=_registry(),
-        calibration_year=2025,
-        exclusion_receipt={},
-        doctrine=UKNationalSolveDoctrine(epochs=1),
-        doctrine_overrides={},
-        measure_resolver=None,
-        source_pins={
-            "input_h5": {"sha256": _sha(input_h5), "size_bytes": 1},
-            "ledger_facts": {"sha256": "a" * 64, "size_bytes": 1},
-        },
-        run_config_extra={"calibration_year": 2025},
-        release_id="test-run",
-    )
-    with pytest.raises(ValueError, match="uk-frs-calibration-attempt-"):
-        run_uk_calibration(build_id="uk-local-candidate-f100-s42-x", **common)
-    result = run_uk_calibration(build_id=minted, **common)
-    assert result.build_record["build_id"] == minted
-    assert result.logbook_spool is not None
+    with pytest.raises(ValueError, match="must match the measure exclusion receipt"):
+        calibration_run._validate_band_edge_registry(
+            register_registry=pruned, band_edge_registry=compiled, exclusion_receipt={}
+        )
+    with pytest.raises(ValueError, match="must include every materialized"):
+        calibration_run._validate_band_edge_registry(
+            register_registry=compiled,
+            band_edge_registry=pruned,
+            exclusion_receipt={},
+        )
+
+
+def test_attempt_ids_carry_the_seam_prefix_and_are_unique():
+    """The driver's national role mints the seam's attempt id before telemetry
+    opens (microcosm#823); two mints of one instant differ."""
+    from datetime import UTC, datetime
+
+    instant = datetime(2026, 9, 29, 12, 0, 0, tzinfo=UTC)
+    first = calibration_run.new_uk_calibration_attempt_id(timestamp=instant)
+    second = calibration_run.new_uk_calibration_attempt_id(timestamp=instant)
+    prefix = calibration_run.UK_CALIBRATION_ATTEMPT_ID_PREFIX + "20260929T120000Z-"
+    assert first.startswith(prefix) and second.startswith(prefix)
+    assert first != second

@@ -5972,6 +5972,128 @@ def _assert_stored_input_abort(builder, *, captured, release_dir, mode) -> None:
         )
 
 
+def _run_dry_run_release(
+    builder,
+    monkeypatch,
+    *,
+    captured: dict[str, object],
+    out: Path,
+    report_path: Path,
+    mode: str,
+    full_commit: str,
+) -> None:
+    """Drive a ``--dry-run-gates-report`` run through main() (the harness's
+    ``dry_run*`` modes) and check where it stops and what it hands on."""
+
+    recorded: dict[str, object] = {}
+
+    def recording_checks(args, **kwargs):
+        # The checks themselves are tested on real frames in
+        # test_us_release_gate_dry_run.py; this harness's frame is a fake.
+        recorded.update(kwargs, args=args)
+        return [
+            builder.CheckResult(
+                name="fixture_check",
+                status="AT_RISK",
+                summary="fixture",
+                at_risks=("fixture risk [dry-run-check-sentinel]",),
+            )
+        ]
+
+    def refuse_materialization(*args, **kwargs):
+        raise AssertionError("a dry run must stop before target materialization")
+
+    if mode != "dry_run_bad_register":
+        monkeypatch.setattr(builder, "_release_dry_run_checks", recording_checks)
+    monkeypatch.setattr(
+        builder, "_load_or_materialize_target_frame", refuse_materialization
+    )
+    # A dry run records a dirty worktree rather than refusing it.
+    monkeypatch.setattr(builder, "_git_dirty", lambda: True)
+
+    # A dry run leaves main() through SystemExit with the report's exit code;
+    # a build still returns None.
+    with pytest.raises(SystemExit) as dry_run_exit:
+        builder.main()
+    exit_code = dry_run_exit.value.code
+
+    payload = json.loads(report_path.read_text())
+    assert payload["kind"] == "us_release_dry_run"
+    assert builder._ACTIVE_DRY_RUN is None
+    # Nothing past the stop point ran, and nothing but the report was written.
+    assert "materialize_frame" not in captured
+    assert "l0_args" not in captured
+    assert "checkpoint_write" not in captured
+    assert not out.exists()
+    inputs = payload["inputs"]
+    assert inputs["git_dirty"] is True
+    # The stop point's time is taken before any grading.
+    if mode == "dry_run_refusal":
+        assert inputs["seconds_to_stop_point"] is None
+    else:
+        assert inputs["seconds_to_stop_point"] <= inputs["seconds_elapsed"]
+        assert inputs["grading_seconds"] >= 0
+    argv = inputs["release_argv"]
+    assert argv[argv.index("--dry-run-gates-report") + 1] == str(report_path)
+    if mode == "dry_run_refusal":
+        assert exit_code == 1
+        assert payload["status"] == "FAIL"
+        (check,) = payload["checks"]
+        assert check["name"] == "pre_solve_refusal"
+        assert "[dry-run-refusal-sentinel]" in check["failures"][0]
+        assert recorded == {}
+        return
+    if mode == "dry_run_bad_register":
+        # Review finding 1: a bad register is the register's certain failure,
+        # graded alongside every other check, not a pre-solve refusal.
+        assert exit_code == 1
+        names = [check["name"] for check in payload["checks"]]
+        assert "pre_solve_refusal" not in names
+        assert "dry_run_evaluation_error" not in names
+        assert len(names) == 11
+        (tail,) = [c for c in payload["checks"] if c["name"] == "qrf_tail_register"]
+        assert tail["status"] == "FAIL"
+        assert "no_such_register.json" in tail["failures"][0]
+        assert "terminal gates" in tail["failures"][0]
+        register = inputs["registers"]["qrf_tail_concentration"]
+        assert register["path"].endswith("no_such_register.json")
+        assert register["error"].startswith("FileNotFoundError")
+        return
+    assert exit_code == 2
+    assert payload["status"] == "AT_RISK"
+    assert [check["name"] for check in payload["checks"]] == ["fixture_check"]
+    # The stop point hands on the very frame it digested.
+    assert recorded["base_frame"] is captured["staged_digest_frames"][-1]
+    assert inputs["staged_frame_sha256"] == "staged-frame-sentinel"
+    assert inputs["base_h5"]["sha256"] == "base-sha"
+    assert inputs["build_commit"] == full_commit
+    assert inputs["target_frame_checkpoint"] == {"enabled": False}
+    assert inputs["calibration_path"] in {"full_pool", "l0_selection"}
+    assert inputs["registers"]["qrf_tail_concentration"]["entries"] == 0
+    assert set(recorded["pre_solve_gates"]) == {
+        "target_profile_gate",
+        "base_population_gate",
+        "health_input_gate",
+        "immigration_gate",
+        "hours_worked_gate",
+        "snap_take_up_gate",
+        "eligibility_inputs_gate",
+        "pregnancy_gate",
+        "reported_coverage_vintage_gate",
+        "snap_discretionary_exemption_gate",
+    }
+    degenerate = recorded["degenerate_input_gate"]
+    if mode == "dry_run_degraded":
+        # Batched, not raised: the run reached the stop point with the
+        # failing gate in hand.
+        assert degenerate.passed is False
+        assert degenerate.failures == (
+            "keogh_distributions flattened [degenerate-sentinel]",
+        )
+    else:
+        assert degenerate.passed is True
+
+
 def _run_green_register_release(
     builder,
     monkeypatch,
@@ -6264,6 +6386,10 @@ def _run_green_register_release(
         "qrf_tail_register_green_skipped_smoke",
         "stored_input_refused",
         "stored_input_premise",
+        "dry_run",
+        "dry_run_degraded",
+        "dry_run_refusal",
+        "dry_run_bad_register",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -6326,6 +6452,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``stored_input_premise``: the green run, except that the written H5 does
     not earn the gate's verdict. The run must abort with the premise failure
     after the write and before any post-export scorer opens the file.
+    ``dry_run``: the ``merge`` run with ``--dry-run-gates-report`` from a dirty
+    worktree. main() must stop at the staged frame's digest: no target
+    materialization, no solve, nothing under ``--out``, no telemetry. It must
+    hand the dry-run checks the very frame it digested and return the
+    report's exit code.
+    ``dry_run_degraded``: the dry run with a failing degenerate-input gate,
+    which on a green build raises before the solve. In a dry run it batches,
+    so the stop point still grades every register with that failure on record.
+    ``dry_run_refusal``: the degenerate-input evaluation itself crashes before
+    the stop point. main() must turn the refusal into the report's certain
+    failure (exit 1), not a traceback.
+    ``dry_run_bad_register``: the dry run with a QRF tail register path that
+    does not exist, through the real stop-point grading (nothing stubbed). The
+    report must keep every graded check and name the register as a certain
+    qrf_tail_register failure, never as a pre-solve refusal.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
@@ -6345,6 +6486,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         *stored_input_modes,
     }
     clean_run = terminal_mode == "qrf_tail_register_clean" or green_run
+    dry_run_modes = {
+        "dry_run",
+        "dry_run_degraded",
+        "dry_run_refusal",
+        "dry_run_bad_register",
+    }
+    dry_run_report = tmp_path / "dry-run" / "gates.json"
     checkpoint_run = terminal_mode == "target_frame_checkpoint"
     # Outside ``out``, so the no-H5-under-out sweep below still pins that a
     # failed run leaves no release artifact.
@@ -6580,6 +6728,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         ]
         if terminal_mode == "qrf_tail_register_green_skipped_smoke":
             argv.append("--skip-reform-coverage-smoke")
+    if terminal_mode in dry_run_modes:
+        argv += ["--dry-run-gates-report", str(dry_run_report)]
+    if terminal_mode == "dry_run_bad_register":
+        argv += [
+            "--qrf-tail-concentration-exclusions",
+            str(tmp_path / "no_such_register.json"),
+        ]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
 
@@ -8099,7 +8254,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # superseding the specific missing-leaf diagnosis. The degraded-mode
         # append must carry BOTH lines to the single terminal batch while the
         # run continues through the solve (the #547/#548 evidence contract).
-        if terminal_mode == "retirement":
+        if terminal_mode == "dry_run_refusal":
+            raise RuntimeError("fixture evaluation crash [dry-run-refusal-sentinel]")
+        if terminal_mode in {"retirement", "dry_run_degraded"}:
             return builder.GateResult(
                 name="degenerate_input_signal",
                 passed=False,
@@ -8368,6 +8525,18 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "_build_parameter_reform",
         lambda changes: tuple(sorted(changes)),
     )
+
+    if terminal_mode in dry_run_modes:
+        _run_dry_run_release(
+            builder,
+            monkeypatch,
+            captured=captured,
+            out=out,
+            report_path=dry_run_report,
+            mode=terminal_mode,
+            full_commit=harness_full_commit,
+        )
+        return
 
     if green_run:
         _run_green_register_release(

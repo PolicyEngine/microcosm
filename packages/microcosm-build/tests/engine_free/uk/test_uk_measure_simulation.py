@@ -923,3 +923,21 @@ def test_packaged_exclusion_names_resolve_to_committed_references():
         entry["name"] for entry in exclusions if entry["name"] not in reference_names
     )
     assert unresolved == [], unresolved
+
+
+def test_cgt_taxable_income_nets_the_allowances_the_engine_formula_nets():
+    """Hand-computed rows: the band extension and the floors (microcosm#1014)."""
+    parts = {
+        "adjusted_net_income": [0.0, 30_000.0, 60_000.0, 20_000.0, 80_000.0, 5_000.0],
+        "allowances": [12_570.0, 12_570.0, 20_570.0, 32_570.0, 27_570.0, 12_570.0],
+        "gift_aid": [0.0, 0.0, 8_000.0, 0.0, 0.0, 0.0],
+        "personal_pension_contributions": [0.0, 0.0, 0.0, 30_000.0, 5_000.0, 0.0],
+        "pension_contributions_relief": [0.0, 0.0, 0.0, 20_000.0, 15_000.0, 0.0],
+    }
+    np.testing.assert_allclose(
+        measure_simulation.cgt_taxable_income_from_components(parts),
+        # 0 floor; 30,000 - 12,570; gift aid leaves the allowances (it extends
+        # the band instead); relief up to the personal contributions leaves
+        # them too; an allowance above income floors at 0.
+        [0.0, 17_430.0, 47_430.0, 7_430.0, 57_430.0, 0.0],
+    )

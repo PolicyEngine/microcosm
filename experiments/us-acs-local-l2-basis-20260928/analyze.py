@@ -18,6 +18,11 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 RUNS = HERE / "results" / "runs"
 FAMILIES = ("soi", "snap", "medicaid", "pop_state", "pop_cd")
+#: Candidate release-gate floors on Kish ESS, and the relative floor (share of
+#: the prior's own ESS in the same geography).
+STATE_FLOORS = (300, 1000)
+CD_FLOORS = (50, 100, 200)
+RELATIVE_FLOORS = (0.25, 0.5)
 PRIOR_LABELS = {0.5: "0.5 (release)", 0.7: "0.7", 0.9: "0.9", 0.964: "0.964"}
 #: Categorical slots 1-4 of the dataviz reference palette, in fixed order.
 PRIOR_COLORS = {0.5: "#2a78d6", 0.7: "#eb6834", 0.9: "#1baf7a", 0.964: "#eda100"}
@@ -39,6 +44,12 @@ def row(payload: dict) -> dict:
     ma_districts = [entry["kish_ess"] for entry in ma["districts"].values()]
     fit = metrics["fit_train"]
     prior_fit = metrics["fit_train_design"]["overall"]
+    state_ess = np.array([v["kish_ess"] for v in concentration["per_state"].values()])
+    state_ratio = np.array(
+        [v["kish_ess_ratio"] for v in concentration["per_state"].values()]
+    )
+    cd_ess = np.array([v["kish_ess"] for v in concentration["per_cd"].values()])
+    cd_ratio = np.array([v["kish_ess_ratio"] for v in concentration["per_cd"].values()])
     out = {
         "run_id": spec["run_id"],
         "prior_acs_share": _prior(payload),
@@ -71,7 +82,16 @@ def row(payload: dict) -> dict:
         "mean_capped_error": fit["overall"]["mean_capped_scaled_error"],
         "prior_within_10pct": prior_fit["fraction_within_10pct"],
         "prior_mean_capped_error": prior_fit["mean_capped_scaled_error"],
+        "n_states": int(state_ess.size),
+        "n_cds": int(cd_ess.size),
     }
+    for floor in STATE_FLOORS:
+        out[f"states_below_{floor}"] = int((state_ess < floor).sum())
+    for floor in CD_FLOORS:
+        out[f"cds_below_{floor}"] = int((cd_ess < floor).sum())
+    for floor in RELATIVE_FLOORS:
+        out[f"states_below_{floor:g}_of_prior"] = int((state_ratio < floor).sum())
+        out[f"cds_below_{floor:g}_of_prior"] = int((cd_ratio < floor).sum())
     for family in FAMILIES:
         block = fit["per_family"].get(family, {})
         out[f"within_10pct_{family}"] = block.get("fraction_within_10pct")
@@ -112,6 +132,33 @@ def _fmt(value, spec: str) -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return ""
     return format(value, spec)
+
+
+def floor_table(frame: pd.DataFrame) -> str:
+    """States and districts below each candidate ESS floor, per full-surface run."""
+
+    full = frame[frame.arm == "full surface"]
+    columns = [
+        ("Run", "run_id", "s"),
+        ("Within 10%", "within_10pct", ".1%"),
+        ("State ESS min", "state_ess_min", ",.0f"),
+        *[(f"States < {f:,}", f"states_below_{f}", "d") for f in STATE_FLOORS],
+        ("CD ESS min", "cd_ess_min", ",.0f"),
+        *[(f"CDs < {f}", f"cds_below_{f}", "d") for f in CD_FLOORS],
+        *[
+            (f"CDs < {f:.0%} of prior", f"cds_below_{f:g}_of_prior", "d")
+            for f in RELATIVE_FLOORS
+        ],
+    ]
+    lines = [
+        "| " + " | ".join(name for name, _, _ in columns) + " |",
+        "|" + "---:|" * len(columns),
+    ]
+    for _, r in full.iterrows():
+        lines.append(
+            "| " + " | ".join(_fmt(r[key], spec) for _, key, spec in columns) + " |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def markdown(frame: pd.DataFrame) -> str:
@@ -267,6 +314,7 @@ def main() -> None:
     out = HERE / "results"
     frame.to_csv(out / "frontier.csv", index=False)
     (out / "frontier.md").write_text(markdown(frame))
+    (out / "floors.md").write_text(floor_table(frame))
     chart(frame, out / "frontier.png")
     print(markdown(frame))
 

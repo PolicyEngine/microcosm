@@ -23,6 +23,17 @@ from microcosm.build.uk_runtime.age_tail import (
     UK_AGE_TOP_CODE,
     disaggregate_uk_age_top_code,
 )
+from microcosm.build.uk_runtime.cgt_imputation import UK_CGT_INVESTABLE_WEALTH_COLUMNS
+from microcosm.build.uk_runtime.cgt_structure import (
+    HOUSEHOLD_IS_CGT_CLONE,
+    clone_cgt_incidence,
+    load_advani_summers_distribution,
+)
+from microcosm.build.uk_runtime.cgt_support import (
+    CGT_SUPPORT_COPIES_COLUMN,
+    HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+    split_cgt_support_households,
+)
 from microcosm.build.uk_runtime.etb_services import (
     UK_NHS_OUTPUT_COLUMNS,
     UKETBServicesStageTransform,
@@ -30,6 +41,12 @@ from microcosm.build.uk_runtime.etb_services import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import WeightKind
+from test_support.microcosm_build.uk_cgt_support import (
+    BAND_INCOMES,
+    PARAMETERS,
+    support_distribution,
+    support_frame,
+)
 from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
@@ -312,11 +329,14 @@ class TestE6Receipt:
 
 
 def test_e8_carrier_recompute_uses_disaggregated_age():
-    """The donor stage and its receipt both use final disaggregated age.
+    """The support split's carrier and its receipt use final disaggregated age.
 
-    Two adults tie on the former top-coded surface, while disaggregation lifts
-    one to 90. The selected carrier must be the lifted person; clamping back to
-    80 demonstrates that the basis choice is load-bearing.
+    The split classifies each household by its oldest adult's income band
+    (``cgt_support_income_band`` over ``_oldest_adult_indices``), and the E8
+    recompute reruns that on the stored age. Two adults tie on the former
+    top-coded surface, while disaggregation lifts one to 90. The selected
+    carrier must be the lifted person; clamping back to 80 demonstrates that
+    the basis choice is load-bearing.
     """
 
     from microcosm.build.uk_runtime.age_tail import UK_AGE_TOP_CODE as TOP
@@ -448,12 +468,12 @@ class TestRosterOrderedScoping:
             {
                 "household_is_spi_synthetic": [False],
                 "household_is_capital_gains_clone": [False],
-                "household_is_cgt_band_donor": [False],
+                "household_is_cgt_support_copy": [False],
             }
         )
         expected_later = [
             "household_is_capital_gains_clone",
-            "household_is_cgt_band_donor",
+            "household_is_cgt_support_copy",
         ]
         assert tool._flags_stacked_after("was_wealth", household) == expected_later
         assert tool._flags_stacked_after("nts_bus_travel", household) == (
@@ -507,3 +527,303 @@ class TestRosterOrderedScoping:
         )
         assert receipt["identical_under_permutation"] is True
         assert receipt["matches_stored_columns"] is True
+
+
+# --- the CGT support split (microcosm#1045) -----------------------------------
+#
+# Six one-person households: band 0 (income 20,000) ids 1-4 and band 37,700
+# (income 60,000) ids 5-6. The synthetic joint publishes 60 top-band taxpayers
+# in band 0 (support mass 2 x 2 x 60 = 240) and 10 in band 37,700 (40). Band 0
+# walks by wealth descending then id ascending: id 2 (130) then id 3 (121)
+# cross 240, so both split into three copies; band 37,700 takes id 6 (61) at
+# once, two copies. Ids 1, 4 and 5 stay whole; id 5 is the heaviest unselected
+# incumbent and takes the exact-total correction. Pre-split multiplier 10.
+
+_SPLIT_WEIGHTS = [70.0, 130.0, 121.0, 30.0, 90.0, 61.0]
+_SPLIT_WEALTH = [100.0, 500.0, 500.0, 200.0, 10.0, 20.0]
+_SPLIT_INCOMES = [BAND_INCOMES[0]] * 4 + [BAND_INCOMES[37_700]] * 2
+_SPLIT_TOP_CELLS = {0: {250_000: 60.0, 500_000: None}, 37_700: {250_000: 10.0}}
+
+
+def _split_then_cloned():
+    """The split stage then the clone stage on the scenario; the split result too."""
+
+    split = split_cgt_support_households(
+        support_frame(
+            weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
+        ),
+        distribution=support_distribution(_SPLIT_TOP_CELLS),
+        parameters=PARAMETERS,
+    )
+    cloned = clone_cgt_incidence(
+        split.frame, distribution=load_advani_summers_distribution()
+    )
+    return split, cloned.frame
+
+
+def _rebuild(frame, *, household=None, household_weights=None, mass_log=None):
+    """``frame`` with one of its household table, weights or mass log replaced."""
+
+    return uk_national_frame(
+        person=frame.table("person").copy(),
+        benunit=frame.table("benunit").copy(),
+        household=frame.table("household").copy() if household is None else household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=(
+            frame.weights_for("household").values
+            if household_weights is None
+            else household_weights
+        ),
+        mass_log=frame.mass_log if mass_log is None else mass_log,
+    )
+
+
+def _hand_split_frame(*, cloned: bool = True, anchored: bool = False):
+    """Three source households, the first split into three at a third each.
+
+    Pre-split ids 1..3 (persons and benunits alike, multiplier 10) at source
+    weights 90 / 20 / 40: root 1 and its copies 11 and 21 carry 30 each,
+    flagged and counted as the stage leaves them. With ``cloned`` the clone
+    layer follows (multiplier 100) at equal halves, or with ``anchored`` at
+    an uneven pair split whose pair sums are still the pre-clone weights, as
+    the #970 anchor leaves them.
+    """
+
+    ids = np.array([1, 2, 3, 11, 21], dtype="int64")
+    flags = [False, False, False, True, True]
+    copies = [3, 1, 1, 3, 3]
+    pre_clone = np.array([30.0, 20.0, 40.0, 30.0, 30.0])
+    if cloned:
+        ids = np.r_[ids, ids + 100]
+        flags = flags + flags
+        copies = copies + copies
+        if anchored:
+            weights = np.r_[
+                [20.0, 12.0, 25.0, 18.0, 16.0], [10.0, 8.0, 15.0, 12.0, 14.0]
+            ]
+        else:
+            weights = np.r_[pre_clone / 2, pre_clone / 2]
+    else:
+        weights = pre_clone
+    household = pd.DataFrame(
+        {
+            "household_id": ids,
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY: flags,
+            CGT_SUPPORT_COPIES_COLUMN: np.asarray(copies, dtype="int64"),
+        }
+    )
+    if cloned:
+        household[HOUSEHOLD_IS_CGT_CLONE] = [False] * 5 + [True] * 5
+    return uk_national_frame(
+        person=pd.DataFrame(
+            {"person_id": ids, "person_benunit_id": ids, "person_household_id": ids}
+        ),
+        benunit=pd.DataFrame({"benunit_id": ids}),
+        household=household,
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=weights,
+    )
+
+
+class TestPreSplitFold:
+    """Folding copies onto roots, after clones onto originals, inverts the split."""
+
+    @pytest.mark.parametrize("anchored", [False, True])
+    def test_fold_restores_the_source_weights_through_both_layers(
+        self, anchored: bool
+    ) -> None:
+        tool = _load_tool()
+        frame = _hand_split_frame(anchored=anchored)
+        folded = tool._pre_split_household_weights(frame)
+        # Roots and unsplit households are back at their source weights; the
+        # copies carry their pair sums and the clones their own weights (the
+        # scoping drops both).
+        assert folded[:3].tolist() == [90.0, 20.0, 40.0]
+        assert folded[3:5].tolist() == [30.0, 30.0]
+        np.testing.assert_array_equal(
+            folded[5:], frame.weights_for("household").values[5:]
+        )
+
+    def test_fold_without_a_clone_layer_folds_the_copies_only(self) -> None:
+        tool = _load_tool()
+        folded = tool._pre_split_household_weights(_hand_split_frame(cloned=False))
+        assert folded.tolist() == [90.0, 20.0, 40.0, 30.0, 30.0]
+
+    def test_stage_scoping_returns_the_pre_split_table_at_source_weights(
+        self,
+    ) -> None:
+        tool = _load_tool()
+        scoped = tool._frame_as_stage_saw(
+            _hand_split_frame(anchored=True), "was_wealth"
+        )
+        assert scoped.table("household")["household_id"].tolist() == [1, 2, 3]
+        assert scoped.weights_for("household").values.tolist() == [90.0, 20.0, 40.0]
+        assert scoped.table("person")["person_id"].tolist() == [1, 2, 3]
+        assert scoped.table("benunit")["benunit_id"].tolist() == [1, 2, 3]
+
+    def test_fold_inverts_the_stage_on_a_frame_it_built(self) -> None:
+        tool = _load_tool()
+        _, frame = _split_then_cloned()
+        household = frame.table("household")
+        pre_split = ~household[HOUSEHOLD_IS_CGT_CLONE].to_numpy(
+            dtype=bool
+        ) & ~household[HOUSEHOLD_IS_CGT_SUPPORT_COPY].to_numpy(dtype=bool)
+        folded = tool._pre_split_household_weights(frame)
+        assert household.loc[pre_split, "household_id"].tolist() == [1, 2, 3, 4, 5, 6]
+        np.testing.assert_allclose(folded[pre_split], _SPLIT_WEIGHTS, rtol=1e-12)
+
+    def test_dropping_the_split_layer_under_a_kept_clone_layer_is_refused(
+        self,
+    ) -> None:
+        tool = _load_tool()
+        with pytest.raises(ValueError, match="requires dropping the clone layer"):
+            tool._drop_stacked_layers(
+                _hand_split_frame(), [HOUSEHOLD_IS_CGT_SUPPORT_COPY]
+            )
+
+    def test_a_copy_without_a_root_fails_closed(self) -> None:
+        tool = _load_tool()
+        frame = _hand_split_frame(cloned=False)
+        household = frame.table("household").copy()
+        # Flagging id 2 as a copy gives it index 2 // 10 = 0: no root.
+        household.loc[household["household_id"] == 2, HOUSEHOLD_IS_CGT_SUPPORT_COPY] = (
+            True
+        )
+        with pytest.raises(ValueError, match="without a root household"):
+            tool._pre_split_household_weights(_rebuild(frame, household=household))
+
+    def test_the_stored_copy_index_is_read_and_held_to_the_id_scheme(self) -> None:
+        """The explicit index (microcosm#1045 review) must agree with the ids."""
+        from microcosm.build.uk_runtime.cgt_support import (
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+        )
+
+        tool = _load_tool()
+        _, frame = _split_then_cloned()
+        household = frame.table("household")
+        lineage = tool._support_copy_lineage(
+            frame.table("person"), frame.table("benunit"), household
+        )
+        stored = household[CGT_SUPPORT_COPY_INDEX_COLUMN].to_numpy()
+        np.testing.assert_array_equal(
+            stored[lineage.copy_positions], lineage.copy_index
+        )
+        assert (stored[lineage.pre_split] == 0).all()
+
+        tampered = household.copy()
+        copy_id = int(household["household_id"].to_numpy()[lineage.copy_positions[0]])
+        tampered.loc[
+            tampered["household_id"] == copy_id, CGT_SUPPORT_COPY_INDEX_COLUMN
+        ] = 7
+        with pytest.raises(ValueError, match="disagrees with the id scheme"):
+            tool._pre_split_household_weights(_rebuild(frame, household=tampered))
+
+        unflagged = household.copy()
+        unflagged.loc[
+            unflagged["household_id"] == copy_id, HOUSEHOLD_IS_CGT_SUPPORT_COPY
+        ] = False
+        with pytest.raises(ValueError, match="flag and stored copy index disagree"):
+            tool._pre_split_household_weights(_rebuild(frame, household=unflagged))
+
+        receipt, problems = TestE8SupportSplitRecompute._receipt(frame)
+        assert problems == {}
+        assert receipt["copy_index_column_stored"] is True
+
+
+class TestE8SupportSplitRecompute:
+    """The split rerun on the folded pre-split frame reproduces the stored layer."""
+
+    @staticmethod
+    def _receipt(frame) -> tuple[dict[str, object], dict[str, object]]:
+        problems: dict[str, object] = {}
+        receipt = _load_tool()._e8_support_split(
+            frame,
+            problems,
+            distribution=support_distribution(_SPLIT_TOP_CELLS),
+            parameters=PARAMETERS,
+            permutation_seed=7,
+        )
+        return receipt, problems
+
+    def test_a_frame_the_stage_built_receipts_green(self) -> None:
+        split, frame = _split_then_cloned()
+        receipt, problems = self._receipt(frame)
+        assert problems == {}
+        assert receipt["copies"] == split.copies_created == 5
+        assert receipt["families"] == split.households_selected == 3
+        assert receipt["copies_recomputed"] == 5
+        assert receipt["households_selected"] == 3
+        assert receipt["pre_split_households"] == 6
+        assert receipt["id_multiplier"] == 10
+        # 2 x 1.25 x (60 + 10) published in the two bands.
+        assert receipt["support_mass"] == 175.0
+        assert receipt["mass"]["old_total"] == receipt["mass"]["new_total"]
+        assert receipt["max_abs_family_weight_diff"] < 1e-9
+        assert [row["households_selected"] for row in receipt["bands"]] == [
+            2,
+            1,
+            0,
+            0,
+            0,
+            0,
+        ]
+
+    def test_a_moved_copy_weight_is_reported(self) -> None:
+        _, frame = _split_then_cloned()
+        ids = frame.table("household")["household_id"].to_numpy()
+        weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+        # A unit of mass moves between root 2's two copies: the family total
+        # holds, so the selection stands, but two members leave w / n.
+        weights[ids == 12] += 1.0
+        weights[ids == 22] -= 1.0
+        _, problems = self._receipt(_rebuild(frame, household_weights=weights))
+        assert problems == {"support_split_family_weights": 2}
+
+    def test_a_tampered_copy_count_is_reported(self) -> None:
+        _, frame = _split_then_cloned()
+        household = frame.table("household").copy()
+        household.loc[household["household_id"] == 2, CGT_SUPPORT_COPIES_COLUMN] = 2
+        _, problems = self._receipt(_rebuild(frame, household=household))
+        # Both copies now disagree with their root, the family has one copy
+        # too many for its count, the rule says three, and w / 2 fits no
+        # member; the selection itself is untouched.
+        assert problems["support_split_flags"] == {
+            "copies_disagreeing_with_root": 2,
+            "families_with_missing_or_extra_copies": 1,
+        }
+        assert problems["support_split_copies_stored"] == 1
+        assert problems["support_split_family_weights"] == 3
+        assert "support_split_selection_stored" not in problems
+        assert "support_split_selection_permutation" not in problems
+
+    def test_a_household_the_rule_divides_but_the_store_kept_whole_is_reported(
+        self,
+    ) -> None:
+        _, frame = _split_then_cloned()
+        household = frame.table("household").copy()
+        # Household 1 (weight 70, whole in the store) becomes the wealthiest
+        # in band 0, so the rule now divides it into two copies; band 0's
+        # support mass of 150 is then covered by ids 1 and 2, so the stored
+        # family 3 is missing from the recomputed rule as well.
+        household.loc[
+            household["household_id"] == 1, UK_CGT_INVESTABLE_WEALTH_COLUMNS[0]
+        ] = 1e6
+        _, problems = self._receipt(_rebuild(frame, household=household))
+        assert problems == {
+            "support_split_selection_stored": {"missing": 1, "extra": 1}
+        }
+
+    def test_a_missing_mass_record_is_reported(self) -> None:
+        _, frame = _split_then_cloned()
+        receipt, problems = self._receipt(_rebuild(frame, mass_log=()))
+        assert problems == {"support_split_mass_record": "missing"}
+        assert "mass" not in receipt
+
+    def test_an_artifact_without_the_split_layer_is_refused(self) -> None:
+        frame = support_frame(
+            weights=_SPLIT_WEIGHTS, wealth=_SPLIT_WEALTH, incomes=_SPLIT_INCOMES
+        )
+        with pytest.raises(ValueError, match="support-split layer is absent"):
+            self._receipt(frame)

@@ -1,15 +1,179 @@
 sources:
-- id: uk_national_candidate_2023
-  role: uk_national_candidate
-  sha256: f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833
-  byte_size: 1315880118
-  loader: kernel:load_uk_national_frame
+- id: frs_accounts
+  role: frs_raw_table
+  sha256: fa7871eb45cad0db5fd05ede454ced60405d2f9c598651ea5acea5c91a6ff52f
+  byte_size: 1812923
+  loader: kernel:build_uk_frs_spine
   vintages:
-  - vintage:uk_candidate_2023
+  - vintage:uk_frs_2024_25
+- id: frs_adult
+  role: frs_raw_table
+  sha256: 4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d
+  byte_size: 34885825
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
   vintage_authorities:
-  - id: uk_candidate_2023
+  - id: uk_frs_2024_25
     kind: survey_period
-    value: 2023
+    value: 2024
+- id: frs_benefits
+  role: frs_raw_table
+  sha256: f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3
+  byte_size: 2362329
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_benunit
+  role: frs_raw_table
+  sha256: 66b894624498316d19b6259e287a607e98ed3daacc9be3d3e9067d32b8e09a5a
+  byte_size: 13986782
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_child
+  role: frs_raw_table
+  sha256: 88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5
+  byte_size: 2753961
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_chldcare
+  role: frs_raw_table
+  sha256: 7ccd3f92f299a1f49b24063188177cdb8a958d8bcd753fc3d74dadda6ad04023
+  byte_size: 275878
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_extchild
+  role: frs_raw_table
+  sha256: c661379a4aa5079ce482b1f98f0bfb9157ad9b3ba4eb10739b61846f9c9548e4
+  byte_size: 15150
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_househol
+  role: frs_raw_table
+  sha256: 2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5
+  byte_size: 12108606
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_job
+  role: frs_raw_table
+  sha256: eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2
+  byte_size: 10518760
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_maint
+  role: frs_raw_table
+  sha256: e7a8d6f47cab7bf9db9bfd7b3ad5ebe5830ec75245d065dcf8654c7c20b97a7d
+  byte_size: 13993
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_mortgage
+  role: frs_raw_table
+  sha256: 6a08f6846970dfdc544a7efc8a93fed4f3210d872cd2d160dfb14ca8d92d5ed0
+  byte_size: 600552
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_oddjob
+  role: frs_raw_table
+  sha256: dfff1baf71a3de05f3a2fcf0c01a3995df5657f242cd7846aa61f6cc27a1cead
+  byte_size: 5339
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_penprov
+  role: frs_raw_table
+  sha256: 9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1
+  byte_size: 513614
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: frs_pension
+  role: frs_raw_table
+  sha256: 2b9be1eb6583cc8916fc06294be27e6217f2aea73da24b97b3226293f6a6ec24
+  byte_size: 1232411
+  loader: kernel:build_uk_frs_spine
+  vintages:
+  - vintage:uk_frs_2024_25
+- id: uk_ew_output_area_2021_support
+  role: uk_atomic_area_support
+  sha256: 1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797
+  byte_size: 1828698
+  loader: kernel:load_uk_atomic_area_support
+  vintages:
+  - vintage:uk_oa_2021
+  - vintage:uk_lad_2023
+  - vintage:uk_rgn_2024
+  - vintage:uk_pcon_2024
+  - vintage:uk_wd_2024
+  - vintage:uk_itl_2025
+  vintage_authorities:
+  - id: uk_oa_2021
+    kind: geography_vintage
+    value: 2021_census
+  - id: uk_lad_2023
+    kind: geography_vintage
+    value: 2023_april_lad
+  - id: uk_rgn_2024
+    kind: geography_vintage
+    value: 2024_rgn
+  - id: uk_pcon_2024
+    kind: geography_vintage
+    value: 2024_pcon
+  - id: uk_wd_2024
+    kind: geography_vintage
+    value: 2024_wd
+  - id: uk_itl_2025
+    kind: geography_vintage
+    value: 2025_itl
+- id: uk_scotland_output_area_2022_support
+  role: uk_atomic_area_support
+  sha256: 1649fa831315e6fac80caa4af7f68e837fd985b7f59c2831bb0db8cbfeeee443
+  byte_size: 440439
+  loader: kernel:load_uk_atomic_area_support
+  vintages:
+  - vintage:uk_oa_2022
+  - vintage:uk_ca_2019
+  - vintage:uk_scotland_ew_2022
+  - vintage:uk_pcon_2024
+  - vintage:uk_itl_2025
+  vintage_authorities:
+  - id: uk_oa_2022
+    kind: geography_vintage
+    value: 2022_census
+  - id: uk_ca_2019
+    kind: geography_vintage
+    value: 2019_council_area
+  - id: uk_scotland_ew_2022
+    kind: geography_vintage
+    value: 2022_ew
+- id: uk_ni_data_zone_2021_support
+  role: uk_atomic_area_support
+  sha256: facb9923f589cb68eefa8fad37911e618b6137964ff58a231976ef62584b669f
+  byte_size: 44638
+  loader: kernel:load_uk_atomic_area_support
+  vintages:
+  - vintage:uk_dz_2021
+  - vintage:uk_lgd_2014
+  - vintage:uk_dea_2014
+  - vintage:uk_pcon_2024
+  - vintage:uk_itl_2025
+  vintage_authorities:
+  - id: uk_dz_2021
+    kind: geography_vintage
+    value: 2021_census
+  - id: uk_lgd_2014
+    kind: geography_vintage
+    value: 2014_lgd
+  - id: uk_dea_2014
+    kind: geography_vintage
+    value: 2014_dea
 stage_manifest:
   version: 1
   country: uk
@@ -3280,7 +3444,84 @@ stages:
   - uc_deduction_random_draw
   - uc_deduction_type_random_draw
   - uc_latent_deduction_rate
-  notes: Assigns region-conditioned latent deduction demand to every benefit unit from identity-keyed seed-0 draws, rounded and clamped to the PolicyEngine-UK float32 input contract before applying the engine's exact band and normalized-combination mappings. The attributes are award-independent; law and claimant gating remain in the engine. Clone and donor-stack stages copy the completed attributes byte-for-byte. The persisted draws are microcosm's identity-keyed blake2b uniforms, not PolicyEngine-UK's splitmix64 fallback hash; the engine reads the persisted columns and derives the same flag, rate and combination from them, so the two draw columns must stay on the export surface (allow-listed and test-pinned).
+  notes: Assigns region-conditioned latent deduction demand to every benefit unit from identity-keyed seed-0 draws, rounded and clamped to the PolicyEngine-UK float32 input contract before applying the engine's exact band and normalized-combination mappings. The attributes are award-independent; law and claimant gating remain in the engine. The support-split and clone stages copy the completed attributes byte-for-byte. The persisted draws are microcosm's identity-keyed blake2b uniforms, not PolicyEngine-UK's splitmix64 fallback hash; the engine reads the persisted columns and derives the same flag, rate and combination from them, so the two draw columns must stay on the export surface (allow-listed and test-pinned).
+- stage: cgt_support_split
+  survey: Family Resources Survey 2024-25, SPI synthetic support and HMRC Capital Gains Tax statistics Table 3 (2024-25 individuals by size of gain and taxable income)
+  source: HMRC Capital Gains Tax statistics, July 2026 release, Table 3 for 2024-25, via the vendored conditioning facts
+  grain: household
+  artifacts:
+  - role: cgt_conditioning_facts
+    kind: public_aggregate_reference
+    resource: hmrc_cgt_conditioning_facts.json
+    format: json
+    runtime_sha256_required: true
+  - role: policy_parameters
+    kind: versioned_parameter_tree
+    dependency: policyengine-uk>=2.98.0 via microcosm-build[uk]
+    parameters:
+    - gov.hmrc.income_tax.allowances.personal_allowance.amount
+    - gov.hmrc.income_tax.allowances.personal_allowance.maximum_ANI
+    - gov.hmrc.income_tax.allowances.personal_allowance.reduction_rate
+    instant_rule: raw dated parameter files evaluated at 1 June of the build period's tax year
+    runtime_sha256_required: false
+    dependency_discipline: deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time
+  operations:
+  - kind: split_top_wealth_support_households
+    joint_resource: hmrc_cgt_conditioning_facts.json
+    joint_record_set_prefix: hmrc.cgt_table3_2026.ty2024.
+    joint_vintage: 2024-25
+    taxpayer_concept: hmrc.cgt_taxpayers_individuals
+    income_band_lower_bounds:
+    - 0
+    - 37700
+    - 50000
+    - 100000
+    - 125140
+    - 200000
+    minimum_gain_band_lower: 250000
+    published_top_band_taxpayers: 58000.0
+    suppressed_cells: published counts withheld as fewer than 1,000 count as zero and are counted in the receipt
+    clone_split_factor: 2
+    headroom: 1.25
+    expected_support_mass: 145000.0
+    support_mass_rule: clone_split_factor x headroom x published taxpayers with gains at or above minimum_gain_band_lower in the income column
+    income_band_measure: taxable_income_proxy of the oldest adult (tapered Personal Allowance from the policy_parameters artifact) digitised on income_band_lower_bounds, as the Table 3 redraw classifies gainers
+    income_proxy_components:
+    - employment_income
+    - self_employment_income
+    - state_pension_reported
+    - private_pension_income
+    - property_income
+    - savings_interest_income
+    - dividend_income
+    - miscellaneous_income
+    allowance_subtraction: true
+    adult_minimum_age: 16
+    carrier: oldest adult; person_id ascending breaks age ties
+    wealth_measure: household sum of investable_wealth_columns; a missing or non-finite value refuses the stage
+    investable_wealth_columns:
+    - gross_financial_wealth
+    - corporate_wealth
+    - other_residential_property_value
+    - non_residential_property_value
+    selection: within each income band walk households in investable wealth descending, household_id ascending, accumulating positive household weight until the cumulative weight reaches the band's support mass; whole households; an exhausted pool is recorded, not refused
+    maximum_copy_weight: 60.0
+    copy_rule: copies = ceil(household weight / maximum_copy_weight); every copy carries weight / copies
+    id_remapping: id_multiplier_for_values; copy k takes every entity id + k x multiplier
+    flag_column: household_is_cgt_support_copy
+    copies_column: cgt_support_copies
+    copy_index_column: cgt_support_copy_index
+    values: every column copied unchanged; no draw, no seed, no salt
+    weight_kind_out: importance
+    conservation: exact_total
+    declared_factor: 1.0
+    reason: Capital-gains support split divides the wealthiest households of each HMRC Table 3 income band into light copies at equal weight; every household's mass and the total household mass are conserved.
+  outputs:
+  - household_is_cgt_support_copy
+  - cgt_support_copies
+  - cgt_support_copy_index
+  rewrites: []
+  notes: 'Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 before the clone (30 after), each copy the same household at an equal share of its weight and carrying its index in cgt_support_copy_index (0 on roots), the explicit lineage the geography identity keys on. No value is assigned and no draw is made; the clone stage gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact).'
 - stage: cgt_incidence_clone
   survey: Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence
   source: Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465
@@ -3337,48 +3578,6 @@ stages:
   rewrites:
   - capital_gains
   notes: Spine-only equal-mass incidence clone. The A&S prior fixes the gainer set and order for the following HMRC Table 3 redraw; negative extrapolated draws remain loss-makers.
-- stage: cgt_band_donors
-  survey: HMRC Capital Gains Tax statistics Table 2.1a (2024-25 individuals) and Advani-Summers capital-gains incidence
-  source: HMRC Capital Gains Tax statistics, July 2026 release, Table 2.1a for 2024-25, via the vendored conditioning facts
-  grain: household
-  artifacts:
-  - role: cgt_conditioning_facts
-    kind: public_aggregate_reference
-    resource: hmrc_cgt_conditioning_facts.json
-    format: json
-    runtime_sha256_required: true
-  - role: capital_gains_incidence
-    kind: public_aggregate_reference
-    resource: advani_summers_capital_gains_distribution.json
-    format: json
-    runtime_sha256_required: true
-  operations:
-  - kind: stack_band_donor_households
-    size_band_resource: hmrc_cgt_conditioning_facts.json
-    size_band_vintage: 2024-25
-    retained_taxpayers: 392000.0
-    retained_gains_gbp: 118209000000.0
-    incidence_resource: advani_summers_capital_gains_distribution.json
-    minimum_band_lower: 12300
-    donors_per_band: 30
-    expected_band_count: 9
-    expected_donor_count: 270
-    candidate_order: household_id ascending
-    draw: weighted_without_replacement
-    propensity: Advani-Summers percent_with_gains at oldest-adult component-sum income
-    seed: 1
-    flag_column: household_is_cgt_band_donor
-    carrier: oldest adult; person_id ascending breaks age ties
-    initial_weight: published band taxpayers / donors_per_band
-    never_zero_weight: true
-    weight_kind_out: importance
-    reason: Stack 30 positive-weight HMRC Table 2.1a support households per retained gain band; published donor mass is added explicitly.
-  outputs:
-  - household_is_cgt_band_donor
-  - capital_gains
-  rewrites:
-  - capital_gains
-  notes: Adds 270 positive-weight band donors. Rows below GBP 12,300 are excluded because they mix annual-exempt-amount regimes and the spline body already supplies that support. Band weights and starting gains come from the 2024-25 Table 2.1a rows of the vendored conditioning resource, the vintage the size-of-gain calibration targets fit (microcosm#725).
 - stage: hmrc_cgt_gains_spine
   survey: HMRC Capital Gains Tax statistics 2026 release, Table 3 2024-25 (individual taxpayers and gains by size of gain and taxable income) conditioned on the 2024-25 Tables 2.1a, 5, 6 and 1, all vendored from the pinned Chronicle feed
   source: https://www.gov.uk/government/statistics/capital-gains-tax-statistics
@@ -3479,7 +3678,13 @@ stages:
     reporting_grain: Table 6 age bands and the twelve region-tier areas
   - kind: rank_preserving_allocation
     within: income band x age group x region group cell, then the income band's pooled unassigned gainers
-    ordering: existing gains descending, person_id ascending on ties
+    ordering: 'a rank key descending, person_id ascending on ties: among gainers, the household investable-wealth rank times the wealth rank weight plus the prior-gain rank times its complement, both as average ranks over the gainers'
+    wealth_rank_weight: 0.75
+    investable_wealth_columns:
+    - gross_financial_wealth
+    - corporate_wealth
+    - other_residential_property_value
+    - non_residential_property_value
     band_order: highest gain band first
     suppressed_cell_allocation: count implied by the cell's published gains at the band-total mean
     column_reconciliation: every income column rescales onto its published All-row taxpayer total
@@ -3491,7 +3696,7 @@ stages:
   - kind: within_band_draws
     bounded_band_family: truncated exponential matched to the cell's published mean
     open_band_family: Pareto with alpha = mean / (mean - lower bound)
-    quantile_scheme: 'stratified by weight: the persons a (gain band, income band) plan receives across every cell and the pooled walk take the quantile strata that partition (0, 1) in proportion to their household weights, in ascending prior-gain order with one seeded jitter per plan, so the plan''s weighted realised mean sits on its published mean rather than carrying n independent draws or the weight-rank mix of equal strata'
+    quantile_scheme: 'stratified by weight: the persons a (gain band, income band) plan receives across every cell and the pooled walk take the quantile strata that partition (0, 1) in proportion to their household weights, in ascending rank-key order with one seeded jitter per plan, so the plan''s weighted realised mean sits on its published mean rather than carrying n independent draws or the weight-rank mix of equal strata'
     open_band_realization: each open-band person takes the conditional mean of their weight-proportional quantile stratum, which averages back to the published mean exactly under the household weights; an iid draw from a Pareto with infinite variance sits well below it on a few dozen carriers, and equal strata on unequal weights put the tail's mass on whichever rows happen to be light
     mean_repair_margin: 0.02
     mean_repair_reason: Published counts round to the nearest thousand and amounts to the nearest million; two cells of the 2024-25 table (gains of GBP 1m to 2m at taxable incomes of GBP 37,700 to 49,999 and GBP 100,000 to 125,139) imply a mean below their own band, and repaired means clamp just inside the violated boundary.
@@ -3508,7 +3713,7 @@ stages:
     banding: Advani-Summers total-income bands at the person's component-sum income without allowance subtraction, the banding the prior draw uses
     range: quantiles strictly between the band's degree-1 quantile spline zero crossing and its crossing of the build period's annual exempt amount, so every amount lies in (0, AEA]
     mapping: remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; no seeded draw is consumed, so the walk and plan draw order is unchanged
-    ordering: existing gains ascending, person_id descending on ties (the allocation ranking reversed, as the within-band draws order their strata)
+    ordering: existing gains ascending, person_id descending on ties (the prior-gain ranking reversed; the allocation and the within-band draws rank on the wealth-blended key)
     quantile_points:
     - 0.05
     - 0.1
@@ -3528,30 +3733,32 @@ stages:
   - kind: classify_cgt_band_facts_with_reviewed_fence
     calibration_permitted: false
     fact_fence_id: cgt_band_facts_policy_endogenous_proxy_conditioned
-    fenced_fact_count: 76
-    fenced_fact_composition: 60 joint cells, 10 gain-band row totals, 6 income-column totals (Table 3 2024-25, 2026 release)
+    fenced_fact_count: 70
+    fenced_fact_composition: 60 joint cells and 10 gain-band row totals (Table 3 2024-25, 2026 release); the 6 all-gains income-column totals are promoted (microcosm#1014)
     classification_rationale: The taxpayer count is endogenous to policy, the income conditioning is an arithmetic proxy, and the published surface needs rounding and suppression reconciliation before any per-band fact is exact.
-    calibrated_facts_unchanged: 'The calibrated CGT facts are the FY2024-25 individual Table 1 references (hmrc.cgt.taxpayers_total, hmrc.cgt.gains_total, hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS) and the Table 2.1a size-of-gain, Table 6 age-band and Table 5 region rows declared in uk_population_targets.json (microcosm#467, #725); the 76 Table 3 2024-25 joint and marginal cells stay fenced and condition the imputation only, and Table 3''s all-gains, all-incomes pair restates the Table 1 individual observations already bound.'
-    promotion_path: 'A separately reviewed target profile may lift specific band facts after the reconciliation and proxy adequacy are adjudicated; the Table 2.1a, 6 and 5 rows were promoted under microcosm#467 and #725 on the FY2024-25 individual observations, while the Table 3 joint cells remain fenced because the taxable-income proxy is still an arithmetic approximation.'
-    adjudication: https://github.com/PolicyEngine/microcosm/issues/552
+    calibrated_facts_unchanged: 'The calibrated CGT facts are the FY2024-25 individual Table 1 references (hmrc.cgt.taxpayers_total, hmrc.cgt.gains_total, hmrc.cgt.liability_total; UK_CGT_TARGET_COVERAGE_REQUIREMENTS), the Table 2.1a size-of-gain, Table 6 age-band and Table 5 region rows declared in uk_population_targets.json (microcosm#467, #725), and the Table 3 2024-25 all-gains income-column totals measured on the engine''s CGT taxable income (hmrc.cgt.taxpayers_by_taxable_income_band, hmrc.cgt.gains_by_taxable_income_band; microcosm#1014); the 70 Table 3 2024-25 joint cells and gain-band row totals stay fenced and condition the imputation only, and Table 3''s all-gains, all-incomes pair restates the Table 1 individual observations already bound.'
+    promotion_path: 'A separately reviewed target profile may lift specific band facts after the reconciliation and proxy adequacy are adjudicated; the Table 2.1a, 6 and 5 rows were promoted under microcosm#467 and #725 on the FY2024-25 individual observations, and the six Table 3 all-gains income-column totals under microcosm#1014: they are unsuppressed and reconcile to the published totals (taxpayer bands sum to 551,000, gains bands to GBP 119,257m of 119,258m), and they are measured on the taxable income policyengine-uk''s CGT formula sets the rate bands on rather than the redraw''s arithmetic proxy. The joint cells remain fenced because they carry suppressed cells and the redraw''s taxable-income proxy is still an arithmetic approximation.'
+    adjudication: https://github.com/PolicyEngine/microcosm/issues/1014
   outputs:
   - capital_gains
   rewrites:
   - capital_gains
   notes: Spine manifest projection of the merged HMRC Table 3 amounts stage. It deliberately omits base_candidate and verify_certified_candidate, which belong only to the certified-H5 path. The allocation targets are raked to the 2024-25 Table 6 age and Table 5 region margins from the vendored conditioning resource and walked inside income x age x region cells, so large gains land on the kind of person who holds them (microcosm#725).
 - stage: hmrc_cgt_asset_type_spine
-  survey: HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative) and Table 7 (disposals, proceeds and gains by asset type, 2023-24, sample-based), vendored from the pinned Chronicle feed
+  survey: HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative), Table 4.1 (individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain, 2024-25, administrative) and Table 7 (disposals, proceeds and gains by asset type, 2023-24, sample-based), vendored from the pinned Chronicle feed
   source: https://www.gov.uk/government/statistics/capital-gains-tax-statistics
   grain: person
   artifacts:
   - role: policy_parameters
     kind: versioned_parameter_tree
-    dependency: policyengine-uk>=2.98.0 via microcosm-build[uk]
+    dependency: policyengine-uk>=2.100.0 via microcosm-build[uk]
     parameters:
     - gov.hmrc.cgt.annual_exempt_amount
+    - gov.hmrc.cgt.badr.lifetime_limit
+    - gov.hmrc.cgt.badr.rate
     instant_rule: raw dated parameter files evaluated at 1 June of the build period's tax year
     runtime_sha256_required: false
-    dependency_discipline: deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time
+    dependency_discipline: deferred inside uk_cgt_policy_parameters and uk_cgt_badr_parameters; the base package never imports policyengine-uk at import time
   - role: cgt_asset_type_facts
     kind: public_aggregate_reference
     resource: hmrc_cgt_asset_type_facts.json
@@ -3569,6 +3776,9 @@ stages:
     - hmrc.cgt_table7_2026.asset_category_total.ty2023
     - hmrc.cgt_table7_2026.financial_asset_type.ty2023
     - hmrc.cgt_table7_2026.non_financial_asset_type.ty2023
+    - hmrc.cgt_badr_ir_2026.table4_1.ty2024.main
+    - hmrc.cgt_badr_ir_2026.table4_1.ty2024.trusts_total
+    - hmrc.cgt_badr_ir_2026.table4_1.ty2024.all_total
     source_vintage: 2024-25
     mapped_build_period: 2024
     period_mapping: published_tax_year_equals_build_period
@@ -3577,7 +3787,9 @@ stages:
     fail_on_mismatch: true
   - kind: assign_residential_property_flag
     population: persons with net capital gains above the annual exempt amount (the national taxpayer proxy)
-    model: logistic probability in centred log gains, p = 1 / (1 + exp(-(a + b (log g - c)))) with c the weighted mean log gain of the population
+    model: logistic probability in centred log gains with a stock shift, p = 1 / (1 + exp(-(a + b (log g - c) + s h))) with c the weighted mean log gain of the population, s the stock log-odds and h one where the stock signal holds, zero otherwise
+    stock_log_odds: 1.6
+    stock_signal: household other residential property value above zero, or the person's property income above zero
     parameter_solver: nested bisection; the intercept matches the expected weighted count at each trial slope, the slope matches the expected weighted gains
     count_target: Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service
     gains_target: Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service
@@ -3587,6 +3799,26 @@ stages:
     seed_mixing: seed combined with the build period
     output_column: capital_gains_residential_property
     output_semantics: the person's capital_gains where flagged residential, 0 otherwise
+  - kind: assign_badr_qualifying_gains
+    population: liable gainers not flagged residential
+    bands: HMRC Table 4.1 2024-25 individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain (lower limits 0, 10,000, 25,000, 50,000, 100,000, 250,000, 500,000 and 1,000,000)
+    band_pool: the population with net gains inside the band's range; the open top band takes net gains at or above the lifetime limit
+    model: 'per band below the lifetime limit, a logistic probability in centred log gains with the stock shift, solved like the residential flag: the intercept matches the band''s published claimant count and the slope its published qualifying gains, with zero slope where the band pool''s own mean already matches; the open top band has zero slope, so its probability varies only with the stock shift, and its intercept matches its count'
+    stock_log_odds: 1.6
+    stock_signal: household corporate wealth above zero, or the person's self-employment income above zero
+    qualifying_amount: below the lifetime limit a claimant's whole net gain qualifies; in the open top band the qualifying gain is the lifetime limit
+    top_band_count: the published top-band qualifying gains divided by the lifetime limit; the published count is rounded to the nearest thousand
+    basis_assumption: Table 4.1 counts qualifying gains before losses and the annual exempt amount while the frame carries net gains after losses; Investors' Relief is merged with BADR, as in the engine's capital_gains_badr input; the whole-gain assumption reproduces Table 4.1's tax column to within half a percent
+    realization: weighted systematic sampling within each band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order whether or not the band carries a target
+    seed: 555
+    seed_mixing: seed combined with the build period
+    policy_parameters:
+    - gov.hmrc.cgt.badr.lifetime_limit
+    - gov.hmrc.cgt.badr.rate
+    output_column: capital_gains_badr
+    output_semantics: the qualifying gain where the person claims BADR or Investors' Relief, 0 otherwise; never above the person's net gain or the lifetime limit
+    type_coupling: a claimant's main asset type is drawn only from unlisted_shares, agricultural_commercial_industrial_land_buildings, other_non_financial_assets
+    reported_not_fitted: tax at the relief rate, with the annual exempt amount set against the main-rate gains first as the engine allocates it, against Table 4.1's tax column
   - kind: assign_main_asset_type
     population: liable gainers not flagged residential
     categories:
@@ -3595,10 +3827,20 @@ stages:
     - other_financial_assets
     - agricultural_commercial_industrial_land_buildings
     - other_non_financial_assets
-    kernel: log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width
+    claimant_categories:
+    - unlisted_shares
+    - agricultural_commercial_industrial_land_buildings
+    - other_non_financial_assets
+    claimant_restriction: a BADR or Investors' Relief claimant draws only from the claimant categories, so the type follows the claim
+    kernel: log-normal density in log gains centred on each type's Table 7 2023-24 mean gain per disposal, one common log-scale width, multiplied by the stock floor where the type declares a stock signal the gainer does not show; types without a declared signal are not scaled
     log_sigma: 1.5
+    stock_type_floor: 0.2
+    stock_signals:
+      listed_shares: household stocks-and-shares ISA above zero, or the person's dividend income above zero
+      unlisted_shares: household corporate wealth above zero, or the person's self-employment income above zero
+      other_financial_assets: household gross financial wealth above zero
     share_targets: Table 7 2023-24 gains by asset type excluding residential land and buildings, as shares
-    weight_fitting: multiplicative updates of the type weights until the household-weighted expected gains shares by type match the share targets
+    weight_fitting: multiplicative updates of the type weights, with claimants restricted to the claimant categories, until the household-weighted expected gains shares by type match the share targets; the fit refuses if it has not converged within the iteration limit, and refuses up front when claimants hold more of the gains than the claimant categories' share
     weight_fitting_iterations: 200
     weight_fitting_tolerance: 1.0e-06
     realization: one seeded uniform per person against the cumulative type probabilities, consumed in person_id order
@@ -3625,17 +3867,19 @@ stages:
   - kind: classify_cgt_asset_type_facts_with_reviewed_fence
     calibration_permitted: false
     fact_fence_id: cgt_asset_type_facts_sample_based_prior_vintage
-    fenced_fact_count: 33
-    fenced_fact_composition: 'Table 7 2023-24 rows: 6 asset-category rows, 3 category totals, 12 financial asset-type rows, 12 non-financial asset-type rows'
-    classification_rationale: Table 7 is sample-based, published for 2023-24 only, counts disposals rather than taxpayers and includes trusts and non-UK assets; it seeds the asset-type draw and is reported against, never fitted.
-    calibrated_facts: The Table 8a 2024-25 total residential property taxpayers and gains restated on the individuals basis (hmrc.cgt.residential_property_taxpayers, hmrc.cgt.residential_property_gains in uk_population_targets.json).
-    adjudication: https://github.com/PolicyEngine/microcosm/issues/725
+    fenced_fact_count: 49
+    fenced_fact_composition: 'Table 7 2023-24 rows: 6 asset-category rows, 3 category totals, 12 financial asset-type rows, 12 non-financial asset-type rows; Table 4.1 2024-25 rows: 8 individuals tax rows by qualifying-gain band, 3 individuals totals, 2 trusts totals, 3 all-taxpayer totals'
+    classification_rationale: Table 7 is sample-based, published for 2023-24 only, counts disposals rather than taxpayers and includes trusts and non-UK assets; it seeds the asset-type draw and is reported against, never fitted (microcosm#725). Table 4.1 conditions the BADR draw, and its 16 individuals band rows of claimants and qualifying gains are also bound; the tax column has no engine variable to measure (the stage reports its relief-rate tax against it), the individuals totals restate the bands, and the trusts and all-taxpayer totals only reconcile the individuals rows (microcosm#1014).
+    calibrated_facts: The Table 8a 2024-25 total residential property taxpayers and gains restated on the individuals basis (hmrc.cgt.residential_property_taxpayers, hmrc.cgt.residential_property_gains in uk_population_targets.json), and the Table 4.1 2024-25 individuals claimants and qualifying gains in each of the eight qualifying-gain bands (hmrc.cgt.badr_ir_taxpayers_by_band, hmrc.cgt.badr_ir_qualifying_gains_by_band).
+    adjudication: https://github.com/PolicyEngine/microcosm/issues/1014
   outputs:
   - capital_gains_asset_type
   - capital_gains_residential_property
+  - capital_gains_badr
   nonnegative_outputs:
   - capital_gains_residential_property
-  notes: 'Spine stage after the amounts redraw: every liable gainer carries one main asset type and, where flagged residential, its net gain restated in capital_gains_residential_property. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725).'
+  - capital_gains_badr
+  notes: 'Spine stage after the amounts redraw: every liable gainer carries one main asset type; where flagged residential, its net gain is restated in capital_gains_residential_property; where drawn as a BADR or Investors'' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725).'
 - stage: cgt_incidence_anchor
   survey: Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence
   source: Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465
@@ -3657,9 +3901,8 @@ stages:
   operations:
   - kind: pair_clone_households_to_originals
     clone_flag_column: household_is_capital_gains_clone
-    donor_flag_column: household_is_cgt_band_donor
     id_remapping: id_multiplier_for_values
-    pairing: clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false and not a band donor)
+    pairing: clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false; the support split's copies are pre-clone rows with their own clones)
     requirement: bijection between clone and original households; an unpaired clone or original fails the build
   - kind: derive_reporter_composition_from_banded_quantiles
     resource: advani_summers_capital_gains_distribution.json
@@ -3687,14 +3930,13 @@ stages:
     extrapolation: ext=0
     crossings: each band's degree-1 quantile spline inverted at zero and at the build period's annual exempt amount
     aggregation: crossings averaged over clone carriers weighted by household weight times the band's percent_with_gains
-    liable_mass: weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw, clones and band donors alike
+    liable_mass: weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw
     targets: sub_exempt = liable_mass * (exempt_quantile - zero_quantile) / (1 - exempt_quantile); loss = liable_mass * zero_quantile / (1 - exempt_quantile)
   - kind: transfer_clone_mass_to_originals
-    population: clone households paired to their originals; band donors and originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts
+    population: clone households paired to their originals; originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts
     sub_exempt_group: clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched
     loss_group: clone households whose carrier's capital_gains are negative
     liable_clones: untouched
-    donors: untouched
     factor: min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched
     maximum_factor: 1.0
     transfer: each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves
@@ -3705,7 +3947,7 @@ stages:
     reason: Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved.
   outputs: []
   rewrites: []
-  notes: 'Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone''s paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers and band donors are untouched; the groups, targets and receipt are clone-side quantities (band donors and originals are outside the anchor), every pair''s mass and the household total are conserved, and the receipt is gated at stage time.'
+  notes: 'Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone''s paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers are untouched; the groups, targets and receipt are clone-side quantities (originals are outside the anchor), every pair''s mass and the household total are conserved, and the receipt is gated at stage time.'
 - stage: salary_sacrifice
   survey: Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis
   source: HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029
@@ -3718,7 +3960,7 @@ stages:
     runtime_sha256_required: true
   operations:
   - kind: fit_weighted_qrf
-    training_population: support_channel == frs and not capital-gains clone and not CGT band donor and salary_sacrifice_asked == 1
+    training_population: support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1
     target_population: salary_sacrifice_asked != 1 frame-wide
     predictors:
     - age
@@ -3798,6 +4040,8 @@ stages:
     highest_education: TERTIARY
     seed: 42
     salt: student_loan_plan_5
+    realization: identity_uniform_order_walk
+    realization_bound: the realised top-up sits within the weight of the lightest person the walk skipped of the shortfall, so the plan's final England count sits within that weight of the stock; a pool lighter than the shortfall is taken whole and receipted as exhausted, and a plan already at or above its stock is left as reported
   - kind: top_up_to_stock
     plan: PLAN_2
     priority: 2
@@ -3815,6 +4059,8 @@ stages:
     highest_education: TERTIARY
     seed: 42
     salt: student_loan_plan_2
+    realization: identity_uniform_order_walk
+    realization_bound: the realised top-up sits within the weight of the lightest person the walk skipped of the shortfall, so the plan's final England count sits within that weight of the stock; a pool lighter than the shortfall is taken whole and receipted as exhausted, and a plan already at or above its stock is left as reported
     reason: Student-loan plan assignment writes an enum column only; household rows
       and typed household weights pass through and total household mass is conserved.
   outputs:
@@ -3822,600 +4068,3 @@ stages:
   rewrites:
   - student_loan_plan
   notes: Reported PAYE repayers are classified without a country gate. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year; PLAN_4 is never imputed.
-- stage: frs_hmrc_retained_leaves
-  survey: Family Resources Survey 2024-25
-  source: Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input
-  grain: person
-  artifacts: []
-  operations:
-  - kind: verify_certified_candidate
-    artifact: base_candidate
-    runtime_sha256_required: true
-    fail_on_mismatch: true
-  - kind: retain_adjudicated_frs_hmrc_leaves
-    population: certified_microcosm_uk_candidate_base_channel
-    source_vintage: 2024-25
-    mapped_build_period: 2024
-    annualization: weekly raw FRS amounts * (365.25 / 7)
-    status: adjudicated_partial_replay
-    retained_full_constituents:
-      hmrc_spi_pay:
-        spi_concept: PAY
-        scope: full
-        raw_sources:
-        - ADULT.INEARNS
-        formula: max(0, ADULT.INEARNS) * (365.25 / 7)
-      hmrc_spi_unemployment_benefit_income:
-        spi_concept: UBISJA
-        scope: full
-        raw_sources:
-        - BENEFITS.BENEFIT=14:BENAMT
-        - BENEFITS.BENEFIT=19:BENAMT
-        formula: sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)
-      hmrc_spi_incapacity_benefit_income:
-        spi_concept: INCPBEN
-        scope: full
-        raw_sources:
-        - BENEFITS.BENEFIT=17:BENAMT
-        formula: sum(BENAMT where BENEFIT == 17) * (365.25 / 7)
-        observed_support: structural zero in the audited 2023-24 FRS; retained so future vintages flow
-    retained_named_subsets:
-      ossben_identifiable_subset:
-        spi_concept: OSSBEN
-        raw_sources:
-        - BENEFITS.BENEFIT=13:BENAMT
-        - BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT
-        formula: sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)
-        scope: identifiable_subset
-      srp_regular_code5:
-        spi_concept: SRP
-        raw_sources:
-        - BENEFITS.BENEFIT=5:BENAMT
-        formula: sum(BENAMT where BENEFIT == 5) * (365.25 / 7)
-        scope: regular_code5_subset
-    source_absent_full_constituents:
-    - EPB
-    - EXPS
-    - TAXTERM
-    - MOTHINC
-    - OTHERINC
-    full_concepts_forbidden_on_frs:
-    - hmrc_spi_employment_benefits
-    - hmrc_spi_employment_expenses
-    - hmrc_spi_taxable_termination_pay
-    - hmrc_spi_miscellaneous_employment_income
-    - hmrc_spi_other_income
-    - hmrc_spi_other_social_security_income
-    - hmrc_spi_state_pension_income
-    forbid_proxy_substitution:
-    - employment_income
-    - miscellaneous_income
-    fail_on_missing_retained_constituent: true
-    fail_on_full_concept_alias: true
-  outputs:
-  - hmrc_spi_pay
-  - hmrc_spi_unemployment_benefit_income
-  - hmrc_spi_incapacity_benefit_income
-  - ossben_identifiable_subset
-  - srp_regular_code5
-  notes: 'Retains the adjudicated source-faithful FRS HMRC leaf columns before the SPI income rebuild: full PAY, UBISJA, and INCPBEN, plus explicitly named OSSBEN and SRP subsets. The runtime verifies the certified candidate before retaining these leaves.'
-- stage: hmrc_spi_income
-  survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Personal Incomes Tables 3.6/3.7 2023-24
-  source: https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods
-  grain: person
-  artifacts:
-  - role: qrf_donor
-    kind: private_microdata
-    format: tab_delimited
-    survey: Survey of Personal Incomes Public Use Tape 2022-23
-    vintage: 2022-23
-    tax_year_start: 2022
-    ukds_study_number: SN 9422
-    doi: 10.5255/UKDA-SN-9422-1
-    filename: put2223uk.tab
-    sha256: 5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66
-    size_bytes: 141323762
-    reviewed_source: PolicyEngine licensed UKDS mirror (private Hugging Face repository), spi_2022_23.zip
-    access: private_local_input
-    locator: caller-supplied local input
-    runtime_sha256_required: true
-  - role: published_fact_surface
-    kind: administrative_table
-    format: ods
-    survey: HMRC Personal Incomes Tables 3.6 and 3.7
-    publication: https://www.gov.uk/government/statistics/personal-incomes-statistics-for-the-tax-year-2023-to-2024
-    vintage: 2023-24
-    tax_year_start: 2023
-    locator: https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods
-    sha256: ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e
-    size_bytes: 166693
-    mime_type: application/vnd.oasis.opendocument.spreadsheet
-    sheets:
-    - Table_3_6
-    - Table_3_7
-    mapped_build_period: 2024
-    period_mapping: latest_published_tax_year
-    runtime_sha256_required: true
-  operations:
-  - kind: verify_pinned_hmrc_source_pair
-    artifact_roles:
-    - qrf_donor
-    - published_fact_surface
-    require_before_source_read: true
-    runtime_sha256_required: true
-    fail_on_mismatch: true
-  - kind: replace_zero_weight_spi_support
-    existing_channel: spi
-    require_existing_weight: 0
-    replacement_strata:
-    - clone_index
-    - household_is_capital_gains_clone
-    - region
-    spi_prior_national_household_mass_share: 0.5
-    output_weight_kind: importance
-    preserve_total_household_mass: true
-    require_mass_change_record: true
-    mass_change_reason: Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.
-    fail_on_live_existing_spi_mass: true
-  - kind: strict_read_private_table
-    artifact_role: qrf_donor
-    filename: put2223uk.tab
-    delimiter: "\t"
-    weight: FACT
-    required_columns:
-    - AGERANGE
-    - GORCODE
-    - SEX
-    - FACT
-    - PAY
-    - EPB
-    - EXPS
-    - TAXTERM
-    - INCPBEN
-    - OSSBEN
-    - UBISJA
-    - MOTHINC
-    - OTHERINC
-    - PROFITS
-    - CAPALL
-    - LOSSBF
-    - SRP
-    - INCBBS
-    - DIVIDENDS
-    - PENSION
-    - INCPROP
-    - OTHERINV
-    - GIFTAID
-    - GIFTINV
-    - TEI
-    - TII
-    - TI
-    runtime_sha256_required: true
-    fail_on_missing_file: true
-    fail_on_missing_columns: true
-    fail_on_invalid_weight: true
-  - kind: fit_weighted_qrf_stage1
-    training_artifact_role: qrf_donor
-    predictors:
-    - age
-    - gender
-    - region
-    categorical_predictors:
-    - gender
-    - region
-    source_sampling_weight: FACT
-    sample_size: 100000
-    sample_with_replacement: true
-    post_sample_fit_weight: uniform
-    fit_weight_kind: design
-    double_apply_source_weight: false
-    source_columns:
-      self_employment_income:
-      - PROFITS
-      - CAPALL
-      - LOSSBF
-      savings_interest_income:
-      - INCBBS
-      dividend_income:
-      - DIVIDENDS
-      private_pension_income:
-      - PENSION
-      property_income:
-      - INCPROP
-      other_investment_income:
-      - OTHERINV
-      gift_aid:
-      - GIFTAID
-      charitable_investment_gifts:
-      - GIFTINV
-      hmrc_spi_pay:
-      - PAY
-      hmrc_spi_employment_benefits:
-      - EPB
-      hmrc_spi_employment_expenses:
-      - EXPS
-      hmrc_spi_incapacity_benefit_income:
-      - INCPBEN
-      hmrc_spi_other_social_security_income:
-      - OSSBEN
-      hmrc_spi_taxable_termination_pay:
-      - TAXTERM
-      hmrc_spi_unemployment_benefit_income:
-      - UBISJA
-      hmrc_spi_miscellaneous_employment_income:
-      - MOTHINC
-      hmrc_spi_other_income:
-      - OTHERINC
-      hmrc_spi_state_pension_income:
-      - SRP
-    derived_policyengine_outputs:
-      employment_income:
-        source_columns:
-        - PAY
-        - EPB
-        - TAXTERM
-        formula: hmrc_spi_pay + hmrc_spi_employment_benefits + hmrc_spi_taxable_termination_pay
-        derive_after_draw: true
-    outputs:
-    - self_employment_income
-    - savings_interest_income
-    - dividend_income
-    - private_pension_income
-    - property_income
-    - other_investment_income
-    - gift_aid
-    - charitable_investment_gifts
-    - hmrc_spi_pay
-    - hmrc_spi_employment_benefits
-    - hmrc_spi_employment_expenses
-    - hmrc_spi_incapacity_benefit_income
-    - hmrc_spi_other_social_security_income
-    - hmrc_spi_taxable_termination_pay
-    - hmrc_spi_unemployment_benefit_income
-    - hmrc_spi_miscellaneous_employment_income
-    - hmrc_spi_other_income
-    - hmrc_spi_state_pension_income
-    joint_draw: true
-    savings_interest_source_semantics: INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input
-    employment_income_source_semantics: PolicyEngine input = PAY + EPB + TAXTERM, matching the pinned enhanced-FRS pipeline; it is not the Table 3.6 measure
-    hmrc_employed_income_source_semantics: Derived after each draw as max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC, using normalized leaves identically on FRS and SPI channels
-    self_employment_income_source_semantics: max(0, PROFITS - CAPALL - LOSSBF)
-    assessable_income_source_semantics: QRF draws leaves only; TEI, TII, and TI are deterministic post-draw accounting aggregates and TI equals TEI + TII exactly
-    source_ti_identity_fields:
-    - TI
-    - TEI
-    - TII
-    source_leaf_reconciliation:
-      documentation_url: https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/9422_put_2223_full_documentation.pdf
-      composite_indicator: AGERANGE == -1
-      formulas:
-        TEI: max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC + OTHERINC + SRP + PENSION + max(0, PROFITS - CAPALL - LOSSBF)
-        TII: OTHERINV + DIVIDENDS + INCPROP + INCBBS
-        TI: TEI + TII
-      maximum_absolute_difference_gbp:
-        ordinary:
-          TEI: 15
-          TII: 10
-          TI: 20
-        composite:
-          TEI: 180
-          TII: 10
-          TI: 180
-      rationale: The official PUT rounds source fields, averages documented composite records, then rounds remaining income fields to GBP 5. These are the observed envelopes in the exact sha-pinned donor; post-draw synthetic identities remain exact.
-    ti_identity_absolute_tolerance_gbp: 5
-    stochastic_aggregates_forbidden:
-    - hmrc_spi_employed_income
-    - hmrc_spi_total_earned_income
-    - hmrc_spi_total_investment_income
-    - hmrc_spi_assessable_income
-    require_all_predictors: true
-    require_all_outputs: true
-  - kind: fit_weighted_qrf_stage2
-    training_population: certified_microcosm_uk_candidate_base_channel
-    target_population: rebuilt_spi_support_channel
-    predictors:
-    - age
-    - gender
-    - region
-    - employment_income
-    - self_employment_income
-    - savings_interest_income
-    - dividend_income
-    - private_pension_income
-    - property_income
-    reviewed_absent_predictors:
-      other_investment_income: 'This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: the incumbent UK data build''s frs_only.py defines exactly six income predictors and the certified Microcosm UK base candidate has no other_investment_income column.'
-    categorical_predictors:
-    - gender
-    - region
-    weight: household_weight
-    weight_mapping: household_to_person
-    outputs:
-    - employee_pension_contributions
-    - employer_pension_contributions
-    - personal_pension_contributions
-    - pension_contributions_via_salary_sacrifice
-    - tax_free_savings_income
-    - universal_credit_reported
-    - pension_credit_reported
-    - child_benefit_reported
-    - housing_benefit_reported
-    - income_support_reported
-    - working_tax_credit_reported
-    - child_tax_credit_reported
-    - attendance_allowance_reported
-    - state_pension_reported
-    - dla_sc_reported
-    - dla_m_reported
-    - pip_m_reported
-    - pip_dl_reported
-    - sda_reported
-    - carers_allowance_reported
-    - iidb_reported
-    - afcs_reported
-    - bsp_reported
-    - winter_fuel_allowance_reported
-    - council_tax_benefit_reported
-    - jsa_contrib_reported
-    - jsa_income_reported
-    - esa_contrib_reported
-    - esa_income_reported
-    reviewed_absent_outputs:
-      incapacity_benefit_reported: Absent/all-default on the pinned enhanced-FRS export and certified Microcosm UK base; not a populated loader layer.
-      maternity_allowance_reported: Absent from the pinned enhanced-FRS export and certified Microcosm UK base; no training source can be materialized for this stage.
-    postprocess:
-      gross_savings_interest_income: stage1 INCBBS draw + stage2 tax_free_savings_income
-      refresh_disability_categories:
-      - aa_category
-      - dla_sc_category
-      - dla_m_category
-      - pip_m_category
-      - pip_dl_category
-      refresh_disability_flags:
-      - is_disabled_for_benefits
-      - is_enhanced_disabled_for_benefits
-      - is_severely_disabled_for_benefits
-    joint_draw: true
-    require_all_predictors: true
-    require_all_materializable_outputs: true
-    require_all_outputs: false
-  - kind: materialize_hmrc_income_bands_fail_closed
-    artifact_role: published_fact_surface
-    mapped_build_period: 2024
-    period_mapping: latest_published_tax_year
-    column_index_base: 0
-    data_row_start_index: 5
-    stop_label: All ranges
-    count_unit_multiplier: 1000
-    amount_unit_multiplier: 1000000
-    component_columns:
-      employment_income:
-        sheet: Table_3_6
-        count_column_index: 4
-        amount_column_index: 5
-      self_employment_income:
-        sheet: Table_3_6
-        count_column_index: 1
-        amount_column_index: 2
-      state_pension:
-        sheet: Table_3_6
-        count_column_index: 7
-        amount_column_index: 8
-      private_pension_income:
-        sheet: Table_3_6
-        count_column_index: 10
-        amount_column_index: 11
-      property_income:
-        sheet: Table_3_7
-        count_column_index: 1
-        amount_column_index: 2
-      savings_interest_income:
-        sheet: Table_3_7
-        count_column_index: 4
-        amount_column_index: 5
-      dividend_income:
-        sheet: Table_3_7
-        count_column_index: 7
-        amount_column_index: 8
-      other_investment_income:
-        sheet: Table_3_7
-        count_column_index: 10
-        amount_column_index: 11
-    required_band_lower_bounds_gbp:
-    - 12570
-    - 15000
-    - 20000
-    - 30000
-    - 40000
-    - 50000
-    - 70000
-    - 100000
-    - 150000
-    - 200000
-    - 300000
-    - 500000
-    - 1000000
-    required_measures:
-    - count
-    - amount
-    fail_on_missing_sheet: true
-    fail_on_missing_component: true
-    fail_on_missing_band: true
-    fail_on_non_numeric_value: true
-  - kind: classify_hmrc_income_facts_with_reviewed_fences
-    target_operation: materialize_hmrc_income_bands_fail_closed
-    components:
-    - employment_income
-    - self_employment_income
-    - state_pension
-    - private_pension_income
-    - property_income
-    - savings_interest_income
-    - dividend_income
-    - other_investment_income
-    breakdown_dependency: hmrc_spi_assessable_income
-    frs_breakdown_status: unavailable_full_measure
-    input_weight_kind: importance
-    output_weight_kind: importance
-    calibration_permitted: false
-    required_fact_count: 208
-    outcome_counts:
-      exact_pass: 0
-      exact_fail: 0
-      directional_pass: 0
-      directional_fail: 0
-      excluded_with_fence: 208
-    classification_rationale: Every published fact uses non-overlapping total-income bands. The FRS channel cannot materialize full TEI, and omitted income can move a person between bands, so neither an exact fact nor a per-band directional bound is valid.
-    reviewed_fences:
-    - fence_id: frs_epb_source_absent
-      constituents:
-      - EPB
-      raw_sources_searched:
-      - JOB.EXPBEN01-EXPBEN13
-      - JOB.CARVAL
-      - JOB.CARAMT
-      - JOB.FUELAMT
-      - JOB.VCHAMT
-      - JOB.CHVAMT
-      finding: Missing. EXPBEN* are receipt flags, and the amount fields cover only selected benefits; they cannot produce complete taxable expenses payments and benefits.
-      mass_implication: 12.9485464% of certified-candidate FRS effective person mass has at least one receipt flag, but this is not monetary support.
-      rationale: Receipt flags and selected benefit amounts cannot be promoted to the SPI EPB monetary concept without an imputation or proxy.
-      dependent_fence_ids: []
-    - fence_id: frs_exps_source_absent
-      constituents:
-      - EXPS
-      raw_sources_searched:
-      - JOB.EXPBEN04/EXPBEN05
-      - JOB.MILEAMT/JOB.MOTAMT
-      - JOB.UMILEAMT/JOB.UMOTAMT
-      - JOB.DEDUC1-DEDUC9
-      - JOB.UDEDUC1-UDEDUC9
-      finding: Missing. These fields describe reimbursements or payroll deductions, not the complete tax-deductible employment-expense amount required by SPI.
-      mass_implication: 5.1302528% of certified-candidate FRS effective person mass has an adjacent reimbursement flag; the true EXPS mass is not estimable.
-      rationale: The nearby fields do not measure the required deductible amount, and EXPS enters the employed-income identity with a negative sign.
-      dependent_fence_ids: []
-    - fence_id: frs_taxterm_source_absent
-      constituents:
-      - TAXTERM
-      raw_sources_searched:
-      - ADULT.REDAMT
-      - ADULT and JOB taxable-termination split search
-      finding: Missing. REDAMT is gross redundancy pay and has neither the taxable amount nor non-redundancy termination pay.
-      mass_implication: 0.3746084% of certified-candidate FRS effective person mass has positive gross redundancy pay; taxable mass is unknown.
-      rationale: Gross redundancy pay cannot be relabeled as taxable termination pay.
-      dependent_fence_ids: []
-    - fence_id: frs_mothinc_source_absent
-      constituents:
-      - MOTHINC
-      raw_sources_searched:
-      - ODDJOB.OJAMT/ODDJOB.OJNOW
-      - ADULT.ALLPAY2
-      - ADULT.ROYYR2-ROYYR4
-      - JOB.OWNOTHER
-      finding: Missing. The fields are heterogeneous and belong to distinct income concepts; assigning their union to SPI miscellaneous employment income would be a proxy.
-      mass_implication: Odd-job-only effective person mass is 0.1724207%; the broader unresolved miscellaneous pool is 1.4650566%.
-      rationale: The FRS instrument cannot separate the SPI miscellaneous-employment concept source-faithfully.
-      dependent_fence_ids: []
-    - fence_id: frs_otherinc_source_absent
-      constituents:
-      - OTHERINC
-      raw_sources_searched:
-      - ADULT, ODDJOB, and JOB miscellaneous fields
-      - PENSION
-      - ACCOUNTS
-      - ASSETS
-      - BENEFITS
-      finding: Missing. No person-level raw FRS variable has SPI OTHERINC semantics, and the miscellaneous pool cannot be split between MOTHINC and OTHERINC from source evidence.
-      mass_implication: No separable mass estimate exists; the unresolved miscellaneous pool is 1.4650566% of certified-candidate FRS effective person mass.
-      rationale: A union of heterogeneous residual fields would be a new proxy, not a retained source constituent.
-      dependent_fence_ids: []
-    - fence_id: frs_ossben_identifiable_subset
-      constituents:
-      - OSSBEN
-      - ossben_identifiable_subset
-      raw_sources_searched:
-      - BENEFITS.BENAMT
-      - BENEFITS.BENEFIT
-      - BENEFITS.VAR2
-      - BENEFITS codes 13, 16, 6, and 30
-      finding: Incomplete. Carer's Allowance and contribution-based ESA form an identifiable subset, but code 6 mixes tax treatments and code 30 is an undifferentiated catch-all, so the complete taxable family cannot be emitted.
-      mass_implication: 1.8045088% of certified-candidate FRS effective person mass carries the identifiable lower-bound subset; it is not full OSSBEN support.
-      rationale: The retained column must remain explicitly named as a subset and cannot satisfy the full SPI concept.
-      dependent_fence_ids: []
-    - fence_id: frs_srp_regular_code5_subset
-      constituents:
-      - SRP
-      - srp_regular_code5
-      raw_sources_searched:
-      - BENEFITS.BENAMT where BENEFIT == 5
-      - BENEFITS codes 6 and 9
-      finding: Incomplete. Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension.
-      mass_implication: 18.1567916% of certified-candidate FRS effective person mass carries regular code-5 State Pension; it is not complete SRP support.
-      rationale: The retained column must remain explicitly named as a subset and cannot be reported as the full published state-pension measure.
-      dependent_fence_ids: []
-    - fence_id: full_frs_tei_band_unavailable
-      constituents:
-      - EPB
-      - EXPS
-      - TAXTERM
-      - MOTHINC
-      - OTHERINC
-      - OSSBEN
-      - SRP
-      raw_sources_searched: []
-      finding: The complete FRS TEI measure cannot be materialized from retained source constituents, so exact HMRC total-income band assignment is unavailable on the FRS channel.
-      mass_implication: Every one of the 208 published facts is banded by total income and therefore depends on this unavailable like-for-like measure.
-      rationale: 'A component-level subset does not imply a per-band lower bound: omitted income can move a taxpayer into or out of any non-overlapping published band. Biased partial bands are not emitted as estimates.'
-      dependent_fence_ids:
-      - frs_epb_source_absent
-      - frs_exps_source_absent
-      - frs_taxterm_source_absent
-      - frs_mothinc_source_absent
-      - frs_otherinc_source_absent
-      - frs_ossben_identifiable_subset
-      - frs_srp_regular_code5_subset
-    fact_fence_id: full_frs_tei_band_unavailable
-    blocked_dependency: hmrc_spi_assessable_income
-    fail_on_unfenced_exclusion: true
-    fail_on_fact_count_mismatch: true
-    forbid_biased_estimate_or_delta: true
-  - kind: gate_distributional_effective_mass
-    columns:
-    - gift_aid
-    - charitable_investment_gifts
-    weight: household_weight
-    weight_mapping: household_to_person
-    support_channel_column: person_support_channel
-    required_support_channel: spi
-    mass_share_denominator: all_person_effective_mass
-    minimum_nondefault_mass_share: 1.0e-06
-    fail_below_floor: true
-  official_table_components:
-  - employment_income
-  - self_employment_income
-  - state_pension
-  - private_pension_income
-  - property_income
-  - savings_interest_income
-  - dividend_income
-  - other_investment_income
-  donor_relief_outputs:
-  - gift_aid
-  - charitable_investment_gifts
-  outputs:
-  - employment_income
-  - self_employment_income
-  - hmrc_spi_state_pension_income
-  - private_pension_income
-  - property_income
-  - savings_interest_income
-  - dividend_income
-  - other_investment_income
-  - gift_aid
-  - charitable_investment_gifts
-  - hmrc_spi_employed_income
-  - hmrc_spi_total_earned_income
-  - hmrc_spi_total_investment_income
-  - hmrc_spi_assessable_income
-  notes: 'Current-source adjudicated replay contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size and verified together before either is opened. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates on the SPI channel, with TI exactly equal to TEI + TII. PolicyEngine employment_income remains the narrow PAY + EPB + TAXTERM input on SPI rows. Stage 2 mirrors the incumbent UK data build''s frs_only.py exactly: its income predictors are employment, self-employment, savings interest, dividends, private pension, and property income. Other investment income remains a stage-1 SPI draw and official HMRC fact component, but is excluded from stage 2 because the certified FRS candidate does not carry it. The FRS channel retains source-faithful full PAY, UBISJA, and INCPBEN plus explicitly named ossben_identifiable_subset and srp_regular_code5; EPB, EXPS, TAXTERM, MOTHINC, OTHERINC, full OSSBEN,
-    and full SRP remain forbidden. Because the missing legs prevent a complete FRS TEI measure, none of the 208 non-overlapping total-income-band facts is exact or directional. Every fact is an excluded-with-fence record, no calibration is performed, and weights remain importance-kind. Gift Aid restoration still requires the rebuilt positive-mass SPI channel to clear the reviewed 1ppm effective-mass floor.'

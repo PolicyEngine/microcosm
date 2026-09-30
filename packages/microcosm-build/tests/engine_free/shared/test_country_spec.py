@@ -935,10 +935,8 @@ class TestUKCountryPackage:
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
-            "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
-            "hmrc_income_source_stages.json",
             "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
@@ -978,6 +976,7 @@ class TestUKCountryPackage:
             "uk_firms_targets.json",
             "local_area_crosswalk.json",
             "local_authority_names.json",
+            "uk_atomic_area_supports.provenance.json",
             "target_references.json",
             "target_reference_membership.json",
             "local_target_references.json",
@@ -999,16 +998,20 @@ class TestUKCountryPackage:
             "nts_car_availability.json",
         )
 
-    def test_uk_source_manifest_loads_thirty_stages(self) -> None:
+    def test_uk_source_manifest_contains_only_canonical_spine_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 33 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # 34 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
-        # spi_income_band_donors (PolicyEngine/chronicle#280 lane) as the newest) plus the two
-        # certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 36
+        # spi_income_band_donors (PolicyEngine/chronicle#280 lane) and the SPI
+        # housing shell (#1012) as the newest); the frs_hmrc_retained_leaves /
+        # hmrc_spi_income pair is retired (#901).
+        assert len(spec.sources.stages) == 34
+        assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
+            stage.stage for stage in spec.sources.stages
+        )
 
 
 class TestExistingPackagesGeneralize:
@@ -1050,10 +1053,8 @@ class TestExistingPackagesGeneralize:
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
-            "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
-            "hmrc_income_source_stages.json",
             "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
@@ -1093,6 +1094,7 @@ class TestExistingPackagesGeneralize:
             "uk_firms_targets.json",
             "local_area_crosswalk.json",
             "local_authority_names.json",
+            "uk_atomic_area_supports.provenance.json",
             "target_references.json",
             "target_reference_membership.json",
             "local_target_references.json",
@@ -1119,7 +1121,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1124
+            len(references) == 1152
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1128,7 +1130,8 @@ class TestExistingPackagesGeneralize:
         # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
         # cells and Wales gains ten country rows (bands A-I + total);
         # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
-        # 24 size-of-gain rows
+        # 24 size-of-gain rows; microcosm#1014: 16 Table 4.1 BADR/IR band rows
+        # and 12 Table 3 taxable-income margin rows
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1375,7 +1378,7 @@ class TestUKGatesManifest:
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_cgt_incidence_clone_mass",
-            "uk_stage_cgt_band_donors_support",
+            "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
@@ -1476,7 +1479,7 @@ class TestUKGatesManifest:
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_cgt_incidence_clone_mass",
-            "uk_stage_cgt_band_donors_support",
+            "uk_stage_cgt_support_split_mass",
             "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",

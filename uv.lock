@@ -761,6 +761,7 @@ dependencies = [
 [package.optional-dependencies]
 uk = [
     { name = "h5py" },
+    { name = "microcosm-data" },
     { name = "openpyxl" },
     { name = "policyengine-uk" },
     { name = "tables" },
@@ -785,6 +786,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.20" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "microcosm-calibrate", editable = "packages/microcosm-calibrate" },
+    { name = "microcosm-data", marker = "extra == 'uk'", editable = "packages/microcosm-data" },
     { name = "microcosm-data", marker = "extra == 'us'", editable = "packages/microcosm-data" },
     { name = "microcosm-diagnostics", editable = "packages/microcosm-diagnostics" },
     { name = "microcosm-fit", editable = "packages/microcosm-fit" },

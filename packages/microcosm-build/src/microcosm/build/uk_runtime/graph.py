@@ -18,8 +18,10 @@ import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from importlib import metadata
 
 from microcosm.graph import (
+    ArtifactOutput,
     Graph,
     KernelRegistry,
     Node,
@@ -27,34 +29,28 @@ from microcosm.graph import (
     Slice,
     SourceRef,
     StructuralDelta,
+    compile_graph,
 )
 
 from ..country_spec import CountrySpec, load_country_spec
+from ..stage_evidence import STAGE_EVIDENCE_TYPE
 from .national_sampling import UK_SAMPLE_SEED_DEFAULT
 
 __all__ = [
-    "UK_SPINE_EXCLUSIONS",
     "UK_SPINE_STRUCTURAL_STAGES",
     "uk_registry",
+    "uk_spine_endpoint",
     "uk_spine_graph",
+    "uk_spine_operation_inventory",
 ]
 
-
-UK_SPINE_EXCLUSIONS = frozenset(
-    {
-        # These are the certified-candidate/H5 alternatives to the raw-FRS
-        # spine stages named below, not additional steps in this pipeline.
-        "frs_hmrc_retained_leaves",
-        "hmrc_spi_income",
-    }
-)
 
 UK_SPINE_STRUCTURAL_STAGES = frozenset(
     {
         "spi_support_channel",
         "spi_income_band_donors",
+        "cgt_support_split",
         "cgt_incidence_clone",
-        "cgt_band_donors",
         "cgt_incidence_anchor",
     }
 )
@@ -63,7 +59,9 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # (``Frame.stratum_mass``: household weights broadcast through membership), so
 # ``conserve`` is satisfiable only by an expansion that keeps household
 # composition fixed.  CGT cloning does (a clone is its source household at
-# half weight).  The SPI support channel does not: it stacks synthetic
+# half weight), and so does the CGT support split (every copy is its source
+# household at an equal share of its weight, microcosm#1045).  The SPI
+# support channel does not: it stacks synthetic
 # households whose person counts differ from the FRS households whose mass
 # they take over, so household mass is conserved exactly (the stage's
 # ``allocate_zero_weight_prior_mass`` declares ``conservation: exact_total``)
@@ -74,18 +72,19 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
     "spi_support_channel": "declared",
-    # Reserved income rows add their published band mass, as the CGT donors do.
+    # Reserved income rows add their published band mass (microcosm#1063 owes
+    # them the channel treatment).
     "spi_income_band_donors": "free",
+    "cgt_support_split": "conserve",
     "cgt_incidence_clone": "conserve",
-    "cgt_band_donors": "free",
     "cgt_incidence_anchor": "conserve",
 }
 
 _STRUCTURAL_WEIGHT_KIND = {
     "spi_support_channel": "importance",
     "spi_income_band_donors": "importance",
+    "cgt_support_split": "importance",
     "cgt_incidence_clone": "importance",
-    "cgt_band_donors": "importance",
     "cgt_incidence_anchor": "importance",
 }
 
@@ -271,13 +270,18 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
         }
     ),
     "uc_deduction_attributes": frozenset({("household", "region")}),
+    # The support split copies whole households, so its surface is open.
+    "cgt_support_split": None,
     "cgt_incidence_clone": None,
-    "cgt_band_donors": None,
     # The amounts redraw conditions on age and household region as well as
-    # the income proxy (microcosm#725); both are context carriers, declared
-    # here so the ownership record names them.
+    # the income proxy (microcosm#725), ranks gainers on household investable
+    # wealth (microcosm#1014) and keys its placement receipts on the support
+    # split's family count (microcosm#1045); all are context carriers,
+    # declared here so the ownership record names them.
     "hmrc_cgt_gains_spine": frozenset(
         {
+            ("household", "household_is_cgt_support_copy"),
+            ("household", "cgt_support_copies"),
             *(
                 ("person", column)
                 for column in (
@@ -295,11 +299,43 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 )
             ),
             ("household", "region"),
+            *(
+                ("household", column)
+                for column in (
+                    "gross_financial_wealth",
+                    "corporate_wealth",
+                    "other_residential_property_value",
+                    "non_residential_property_value",
+                )
+            ),
         }
     ),
     # The asset-type stage classifies the redrawn net gains; the AEA it
-    # gates on is a policy parameter, not a frame column (microcosm#725).
-    "hmrc_cgt_asset_type_spine": frozenset({("person", "capital_gains")}),
+    # gates on is a policy parameter, not a frame column (microcosm#725). Its
+    # flags and types lean towards gainers who show the stock they imply
+    # (microcosm#1014), read from these income and wealth columns.
+    "hmrc_cgt_asset_type_spine": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "capital_gains",
+                    "property_income",
+                    "self_employment_income",
+                    "dividend_income",
+                )
+            ),
+            *(
+                ("household", column)
+                for column in (
+                    "other_residential_property_value",
+                    "corporate_wealth",
+                    "stocks_and_shares_isa",
+                    "gross_financial_wealth",
+                )
+            ),
+        }
+    ),
     # The incidence anchor reads the redrawn gains, the carrier income proxy
     # and the clone/donor flags; it writes no cell and only moves household
     # weight between paired rows (microcosm#970).
@@ -320,7 +356,6 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
                 )
             ),
             ("household", "household_is_capital_gains_clone"),
-            ("household", "household_is_cgt_band_donor"),
         }
     ),
     "salary_sacrifice": None,
@@ -719,18 +754,22 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "uc_latent_deduction_rate", "float64"),
         _Cell("benunit", "uc_deduction_combination", "string"),
     ),
+    # The support split writes only its lineage cells: copies carry every
+    # other column of their source household unchanged (microcosm#1045).
+    "cgt_support_split": (
+        _Cell("household", "household_is_cgt_support_copy", "bool"),
+        _Cell("household", "cgt_support_copies", "int64"),
+        _Cell("household", "cgt_support_copy_index", "int64"),
+    ),
     "cgt_incidence_clone": (
         _Cell("household", "household_is_capital_gains_clone", "bool"),
-        _Cell("person", "capital_gains", "float64"),
-    ),
-    "cgt_band_donors": (
-        _Cell("household", "household_is_cgt_band_donor", "bool"),
         _Cell("person", "capital_gains", "float64"),
     ),
     "hmrc_cgt_gains_spine": (_Cell("person", "capital_gains", "float64"),),
     "hmrc_cgt_asset_type_spine": (
         _Cell("person", "capital_gains_asset_type", "string"),
         _Cell("person", "capital_gains_residential_property", "float64"),
+        _Cell("person", "capital_gains_badr", "float64"),
     ),
     # Weights only: the anchor owns no cell (microcosm#970).
     "cgt_incidence_anchor": (),
@@ -883,9 +922,7 @@ def _deduplicate(cells: Iterable[_Cell]) -> tuple[_Cell, ...]:
 def _manifest_stages(spec: CountrySpec) -> tuple[object, ...]:
     if spec.sources is None:
         raise ValueError("The UK graph requires a source-stage manifest.")
-    selected = tuple(
-        stage for stage in spec.sources.stages if stage.stage not in UK_SPINE_EXCLUSIONS
-    )
+    selected = tuple(spec.sources.stages)
     if not selected or selected[0].stage != "frs_spine":
         raise ValueError("The UK FRS spine manifest must begin with 'frs_spine'.")
     unknown = [stage.stage for stage in selected[1:] if stage.stage not in _STAGE_CELLS]
@@ -965,6 +1002,29 @@ def _source_refs(source_mode: str) -> tuple[SourceRef, ...]:
     )
 
 
+def _numerical_dependency_versions() -> tuple[tuple[str, str], ...]:
+    """Bind installed behavior-bearing libraries, including optional engines.
+
+    The missing marker permits source-only declarations without engine extras;
+    installing the engine then produces a different identity, never a false hit.
+    """
+    versions = []
+    for name in (
+        "policyengine-uk",
+        "policyengine-core",
+        "numpy",
+        "pandas",
+        "scikit-learn",
+        "quantile-forest",
+    ):
+        try:
+            version = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            version = "not-installed"
+        versions.append((name, version))
+    return tuple(versions)
+
+
 def uk_spine_graph(
     spec: CountrySpec | None = None,
     *,
@@ -984,6 +1044,7 @@ def uk_spine_graph(
         raise ValueError("UK graph sample_seed must be non-negative.")
     resolved = load_country_spec("uk") if spec is None else spec
     stages = _manifest_stages(resolved)
+    dependency_versions = _numerical_dependency_versions()
     # The root transform loads the complete national-frame seed schema even
     # when a reduced hermetic manifest names only the output under test.
     # CREATE must declare every loaded cell, never merely the StagePlan's
@@ -997,12 +1058,14 @@ def uk_spine_graph(
             kernel="uk.create@1",
             outputs=tuple(cell.owned() for cell in root_cells),
             structural=StructuralDelta.CREATE,
+            artifact_outputs=(ArtifactOutput("stage_evidence", STAGE_EVIDENCE_TYPE),),
             sources=_source_names("frs_spine", source_mode),
             params={
                 "time_period": "2024",
                 "stage_contract_sha256": _stage_contract_sha256(stages[0], resolved),
                 "sample_fraction": float(sample_fraction),
                 "sample_seed": int(sample_seed),
+                "numerical_dependencies": dependency_versions,
             },
             description="Load the source-bound UK FRS root population.",
         )
@@ -1054,6 +1117,7 @@ def uk_spine_graph(
                     ),
                     params={
                         "stage": stage_name,
+                        "numerical_dependencies": dependency_versions,
                         "time_period": "2024",
                         "expand_cells": tuple(
                             (cell.entity, cell.column, cell.dtype) for cell in cells
@@ -1065,6 +1129,9 @@ def uk_spine_graph(
                         ),
                     },
                     structural=StructuralDelta.EXPAND,
+                    artifact_outputs=(
+                        ArtifactOutput("stage_evidence", STAGE_EVIDENCE_TYPE),
+                    ),
                     base=current_population,
                     sources=_source_names(stage_name, source_mode),
                     mass=_STRUCTURAL_MASS[stage_name],
@@ -1138,8 +1205,12 @@ def uk_spine_graph(
                         for cell in cells
                     ),
                     population=current_population,
+                    artifact_outputs=(
+                        ArtifactOutput("stage_evidence", STAGE_EVIDENCE_TYPE),
+                    ),
                     params={
                         "stage": stage_name,
+                        "numerical_dependencies": dependency_versions,
                         "time_period": "2024",
                         "stage_contract_sha256": _stage_contract_sha256(
                             manifest_stage, resolved
@@ -1191,3 +1262,74 @@ def uk_registry(
         uk_spine_graph() if graph is None else graph,
         {} if implementations is None else implementations,
     )
+
+
+@dataclass(frozen=True)
+class UKSpineEndpoint:
+    """The final population and complete declared cell surface for composition."""
+
+    population: str
+    inputs: tuple[Slice, ...]
+    stage_names: tuple[str, ...]
+
+
+def uk_spine_endpoint(graph: Graph) -> UKSpineEndpoint:
+    stages = (
+        "frs_spine",
+        *(str(node.params["stage"]) for node in graph.nodes if "stage" in node.params),
+    )
+    live = {}
+    for node in graph.nodes:
+        for owned in node.outputs:
+            live[(owned.entity, owned.column)] = _Cell(
+                owned.entity, owned.column, owned.dtype
+            )
+    return UKSpineEndpoint(
+        population=compile_graph(graph).versions[stages[-1]],
+        inputs=_slices(live),
+        stage_names=stages,
+    )
+
+
+def uk_spine_operation_inventory(
+    graph: Graph, spec: CountrySpec | None = None
+) -> tuple[dict[str, object], ...]:
+    """Generate truthful operation ownership from the executable stage roster.
+
+    Conditional fits/draw chains remain one coupled execution unit. In
+    particular WAS encoding observes donors and recipients jointly; its fit
+    is not advertised as an independently reusable donor-only artifact.
+    """
+    resolved = load_country_spec("uk") if spec is None else spec
+    nodes = {node.id: node for node in graph.nodes}
+    rows = []
+    for stage in _manifest_stages(resolved):
+        node_id = "create_uk_frs" if stage.stage == "frs_spine" else stage.stage
+        node = nodes[node_id]
+        rows.append(
+            {
+                "stage": stage.stage,
+                "node": node_id,
+                "kernel": node.kernel,
+                "operations": [
+                    {"kind": operation.kind, "parameters": dict(operation.parameters)}
+                    for operation in stage.operations
+                ],
+                "execution_unit": "composite"
+                if len(stage.operations) > 1
+                else "single",
+                "source_inputs": list(node.sources),
+                "artifact_outputs": [output.name for output in node.artifact_outputs],
+                "randomness": "Existing literal/child seeds and draw order are preserved inside the registered transform.",
+                "coupling": (
+                    "Donor and recipient region encoding, four segmented fit/draw chains and their child seeds remain coupled."
+                    if stage.stage == "was_wealth"
+                    else "Source assembly, declared household sample selection and same-kind mass normalization execute once in CREATE."
+                    if stage.stage == "frs_spine"
+                    else "Declared preparation, fit and application operations execute once in this stage; intermediate models are not independently cached."
+                    if any("qrf" in operation.kind for operation in stage.operations)
+                    else None
+                ),
+            }
+        )
+    return tuple(rows)
