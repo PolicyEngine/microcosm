@@ -1,5 +1,5 @@
 {
-  "source_fact_feed": "chronicle-uk-505e0e72-consumer-facts",
+  "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
   "candidate_count": 1174,
   "contract_target_count": 295,
@@ -11207,8 +11207,8 @@
         {
           "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 1600000000.0,
           "resolved_fact_period": "2024",
@@ -11222,8 +11222,8 @@
         {
           "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 5500000000.0,
           "resolved_fact_period": "2024",
@@ -11237,8 +11237,8 @@
         {
           "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 1800000000.0,
           "resolved_fact_period": "2024",
@@ -11252,8 +11252,8 @@
         {
           "name": "hmrc.salary_sacrifice.nics_relief_employee",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 1000000000.0,
           "resolved_fact_period": "2024",
@@ -11267,8 +11267,8 @@
         {
           "name": "hmrc.salary_sacrifice.nics_relief_employer",
           "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
           "resolved_value": 3400000000.0,
           "resolved_fact_period": "2024",

@@ -1,11 +1,11 @@
 {
- "compiled_count": 837,
+ "compiled_count": 842,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 705
+  "ledger_only": 710
  },
- "difference_count": 842,
+ "difference_count": 847,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -333,6 +333,41 @@
    "kind": "ledger_only",
    "ledger_value": 3130000.0,
    "name": "dwp.uc.households_with_deduction",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1200000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1600000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4400000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1200000000.0,
+   "name": "hmrc.salary_sacrifice.nics_relief_employee",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2900000000.0,
+   "name": "hmrc.salary_sacrifice.nics_relief_employer",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
