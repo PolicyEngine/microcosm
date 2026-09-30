@@ -19,12 +19,19 @@ Disclosure: the committed 1 % evidence and this file report population aggregate
 
 Evidence: `docs/evidence/uk-931/atomic-assignment-cells.json`, sha256 `99013cc15c6d4368027dd64fa6a4133a6ba40011e96d25919c528f622b60dbf9` (4 cells × 1,011 areas; 985 area counts suppressed as `<3`, their z-scores blanked with them since the round-1 review of #932 found the counts recoverable from `expected_rows` and `z`). Round 2 of the #1057 review (item 8, folded into microcosm#1059) found the suppressed counts still recoverable at K=15 from the level totals, since every row lies in one area per level and the expected rows sum to the total, and the K=1 LA `max_abs_z` taken from a suppressed area. So `resuppress_evidence` in the harness now withholds one more count per level that has suppressed ones (`withheld`, chosen in a value-independent order among counts above the minimum), withholds the level and breach-table minima there and any breach quantile in the suppressed range, and computes the z summaries over published areas only. The file was re-suppressed in place (no cell regenerated) from sha256 `7d120d52…`, earlier `32f494df…`; the test checks it is a fixed point of the pass and that no suppressed count is determined by the level total.
 
-| law | K | rows | source hh | gate | shared gate | London share | const. min rows / ESS / sources | const. max abs z / share abs z>3 (n) | const. breaches | LA min rows / ESS / sources | LA max abs z / share>3 (n) | LA breaches | identity stable | K-growth nested |
+| law | K | rows | source hh | gate | shared gate | London share | const. min rows / ESS / sources | const. max abs z / share abs z>3 (n published) | const. breaches | LA min rows / ESS / sources | LA max abs z / share>3 (n published) | LA breaches | identity stable | K-growth nested |
 |---|---:|---:|---:|---|---|---:|---|---|---:|---|---|---:|---|---|
-| legacy | 1 | 502 | 156 | pass | n/a | 0.1303 | 0 / 0.0 / 0 | n/a (0) | 650 | 0 / 0.0 / 0 | 1.96 / 0.0000 (8) | 361 | n/a | n/a |
-| keyed | 1 | 502 | 156 | pass | pass | 0.1303 | 0 / 0.0 / 0 | n/a (0) | 650 | 0 / 0.0 / 0 | 1.94 / 0.0000 (8) | 361 | yes | yes |
-| legacy | 15 | 7,530 | 156 | pass | n/a | 0.1303 | 2 / 1.7 / 2 | 3.67 / 0.0077 (649) | 650 | 0 / 0.0 / 0 | 2.92 / 0.0000 (355) | 361 | n/a | n/a |
-| keyed | 15 | 7,530 | 156 | pass | pass | 0.1303 | 2 / 1.7 / 2 | 4.07 / 0.0031 (649) | 650 | 0 / 0.0 / 0 | 2.77 / 0.0000 (355) | 361 | yes | yes |
+| legacy | 1 | 502 | 156 | pass | n/a | 0.1303 | withheld | n/a (0) | 650 | withheld | 1.78 / 0.0000 (7) | 361 | n/a | n/a |
+| keyed | 1 | 502 | 156 | pass | pass | 0.1303 | withheld | n/a (0) | 650 | withheld | 1.50 / 0.0000 (7) | 361 | yes | yes |
+| legacy | 15 | 7,530 | 156 | pass | n/a | 0.1303 | withheld | 3.67 / 0.0078 (644) | 650 | withheld | 2.92 / 0.0000 (352) | 361 | n/a | n/a |
+| keyed | 15 | 7,530 | 156 | pass | pass | 0.1303 | withheld | 4.07 / 0.0031 (645) | 650 | withheld | 2.77 / 0.0000 (352) | 361 | yes | yes |
+
+The four summary columns are rendered from the re-suppressed evidence by the harness's
+`level_summary_cells` (microcosm#1059 review round 2, item 7), so they withhold what the evidence withholds.
+A test holds this table to that rendering. The minima are withheld at every level that has
+suppressed counts. The z summaries cover published areas only; `n` counts those with at least five
+expected rows. The earlier hand-copied table printed the K=15 constituency minimum, which pinned
+the suppressed counts, and the K=1 LA maxima taken from suppressed areas.
 
 Every area breaches the 50 floors at 1 % by construction (the rung exists to exercise the path, not to measure support). The region weight mix is identical across laws at each K, the London share is identical, and the keyed law's production columns equal the in-process re-draw on the same, reversed and clone-0 rows.
 

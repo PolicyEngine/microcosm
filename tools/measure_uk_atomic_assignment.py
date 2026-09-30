@@ -570,6 +570,42 @@ def _published_z_summary(
     return max(z), sum(value > 3 for value in z) / len(z)
 
 
+def level_summary_cells(cell: dict, level: str) -> tuple[str, str]:
+    """A receipts table's two summary cells for one level of a committed cell.
+
+    Returns the "min rows / ESS / sources" cell and the "max abs z / share abs
+    z>3 (n published)" cell, rendered from the re-suppressed evidence, so a
+    receipts table cannot republish a minimum or a z summary that the evidence
+    withholds (microcosm#1059 review round 2, item 7). ``n`` counts the level's
+    published areas with at least five expected rows, the denominator of the
+    share.
+    """
+
+    summary = cell["levels"][level]
+    if summary["min_rows"] is None:
+        minima = "withheld"
+    else:
+        minima = (
+            f"{summary['min_rows']:.0f} / {summary['min_ess']:.1f} / "
+            f"{summary['min_sources']:.0f}"
+        )
+    published = sum(
+        1
+        for area in cell["areas"]
+        if area["level"] == level
+        and area["z"] is not None
+        and float(area["expected_rows"]) >= 5.0
+    )
+    if summary["max_abs_z"] is None:
+        z = f"n/a ({published})"
+    else:
+        z = (
+            f"{summary['max_abs_z']:.2f} / {summary['share_abs_z_gt_3']:.4f} "
+            f"({published})"
+        )
+    return minima, z
+
+
 def resuppress_evidence(evidence: dict) -> dict:
     """The committed disclosure rule applied to a written evidence payload.
 

@@ -311,3 +311,37 @@ def test_committed_931_evidence_is_internally_consistent(harness):
     # The committed file is a fixed point of the harness's disclosure pass.
     assert harness.resuppress_evidence(evidence) == evidence
     assert np.isfinite(sum(c["wall_seconds"] for c in evidence["cells"]))
+
+
+def test_committed_931_receipts_render_the_level_summaries_from_the_evidence(harness):
+    # Round 2 of the microcosm#1059 review, item 7: a hand-copied receipts table
+    # printed the K=15 constituency minimum that the evidence withholds, which
+    # pinned the suppressed counts again. The R1 table's summary cells must be the
+    # harness's rendering of the committed evidence.
+    root = paths_for("microcosm-build").repository
+    evidence_path = root / "docs/evidence/uk-931/atomic-assignment-cells.json"
+    receipts_path = root / "experiments/931-uk-atomic-assignment-receipts.md"
+    if not evidence_path.is_file() or not receipts_path.is_file():
+        pytest.skip("committed #931 evidence or receipts are not present")
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    section = receipts_path.read_text(encoding="utf-8").split("## R1", 1)[1]
+    section = section.split("## R2", 1)[0]
+    table = [line for line in section.splitlines() if line.startswith("|")]
+    header = [cell.strip() for cell in table[0].strip("|").split("|")]
+    columns = {
+        ("constituency", "min"): header.index("const. min rows / ESS / sources"),
+        ("constituency", "z"): header.index(
+            "const. max abs z / share abs z>3 (n published)"
+        ),
+        ("la", "min"): header.index("LA min rows / ESS / sources"),
+        ("la", "z"): header.index("LA max abs z / share>3 (n published)"),
+    }
+    cells = {(cell["law"], cell["n_clones"]): cell for cell in evidence["cells"]}
+    rows = [[cell.strip() for cell in line.strip("|").split("|")] for line in table[2:]]
+    assert {(row[0], int(row[1])) for row in rows} == set(cells)
+    for row in rows:
+        cell = cells[(row[0], int(row[1]))]
+        for level in ("constituency", "la"):
+            minima, z = harness.level_summary_cells(cell, level)
+            assert row[columns[(level, "min")]] == minima, (row[:2], level)
+            assert row[columns[(level, "z")]] == z, (row[:2], level)
