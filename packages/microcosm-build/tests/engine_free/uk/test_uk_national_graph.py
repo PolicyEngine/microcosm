@@ -277,6 +277,13 @@ def test_national_problem_binds_the_seam_doctrine(tmp_path, monkeypatch):
     assert bindings["target_loss_cap"] == 10.0
     assert bindings["max_weight_ratio"] == 10.0
     assert bindings["mass_rule"] == "free"
+    # The dense node solves under free mass, the default scales and no L0
+    # penalty; the doctrine the problem binds is one it honours.
+    from microcosm.build.uk_runtime.graph_calibration import (
+        refuse_unhonoured_solve_doctrine,
+    )
+
+    refuse_unhonoured_solve_doctrine(bindings)
     assert bindings["bound_families"] == ["national/dwp_universal_credit"]
     assert bindings["register_sha256"] == registry.version
     assert bindings["measure_resolution"]["mode"] == "frame_only"
@@ -438,3 +445,54 @@ def test_graph_national_module_has_no_seam_stage_dependency():
     source = inspect.getsource(graph_national)
     assert "UKNationalCalibrationStage" not in source
     assert "run_uk_calibration" not in source
+
+
+def test_dense_solve_refuses_a_bound_doctrine_it_cannot_honour():
+    """``mass_rule``, ``scale_rule`` and ``l0_lambda`` are recorded by the
+    national problem as the doctrine the solve ran under; the dense node
+    refuses any value other than the one it hard-codes (#1057 round 1)."""
+    from microcosm.build.uk_runtime.graph_calibration import (
+        UK_DENSE_SOLVE_FIXED_DOCTRINE,
+        refuse_unhonoured_solve_doctrine,
+    )
+
+    refuse_unhonoured_solve_doctrine({})
+    refuse_unhonoured_solve_doctrine(dict(UK_DENSE_SOLVE_FIXED_DOCTRINE))
+    refuse_unhonoured_solve_doctrine({"l0_lambda": 0})
+    for key, value in (
+        ("mass_rule", "pinned"),
+        ("scale_rule", "unit"),
+        ("l0_lambda", 0.5),
+    ):
+        with pytest.raises(ValueError, match=key):
+            refuse_unhonoured_solve_doctrine(
+                {**UK_DENSE_SOLVE_FIXED_DOCTRINE, key: value}
+            )
+
+
+def test_national_gate_node_reads_its_scope_from_the_posture():
+    from microcosm.build.uk_runtime.rowwise_posture import UK_ROWWISE_NATIONAL_POSTURE
+
+    national = uk_national_graph(
+        _config(),
+        spine=bound_spine_graph(seam._frame()),
+        spine_population="uk.full.spine_checkpoint",
+        review_date="2026-09-29",
+    )
+    node = national.graph.node(NATIONAL_GATES_NODE)
+    assert json.loads(node.params["gate_scope"]) == list(
+        UK_ROWWISE_NATIONAL_POSTURE.gate_scope
+    )
+    assert len(json.loads(node.params["gate_scope"])) == 7
+
+
+def test_national_run_config_refuses_an_empty_register():
+    from microcosm.build.uk_runtime.rowwise_posture import UK_ROWWISE_NATIONAL_POSTURE
+
+    with pytest.raises(ValueError, match="compiled national register"):
+        graph_national.national_run_config(
+            posture=UK_ROWWISE_NATIONAL_POSTURE,
+            config=_config(),
+            registry_document={"national_registry": {}},
+            driver_parameters={},
+        )

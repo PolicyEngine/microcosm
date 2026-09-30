@@ -340,6 +340,33 @@ class _ObservedSolveKernel(_CalibrationKernel):
         self.progress_callback = progress_callback
 
 
+#: The doctrine fields the dense node does not pass to the solver, with the
+#: one value it solves under: free mass, the default target-loss scales and
+#: no L0 penalty. A problem that binds another value would record a doctrine
+#: the solve did not honour, so the node refuses it instead.
+UK_DENSE_SOLVE_FIXED_DOCTRINE: Mapping[str, object] = {
+    "mass_rule": "free",
+    "scale_rule": "default_target_loss_scales",
+    "l0_lambda": 0.0,
+}
+
+
+def refuse_unhonoured_solve_doctrine(binding: Mapping[str, object]) -> None:
+    """Refuse a problem whose bound doctrine the dense solve cannot honour."""
+
+    for key, honoured in UK_DENSE_SOLVE_FIXED_DOCTRINE.items():
+        if key not in binding:
+            continue
+        bound = binding[key]
+        if key == "l0_lambda":
+            bound = float(bound)
+        if bound != honoured:
+            raise ValueError(
+                f"UK dense solve cannot honour {key}={binding[key]!r}: it solves "
+                f"under {honoured!r}."
+            )
+
+
 class UKDenseSolveKernel(_ObservedSolveKernel):
     ref = "uk.full.dense@1"
     capabilities = Capabilities(
@@ -414,6 +441,7 @@ class UKDenseSolveKernel(_ObservedSolveKernel):
         }
         if not required <= set(binding):
             raise ValueError("UK ordered problem is missing its solve doctrine.")
+        refuse_unhonoured_solve_doctrine(binding)
         result = calibrate(
             frame,
             problem.to_target_set(),

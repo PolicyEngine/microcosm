@@ -93,7 +93,6 @@ from . import (
 )
 from .battery_bindings import UK_GATE_REGISTRY
 from .calibration_run import (
-    UK_CALIBRATION_GATE_SCOPE,
     UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS,
     uk_scoped_gate_manifest,
 )
@@ -278,10 +277,6 @@ def uk_national_graph(
 
     if posture.role != "national":
         raise ValueError("uk_national_graph composes the national posture only.")
-    if config.doctrine.target_weight_rule != posture.doctrine.target_weight_rule:
-        # A receipted override changes the rule; the posture still names the
-        # doctrine the run deviated from, which the manifest records.
-        pass
     holder = spine.node(spine_population)
     if not any(
         output.name == "spine_provenance" and output.type == SPINE_PROVENANCE_TYPE
@@ -370,6 +365,9 @@ def uk_national_graph(
                 "review_date": review_date,
                 "gate_posture": posture.gate_posture,
                 "gate_policy_suffix": posture.gate_policy_suffix,
+                # The scope the kernel evaluates is the posture's, read from
+                # the node; the manifest digest below pins its compilation.
+                "gate_scope": canonical_json(list(posture.gate_scope)).decode(),
                 "gate_manifest": canonical_json(
                     _gates_manifest_payload(gates)
                 ).decode(),
@@ -893,8 +891,11 @@ class UKNationalGateKernel(_NationalKernel):
         national = registry_from_payload(registry_document["national_registry"])
         result, problem = decode_national_result(context, frame)
         doctrine = json.loads(str(context.params["doctrine"]))
+        scope = tuple(
+            str(gate) for gate in json.loads(str(context.params["gate_scope"]))
+        )
         gates = uk_scoped_gate_manifest(
-            tuple(UK_CALIBRATION_GATE_SCOPE),
+            scope,
             phases=("terminal",),
             policy_suffix=str(context.params["gate_policy_suffix"]),
         )
@@ -947,7 +948,7 @@ class UKNationalGateKernel(_NationalKernel):
             "kind": "uk_national_gate_report",
             "posture": str(context.params["gate_posture"]),
             "policy_suffix": str(context.params["gate_policy_suffix"]),
-            "scope": list(UK_CALIBRATION_GATE_SCOPE),
+            "scope": list(scope),
             "scope_exclusions": dict(UK_CALIBRATION_GATE_SCOPE_EXCLUSIONS),
             "report": gate_phase_report_payload(report, gates=gates),
             "aggregate_admin_measurement": _json_safe(admin_receipt),
@@ -1179,11 +1180,16 @@ def national_run_config(
 ) -> dict[str, object]:
     """The seam's ``run_config``: the attempt identity every record carries."""
 
+    if not registry_document.get("national_registry"):
+        raise ValueError(
+            "The national run_config requires a compiled national register."
+        )
     return {
         "pipeline": posture.pipeline,
         "release_id": posture.release_id,
-        "register_sha256": registry_document["national_registry"]
-        and registry_from_payload(registry_document["national_registry"]).version,
+        "register_sha256": registry_from_payload(
+            registry_document["national_registry"]
+        ).version,
         "calibration_year": int(config.calibration_year),
         "doctrine": national_doctrine_payload(config.doctrine),
         "doctrine_overrides": dict(config.doctrine_overrides),
