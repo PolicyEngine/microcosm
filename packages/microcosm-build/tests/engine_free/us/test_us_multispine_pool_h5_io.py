@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Mapping
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
@@ -16,6 +16,7 @@ import microcosm.build.us_runtime.acs_transfer as acs_transfer_runtime
 import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.immigration as immigration_runtime
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
+import microcosm.build.us_runtime.puf_support as puf_support_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 import microcosm.build.us_runtime.us_late_producer_registry as late_producer_registry_module
 import microcosm.build.us_runtime.worker_identity as worker_identity_module
@@ -51,6 +52,7 @@ from microcosm.build.us_runtime.h5_io import (
     us_multispine_pool_release_receipt,
     write_nullable_us_h5,
 )
+from microcosm.build.us_runtime.late_producer_dag import ProducerContract
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     spine_assembly_manifest,
@@ -1606,12 +1608,257 @@ def _strip_immigration_transfer_evidence(transfer: dict[str, object]) -> None:
         historical(target_key, receipt)
 
 
+_IMMIGRATION_SOURCE_PRODUCER = "source:with_us_immigration_inputs"
+_IMMIGRATION_TRANSFER_PRODUCER = "transfer:person/source_operator_immigration"
+
+#: One wage-earning CPS ASEC person record: the raw fields the immigration
+#: source producer reads that the persisted fixture stack does not carry.
+#: WSAL_VAL and SEMP_VAL are the schema-16 requirement #767 replaced with
+#: A_LFSR, which only today's contract reads; both contracts read the rest.
+_ASEC_PERSON_RECORD = {
+    "WSAL_VAL": 52_000.0,
+    "SEMP_VAL": 0.0,
+    "A_LFSR": 1.0,
+    "A_HSCOL": 0.0,
+    "A_MARITL": 7.0,
+    "A_MJOCC": 2.0,
+    "A_SPOUSE": 0.0,
+    "CAID": 2.0,
+    "CHAMPVA": 2.0,
+    "IHSFLG": 2.0,
+    "MCARE": 2.0,
+    "MIL": 2.0,
+    "PEAFEVER": 2.0,
+    "PEIO1COW": 4.0,
+    "PEN_SC1": 0.0,
+    "PEN_SC2": 0.0,
+    "RESNSS1": 0.0,
+    "RESNSS2": 0.0,
+    "SPM_CAPHOUSESUB": 0.0,
+    "SSI_YN": 2.0,
+    "SS_YN": 2.0,
+}
+
+
+def _historically_changed_late_producers() -> tuple[str, ...]:
+    """Name every producer whose schema-16 contract differs from today's."""
+
+    legacy = late_producer_registry_module.legacy_us_late_producer_contracts()
+    live = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    return tuple(
+        name for name in legacy.schedule.order if legacy.registry[name] != live[name]
+    )
+
+
+def _late_dag_input_frame(manifest: Mapping[str, object]) -> Frame:
+    """The fixture stack plus what the immigration producers' contracts read.
+
+    This is the frame ``_write_ready_pool(stacked=True)`` hands the fixture
+    DAG builder, plus exactly the inputs the immigration source and transfer
+    contracts (schema-16 and current) declare that the fixture stack does not
+    carry: the raw ASEC person record on the ASEC-origin rows (the ACS spine
+    has no CPS fields, so its rows stay null), ``is_female``, the person and
+    household spine source ids, ``state_fips``, ACS ``TYPEHUGQ``, and the
+    stack and PUF-attachment manifests in frame metadata. The transfer's
+    optional predictors stay absent, so its row seals their tolerated
+    absences exactly as the builder does. One frame serves every sealed row,
+    so a row's input and output evidence are computed on the same frame.
+    """
+
+    frame, _reconciliation = _stacked_pool_frame_with_live_immigration()
+    assert (
+        spine_provenance_counts(frame, boundary="late DAG input fixture")
+        == manifest["provenance_counts"]
+    ), "the rebuilt fixture stack is not the one this pool persisted"
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    person = tables["person"]
+    asec_person = (
+        person[support_channel_column("person")]
+        .astype(str)
+        .eq(BASE_ASEC_SUPPORT_CHANNEL)
+        .to_numpy()
+    )
+    for column, value in _ASEC_PERSON_RECORD.items():
+        person[column] = np.where(asec_person, value, np.nan)
+    person["is_female"] = (np.arange(len(person)) % 2).astype(np.float64)
+    person["person_spine_source_id"] = person[
+        support_source_id_column("person")
+    ].to_numpy(dtype=np.float64)
+    household = tables["household"]
+    acs_household = (
+        household[support_channel_column("household")]
+        .astype(str)
+        .eq(stacked_spine_module.ACS_STACKED_SUPPORT_CHANNEL)
+        .to_numpy()
+    )
+    # Every fixture household is in PUMA 0600101 / county 06001.
+    household["state_fips"] = 6.0
+    household["household_spine_source_id"] = household[
+        support_source_id_column("household")
+    ].to_numpy(dtype=np.float64)
+    household["TYPEHUGQ"] = np.where(acs_household, 1.0, np.nan)
+    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
+    _sampling, stack_manifest = _fixture_stacked_sampling(1.0)
+    # The attachment step records its manifest under the controls the
+    # fixture's primary-PUF resource receipts declare (fraction 1, seed 578).
+    attached = puf_support_runtime._attach_clone_arm_to_seeded_sample(
+        frame,
+        fraction=1.0,
+        seed=578,
+    )
+    return Frame(
+        tables,
+        frame.schema,
+        weights,
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={
+            **frame.metadata,
+            stacked_spine_module.STACKED_SPINE_MANIFEST_KEY: stack_manifest,
+            puf_support_runtime.PUF_CLONE_ATTACHMENT_MANIFEST_KEY: attached.metadata[
+                puf_support_runtime.PUF_CLONE_ATTACHMENT_MANIFEST_KEY
+            ],
+        },
+    )
+
+
+def _seal_execution_rows(
+    dag: dict[str, object],
+    contracts: Mapping[str, ProducerContract],
+    frame: Frame,
+) -> None:
+    """Seal the named rows' surfaces exactly as ``run_stacked_late_producer_dag``.
+
+    Readiness counts, tolerated-absence receipts, content-bound declared-input
+    evidence, and output evidence all come from the production builders,
+    computed on ``frame`` against the given contract and the row's own sealed
+    available-input receipts and callback receipt. Callers re-chain digests.
+    """
+
+    for row in dag["execution"]:
+        contract = contracts.get(row["producer"])
+        if contract is None:
+            continue
+        available = row["available_input_receipts"]
+        unfilled_rows, invalid_rows = stacked_spine_module._late_input_readiness_rows(
+            frame,
+            contract,
+            available_input_receipts=available,
+        )
+        row["declared_inputs"] = stacked_spine_module._late_declared_input_evidence(
+            frame,
+            contract,
+            available_input_receipts=available,
+            unfilled_rows=unfilled_rows,
+            invalid_rows=invalid_rows,
+        )
+        row["declared_absence_receipts"] = {
+            receipt_id: dict(receipt)
+            for receipt_id, receipt in (
+                stacked_spine_module._late_declared_absence_receipts(
+                    contract,
+                    unfilled_rows,
+                    invalid_rows=invalid_rows,
+                ).items()
+            )
+        }
+        row["output_surface"] = [
+            stacked_spine_module._late_output_column_evidence(
+                frame,
+                output=output,
+                producer_receipt=row["producer_receipt"],
+            )
+            for output in contract.outputs
+        ]
+
+
+def _rechain_late_dag(dag: dict[str, object]) -> None:
+    """Re-derive every row's surface digests, the chain, and the receipt digest.
+
+    The chain starts from the genesis digest of the receipt's own version, so
+    this serves both a current receipt and a version-3 (schema-9) one.
+    """
+
+    previous_sha256 = stacked_spine_module._late_execution_genesis_sha256(
+        producer_schedule_sha256=dag["producer_schedule"]["payload_sha256"],
+        input_frame_sha256=dag["input_frame_sha256"],
+        receipt_schema_version=dag["version"],
+    )
+    for row in dag["execution"]:
+        row["input_surface_sha256"] = _json_sha256(row["declared_inputs"])
+        row["output_surface_sha256"] = _json_sha256(row["output_surface"])
+        row["producer_receipt_sha256"] = _json_sha256(row["producer_receipt"])
+        row["previous_execution_sha256"] = previous_sha256
+        row.pop("sha256", None)
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
+        previous_sha256 = row["sha256"]
+    dag["execution_chain_sha256"] = previous_sha256
+    dag.pop("sha256", None)
+    dag["sha256"] = stacked_spine_module._canonical_sha256(dag)
+
+
+def _reseal_current_pool_rows(
+    manifest_path: Path,
+    contracts: Mapping[str, ProducerContract],
+) -> None:
+    """Re-seal a current pool's named rows and re-chain its late DAG."""
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    _seal_execution_rows(dag, contracts, _late_dag_input_frame(manifest))
+    _rechain_late_dag(dag)
+    manifest["late_producer_transition_authority_sha256"] = (
+        stacked_spine_module._late_producer_transition_authority_receipt(dag)["sha256"]
+    )
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def _immigration_row_contracts(
+    *, historical: Collection[str]
+) -> dict[str, ProducerContract]:
+    """Every historically changed producer's contract, legacy only if named."""
+
+    legacy = late_producer_registry_module.legacy_us_late_producer_contracts()
+    live = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    changed = _historically_changed_late_producers()
+    unknown = set(historical) - set(changed)
+    if unknown:
+        raise ValueError(f"{sorted(unknown)} have no distinct historical contract.")
+    return {
+        name: legacy.registry[name] if name in historical else live[name]
+        for name in changed
+    }
+
+
+def _late_row(manifest_path: Path, producer: str) -> dict[str, object]:
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    return next(row for row in dag["execution"] if row["producer"] == producer)
+
+
+def _declared_input_columns(row: Mapping[str, object]) -> set[str]:
+    return {
+        column["column"]
+        for declared in row["declared_inputs"]
+        for alternative in declared["evidence"]["alternatives"]
+        for column in alternative
+    }
+
+
 def _rewrite_as_legacy_relocated_worker_pool(
     manifest_path: Path,
     *,
     historical_contract: bool = True,
+    current_surface_producers: Collection[str] = (),
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Re-sign the tiny fixture with the frozen schema-9 worker binding.
+
+    With ``historical_contract`` (the default), every producer whose
+    schema-16 contract differs from today's has its execution row sealed by
+    the production row builder against that historical contract, as a real
+    schema-9 pool's row was. ``current_surface_producers`` seals the named
+    ones against today's contract instead: the stale surface the loader must
+    refuse.
 
     ``historical_contract=False`` keeps today's schedule, operator order, and
     immigration evidence and only lowers the version numbers: the forgery a
@@ -1716,6 +1963,18 @@ def _rewrite_as_legacy_relocated_worker_pool(
             group_receipt = dag["post_puf_transfer"]["groups"].get(row["producer"])
             if group_receipt is not None:
                 row["producer_receipt"] = json.loads(json.dumps(group_receipt))
+        # Seal every row whose schema-16 contract differs from today's with
+        # the production readiness and evidence builders, run against that
+        # historical contract on the fixture's own late-DAG input frame, so
+        # the rows carry the surfaces a schema-9 build sealed.
+        _seal_execution_rows(
+            dag,
+            _immigration_row_contracts(
+                historical=set(_historically_changed_late_producers())
+                - set(current_surface_producers)
+            ),
+            _late_dag_input_frame(manifest),
+        )
         manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
     else:
         schedule = dag["producer_schedule"]
@@ -2591,6 +2850,27 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
     recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
         manifest_path
     )
+    # The sealed rows are the schema-16 ones, not today's: the immigration
+    # source still reads WSAL_VAL/SEMP_VAL (#767 replaced them with A_LFSR),
+    # and the immigration transfer lacks the seven requirements #767 added.
+    legacy = late_producer_registry_module.legacy_us_late_producer_contracts()
+    live = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    source_row = _late_row(manifest_path, _IMMIGRATION_SOURCE_PRODUCER)
+    transfer_row = _late_row(manifest_path, _IMMIGRATION_TRANSFER_PRODUCER)
+    assert (
+        len(source_row["declared_inputs"])
+        == 57
+        == len(legacy.registry[_IMMIGRATION_SOURCE_PRODUCER].inputs)
+    )
+    assert (
+        len(transfer_row["declared_inputs"])
+        == 93
+        == len(legacy.registry[_IMMIGRATION_TRANSFER_PRODUCER].inputs)
+    )
+    assert len(live[_IMMIGRATION_SOURCE_PRODUCER].inputs) == 56
+    assert len(live[_IMMIGRATION_TRANSFER_PRODUCER].inputs) == 100
+    assert {"WSAL_VAL", "SEMP_VAL"} <= _declared_input_columns(source_row)
+    assert "A_LFSR" not in _declared_input_columns(source_row)
     manifest_sha256 = _sha256(manifest_path)
     attestation_path = _write_legacy_worker_attestation(
         manifest_path,
@@ -2650,6 +2930,59 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
             authenticated,
             allow_gate_failed_base_pool=True,
         )
+
+
+def test_scoring_loader_refuses_legacy_rows_sealed_with_todays_surfaces(
+    tmp_path: Path,
+) -> None:
+    """An attested schema-9 pool must carry the rows schema 16 sealed."""
+
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path,
+        current_surface_producers=(_IMMIGRATION_SOURCE_PRODUCER,),
+    )
+    source_row = _late_row(manifest_path, _IMMIGRATION_SOURCE_PRODUCER)
+    assert len(source_row["declared_inputs"]) == 56
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="exact 57-input readiness surface"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            expected_manifest_sha256=_sha256(manifest_path),
+            worker_identity_attestation=attestation_path,
+        )
+
+
+def test_current_loader_refuses_rows_sealed_with_historical_surfaces(
+    tmp_path: Path,
+) -> None:
+    """History authenticates only under an attestation, never on the current path."""
+
+    pytest.importorskip("tables")
+    (tmp_path / "control").mkdir()
+    control_path = _write_gate_failed_pool(tmp_path / "control")
+    # Control: re-sealing with today's contracts reproduces a loadable pool,
+    # so the refusal below comes from the historical surfaces, not the helper.
+    _reseal_current_pool_rows(control_path, _immigration_row_contracts(historical=()))
+    load_authenticated_us_multispine_pool_for_scoring(control_path)
+
+    (tmp_path / "historical").mkdir()
+    manifest_path = _write_gate_failed_pool(tmp_path / "historical")
+    _reseal_current_pool_rows(
+        manifest_path,
+        _immigration_row_contracts(historical=_historically_changed_late_producers()),
+    )
+    source_row = _late_row(manifest_path, _IMMIGRATION_SOURCE_PRODUCER)
+    assert len(source_row["declared_inputs"]) == 57
+
+    with pytest.raises(ValueError, match="exact 56-input readiness surface"):
+        load_authenticated_us_multispine_pool_for_scoring(manifest_path)
 
 
 def test_scoring_loader_refuses_version_downgraded_current_contract(
