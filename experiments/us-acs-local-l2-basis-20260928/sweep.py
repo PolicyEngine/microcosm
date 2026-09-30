@@ -13,7 +13,16 @@ Run spec (JSON or flags)::
 
     {"run_id": "...", "l2_lambda": 0.0, "l2_basis": "record",
      "mass_parametrization": "projection", "epochs": 800, "epoch_batch": 400,
-     "holdout_fold": null}
+     "holdout_fold": null, "acs_share": null}
+
+``acs_share`` reseeds the prior: the ACS spine's rows are rescaled together to
+that share of the household mass and the donor (ASEC-by-PUF) rows to the rest,
+each spine keeping its internal proportions, as the staging's ``--acs-share``
+does through ``base_pool._pooled_household_weights``. ``null`` keeps the
+checkpoint's weights (the release's ``--acs-share 0.5``). The prior becomes the
+frame's weights, so it is also the chi-square anchor, the base of the 5x ratio
+cap, and the "design" every metric is measured against; the original design
+weights stay recorded alongside.
 
 Modes:
 
@@ -181,6 +190,7 @@ class RunSpec:
     epochs: int = 800
     epoch_batch: int = 400
     holdout_fold: int | None = None
+    acs_share: float | None = None
 
     def __post_init__(self) -> None:
         if not self.run_id or "/" in self.run_id:
@@ -201,6 +211,8 @@ class RunSpec:
             raise ValueError(
                 f"holdout_fold must be None or 0..4: {self.holdout_fold!r}"
             )
+        if self.acs_share is not None and not (0.0 < self.acs_share < 1.0):
+            raise ValueError(f"acs_share must be in (0, 1): {self.acs_share!r}")
 
     @classmethod
     def from_mapping(cls, mapping: dict) -> RunSpec:
@@ -212,6 +224,8 @@ class RunSpec:
         for key in ("l2_lambda",):
             if key in values:
                 values[key] = float(values[key])
+        if values.get("acs_share") is not None:
+            values["acs_share"] = float(values["acs_share"])
         for key in ("epochs", "epoch_batch"):
             if key in values:
                 values[key] = int(values[key])
@@ -251,6 +265,36 @@ class Inputs:
     @property
     def values(self) -> np.ndarray:
         return self.meta["value"].to_numpy(np.float64)
+
+    def prior(self, acs_share: float | None) -> np.ndarray:
+        """The run's starting weights: the design, reseeded to ``acs_share``."""
+
+        return reseed_prior(
+            self.design, self.households["spine"].astype(str).to_numpy(), acs_share
+        )
+
+
+def reseed_prior(
+    design: np.ndarray, spine: np.ndarray, acs_share: float | None
+) -> np.ndarray:
+    """Rescale each spine to its share of the unchanged total.
+
+    ACS rows together get ``acs_share`` of the mass and donor rows the rest;
+    proportions within a spine are kept. ``None`` returns ``design`` itself.
+    """
+
+    design = np.asarray(design, dtype=np.float64)
+    if acs_share is None:
+        return design
+    acs = spine == SPINES[0]
+    donor = spine == SPINES[1]
+    if not (acs | donor).all() or not acs.any() or not donor.any():
+        raise SystemExit("every household must be on exactly one of the two spines")
+    total = float(design.sum())
+    prior = design.copy()
+    prior[acs] *= acs_share * total / float(design[acs].sum())
+    prior[donor] *= (1.0 - acs_share) * total / float(design[donor].sum())
+    return prior
 
 
 def load_inputs(
@@ -303,8 +347,8 @@ def load_inputs(
     )
 
 
-def build_frame(households: pd.DataFrame):
-    """A minimal frame: households with design weights, one person each."""
+def build_frame(households: pd.DataFrame, weights: np.ndarray):
+    """A minimal frame: households with the run's prior weights, one person each."""
 
     from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
@@ -321,11 +365,7 @@ def build_frame(households: pd.DataFrame):
     return Frame(
         tables,
         EntitySchema(group_entities=("household",)),
-        {
-            "household": Weights(
-                households["design_weight"].to_numpy(np.float64), WeightKind.DESIGN
-            )
-        },
+        {"household": Weights(np.asarray(weights, np.float64), WeightKind.DESIGN)},
     )
 
 
@@ -725,7 +765,7 @@ def run_calibration(
             "mass_parametrization; run from the l2-design-basis kernel"
         )
 
-    frame = build_frame(inputs.households)
+    frame = build_frame(inputs.households, inputs.prior(spec.acs_share))
     train = training_rows(inputs, spec.holdout_fold)
     targets = build_target_set(inputs, train)
     expected_names = [f"{name}@2024" for name in inputs.meta["name"].to_numpy()[train]]
@@ -738,7 +778,8 @@ def run_calibration(
         )
         + f"; l2_lambda={spec.l2_lambda} l2_basis={spec.l2_basis} "
         f"mass_parametrization={spec.mass_parametrization} epochs={spec.epochs} "
-        f"batch={spec.epoch_batch}; torch threads={torch.get_num_threads()}"
+        f"batch={spec.epoch_batch} acs_share={spec.acs_share}; "
+        f"torch threads={torch.get_num_threads()}"
     )
 
     resume_path = out_dir / "resume.npz"
@@ -906,14 +947,44 @@ def run_calibration(
 
 
 def score(
-    inputs: Inputs, weights: np.ndarray, train: np.ndarray, holdout: np.ndarray | None
+    inputs: Inputs,
+    weights: np.ndarray,
+    train: np.ndarray,
+    holdout: np.ndarray | None,
+    acs_share: float | None = None,
 ) -> dict:
-    design = inputs.design
+    """Metrics against the run's prior (the "design" blocks) and the release's.
+
+    With ``acs_share`` unset the prior is the release's design weights and the
+    two coincide.
+    """
+
+    from microcosm.calibrate import chi_square_distance
+
+    design = inputs.prior(acs_share)
     estimates = estimates_for(inputs, weights)
     design_estimates = estimates_for(inputs, design)
+    original = inputs.design
     metrics = {
         "concentration": concentration_metrics(weights, design, inputs.households),
         "fit_train": fit_block(estimates, inputs.meta, train),
+        "prior": {
+            "acs_share": acs_share,
+            "realized_acs_share": float(
+                design[
+                    inputs.households["spine"].astype(str).to_numpy() == SPINES[0]
+                ].sum()
+                / design.sum()
+            ),
+            "kish_ess_prior": kish(design),
+            "kish_ess_release_design": kish(original),
+            "chi_square_distance_prior_from_release_design": chi_square_distance(
+                design, original
+            ),
+            "chi_square_distance_from_release_design": chi_square_distance(
+                weights, original
+            ),
+        },
     }
     if holdout is not None:
         metrics["fit_holdout"] = fit_block(estimates, inputs.meta, holdout)
@@ -961,7 +1032,7 @@ def calibrate_mode(
             inputs.folds[spec.holdout_fold] if spec.holdout_fold is not None else None
         )
         scoring_started = time.time()
-        metrics = score(inputs, weights, train, holdout)
+        metrics = score(inputs, weights, train, holdout, spec.acs_share)
         from microcosm.calibrate import relative_error_loss
 
         recomputed_loss = relative_error_loss(
@@ -981,6 +1052,7 @@ def calibrate_mode(
                 )
             ),
             "mass_conserved_ratio": float(weights.sum() / inputs.design.sum()),
+            "max_ratio_to_prior": float((weights / inputs.prior(spec.acs_share)).max()),
         }
         payload = {
             "kind": "calibrate",
@@ -1025,7 +1097,13 @@ def calibrate_mode(
 
 
 def evaluate_mode(
-    label: str, weights_arg: str, checkpoint: Path, out_root: Path, *, verify: bool
+    label: str,
+    weights_arg: str,
+    checkpoint: Path,
+    out_root: Path,
+    *,
+    verify: bool,
+    acs_share: float | None = None,
 ) -> dict:
     out_dir = out_root / label
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1034,8 +1112,8 @@ def evaluate_mode(
     try:
         inputs = load_inputs(checkpoint, verify=verify, log=log)
         if weights_arg == "design":
-            weights = inputs.design
-            source = {"kind": "design"}
+            weights = inputs.prior(acs_share)
+            source = {"kind": "design", "acs_share": acs_share}
         else:
             path, _, key = weights_arg.partition(":")
             key = key or "weights"
@@ -1051,7 +1129,7 @@ def evaluate_mode(
                 f"weights shape {weights.shape} does not match the checkpoint"
             )
         all_rows = np.arange(inputs.matrix.shape[0], dtype=np.int64)
-        metrics = score(inputs, weights, all_rows, None)
+        metrics = score(inputs, weights, all_rows, None, acs_share)
         estimates = estimates_for(inputs, weights)
         metrics["fit_holdout_by_fold"] = {
             str(fold): fit_block(estimates, inputs.meta, rows)
@@ -1099,6 +1177,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--epochs", type=int, default=800)
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--holdout-fold", type=int, default=None)
+    parser.add_argument("--acs-share", type=float, default=None)
     parser.add_argument(
         "--weights", default="design", help="evaluate: 'design' or <npz>[:key]"
     )
@@ -1126,6 +1205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.checkpoint,
             args.out_root,
             verify=not args.no_verify,
+            acs_share=args.acs_share,
         )
         return 0
     if args.spec:
@@ -1142,6 +1222,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             epochs=args.epochs,
             epoch_batch=args.epoch_batch,
             holdout_fold=args.holdout_fold,
+            acs_share=args.acs_share,
         )
     calibrate_mode(
         spec,
