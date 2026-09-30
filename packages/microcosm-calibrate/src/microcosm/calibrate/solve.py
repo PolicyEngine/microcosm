@@ -19,7 +19,7 @@ the nonsmooth L1 selection path. It returns a
 are :class:`~microcosm.frame.WeightKind.CALIBRATED`, per-target diagnostics, and
 the loss trajectory.
 
-Six declared options, each a real feature (and each its own test):
+Declared options, each a real feature (and each its own test):
 
 - ``mass="free"`` (default) lets the total weight move to fit the targets;
   ``mass="conserve"`` projects every step's weights back to the input total, so
@@ -64,6 +64,10 @@ Six declared options, each a real feature (and each its own test):
   when it is the initial weights), so ``l2_lambda`` trades target fit against
   distance from the design weights: penalized ("ridge") calibration, the soft
   form of GREG.
+- ``mass_parametrization`` selects how ``mass="conserve"`` holds the total
+  under Adam: the historical per-step uniform log shift (``"projection"``,
+  default) or ``w = total * softmax(log_w)`` (``"softmax"``), whose gradient
+  already has its mass-constraint component removed.
 
 An explicit exact-k frozen refit requires the selected records' aligned marginal
 inclusion probabilities ``q_i`` and benchmarks them with Horvitz--Thompson
@@ -151,29 +155,38 @@ L2_BASES = frozenset({L2_BASIS_RECORD, L2_BASIS_CHI_SQUARE})
 #: ``mass_parametrization="projection"`` (the default) — the historical
 #: ``mass="conserve"`` scheme: Adam steps the log-weights, then every step
 #: clamps them to the ratio cap and shifts them uniformly back to the input
-#: total. Adam normalizes each coordinate's gradient before that shift, so any
-#: point where every record's gradient has the same sign is a fixed point:
-#: when the targets press on the total mass the iterate can stall away from
-#: the constrained optimum (see docs/calibration-l2-basis.md).
+#: total. Adam divides each coordinate's gradient by its running RMS (plus
+#: ``eps``) before that shift. When every record's gradient has the same sign
+#: and is well above ``eps``, the steps are all about ``lr`` and the shift
+#: cancels them, so the iterate can stall away from the constrained optimum;
+#: every target missing on the same side produces that. Measured on small
+#: problems in docs/calibration-l2-basis.md; how much it matters at a given
+#: scale is an empirical question that document answers for the ACS release.
 MASS_PARAMETRIZATION_PROJECTION = "projection"
 
 #: ``mass_parametrization="softmax"`` — ``w = total * softmax(log_w)``, so
 #: the input total holds by construction and autograd hands Adam the
 #: gradient with its component along the mass constraint already removed.
-#: That reduced gradient vanishes at the constrained optimum, which the
-#: projection scheme's full gradient does not. The ratio cap is still a
-#: per-step clamp (iterated with the softmax-invariant renormalization until
-#: no record exceeds it) plus the closing float64 projection.
+#: For a smooth objective that reduced gradient vanishes at the constrained
+#: optimum, which the projection scheme's full gradient does not; with the
+#: capped-MAPE kink Adam still oscillates there on the scale of ``lr``, as it
+#: does under ``mass="free"``. The ratio cap is a per-step clamp, alternated
+#: with the softmax-invariant renormalization (``_SOFTMAX_CAP_ROUNDS``), plus
+#: the closing float64 projection.
 MASS_PARAMETRIZATION_SOFTMAX = "softmax"
 
 MASS_PARAMETRIZATIONS = frozenset(
     {MASS_PARAMETRIZATION_PROJECTION, MASS_PARAMETRIZATION_SOFTMAX}
 )
 
-#: Upper bound on the per-step clamp/renormalize rounds under the softmax
-#: parametrization. Each round only lowers capped log-weights, so the rounds
-#: converge; the closing float64 projection makes the returned vector exact
-#: even if a step exhausts the budget.
+#: Upper bound on the per-step renormalize/clamp rounds under the softmax
+#: parametrization. Each renormalization lifts the capped records back over
+#: the cap by the capped records' share of the excess, so the excess shrinks
+#: geometrically without reaching exactly zero; the rounds stop when no
+#: record exceeds its bound in float32. A step that exhausts the rounds ends
+#: on a clamp, so its next forward pass renormalizes slightly past the cap;
+#: such epochs are counted in ``options["iterate_selection_receipt"]`` and the
+#: closing float64 projection makes the returned vector exact regardless.
 _SOFTMAX_CAP_ROUNDS = 32
 
 #: Threshold below which a weight counts as pruned (a "zero") when reporting the
@@ -511,6 +524,11 @@ class L0RefitResult:
     def top_1pct_weight_share(self) -> float:
         """Weight share of the post-L0 refit's heaviest 1% of records."""
         return self.refit.top_1pct_weight_share
+
+    @property
+    def chi_square_distance(self) -> float:
+        """Chi-square distance of the post-L0 refit from its own input weights."""
+        return self.refit.chi_square_distance
 
     @property
     def options(self) -> Mapping[str, object]:
@@ -916,20 +934,23 @@ def _l2_penalty(
 
 def _renormalize_softmax_log_weights_(
     log_w: torch.Tensor, total: float, log_upper: torch.Tensor | None
-) -> None:
+) -> bool:
     """Shift ``log_w`` so ``exp(log_w)`` sums to ``total``; clamp to the cap.
 
     In place, under ``no_grad``. The shift leaves ``total * softmax(log_w)``
     unchanged (softmax is shift-invariant); it only keeps ``exp(log_w)`` equal
     to the realized weights, so the cap comparison is in weight units. Each
-    clamp lowers the normalizer, so the next shift raises the uncapped
-    records; the rounds stop once no record exceeds its bound.
+    clamp lowers the normalizer, so the next shift lifts every record,
+    including the capped ones, by a shrinking amount. Returns ``True`` when
+    the rounds ran out with a record still over its bound after the last
+    shift (the vector then ends on a clamp; see ``_SOFTMAX_CAP_ROUNDS``).
     """
     for _ in range(_SOFTMAX_CAP_ROUNDS):
         log_w.add_(math.log(total) - float(torch.logsumexp(log_w, dim=0).item()))
         if log_upper is None or not bool((log_w > log_upper).any().item()):
-            return
+            return False
         log_w.clamp_(max=log_upper)
+    return True
 
 
 def _optimize(
@@ -993,7 +1014,10 @@ def _optimize(
     prune_atol = _PRUNE_REL_ATOL * float(np.mean(w0))
     log_w = torch.tensor(np.log(start), dtype=torch.float32, requires_grad=True)
     softmax_mass = mass_parametrization == MASS_PARAMETRIZATION_SOFTMAX
-    if softmax_mass and (not conserve_mass or l0_lambda > 0.0 or target_records):
+    softmax_cap_exhausted_epochs = 0
+    if softmax_mass and (
+        not conserve_mass or l0_lambda > 0.0 or target_records is not None
+    ):
         # calibrate() refuses these combinations first; this guards the seam.
         raise ValueError(
             "mass_parametrization='softmax' requires mass='conserve' without L0 gates."
@@ -1112,7 +1136,7 @@ def _optimize(
             # there is no mass shift for Adam's normalized step to fight; only
             # the ratio cap needs a per-step clamp.
             with torch.no_grad():
-                _renormalize_softmax_log_weights_(
+                softmax_cap_exhausted_epochs += _renormalize_softmax_log_weights_(
                     log_w, total0, None if upper is None else torch.log(upper)
                 )
             continue
@@ -1139,6 +1163,10 @@ def _optimize(
                         # hard so it can never be violated mid-run.
                         log_w.clamp_(max=torch.log(upper))
 
+    if softmax_mass and selection_receipt is not None:
+        selection_receipt["softmax_cap_rounds_exhausted_epochs"] = (
+            softmax_cap_exhausted_epochs
+        )
     gate_open_probabilities: np.ndarray | None = None
     with torch.no_grad():
         if softmax_mass:
@@ -1154,6 +1182,7 @@ def _optimize(
                 target_loss_cap,
             )
             if float(closing_loss.item()) > best_loss:
+                # retain_best requires free mass, so never under softmax.
                 weights = torch.exp(best_log_w)
                 selected_epoch = best_epoch
                 selected_loss = best_loss
@@ -1875,16 +1904,19 @@ def calibrate(
             :data:`CONSERVE_MASS`. :data:`MASS_PARAMETRIZATION_PROJECTION`
             (``"projection"``, default) is the historical scheme, unchanged
             bit for bit: step the log-weights, then shift them uniformly back
-            to the input total. Because Adam normalizes each coordinate's
-            gradient before that shift, any point where every record's
-            gradient shares a sign is a fixed point, so when the targets press
-            on the total the solve can stall away from the constrained
-            optimum. :data:`MASS_PARAMETRIZATION_SOFTMAX` (``"softmax"``)
-            optimizes ``w = total * softmax(log_w)`` instead: the total holds
-            by construction and Adam sees the gradient with its mass-constraint
-            component removed, which vanishes at the constrained optimum. It
-            requires ``mass="conserve"`` and no L0 gates. Recorded in
-            ``options["mass_parametrization"]``.
+            to the input total. Adam normalizes each coordinate's gradient
+            before that shift, so when every record's gradient shares a sign
+            and sits well above Adam's ``eps`` (every target missing on the
+            same side does that) the shift cancels the step and the solve can
+            stall away from the constrained optimum.
+            :data:`MASS_PARAMETRIZATION_SOFTMAX` (``"softmax"``) optimizes
+            ``w = total * softmax(log_w)`` instead: the total holds by
+            construction and Adam sees the gradient with its mass-constraint
+            component removed. It requires ``mass="conserve"`` and no L0
+            gates. Recorded in ``options["mass_parametrization"]`` whatever
+            the mass mode, like ``l2_basis`` whatever ``l2_lambda``; a softmax
+            solve also counts, in ``options["iterate_selection_receipt"]``,
+            the epochs whose cap rounds ran out.
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
         target_records: If given, enable L0 pruning with **budget control**: the
@@ -1910,7 +1942,8 @@ def calibrate(
             zero. ``l1_lambda`` must be zero unless ``method="prox"``.
         l2_lambda: Experimental soft concentration penalty strength. ``0.0``
             (default) preserves the unpenalized path. Positive values add
-            ``l2_lambda * mean((pre_gate_weight / initial_weight) ** 2)`` to the
+            ``l2_lambda`` times the ``l2_basis`` penalty, by default
+            ``mean((pre_gate_weight / initial_weight) ** 2)``, to the
             optimization loss while leaving ``max_weight_ratio`` as the hard
             per-record cap. When L0 gates are active, this is a latent pre-gate
             penalty on ``exp(log_w)``, not the realized gated returned weight;

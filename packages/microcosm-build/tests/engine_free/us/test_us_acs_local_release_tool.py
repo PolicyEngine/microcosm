@@ -1565,9 +1565,16 @@ def test_penalty_options_default_to_the_historical_solve(tmp_path: Path) -> None
         L2_BASIS_RECORD,
         MASS_PARAMETRIZATION_PROJECTION,
         MASS_PARAMETRIZATIONS,
+        calibrate,
     )
 
     module = _load_tool_module()
+    # The tool spells the kernel's values so parsing never imports torch.
+    assert module.L2_BASIS_CHOICES == tuple(sorted(L2_BASES))
+    assert module.MASS_PARAMETRIZATION_CHOICES == tuple(sorted(MASS_PARAMETRIZATIONS))
+    defaults = inspect.signature(calibrate).parameters
+    for key, value in module.HISTORICAL_PENALTY.items():
+        assert defaults[key].default == value, key
     args = module._parse_args(_calibrate_stage_argv(tmp_path))
     assert args.l2_basis == L2_BASIS_RECORD
     assert args.mass_parametrization == MASS_PARAMETRIZATION_PROJECTION
@@ -1710,10 +1717,21 @@ def test_do_calibrate_threads_and_records_the_penalty_settings(
     ("recorded", "requested", "refused"),
     [
         ({}, {}, None),
-        ({}, {"l2_basis": "chi_square"}, "predates"),
+        # With no penalty on either side the basis changes nothing.
+        ({}, {"l2_basis": "chi_square"}, None),
+        ({"l2_basis": "chi_square", "l2_lambda": 0.0}, {}, None),
         ({}, {"l2_lambda": 0.01}, "predates"),
-        ({"l2_basis": "chi_square"}, {"l2_basis": "chi_square"}, None),
-        ({"l2_basis": "chi_square"}, {}, "l2_basis"),
+        ({}, {"mass_parametrization": "softmax"}, "predates"),
+        (
+            {"l2_basis": "chi_square", "l2_lambda": 0.01},
+            {"l2_basis": "chi_square", "l2_lambda": 0.01},
+            None,
+        ),
+        (
+            {"l2_basis": "chi_square", "l2_lambda": 0.01},
+            {"l2_lambda": 0.01},
+            "l2_basis",
+        ),
         (
             {"mass_parametrization": "softmax"},
             {"mass_parametrization": "projection"},
@@ -1778,6 +1796,27 @@ def test_package_manifest_records_the_penalty_settings(
     assert manifest["calibration"]["chi_square_distance"] == 0.21
 
 
+def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A summary from before the settings existed was solved the only way there was."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["calibration"]["l2_basis"] == "record"
+    assert manifest["calibration"]["mass_parametrization"] == "projection"
+    assert manifest["calibration"]["chi_square_distance"] is None
+
+
 def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
     module = _load_tool_module()
     base = {
@@ -1791,6 +1830,20 @@ def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
     assert historical["status"] == "reviewed_concentration"
     assert module._ess_concentration_limitation(base) == historical
 
+    assert (
+        module._ess_concentration_limitation(
+            {**base, "l2_lambda": 0.0, "mass_parametrization": "projection"}
+        )
+        == historical
+    )
+    # An unpenalized softmax solve is a new optimizer, not the certified default.
+    unpenalized_softmax = module._ess_concentration_limitation(
+        {**base, "l2_lambda": 0.0, "mass_parametrization": "softmax"}
+    )
+    assert unpenalized_softmax["id"] == "effective_sample_size_under_nondefault_solve"
+    assert unpenalized_softmax["status"] == "recorded_concentration"
+    assert "certified default" not in unpenalized_softmax["reason"]
+
     penalized = module._ess_concentration_limitation(
         {
             **base,
@@ -1800,7 +1853,7 @@ def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
             "chi_square_distance": 0.21,
         }
     )
-    assert penalized["id"] == "effective_sample_size_under_l2_penalty"
+    assert penalized["id"] == "effective_sample_size_under_nondefault_solve"
     assert penalized["status"] == "recorded_concentration"
     assert "l2_lambda=0.003" in penalized["reason"]
     assert "'chi_square'" in penalized["reason"]

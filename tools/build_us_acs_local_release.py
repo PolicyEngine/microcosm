@@ -120,6 +120,19 @@ DEFAULT_SOI_MODE = SOI_MODE_STATE
 #: ``state`` mode excludes them, which is what Build O's switch did.
 CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
 
+#: The kernel's ``l2_basis`` and ``mass_parametrization`` values
+#: (``microcosm.calibrate.L2_BASES`` / ``MASS_PARAMETRIZATIONS``), spelled here
+#: so parsing arguments never imports torch; a test pins them equal.
+L2_BASIS_CHOICES = ("chi_square", "record")
+MASS_PARAMETRIZATION_CHOICES = ("projection", "softmax")
+#: The penalty every checkpoint and summary written before these settings were
+#: recorded was solved with: the options did not exist, so it is the only one.
+HISTORICAL_PENALTY = {
+    "l2_lambda": 0.0,
+    "l2_basis": "record",
+    "mass_parametrization": "projection",
+}
+
 
 def _require_soi_mode(soi_mode: str) -> str:
     if soi_mode not in SOI_MODES:
@@ -1060,35 +1073,35 @@ def _penalty_provenance(args) -> dict[str, np.ndarray]:
 def _refuse_resume_with_other_penalty(saved, args) -> None:
     """Refuse to warm-start batches solved under different penalty settings.
 
-    A checkpoint from before these settings were recorded carries none of
-    them; it resumes only under the historical defaults it was solved with.
+    The penalty settings are ``l2_lambda``, ``l2_basis`` (compared only when
+    either side's ``l2_lambda`` is positive) and ``mass_parametrization``. A
+    checkpoint from before these settings were recorded carries none of them;
+    it resumes only under the historical solve it came from. Other settings
+    (``--max-weight-ratio``, ``--target-loss-cap``, ``--seed``) are not checked.
     """
 
-    requested = _penalty_provenance(args)
+    requested = {key: value.item() for key, value in _penalty_provenance(args).items()}
+    recorded = {key: (saved[key].item() if key in saved else None) for key in requested}
+    # The basis only shapes a solve with a positive penalty.
+    inert_basis = (recorded["l2_lambda"] or 0.0) == 0.0 and requested[
+        "l2_lambda"
+    ] == 0.0
     for key, value in requested.items():
-        recorded = saved[key] if key in saved else None
-        if recorded is None:
-            from microcosm.calibrate import (
-                L2_BASIS_RECORD,
-                MASS_PARAMETRIZATION_PROJECTION,
-            )
-
-            historical = {
-                "l2_lambda": 0.0,
-                "l2_basis": L2_BASIS_RECORD,
-                "mass_parametrization": MASS_PARAMETRIZATION_PROJECTION,
-            }[key]
-            if value.item() != historical:
+        if key == "l2_basis" and inert_basis:
+            continue
+        if recorded[key] is None:
+            historical = HISTORICAL_PENALTY[key]
+            if value != historical:
                 raise SystemExit(
                     f"weights_latest.npz records no {key} (it predates that "
                     f"setting, so it was solved with {historical!r}); refusing "
-                    f"to resume it under {key}={value.item()!r}."
+                    f"to resume it under {key}={value!r}."
                 )
             continue
-        if recorded.item() != value.item():
+        if recorded[key] != value:
             raise SystemExit(
-                f"weights_latest.npz was solved with {key}={recorded.item()!r}; "
-                f"refusing to resume it under {key}={value.item()!r}."
+                f"weights_latest.npz was solved with {key}={recorded[key]!r}; "
+                f"refusing to resume it under {key}={value!r}."
             )
 
 
@@ -1506,10 +1519,11 @@ def _repo_code_identity(allow_dirty: bool) -> dict[str, object]:
 
 
 def _ess_concentration_limitation(diagnostics: dict) -> dict:
-    """The lineage's weight-concentration entry, true to the penalty solved.
+    """The lineage's weight-concentration entry, true to the solve it describes.
 
-    The unpenalized default keeps its historical reviewed entry. A penalized
-    run records its own settings instead: its concentration is measured, but
+    Only the historical solve (no penalty, projection mass parametrization)
+    keeps the reviewed entry. Any other solve, including an unpenalized softmax
+    one, records its own settings instead: its concentration is measured, but
     whether it is acceptable is a separate review this register cannot claim.
     """
 
@@ -1517,7 +1531,13 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
     ess_fraction = diagnostics.get("ess_fraction", 0.0)
     households = diagnostics.get("households") or 0
     l2_lambda = float(diagnostics.get("l2_lambda") or 0.0)
-    if l2_lambda == 0.0:
+    parametrization = diagnostics.get(
+        "mass_parametrization", HISTORICAL_PENALTY["mass_parametrization"]
+    )
+    if (
+        l2_lambda == 0.0
+        and parametrization == HISTORICAL_PENALTY["mass_parametrization"]
+    ):
         return {
             "id": "low_effective_sample_size_lambda_zero",
             "status": "reviewed_concentration",
@@ -1531,14 +1551,14 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
             "calibration_blocker": False,
         }
     return {
-        "id": "effective_sample_size_under_l2_penalty",
+        "id": "effective_sample_size_under_nondefault_solve",
         "status": "recorded_concentration",
         "reason": (
             f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
             f"households with max_weight_ratio="
             f"{diagnostics.get('max_weight_ratio')}, l2_lambda={l2_lambda:g}, "
             f"l2_basis={diagnostics.get('l2_basis')!r} and "
-            f"mass_parametrization={diagnostics.get('mass_parametrization')!r}; "
+            f"mass_parametrization={parametrization!r}; "
             f"chi-square distance from the design weights "
             f"{diagnostics.get('chi_square_distance')}."
         ),
@@ -2181,8 +2201,10 @@ def do_package(args) -> dict:
             or ["acs_2024_1yr", "asec_puf"],
             "donor_release": donor_release,
         },
+        # A summary from before the penalty settings were recorded was solved
+        # with the historical ones, the only solve that existed then.
         "calibration": {
-            key: diagnostics.get(key)
+            key: diagnostics.get(key, HISTORICAL_PENALTY.get(key))
             for key in (
                 "families",
                 "geographies",
@@ -2381,13 +2403,6 @@ def do_package(args) -> dict:
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    from microcosm.calibrate import (
-        L2_BASES,
-        L2_BASIS_RECORD,
-        MASS_PARAMETRIZATION_PROJECTION,
-        MASS_PARAMETRIZATIONS,
-    )
-
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--stage",
@@ -2435,8 +2450,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--l2-lambda", type=float, default=0.0)
     parser.add_argument(
         "--l2-basis",
-        choices=sorted(L2_BASES),
-        default=L2_BASIS_RECORD,
+        choices=L2_BASIS_CHOICES,
+        default=HISTORICAL_PENALTY["l2_basis"],
         help=(
             "Form of the --l2-lambda penalty (microcosm.calibrate l2_basis). "
             "'record' (default) is the historical mean((w / d) ** 2); "
@@ -2447,8 +2462,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--mass-parametrization",
-        choices=sorted(MASS_PARAMETRIZATIONS),
-        default=MASS_PARAMETRIZATION_PROJECTION,
+        choices=MASS_PARAMETRIZATION_CHOICES,
+        default=HISTORICAL_PENALTY["mass_parametrization"],
         help=(
             "How the mass-conserving Adam solve holds the total "
             "(microcosm.calibrate mass_parametrization). 'projection' "

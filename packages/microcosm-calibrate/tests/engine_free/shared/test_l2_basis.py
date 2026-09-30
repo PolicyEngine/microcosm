@@ -15,9 +15,13 @@ Invariants pinned here (each holds for every input the strategies draw):
    design weights from any warm start, under both mass parametrizations.
 5. The softmax parametrization conserves the input total, respects the ratio
    cap, and keeps every weight positive.
-6. The realized chi-square distance is nonincreasing in ``l2_lambda`` (the
-   regularization-path identity for exact minimizers), so with uniform design
-   weights Kish ESS is nondecreasing in ``l2_lambda``.
+6. Each solve under softmax-conserve and free mass lands within a bound of
+   the exact optimum of the same convex program (differential against
+   CLARABEL on these tests' own problems, fixture
+   ``tests/fixtures/l2_basis_path_reference.json``), and the realized
+   chi-square distance is nonincreasing in ``l2_lambda`` to within the slack
+   that bound implies (the regularization-path identity), so with uniform
+   design weights Kish ESS is nondecreasing too.
 7. The defaults (``l2_basis="record"``, ``mass_parametrization="projection"``)
    reproduce the pre-change optimizer's bytes.
 
@@ -30,9 +34,11 @@ _mass_pressure``); the softmax option exists for that reason.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import importlib.util
 import inspect
+import json
 from itertools import pairwise
 
 import numpy as np
@@ -314,95 +320,142 @@ def test_softmax_parametrization_conserves_mass_and_respects_the_cap(
         assert (result.weights <= cap * design * (1.0 + 1e-12)).all()
     assert result.options["mass_parametrization"] == MASS_PARAMETRIZATION_SOFTMAX
     assert result.options["iterate_selection"] == "closing_state"
+    exhausted = result.options["iterate_selection_receipt"][
+        "softmax_cap_rounds_exhausted_epochs"
+    ]
+    assert isinstance(exhausted, int) and 0 <= exhausted <= 300
 
 
 # --- 6: the regularization path ----------------------------------------------
 
-_LAMBDAS = (0.0, 1e-3, 1e-2, 1e-1, 1.0)
+#: Dense at large lambda, where the derived slack 2 * eps / (lam_b - lam_a) is
+#: small enough for the path identity to say something.
+_LAMBDAS = (0.0, 1e-2, 0.1, 0.3, 1.0, 3.0, 10.0)
+#: The path tests' problems: three seeds, heterogeneous and uniform design
+#: weights, under the two settings whose Adam solves reach the optimum.
+PATH_CASES = tuple(
+    {"seed": seed, "uniform": uniform, "mass": mass, "parametrization": param}
+    for seed in range(3)
+    for uniform in (False, True)
+    for mass, param in (
+        ("conserve", MASS_PARAMETRIZATION_SOFTMAX),
+        ("free", MASS_PARAMETRIZATION_PROJECTION),
+    )
+)
 
 
-def _path(frame, targets, *, mass: str, parametrization: str) -> list:
-    return [
+def path_case_id(case: dict) -> str:
+    design = "uniform" if case["uniform"] else "lognormal"
+    return f"s{case['seed']}_{design}_{case['mass']}_{case['parametrization']}"
+
+
+def _path_reference() -> dict:
+    path = _TEST_PATHS.tests / "fixtures" / "l2_basis_path_reference.json"
+    return json.loads(path.read_text())
+
+
+def _problem_digest(frame: Frame, targets: TargetSet) -> str:
+    household = frame.table("household")
+    digest = hashlib.sha256()
+    for target in targets:
+        digest.update(household[target.measure].to_numpy(np.float64).tobytes())
+        digest.update(np.float64(target.value).tobytes())
+    digest.update(
+        frame.resolve_weights("household").values.astype(np.float64).tobytes()
+    )
+    return digest.hexdigest()
+
+
+def _objective_parts(frame, targets, weights: np.ndarray) -> tuple[float, float]:
+    household = frame.table("household")
+    design = frame.resolve_weights("household").values
+    misses = [
+        abs(float(household[t.measure].to_numpy() @ weights) - t.value)
+        / max(abs(t.value), 1.0)
+        for t in targets
+    ]
+    return float(np.mean(misses)), chi_square_distance(weights, design)
+
+
+@functools.cache
+def _solved_path(case_id: str) -> tuple:
+    case = next(c for c in PATH_CASES if path_case_id(c) == case_id)
+    frame, targets, _ = _problem(case["seed"], uniform=case["uniform"])
+    results = [
         calibrate(
             frame,
             targets,
             epochs=1500,
             learning_rate=0.02,
-            mass=mass,
+            mass=case["mass"],
             max_weight_ratio=5.0,
             l2_lambda=lam,
             l2_basis=L2_BASIS_CHI_SQUARE,
-            mass_parametrization=parametrization,
+            mass_parametrization=case["parametrization"],
             seed=0,
         )
         for lam in _LAMBDAS
     ]
+    return frame, targets, results
 
 
-@pytest.mark.parametrize("seed", range(4))
-@pytest.mark.parametrize(
-    ("mass", "parametrization"),
-    [
-        ("conserve", MASS_PARAMETRIZATION_SOFTMAX),
-        ("free", MASS_PARAMETRIZATION_PROJECTION),
-    ],
-)
-def test_chi_square_distance_is_nonincreasing_in_lambda(
-    seed: int, mass: str, parametrization: str
-) -> None:
-    """The regularization-path identity on fixed synthetic problems.
+@pytest.mark.parametrize("case", PATH_CASES, ids=path_case_id)
+def test_path_solves_reach_the_exact_optimum(case: dict) -> None:
+    """Differential: each solve's objective against CLARABEL's exact optimum.
 
-    For exact minimizers ``w_a``, ``w_b`` of ``loss + lam * P`` at
-    ``lam_a < lam_b``, adding the two optimality inequalities gives
-    ``(lam_b - lam_a) * (P(w_b) - P(w_a)) <= 0``. Adam is not exact; on these
-    problems it lands within 4e-3 of the convex optimum (measured against
-    CLARABEL when this test was written), so a 1e-3 slack suffices here.
+    The fixture holds the exact optimum of the same convex program for these
+    very problems (``experiments/us-acs-local-l2-basis-20260928/
+    test_path_reference.py``); its problem digests guard against generator
+    drift. The loss cap never binds on them, so the solver's capped loss and
+    the program's loss coincide.
     """
-    frame, targets, _ = _problem(seed)
-    path = _path(frame, targets, mass=mass, parametrization=parametrization)
-    distances = [result.chi_square_distance for result in path]
-    assert all(b <= a + 1e-3 for a, b in pairwise(distances)), distances
-    # Not vacuous: the penalty moves the solution toward the design.
-    assert distances[-1] < 0.75 * distances[0], distances
+    reference = _path_reference()
+    entry = reference["cases"][path_case_id(case)]
+    frame, targets, results = _solved_path(path_case_id(case))
+    assert _problem_digest(frame, targets) == entry["problem_sha256"]
+    bound = reference["excess_objective_bound"]
+    for lam, result in zip(_LAMBDAS, results, strict=True):
+        loss, distance = _objective_parts(frame, targets, result.weights)
+        assert loss == pytest.approx(result.final_loss, rel=1e-4, abs=1e-6)
+        excess = loss + lam * distance - entry["optimum"][str(lam)]["objective"]
+        assert excess <= bound, (lam, excess)
 
 
-@pytest.mark.parametrize("seed", range(4))
-def test_kish_ess_is_nondecreasing_in_lambda_with_uniform_design(seed: int) -> None:
-    """With uniform design weights the distance is ``n / ESS - 1`` exactly."""
-    frame, targets, design = _problem(seed, uniform=True)
-    path = _path(
-        frame,
-        targets,
-        mass="conserve",
-        parametrization=MASS_PARAMETRIZATION_SOFTMAX,
-    )
-    ess = [result.effective_sample_size for result in path]
-    assert all(b >= a - 1e-3 * len(design) for a, b in pairwise(ess)), ess
-    assert ess[-1] > ess[0], ess
+@pytest.mark.parametrize("case", PATH_CASES, ids=path_case_id)
+def test_chi_square_distance_is_nonincreasing_in_lambda(case: dict) -> None:
+    """The regularization-path identity, with its slack derived, not fitted.
 
-
-@_SOLVER_SETTINGS
-@given(st.integers(0, 2**32 - 1), st.booleans())
-def test_chi_square_distance_path_within_the_optimality_bound(
-    seed: int, uniform: bool
-) -> None:
-    """The path identity with its slack derived from the optimizer's error.
-
-    If both solves are within ``eps`` of optimal, the identity weakens to
-    ``P(w_b) - P(w_a) <= 2 * eps / (lam_b - lam_a)``. ``eps = 5e-3`` bounds
-    the largest excess objective measured on these problems (3.4e-3).
+    For exact minimizers at ``lam_a < lam_b``, adding the two optimality
+    inequalities gives ``(lam_b - lam_a) * (P_b - P_a) <= 0``. Solves within
+    ``eps`` of optimal (the differential test above) weaken it to
+    ``P_b <= P_a + 2 * eps / (lam_b - lam_a)``. Only pairs where that slack is
+    below the exact optimum's own ``P_a`` say anything; the others are skipped
+    by name, and every case keeps at least two informative pairs. With uniform
+    design weights under mass conservation, ``ESS = n / (1 + P)`` exactly, so
+    Kish ESS is nondecreasing on the same pairs.
     """
-    frame, targets, _ = _problem(seed, n=60, k=4, uniform=uniform)
-    path = _path(
-        frame,
-        targets,
-        mass="conserve",
-        parametrization=MASS_PARAMETRIZATION_SOFTMAX,
-    )
-    eps = 5e-3
-    for (lam_a, a), (lam_b, b) in pairwise(zip(_LAMBDAS, path, strict=True)):
+    reference = _path_reference()
+    optimum = reference["cases"][path_case_id(case)]["optimum"]
+    eps = reference["excess_objective_bound"]
+    frame, targets, results = _solved_path(path_case_id(case))
+    exact = [optimum[str(lam)]["chi_square_distance"] for lam in _LAMBDAS]
+    assert all(b <= a + 1e-9 for a, b in pairwise(exact)), exact
+    informative = 0
+    for (lam_a, a, exact_a), (lam_b, b, _) in pairwise(
+        zip(_LAMBDAS, results, exact, strict=True)
+    ):
         slack = 2.0 * eps / (lam_b - lam_a)
+        if slack >= exact_a:
+            continue
+        informative += 1
         assert b.chi_square_distance <= a.chi_square_distance + slack, (lam_a, lam_b)
+        if case["uniform"] and case["mass"] == "conserve":
+            n = len(b.weights)
+            for result in (a, b):
+                assert result.effective_sample_size == pytest.approx(
+                    n / (1.0 + result.chi_square_distance), rel=1e-9
+                )
+    assert informative >= 2
 
 
 def test_projection_parametrization_stalls_under_uniform_mass_pressure() -> None:
@@ -618,6 +671,9 @@ _ORACLE_MODULE_SHA256 = (
 _ORACLE_FUNCTION_SHA256 = (
     "c5c8923788d33ef50861599e5599028611b62fb4f5a7238f7c09773daaee5155"
 )
+#: The live helpers the oracle imports. These digests equal the helpers'
+#: sources at bda72cb02 (checked with ``git show bda72cb02:.../solve.py`` when
+#: the pin was written), so the oracle runs the pre-change closure exactly.
 _HELPER_SOURCE_SHA256 = {
     "_apply_constraint": (
         "86281bdf18bdc17acafbbe79e15fb6b4c4102840a1315c3b6bbf52b170d8749c"
