@@ -91,3 +91,9 @@ The pin then moved to `5324aa2`, Chronicle main after PR #284 (the validator fix
 needed: `build-consumer-artifact` at `00b4b14` refused every renamed-geography row). The export
 re-run at the fix from the same suite bundle is byte-identical (287,024 rows, the same digests), so
 only the commit and the feed label move: no value, row or receipt changes.
+The `505e0e7` re-pin (microcosm#1014, PolicyEngine/chronicle#287 via #288, on top of `5324aa2`)
+brought HMRC CGT statistics 2026 Table 4 (Business Asset Disposal Relief and Investors' Relief
+claimants, qualifying gains and tax by band of qualifying gain, individuals, trusts and all
+taxpayers, 2021-22 to 2024-25; 287,150 rows). The addition is purely additive: the national and
+local reference files are byte-identical, the vendored resources carry the same rows under the new
+feed identity, and the three compile-parity receipts are unchanged.

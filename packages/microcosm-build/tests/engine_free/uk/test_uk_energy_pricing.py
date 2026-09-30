@@ -919,6 +919,19 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
         {"stage": "lcfs_consumption", "energy_rake": truncated},
         match="truncated, not converged",
     )
+    # A spike inside the window fails too, with both endpoints untouched: the
+    # gate reads the window's range, not its endpoints.
+    spiked = copy.deepcopy(receipt)
+    series = spiked["sweep_residuals"][GAS_KWH]
+    series[-6] = series[-1] + 0.01
+    assert series[-11] == receipt["sweep_residuals"][GAS_KWH][-11]
+    failing(
+        generous,
+        {"stage": "lcfs_consumption", "energy_rake": spiked},
+        match="truncated, not converged",
+    )
+    # The window presupposes more declared sweeps than its own length.
+    assert _declared_sweeps() > parameters["convergence_window_sweeps"]
     short = copy.deepcopy(receipt)
     short["sweep_residuals"][GAS_KWH] = short["sweep_residuals"][GAS_KWH][-10:]
     failing(
@@ -940,6 +953,46 @@ def test_energy_is_checked_at_stage_time_by_the_energy_rake_gate() -> None:
         run({**generous, "margins": []})
     with pytest.raises(ValueError, match="differs from the stage"):
         run({**generous, "margins_period_value": 2023})
+
+
+def test_the_recipient_rake_refuses_an_undeclared_sweep_count() -> None:
+    """No silent default: the energy_rake window presumes the declared sweeps."""
+
+    import dataclasses
+
+    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    region_rake = next(
+        operation
+        for operation in stage.operations
+        if operation.kind == "iterative_proportional_fit"
+        and "region" in operation.parameters.get("margins", ())
+    )
+    without = dataclasses.replace(
+        stage,
+        operations=tuple(
+            operation for operation in stage.operations if operation is not region_rake
+        ),
+    )
+    with pytest.raises(ValueError, match="declared iterations are required"):
+        _recipient_energy_rake_iterations(without)
+    undeclared = dataclasses.replace(
+        stage,
+        operations=tuple(
+            dataclasses.replace(
+                operation,
+                parameters={
+                    key: value
+                    for key, value in operation.parameters.items()
+                    if key != "iterations"
+                },
+            )
+            if operation is region_rake
+            else operation
+            for operation in stage.operations
+        ),
+    )
+    with pytest.raises(ValueError, match="declared iterations are required"):
+        _recipient_energy_rake_iterations(undeclared)
 
 
 def test_gas_is_raked_over_connected_rows_and_electricity_over_all() -> None:

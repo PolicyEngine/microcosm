@@ -15,10 +15,10 @@ import pandas as pd
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.cgt_structure import (
-    HOUSEHOLD_IS_CGT_BAND_DONOR,
     HOUSEHOLD_IS_CGT_CLONE,
     _assert_closed_world_operations,
 )
+from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -160,9 +160,9 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     clones = person_households.map(
         households.get(HOUSEHOLD_IS_CGT_CLONE, pd.Series(False, index=households.index))
     ).fillna(False)
-    donors = person_households.map(
+    support_copies = person_households.map(
         households.get(
-            HOUSEHOLD_IS_CGT_BAND_DONOR,
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
             pd.Series(False, index=households.index),
         )
     ).fillna(False)
@@ -170,7 +170,10 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     if asked.isna().any():
         raise ValueError("salary_sacrifice_asked contains non-numeric values.")
     training_mask = (
-        channels.eq("frs") & ~clones.astype(bool) & ~donors.astype(bool) & asked.eq(1)
+        channels.eq("frs")
+        & ~clones.astype(bool)
+        & ~support_copies.astype(bool)
+        & asked.eq(1)
     )
     if not training_mask.any():
         raise ValueError("Salary-sacrifice QRF has no eligible asked FRS rows.")
@@ -296,7 +299,7 @@ def _assert_salary_sacrifice_stage_parameters(
                 {
                     "training_population": (
                         "support_channel == frs and not capital-gains clone and "
-                        "not CGT band donor and salary_sacrifice_asked == 1"
+                        "not CGT support copy and salary_sacrifice_asked == 1"
                     ),
                     "target_population": "salary_sacrifice_asked != 1 frame-wide",
                     "predictors": list(SALSAC_PREDICTORS),

@@ -10,10 +10,8 @@ import pytest
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.source_manifest import SourceOperationSpec
 from microcosm.build.uk_runtime import salary_sacrifice
-from microcosm.build.uk_runtime.cgt_structure import (
-    HOUSEHOLD_IS_CGT_BAND_DONOR,
-    HOUSEHOLD_IS_CGT_CLONE,
-)
+from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.salary_sacrifice import (
     SALSAC_OUTPUT,
@@ -79,7 +77,7 @@ def _frame(
             "household_id": ids,
             "household_support_channel": channels,
             HOUSEHOLD_IS_CGT_CLONE: clones,
-            HOUSEHOLD_IS_CGT_BAND_DONOR: donors,
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY: donors,
         }
     )
     return uk_national_frame(

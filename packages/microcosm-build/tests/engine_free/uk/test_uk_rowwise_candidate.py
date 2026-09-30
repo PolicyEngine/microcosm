@@ -76,6 +76,7 @@ def test_graph_driver_dry_run_prints_the_operation_inventory(
         str(ladder_path),
         "--ladder-sha256",
         hashlib.sha256(ladder_path.read_bytes()).hexdigest(),
+        *_toy_support_flags(tmp_path),
         "--ledger-facts",
         str(tmp_path / "ledger"),
         "--ledger-facts-sha256",
@@ -134,6 +135,7 @@ def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
                 str(tmp_path / "out"),
                 "--candidate-clone-counts",
                 "1,2,4",
+                *_SUPPORT_FLAGS,
                 "--input-sha256",
                 "0" * 64,
                 "--ladder-sha256",
@@ -257,6 +259,8 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
         pin,
         "--out",
         str(tmp_path / "out"),
+        *_SUPPORT_FLAGS,
+        *_SUPPORT_PINS,
         "--release-candidate",
     ]
     # The doctrine defaults are the release posture: nothing to refuse.

@@ -64,7 +64,8 @@ UK_SPINE_LINEAGE_COLUMNS = (
     "household_is_spi_synthetic",
     "household_is_spi_income_band_donor",
     "household_is_capital_gains_clone",
-    "household_is_cgt_band_donor",
+    "household_is_cgt_support_copy",
+    "cgt_support_copy_index",
 )
 
 PERSON_ID_COLUMNS = (
@@ -1074,7 +1075,7 @@ def apply_uk_source_lineage_modulus(
     ``source_household_key`` untouched.
 
     Spine inputs use a different scheme: ``household_id = sernum +
-    1{spi} * 10**d + 1{cgt_clone} * 10**(d+1) + 1{band_donor} * 10**(d+2)``.
+    1{spi} * 10**d + k{support_copy} * 10**(d+1) + 1{cgt_clone} * 10**(d+2)``.
     Their explicit spine lineage columns are the source of truth, so applying
     the pool modulus would mint a false second lineage layer and is refused.
 

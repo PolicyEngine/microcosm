@@ -168,15 +168,22 @@ _CGT_NEW_ROW_PREFIXES = (
     "hmrc/capital_gains_band_10000",
     "hmrc.cgt.residential_property_taxpayers",
     "hmrc.cgt.residential_property_gains",
+    "hmrc.cgt.badr_ir_taxpayers_by_band.",
+    "hmrc.cgt.badr_ir_qualifying_gains_by_band.",
+    "hmrc.cgt.taxpayers_by_taxable_income_band.",
+    "hmrc.cgt.gains_by_taxable_income_band.",
 )
 _CGT_NEW_ROW_LEDGER_ONLY_RATIONALE = (
     "Declared ledger-only observation: HMRC CGT statistics 2026 release, "
     "FY2024-25 individual rows by age band (Table 6), by country and region "
     "on the individuals basis via the Table 1 share (Table 5), and the "
-    "size-of-gain bands the incumbent never carried (Table 2.1a), and the "
+    "size-of-gain bands the incumbent never carried (Table 2.1a), the "
     "residential property taxpayers and gains on the individuals basis via "
-    "the Table 8b share (Table 8a). The frozen incumbent fixture has no "
-    "equivalent row (microcosm#725, #467)."
+    "the Table 8b share (Table 8a), the Business Asset Disposal Relief and "
+    "Investors' Relief claimants and qualifying gains by band of qualifying "
+    "gain (Table 4.1), and the all-gains taxpayers and gains by band of the "
+    "engine's CGT taxable income (Table 3). The frozen incumbent fixture has "
+    "no equivalent row (microcosm#725, #467, #1014)."
 )
 
 _UC_PAID_WINDOW_NAMES = frozenset(

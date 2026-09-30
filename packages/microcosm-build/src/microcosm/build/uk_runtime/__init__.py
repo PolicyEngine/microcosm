@@ -293,6 +293,8 @@ from microcosm.build.uk_runtime.local_authority_input import (
     LOCAL_AUTHORITY_ENGINE_KEY_ALIASES,
     UK_LOCAL_AUTHORITY_CODE_COLUMN,
     UK_LOCAL_AUTHORITY_INPUT_COLUMN,
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGE,
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGES,
     UK_LOCAL_AUTHORITY_NAMES_KIND,
     UK_LOCAL_AUTHORITY_NAMES_RESOURCE,
     UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION,
@@ -398,7 +400,6 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
     write_uk_national_frame,
 )
-from microcosm.build.uk_runtime.national_role import run_national_role
 from microcosm.build.uk_runtime.national_sampling import (
     sample_uk_spine_frame,
     uk_spine_source_family_units,
@@ -783,7 +784,6 @@ __all__ = [
     "UK_NATIONAL_TARGET_WEIGHT_RULE",
     "uk_doctrine_with_overrides",
     "uk_national_target_loss_weights",
-    "run_national_role",
     "UKNationalStage",
     "UKRowwiseDatasetResult",
     "UKReleaseInputColumn",
@@ -1049,6 +1049,8 @@ __all__ = [
     "UK_LOCAL_AUTHORITY_NAMES_KIND",
     "UK_LOCAL_AUTHORITY_NAMES_RESOURCE",
     "UK_LOCAL_AUTHORITY_NAMES_SCHEMA_VERSION",
+    "UK_LOCAL_AUTHORITY_LADDER_VINTAGE",
+    "UK_LOCAL_AUTHORITY_LADDER_VINTAGES",
     "UK_LOCAL_AUTHORITY_VINTAGE",
     "load_uk_local_authority_names_resource",
     "local_authority_consistency_failures",

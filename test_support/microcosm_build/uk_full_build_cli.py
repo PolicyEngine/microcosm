@@ -77,7 +77,60 @@ from test_support.paths import paths_for
 
 PIN = "0" * 64
 
+#: Synthetic atomic-area support pins (microcosm#932): the digests the
+#: synthetic prepared build binds as its geography assignment and the ones
+#: :func:`patch_support_register` registers, so a synthetic release candidate
+#: passes the register check the way a real one passes on ``sources.yaml``.
+#: They are the ``RELEASE_PINS`` digests.
+SYNTHETIC_SUPPORT_PINS = {
+    "uk_ew_output_area_2021": {"sha256": "c" * 64, "size_bytes": 1828698},
+    "uk_scotland_output_area_2022": {"sha256": "d" * 64, "size_bytes": 440439},
+    "uk_ni_data_zone_2021": {"sha256": "e" * 64, "size_bytes": 44638},
+}
+
+
+def synthetic_geography_binding() -> dict:
+    """The request's geography binding as ``_prepare_geography`` shapes it."""
+    return {
+        "assignment": "atomic",
+        "definition_sha256": "f" * 64,
+        "support_pins": {k: dict(v) for k, v in SYNTHETIC_SUPPORT_PINS.items()},
+        "identity": "geography_household_key",
+        "stream": ["sha256-u53-v1", "uk-post-clone-atomic-area-v1"],
+    }
+
+
+def patch_support_register(monkeypatch, pins=None) -> None:
+    """Register ``pins`` (default the synthetic ones) in place of sources.yaml."""
+    from microcosm.build.uk_runtime import country_adapter
+
+    register = {
+        k: dict(v)
+        for k, v in (SYNTHETIC_SUPPORT_PINS if pins is None else pins).items()
+    }
+    monkeypatch.setattr(
+        country_adapter, "uk_atomic_support_register", lambda spec=None: register
+    )
+
+
 STEM = "microcosm_uk_2024_25_local"
+SUPPORT_ARGUMENTS = (
+    "--atomic-support-ew",
+    "supports/ew.npz",
+    "--atomic-support-scotland",
+    "supports/scotland.npz",
+    "--atomic-support-ni",
+    "supports/ni.npz",
+)
+#: Synthetic support digests: a release candidate must pin all three.
+RELEASE_PINS = (
+    "--atomic-support-sha256-ew",
+    "c" * 64,
+    "--atomic-support-sha256-scotland",
+    "d" * 64,
+    "--atomic-support-sha256-ni",
+    "e" * 64,
+)
 
 _TEST_PATHS = paths_for("microcosm-build")
 
@@ -93,14 +146,26 @@ def _placeholder(path: Path, payload: bytes) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
+def arguments(
+    tmp_path,
+    *extra,
+    role="dense",
+    staging="--no-staging",
+    supports=SUPPORT_ARGUMENTS,
+    release_pins=None,
+):
     """A dense request over stand-in input files, with staging disabled.
 
     The pins are the stand-ins' real digests so the validator and a real
     preparation would both accept them; the Ledger pins are synthetic
     because these tests never compile targets. ``staging=None`` passes no
     staging switch at all, which is the remote (``local_and_remote``) mode.
+    The atomic-area supports are unread stand-in paths (these tests stub the
+    preparation) and a ``--release-candidate`` request gets the synthetic
+    support pins unless ``release_pins`` says otherwise.
     """
+    if release_pins is None:
+        release_pins = RELEASE_PINS if "--release-candidate" in extra else ()
     spine = tmp_path / "spine.h5"
     ladder = tmp_path / "ladder.npz"
     return _PARSE_ARGS(
@@ -115,6 +180,8 @@ def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
             str(ladder),
             "--ladder-sha256",
             _placeholder(ladder, b"ladder stand-in"),
+            *supports,
+            *release_pins,
             "--ledger-facts",
             str(tmp_path / "ledger"),
             "--ledger-facts-sha256",
@@ -762,7 +829,7 @@ def prepared(tmp_path, failed=None):
     graph = add_uk_export_preparation(
         graph,
         population=root.id,
-        bindings={"target_scope": "all"},
+        bindings={"target_scope": "all", "geography": synthetic_geography_binding()},
         artifact_inputs=(
             ArtifactInput(
                 "gates",

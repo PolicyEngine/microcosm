@@ -292,7 +292,7 @@
         "convergence_window_sweeps": 10,
         "maximum_residual_change_over_window": 0.001
       },
-      "notes": "Stage-time energy check (microcosm#890 F, chronicle#270). María's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' Fact checks on the lcfs energy_rake receipt, every published value recomputed at gate time from the vendored rows the stage declares: each cell's shape target is the vendored NEED 2024 mean (need_energy_facts.json, margins_period_value), each fuel's level is the vendored DESNZ Energy Trends domestic consumption at actual temperature over the four FY2024-25 quarters (desnz_domestic_energy_facts.json) with the level factor equal to that total over the frame's pre-level total and the levelled frame total equal to the published one, each cell's target is shape times factor, and every region with a published gas-connected share (DESNZ subnational gas meters over electricity meters, 2024) sits within 0.5 points of it after the imposition unless the draw could not fill it (a receipted shortfall). The residual check holds the maximum absolute relative deviation of any cell mean from its levelled target, per margin (income band, tenure, property type, region) and fuel, electricity over every household of a cell and gas over its gas-connected households, to one fixed 2.5 % tolerance on the IPF's cross-margin residual (region is swept last and fits to machine precision by construction, so the tolerance binds the earlier three; a declared rule set above the observed maxima, not a fact: spine-s3 on NEED 2023 showed income 1.65 %, tenure 1.29 %, accommodation 0.83 %; spine-s5 on the NEED 2024 shape with the published connection showed income 2.16 % electricity / 1.97 % gas, accommodation 1.46 %, tenure 1.31 %, which is why the 2 % rule of spine-s3 moved to 2.5 %). This gate replaced the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame; the calibrated frame is held to the bound ONS 04.5.1 electricity and 04.5.2 gas rows, and the gap between the DESNZ-volume-times-QEP-price level the stage sets and the ONS national-accounts spend is the published-source residual PR #927 receipts Part T records, not a gate. The entry is a population_fact_check: a synthetic smoke build (the staging smoke over the H2 fixture) records its outcome without blocking, because the fixture is not the population NEED, DESNZ and the meter counts describe; every licensed build blocks on it. Tolerance governance (Vahid's third pass on PR #927): maximum_relative_deviation is a rule set above the observed maxima, not a fact; the rake runs a fixed number of sweeps and the receipt now records the cross-margin residual after every sweep (sweep_residuals), so the terminal residual is shown converged, not truncated, and a vintage whose converged residual exceeds the rule is a new ruling for María, never a silent re-pin. The gate checks the convergence rather than asserting it (Vahid's review of microcosm#1012): each fuel's residual may move by at most maximum_residual_change_over_window (0.1 point of relative deviation) over the last convergence_window_sweeps (10) sweeps, or the receipt is a truncated rake and fails. On the licensed spines the 50-sweep receipts of main and of the SPI-first reorder were still falling 0.11 to 0.75 points over their last 10 sweeps, while the 200-sweep receipt of microcosm#1012's final head moves 0.014 points. maximum_connected_share_deviation is declared, not derived from the walk: the greedy weight-fitting walk lands within a fraction of one household weight of the published share, and the check is waived only for a region whose draw cannot fill its published share (the shortfall is receipted and reported here), never for a region above it. The regions the crosswalk maps to no subnational area are declared on the stage (connection_fallback_regions, Northern Ireland) and refused if they differ from the crosswalk."
+      "notes": "Stage-time energy check (microcosm#890 F, chronicle#270). María's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' Fact checks on the lcfs energy_rake receipt, every published value recomputed at gate time from the vendored rows the stage declares: each cell's shape target is the vendored NEED 2024 mean (need_energy_facts.json, margins_period_value), each fuel's level is the vendored DESNZ Energy Trends domestic consumption at actual temperature over the four FY2024-25 quarters (desnz_domestic_energy_facts.json) with the level factor equal to that total over the frame's pre-level total and the levelled frame total equal to the published one, each cell's target is shape times factor, and every region with a published gas-connected share (DESNZ subnational gas meters over electricity meters, 2024) sits within 0.5 points of it after the imposition unless the draw could not fill it (a receipted shortfall). The residual check holds the maximum absolute relative deviation of any cell mean from its levelled target, per margin (income band, tenure, property type, region) and fuel, electricity over every household of a cell and gas over its gas-connected households, to one fixed 2.5 % tolerance on the IPF's cross-margin residual (region is swept last and fits to machine precision by construction, so the tolerance binds the earlier three; a declared rule set above the observed maxima, not a fact: spine-s3 on NEED 2023 showed income 1.65 %, tenure 1.29 %, accommodation 0.83 %; spine-s5 on the NEED 2024 shape with the published connection showed income 2.16 % electricity / 1.97 % gas, accommodation 1.46 %, tenure 1.31 %, which is why the 2 % rule of spine-s3 moved to 2.5 %). This gate replaced the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame; the calibrated frame is held to the bound ONS 04.5.1 electricity and 04.5.2 gas rows, and the gap between the DESNZ-volume-times-QEP-price level the stage sets and the ONS national-accounts spend is the published-source residual PR #927 receipts Part T records, not a gate. The entry is a population_fact_check: a synthetic smoke build (the staging smoke over the H2 fixture) records its outcome without blocking, because the fixture is not the population NEED, DESNZ and the meter counts describe; every licensed build blocks on it. Tolerance governance (Vahid's third pass on PR #927): maximum_relative_deviation is a rule set above the observed maxima, not a fact; the rake runs a fixed number of sweeps and the receipt now records the cross-margin residual after every sweep (sweep_residuals), so the terminal residual is shown converged, not truncated, and a vintage whose converged residual exceeds the rule is a new ruling for María, never a silent re-pin. The gate checks the convergence rather than asserting it (Vahid's review of microcosm#1012): across the last convergence_window_sweeps (10) sweeps each fuel's residual may range, maximum minus minimum, by at most maximum_residual_change_over_window (0.1 point of relative deviation), so a rake oscillating inside the window fails as a truncated one does; the window presupposes the stage declares more sweeps than the window is long, and the stage refuses an undeclared sweep count. On the licensed spines the 50-sweep receipts of main and of the SPI-first reorder were still falling 0.11 to 0.75 points over their last 10 sweeps, while the 200-sweep receipt of microcosm#1012's final head moves 0.014 points. maximum_connected_share_deviation is declared, not derived from the walk: the greedy weight-fitting walk lands within a fraction of one household weight of the published share, and the check is waived only for a region whose draw cannot fill its published share (the shortfall is receipted and reported here), never for a region above it. The regions the crosswalk maps to no subnational area are declared on the stage (connection_fallback_regions, Northern Ireland) and refused if they differ from the crosswalk."
     },
     {
       "id": "uk_stage_lcfs_consumption_bus_pricing",
@@ -433,17 +433,20 @@
       "notes": "Stage-time conservation gate over the CGT incidence clone receipt."
     },
     {
-      "id": "uk_stage_cgt_band_donors_support",
+      "id": "uk_stage_cgt_support_split_mass",
       "gate": "stage_health",
       "phase": "transferred",
       "criticality": "release_blocking",
       "evidence_absent_blocks": true,
       "parameters": {
-        "stage": "cgt_band_donors",
-        "check": "cgt_band_donor_support",
-        "support_bounds_resource": "cgt_band_donor_support_bounds.json"
+        "stage": "cgt_support_split",
+        "check": "cgt_support_split",
+        "clone_split_factor": 2,
+        "headroom": 1.25,
+        "maximum_copy_weight": 60.0,
+        "maximum_relative_mass_deviation": 1e-09
       },
-      "notes": "Stage-time donor-support gate for cgt_band_donors. The cgt_band_donor_support_bounds.json semantic_fit_note says these intervals describe donor-stage initial support and that terminal support-gate applicability requires reviewer confirmation, so this entry deliberately gates the donor stage rather than uk_support."
+      "notes": "Stage-time gate over the CGT support split receipt (microcosm#1045). Total household mass is conserved to the declared deviation; every copy weighs at most the declared maximum; each income column's support mass equals clone_split_factor x headroom x the published count of gainers at or above GBP 250,000 in that column; the selected mass covers the support mass unless the column's pool is exhausted, in which case the whole pool is selected and the exhaustion is recorded rather than refused (five of six columns exhaust on the synthetic smoke fixture). The split supplies row support at the top of the gains distribution for the Table 3 redraw and assigns no value, so it holds no distributional threshold."
     },
     {
       "id": "uk_stage_spi_income_band_donors_support",
@@ -490,7 +493,7 @@
         "maximum_gains_sigma": 3.0,
         "maximum_solve_relative_error": 1e-06
       },
-      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the same two totals."
+      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725, #1014): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Each Table 4.1 2024-25 BADR band is held to deterministic bounds only: its solve to the band's published claimant count and qualifying gains (the open top band to the published gains over the lifetime limit), its realised count within the band pool's largest weight, its realised qualifying gains within that weight times (2 max gain - min gain) of the band pool below the limit and exactly the limit times the realised count in the top band; every BADR invariant (claimants outside the non-residential liable pool, qualifying gains above the net gain or the limit or outside the band, residential overlap, sub-AEA claimants) must be zero and the restricted main-type fit must have converged. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the residential totals and the Table 4.1 bands."
     },
     {
       "id": "uk_stage_cgt_incidence_anchor_composition",
@@ -535,9 +538,9 @@
           "PLAN_2": 8940000.0,
           "PLAN_5": 10000.0
         },
-        "maximum_abs_realization_deviation": 1.0
+        "maximum_stock_relative_deviation": 0.05
       },
-      "notes": "Stage-time realization gate over the per-plan student-loan top-up receipts."
+      "notes": "Stage-time gate over the per-plan student-loan top-up receipts (microcosm#1049). The stage realises each plan's shortfall against the pinned SLC liable stock by an identity-keyed greedy walk: eligible persons in ascending stable-uniform order, taken when their weight fits inside the remaining shortfall, skipped when it would overshoot, and the skipped person nearest the remainder taken afterwards if that brings the realised mass nearer the shortfall (the gas-connection walk's rule). The gate checks what the walk controls: the realised top-up sits within the lightest skipped person's weight of the shortfall, and the plan's final England count within maximum_stock_relative_deviation (5 percent) of the stock. A pool lighter than the shortfall must have been taken whole, and its attainment is recorded rather than refused: on the licensed spine PLAN_2's eligible pool holds about 2.0m people against a 7.5m shortfall (final England count 3.4m against the 8.94m stock), a gap between what the SLC liable stock counts and what the FRS carries that the stage cannot close. A plan already at or above its stock is left as reported and recorded. Every receipt field is required and the receipt must be self-consistent, so a partial or tampered receipt fails closed. This replaces a relative-deviation check on a Bernoulli increment, which refused every spine since #1006: PLAN_5's shortfall had shrunk to 817 people, about one survey person's weight, so the draw's outcome of zero or two rows was off by around 100 percent whichever way it fell (1.10 against the 1.0 rule), while the final count (10,901 against 10,000) was acceptable and unchecked. The synthetic smoke build over the H2 fixture cannot reach either stock and records both pools as exhausted."
     },
     {
       "id": "uk_stage_age_tail_targets",
@@ -621,7 +624,7 @@
       "parameters": {
         "minimum_ess_fraction": 0.01
       },
-      "notes": "Effective sample size of the positive household weights must stay above one percent of the positive-weight count (microcosm#609)."
+      "notes": "Effective sample size of the positive household weights must stay above one percent of the positive-weight count (microcosm#609). Evaluated on family-folded weights since microcosm#1045 (each cgt_support_split root with its copies summed, the quantity the certification measured on a frame without copies), with the row-level summary reported beside it."
     },
     {
       "id": "uk_weight_ratio",
@@ -631,7 +634,7 @@
       "parameters": {
         "maximum_max_to_median_ratio": 1151.2542195939373
       },
-      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 finding-2 breach (1590.53) was adjudicated NOT a re-baseline case: adversarial decomposition showed 11-12 SPI-synthetic clone rows from two donor lineages carried pathological inherited weights, fixed upstream by the per-stratum allocation in microcosm#710 (post-fix full-scale ratio well inside this fence). The fence held and stays at the June bound; raising it requires an explicit future adjudication with a receipted measurement, never loosen-to-pass."
+      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 finding-2 breach (1590.53) was adjudicated NOT a re-baseline case: adversarial decomposition showed 11-12 SPI-synthetic clone rows from two donor lineages carried pathological inherited weights, fixed upstream by the per-stratum allocation in microcosm#710 (post-fix full-scale ratio well inside this fence). The fence held and stays at the June bound; raising it requires an explicit future adjudication with a receipted measurement, never loosen-to-pass. Evaluated on family-folded weights since microcosm#1045 (each cgt_support_split root with its copies summed, the quantity this June measurement was taken on), with the row-level summary reported beside it: the split's light copies halve the row-level median without moving the maximum."
     },
     {
       "id": "uk_weights_audit",
@@ -723,21 +726,30 @@
           "benunit.uc_latent_deduction_rate",
           "benunit.uc_reported_capital",
           "benunit.would_claim_uc_childcare",
+          "household.atomic_area_basis",
+          "household.atomic_area_code",
+          "household.atomic_area_system",
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
           "household.cash_isa",
+          "household.cgt_support_copies",
+          "household.cgt_support_copy_index",
           "household.clone_index",
           "household.constituency_code_oa",
           "household.consumer_debt",
+          "household.data_zone_code",
+          "household.district_electoral_area_code",
           "household.electricity_consumption",
           "household.gas_consumption",
+          "household.geography_household_key",
           "household.has_fuel_consumption",
           "household.household_is_capital_gains_clone",
-          "household.household_is_cgt_band_donor",
+          "household.household_is_cgt_support_copy",
           "household.household_is_spi_income_band_donor",
           "household.household_is_spi_synthetic",
           "household.household_local_bus_trips",
           "household.spi_income_band_donor_lower_bound",
+          "household.intermediate_zone_code",
           "household.la_code_oa",
           "household.local_authority",
           "household.lsoa_code",
@@ -746,17 +758,20 @@
           "household.num_vehicles",
           "household.oa_code",
           "household.ons_household_type",
+          "household.output_area_code",
           "household.private_pension_wealth",
           "household.property_purchased",
           "household.rail_usage",
           "household.region_code_oa",
           "household.stocks_and_shares_isa",
-          "person.aa_category",
+          "household.super_data_zone_code",
           "person.a_and_e_visits",
+          "person.aa_category",
           "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
           "person.capital_gains_asset_type",
+          "person.capital_gains_badr",
           "person.capital_gains_residential_property",
           "person.bus_in_london_trips",
           "person.bus_pass_eligible",
@@ -764,9 +779,9 @@
           "person.charitable_investment_gifts",
           "person.dla_m_category",
           "person.dla_sc_category",
+          "person.employment_sector",
           "person.esa_health_condition_proxy",
           "person.esa_support_group_proxy",
-          "person.employment_sector",
           "person.gift_aid",
           "person.highest_education",
           "person.is_before_universal_credit_qualifying_young_person_terminal_date",
@@ -1032,7 +1047,7 @@
       "parameters": {
         "maximum_max_to_median_ratio": 100.0
       },
-      "notes": "Maximum-to-median positive weight ratio must not exceed 100.0. Release-blocking following PR #870 review; the numeric threshold is unchanged."
+      "notes": "Maximum-to-median positive weight ratio must not exceed 100.0. Release-blocking following PR #870 review; the numeric threshold is unchanged. Evaluated on family-folded weights since microcosm#1045 (each geographic clone with its own cgt_support_split copies summed; the geographic clone index keeps the K clones apart), with the row-level summary reported beside it."
     },
     {
       "id": "uk_local_weight_ess",
@@ -1042,7 +1057,7 @@
       "parameters": {
         "minimum_ess_fraction": 0.01
       },
-      "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged."
+      "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged. Evaluated on family-folded weights since microcosm#1045 (each geographic clone with its own cgt_support_split copies summed; the geographic clone index keeps the K clones apart), with the row-level summary reported beside it."
     }
   ]
 }

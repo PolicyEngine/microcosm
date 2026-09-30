@@ -266,8 +266,8 @@ def test_spi_support_channel_declares_its_mass_change_and_cgt_clones_conserve() 
     graph = uk_spine_graph(load_country_spec("uk"))
 
     assert graph.node("spi_support_channel").mass == "declared"
+    assert graph.node("cgt_support_split").mass == "conserve"
     assert graph.node("cgt_incidence_clone").mass == "conserve"
-    assert graph.node("cgt_band_donors").mass == "free"
     assert graph.node("cgt_incidence_anchor").mass == "conserve"
     assert graph.node("cgt_incidence_anchor").params["expand_cells"] == ()
     assert "cgt_incidence_anchor.owned" not in {node.id for node in graph.nodes}

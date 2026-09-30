@@ -91,6 +91,8 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.local_authority_input import (
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGE,
+    UK_LOCAL_AUTHORITY_LADDER_VINTAGES,
     UK_LOCAL_AUTHORITY_VINTAGE,
     local_authority_consistency_failures,
     resolve_local_authority_engine_keys,
@@ -437,10 +439,11 @@ def draw_uk_ladder_locations(
     # ladder rebuilt on another local authority frame refuses by vintage here
     # rather than surfacing later as off-roster codes (microcosm#953).
     local_authority_vintage = ladder.layer_vintages["local_authority"]
-    if local_authority_vintage != UK_LOCAL_AUTHORITY_VINTAGE:
+    if local_authority_vintage not in UK_LOCAL_AUTHORITY_LADDER_VINTAGES:
         raise ValueError(
             f"UK OA ladder local authority vintage {local_authority_vintage!r} "
-            f"is not {UK_LOCAL_AUTHORITY_VINTAGE!r}, the vintage of the names "
+            f"is not {UK_LOCAL_AUTHORITY_VINTAGE!r} (or the full-UK composite "
+            f"{UK_LOCAL_AUTHORITY_LADDER_VINTAGE!r}), the vintage of the names "
             "resource that resolves local_authority; regenerate "
             "local_authority_names.json for the new roster first."
         )

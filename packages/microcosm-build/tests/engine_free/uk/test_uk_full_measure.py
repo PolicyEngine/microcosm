@@ -68,6 +68,12 @@ def test_full_measure_reuses_one_resolver(
     )
 
     assert len(constructions) == 1
+    # The resolution loop's own receipt rides the measure receipt, one per
+    # engine block; its shape is the resolver's, checked by its keys here.
+    resolution = receipt.pop("resolution")
+    assert [sorted(entry) for entry in resolution] == [
+        ["attached", "provider", "rounds"]
+    ]
     assert receipt == {
         "mode": "stub",
         "engine_version": "test",
@@ -77,6 +83,11 @@ def test_full_measure_reuses_one_resolver(
         "national_inputs": 0,
         "local_metrics": {"constituency": 1, "la": 1},
         "blocks": 1,
+        "target_materialization": {
+            "prepared_count": 0,
+            "skipped_count": 0,
+            "skipped": [],
+        },
         "cgt_period_contract": cgt_period_contract,
     }
     assert set(local_metrics) == {"constituency", "la"}
@@ -223,6 +234,7 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
         full_measure,
         "resolve_target_measures",
         lambda _factory, _registry, provider, **kwargs: SimpleNamespace(
+            receipt={"attached": {}, "provider": {}, "rounds": []},
             measure_inputs={
                 ("person", "region"): np.zeros(provider.frame.n("person")),
                 ("household", "raw_engine_input"): provider.frame.table("household")[
@@ -231,7 +243,7 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
                 ("household", "ons/corporate_land_value"): np.ones(
                     provider.frame.n("household")
                 ),
-            }
+            },
         ),
     )
 
@@ -241,7 +253,10 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
         assert "region" in adapter.tables["person"]
         table = adapter.tables["household"]
         table["prepared_count"] = table["raw_engine_input"].to_numpy()
-        return SimpleNamespace(skipped=())
+        return SimpleNamespace(
+            skipped=(),
+            report=lambda: {"prepared_count": 0, "skipped_count": 0, "skipped": []},
+        )
 
     monkeypatch.setattr(full_measure, "materialize_uk_ledger_targets", materialize)
     prepared, restore, national, metrics, receipt = (
@@ -272,3 +287,51 @@ def test_prepared_measures_preserve_ids_and_remove_duplicate_scratch_inputs(
         assert receipt["block_sensitivity"]["present_in_this_run"] == [
             "ons/corporate_land_value"
         ]
+
+
+def test_scratch_paths_are_recorded_relative_to_the_scratch_root(monkeypatch, tmp_path):
+    """A scratch-mode resolver names the file it simulated from, under the
+    per-run temporary directory; the measure receipt records that path
+    relative to the scratch root, so two identical resolutions in different
+    scratch directories yield the same receipt (the measure and national
+    problem nodes are declared deterministic; #1057 round 1)."""
+    import json
+
+    frame = source_frame()
+
+    class StubResolver:
+        def __init__(self, **kwargs):
+            self.scratch_dir = kwargs["scratch_dir"]
+            self.simulation = object()
+            self.contract_targets = {}
+
+        def receipt(self):
+            return {
+                "mode": "scratch_frame_export",
+                "source_path": str(self.scratch_dir / "simulation-input.h5"),
+                "policyengine_uk_version": "test",
+            }
+
+    monkeypatch.setattr(
+        full_measure,
+        "compute_household_metrics",
+        lambda _simulation, area_type, *, household_ids, **_kwargs: pd.DataFrame(
+            {f"{area_type}_metric": np.ones(len(household_ids))},
+            index=household_ids,
+        ),
+    )
+    registry = TargetRegistry([], country="uk")
+    receipts = []
+    for name in ("first", "second"):
+        _, _, _, _, receipt = full_measure.resolve_uk_full_measures(
+            frame,
+            registry,
+            period=2025,
+            scratch_dir=tmp_path / name,
+            resolver_factory=StubResolver,
+        )
+        receipts.append(receipt)
+    assert receipts[0] == receipts[1]
+    provider = receipts[0]["resolution"][0]["provider"]
+    assert provider["source_path"] == "simulation-input.h5"
+    assert str(tmp_path) not in json.dumps(receipts[0])

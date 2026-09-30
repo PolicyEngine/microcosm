@@ -28,11 +28,17 @@ from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
 from microcosm.build.uk_runtime.age_tail import UKAgeTailStageTransform
 from microcosm.build.uk_runtime.cgt_asset_type import (
+    CGT_ASSET_TYPE_COLUMN,
     CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES,
     CGT_ASSET_TYPE_RESIDENTIAL,
+    HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS,
     HMRCCGTAssetTypeFacts,
+    HMRCCGTBADRBand,
     HMRCCGTTable7Type,
     UKCGTAssetTypeStageTransform,
+    UKCGTBADRParameters,
+    assign_uk_cgt_asset_types,
+    uk_cgt_badr_parameters,
 )
 from microcosm.build.uk_runtime.cgt_imputation import (
     UKCGTPolicyParameters,
@@ -40,10 +46,10 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     uk_cgt_spine_stage_transform,
 )
 from microcosm.build.uk_runtime.cgt_structure import (
-    UKCGTBandDonorStageTransform,
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
+from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -1032,15 +1038,28 @@ _FIXTURE_TABLE7_ROWS: tuple[tuple[str, str, float, float], ...] = (
 )
 
 
+#: Share of each Table 4.1 band's non-residential pool the synthetic BADR
+#: facts claim, at the pool's own mean gain so the band solve has zero slope.
+_FIXTURE_BADR_POOL_SHARE = 0.25
+
+
 def _cgt_asset_type_facts(
-    frame: Frame, parameters: UKCGTPolicyParameters
+    frame: Frame,
+    parameters: UKCGTPolicyParameters,
+    badr_parameters: UKCGTBADRParameters,
 ) -> HMRCCGTAssetTypeFacts:
-    """Synthetic Table 7/8 facts sized to the fixture frame after the redraw.
+    """Synthetic Table 4.1/7/8 facts sized to the fixture frame after the redraw.
 
     The residential targets are a fixed share of the liable mass and of the
     liable gains, so their mean is the population mean and the logistic
     solve is always attainable on the tiny fixture; the data-only payload
-    the graph side reads is then exactly these numbers.
+    the graph side reads is then exactly these numbers. The Table 4.1 bands
+    are sized in a second pass: the stage runs once with every band at zero
+    (so no claim is drawn) to learn the residential flags, which are drawn
+    first on their own seed and are therefore the same in the real run; each
+    band then claims a fixed share of its non-residential pool at the pool's
+    own mean gain, and the open top band the same share at the lifetime
+    limit. A band with no pool carries zero and is skipped.
     """
 
     person = frame.table("person")
@@ -1071,30 +1090,84 @@ def _cgt_asset_type_facts(
         CGT_ASSET_TYPE_RESIDENTIAL,
         *CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES,
     }
-    return HMRCCGTAssetTypeFacts(
-        table8a_taxpayers_total=count,
-        table8a_gains_total=total_gains,
-        table8a_disposals_total=1.1 * count,
-        table8a_tax_total=0.2 * total_gains,
-        table8b_individuals_taxpayers=count,
-        table8b_individuals_gains=total_gains,
-        table8b_all_taxpayers=count,
-        table8b_all_gains=total_gains,
-        table7_types=rows,
-        table7_total_gains=sum(row.gains for row in rows),
-        table7_total_disposals=sum(row.disposals for row in rows),
-        resource="synthetic-cgt-asset-type.json",
-        resource_sha256="synthetic",
-        source_commit="synthetic",
+
+    def facts_with(bands: tuple[HMRCCGTBADRBand, ...]) -> HMRCCGTAssetTypeFacts:
+        return HMRCCGTAssetTypeFacts(
+            table8a_taxpayers_total=count,
+            table8a_gains_total=total_gains,
+            table8a_disposals_total=1.1 * count,
+            table8a_tax_total=0.2 * total_gains,
+            table8b_individuals_taxpayers=count,
+            table8b_individuals_gains=total_gains,
+            table8b_all_taxpayers=count,
+            table8b_all_gains=total_gains,
+            table7_types=rows,
+            table7_total_gains=sum(row.gains for row in rows),
+            table7_total_disposals=sum(row.disposals for row in rows),
+            table4_bands=bands,
+            table4_individuals_taxpayers=sum(band.taxpayers for band in bands),
+            table4_individuals_gains=sum(band.gains for band in bands),
+            table4_individuals_tax=0.0,
+            table4_trusts_gains=0.0,
+            table4_trusts_tax=0.0,
+            table4_all_taxpayers=sum(band.taxpayers for band in bands),
+            table4_all_gains=sum(band.gains for band in bands),
+            table4_all_tax=0.0,
+            resource="synthetic-cgt-asset-type.json",
+            resource_sha256="synthetic",
+            source_commit="synthetic",
+        )
+
+    lowers = HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS
+    uppers = (*lowers[1:], None)
+    empty = tuple(
+        HMRCCGTBADRBand(
+            lower_bound=lower, upper_bound=upper, taxpayers=0.0, gains=0.0, tax=None
+        )
+        for lower, upper in zip(lowers, uppers, strict=True)
     )
+    classified, _ = assign_uk_cgt_asset_types(
+        frame, facts_with(empty), parameters, badr_parameters
+    )
+    residential = (
+        classified.table("person")[CGT_ASSET_TYPE_COLUMN].to_numpy()
+        == CGT_ASSET_TYPE_RESIDENTIAL
+    )
+    pool = liable & ~residential
+    limit = float(badr_parameters.lifetime_limit)
+    bands = []
+    for lower, upper in zip(lowers, uppers, strict=True):
+        in_band = (
+            pool & (gains >= lower) & (gains < (np.inf if upper is None else upper))
+        )
+        mass = _FIXTURE_BADR_POOL_SHARE * float(person_weight[in_band].sum())
+        band_gains = (
+            mass * limit
+            if upper is None
+            else _FIXTURE_BADR_POOL_SHARE
+            * float((person_weight[in_band] * gains[in_band]).sum())
+        )
+        bands.append(
+            HMRCCGTBADRBand(
+                lower_bound=lower,
+                upper_bound=upper,
+                taxpayers=mass,
+                gains=band_gains,
+                tax=None,
+            )
+        )
+    return facts_with(tuple(bands))
 
 
 def _cgt_asset_type_facts_payload(facts: HMRCCGTAssetTypeFacts) -> dict[str, object]:
     return {
         **{
-            key: value for key, value in facts.__dict__.items() if key != "table7_types"
+            key: value
+            for key, value in facts.__dict__.items()
+            if key not in ("table7_types", "table4_bands")
         },
         "table7_types": [dict(row.__dict__) for row in facts.table7_types],
+        "table4_bands": [dict(band.__dict__) for band in facts.table4_bands],
     }
 
 
@@ -1303,6 +1376,7 @@ def _build_implementations(
     income_targets: HMRCIncomeTargetSet,
     cgt_distribution: HMRCCapitalGainsJointDistribution,
     cgt_parameters: UKCGTPolicyParameters,
+    cgt_badr_parameters: UKCGTBADRParameters,
     cgt_asset_type_facts: HMRCCGTAssetTypeFacts | None = None,
 ) -> tuple[dict[str, object], dict[str, Frame]]:
     engine = PolicyEngineUKEngine()
@@ -1422,11 +1496,13 @@ def _build_implementations(
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
         ),
+        "cgt_support_split": UKCGTSupportSplitStageTransform(
+            stage=stages["cgt_support_split"],
+            distribution=cgt_distribution,
+            parameters=cgt_parameters,
+        ),
         "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
             stage=stages["cgt_incidence_clone"]
-        ),
-        "cgt_band_donors": UKCGTBandDonorStageTransform(
-            stage=stages["cgt_band_donors"]
         ),
         "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
             stages["hmrc_cgt_gains_spine"],
@@ -1437,6 +1513,7 @@ def _build_implementations(
             stage=stages["hmrc_cgt_asset_type_spine"],
             facts=cgt_asset_type_facts,
             parameters=cgt_parameters,
+            badr_parameters=cgt_badr_parameters,
         ),
         "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
             stage=stages["cgt_incidence_anchor"], parameters=cgt_parameters
@@ -1544,6 +1621,7 @@ def generate(output: Path) -> None:
     income_targets = _hmrc_income_targets(Path("synthetic-hmrc.ods"))
     cgt_distribution = _cgt_distribution()
     cgt_parameters = uk_cgt_policy_parameters("2024")
+    cgt_badr_parameters = uk_cgt_badr_parameters("2024")
     _write_json(
         sources / "hmrc_income_targets.json", _hmrc_target_payload(income_targets)
     )
@@ -1568,6 +1646,7 @@ def generate(output: Path) -> None:
         income_targets=income_targets,
         cgt_distribution=cgt_distribution,
         cgt_parameters=cgt_parameters,
+        cgt_badr_parameters=cgt_badr_parameters,
     )
     # The asset-type facts are sized to the frame the amounts redraw leaves,
     # so run the oracle up to that stage once, derive them, and only then
@@ -1580,7 +1659,9 @@ def generate(output: Path) -> None:
         prefix,
         {name: impl for name, impl in implementations.items() if name in prefix_names},
     )
-    cgt_asset_type_facts = _cgt_asset_type_facts(after_redraw, cgt_parameters)
+    cgt_asset_type_facts = _cgt_asset_type_facts(
+        after_redraw, cgt_parameters, cgt_badr_parameters
+    )
     _write_json(
         sources / "cgt_asset_type_facts.json",
         _cgt_asset_type_facts_payload(cgt_asset_type_facts),
@@ -1625,6 +1706,7 @@ def generate(output: Path) -> None:
             "cgt_asset_type_facts": "cgt_asset_type_facts.json",
         },
         "cgt_parameters": cgt_parameters.__dict__,
+        "cgt_badr_parameters": cgt_badr_parameters.__dict__,
     }
     _write_json(sources / "fixture.json", descriptor)
 

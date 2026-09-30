@@ -68,10 +68,10 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
 )
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
-    UKCGTBandDonorStageTransform,
     UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
+from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -687,8 +687,6 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "draw_capital_gains_prior_from_banded_quantiles":
                     stage_seeds[str(operation.parameters["salt"])] = seed
-                elif operation.kind == "stack_band_donor_households":
-                    stage_seeds["stack_band_donor_households"] = seed
                 elif operation.kind == "stack_income_band_donor_households":
                     stage_seeds["stack_income_band_donor_households"] = seed
                 elif operation.kind == "resample_band_donor_leaves":
@@ -701,6 +699,7 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["within_band_draws"] = seed
                 elif operation.kind in (
                     "assign_residential_property_flag",
+                    "assign_badr_qualifying_gains",
                     "assign_main_asset_type",
                 ):
                     stage_seeds[operation.kind] = seed
@@ -1494,13 +1493,13 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["uc_deduction_attributes"]
             )
         )
+    if "cgt_support_split" in stage_names:
+        implementations["cgt_support_split"] = UKCGTSupportSplitStageTransform(
+            stage=stages_by_name["cgt_support_split"]
+        )
     if "cgt_incidence_clone" in stage_names:
         implementations["cgt_incidence_clone"] = UKCGTIncidenceCloneStageTransform(
             stage=stages_by_name["cgt_incidence_clone"]
-        )
-    if "cgt_band_donors" in stage_names:
-        implementations["cgt_band_donors"] = UKCGTBandDonorStageTransform(
-            stage=stages_by_name["cgt_band_donors"]
         )
     if "hmrc_cgt_gains_spine" in stage_names:
         implementations["hmrc_cgt_gains_spine"] = uk_cgt_spine_stage_transform(

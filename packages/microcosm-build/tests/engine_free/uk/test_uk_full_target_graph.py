@@ -1,6 +1,12 @@
 """Actual full graph on synthetic target and engine-source adapters."""
 
 # ruff: noqa: F403, F405
+from microcosm.build.uk_runtime.atomic_area_support import (
+    uk_atomic_assignment_definition,
+)
+from test_support.microcosm_build.uk_atomic_support_fixtures import (
+    toy_support_payloads,
+)
 from test_support.microcosm_build.uk_full_target_graph import *
 
 
@@ -13,7 +19,12 @@ def test_default_scope_contains_all_levels_and_never_depends_on_k_or_k_small():
             default, calibration=replace(default.calibration, dataset_households=20)
         ),
     ):
-        graph = uk_full_graph(config).graph
+        graph = uk_full_graph(
+            config,
+            atomic_geography_definition=uk_atomic_assignment_definition(
+                toy_support_payloads(), seed=config.seed
+            ),
+        ).graph
         assert graph.node("uk.full.target_selection").params["geography_levels"] is None
 
 

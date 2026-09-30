@@ -128,7 +128,7 @@ def _str_column(values: pd.Series, *, label: str) -> np.ndarray:
 
 _SPINE_SOURCE_HOUSEHOLD_ID_COLUMN = "source_household_id"
 _SPINE_SUPPORT_CLONE_INDEX_COLUMN = "household_support_clone_index"
-_SPINE_CGT_BAND_DONOR_COLUMN = "household_is_cgt_band_donor"
+_SPINE_CGT_SUPPORT_COPY_COLUMN = "household_is_cgt_support_copy"
 
 
 def uk_spine_source_family_units(frame: Frame) -> tuple[np.ndarray, np.ndarray]:
@@ -147,7 +147,7 @@ def uk_spine_source_family_units(frame: Frame) -> tuple[np.ndarray, np.ndarray]:
         _SPINE_SUPPORT_CLONE_INDEX_COLUMN,
         HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
         _CAPITAL_GAINS_CLONE_COLUMN,
-        _SPINE_CGT_BAND_DONOR_COLUMN,
+        _SPINE_CGT_SUPPORT_COPY_COLUMN,
     }
     required = {household_id_column, _REGION_COLUMN, *lineage_columns}
     missing = sorted(required - set(household.columns))
@@ -194,13 +194,15 @@ def uk_spine_source_family_units(frame: Frame) -> tuple[np.ndarray, np.ndarray]:
         household[_CAPITAL_GAINS_CLONE_COLUMN],
         label=_CAPITAL_GAINS_CLONE_COLUMN,
     )
-    band_donor = _strict_bool(
-        household[_SPINE_CGT_BAND_DONOR_COLUMN],
-        label=_SPINE_CGT_BAND_DONOR_COLUMN,
+    # A support split's root keeps its raw-row role; its created copies join
+    # the family through source_household_id (microcosm#1045).
+    support_copy = _strict_bool(
+        household[_SPINE_CGT_SUPPORT_COPY_COLUMN],
+        label=_SPINE_CGT_SUPPORT_COPY_COLUMN,
     )
     regions = _str_column(household[_REGION_COLUMN], label=_REGION_COLUMN)
 
-    raw = (support_clone == 0) & ~spi & ~capital_gains & ~band_donor
+    raw = (support_clone == 0) & ~spi & ~capital_gains & ~support_copy
     source_rows = raw & (household_ids == units)
     source_keys = set(int(value) for value in units[source_rows])
     missing_sources = sorted(set(int(value) for value in units) - source_keys)

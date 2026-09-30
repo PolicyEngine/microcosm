@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import warnings
+from collections.abc import Mapping
 from datetime import date
 from importlib import resources as importlib_resources
 from pathlib import Path
@@ -49,8 +50,66 @@ _UC_CALIBRATION_VARIABLES = frozenset(
 _CGT_CALIBRATION_VARIABLES = {
     "cgt_calibration_gains": "capital_gains",
     "cgt_calibration_tax": "capital_gains_tax",
+    # The BADR/Investors' Relief qualifying gain the asset-type stage writes
+    # (microcosm#1014); banded and filtered on for the Table 4.1 rows.
+    "cgt_calibration_badr_gains": "capital_gains_badr",
+    # Derived, not a policyengine-uk variable: see _cgt_taxable_income.
+    "cgt_calibration_taxable_income": "cgt_taxable_income",
 }
-_CGT_DATED_MEASURE = re.compile(r"^cgt_(20[0-9]{2})_(gains|tax)$")
+_CGT_DATED_MEASURE = re.compile(
+    r"^cgt_(20[0-9]{2})_(gains|tax|badr_gains|taxable_income)$"
+)
+
+#: The taxable income policyengine-uk's ``capital_gains_tax`` sets the CGT
+#: rate bands on, which the engine computes inline and exposes as no
+#: variable; HMRC's Table 3 bands individuals on the same concept
+#: (microcosm#1014). Derived from these engine variables at the measure year.
+_CGT_TAXABLE_INCOME = "cgt_taxable_income"
+_CGT_TAXABLE_INCOME_COMPONENTS = (
+    "adjusted_net_income",
+    "allowances",
+    "gift_aid",
+    "personal_pension_contributions",
+    "pension_contributions_relief",
+)
+_CGT_TAXABLE_INCOME_DEFINITION = (
+    "max(0, adjusted_net_income - max(0, allowances - gift_aid - "
+    "min(personal_pension_contributions, pension_contributions_relief))), as "
+    "policyengine-uk's capital_gains_tax computes the taxable income it stacks "
+    "gains on"
+)
+
+
+def cgt_taxable_income_from_components(parts: Mapping[str, Any]) -> np.ndarray:
+    """The engine CGT formula's taxable income from its component arrays."""
+
+    values = {
+        name: np.asarray(parts[name], dtype=float)
+        for name in _CGT_TAXABLE_INCOME_COMPONENTS
+    }
+    band_extension = np.minimum(
+        values["personal_pension_contributions"],
+        values["pension_contributions_relief"],
+    )
+    allowances = np.maximum(
+        0.0, values["allowances"] - values["gift_aid"] - band_extension
+    )
+    return np.maximum(0.0, values["adjusted_net_income"] - allowances)
+
+
+#: Every binding key that names a measured variable: a dated CGT measure in
+#: any of them must carry its own measurement period (microcosm#1014 bands
+#: and filters on dated measures, not only gates and values).
+_BINDING_VARIABLE_KEYS = ("gated_variable", "value_variable", "groupby_variable")
+
+
+def _binding_variable_names(binding: Mapping[str, Any]) -> list[str]:
+    names = [str(binding.get(key, "")) for key in _BINDING_VARIABLE_KEYS]
+    for key in ("filters", "household_conditions"):
+        for predicate in binding.get(key, ()) or ():
+            if isinstance(predicate, Mapping):
+                names.append(str(predicate.get("variable", "")))
+    return [name for name in names if name]
 
 
 def _cgt_model_measure(variable: str, default_year: int) -> tuple[str, int] | None:
@@ -119,6 +178,18 @@ def compute_uk_measure_input(
             frame, simulation, entity, model_variable, measure_year
         )
         return values, f"engine_period:{measure_year}:{model_variable}:{route}"
+
+    if variable == _CGT_TAXABLE_INCOME:
+        if entity != "person":
+            raise KeyError(f"CGT taxable income is person-only: {entity}")
+        parts = {
+            name: compute_uk_measure_input(frame, simulation, "person", name, year)[0]
+            for name in _CGT_TAXABLE_INCOME_COMPONENTS
+        }
+        return (
+            cgt_taxable_income_from_components(parts),
+            "engine_components:capital_gains_tax_taxable_income",
+        )
 
     if variable in UC_TARGET_VARIABLES:
         if entity != "benunit":
@@ -314,8 +385,7 @@ class UKMeasureResolver:
         bound_cgt_periods = {}
         for target_id, target in self.contract_targets.items():
             binding = target["bindings"]["policyengine"]
-            for key in ("gated_variable", "value_variable"):
-                name = str(binding.get(key, ""))
+            for name in _binding_variable_names(binding):
                 cgt_measure = _cgt_model_measure(name, self.year)
                 if cgt_measure is None:
                     continue
@@ -333,13 +403,19 @@ class UKMeasureResolver:
             "source_path": str(source_path),
             "policyengine_uk_version": _policyengine_uk_version(policyengine_uk),
             "cgt_period_contract": {
-                "version": "uk-cgt-measurement-v2",
+                "version": "uk-cgt-measurement-v3",
                 "input_period": getattr(frame, "metadata", {}).get("time_period"),
                 "calibration_period": self.year,
                 "default_engine_period": self.year,
                 "bound_measurements": bound_cgt_periods,
                 "dated_measures": {
-                    "naming": "cgt_<disposal_year>_<gains|tax>",
+                    "naming": (
+                        "cgt_<disposal_year>_<gains|tax|badr_gains|taxable_income>"
+                    ),
+                    "derived_measures": {
+                        _CGT_TAXABLE_INCOME: _CGT_TAXABLE_INCOME_DEFINITION
+                    },
+                    "scanned_binding_keys": list(_BINDING_VARIABLE_KEYS),
                     "period": "explicit_disposal_year_in_variable_name",
                     "policy_threshold_period": "binding.measurement_period",
                 },
@@ -382,6 +458,10 @@ class UKMeasureResolver:
         cgt_measure = _cgt_model_measure(variable, self.year)
         if cgt_measure is not None:
             return entity == "person" and self.knows(entity, cgt_measure[0])
+        if variable == _CGT_TAXABLE_INCOME:
+            return entity == "person" and all(
+                self.knows("person", name) for name in _CGT_TAXABLE_INCOME_COMPONENTS
+            )
         definition = self.simulation.tax_benefit_system.variables.get(variable)
         if definition is None or entity not in _ENTITY_ID:
             return False

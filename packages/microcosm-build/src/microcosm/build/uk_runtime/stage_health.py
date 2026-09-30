@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import math
 from collections.abc import Mapping
-from importlib.resources import files
 
 import numpy as np
 
@@ -49,8 +47,8 @@ def uk_stage_health_gate(
         return _source_signal_gate(stage, evidence, parameters)
     if check == "age_tail_targets":
         return _age_tail_targets_gate(stage, evidence, parameters)
-    if check == "cgt_band_donor_support":
-        return _cgt_band_donor_support_gate(stage, evidence, parameters)
+    if check == "cgt_support_split":
+        return _cgt_support_split_gate(stage, evidence, parameters)
     if check == "spi_income_band_donor_support":
         return _spi_income_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
@@ -213,11 +211,13 @@ def _energy_rake_gate(
     relative deviation of any cell mean from its levelled target, per margin
     and fuel, to ``maximum_relative_deviation``, one fixed tolerance on the
     IPF's cross-margin residual. That residual must be converged, not
-    truncated: each fuel's ``sweep_residuals`` series may change by at most
-    ``maximum_residual_change_over_window`` over its last
-    ``convergence_window_sweeps`` sweeps, so a rake stopped while its residual
-    was still falling fails even when the truncated value sits inside the
-    tolerance. The rake must have run in kWh with gas over gas-connected rows
+    truncated: across each fuel's last ``convergence_window_sweeps`` sweeps,
+    its ``sweep_residuals`` may range (maximum minus minimum) by at most
+    ``maximum_residual_change_over_window``, so a rake stopped while its
+    residual was still falling fails even when the truncated value sits inside
+    the tolerance, and so does one oscillating inside the window. The window
+    presupposes the rake runs more sweeps than the window is long; a shorter
+    series fails closed. The rake must have run in kWh with gas over gas-connected rows
     and no zero-current cell; a missing margin, block, tolerance or sweep
     series fails closed.
 
@@ -421,12 +421,15 @@ def _energy_rake_gate(
                 f"{window}-sweep convergence window."
             )
             continue
-        change = abs(float(series[-1]) - float(series[-1 - window]))
+        # The window's range, not its endpoints: a rake oscillating with a
+        # period that divides the window would score zero on its endpoints.
+        tail = [float(v) for v in series[-1 - window :]]
+        change = max(tail) - min(tail)
         details["residual_change_over_window"][fuel] = change
         if change > flatness:
             failures.append(
-                f"{stage}: {fuel} residual moved {change:.4f} over the last {window} "
-                f"of {len(series)} sweeps, above {flatness}: the rake was "
+                f"{stage}: {fuel} residual ranged over {change:.4f} across the last "
+                f"{window} of {len(series)} sweeps, above {flatness}: the rake was "
                 "truncated, not converged."
             )
     zero_cells = receipt.get("zero_current_cells")
@@ -525,49 +528,166 @@ def _realization_target_gate(
     )
 
 
+def _nonnegative_count(value: object, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a non-negative integer, got {value!r}.")
+    return value
+
+
 def _student_loan_plans_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
+    """Each plan's top-up walked to its SLC stock, or the reason it could not.
+
+    The stage realises a plan's shortfall by a greedy identity-keyed walk
+    (microcosm#1049), so the check is on what the walk controls: the realised
+    top-up sits within the lightest skipped person's weight of the shortfall
+    and the final England count within ``maximum_stock_relative_deviation``
+    of the stock. A pool lighter than the shortfall must have been taken
+    whole; its attainment is recorded, not refused, because the gap between
+    the SLC liable stock and what the FRS carries is a data question the
+    stage cannot close. A plan already at or above its stock must have been
+    left as reported. Every receipt field is required and the receipt must be
+    self-consistent, so a tampered or partial receipt fails closed.
+    """
+
     check = "student_loan_plans"
     plans = _mapping(evidence.get("plans"), label=f"{stage}.plans")
     declared_stocks = _mapping(parameters["stocks"], label=f"{stage}.stocks")
-    max_deviation = _finite_number(
-        parameters["maximum_abs_realization_deviation"],
-        label=f"{stage}.maximum_abs_realization_deviation",
+    tolerance = _finite_number(
+        parameters["maximum_stock_relative_deviation"],
+        label=f"{stage}.maximum_stock_relative_deviation",
     )
+    if tolerance < 0.0:
+        raise ValueError(f"{stage}: maximum_stock_relative_deviation must be >= 0.")
     failures: list[str] = []
-    worst = 0.0
+    by_plan: dict[str, dict[str, object]] = {}
+    worst_gap = 0.0
+    worst_deviation = 0.0
     for plan, declared_stock in declared_stocks.items():
         receipt = plans.get(str(plan))
         if not isinstance(receipt, Mapping):
             failures.append(f"{stage}: missing receipt for {plan}.")
             continue
-        stock = _finite_number(receipt.get("stock"), label=f"{stage}.{plan}.stock")
-        expected = _finite_number(
-            declared_stock, label=f"{stage}.{plan}.declared_stock"
-        )
+        label = f"{stage}.{plan}"
+        stock = _finite_number(receipt.get("stock"), label=f"{label}.stock")
+        expected = _finite_number(declared_stock, label=f"{label}.declared_stock")
         if stock != expected:
             failures.append(f"{stage}: {plan} stock {stock} != declared {expected}.")
+        shortfall = _finite_number(receipt.get("shortfall"), label=f"{label}.shortfall")
+        eligible_mass = _finite_number(
+            receipt.get("eligible_mass"), label=f"{label}.eligible_mass"
+        )
+        topped_up_mass = _finite_number(
+            receipt.get("topped_up_mass"), label=f"{label}.topped_up_mass"
+        )
+        gap = _finite_number(
+            receipt.get("realization_gap"), label=f"{label}.realization_gap"
+        )
+        reported = _finite_number(
+            receipt.get("reported_england_count"),
+            label=f"{label}.reported_england_count",
+        )
         final = _finite_number(
-            receipt.get("final_england_count"),
-            label=f"{stage}.{plan}.final_england_count",
+            receipt.get("final_england_count"), label=f"{label}.final_england_count"
         )
-        deviation = abs(
-            _finite_number(
-                receipt.get("realization_deviation"),
-                label=f"{stage}.{plan}.realization_deviation",
+        eligible_rows = _nonnegative_count(
+            receipt.get("eligible_rows"), label=f"{label}.eligible_rows"
+        )
+        topped_up_rows = _nonnegative_count(
+            receipt.get("topped_up_rows"), label=f"{label}.topped_up_rows"
+        )
+        skipped_rows = _nonnegative_count(
+            receipt.get("rows_skipped_for_weight"),
+            label=f"{label}.rows_skipped_for_weight",
+        )
+        exhausted = receipt.get("pool_exhausted")
+        if not isinstance(exhausted, bool):
+            raise ValueError(
+                f"{label}.pool_exhausted must be a bool, got {exhausted!r}."
             )
-        )
-        worst = max(worst, deviation)
+        lightest = receipt.get("lightest_skipped_weight")
+        if lightest is not None:
+            lightest = _finite_number(
+                lightest, label=f"{label}.lightest_skipped_weight"
+            )
+        if not math.isclose(
+            gap, topped_up_mass - shortfall, rel_tol=1e-9, abs_tol=1e-6
+        ):
+            failures.append(
+                f"{stage}: {plan} realization_gap {gap} is not topped_up_mass minus "
+                f"shortfall ({topped_up_mass - shortfall})."
+            )
+        if not math.isclose(
+            final, reported + topped_up_mass, rel_tol=1e-9, abs_tol=1e-6
+        ):
+            failures.append(
+                f"{stage}: {plan} final_england_count {final} is not the reported "
+                f"count plus the top-up ({reported + topped_up_mass})."
+            )
         if final < 0.0:
             failures.append(f"{stage}: {plan} final_england_count is negative.")
-        if deviation > max_deviation:
-            failures.append(
-                f"{stage}: {plan} realization_deviation {deviation} exceeds {max_deviation}."
-            )
-    details = {"plans_checked": len(declared_stocks), "worst_abs_deviation": worst}
+        deviation = abs(final - stock) / stock if stock > 0.0 else abs(final - stock)
+        if shortfall <= 0.0:
+            regime = "reported_at_or_above_stock"
+            if topped_up_rows != 0 or topped_up_mass != 0.0:
+                failures.append(
+                    f"{stage}: {plan} was topped up ({topped_up_rows} rows) with no "
+                    "shortfall."
+                )
+        elif exhausted:
+            regime = "pool_exhausted"
+            if (
+                skipped_rows != 0
+                or topped_up_rows != eligible_rows
+                or not math.isclose(
+                    topped_up_mass, eligible_mass, rel_tol=1e-9, abs_tol=1e-6
+                )
+            ):
+                failures.append(
+                    f"{stage}: {plan} pool is receipted as exhausted but was not taken "
+                    f"whole ({topped_up_rows} of {eligible_rows} rows, mass "
+                    f"{topped_up_mass} of {eligible_mass})."
+                )
+        else:
+            regime = "walked_to_stock"
+            # With nobody skipped the walk can only have met the shortfall
+            # exactly; otherwise the gap is bounded by the lightest skip.
+            if skipped_rows == 0 or lightest is None:
+                if skipped_rows != 0 or lightest is not None or gap != 0.0:
+                    failures.append(
+                        f"{stage}: {plan} walk reports a fit to the shortfall "
+                        "without a skipped person to bound it."
+                    )
+            elif abs(gap) >= lightest:
+                failures.append(
+                    f"{stage}: {plan} realization_gap {gap} is not within the lightest "
+                    f"skipped weight {lightest} of the shortfall."
+                )
+            if deviation > tolerance:
+                failures.append(
+                    f"{stage}: {plan} final England count {final} deviates "
+                    f"{deviation:.4f} from the stock {stock}, above "
+                    f"{tolerance}."
+                )
+        worst_gap = max(worst_gap, abs(gap))
+        if regime == "walked_to_stock":
+            worst_deviation = max(worst_deviation, deviation)
+        by_plan[str(plan)] = {
+            "regime": regime,
+            "stock_attainment": final / stock if stock > 0.0 else None,
+            "realization_gap": gap,
+            "rows_skipped_for_weight": skipped_rows,
+            "lightest_skipped_weight": lightest,
+        }
+    details = {
+        "plans_checked": len(declared_stocks),
+        "worst_abs_realization_gap": worst_gap,
+        "worst_walked_stock_deviation": worst_deviation,
+        "plans": by_plan,
+    }
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -776,46 +896,161 @@ def _age_tail_targets_gate(
     )
 
 
-def _cgt_band_donor_support_gate(
+def _cgt_support_split_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    check = "cgt_band_donor_support"
-    resource_name = str(parameters["support_bounds_resource"])
-    resource = json.loads(files(_UK_PACKAGE).joinpath(resource_name).read_text())
-    bounds = _mapping(resource.get("bounds"), label=f"{resource_name}.bounds")
-    lower, upper = bounds["capital_gains"]
-    global_lower = _finite_number(lower, label="capital_gains.lower")
-    bands = evidence.get("bands")
-    if not isinstance(bands, list | tuple):
-        raise ValueError(f"{stage}.bands must be a list.")
+    """The support split conserved mass, capped every copy and met its rule.
+
+    Exhaustion is a recorded regime, not a failure (microcosm#1045): a column
+    whose pool is lighter than its support mass selects the whole pool and
+    says so. The split assigns no value, so nothing distributional is held.
+    """
+
+    check = "cgt_support_split"
+    clone_split_factor = _finite_number(
+        parameters["clone_split_factor"], label=f"{stage}.clone_split_factor"
+    )
+    headroom = _finite_number(parameters["headroom"], label=f"{stage}.headroom")
+    maximum_copy_weight = _finite_number(
+        parameters["maximum_copy_weight"], label=f"{stage}.maximum_copy_weight"
+    )
+    tolerance = _finite_number(
+        parameters["maximum_relative_mass_deviation"],
+        label=f"{stage}.maximum_relative_mass_deviation",
+    )
+    effective_tolerance = max(tolerance, _FLOAT_RELATIVE_TOLERANCE)
     failures: list[str] = []
-    for row in bands:
+
+    declared = _mapping(evidence.get("parameters"), label=f"{stage}.parameters")
+    for key, expected in (
+        ("clone_split_factor", clone_split_factor),
+        ("headroom", headroom),
+        ("maximum_copy_weight", maximum_copy_weight),
+    ):
+        value = _finite_number(declared.get(key), label=f"{stage}.parameters.{key}")
+        if value != expected:
+            failures.append(
+                f"{stage}: receipt {key} {value} differs from the gate's {expected}."
+            )
+
+    mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
+    old_total = _finite_number(mass.get("old_total"), label=f"{stage}.mass.old_total")
+    new_total = _finite_number(mass.get("new_total"), label=f"{stage}.mass.new_total")
+    if old_total <= 0.0 or new_total <= 0.0:
+        failures.append(f"{stage}: household mass must be positive before and after.")
+    deviation = abs(new_total - old_total) / max(abs(old_total), 1.0)
+    if deviation > effective_tolerance:
+        failures.append(
+            f"{stage}: household mass deviation {deviation} exceeds the effective "
+            f"tolerance {effective_tolerance}."
+        )
+
+    rows = evidence.get("bands")
+    if not isinstance(rows, list | tuple):
+        raise ValueError(f"{stage}.bands must be a list.")
+    exhausted: list[float] = []
+    sums = {
+        "support_mass": 0.0,
+        "selected_mass": 0.0,
+        "households_selected": 0,
+        "copies_created": 0,
+    }
+    heaviest_copy = 0.0
+    for row in rows:
         if not isinstance(row, Mapping):
             failures.append(f"{stage}: band row is not an object.")
             continue
-        realized_min = _finite_number(
-            row.get("realized_min_gain"), label=f"{stage}.realized_min_gain"
+        lower = _finite_number(
+            row.get("income_lower_bound"), label=f"{stage}.income_lower_bound"
         )
-        realized_max = _finite_number(
-            row.get("realized_max_gain"), label=f"{stage}.realized_max_gain"
+        published = _finite_number(
+            row.get("published_top_band_taxpayers"),
+            label=f"{stage}.published_top_band_taxpayers",
         )
-        lower_limit = _finite_number(
-            row.get("lower_limit"), label=f"{stage}.lower_limit"
+        support = _finite_number(row.get("support_mass"), label=f"{stage}.support_mass")
+        selected = _finite_number(
+            row.get("selected_mass"), label=f"{stage}.selected_mass"
         )
-        band_floor = max(global_lower, lower_limit)
-        if realized_min < band_floor:
+        pool_mass = _finite_number(row.get("pool_mass"), label=f"{stage}.pool_mass")
+        counts = {}
+        for key in ("pool_households", "households_selected", "copies_created"):
+            value = row.get(key)
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError(f"{stage}.{key} must be a non-negative integer.")
+            counts[key] = value
+        heaviest_selected = _finite_number(
+            row.get("heaviest_selected_weight"),
+            label=f"{stage}.heaviest_selected_weight",
+        )
+        row_heaviest_copy = _finite_number(
+            row.get("heaviest_copy_weight"), label=f"{stage}.heaviest_copy_weight"
+        )
+        pool_exhausted = row.get("pool_exhausted")
+        if not isinstance(pool_exhausted, bool):
+            raise ValueError(f"{stage}.pool_exhausted must be a boolean.")
+        expected_support = clone_split_factor * headroom * published
+        if not np.isclose(support, expected_support, rtol=1e-12, atol=1e-9):
             failures.append(
-                f"{stage}: realized gain {realized_min} falls below {band_floor}."
+                f"{stage}: column from {lower} support mass {support} differs from "
+                f"{clone_split_factor} x {headroom} x {published}."
             )
-        if upper is not None and realized_max >= _finite_number(
-            upper, label="capital_gains.upper"
-        ):
+        if row_heaviest_copy > maximum_copy_weight * (1.0 + 1e-12):
             failures.append(
-                f"{stage}: realized gain {realized_max} exceeds open upper bound."
+                f"{stage}: column from {lower} copy weight {row_heaviest_copy} "
+                f"exceeds the maximum {maximum_copy_weight}."
             )
-    details = {"bands_checked": len(bands), "minimum_lower_limit": global_lower}
+        if pool_exhausted:
+            exhausted.append(lower)
+            if counts["households_selected"] != counts["pool_households"] or not (
+                np.isclose(selected, pool_mass, rtol=1e-12, atol=1e-9)
+            ):
+                failures.append(
+                    f"{stage}: column from {lower} is recorded as exhausted but did "
+                    "not select its whole pool."
+                )
+        elif selected + 1e-9 < support:
+            failures.append(
+                f"{stage}: column from {lower} selected mass {selected} falls short "
+                f"of its support mass {support} without recording exhaustion."
+            )
+        if heaviest_selected <= maximum_copy_weight and counts["copies_created"]:
+            failures.append(
+                f"{stage}: column from {lower} created {counts['copies_created']} "
+                "copies although no selected household exceeds the maximum weight."
+            )
+        sums["support_mass"] += support
+        sums["selected_mass"] += selected
+        sums["households_selected"] += counts["households_selected"]
+        sums["copies_created"] += counts["copies_created"]
+        heaviest_copy = max(heaviest_copy, row_heaviest_copy)
+
+    totals = _mapping(evidence.get("totals"), label=f"{stage}.totals")
+    for key in ("households_selected", "copies_created"):
+        value = totals.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value != sums[key]:
+            failures.append(
+                f"{stage}: totals.{key} {value!r} differs from the column sum "
+                f"{sums[key]}."
+            )
+    for key in ("support_mass", "selected_mass"):
+        value = _finite_number(totals.get(key), label=f"{stage}.totals.{key}")
+        if not np.isclose(value, sums[key], rtol=1e-12, atol=1e-6):
+            failures.append(
+                f"{stage}: totals.{key} {value} differs from the column sum "
+                f"{sums[key]}."
+            )
+
+    details = {
+        "columns_checked": len(rows),
+        "exhausted_columns": exhausted,
+        "households_selected": sums["households_selected"],
+        "copies_created": sums["copies_created"],
+        "heaviest_copy_weight": heaviest_copy,
+        "relative_mass_deviation": deviation,
+        "effective_relative_tolerance": effective_tolerance,
+    }
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -989,7 +1224,7 @@ def _cgt_asset_type_summary_gate(
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """The residential flag realised the Table 8a totals it was solved to.
+    """The residential flag and the BADR claims realised the totals they were solved to.
 
     The stage solves the logistic exactly in expectation and realises it by
     systematic sampling. This gate holds the solve to its targets, the
@@ -1002,6 +1237,15 @@ def _cgt_asset_type_summary_gate(
     noise floor and a production frame by the band. Every liable gainer must
     carry an asset type and the composition receipt must be finite
     (microcosm#725).
+
+    Each Table 4.1 BADR band is held to deterministic bounds only
+    (microcosm#1014): the solve to the band's targets; the realised count to
+    within the band pool's largest weight, the walk's own bound; below the
+    lifetime limit the realised qualifying gains to that weight times
+    (2 max gain - min gain) of the band pool, which bounds the gains the walk
+    can drift along its ascending-gain order; in the open top band the gains
+    to exactly the limit times the realised count. Every declared invariant
+    must be zero and the restricted type fit must have converged.
     """
 
     check = "cgt_asset_type_summary"
@@ -1071,11 +1315,89 @@ def _cgt_asset_type_summary_gate(
             failures.append(f"{stage}: {name} gains share {value} is not a share.")
     details["residential_rows"] = residential.get("achieved_rows")
     details["classified_values"] = sorted(counts)
+    if asset_type.get("share_fit_converged") is not True:
+        failures.append(f"{stage}: the main asset-type fit did not converge.")
+    failures.extend(_cgt_badr_failures(stage, evidence, max_solve_error, details))
     return (
         _fail(stage, check, failures, details)
         if failures
         else _pass(stage, check, details)
     )
+
+
+def _cgt_badr_failures(
+    stage: str,
+    evidence: Mapping[str, object],
+    max_solve_error: float,
+    details: dict[str, object],
+) -> list[str]:
+    """The BADR half of the asset-type gate (microcosm#1014)."""
+
+    failures: list[str] = []
+    badr = _mapping(evidence.get("badr"), label=f"{stage}.badr")
+    invariants = _mapping(badr.get("invariants"), label=f"{stage}.badr.invariants")
+    for name, rows in invariants.items():
+        if rows != 0:
+            failures.append(f"{stage}: BADR invariant {name} broken on {rows} rows.")
+    limit = _finite_number(badr.get("lifetime_limit"), label=f"{stage}.badr.limit")
+    bands = badr.get("bands")
+    if not isinstance(bands, list) or not bands:
+        return [*failures, f"{stage}: BADR receipt carries no bands."]
+    checked = 0
+    for index, raw in enumerate(bands):
+        row = _mapping(raw, label=f"{stage}.badr.bands[{index}]")
+        if row.get("skipped") is True:
+            continue
+        checked += 1
+        name = f"BADR band from {row.get('lower_bound')}"
+
+        def number(key: str, *, _row=row, _index=index) -> float:
+            return _finite_number(
+                _row.get(key), label=f"{stage}.badr.bands[{_index}].{key}"
+            )
+
+        for measure in ("count", "gains"):
+            target = number(f"{measure}_target")
+            if target <= 0.0:
+                failures.append(f"{stage}: {name} {measure} target is not positive.")
+                continue
+            solve_error = abs(number(f"expected_{measure}") - target) / target
+            if solve_error > max_solve_error:
+                failures.append(
+                    f"{stage}: {name} {measure} solve error {solve_error} exceeds "
+                    f"{max_solve_error}."
+                )
+        max_weight = number("max_pool_weight")
+        count_gap = abs(number("achieved_count") - number("expected_count"))
+        if count_gap > max_weight * (1.0 + 1e-9):
+            failures.append(
+                f"{stage}: {name} count gap {count_gap} exceeds the band pool's "
+                f"largest weight {max_weight}."
+            )
+        achieved_gains = number("achieved_gains")
+        if row.get("qualifying_amount") == "lifetime_limit":
+            exact = limit * number("achieved_count")
+            if abs(achieved_gains - exact) > 1e-9 * max(abs(exact), 1.0):
+                failures.append(
+                    f"{stage}: {name} gains {achieved_gains} are not the lifetime "
+                    f"limit times the realised count ({exact})."
+                )
+        else:
+            gains_gap = abs(achieved_gains - number("expected_gains"))
+            gains_bound = max_weight * (
+                2.0 * number("pool_max_gain") - number("pool_min_gain")
+            )
+            if gains_gap > gains_bound * (1.0 + 1e-9):
+                failures.append(
+                    f"{stage}: {name} gains gap {gains_gap} exceeds the walk's "
+                    f"bound {gains_bound}."
+                )
+    totals = _mapping(badr.get("totals"), label=f"{stage}.badr.totals")
+    details["badr_bands_checked"] = checked
+    details["badr_achieved_count"] = totals.get("achieved_count")
+    details["badr_achieved_gains"] = totals.get("achieved_gains")
+    details["badr_relief_rate_tax"] = totals.get("relief_rate_tax")
+    return failures
 
 
 def _cgt_incidence_anchor_gate(
@@ -1405,7 +1727,7 @@ def _bus_travel_facts_gate(
 
     Fact checks on the ``nts_bus_travel`` receipts, every published value
     recomputed here from the vendored rows the stage declares (never taken
-    from the receipt): the frame's design-weighted share of persons who use
+    from the receipt): the frame's prior-weighted share of persons who use
     a local bus at least yearly must sit within ``maximum_user_share_deviation``
     (points) of the vendored NTS0313 all-ages share, and the frame's mean
     local-bus trips per person per series within ``maximum_trip_rate_deviation``

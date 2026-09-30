@@ -11,7 +11,9 @@ from microcosm.build.uk_runtime.national_frame import (
     write_uk_national_frame,
 )
 from microcosm.graph import ContentStore, compile_graph, run_graph
+from test_support.microcosm_build.uk_atomic_support_fixtures import write_toy_supports
 from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
+from test_support.microcosm_build.uk_full_build_cli import patch_support_register
 from test_support.microcosm_build.uk_full_population_graph import source_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
@@ -47,6 +49,7 @@ def checkpoint_request(tmp_path, toy_ladder, monkeypatch):
             str(gates_path),
             "--ladder",
             str(ladder_path),
+            *support_arguments(tmp_path),
             "--ledger-facts",
             str(ledger),
             "--out",
@@ -60,6 +63,25 @@ def checkpoint_request(tmp_path, toy_ladder, monkeypatch):
     return args, sidecar_path, gates_path
 
 
+def support_arguments(tmp_path):
+    _, paths = write_toy_supports(tmp_path / "supports")
+    ew, scotland, ni = (paths[system] for system in sorted(paths, key=_system_order))
+    return [
+        "--atomic-support-ew",
+        str(ew),
+        "--atomic-support-scotland",
+        str(scotland),
+        "--atomic-support-ni",
+        str(ni),
+    ]
+
+
+def _system_order(system):
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    return SYSTEMS.index(system)
+
+
 def test_prepare_real_checkpoint_preserves_source_year_and_wires_preflight(
     checkpoint_request, tmp_path
 ):
@@ -67,6 +89,24 @@ def test_prepare_real_checkpoint_preserves_source_year_and_wires_preflight(
     prepared = cli.prepare_full_build(args)
     assert prepared.full.config.source_year == 2023
     assert prepared.full.config.geography_levels is None
+    assert prepared.full.config.geography_assignment == "atomic"
+    geography = prepared.bindings["geography"]
+    assert geography["assignment"] == "atomic"
+    assert geography["identity"] == "geography_household_key"
+    assert geography["stream"][:2] == ["sha256-u53-v1", "uk-post-clone-atomic-area-v1"]
+    assert set(geography["support_pins"]) == {
+        "uk_ew_output_area_2021",
+        "uk_scotland_output_area_2022",
+        "uk_ni_data_zone_2021",
+    }
+    assert {
+        "uk_ew_output_area_2021_support",
+        "uk_scotland_output_area_2022_support",
+        "uk_ni_data_zone_2021_support",
+    } <= set(prepared.sources)
+    assert prepared.full.graph.node("uk.full.pool").artifact_inputs[0].producer == (
+        "uk.full.geography.gate"
+    )
     dense = prepared.full.graph.node("uk.full.dense")
     assert any(
         a.name == "preflight" and a.producer == "uk.full.gates.preflight"
@@ -112,3 +152,56 @@ def test_prepare_refuses_checkpoint_drift_before_registering_a_full_build(
     with pytest.raises(ValueError, match="identity mismatch|SHA-256 mismatch"):
         cli.prepare_full_build(args)
     assert not args.out.exists()
+
+
+def test_prepare_release_candidate_requires_the_registered_supports(
+    checkpoint_request, monkeypatch
+):
+    """Under ``--release-candidate`` the operator's support pins must be the
+    sources.yaml rows (microcosm#932 round 1): a pin that proves the bytes are
+    the ones requested is not proof they are the ones reviewed."""
+    import hashlib
+    from pathlib import Path
+
+    args, sidecar_path, gates_path = checkpoint_request
+
+    def sha(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    argv = [
+        "--release-role",
+        "dense",
+        "--input-h5",
+        str(args.input_h5),
+        "--input-sha256",
+        sha(Path(args.input_h5)),
+        "--input-sidecar",
+        str(sidecar_path),
+        "--input-spine-gates",
+        str(gates_path),
+        "--ladder",
+        str(args.ladder),
+        "--ladder-sha256",
+        sha(Path(args.ladder)),
+        "--ledger-facts",
+        str(args.ledger_facts),
+        "--out",
+        str(args.out),
+        "--release-candidate",
+    ]
+    pins = {}
+    for system, label in cli._SUPPORT_ARGUMENTS.items():
+        path = Path(getattr(args, f"atomic_support_{label}"))
+        pins[system] = {"sha256": sha(path), "size_bytes": path.stat().st_size}
+        argv += [
+            f"--atomic-support-{label}",
+            str(path),
+            f"--atomic-support-sha256-{label}",
+            pins[system]["sha256"],
+        ]
+    release = cli.parse_args(argv)
+    with pytest.raises(ValueError, match="sources.yaml"):
+        cli.prepare_full_build(release)
+    patch_support_register(monkeypatch, pins)
+    prepared = cli.prepare_full_build(release)
+    assert prepared.bindings["geography"]["support_pins"] == pins

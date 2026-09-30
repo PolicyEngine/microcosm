@@ -171,22 +171,40 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.uc_latent_deduction_rate",
     "benunit.uc_reported_capital",
     "benunit.would_claim_uc_childcare",
+    "household.atomic_area_basis",
+    "household.atomic_area_code",
+    "household.atomic_area_system",
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
     "household.cash_isa",
+    # #1045: the CGT support split's family copy count.
+    "household.cgt_support_copies",
+    "household.cgt_support_copy_index",
     "household.clone_index",
     "household.constituency_code_oa",
     "household.consumer_debt",
+    # microcosm#932: the five nation-native aliases of the atomic assignment
+    # (output_area_code, data_zone_code, intermediate_zone_code,
+    # super_data_zone_code, district_electoral_area_code) never reach an
+    # artifact: graph_terminal._tables drops them at the single-year export
+    # boundary. They are listed because the full-build export-surface gate
+    # reads the graph frame's in-memory columns (full_gates.py,
+    # ``parity_evidence.candidate_columns``) before that boundary, and would
+    # otherwise flag them as unreviewed extras (the F8 gap on #932).
+    "household.data_zone_code",
+    "household.district_electoral_area_code",
     "household.electricity_consumption",
     "household.gas_consumption",
+    "household.geography_household_key",
     "household.has_fuel_consumption",
     "household.household_is_capital_gains_clone",
-    "household.household_is_cgt_band_donor",
+    "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",
     "household.household_is_spi_synthetic",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
     "household.spi_income_band_donor_lower_bound",
+    "household.intermediate_zone_code",
     "household.la_code_oa",
     # #953: the engine's household local_authority enum input, written by the
     # rowwise geography ladder from local_authority_code. The incumbent never
@@ -200,17 +218,20 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.num_vehicles",
     "household.oa_code",
     "household.ons_household_type",
+    "household.output_area_code",
     "household.private_pension_wealth",
     "household.property_purchased",
     "household.rail_usage",
     "household.region_code_oa",
     "household.stocks_and_shares_isa",
-    "person.aa_category",
+    "household.super_data_zone_code",
     "person.a_and_e_visits",
+    "person.aa_category",
     "person.admitted_patient_visits",
     "person.age_started_or_accepted_current_education_or_training",
     "person.attends_private_school_random_draw",
     "person.capital_gains_asset_type",
+    "person.capital_gains_badr",
     "person.capital_gains_residential_property",
     "person.bus_in_london_trips",
     "person.bus_pass_eligible",
@@ -218,9 +239,9 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.charitable_investment_gifts",
     "person.dla_m_category",
     "person.dla_sc_category",
+    "person.employment_sector",
     "person.esa_health_condition_proxy",
     "person.esa_support_group_proxy",
-    "person.employment_sector",
     "person.gift_aid",
     "person.highest_education",
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
@@ -614,21 +635,56 @@ def uk_zero_weight_strata_gate(
     )
 
 
+def _family_evaluation(
+    weights: Sequence[float] | np.ndarray,
+    family_weights: Sequence[float] | np.ndarray | None,
+    family_fold: Mapping[str, object] | None,
+) -> tuple[dict[str, int | float | None], dict[str, object]]:
+    """The summary a weight gate evaluates and the details it reports.
+
+    The row-level summary is always reported at the top level (the release
+    diagnostics restate it). When family-folded weights are supplied, the
+    gate evaluates on their summary instead: each support-split root with its
+    copies summed is the quantity the June certification measured on a frame
+    without copies, so the fence reads weight dispersion, not the number of
+    copies (microcosm#1045 review).
+    """
+
+    summary = uk_weight_summary(weights)
+    if family_weights is None:
+        return summary, {**summary, "evaluated_on": "row_weights"}
+    family_summary = uk_weight_summary(family_weights)
+    return family_summary, {
+        **summary,
+        "evaluated_on": "family_folded_weights",
+        "family_folded": {**family_summary, **dict(family_fold or {})},
+    }
+
+
 def uk_weight_ess_gate(
     weights: Sequence[float] | np.ndarray,
     *,
     minimum_ess_fraction: float,
+    family_weights: Sequence[float] | np.ndarray | None = None,
+    family_fold: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Require the shipped household weights to retain effective support."""
+    """Require the shipped household weights to retain effective support.
+
+    With ``family_weights`` the fraction is evaluated on the support-family
+    fold (see :func:`_family_evaluation`); the row-level summary is reported
+    beside it.
+    """
 
     minimum = float(minimum_ess_fraction)
     if not math.isfinite(minimum) or not 0.0 < minimum <= 1.0:
         raise ValueError("minimum_ess_fraction must be finite and in (0, 1].")
-    summary = uk_weight_summary(weights)
-    fraction = float(summary["ess_fraction"])
+    evaluated, details = _family_evaluation(weights, family_weights, family_fold)
+    fraction = float(evaluated["ess_fraction"])
     if fraction < minimum:
+        basis = " (family-folded)" if family_weights is not None else ""
         failures = (
-            f"ESS fraction {fraction:.6g} is below the reviewed minimum {minimum:.6g}.",
+            f"ESS fraction{basis} {fraction:.6g} is below the reviewed minimum "
+            f"{minimum:.6g}.",
         )
     else:
         failures = ()
@@ -636,7 +692,7 @@ def uk_weight_ess_gate(
         name="weight_ess",
         passed=not failures,
         failures=failures,
-        details={**summary, "minimum_ess_fraction": minimum},
+        details={**details, "minimum_ess_fraction": minimum},
     )
 
 
@@ -644,16 +700,23 @@ def uk_weight_ratio_gate(
     weights: Sequence[float] | np.ndarray,
     *,
     maximum_max_to_median_ratio: float,
+    family_weights: Sequence[float] | np.ndarray | None = None,
+    family_fold: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Backstop a shipped-weight max/positive-median concentration blowout."""
+    """Backstop a shipped-weight max/positive-median concentration blowout.
+
+    With ``family_weights`` the ratio is evaluated on the support-family fold
+    (see :func:`_family_evaluation`); the row-level summary is reported
+    beside it.
+    """
 
     maximum = float(maximum_max_to_median_ratio)
     if not math.isfinite(maximum) or maximum <= 0.0:
         raise ValueError(
             "maximum_max_to_median_ratio must be finite and strictly positive."
         )
-    summary = uk_weight_summary(weights)
-    raw_ratio = summary["max_to_median_positive_weight"]
+    evaluated, details = _family_evaluation(weights, family_weights, family_fold)
+    raw_ratio = evaluated["max_to_median_positive_weight"]
     failures: tuple[str, ...]
     if raw_ratio is None:
         failures = (
@@ -662,9 +725,10 @@ def uk_weight_ratio_gate(
         )
     else:
         ratio = float(raw_ratio)
+        basis = " (family-folded)" if family_weights is not None else ""
         failures = (
             (
-                f"Max/positive-median weight ratio {ratio!r} exceeds the "
+                f"Max/positive-median weight ratio{basis} {ratio!r} exceeds the "
                 f"reviewed maximum {maximum!r}.",
             )
             if ratio > maximum
@@ -674,7 +738,7 @@ def uk_weight_ratio_gate(
         name="weight_ratio",
         passed=not failures,
         failures=failures,
-        details={**summary, "maximum_max_to_median_ratio": maximum},
+        details={**details, "maximum_max_to_median_ratio": maximum},
     )
 
 
