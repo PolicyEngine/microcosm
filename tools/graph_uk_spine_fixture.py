@@ -619,15 +619,16 @@ def _was_person_donor() -> pd.DataFrame:
                     "IsDepR8": 2.0 if adult else 1.0,
                     "DVAge17R8": float(band),
                     "SexR8": float(1 + (household + person) % 2),
+                    # Household 3's first adult carries a sentinel earnings code,
+                    # which the stage recodes to zero and receipts.
                     "DVGIEmpR8": (
-                        15_000.0 + 1_000.0 * ((household * 7 + person) % 40)
+                        (
+                            -8.0
+                            if household == 3 and person == 0
+                            else 15_000.0 + 1_000.0 * ((household * 7 + person) % 40)
+                        )
                         if adult
                         else -9.0
-                    ),
-                    "DVGISER8": (
-                        (-8.0 if household == 3 else 5_000.0 * (household % 5 == 0))
-                        if adult and person == 0
-                        else (0.0 if adult else -9.0)
                     ),
                     "fisa_binary3r8_i": 1.0 if value > 0 else (0.0 if adult else -9.0),
                     "fisa_binary3r8_iflag": (

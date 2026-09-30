@@ -122,9 +122,9 @@ and its own WAS financial draws before the LISA draw.
 The ownership part is a logistic because the house regime gate (a
 gradient-boosting classifier) is miscalibrated for an outcome held by under one
 per cent of adults. Held out by household on the donor, the gate reproduced
-0.62% ownership against the donor's 0.89% and understated each age group under
-45 by between a quarter and a half. The logistic reproduced 0.87% and every age
-and tenure margin within 0.07 points (María's ruling of 2026-09-29; the
+0.58% ownership against the donor's 0.89% and understated each age group under
+45 by more than a third. The logistic reproduced 0.87% and every age and tenure
+margin within 0.07 points (María's ruling of 2026-09-29; the
 comparison is in the receipts, Part B).
 
 Household predictors use the `was_wealth` definitions. Tenure is the

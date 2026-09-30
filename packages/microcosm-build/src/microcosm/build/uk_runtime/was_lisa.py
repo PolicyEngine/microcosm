@@ -151,11 +151,9 @@ HOUSEHOLD_PREDICTORS: tuple[str, ...] = (
     "stocks_and_shares_isa",
 )
 PRIVATE_RENTER_COLUMN = "is_private_renter"
-#: Engine inputs read at person grain on the recipients.
-PERSON_ENGINE_PREDICTORS: tuple[str, ...] = (
-    "employment_income",
-    "self_employment_income",
-)
+#: Engine inputs read at person grain on the recipients (the models use earnings
+#: only; self-employment income is not read, microcosm#1059 review round 1).
+PERSON_ENGINE_PREDICTORS: tuple[str, ...] = ("employment_income",)
 PRIVATE_RENTER_TENURE = "RENT_PRIVATELY"
 
 #: Donor response classes (evidence only; never predictors).
@@ -222,7 +220,6 @@ class WASLISAColumns:
     age_band: str
     sex: str
     employment_income: str
-    self_employment_income: str
     holds_lifetime_isa: str
     holding_imputed: str
     reported_value: str
@@ -247,7 +244,6 @@ class WASLISAColumns:
         "age_band",
         "sex",
         "employment_income",
-        "self_employment_income",
         "holds_lifetime_isa",
         "holding_imputed",
         "reported_value",
@@ -293,7 +289,6 @@ class WASLISAColumns:
             age_band=str(person["age_band"]),
             sex=str(person["sex"]),
             employment_income=str(person["employment_income"]),
-            self_employment_income=str(person["self_employment_income"]),
             holds_lifetime_isa=str(person["holds_lifetime_isa"]),
             holding_imputed=str(person["holding_imputed"]),
             reported_value=str(person["reported_value"]),
@@ -669,7 +664,6 @@ def clean_was_lisa_donor(
                 adults["sex"].to_numpy(dtype=float) == columns.female_code
             ).astype(float),
             "employment_income": incomes["employment_income"],
-            "self_employment_income": incomes["self_employment_income"],
             **{
                 column: adults[column].astype(float).to_numpy()
                 for column in HOUSEHOLD_PREDICTORS

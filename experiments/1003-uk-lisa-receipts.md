@@ -53,8 +53,7 @@ Join and pin check (`clean_was_lisa_donor` on the pinned tabs):
   15,128 households. The largest absolute difference is £0; the tolerance is £1.
 - 4,996 dependent children are excluded. None carries a LISA value.
 - The donor is 27,275 non-dependent adults, weighted to 50.2 million.
-- There are no missing or negative values and no sentinel recodes of the two person income
-  predictors.
+- There are no missing or negative values and no sentinel recodes of the earnings predictor.
 - The released ownership flag `fisa_binary3r8_i` agrees with a positive value on every record.
 - There are 141 released holders, 0.93% of weighted adults.
 
@@ -126,27 +125,31 @@ the held-out weighted log loss:
 
 | Held out | Donor | Stage logistic | House gate | Tuned boosting | Age-group rates |
 | --- | --- | --- | --- | --- | --- |
-| all adults | 0.890% | 0.873% | 0.622% | 0.711% | 0.884% |
-| 16–24 | 2.09% | 2.03% | 1.25% | 1.49% | 2.09% |
-| 25–34 | 2.39% | 2.33% | 1.73% | 1.88% | 2.36% |
-| 35–44 | 1.70% | 1.67% | 0.92% | 1.43% | 1.69% |
-| 45–54 | 0 | 0.006% | 0.094% | 0.017% | 0 |
-| 55+ | 0 | 0.009% | 0.093% | 0.016% | 0 |
-| private renters | 2.74% | 2.69% | 1.69% | 1.84% | 1.26% |
-| other tenures | 0.54% | 0.52% | 0.42% | 0.49% | 0.81% |
-| income tertiles 1–2 | 0.45% | 0.53% | 0.36% | 0.41% | 0.80% |
-| income tertile 3 | 1.78% | 1.56% | 1.14% | 1.32% | 1.04% |
-| log loss × 1000 | | 39.4 | 52.4 | 39.9 | 44.0 |
+| all adults | 0.890% | 0.873% | 0.582% | 0.718% | 0.884% |
+| 16–24 | 2.09% | 2.03% | 1.28% | 1.53% | 2.09% |
+| 25–34 | 2.39% | 2.33% | 1.32% | 1.86% | 2.36% |
+| 35–44 | 1.70% | 1.67% | 1.07% | 1.48% | 1.69% |
+| 45–54 | 0 | 0.006% | 0.098% | 0.015% | 0 |
+| 55+ | 0 | 0.009% | 0.096% | 0.015% | 0 |
+| private renters | 2.74% | 2.69% | 1.35% | 1.87% | 1.26% |
+| other tenures | 0.54% | 0.52% | 0.43% | 0.50% | 0.81% |
+| income tertiles 1–2 | 0.45% | 0.53% | 0.35% | 0.41% | 0.80% |
+| income tertile 3 | 1.78% | 1.56% | 1.05% | 1.34% | 1.04% |
+| log loss × 1000 | | 39.4 | 53.3 | 41.4 | 44.0 |
 
 How the models compare:
 
 - **House gate.** It is miscalibrated for an outcome held by under one per cent of adults. It
-  reproduces 0.62% against 0.89%, understates each age group under 45 by between a quarter and a
-  half, and has the worst held-out log loss.
+  reproduces 0.58% against 0.89%, understates each age group under 45 by more than a third, and
+  has the worst held-out log loss.
 - **Tuned boosting.** Tuning closes part of the gap, not all of it.
 - **Age-group rates.** They are calibrated by age but blind to tenure and income.
 - **Stage logistic.** It matches every age and tenure margin within 0.07 points, with the lowest
   log loss.
+
+Every arm sees only the predictors the stage reads. Since review round 1 the stage no longer
+reads self-employment income, which no model used, so the two boosting arms lost it as a
+feature; the logistic and the age-group rates are unchanged.
 
 A plan-time probe found the logistic's fit stable for the ridge constant C from 0.1 to 10. María
 ruled for the logistic on 2026-09-29.

@@ -9593,7 +9593,6 @@
         "age_band",
         "sex",
         "employment_income",
-        "self_employment_income",
         "holds_lifetime_isa",
         "holding_imputed",
         "reported_value",
@@ -9616,9 +9615,6 @@
          "type": "string"
         },
         "employment_income": {
-         "type": "string"
-        },
-        "self_employment_income": {
          "type": "string"
         },
         "holds_lifetime_isa": {

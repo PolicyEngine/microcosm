@@ -4854,7 +4854,6 @@
             "person_number": "PersonR8",
             "reported_band": "FLISABR8",
             "reported_value": "FLISAVR8",
-            "self_employment_income": "DVGISER8",
             "sex": "SexR8",
             "value_imputed": "flisavr8_iflag"
           },
@@ -4866,8 +4865,7 @@
             -6
           ],
           "sentinel_recode_columns": [
-            "employment_income",
-            "self_employment_income"
+            "employment_income"
           ]
         },
         {

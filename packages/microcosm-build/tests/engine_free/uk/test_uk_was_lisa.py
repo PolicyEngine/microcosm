@@ -50,7 +50,6 @@ CLEAN = {
         "age_band": "DVAge17R8",
         "sex": "SexR8",
         "employment_income": "DVGIEmpR8",
-        "self_employment_income": "DVGISER8",
         "holds_lifetime_isa": "fisa_binary3r8_i",
         "holding_imputed": "fisa_binary3r8_iflag",
         "reported_value": "FLISAVR8",
@@ -65,7 +64,7 @@ CLEAN = {
     "female_code": 2,
     "age_band_edges": list(range(0, 85, 5)),
     "sentinel_codes": [-9, -8, -7, -6],
-    "sentinel_recode_columns": ["employment_income", "self_employment_income"],
+    "sentinel_recode_columns": ["employment_income"],
     "household_predictors": [
         "household_net_income",
         "num_adults",
@@ -300,10 +299,7 @@ def test_clean_joins_persons_to_households_and_applies_the_credibility_rule() ->
     assert receipt["credible_holders_in_balance_fit"] == 14
     assert receipt["credibility_rule"]["holders_recoded_for_age"] == 1
     assert receipt["aggregate_check"]["max_abs_difference_gbp"] == 0.0
-    assert receipt["sentinel_recodes"] == {
-        "employment_income": 0,
-        "self_employment_income": 1,
-    }
+    assert receipt["sentinel_recodes"] == {"employment_income": 1}
     assert receipt["released_flag_value_disagreements"] == 0
     classes = {k: v["persons"] for k, v in receipt["response_classes"].items()}
     assert classes[RULE_IMPOSSIBLE_HOLDER] == 1

@@ -72,7 +72,6 @@ RAW = [
     "age_band",
     "is_female",
     "employment_income",
-    "self_employment_income",
     "household_net_income",
     "num_adults",
     "num_children",

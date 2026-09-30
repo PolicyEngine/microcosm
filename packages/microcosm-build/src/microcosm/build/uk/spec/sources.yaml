@@ -2164,7 +2164,6 @@ stages:
       age_band: DVAge17R8
       sex: SexR8
       employment_income: DVGIEmpR8
-      self_employment_income: DVGISER8
       holds_lifetime_isa: fisa_binary3r8_i
       holding_imputed: fisa_binary3r8_iflag
       reported_value: FLISAVR8
@@ -2180,7 +2179,6 @@ stages:
     sentinel_codes: [-9, -8, -7, -6]
     sentinel_recode_columns:
     - employment_income
-    - self_employment_income
     household_predictors:
     - household_net_income
     - num_adults
