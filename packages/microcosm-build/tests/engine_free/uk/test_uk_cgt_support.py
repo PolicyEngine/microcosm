@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
 from microcosm.build.uk_runtime.cgt_support import (
     CGT_SUPPORT_CLONE_SPLIT_FACTOR,
     CGT_SUPPORT_COPIES_COLUMN,
+    CGT_SUPPORT_COPY_INDEX_COLUMN,
     CGT_SUPPORT_EXPECTED_MASS,
     CGT_SUPPORT_HEADROOM,
     CGT_SUPPORT_INCOME_BAND_LOWER_BOUNDS,
@@ -631,7 +632,13 @@ def test_split_copies_every_column_and_membership_unchanged():
     pd.testing.assert_frame_equal(
         incoming.reset_index(drop=True),
         household.iloc[: len(incoming)]
-        .drop(columns=[HOUSEHOLD_IS_CGT_SUPPORT_COPY, CGT_SUPPORT_COPIES_COLUMN])
+        .drop(
+            columns=[
+                HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+                CGT_SUPPORT_COPIES_COLUMN,
+                CGT_SUPPORT_COPY_INDEX_COLUMN,
+            ]
+        )
         .reset_index(drop=True),
     )
     pd.testing.assert_frame_equal(
@@ -903,6 +910,7 @@ def test_operation_dictionary_restates_the_reviewed_design():
     assert payload["maximum_copy_weight"] == 60.0
     assert payload["flag_column"] == HOUSEHOLD_IS_CGT_SUPPORT_COPY
     assert payload["copies_column"] == CGT_SUPPORT_COPIES_COLUMN
+    assert payload["copy_index_column"] == CGT_SUPPORT_COPY_INDEX_COLUMN
     assert payload["weight_kind_out"] == "importance"
     assert payload["conservation"] == "exact_total"
     assert payload["declared_factor"] == 1.0
@@ -933,6 +941,7 @@ def test_operation_dictionary_restates_the_reviewed_design():
         "id_remapping",
         "flag_column",
         "copies_column",
+        "copy_index_column",
         "values",
         "weight_kind_out",
         "conservation",
@@ -1041,6 +1050,7 @@ def test_transform_binds_the_stage_and_exposes_the_receipt() -> None:
     assert transform.output_columns() == (
         HOUSEHOLD_IS_CGT_SUPPORT_COPY,
         CGT_SUPPORT_COPIES_COLUMN,
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
     )
     assert transform.output_columns() == tuple(stage.outputs)
     assert transform.last_result is None

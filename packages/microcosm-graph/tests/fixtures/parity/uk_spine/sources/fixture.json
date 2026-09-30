@@ -273,7 +273,7 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 before the clone (30 after), each copy the same household at an equal share of its weight. No value is assigned and no draw is made; the clone stage gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact).",
+      "notes": "Spine-only, deterministic, mass-conserving support split before the incidence clone (microcosm#1045). The Table 3 redraw owns every gain amount and places rows by wealth rank, so the top gain bands need light rows where the walk already places heavy ones: within each Table 3 income column the wealthiest households, up to twice the headroom times the published count of gainers at or above GBP 250,000 in that column, are split into copies of at most 60 before the clone (30 after), each copy the same household at an equal share of its weight and carrying its index in cgt_support_copy_index (0 on roots), the explicit lineage the geography identity keys on. No value is assigned and no draw is made; the clone stage gives every copy its own prior. This replaces the HMRC Table 2.1a band-donor stack, whose 30 heavy rows per band the redraw demoted below the exempt amount (the projection-entrants fence artefact).",
       "operations": [
         {
           "adult_minimum_age": 16,
@@ -282,6 +282,7 @@
           "clone_split_factor": 2,
           "conservation": "exact_total",
           "copies_column": "cgt_support_copies",
+          "copy_index_column": "cgt_support_copy_index",
           "copy_rule": "copies = ceil(household weight / maximum_copy_weight); every copy carries weight / copies",
           "declared_factor": 1,
           "expected_support_mass": 145000,
@@ -332,7 +333,8 @@
       ],
       "outputs": [
         "household_is_cgt_support_copy",
-        "cgt_support_copies"
+        "cgt_support_copies",
+        "cgt_support_copy_index"
       ],
       "rewrites": [],
       "source": "HMRC Capital Gains Tax statistics, July 2026 release, Table 3 for 2024-25, via the vendored conditioning facts",

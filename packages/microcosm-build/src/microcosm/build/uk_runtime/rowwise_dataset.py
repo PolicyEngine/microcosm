@@ -65,6 +65,7 @@ UK_SPINE_LINEAGE_COLUMNS = (
     "household_is_spi_income_band_donor",
     "household_is_capital_gains_clone",
     "household_is_cgt_support_copy",
+    "cgt_support_copy_index",
 )
 
 PERSON_ID_COLUMNS = (

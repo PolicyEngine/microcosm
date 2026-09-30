@@ -150,9 +150,7 @@ class TestUKSourceStagesManifest:
         names = [stage["stage"] for stage in canonical["stages"]]
 
         assert names[
-            names.index("hmrc_spi_income_spine") + 1 : names.index(
-                "cgt_support_split"
-            )
+            names.index("hmrc_spi_income_spine") + 1 : names.index("cgt_support_split")
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
             *E5_STAGE_NAMES,
@@ -429,6 +427,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
         from microcosm.build.uk_runtime.cgt_support import (
             CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
             HOUSEHOLD_IS_CGT_SUPPORT_COPY,
         )
         from microcosm.build.uk_runtime.salary_sacrifice import SALSAC_OUTPUT
@@ -443,6 +442,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stages["cgt_support_split"].outputs == (
             HOUSEHOLD_IS_CGT_SUPPORT_COPY,
             CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
         )
         assert stages["cgt_support_split"].rewrites == ()
         assert stages["hmrc_cgt_gains_spine"].outputs == ("capital_gains",)

@@ -209,6 +209,12 @@ effective sample size 5,165 against 5,173, CGT liability GBP 23.30bn against 23.
 worst tax-by-age row 7.5 against 7.7 percent, Table 3 within 0.4 and Table 4.1
 within 2.6 percent, and the entrants fence 129,293 against 129,433.
 
+The 19-row figure predates c7: at the PR head the split's copies are the lightest rows in the frame
+(at most 30 after the clone), and the walk prefers light rows, so the PLAN_5 top-up now draws on copies of
+the wealthiest households of each Table 3 column. The receipt records it from the next licensed build
+on: each plan's `topped_up_lineage` carries the taken rows and mass by household support channel, on
+support copies and on incidence clones (Vahid's review, round 1).
+
 On main `6a70cd4ee` the spine at the rebased head (`spine-m901`, built under #901's driver with no
 relaxation) passes all 26 gates; its datasets are identical to `spine-fix1049`'s (the file differs only
 in provenance bytes), and its calibration reads loss 0.0084 against 0.0084, effective sample size 5,165

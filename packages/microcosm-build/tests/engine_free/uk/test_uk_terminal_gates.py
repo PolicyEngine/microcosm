@@ -715,3 +715,63 @@ def test_exclusion_clocks_reject_datetimes() -> None:
             reviewed_exclusions={},
             now=datetime.now(UTC),
         )
+
+
+def test_weight_gates_evaluate_on_family_folded_weights_and_report_rows_beside() -> (
+    None
+):
+    """Item 2 of the #1045 review: the fence reads dispersion, not copy counts.
+
+    Four rows at 1.0 (three of them copies of one root at 3.0 folded) and one
+    at 100.0: the row-level ratio is 100, the folded ratio under two.
+    """
+    rows = [1.0, 1.0, 1.0, 1.0, 100.0]
+    folded = [3.0, 1.0, 100.0]
+    fold = {"basis": "support_family_fold", "families": 3, "rows_folded": 2}
+
+    ratio = uk_weight_ratio_gate(
+        rows,
+        maximum_max_to_median_ratio=10.0,
+        family_weights=folded,
+        family_fold=fold,
+    )
+    assert ratio.passed
+    assert ratio.details["evaluated_on"] == "family_folded_weights"
+    assert ratio.details["max_to_median_positive_weight"] == 100.0
+    assert ratio.details["n_records"] == 5
+    assert ratio.details["family_folded"]["max_to_median_positive_weight"] == (
+        100.0 / 3.0
+    )
+    assert ratio.details["family_folded"]["n_records"] == 3
+    assert ratio.details["family_folded"]["basis"] == "support_family_fold"
+    assert ratio.details["maximum_max_to_median_ratio"] == 10.0
+
+    failing = uk_weight_ratio_gate(
+        rows,
+        maximum_max_to_median_ratio=10.0,
+        family_weights=[1.0, 1.0, 100.0],
+        family_fold=fold,
+    )
+    assert not failing.passed
+    assert "(family-folded)" in failing.failures[0]
+    assert repr(100.0) in failing.failures[0]
+
+    ess = uk_weight_ess_gate(
+        [1.0] * 10 + [1000.0],
+        minimum_ess_fraction=0.5,
+        family_weights=[10.0, 1000.0],
+        family_fold=fold,
+    )
+    assert ess.details["evaluated_on"] == "family_folded_weights"
+    assert ess.details["ess_fraction"] < 0.5
+    assert ess.details["family_folded"]["ess_fraction"] == (
+        (1010.0**2 / (10.0**2 + 1000.0**2)) / 2
+    )
+    assert ess.passed == (ess.details["family_folded"]["ess_fraction"] >= 0.5)
+    if not ess.passed:
+        assert "(family-folded)" in ess.failures[0]
+
+    plain = uk_weight_ratio_gate(rows, maximum_max_to_median_ratio=10.0)
+    assert plain.details["evaluated_on"] == "row_weights"
+    assert "family_folded" not in plain.details
+    assert not plain.passed

@@ -68,8 +68,8 @@ def expansion(branch, before, pairs, ordinals=None):
 
 def chain():
     a = expansion("spi_support_channel", (1, 2), ((11, 1), (12, 2)))
-    b = expansion("cgt_incidence_clone", a.after_ids, ((21, 1), (31, 11)))
-    c = expansion("cgt_band_donors", b.after_ids, ((41, 31),))
+    b = expansion("cgt_support_split", a.after_ids, ((41, 11),))
+    c = expansion("cgt_incidence_clone", b.after_ids, ((21, 1), (31, 11)))
     s = HouseholdSelection(c.after_ids, (1, 11, 21, 31, 41))
     d = expansion("geographic_support", s.after_ids, ((101, 1), (141, 41)))
     return a, b, c, s, d
@@ -99,16 +99,11 @@ def test_explicit_full_chain_selection_and_clone_keys():
         11: (("spi_support_channel", 1),),
         21: (("cgt_incidence_clone", 1),),
         31: (("spi_support_channel", 1), ("cgt_incidence_clone", 1)),
-        41: (
-            ("spi_support_channel", 1),
-            ("cgt_incidence_clone", 1),
-            ("cgt_band_donors", 1),
-        ),
+        41: (("spi_support_channel", 1), ("cgt_support_split", 1)),
         101: (("geographic_support", 1),),
         141: (
             ("spi_support_channel", 1),
-            ("cgt_incidence_clone", 1),
-            ("cgt_band_donors", 1),
+            ("cgt_support_split", 1),
             ("geographic_support", 1),
         ),
     }

@@ -808,6 +808,7 @@ def _e8_support_split(
     from microcosm.build.uk_runtime.cgt_support import (
         CGT_SUPPORT_CLONE_SPLIT_FACTOR,
         CGT_SUPPORT_COPIES_COLUMN,
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
         CGT_SUPPORT_HEADROOM,
         CGT_SUPPORT_MASS_CHANGE_REASON,
         CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
@@ -872,6 +873,12 @@ def _e8_support_split(
     receipt["id_multiplier"] = int(lineage.multiplier)
     receipt["pre_split_households"] = int(pre_split.sum())
     receipt["copies"] = int(len(lineage.copy_positions))
+    # The explicit copy index (microcosm#1045 review): present on artifacts
+    # built since it was added, checked against the id scheme by the lineage
+    # above, and recorded so a receipt says which lineage it read.
+    receipt["copy_index_column_stored"] = bool(
+        CGT_SUPPORT_COPY_INDEX_COLUMN in household.columns
+    )
 
     # Flag and count consistency of the stored layer: every copy carries its
     # root's count and the root's count exceeds one; each family's copies are
@@ -1468,11 +1475,17 @@ def _support_copy_lineage(
     before the clone, so a clone of a copy carries the copy flag but is not a
     pre-clone row). Copy ``k`` of root ``r`` carries ``r + k * M1``, so ``k =
     id // M1`` and ``r = id - k * M1``. A copy without a root, or with index
-    zero, fails closed.
+    zero, fails closed. An artifact that carries the split's explicit
+    ``cgt_support_copy_index`` (0 on roots and unsplit households, ``k`` on
+    copy ``k``; the lineage the geography identity keys on) must agree with
+    the id scheme on every row, or the lineage fails closed too.
     """
 
     from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
-    from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+    from microcosm.build.uk_runtime.cgt_support import (
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+    )
     from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 
     household_ids = (
@@ -1519,6 +1532,24 @@ def _support_copy_lineage(
                 f"{copy_id} (id multiplier {multiplier})."
             )
         root_positions[slot] = root
+    if CGT_SUPPORT_COPY_INDEX_COLUMN in household.columns:
+        stored_index = (
+            pd.to_numeric(household[CGT_SUPPORT_COPY_INDEX_COLUMN], errors="raise")
+            .astype("int64")
+            .to_numpy()
+        )
+        flag_disagreements = int(((stored_index != 0) != is_copy).sum())
+        if flag_disagreements:
+            raise ValueError(
+                "CGT support-copy flag and stored copy index disagree on "
+                f"{flag_disagreements} household(s)."
+            )
+        scheme_disagreements = int((stored_index[copy_positions] != copy_index).sum())
+        if scheme_disagreements:
+            raise ValueError(
+                f"CGT support copy index stored on {scheme_disagreements} "
+                f"copy(ies) disagrees with the id scheme (id // {multiplier})."
+            )
     return _SupportCopyLineage(
         household_ids=household_ids,
         pre_split=pre_split,

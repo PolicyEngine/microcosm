@@ -270,3 +270,57 @@ def test_drift_assert_rejects_extra_keys_and_operations() -> None:
         _assert_student_loans_stage_parameters(
             extra, stocks=load_slc_liable_stocks(), year=2025
         )
+
+
+def test_top_up_receipt_records_the_taken_rows_lineage() -> None:
+    """Item 4 of the #1045 review: the walk prefers light rows, and after the
+    support split the lightest rows are its copies, so the receipt shows where
+    the taken rows sit."""
+    result = assign_student_loan_plans(
+        _frame(
+            ages=[31] * 5,
+            repayments=[0.0] * 5,
+            weights=[5.0, 3.0, 2.0, 2.0, 1.0],
+            household_columns={
+                "household_support_channel": ["frs", "spi", "frs", "spi", "frs"],
+                "household_is_cgt_support_copy": [False, False, True, True, False],
+                "household_is_capital_gains_clone": [False, True, False, False, True],
+            },
+        ),
+        stocks=_stocks(plan_2=4, plan_5=0),
+        year=2025,
+    )
+    receipt = result.plans["PLAN_2"]
+    lineage = receipt.topped_up_lineage
+    plans = result.frame.table("person")["student_loan_plan"].to_numpy()
+    taken = np.flatnonzero(plans == "PLAN_2")
+    channels = np.asarray(["frs", "spi", "frs", "spi", "frs"])[taken]
+    copies = np.asarray([False, False, True, True, False])[taken]
+    clones = np.asarray([False, True, False, False, True])[taken]
+    weights = np.asarray([5.0, 3.0, 2.0, 2.0, 1.0])[taken]
+
+    assert lineage["columns"] == [
+        "household_support_channel",
+        "household_is_cgt_support_copy",
+        "household_is_capital_gains_clone",
+    ]
+    assert lineage["rows_by_channel"] == {
+        channel: int((channels == channel).sum()) for channel in sorted(set(channels))
+    }
+    assert lineage["mass_by_channel"] == {
+        channel: float(weights[channels == channel].sum())
+        for channel in sorted(set(channels))
+    }
+    assert lineage["support_copy_rows"] == int(copies.sum())
+    assert lineage["support_copy_mass"] == float(weights[copies].sum())
+    assert lineage["clone_rows"] == int(clones.sum())
+    assert lineage["clone_mass"] == float(weights[clones].sum())
+    assert sum(lineage["rows_by_channel"].values()) == receipt.topped_up_rows
+    assert receipt.evidence()["topped_up_lineage"] == lineage
+
+    bare = assign_student_loan_plans(
+        _frame(ages=[31] * 2, repayments=[0.0] * 2, weights=[2.0, 2.0]),
+        stocks=_stocks(plan_2=10, plan_5=0),
+        year=2025,
+    )
+    assert bare.plans["PLAN_2"].topped_up_lineage == {"columns": []}

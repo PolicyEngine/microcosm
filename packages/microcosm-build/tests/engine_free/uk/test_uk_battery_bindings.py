@@ -1483,3 +1483,41 @@ class TestEnumDomainResolution:
                 EvidenceContext(frame=frame, artifacts={"rules_engine": Bare()}),
                 {"columns": ["student_loan_plan"]},
             )
+
+
+def test_weight_gate_bindings_fold_support_families_before_evaluating() -> None:
+    """The terminal weight gates read the support-family fold (microcosm#1045).
+
+    Four rows: root 1 split into three copies at 1.0 each (ids 1, 2, 3 share
+    the lineage key) and one household at 30.0. Row-level the ratio is 30;
+    folded it is 10, so a bound of 20 passes only on the fold.
+    """
+    person, benunit, household = _tables(n=4, weights=[1.0, 1.0, 1.0, 30.0])
+    household["household_is_capital_gains_clone"] = False
+    household["source_household_id"] = np.asarray([1, 1, 1, 4], dtype=np.int64)
+    household["household_support_channel"] = pd.array(["frs"] * 4, dtype="string")
+    household["household_support_clone_index"] = np.zeros(4, dtype=np.int64)
+    household["household_is_cgt_support_copy"] = [False, True, True, False]
+    household["cgt_support_copy_index"] = np.asarray([0, 1, 2, 0], dtype=np.int64)
+    frame = uk_national_frame(
+        person=person, benunit=benunit, household=household, time_period="2023"
+    )
+
+    ratio = UK_GATE_REGISTRY["weight_ratio"].evaluate(
+        EvidenceContext(frame=frame), {"maximum_max_to_median_ratio": 20.0}
+    )
+    assert ratio.passed
+    assert ratio.details["max_to_median_positive_weight"] == 30.0
+    assert ratio.details["evaluated_on"] == "family_folded_weights"
+    assert ratio.details["family_folded"]["basis"] == "support_family_fold"
+    assert ratio.details["family_folded"]["families"] == 2
+    assert ratio.details["family_folded"]["max_to_median_positive_weight"] == (
+        30.0 / ((3.0 + 30.0) / 2)
+    )
+
+    ess = UK_GATE_REGISTRY["weight_ess"].evaluate(
+        EvidenceContext(frame=frame), {"minimum_ess_fraction": 0.01}
+    )
+    assert ess.details["evaluated_on"] == "family_folded_weights"
+    assert ess.details["family_folded"]["n_records"] == 2
+    assert ess.details["n_records"] == 4

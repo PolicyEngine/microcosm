@@ -879,3 +879,75 @@ def test_geography_level_vocabulary_includes_future_release_levels() -> None:
         "local_authority",
         "constituency",
     )
+
+
+class TestSupportFamilyWeights:
+    """Folding support-split families back to one weight (microcosm#1045)."""
+
+    @staticmethod
+    def _household(copies: bool) -> pd.DataFrame:
+        from microcosm.build.uk_runtime.diagnostics import UK_SUPPORT_COPY_FLAG_COLUMN
+
+        # Root 1 split into three (ids 1, 11, 21); root 2 whole; the clone
+        # side (ids +100) repeats the pattern at half weight.
+        ids = [1, 2, 11, 21, 101, 102, 111, 121]
+        household = pd.DataFrame(
+            {
+                "household_id": ids,
+                "household_weight": [10.0, 30.0, 10.0, 10.0, 5.0, 15.0, 5.0, 5.0],
+                "source_household_id": [1, 2, 1, 1, 1, 2, 1, 1],
+                "household_support_channel": ["frs"] * 8,
+                "household_support_clone_index": [0] * 8,
+                "household_is_capital_gains_clone": [False] * 4 + [True] * 4,
+            }
+        )
+        if copies:
+            household[UK_SUPPORT_COPY_FLAG_COLUMN] = [
+                False,
+                False,
+                True,
+                True,
+                False,
+                False,
+                True,
+                True,
+            ]
+        return household
+
+    def test_families_sum_to_one_weight_per_root_on_each_clone_side(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        folded, receipt = uk_support_family_weights(self._household(copies=True))
+        assert sorted(folded.tolist()) == [15.0, 15.0, 30.0, 30.0]
+        assert receipt == {
+            "basis": "support_family_fold",
+            "key_columns": [
+                "source_household_id",
+                "household_support_channel",
+                "household_support_clone_index",
+                "household_is_capital_gains_clone",
+            ],
+            "families": 4,
+            "support_copy_rows": 4,
+            "rows_folded": 4,
+        }
+
+    def test_a_table_without_copies_folds_to_itself(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        household = self._household(copies=False)
+        folded, receipt = uk_support_family_weights(household)
+        assert folded.tolist() == household["household_weight"].tolist()
+        assert receipt == {
+            "basis": "rows",
+            "families": 8,
+            "support_copy_rows": 0,
+            "rows_folded": 0,
+        }
+
+    def test_copies_without_the_lineage_key_refuse(self) -> None:
+        from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
+
+        household = self._household(copies=True).drop(columns=["source_household_id"])
+        with pytest.raises(ValueError, match="source_household_id"):
+            uk_support_family_weights(household)

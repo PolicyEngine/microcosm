@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
 )
 from microcosm.build.uk_runtime.cgt_support import (
     CGT_SUPPORT_COPIES_COLUMN,
+    CGT_SUPPORT_COPY_INDEX_COLUMN,
     CGT_SUPPORT_SPLIT_STAGE_NAME,
     HOUSEHOLD_IS_CGT_SUPPORT_COPY,
     cgt_support_split_operation_parameters,
@@ -317,7 +318,11 @@ def support_stage(
     *,
     stage_name: str = CGT_SUPPORT_SPLIT_STAGE_NAME,
     grain: str = "household",
-    outputs: Sequence[str] = (HOUSEHOLD_IS_CGT_SUPPORT_COPY, CGT_SUPPORT_COPIES_COLUMN),
+    outputs: Sequence[str] = (
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+        CGT_SUPPORT_COPIES_COLUMN,
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
+    ),
     rewrites: Sequence[str] = (),
     artifacts: Sequence[Mapping[str, object]] | None = None,
 ) -> SourceStageSpec:

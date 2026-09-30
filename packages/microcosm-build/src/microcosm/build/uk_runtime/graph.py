@@ -759,6 +759,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
     "cgt_support_split": (
         _Cell("household", "household_is_cgt_support_copy", "bool"),
         _Cell("household", "cgt_support_copies", "int64"),
+        _Cell("household", "cgt_support_copy_index", "int64"),
     ),
     "cgt_incidence_clone": (
         _Cell("household", "household_is_capital_gains_clone", "bool"),

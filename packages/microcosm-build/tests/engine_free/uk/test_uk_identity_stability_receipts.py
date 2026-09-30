@@ -694,6 +694,43 @@ class TestPreSplitFold:
         with pytest.raises(ValueError, match="without a root household"):
             tool._pre_split_household_weights(_rebuild(frame, household=household))
 
+    def test_the_stored_copy_index_is_read_and_held_to_the_id_scheme(self) -> None:
+        """The explicit index (microcosm#1045 review) must agree with the ids."""
+        from microcosm.build.uk_runtime.cgt_support import (
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+        )
+
+        tool = _load_tool()
+        _, frame = _split_then_cloned()
+        household = frame.table("household")
+        lineage = tool._support_copy_lineage(
+            frame.table("person"), frame.table("benunit"), household
+        )
+        stored = household[CGT_SUPPORT_COPY_INDEX_COLUMN].to_numpy()
+        np.testing.assert_array_equal(
+            stored[lineage.copy_positions], lineage.copy_index
+        )
+        assert (stored[lineage.pre_split] == 0).all()
+
+        tampered = household.copy()
+        copy_id = int(household["household_id"].to_numpy()[lineage.copy_positions[0]])
+        tampered.loc[
+            tampered["household_id"] == copy_id, CGT_SUPPORT_COPY_INDEX_COLUMN
+        ] = 7
+        with pytest.raises(ValueError, match="disagrees with the id scheme"):
+            tool._pre_split_household_weights(_rebuild(frame, household=tampered))
+
+        unflagged = household.copy()
+        unflagged.loc[
+            unflagged["household_id"] == copy_id, HOUSEHOLD_IS_CGT_SUPPORT_COPY
+        ] = False
+        with pytest.raises(ValueError, match="flag and stored copy index disagree"):
+            tool._pre_split_household_weights(_rebuild(frame, household=unflagged))
+
+        receipt, problems = TestE8SupportSplitRecompute._receipt(frame)
+        assert problems == {}
+        assert receipt["copy_index_column_stored"] is True
+
 
 class TestE8SupportSplitRecompute:
     """The split rerun on the folded pre-split frame reproduces the stored layer."""

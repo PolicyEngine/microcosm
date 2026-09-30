@@ -62,6 +62,7 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
 )
+from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
@@ -947,15 +948,27 @@ def _evaluate_zero_weight_strata(
 def _evaluate_weight_ess(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    weights = _household_weights(_uk_gate_surface(context.frame).household)
-    return uk_weight_ess_gate(weights, **dict(parameters))
+    household = _uk_gate_surface(context.frame).household
+    family_weights, family_fold = uk_support_family_weights(household)
+    return uk_weight_ess_gate(
+        _household_weights(household),
+        family_weights=family_weights,
+        family_fold=family_fold,
+        **dict(parameters),
+    )
 
 
 def _evaluate_weight_ratio(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    weights = _household_weights(_uk_gate_surface(context.frame).household)
-    return uk_weight_ratio_gate(weights, **dict(parameters))
+    household = _uk_gate_surface(context.frame).household
+    family_weights, family_fold = uk_support_family_weights(household)
+    return uk_weight_ratio_gate(
+        _household_weights(household),
+        family_weights=family_weights,
+        family_fold=family_fold,
+        **dict(parameters),
+    )
 
 
 def _evaluate_geography_ladder(

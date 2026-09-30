@@ -9,10 +9,13 @@ at the top of the gains distribution instead of stacking donor rows with
 created mass: within each Table 3 taxable-income band it walks households in
 descending investable wealth until their weight covers the band's support
 mass (the published count of gainers at or above GBP 250,000 in that income
-column, doubled for the clone split and doubled again for headroom) and
-divides every selected household into ``ceil(weight / 60)`` identical copies
-at equal weight. No value moves, no draw is made, and every household's mass
-and the total household mass are conserved exactly; the clone stage then
+column, doubled for the clone split and scaled by the declared headroom of
+1.25) and divides every selected household into ``ceil(weight / 60)``
+identical copies at equal weight, each carrying its index ``k`` in
+``cgt_support_copy_index`` (0 on roots and unsplit households), the explicit
+lineage the geography identity kernel keys on. No value moves, no draw is
+made, and every household's mass and the total household mass are conserved
+exactly; the clone stage then
 gives each copy's clone its own identity-keyed prior, and the redraw's
 wealth-ranked walk places the light rows where it was already placing heavy
 ones.
@@ -73,6 +76,10 @@ HOUSEHOLD_IS_CGT_SUPPORT_COPY = "household_is_cgt_support_copy"
 #: The family's copy count on every member of a split household, root
 #: included; 1 on every household the stage left alone.
 CGT_SUPPORT_COPIES_COLUMN = "cgt_support_copies"
+#: The copy's index ``k`` (from 1) on every copy this stage creates, 0 on
+#: roots and unsplit households: the explicit lineage the geography identity
+#: kernel keys on (microcosm#932), so no consumer recovers ``k`` from ids.
+CGT_SUPPORT_COPY_INDEX_COLUMN = "cgt_support_copy_index"
 #: The clone stage halves every household and only the clone twin gains.
 CGT_SUPPORT_CLONE_SPLIT_FACTOR = 2
 #: Covers clones whose prior draws at or below zero and the quarter of the
@@ -206,7 +213,11 @@ class UKCGTSupportSplitStageTransform:
 
     @staticmethod
     def output_columns() -> tuple[str, ...]:
-        return (HOUSEHOLD_IS_CGT_SUPPORT_COPY, CGT_SUPPORT_COPIES_COLUMN)
+        return (
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+            CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+        )
 
     def checkpoint_metadata(self) -> dict[str, object]:
         if self.last_result is None:
@@ -425,7 +436,8 @@ def split_cgt_support_households(
     Deterministic and mass-conserving: no draw, no seed, no salt. Each
     selected household of weight ``w`` becomes ``n = ceil(w / 60)`` copies at
     ``w / n``; the root keeps its ids, copy ``k`` takes every entity id plus
-    ``k`` times the frame's id multiplier and a full copy of the household's
+    ``k`` times the frame's id multiplier, records ``k`` in
+    ``cgt_support_copy_index`` and carries a full copy of the household's
     person and benefit-unit rows. The exact-total correction lands on the
     heaviest unselected incumbent so every copy weight stays bitwise
     ``w / n``. Refuses a frame the clone stage has already seen or one this
@@ -441,7 +453,11 @@ def split_cgt_support_households(
             "The CGT support split runs before cgt_incidence_clone; the household "
             f"table already carries {HOUSEHOLD_IS_CGT_CLONE!r}."
         )
-    for column in (HOUSEHOLD_IS_CGT_SUPPORT_COPY, CGT_SUPPORT_COPIES_COLUMN):
+    for column in (
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+        CGT_SUPPORT_COPIES_COLUMN,
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
+    ):
         if column in household.columns:
             raise ValueError(
                 f"The CGT support split already ran: the household table carries "
@@ -479,6 +495,7 @@ def split_cgt_support_households(
     )
     household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = False
     household[CGT_SUPPORT_COPIES_COLUMN] = copies
+    household[CGT_SUPPORT_COPY_INDEX_COLUMN] = np.zeros(len(household), dtype="int64")
     incumbent_weights = weights / copies
     copy_person: list[pd.DataFrame] = []
     copy_benunit: list[pd.DataFrame] = []
@@ -503,6 +520,9 @@ def split_cgt_support_households(
             family_household["household_id"].astype("int64") + offset
         )
         family_household[HOUSEHOLD_IS_CGT_SUPPORT_COPY] = True
+        family_household[CGT_SUPPORT_COPY_INDEX_COLUMN] = np.full(
+            int(family.sum()), k, dtype="int64"
+        )
         copy_person.append(family_person)
         copy_benunit.append(family_benunit)
         copy_household.append(family_household)
@@ -669,6 +689,7 @@ def cgt_support_split_operation_parameters() -> tuple[
                 ),
                 "flag_column": HOUSEHOLD_IS_CGT_SUPPORT_COPY,
                 "copies_column": CGT_SUPPORT_COPIES_COLUMN,
+                "copy_index_column": CGT_SUPPORT_COPY_INDEX_COLUMN,
                 "values": "every column copied unchanged; no draw, no seed, no salt",
                 "weight_kind_out": WeightKind.IMPORTANCE.value,
                 "conservation": "exact_total",
@@ -683,7 +704,7 @@ def _assert_cgt_support_split_stage_parameters(stage: SourceStageSpec) -> None:
     """Bind every stage manifest parameter to reviewed code constants.
 
     Arm 1 of the two-arm rule: the manifest restates the code dictionary
-    verbatim, the stage carries exactly the two output columns at household
+    verbatim, the stage carries exactly the three output columns at household
     grain with no rewrites and the two reference artifacts, and the vintage
     pins are recomputed from the vendored joint so a re-vendored resource
     that moves them fails here until reviewed.
@@ -694,12 +715,17 @@ def _assert_cgt_support_split_stage_parameters(stage: SourceStageSpec) -> None:
         raise ValueError(
             f"Expected stage {CGT_SUPPORT_SPLIT_STAGE_NAME!r}, got {stage.stage!r}."
         )
-    expected_outputs = (HOUSEHOLD_IS_CGT_SUPPORT_COPY, CGT_SUPPORT_COPIES_COLUMN)
+    expected_outputs = (
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+        CGT_SUPPORT_COPIES_COLUMN,
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
+    )
     if tuple(stage.outputs) != expected_outputs or tuple(stage.rewrites):
         raise ValueError(
-            "The CGT support split writes exactly its flag and copy-count "
-            f"columns; the manifest must declare outputs {expected_outputs} and "
-            f"no rewrites, got {tuple(stage.outputs)} / {tuple(stage.rewrites)}."
+            "The CGT support split writes exactly its flag, copy-count and "
+            f"copy-index columns; the manifest must declare outputs "
+            f"{expected_outputs} and no rewrites, got {tuple(stage.outputs)} / "
+            f"{tuple(stage.rewrites)}."
         )
     if stage.grain != "household":
         raise ValueError(

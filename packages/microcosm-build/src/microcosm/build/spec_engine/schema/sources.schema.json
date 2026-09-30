@@ -8328,6 +8328,7 @@
       "id_remapping",
       "flag_column",
       "copies_column",
+      "copy_index_column",
       "values",
       "weight_kind_out",
       "conservation",
@@ -8426,6 +8427,9 @@
        "type": "string"
       },
       "copies_column": {
+       "type": "string"
+      },
+      "copy_index_column": {
        "type": "string"
       },
       "values": {

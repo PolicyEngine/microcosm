@@ -40,6 +40,7 @@ def _frame(
     regions=None,
     education=None,
     weights=None,
+    household_columns=None,
 ):
     n = len(ages)
     ids = np.arange(1, n + 1, dtype="int64")
@@ -57,7 +58,9 @@ def _frame(
             }
         ),
         benunit=pd.DataFrame({"benunit_id": ids}),
-        household=pd.DataFrame({"household_id": ids, "region": regions}),
+        household=pd.DataFrame(
+            {"household_id": ids, "region": regions, **(household_columns or {})}
+        ),
         household_weights=np.ones(n) if weights is None else weights,
         time_period="2024",
     )

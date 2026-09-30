@@ -624,7 +624,7 @@
       "parameters": {
         "minimum_ess_fraction": 0.01
       },
-      "notes": "Effective sample size of the positive household weights must stay above one percent of the positive-weight count (microcosm#609)."
+      "notes": "Effective sample size of the positive household weights must stay above one percent of the positive-weight count (microcosm#609). Evaluated on family-folded weights since microcosm#1045 (each cgt_support_split root with its copies summed, the quantity the certification measured on a frame without copies), with the row-level summary reported beside it."
     },
     {
       "id": "uk_weight_ratio",
@@ -634,7 +634,7 @@
       "parameters": {
         "maximum_max_to_median_ratio": 1151.2542195939373
       },
-      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 finding-2 breach (1590.53) was adjudicated NOT a re-baseline case: adversarial decomposition showed 11-12 SPI-synthetic clone rows from two donor lineages carried pathological inherited weights, fixed upstream by the per-stratum allocation in microcosm#710 (post-fix full-scale ratio well inside this fence). The fence held and stays at the June bound; raising it requires an explicit future adjudication with a receipted measurement, never loosen-to-pass."
+      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 finding-2 breach (1590.53) was adjudicated NOT a re-baseline case: adversarial decomposition showed 11-12 SPI-synthetic clone rows from two donor lineages carried pathological inherited weights, fixed upstream by the per-stratum allocation in microcosm#710 (post-fix full-scale ratio well inside this fence). The fence held and stays at the June bound; raising it requires an explicit future adjudication with a receipted measurement, never loosen-to-pass. Evaluated on family-folded weights since microcosm#1045 (each cgt_support_split root with its copies summed, the quantity this June measurement was taken on), with the row-level summary reported beside it: the split's light copies halve the row-level median without moving the maximum."
     },
     {
       "id": "uk_weights_audit",
@@ -733,6 +733,7 @@
           "household.bus_subsidy_spending",
           "household.cash_isa",
           "household.cgt_support_copies",
+          "household.cgt_support_copy_index",
           "household.clone_index",
           "household.constituency_code_oa",
           "household.consumer_debt",

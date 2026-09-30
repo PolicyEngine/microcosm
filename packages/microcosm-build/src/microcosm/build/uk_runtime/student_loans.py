@@ -99,6 +99,11 @@ class UKStudentLoanPlanReceipt:
     pool_exhausted: bool
     final_england_count: float
     stock_attainment: float | None
+    #: Where the walk's taken rows sit in the spine's lineage: rows and mass
+    #: by household support channel, on CGT support copies and on incidence
+    #: clones. The walk prefers light rows, and after microcosm#1045 the
+    #: lightest rows are the support split's copies, so the receipt shows it.
+    topped_up_lineage: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -116,6 +121,7 @@ class UKStudentLoanPlanReceipt:
             "pool_exhausted": self.pool_exhausted,
             "final_england_count": self.final_england_count,
             "stock_attainment": self.stock_attainment,
+            "topped_up_lineage": dict(self.topped_up_lineage),
         }
 
 
@@ -219,6 +225,7 @@ def assign_student_loan_plans(
     person_weights = (
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
     )
+    person_lineage = _person_lineage(person, household)
     start_year = year - age + 18
     has_repayments = repayments > 0.0
     plan = np.full(len(person), "NONE", dtype=object)
@@ -280,6 +287,7 @@ def assign_student_loan_plans(
             ),
             final_england_count=final_england,
             stock_attainment=final_england / stock if stock > 0.0 else None,
+            topped_up_lineage=_topped_up_lineage(person_lineage, taken, person_weights),
         )
     unknown = sorted(set(plan) - set(STUDENT_LOAN_ENUM_DOMAIN))
     if unknown:
@@ -308,6 +316,66 @@ def assign_student_loan_plans(
         calibration_year=year,
         plans=receipts,
     )
+
+
+#: Household lineage columns the top-up receipt reports the taken rows on,
+#: when the frame carries them: the SPI support channel, the CGT support
+#: split's copy flag and the incidence clone flag.
+_LINEAGE_CHANNEL_COLUMN = "household_support_channel"
+_LINEAGE_SUPPORT_COPY_COLUMN = "household_is_cgt_support_copy"
+_LINEAGE_CLONE_COLUMN = "household_is_capital_gains_clone"
+
+
+def _person_lineage(person: pd.DataFrame, household: pd.DataFrame) -> pd.DataFrame:
+    """Map each person's household lineage columns, absent ones left out."""
+
+    by_household = household.set_index("household_id")
+    lineage = pd.DataFrame(index=person.index)
+    for column in (
+        _LINEAGE_CHANNEL_COLUMN,
+        _LINEAGE_SUPPORT_COPY_COLUMN,
+        _LINEAGE_CLONE_COLUMN,
+    ):
+        if column in by_household.columns:
+            mapped = person["person_household_id"].map(by_household[column])
+            if mapped.isna().any():
+                raise ValueError(
+                    f"Student-loan people must all map to a household {column!r}."
+                )
+            lineage[column] = mapped.to_numpy()
+    return lineage
+
+
+def _topped_up_lineage(
+    lineage: pd.DataFrame, taken: np.ndarray, person_weights: np.ndarray
+) -> dict[str, object]:
+    """Rows and mass the walk took, by support channel, copy and clone flag."""
+
+    taken = np.asarray(taken, dtype=int)
+    weights = person_weights[taken]
+    receipt: dict[str, object] = {"columns": list(lineage.columns)}
+    if _LINEAGE_CHANNEL_COLUMN in lineage.columns:
+        channels = np.asarray(
+            [_enum_name(value) for value in lineage[_LINEAGE_CHANNEL_COLUMN]],
+            dtype=object,
+        )[taken]
+        receipt["rows_by_channel"] = {
+            str(channel): int((channels == channel).sum())
+            for channel in sorted(set(channels.tolist()))
+        }
+        receipt["mass_by_channel"] = {
+            str(channel): float(weights[channels == channel].sum())
+            for channel in sorted(set(channels.tolist()))
+        }
+    for key, column in (
+        ("support_copy", _LINEAGE_SUPPORT_COPY_COLUMN),
+        ("clone", _LINEAGE_CLONE_COLUMN),
+    ):
+        if column in lineage.columns:
+            flags = lineage[column].to_numpy(dtype=bool)[taken]
+            receipt[f"{key}_rows"] = int(flags.sum())
+            receipt[f"{key}_mass"] = float(weights[flags].sum())
+    return receipt
 
 
 def _walk_top_up(

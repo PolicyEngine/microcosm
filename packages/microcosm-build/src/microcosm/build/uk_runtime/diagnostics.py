@@ -472,6 +472,67 @@ def uk_weight_summary(
     }
 
 
+#: Lineage columns that identify a support-split family: every copy the split
+#: created shares its root's source household, support channel, support clone
+#: index and clone flag, and only the split creates rows that agree on all
+#: four (microcosm#1045).
+UK_SUPPORT_FAMILY_KEY_COLUMNS = (
+    "source_household_id",
+    "household_support_channel",
+    "household_support_clone_index",
+    "household_is_capital_gains_clone",
+)
+UK_SUPPORT_COPY_FLAG_COLUMN = "household_is_cgt_support_copy"
+
+
+def uk_support_family_weights(
+    household: pd.DataFrame,
+) -> tuple[np.ndarray, dict[str, object]]:
+    """Fold shipped household weights over support-split families.
+
+    Each root and the copies ``cgt_support_split`` made of it (and, on the
+    clone side, its clone and the copies' clones) sum to one weight, so the
+    max-to-median ratio and the ESS fraction read the quantity the June
+    certification measured on a frame without copies, not the number of
+    copies. A table without the copy flag, or with no copy, folds to itself.
+    A table with copies but without the family key columns refuses.
+    """
+
+    weights = pd.to_numeric(household["household_weight"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    copies = (
+        household[UK_SUPPORT_COPY_FLAG_COLUMN].fillna(False).to_numpy(dtype=bool)
+        if UK_SUPPORT_COPY_FLAG_COLUMN in household.columns
+        else np.zeros(len(household), dtype=bool)
+    )
+    if not copies.any():
+        return weights.copy(), {
+            "basis": "rows",
+            "families": int(len(household)),
+            "support_copy_rows": 0,
+            "rows_folded": 0,
+        }
+    missing = [c for c in UK_SUPPORT_FAMILY_KEY_COLUMNS if c not in household.columns]
+    if missing:
+        raise ValueError(
+            "Family-folded weights need the spine lineage column(s) "
+            f"{missing} once the household table carries support copies."
+        )
+    key = household.loc[:, list(UK_SUPPORT_FAMILY_KEY_COLUMNS)]
+    if key.isna().any().any():
+        raise ValueError("Family-folded weights refuse null lineage values.")
+    family = key.groupby(list(UK_SUPPORT_FAMILY_KEY_COLUMNS), sort=True).ngroup()
+    folded = pd.Series(weights, index=household.index).groupby(family.to_numpy()).sum()
+    return folded.to_numpy(dtype=np.float64), {
+        "basis": "support_family_fold",
+        "key_columns": list(UK_SUPPORT_FAMILY_KEY_COLUMNS),
+        "families": int(folded.size),
+        "support_copy_rows": int(copies.sum()),
+        "rows_folded": int(len(household) - folded.size),
+    }
+
+
 def uk_fit_by_family(
     diagnostics: pd.DataFrame,
     *,
