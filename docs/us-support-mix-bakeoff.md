@@ -40,12 +40,18 @@ trade-offs.
 
   Stopping at 300k is a cost call. Larger ACS fills keep lowering district
   error (0.291, 0.266, 0.244 at 300k, 600k, 1.2M) but leave state error flat
-  (0.113, 0.115, 0.113), keep raising state tax items (0.113, 0.116, 0.118)
-  and worsen state program receipt (0.198, 0.225, 0.239). The best state-level
-  arm is the 600k 50/50 fill (0.111; income 0.213, tax items 0.112, program
-  receipt 0.187) at 1,019,084 rows, 2.1 times the recommendation. If state tax
-  items and serving cost outweigh everything else, the three-year CPS-only
-  file remains the choice.
+  (0.113, 0.115, 0.113), edge state tax items up (0.113, 0.116, 0.118) and do
+  not help state program receipt (0.198, 0.225, 0.239; the 600k and 1.2M arms
+  are single draws, and only the 1.2M gap exceeds draw noise). The best
+  state-level arm is the 600k 50/50 fill (0.111; income 0.213, tax items
+  0.112, program receipt 0.187) at 1,019,084 rows, 2.1 times the
+  recommendation. Against one CPS year plus ACS to 300k, three years buy state
+  income (0.249 to 0.224) and tax items (0.130 to 0.113) with ACS-native
+  accuracy (state 0.086 to 0.110, district 0.166 to 0.188). The
+  recommendation puts the CPS-native gains first; if ACS-native accuracy
+  matters as much for the national file, one year plus ACS is the
+  alternative. If state tax items and serving cost outweigh everything else,
+  the three-year CPS-only file remains the choice.
 
 - **CD and county local file: the newest three CPS years plus ACS households,
   not CPS location clones, to 1.2M source households.** That is 1,384,080
@@ -64,34 +70,48 @@ trade-offs.
   rows plus every ACS household), the three CPS years lower state CPS-native
   error from 0.120 to 0.112, state program receipt from 0.318 to 0.256 and
   state tax items from 0.127 to 0.117, and ACS-native error is no worse.
-  One CPS year instead of three ties on districts and ACS-native measures at
-  1.2M and saves 123k rows (9%), but loses on state error (0.116 against
-  0.112) and, at 300k where there are three draws of each, clearly so (0.119
-  against 0.112). Three years also let the local file share the national
-  file's CPS support.
+  One CPS year instead of three saves 123k rows (9%) at 1.2M. There the data
+  do not separate them on CPS-native measures: district error is level
+  (0.169 each), and the state gaps (0.116 against 0.112; tax items 0.123
+  against 0.117; program receipt 0.278 against 0.256, single draws) sit
+  within the one-year arms' draw noise, or for state error at its edge. One
+  year is better on ACS-native state and district measures (0.072 and 0.136
+  against 0.078 and 0.141). Three years win at 300k, where there are three
+  draws of each: clearly on state error (0.119 against 0.112) and tax items
+  (0.137 against 0.103), and just beyond draw noise on program receipt (0.288
+  against 0.237). The three-year choice rests on that, on the national
+  evidence below, and on the local file sharing the national file's CPS
+  support.
 
-- **More CPS years help the national file.** At 300k, one year against three
-  (three draws each): state income 0.249 against 0.224, tax items 0.130
-  against 0.113, program receipt 0.241 against 0.198. In the local file the
-  effect is mixed: each CPS year displaces ACS households within the budget,
-  so tax items and program receipt improve while state income and ACS-native
-  measures get slightly worse. Income years 2020 and 2021 pass the
-  response-quality check, so a five-year pool is the next arm to run; it was
-  not run here (see Follow-ups).
+- **More CPS years improve CPS-native measures and cost ACS-native ones.**
+  Within a budget, each CPS year displaces ACS households. In the national
+  file at 300k, one year against three (three draws each): state income 0.249
+  against 0.224 and tax items 0.130 against 0.113, both well beyond draw
+  noise; program receipt 0.241 against 0.198 is within the one-year arms'
+  draw noise (SD 0.041), and so is the loss-weighted state error (0.117
+  against 0.113, SD 0.002). ACS-native error rises (state 0.086 to 0.110,
+  district 0.166 to 0.188; county level at 0.255 and 0.259). The local file at
+  300k shows the same trade more strongly: tax items (0.137 to 0.103) and
+  program receipt (0.288 to 0.237) improve, state income is level, and
+  ACS-native error rises by a third or more (state 0.080 to 0.110, district
+  0.153 to 0.204). At 1.2M the displacement is small (see above). Income
+  years 2020 and 2021 pass the response-quality check, so a five-year pool is
+  the next arm to run; it was not run here (see Follow-ups).
 
 - **Clones add geography and little else.** In the national file they leave
   every state measure where the CPS-only file had it. In both files they
   improve district measures slowly (national-file district CPS-native error
   0.353, then 0.332 at 300k) and household ACS-native measures barely
   (local-file county 0.299, then 0.263 and 0.253 at 600k and 1.2M), at 1.3 to
-  1.8 times the physical rows of an ACS fill of the same budget.
+  2.0 times the physical rows of an ACS fill of the same budget (1.3 to 1.8
+  for three-year clones).
 
 This matches the design note's reasoning. ACS rows carry real variation in
 what the ACS observes, so income components (the ACS records wages,
 self-employment, Social Security, retirement and interest, dividend and rental
 income), housing and local geography improve as ACS rows enter. Program
 receipt on ACS rows is imputed from CPS donors: beside three CPS years it
-holds level at 131k ACS households, then worsens as the fill grows, and ACS
+holds level at 131k ACS households, is clearly worse by 1.2M (0.239), and ACS
 alone at 300k scores 0.303.
 
 ## Results
@@ -148,9 +168,10 @@ are in the receipts.
 capped error on held-out Census PEP state age bands is 0.066 at the starting
 weights and 0.168 after calibration, across all 60 calibrations (0.131 to
 0.193). The design weights already carry Census age controls, and the solve
-trades them away for its training targets. Arms differ by less than the trade
-(national 0.159 to 0.176 in the table), so the ranking stands; the size of the
-trade is a finding about the calibration objective, filed as a follow-up.
+trades them away for its training targets. The age column is reported, not
+ranked on: it does separate arms (national 0.159 to 0.176, draw SD 0.005), but
+every arm pays the trade, and its size is a finding about the calibration
+objective, filed as a follow-up.
 
 **Report only: SPM poverty** (never calibrated or gated). In the national
 product the SPM rate is 12.8% for the three-year CPS file, 12.2% for the
@@ -173,11 +194,13 @@ imputation as much as the support.
 | Serving | proportional to physical rows: 484k national (+37% over CPS only), 1.38M local (−13% against today's local file) |
 
 Wall times were measured with the host at load 10 to 400 and compare only
-within this run. Training loss still fell a median 5.5% between epochs 1,000
-and 1,500 (`arms.csv` has `loss_1000` and `loss_final`); every arm had the
-same 1,500-epoch budget. For 22 arms first scored before scoring covered
-every level, the receipts carry the solve peak restored from the grid log and
-no solve wall time.
+within this run. Training loss still fell a median 5.2% of its epoch-1,000
+value between epochs 1,000 and 1,500 (`arms.csv` has `loss_1000` and
+`loss_final`); every arm had the same 1,500-epoch budget. For 22 arms first
+scored before scoring covered every level, the receipts carry the solve peak
+restored from the grid log and no solve wall time. Every receipt's `inputs`
+digests were added after its solve, once the tool recorded them, from the
+files then in place (`inputs_note` says so in each receipt).
 
 ## Design
 
@@ -370,7 +393,7 @@ public-use archives; the response rates are Census's own.
 | 2018 (2019) | 68,345 | 67.6% | 24.2% | 21.3% | 64.5% | 1,723 |
 | 2019 (2020) | 60,460 | 61.1% | 23.8% | 21.3% | 66.4% | 1,563 |
 | 2020 (2021) | 62,850 | 65.0% | 22.4% | 22.6% | 65.8% | 10,915 |
-| 2021 (2022) | 59,148 | 61.4% | 22.4% | 21.8% | 65.5% | 4,065 |
+| 2021 (2022) | 59,148 | 61.4% | 22.4% | 21.8% | 65.4% | 4,065 |
 | 2022 (2023) | 56,839 | 59.6% | 21.9% | 21.7% | 65.9% | 1,225 |
 | 2023 (2024) | 56,251 | 59.3% | 20.7% | 21.0% | 65.6% | 1,360 |
 | 2024 (2025) | 55,762 | 60.1% | 19.3% | 21.5% | 65.1% | 1,400 |
@@ -381,12 +404,13 @@ year's CPS ASEC Source and Accuracy statement. Imputation shares are
 record; 1–8 an allocated item). Household weights have a coefficient of
 variation of 0.598 to 0.610 and a Kish share of 0.729 to 0.737 in every year.
 The public-use archives give whole-supplement imputation (`FL_665`) of 20.5%,
-20.0%, 19.2%, 17.8% and 16.7% for income years 2021 to 2025.
+19.9%, 19.2%, 17.8% and 16.7% for income years 2021 to 2025.
 
 Income years 2020 and 2021 **pass**: their response rates are above the
-pinned years', their imputation and allocation shares sit between the
-pre-pandemic years' and the pinned years', and homeownership and weight
-dispersion show no break. Three caveats:
+pinned years'; their whole-record imputation shares sit between the
+pre-pandemic years' and the pinned years'; their item-allocation shares are
+the highest of the seven years (22.6% and 21.8%) but within 1.6 points of
+every other year; and homeownership and weight dispersion show no break. Three caveats:
 
 - Census asks users to take care comparing data years 2019, 2020 and 2021
   with other years, and documents that nonrespondents in the 2020–2026
@@ -431,9 +455,11 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
 
 - Rerun on the newest three CPS years (2023–2025) once a Route A export on main
   at or after `5187fce25` exists: `shard --source cps` on it, `materialize
-  --source cps`, then `run-grid`. Receipts carry digests of their inputs, so
-  `run-grid` re-solves every arm whose inputs changed and keeps the ACS-only
-  arms.
+  --source cps --replace-stale`, `diffcheck --sources cps`, then `run-grid
+  --newest-year 2025` and `report --newest-year 2025`. `materialize` refuses
+  concept parts cut from another source h5 unless told to replace them, and
+  each receipt carries digests of only the inputs its arm reads, so the
+  ACS-only arms are kept and every arm with CPS rows is solved fresh.
 - Add five-year arms (2020–2024 or 2021–2025) once those years have Route A
   enrichment.
 - When `microcosm.build.us_runtime.target_split` merges, swap it in and
@@ -450,9 +476,11 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
   CPS half is the tool's own log line from 2026-09-28, copied into the file
   after the CPS shard files were removed to free disk.
 - Tests: `test_us_support_mix.py`, 22 tests (properties, the dense
-  differential and the port-branch hash fixtures).
-- Independent review (Opus 5.5, Subfleet), two rounds; every finding is fixed
-  or stated here.
+  differential and the port-branch hash fixtures), and
+  `test_bakeoff_us_support_mix_tool.py`, 13 tests of the driver's SPM flag,
+  staleness guards, grid and report.
+- Independent review (Opus 5.5, Subfleet), three rounds; every finding is
+  fixed or stated here.
 - Receipts in `experiments/us-support-mix-bakeoff-20260930/`: the report
   tables, `compile.json`, `diffcheck.json`, `spm_flags.json`,
   `asec_quality.json` (with its script), `acs_truth.json`, and the

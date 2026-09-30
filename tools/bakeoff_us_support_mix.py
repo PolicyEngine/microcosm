@@ -17,8 +17,9 @@ columns exactly this way; ``diffcheck`` verifies it on real rows).
 household shards for the concept specs. ``arm`` then selects rows, assembles
 the sparse target matrix, calls the production ``_optimize`` and scores.
 
-Subcommands, in order: compile, shard, materialize, diffcheck, truth, arm,
-report. Every subcommand writes a JSON receipt with wall time and peak RSS.
+Subcommands, in order: compile, shard, spm-flags, materialize, diffcheck,
+truth, arm (or run-grid for every arm), report. Every subcommand writes a JSON
+receipt with wall time and peak RSS.
 """
 
 from __future__ import annotations
@@ -486,10 +487,12 @@ def spm_zero_adult_households(tables: dict[str, pd.DataFrame]) -> np.ndarray:
     """
     hh, person = tables["household"], tables["person"]
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
+    role_columns = [c for c in ("is_household_head", "is_household_spouse") if c in person]
+    if not role_columns:
+        raise ValueError("person table has neither is_household_head nor is_household_spouse")
     role = np.zeros(len(person), dtype=bool)
-    for column in ("is_household_head", "is_household_spouse"):
-        if column in person:
-            role |= pd.Series(person[column]).fillna(False).astype(bool).to_numpy()
+    for column in role_columns:
+        role |= pd.Series(person[column]).fillna(False).astype(bool).to_numpy()
     adult = (age >= 18) | ((age >= 15) & role)
     unit_adults = pd.Series(adult).groupby(person["person_spm_unit_id"].to_numpy()).sum()
     empty_units = unit_adults.index[unit_adults.to_numpy() == 0]
@@ -653,8 +656,13 @@ def do_spm_flags(args) -> None:
         if not np.array_equal(rows["household_id"].to_numpy()[index], tables["household"]["household_id"].to_numpy()):
             raise SystemExit(f"shard {shard}: row index and shard disagree on household order")
         flag[index] = spm_zero_adult_households(tables)
-    rows["spm_zero_adult_unit"] = flag
-    rows.to_parquet(args.work / "rows_acs.parquet", index=False)
+    # Rewriting the row index changes its digest and so every arm's inputs;
+    # write only when the flag changed.
+    if "spm_zero_adult_unit" in rows and np.array_equal(rows["spm_zero_adult_unit"].to_numpy(bool), flag):
+        log("spm flags unchanged; row index left as is")
+    else:
+        rows["spm_zero_adult_unit"] = flag
+        rows.to_parquet(args.work / "rows_acs.parquet", index=False)
     gq = rows["group_quarters"].to_numpy()
     write_json(args.work / "spm_flags.json", {
         "acs_households": int(len(rows)),
@@ -735,8 +743,8 @@ def _materialize_frame(frame, concept_specs, *, summary_path: Path | None, batch
     return household, [spec.measure for spec in registry.specs], compilation, dropped
 
 
-def arm_inputs(work: Path, truth: Path, epochs: int) -> dict:
-    """Digests of everything an arm receipt depends on, so stale receipts rerun."""
+def input_digests(work: Path, truth: Path, epochs: int) -> dict:
+    """Digests of every input an arm receipt can depend on."""
     return {
         "targets": sha256_file(work / "targets.parquet"),
         "rows_cps": sha256_file(work / "rows_cps.parquet"),
@@ -748,13 +756,78 @@ def arm_inputs(work: Path, truth: Path, epochs: int) -> dict:
     }
 
 
+def arm_input_keys(arm: SupportMixArm) -> tuple[str, ...]:
+    """The inputs an arm's result depends on.
+
+    An arm without CPS years reads the CPS row index only for the starting
+    mass, which the population mass repair rescales away; an arm without a
+    budget has no ACS fill and no clones (clones draw geography from ACS rows).
+    """
+    keys = ["targets", "truth", "epochs"]
+    if arm.cps_income_years:
+        keys += ["rows_cps", "concepts_cps"]
+    if arm.budget is not None:
+        keys += ["rows_acs", "concepts_acs"]
+    return tuple(keys)
+
+
+def arm_inputs(digests: dict, arm: SupportMixArm) -> dict:
+    return {key: digests[key] for key in arm_input_keys(arm)}
+
+
+def inputs_current(previous: dict | None, current: dict) -> bool:
+    """A receipt is current when every input its arm depends on is unchanged."""
+    return isinstance(previous, dict) and all(previous.get(k) == v for k, v in current.items())
+
+
+def rescore_refusal(previous: dict, inputs: dict, rows_digest: str) -> str | None:
+    """Why saved weights may not be re-scored, or ``None`` when they may.
+
+    Re-scoring is for a scoring change only: the weights must come from the
+    same rows and the same targets, split, truth, concepts and epochs.
+    """
+    if previous.get("rows_digest") != rows_digest:
+        return "the receipt has no rows digest or a different one"
+    if not inputs_current(previous.get("inputs"), inputs):
+        return "the arm's inputs changed since the solve"
+    return None
+
+
 def _concept_digest(work: Path, source: str) -> str:
+    """Content digest of a source's materialized parts (values and row maps)."""
     digest = hashlib.sha256()
     for path in sorted((work / "concepts" / source).glob("shard_*.npz")):
-        if not path.name.endswith(".tmp.npz"):
-            digest.update(path.name.encode())
-            digest.update(str(path.stat().st_size).encode())
+        if path.name.endswith(".tmp.npz"):
+            continue
+        digest.update(path.name.encode())
+        digest.update(sha256_file(path).encode())
+        rows_path = path.with_suffix(".rows.npy")
+        if rows_path.exists():
+            digest.update(sha256_file(rows_path).encode())
     return digest.hexdigest()
+
+
+def shard_source_sha(work: Path, source: str) -> str:
+    """The sha256 of the h5 the source's shards were cut from (``shard.json``)."""
+    return json.loads((work / "shards" / source / "shard.json").read_text())["h5_sha256"]
+
+
+def stale_concept_parts(directory: Path, source_sha: str) -> list[Path]:
+    """Materialized parts not built from the current shards' source h5.
+
+    A part's receipt records the h5 digest its shard came from; a part with
+    no receipt or another digest holds values for rows that may no longer
+    exist or may now be different households.
+    """
+    stale = []
+    for path in sorted(directory.glob("shard_*.npz")):
+        if path.name.endswith(".tmp.npz"):
+            continue
+        receipt = path.with_suffix(".json")
+        recorded = json.loads(receipt.read_text()).get("source_h5_sha256") if receipt.exists() else None
+        if recorded != source_sha:
+            stale.append(path)
+    return stale
 
 
 def acs_rank(work: Path) -> np.ndarray:
@@ -780,6 +853,15 @@ def do_materialize(args) -> None:
     shard_dir = args.work / "shards" / args.source
     out_dir = args.work / "concepts" / args.source
     out_dir.mkdir(parents=True, exist_ok=True)
+    source_sha = shard_source_sha(args.work, args.source)
+    stale = stale_concept_parts(out_dir, source_sha)
+    if stale and not args.replace_stale:
+        raise SystemExit(f"{len(stale)} {args.source} concept parts (e.g. {stale[0].name}) were not built "
+                         "from the current shards; rerun with --replace-stale to rebuild them")
+    for path in stale:
+        for old in (path, path.with_suffix(".rows.npy"), path.with_suffix(".json")):
+            old.unlink(missing_ok=True)
+        log(f"removed stale {path.name}")
     rows = pd.read_parquet(args.work / f"rows_{args.source}.parquet")
     rows["row"] = np.arange(len(rows))
     if "spm_zero_adult_unit" in rows:
@@ -829,7 +911,8 @@ def do_materialize(args) -> None:
         sp.save_npz(out.with_suffix(".tmp.npz"), csr)
         out.with_suffix(".tmp.npz").replace(out)
         write_json(out.with_suffix(".json"), {
-            "shard": shard_path.name, "rank_range": [low, high] if args.rank_range else None,
+            "shard": shard_path.name, "source_h5_sha256": source_sha,
+            "rank_range": [low, high] if args.rank_range else None,
             "households": len(household), "nnz": int(csr.nnz),
             "missing_measures": missing, "compiled_concepts": len(compiled),
             "batching": compilation.get("target_materialization_batching"),
@@ -997,19 +1080,27 @@ def truth_table(path: Path) -> pd.DataFrame:
 # ------------------------------------------------------------------ arms
 
 BUDGETS = (300_000, 600_000, 1_200_000)
-YEAR_SETS = ((2024,), (2023, 2024), (2022, 2023, 2024))
+NEWEST_INCOME_YEAR = 2024
 
 
-def arm_grid(include_largest: bool = True) -> list[SupportMixArm]:
+def year_sets(newest: int = NEWEST_INCOME_YEAR) -> tuple[tuple[int, ...], ...]:
+    """The newest one, two and three CPS income years."""
+    return tuple(tuple(range(newest - k, newest + 1)) for k in range(3))
+
+
+def arm_grid(include_largest: bool = True, newest: int = NEWEST_INCOME_YEAR) -> list[SupportMixArm]:
+    """The 30 arms. ACS-only arms carry no years, so their labels (and
+    receipts) are shared across grids with different newest years."""
     arms: list[SupportMixArm] = []
-    for years in YEAR_SETS:
+    sets = year_sets(newest)
+    for years in sets:
         arms.append(SupportMixArm(budget=None, cps_income_years=years))
     for budget in BUDGETS if include_largest else BUDGETS[:2]:
-        for years in YEAR_SETS:
+        for years in sets:
             arms.append(SupportMixArm(budget=budget, cps_income_years=years, acs_fill_share=1.0))
             arms.append(SupportMixArm(budget=budget, cps_income_years=years, acs_fill_share=0.0))
         arms.append(SupportMixArm(budget=budget, cps_income_years=(), acs_fill_share=1.0))
-    for years in ((2024,), (2022, 2023, 2024)):
+    for years in (sets[0], sets[2]):
         arms.append(SupportMixArm(budget=600_000, cps_income_years=years, acs_fill_share=0.5))
         for seed in (1, 2):
             arms.append(SupportMixArm(budget=300_000, cps_income_years=years, acs_fill_share=1.0, seed=seed))
@@ -1036,6 +1127,10 @@ class _ConceptStore:
 
     def __init__(self, work: Path, source: str):
         directory = work / "concepts" / source
+        stale = stale_concept_parts(directory, shard_source_sha(work, source))
+        if stale:
+            raise RuntimeError(f"{len(stale)} {source} concept parts (e.g. {stale[0].name}) were not built "
+                               "from the current shards; rerun materialize --replace-stale")
         shard_of = pd.read_parquet(work / f"rows_{source}.parquet", columns=["shard"])["shard"].to_numpy()
         n_rows = len(shard_of)
         self.measures = json.loads((directory / "measures.json").read_text())
@@ -1131,12 +1226,12 @@ def do_arm(args) -> None:
     arm = parse_arm(args.arm)
     out = args.work / "arms" / args.product / f"{arm.label}.json"
     previous = json.loads(out.read_text()) if out.exists() else None
-    inputs = arm_inputs(args.work, args.truth, args.epochs)
+    inputs = arm_inputs(input_digests(args.work, args.truth, args.epochs), arm)
     rescore = (
         previous is not None and out.with_suffix(".weights.npy").exists() and not args.force
         and (args.rescore or not previous.get("scored_all_levels"))
     )
-    if (previous is not None and previous.get("scored_all_levels") and previous.get("inputs") == inputs
+    if (previous is not None and previous.get("scored_all_levels") and inputs_current(previous.get("inputs"), inputs)
             and not args.force and not args.rescore):
         log(f"{out} exists")
         return
@@ -1182,7 +1277,9 @@ def do_arm(args) -> None:
     if len(block) < counts.acs:
         raise SystemExit(f"{arm.label}: replicate block exceeds the ACS rows available")
     acs_rows = rows_acs.iloc[np.sort(block)].reset_index(drop=True)
-    total_mass = float(rows_cps.loc[rows_cps["income_year"] == 2024, "design_weight"].sum() * 3)
+    # Pre-repair mass only: the population mass repair below sets the level.
+    newest = rows_cps["income_year"].max()
+    total_mass = float(rows_cps.loc[rows_cps["income_year"] == newest, "design_weight"].sum() * 3)
     cps_w, acs_w = arm_initial_weights(
         cps_design_weights=cps_rows["design_weight"].to_numpy(),
         cps_income_year=cps_rows["income_year"].to_numpy(),
@@ -1281,11 +1378,16 @@ def do_arm(args) -> None:
     nonzero = np.diff(a_train.indptr) > 0
     a_train, b_train, loss_w = a_train[nonzero], b_train[nonzero], loss_w[nonzero]
     scales = default_target_loss_scales(b_train)
+    if rescore and (refusal := rescore_refusal(previous, inputs, rows_digest)):
+        if args.rescore:
+            raise SystemExit(f"{arm.label}: cannot re-score the saved weights: {refusal}; re-solve with --force")
+        log(f"{arm.label}: re-solving instead of re-scoring: {refusal}")
+        rescore = False
     solve_started = time.time()
     if rescore:
         # Re-score saved weights (a scoring change, no re-solve).
         weights = np.load(out.with_suffix(".weights.npy")).astype(np.float64)
-        if len(weights) != len(w0) or previous.get("rows_digest", rows_digest) != rows_digest:
+        if len(weights) != len(w0):
             raise SystemExit(f"{arm.label}: saved weights do not match the arm's rows")
         trajectory = np.array([previous["train"]["loss_initial"], previous["train"]["loss_final"]])
     else:
@@ -1417,7 +1519,7 @@ def do_arm(args) -> None:
             {"wall_s": round(time.time() - started, 1), "solve_s": round(solve_s, 1),
              "epochs": args.epochs, "threads": args.threads, "peak_rss_gb": round(peak_rss_gb(), 2)}
         ),
-        "inputs": inputs,
+        "inputs": previous["inputs"] if rescore else inputs,
         "rows_digest": rows_digest,
     }
     write_json(out, receipt)
@@ -1430,16 +1532,18 @@ def do_run_grid(args) -> None:
     """Run every missing (arm, product) receipt, one subprocess each."""
     import subprocess
 
-    arms = [a.label for a in arm_grid(not args.no_largest)]
-    current = arm_inputs(args.work, args.truth, args.epochs)
+    arms = [a.label for a in arm_grid(not args.no_largest, args.newest_year)]
+    digests = input_digests(args.work, args.truth, args.epochs)
     if args.only:
         arms = [a for a in arms if any(token in a for token in args.only.split(","))]
+    failed = []
     for product in args.products.split(","):
         for label in arms:
             out = args.work / "arms" / product / f"{label}.json"
             if out.exists():
                 receipt = json.loads(out.read_text())
-                if receipt.get("scored_all_levels") and receipt.get("inputs") == current:
+                current = arm_inputs(digests, parse_arm(label))
+                if receipt.get("scored_all_levels") and inputs_current(receipt.get("inputs"), current):
                     continue
             wait_for_memory(args.min_available_gb)
             command = [sys.executable, str(Path(__file__).resolve()), "arm", "--work", str(args.work),
@@ -1450,6 +1554,9 @@ def do_run_grid(args) -> None:
             result = subprocess.run(command, check=False)
             if result.returncode:
                 log(f"FAILED {product} {label}: exit {result.returncode}")
+                failed.append(f"{product} {label}")
+    if failed:
+        raise SystemExit(f"{len(failed)} arms failed: {', '.join(failed)}")
 
 
 # ------------------------------------------------------------------ report
@@ -1478,10 +1585,11 @@ def do_report(args) -> None:
                         **{f"runtime_{k}": v for k, v in receipt["runtime"].items()},
                         **{f"report_{k}": (v["calibrated"] if isinstance(v, dict) else v)
                            for k, v in receipt["report_only"].items()}})
-    expected = {(product, arm.label) for product in ("national", "local") for arm in arm_grid(True)}
-    found = {(r["product"], r["arm"]) for r in summary}
-    if expected - found:
-        log(f"WARNING: {len(expected - found)} expected receipts missing: {sorted(expected - found)[:5]}")
+    expected = {(product, arm.label) for product in ("national", "local") for arm in arm_grid(True, args.newest_year)}
+    missing = sorted(expected - {(r["product"], r["arm"]) for r in summary})
+    if missing and not args.allow_missing:
+        raise SystemExit(f"{len(missing)} expected receipts missing (e.g. {missing[:3]}); "
+                         "pass --allow-missing for a partial report")
     holdout = pd.DataFrame(records)
     acs_native = pd.DataFrame(acs_records)
     arms = pd.DataFrame(summary)
@@ -1558,13 +1666,20 @@ def _write_dimensions(out: Path, arms: pd.DataFrame, holdout: pd.DataFrame, acs_
         rows.append(row)
     table = pd.DataFrame(rows).sort_values(["product", "budget", "cps_years", "acs_fill_share", "seed"])
     table.to_csv(out / "dimensions_by_arm.csv", index=False)
+    spread, mean = replicate_summary(table)
+    spread.to_csv(out / "replicate_spread.csv")
+    mean.to_csv(out / "replicate_mean.csv")
+
+
+def replicate_summary(table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """SD and mean over ACS draws of the 300k ACS-fill arms, per product and
+    CPS year count; groups with a single draw are left out."""
     replicate = table[table["arm"].str.contains("b300k") & table["acs_fill_share"].eq(1.0) & table["cps_years"].gt(0)]
-    groups = replicate.groupby(["product", "cps_years"])
     measures = [c for c in table.columns if "." in c]
-    seeded = [key for key, g in groups if g["seed"].nunique() > 1]
+    seeded = [key for key, g in replicate.groupby(["product", "cps_years"]) if g["seed"].nunique() > 1]
     replicate = replicate.set_index(["product", "cps_years"]).loc[seeded].reset_index()
-    replicate.groupby(["product", "cps_years"])[measures].std().to_csv(out / "replicate_spread.csv")
-    replicate.groupby(["product", "cps_years"])[measures].mean().to_csv(out / "replicate_mean.csv")
+    groups = replicate.groupby(["product", "cps_years"])[measures]
+    return groups.std(), groups.mean()
 
 
 #: Household-universe measures only: the age bands count group-quarters people
@@ -1629,6 +1744,8 @@ def main(argv=None) -> None:
     m.add_argument("--only")
     m.add_argument("--rank-range", help="ACS only: materialize rows whose selection rank is in [LO,HI)")
     m.add_argument("--min-available-gb", type=float, default=20.0)
+    m.add_argument("--replace-stale", action="store_true",
+                   help="delete and rebuild parts not built from the current shards' source h5")
     d = sub.add_parser("diffcheck")
     d.add_argument("--work", type=Path, required=True)
     d.add_argument("--feed", type=Path, required=True)
@@ -1653,6 +1770,7 @@ def main(argv=None) -> None:
     a.add_argument("--min-available-gb", type=float, default=20.0)
     g = sub.add_parser("grid")
     g.add_argument("--no-largest", action="store_true")
+    g.add_argument("--newest-year", type=int, default=NEWEST_INCOME_YEAR)
     rg = sub.add_parser("run-grid")
     rg.add_argument("--work", type=Path, required=True)
     rg.add_argument("--truth", type=Path, required=True)
@@ -1661,18 +1779,22 @@ def main(argv=None) -> None:
     rg.add_argument("--threads", type=int, default=6)
     rg.add_argument("--only")
     rg.add_argument("--no-largest", action="store_true")
+    rg.add_argument("--newest-year", type=int, default=NEWEST_INCOME_YEAR,
+                    help="newest CPS income year in rows_cps; arms use the newest 1, 2 and 3 years")
     rg.add_argument("--min-available-gb", type=float, default=20.0)
     f = sub.add_parser("spm-flags")
     f.add_argument("--work", type=Path, required=True)
     r = sub.add_parser("report")
     r.add_argument("--work", type=Path, required=True)
     r.add_argument("--out", type=Path, required=True)
+    r.add_argument("--newest-year", type=int, default=NEWEST_INCOME_YEAR)
+    r.add_argument("--allow-missing", action="store_true", help="write a report even if receipts are missing")
     args = parser.parse_args(argv)
     {
         "compile": do_compile, "shard": do_shard, "materialize": do_materialize,
         "diffcheck": do_diffcheck, "truth": do_truth, "arm": do_arm, "report": do_report,
         "run-grid": do_run_grid, "spm-flags": do_spm_flags,
-        "grid": lambda a: print("\n".join(arm.label for arm in arm_grid(not a.no_largest))),
+        "grid": lambda a: print("\n".join(arm.label for arm in arm_grid(not a.no_largest, a.newest_year))),
     }[args.command](args)
 
 

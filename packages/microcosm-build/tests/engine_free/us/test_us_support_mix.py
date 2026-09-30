@@ -175,6 +175,14 @@ def test_initial_weights_conserve_and_split_mass(cps, acs, clones, mass) -> None
     assert np.isclose(expanded.sum(), cps_share * mass, rtol=1e-9)
     per_year = [expanded[years == y].sum() for y in np.unique(years)]
     assert np.allclose(per_year, per_year[0], rtol=1e-9)
+    # A row's copies sum back to its per-year weight, which keeps the
+    # within-year design-weight shape; ACS rows keep theirs.
+    for y in np.unique(years):
+        in_year = years == y
+        assert np.allclose(expanded[in_year], weights[in_year] * (per_year[0] / weights[in_year].sum()),
+                           rtol=1e-9)
+    if len(acs):
+        assert np.allclose(acs_out, acs_w * (acs_out.sum() / acs_w.sum()), rtol=1e-9)
 
 
 def test_initial_weights_refuse_bad_inputs() -> None:
