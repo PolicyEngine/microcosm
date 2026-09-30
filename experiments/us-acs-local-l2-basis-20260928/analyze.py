@@ -4,7 +4,7 @@ Reads ``results/runs/*.json`` (one ``sweep.py`` payload per run) and writes
 ``results/frontier.csv``, ``results/frontier.md`` and
 ``results/frontier.png``.
 
-Run: ``uv run python experiments/us-acs-local-l2-basis-20260928/analyze.py``
+Run: ``uv run --with matplotlib python experiments/us-acs-local-l2-basis-20260928/analyze.py``
 """
 
 from __future__ import annotations

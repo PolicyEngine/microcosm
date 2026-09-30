@@ -168,6 +168,34 @@ def grid() -> list[dict]:
             "holdout_fold": 0,
         }
     )
+    # Second pass (after the first frontier): holdout at the knee lambdas and
+    # the intermediate priors, and projection at the recommended lambda.
+    for share, lams in (
+        (None, (0.01, 0.03)),
+        (0.7, (0.0, 0.01, 0.1)),
+        (0.9, (0.0, 0.01, 0.1)),
+    ):
+        tag = "s050" if share is None else f"s{round(share * 1000):03d}"
+        for lam in lams:
+            specs.append(
+                {
+                    "run_id": f"hold_soft_chi_{tag}_{lam:g}",
+                    "l2_lambda": lam,
+                    "l2_basis": "chi_square",
+                    "mass_parametrization": "softmax",
+                    "acs_share": share,
+                    "holdout_fold": 0,
+                }
+            )
+    specs.append(
+        {
+            "run_id": "hold_proj_chi_s050_0.1",
+            "l2_lambda": 0.1,
+            "l2_basis": "chi_square",
+            "mass_parametrization": "projection",
+            "holdout_fold": 0,
+        }
+    )
     return specs
 
 
@@ -242,7 +270,9 @@ def launch(skip_repro: bool = False) -> None:
                     )
             if abs(repro["fraction_within_10pct"] - 0.9758) > 0.01:
                 raise SystemExit("release_repro within-10% is not within 1 pp")
-    for result in run_point.map(specs[1:], return_exceptions=True):
+    for result in run_point.map(
+        specs[1:], return_exceptions=True, wrap_returned_exceptions=False
+    ):
         print(json.dumps(result, default=str), flush=True)
 
 
