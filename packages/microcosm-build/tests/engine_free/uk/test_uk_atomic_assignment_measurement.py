@@ -188,7 +188,84 @@ def test_breach_tables_and_disclosure_suppression(harness, toy_ladder):
     assert harness._suppressed_area({**row, "rows": 0.0}, 3)["z"] == 0.3
 
 
-def test_committed_931_evidence_is_internally_consistent():
+def _level_areas(level, counts, expected):
+    return [
+        {
+            "level": level,
+            "area_code": f"{level}-{index:03d}",
+            "region_code": "E12000001",
+            "expected_rows": expected,
+            "rows": float(count),
+            "ess": float(count),
+            "sources": float(count),
+            "z": 0.1,
+        }
+        for index, count in enumerate(counts)
+    ]
+
+
+def test_complementary_suppression_leaves_no_suppressed_count_determined(harness):
+    # Round 2 of microcosm#1057, item 8: with zeros published and the level total
+    # known (the expected rows sum to it), two suppressed counts of 2 were pinned
+    # by the residual. The complement adds an unknown of at least minimum + 1.
+    counts = [2, 2, 0, 3, 7, 12, 30]
+    areas = [
+        harness._suppressed_area(row, 3)
+        for row in _level_areas("constituency", counts, sum(counts) / len(counts))
+    ]
+    protected = harness._complement_suppressed(areas, 3)
+    withheld = [area for area in protected if area["rows"] == harness.WITHHELD]
+    assert len(withheld) == 1
+    assert withheld[0]["z"] is None and withheld[0]["ess"] == harness.WITHHELD
+    assert harness._complement_suppressed(protected, 3) == protected
+    total = sum(area["expected_rows"] for area in protected)
+    published = sum(a["rows"] for a in protected if not isinstance(a["rows"], str))
+    suppressed = sum(1 for a in protected if a["rows"] == "<3")
+    residual = total - published
+    # The reader's feasible sums for the suppressed counts span more than one value.
+    assert min(2 * suppressed, residual - 4) >= suppressed + 1
+
+
+def test_resuppression_withholds_summaries_that_carry_a_suppressed_value(harness):
+    counts = [1, 2, 9, 10, 11]
+    areas = [
+        harness._suppressed_area({**row, "z": float(index)}, 3)
+        for index, row in enumerate(_level_areas("la", counts, 6.0))
+    ]
+    evidence = {
+        "minimum_count": 3,
+        "cells": [
+            {
+                "areas": areas,
+                "levels": {
+                    "la": {
+                        "min_rows": 1.0,
+                        "min_ess": 1.0,
+                        "min_sources": 1.0,
+                        "max_abs_z": 4.0,
+                        "share_abs_z_gt_3": 0.2,
+                    }
+                },
+                "breaches": {"la": {"rows": {"min": 1.0, "p10": 1.0, "median": 9.0}}},
+            }
+        ],
+    }
+    out = harness.resuppress_evidence(evidence)
+    level = out["cells"][0]["levels"]["la"]
+    assert level["min_rows"] is None and level["min_sources"] is None
+    # The largest |z| belonged to a suppressed or withheld area; the summary is
+    # over published areas only.
+    published_z = [abs(a["z"]) for a in out["cells"][0]["areas"] if a["z"] is not None]
+    assert level["max_abs_z"] == max(published_z)
+    assert out["cells"][0]["breaches"]["la"]["rows"] == {
+        "min": None,
+        "p10": None,
+        "median": 9.0,
+    }
+    assert harness.resuppress_evidence(out) == out
+
+
+def test_committed_931_evidence_is_internally_consistent(harness):
     root = paths_for("microcosm-build").repository
     path = root / "docs/evidence/uk-931/atomic-assignment-cells.json"
     if not path.is_file():
@@ -206,7 +283,7 @@ def test_committed_931_evidence_is_internally_consistent():
             for field in ("rows", "ess", "sources"):
                 value = area[field]
                 if isinstance(value, str):
-                    assert value == f"<{evidence['minimum_count']}"
+                    assert value in {f"<{evidence['minimum_count']}", harness.WITHHELD}
                 else:
                     assert value == 0 or value >= evidence["minimum_count"]
             if isinstance(area["rows"], str):
@@ -214,4 +291,23 @@ def test_committed_931_evidence_is_internally_consistent():
             assert "household_id" not in area and "source_household_id" not in area
         if cell["law"] == "keyed":
             assert all(cell["identity_stability"].values())
+        minimum = evidence["minimum_count"]
+        for level, summary in cell["levels"].items():
+            areas = [area for area in cell["areas"] if area["level"] == level]
+            suppressed = sum(1 for area in areas if area["rows"] == f"<{minimum}")
+            if not suppressed:
+                continue
+            # One complement per level, and no summary carries a suppressed value.
+            assert sum(1 for area in areas if area["rows"] == harness.WITHHELD) == 1
+            assert summary["min_rows"] is None and summary["min_sources"] is None
+            # A reader who knows the level total (the expected rows sum to it)
+            # and the rule can bound the suppressed counts' sum, but not pin it.
+            total = round(sum(area["expected_rows"] for area in areas))
+            published = sum(
+                area["rows"] for area in areas if not isinstance(area["rows"], str)
+            )
+            highest = min((minimum - 1) * suppressed, total - published - minimum - 1)
+            assert highest >= suppressed + 1, (cell["law"], cell["n_clones"], level)
+    # The committed file is a fixed point of the harness's disclosure pass.
+    assert harness.resuppress_evidence(evidence) == evidence
     assert np.isfinite(sum(c["wall_seconds"] for c in evidence["cells"]))
