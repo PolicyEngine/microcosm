@@ -120,4 +120,12 @@ Recorded for review in `experiments/901-uk-main-rebase-receipts.md` (R3):
 - The HMRC family names `spi_income_band_donors` (microcosm#1006) as a predecessor and admits its two operation kinds; the contract otherwise refused the drifted operation order.
 - `tools/build_uk_rowwise_dataset.py` stays as it was on main (its tests load it by path; it still serves `--candidate-clone-counts`).
 
+Recorded at the review of the national line's move onto the graph (`experiments/901-uk-national-graph-path-receipts.md`):
+
+- The measure-exclusion windows and the target-fit deferral register are evaluated at `--review-date` (default today) on the national line, as the dense graph already did; the retired seam evaluated both at the run clock. A back-dated review date therefore keeps expired exclusions and deferrals in force, which the seam never allowed; the date is a node parameter (`uk.full.national_targets`, `uk.full.gates.calibrated`) and is recorded in the request bindings.
+- An occupied `--out` is refused before any work on the national line (the seam's `FileExistsError`), so a repeated run never replaces a candidate under the Logbook row that names it. A `KeyboardInterrupt` records a `discarded` row on both lines and re-raises, as the seam did.
+- `build.json` is re-issued after the close step on both lines: the staging receipts are appended to the rowwise manifest and, on the national line, the delivery summary to the build record (the release assembler reads it there), and the completion marker then carries those files' final digests rather than the note that receipts follow.
+- The measure receipt records a scratch-mode resolver's `source_path` relative to the per-run scratch root (`simulation-input.h5`), so the measure and national problem nodes are deterministic between identical runs; the receipt no longer carries a temporary directory.
+- Under `--release-candidate` the three atomic-area supports must be the `sources.yaml` rows (sha256 and byte size), whatever digest was pinned on the command line, and `tools/preflight_uk_local_release_candidate.py` refuses a manifest whose `geography.assignment` is not the atomic law on those same pins (microcosm#932, round 1).
+
 The dense parity build through this driver was measured at the 10 % rung before microcosm#901 merged (receipts R7); the national line's parity with the retired seam is measured on the licensed spine in the receipts of the change that moved it onto the graph.

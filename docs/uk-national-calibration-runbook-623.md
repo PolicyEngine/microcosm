@@ -49,6 +49,18 @@ uv run --no-sync python tools/build_uk_full.py --release-role national \
   --out data/ukds/acceptance/623-first-calibrated-candidate
 ```
 
+`--out` must not already hold a candidate: the role refuses an occupied
+output directory before any work (`failure.json` names the
+`FileExistsError`, the Logbook row is `failed`), so a rebuild goes into a
+fresh directory rather than over the bytes an earlier row names. An
+operator interrupt (Ctrl-C) records a `discarded` row and closes the staging
+run as failed. `--review-date` (default today) dates the measure-exclusion
+windows and the target-fit deferral register on this line, as it does on
+the dense line; the retired seam used the run clock, so a back-dated value
+keeps expired exclusions and deferrals in force and is only for replaying a
+dated review. The date is a parameter of the `uk.full.national_targets` and
+`uk.full.gates.calibrated` nodes (`build.graph.json`).
+
 The role names every output after the pinned FRS release vintage:
 `microcosm_uk_2024_25.h5`, `calibration_diagnostics.json`,
 `build_record.json`, `microcosm_uk_2024_25.terminal_gates.json`, the frozen

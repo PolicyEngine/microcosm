@@ -26,7 +26,7 @@ its key moves, no pin).
 
 ## R2. The driver (hermetic)
 
-`test_uk_rowwise_national_role.py` (21) runs `microcosm-build-uk --release-role national` end to end
+`test_uk_rowwise_national_role.py` (23 at the round-1 head; 21 when first written) runs `microcosm-build-uk --release-role national` end to end
 on the same fixture: the build record's bindings and provenance, the signed report (posture,
 exclusions, release evidence, HMAC), the diagnostics build block, the frozen registries, the
 manifest, local and remote staging (fake Hub), the Logbook row on `uk-frs-calibration` with the seam's
@@ -39,9 +39,10 @@ in-process calibrate call under the doctrine.
 `run_uk_calibration`, its attempt runner and battery runner, `UKNationalCalibrationStage`: gone.
 The seam suites re-anchor on the graph's route as a library (`encode_uk_national_problem`,
 `materialize_uk_national_rows`, `national_calibration_manifest`): `test_uk_national_calibration.py`
-26, `test_uk_calibration_run.py` 12 (the checkpoint, scope, admin-anchor, provenance and Logbook-scope
+26, `test_uk_calibration_run.py` 18 (the checkpoint, scope, admin-anchor, provenance and Logbook-scope
 contracts, plus the band-edge reconciliation and attempt-id tests the runner tests carried),
-`test_uk_cgt_observation_period.py` 1.
+`test_uk_cgt_observation_period.py` 2 (counts as collected at the round-1 head; the body's first
+figures, 12 and 1, were miscounted).
 
 ## R4. Sweeps (2026-09-29, tree 218226898 with the PLAN_5 relaxation reverted)
 
@@ -100,7 +101,10 @@ The one remaining difference, deliberate: `build.measure_resolution.provider.mod
 `direct_h5` on the seam (the resolver simulated the input file) and `scratch_frame_export` on the
 graph (the problem node exports the bound frame it holds to a scratch H5 for the engine), with the
 matching `source_path`. Both statements are true of what each did; the measures they produced are the
-same matrix. The two shape differences the first run showed (target descriptors read as compiled-row
+same matrix. The comparison is committed as `docs/evidence/uk-901-national-ab/compare_a_vs_b2.json`
+(aggregates and field-level differences only, machine paths omitted). Since the round-1 fix the
+graph records that `source_path` relative to its scratch root, so a re-run would show the mode
+difference alone. The two shape differences the first run showed (target descriptors read as compiled-row
 callables on the household entity; `measure_resolution` carried the engine receipt instead of the
 resolution loop's) were fixed in 218226898 and are gone in the re-run.
 
@@ -110,3 +114,46 @@ build record's every field; the readback node checks the written H5's content id
 calibrated population. An f100 national A/B on a spine that passes the projection fence is owed when
 one exists (the fence is microcosm#970's; the sub-exempt tail of this smoke spine is the #1049 line's
 concern, not this PR's).
+
+## R6. Review round 1 (2026-09-30)
+
+Rebased over #932's head 94f843f21 (main 7683c0978 plus the atomic assignment; two import hunks in
+`full_build_cli.py`, nothing else); the #932 round-1 nits are folded here on María's call, one commit
+per finding.
+
+- C2 (confirmed): `prepare_national_build` runs the seam's `validate_output_paths` on the role's
+  output paths, so a second run into an occupied `--out` refuses with `FileExistsError` before the
+  graph is compiled; test = two runs into one directory, the first candidate's H5, build record and
+  marker byte-identical, a failed second row chained on the first.
+- C1 (confirmed for the build record; the manifest half was the dense line's declared convention):
+  `build.json` is re-issued after the close step on both lines with the final digests of the
+  manifest and (national) the build record, note dropped; tests on both lines compare the marker with
+  the files.
+- A1 (confirmed): `KeyboardInterrupt` records a `discarded` row on both lines and re-raises (the seam's
+  contract); tests raise it from the execute step.
+- Should-fix 1: scratch-mode `source_path` is recorded relative to the scratch root in the measure
+  receipt (resolution and resolver receipts), so `uk.full.measures` and `uk.full.national_problem`
+  are deterministic between runs; test = two resolutions in different scratch directories yield equal
+  receipts.
+- Should-fix 2: the review-date clock is recorded as a deviation (PR body, `docs/uk-full-build-graph.md`,
+  the #623 runbook); no code change, the dense convention stands.
+- Nit 3: the body no longer says "node keys unchanged" for the dense line: `uk.full.dense` (the
+  `_admit` source) and `uk.full.spine_checkpoint` (`calibration_run` in the hash, the `time_period`
+  parameter) move; nothing pins them.
+- Nit 4: `UKDenseSolveKernel` refuses a bound `mass_rule`, `scale_rule` or `l0_lambda` it does not
+  honour; the national problem's bindings pass the check in the existing problem test.
+- Nit 5: the `if …: pass` is gone; the gate node reads `gate_scope` from the posture (node parameter,
+  manifest digest still pinned); `national_run_config` refuses an empty register.
+- Nit 6: counts corrected above (R2, R3).
+- Nit 7: R5's comparison committed under `docs/evidence/uk-901-national-ab/`.
+- #932 folds: the registered-support check under `--release-candidate` and in the dense pre-flight
+  (`country_adapter.uk_atomic_support_register`); z-scores blanked beside suppressed counts in the
+  #931 evidence (sha 7d120d52…); `LAD23CD`/`LAD24CD` only; the pool docstring, the alias-name comment,
+  the CLI test comment and the sample-admission sibling under the atomic law.
+
+Verification at the round-1 head: the targeted UK suites (21 files, the ones the fixes and folds
+touch) 345 passed; the whole `tests/engine_free/uk` directory plus the shared-spec lane
+(`test_country_spec`, the gate-register pins, the data contract) as recorded in the progress log;
+`ruff check .` clean; `tools/ci_test_plan.py verify` ok; gate-register digests unchanged
+(`gates.json` untouched; the alias names stay in the allowlist).
+
