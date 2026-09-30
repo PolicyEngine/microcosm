@@ -1,0 +1,147 @@
+# Penalized calibration toward the design weights
+
+`microcosm.calibrate.calibrate` has two opt-in options for spreading calibrated
+weights: `l2_basis`, the functional form of the `l2_lambda` penalty, and
+`mass_parametrization`, how the Adam solve holds the total under
+`mass="conserve"`. Their defaults (`"record"`, `"projection"`) are the historical
+solve, byte for byte. This page gives the algebra, the evidence for each claim,
+and what the options can and cannot do for the ACS local-area release. The
+full-scale sweep and the recommendation are in
+[`experiments/us-acs-local-l2-basis-20260928/README.md`](../experiments/us-acs-local-l2-basis-20260928/README.md).
+
+## The two bases
+
+Write `d` for the anchor (the initial, design weights unless `l2_anchor` says
+otherwise), `w` for the calibrated weights, `r = w / d`, and `D = sum(d)`.
+
+| | `l2_basis="record"` (default) | `l2_basis="chi_square"` |
+|---|---|---|
+| penalty | `mean(r ** 2)` | `sum(d * (r - 1) ** 2) / D` = `sum((w - d) ** 2 / d) / D` |
+| value at `w = d` | 1 | 0 |
+| target-free optimum, `mass="conserve"` | `w ∝ d ** 2` | `w = d` |
+| target-free optimum, `mass="free"` | `w → 0` | `w = d` |
+| cost of a record collapsing to 0 | none (0 is its cheapest ratio) | its anchor share `d_i / D` |
+| `options["l2_penalty"]` (initial anchor) | `mean_initial_pre_gate_weight_ratio_squared` | `chi_square_initial_pre_gate_weight_distance` |
+
+The chi-square form is GREG's distance function. Minimizing target loss plus
+`l2_lambda` times it is penalized ("ridge") calibration, the soft form of GREG:
+it works where exact GREG cannot, with thousands of partly inconsistent soft
+targets, nonnegativity, a ratio cap and 1.6 million records.
+
+Identities (tested in
+`packages/microcosm-calibrate/tests/engine_free/shared/test_l2_basis.py`):
+
+- When `sum(w) = D`, the distance equals `sum(w ** 2 / d) / D - 1`: the
+  weighting effect of `w` relative to `d`, minus one.
+- With uniform `d` it equals `n / ESS(w) - 1`, so it is a direct Kish ESS
+  control.
+- The float32 penalty the solver differentiates agrees with the float64
+  reference `microcosm.calibrate.chi_square_distance`.
+- Under a mass constraint the reduced gradient of the chi-square penalty
+  vanishes at `w = d`, and that of the record penalty at `w ∝ d ** 2`.
+
+`CalibrationResult.chi_square_distance` reports the realized distance from the
+input weights for every solve, whatever its penalty.
+
+Kish ESS is not in general monotone in `l2_lambda`. What is monotone, for exact
+minimizers, is the penalty itself: adding the optimality inequalities of two
+solves at `l2_lambda` values `a < b` gives
+`(b - a) * (P(w_b) - P(w_a)) <= 0`. With unequal design weights, calibration can
+raise Kish ESS above the design's, and pulling back toward `d` then lowers it.
+In the ACS local release, calibration lowers ESS, from the design's 36,288 to
+13,631, so pulling toward `d` raises it.
+
+## The mass parametrization
+
+Under `mass="conserve"` the historical solve takes an Adam step on the
+log-weights, then shifts every log-weight by the same amount so the total
+returns to the input total (`mass_parametrization="projection"`). Adam divides
+each coordinate's gradient by its own running RMS before stepping, so a
+coordinate moves about `lr` in the direction of its gradient's sign, whatever
+the gradient's size. When every record's gradient has the same sign, which
+happens whenever the targets want more (or less) total mass than the input,
+all records step up by about `lr` and the shift takes them straight back down.
+Any such point is a fixed point of the projected iteration, whether or not it
+is the constrained optimum. At the constrained optimum the log-weight gradient
+is proportional to `w` (the constraint's normal), not zero, so Adam never sees
+a vanishing gradient there and has no pull toward it.
+
+`mass_parametrization="softmax"` optimizes `w = D * softmax(log_w)` instead.
+The total holds by construction, and autograd hands Adam the gradient with its
+component along the constraint already removed. That reduced gradient does
+vanish at the constrained optimum. The ratio cap remains a per-step clamp,
+iterated with the softmax-invariant renormalization, plus the closing float64
+projection that both parametrizations share. It requires `mass="conserve"` and
+no L0 gates.
+
+Evidence:
+
+- `test_projection_parametrization_stalls_under_uniform_mass_pressure` pins
+  the stall. When every target sits above its design total, the projection
+  solve returns the design weights unchanged after 200 epochs, while the
+  softmax solve halves the loss. The same mechanism means the record penalty
+  alone never moves a projection solve: its log-space gradient is positive for
+  every record.
+- `experiments/us-acs-local-l2-basis-20260928/optimizer_reference.py` runs the
+  kernel under each setting and compares it with CLARABEL's exact optimum of
+  the same convex program:
+
+| Setting | Problems | Mean excess objective at λ = 0 / 0.001 / 0.01 / 0.1 / 1 | Max excess | Problems with non-monotone distance |
+|---|---|---|---:|---:|
+| `mass="conserve"`, `"projection"` (default) | 16 small (120 records, 6 targets; half press on the total) | 0.0285 / 0.0268 / 0.0304 / 0.1608 / 0.0697 | 0.3384 | 94% |
+| `mass="conserve"`, `"softmax"` | 16 small (120 records, 6 targets; half press on the total) | 0.0013 / 0.0016 / 0.0013 / 0.0017 / 0.0008 | 0.0034 | 0% |
+| `mass="free"` | 16 small (120 records, 6 targets; half press on the total) | 0.0004 / 0.0015 / 0.0020 / 0.0019 / 0.0014 | 0.0042 | 0% |
+| `mass="conserve"`, `"projection"` (default) | 3 large (3,000 records, 150 targets in both directions) | 0.0023 / 0.0037 / 0.0062 / 0.0081 / 0.0061 | 0.0139 | 0% |
+| `mass="conserve"`, `"softmax"` | 3 large (3,000 records, 150 targets in both directions) | 0.0012 / 0.0016 / 0.0018 / 0.0012 / 0.0010 | 0.0023 | 0% |
+| `mass="free"` | 3 large (3,000 records, 150 targets in both directions) | 0.0009 / 0.0016 / 0.0018 / 0.0013 / 0.0010 | 0.0023 | 0% |
+
+  Excess objective is the kernel solve's loss plus `l2_lambda` times its
+  distance, minus CLARABEL's optimum of the same program; the loss cap never
+  binds on these surfaces. Receipts: `results/optimizer_reference.csv` and
+  `results/optimizer_reference_summary.json` in that experiment directory.
+
+## Using it
+
+```python
+from microcosm.calibrate import calibrate
+
+result = calibrate(
+    frame,
+    targets,
+    mass="conserve",
+    max_weight_ratio=5.0,
+    l2_lambda=...,
+    l2_basis="chi_square",
+    mass_parametrization="softmax",
+)
+result.options["l2_basis"], result.options["mass_parametrization"]
+result.chi_square_distance, result.effective_sample_size
+```
+
+The ACS local-area tool takes the same settings as
+`--l2-lambda`, `--l2-basis {record,chi_square}` and
+`--mass-parametrization {projection,softmax}`. It records them, with the
+realized chi-square distance, in `calibration_summary.json` and in the build
+manifest's `calibration` block, and `--resume` refuses a checkpoint solved
+under other settings. `calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
+and `refit_mass_parametrization`; `refit_l0_selection` and `static_aging` take
+`l2_basis`.
+
+## What the penalty cannot fix in the ACS local release
+
+The chi-square penalty pulls toward the design weights, so the most it can
+recover is the design weights' own concentration. In the ACS local staging,
+that concentration is already high by construction. The 57,240 donor-spine
+records (the Build O sparse release) carry half the design mass with a within-
+spine ESS of 9,174, while the 1,531,614 ACS records carry the other half with a
+within-spine ESS of 812,434. National design ESS is therefore 36,288 (2.3% of
+records). Massachusetts shows the same split. Its 35,056 ACS records have a
+design ESS of 20,238, while its 1,522 donor records carry 49.6% of the state's
+design mass with an ESS of 255, the national release's own Massachusetts figure,
+since the donor spine is that release's records at half weight. Together the
+state's design ESS is 1,020, and each of its nine districts is 108-134 (the ACS
+records alone give 2,020-2,444 per district). At `l2_lambda → ∞` those combined
+figures are the ceilings. Reaching the ACS-only figures needs a smaller donor
+share in the staging, which is a construction decision outside calibration.
+(Measured on the calibration checkpoint of the 2026-09-23 release,
+`populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z`.)
