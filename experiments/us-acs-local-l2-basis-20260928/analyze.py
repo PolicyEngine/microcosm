@@ -267,16 +267,17 @@ def chart(frame: pd.DataFrame, path: Path) -> None:
                 markeredgewidth=2,
                 label=f"ACS share {PRIOR_LABELS.get(prior, prior)}",
             )
-            for _, r in group.iterrows():
-                if r.l2_lambda in (0.0, 0.1, 1.0):
-                    ax.annotate(
-                        f"λ={r.l2_lambda:g}",
-                        (r.within_10pct, r[key]),
-                        textcoords="offset points",
-                        xytext=(6, 4),
-                        fontsize=8,
-                        color=muted,
-                    )
+            # Label only each line's ends; lambda rises right to left.
+            for r in (group.iloc[0], group.iloc[-1]):
+                ax.annotate(
+                    f"λ={r.l2_lambda:g}",
+                    (r.within_10pct, r[key]),
+                    textcoords="offset points",
+                    xytext=(6, -12) if r.l2_lambda == 0 else (-8, 8),
+                    ha="left" if r.l2_lambda == 0 else "right",
+                    fontsize=8,
+                    color=muted,
+                )
         if len(release):
             r = release.iloc[0]
             ax.scatter(
@@ -300,10 +301,11 @@ def chart(frame: pd.DataFrame, path: Path) -> None:
             spine.set_visible(False)
     axes[0].legend(frameon=False, fontsize=9, labelcolor=ink)
     fig.suptitle(
-        "ACS local release: ESS vs fit, chi-square penalty toward each prior "
-        "(softmax mass, 800 epochs)",
+        "ACS local release: ESS vs fit under a chi-square penalty toward each "
+        "prior (softmax mass, 800 epochs; λ = 0, 0.01, 0.03, 0.1, 0.3, 1, 3 "
+        "from right to left)",
         color=ink,
-        fontsize=12,
+        fontsize=11,
     )
     fig.tight_layout()
     fig.savefig(path, dpi=150, facecolor=surface)

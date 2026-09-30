@@ -187,6 +187,51 @@ def grid() -> list[dict]:
                     "holdout_fold": 0,
                 }
             )
+    # Third pass: projection at the held-out optimum, and a second holdout
+    # fold for the configurations the recommendation compares.
+    specs.append(
+        {
+            "run_id": "proj_chi_s050_0.03",
+            "l2_lambda": 0.03,
+            "l2_basis": "chi_square",
+            "mass_parametrization": "projection",
+        }
+    )
+    for fold in (0, 1):
+        specs.append(
+            {
+                "run_id": f"hold{fold}_proj_chi_s050_0.03".replace("hold0_", "hold_"),
+                "l2_lambda": 0.03,
+                "l2_basis": "chi_square",
+                "mass_parametrization": "projection",
+                "holdout_fold": fold,
+            }
+        )
+    specs.append(
+        {
+            "run_id": "hold1_proj_s050_0",
+            "mass_parametrization": "projection",
+            "holdout_fold": 1,
+        }
+    )
+    for share, lam in (
+        (None, 0.03),
+        (None, 0.1),
+        (0.7, 0.01),
+        (0.9, 0.0),
+        (0.964, 0.0),
+    ):
+        tag = "s050" if share is None else f"s{round(share * 1000):03d}"
+        specs.append(
+            {
+                "run_id": f"hold1_soft_chi_{tag}_{lam:g}",
+                "l2_lambda": lam,
+                "l2_basis": "chi_square",
+                "mass_parametrization": "softmax",
+                "acs_share": share,
+                "holdout_fold": 1,
+            }
+        )
     specs.append(
         {
             "run_id": "hold_proj_chi_s050_0.1",
