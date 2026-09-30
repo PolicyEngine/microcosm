@@ -1,17 +1,17 @@
-group,donor_pct,spine_pct,spine_arm_b_pct
-all adults,0.890,1.251,1.062
-model expected share,,1.357,1.087
-18-24 (donor 16-24),2.092,4.141,2.912
-25-34,2.388,3.017,3.002
-35-44,1.700,2.613,2.153
-45-54,0.000,0.020,0.020
-55+,0.000,0.020,0.006
-female,0.723,1.070,0.911
-male,1.070,1.442,1.223
-private renters,2.736,4.012,3.534
-other tenures,0.537,0.677,0.549
-household net income tertiles 1-2,0.446,0.871,0.707
-household net income tertile 3,1.776,2.010,1.773
-FRS-channel rows,,1.382,1.122
-SPI-channel rows,,1.114,1.000
-co-holding: weighted share of holder households with 2+ holders,24.192,3.902,2.282
+group,donor_pct,spine_pct,spine_arm_b_pct,spine_arm_d_pct
+all adults,0.890,1.251,1.062,1.229
+model expected share,,1.357,1.087,1.323
+18-24 (donor 16-24),2.092,4.141,2.912,4.065
+25-34,2.388,3.017,3.002,2.958
+35-44,1.700,2.613,2.153,2.575
+45-54,0.000,0.020,0.020,0.020
+55+,0.000,0.020,0.006,0.020
+female,0.723,1.070,0.911,1.054
+male,1.070,1.442,1.223,1.415
+private renters,2.736,4.012,3.534,3.952
+other tenures,0.537,0.677,0.549,0.664
+household net income tertiles 1-2,0.446,0.871,0.707,0.850
+household net income tertile 3,1.776,2.010,1.773,1.987
+FRS-channel rows,,1.382,1.122,1.358
+SPI-channel rows,,1.114,1.000,1.095
+co-holding: weighted share of holder households with 2+ holders,24.192,3.902,2.282,3.840

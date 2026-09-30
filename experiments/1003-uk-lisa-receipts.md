@@ -32,6 +32,8 @@ realisation deviation limit is raised from 1.0 to 2.0 in `uk/gates.json`. The bu
 - `spine-lisa-2`: the same tree again, for determinism.
 - `spine-lisa-b`: the head with the four financial predictors removed from both models. This is
   measurement only and was not committed (Part F).
+- `spine-lisa-d`: the head with the donor's income predictors uprated to the spine year (review
+  round 1, item 3). This is measurement only and was not committed (Part F).
 
 Rebased 2026-09-30 onto main `c5a1cba87`, after #932, #1057 and #1045. The licensed builds here
 were measured before that, at `360e7846c` on main `5187fce25`. Every spine change in #1045 is
@@ -336,7 +338,7 @@ to the stage-time weight.
   income predictors. Spine households, whose incomes are 2024-25 pounds, therefore condition on
   richer donors. How much of the gap that explains is a question for the follow-up.
 
-Three options, measured or implied on the same inputs:
+Four options, measured or implied on the same inputs:
 
 - **(a) Keep the approved design.** On the spine:
   - Ownership is 1.25% (660,000 weighted holders on 52.7 million adults at stage time) and twice
@@ -364,6 +366,19 @@ Three options, measured or implied on the same inputs:
   - It anchors the 2024-25 spine to the 2020-22 donor rate, and holdings have grown since:
     HMRC reports LISA subscriptions 20.1% (£472 million) higher in 2024 to 2025
     ([annual savings statistics, September 2026 commentary](https://www.gov.uk/government/statistics/annual-savings-statistics-2026/commentary-for-annual-savings-statistics-september-2026)).
+- **(d) Uprate the donor's income predictors to the spine year** (review round 1, item 3). This
+  is arm D, built and measured but not committed. The house `uprate_donor_columns` step moves
+  the WAS person donor's `employment_income` and `household_net_income` from 2021 to 2024 by the
+  engine's OBR average-earnings index (factor 1.185), as the LCFS and ETB stages do.
+  - The model's expected share falls from 1.36% to 1.32%, and ownership from 1.25% to 1.23%
+    (650,000 holders). The youngest group falls from 4.14% to 4.07%, 25–34 is 2.96% and 35–44 is
+    2.58%.
+  - The coefficients are unchanged, since the standardisation absorbs the shift; only the
+    spine's incomes read lower against the donor's.
+  - Balances stay as in (a): median £6,500, p90 £15,000. The cap binds on 10 households and
+    removes 0.6% of the LISA mass.
+  - So the nominal income basis explains about 0.02 of the 0.36 points between the spine and
+    the donor. The financial-wealth level carries the rest.
 
 Against HMRC's administrative count (review round 1, item 2). HMRC's Individual Savings Account
 statistics (September 2026 release, Table 9.4, adult ISAs) report the number of Lifetime ISA
@@ -386,6 +401,7 @@ year, so each subscribed account is a distinct subscriber, and every subscriber 
   - The approved design's 660,000 holders are 58% of that.
   - Arm B's 560,000 are 49%.
   - Option (c)'s 430,000 are 38%.
+  - Arm D's 650,000 are 57%.
 - **The stock.** The government reports over 1.3 million LISA accounts open in 2023-24 (its
   response to the Treasury Committee, 11 September 2025, recommendation 2). A person can hold
   several accounts.

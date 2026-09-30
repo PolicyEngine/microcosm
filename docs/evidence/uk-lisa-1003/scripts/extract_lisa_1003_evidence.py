@@ -287,6 +287,7 @@ def checks(
     gates: dict[str, dict[str, Any]],
     twin: dict[str, Any],
     determinism: dict[str, Any],
+    arm_name: str = "spine-lisa-b",
 ) -> list[list[Any]]:
     def coherence(receipt: dict[str, Any], key: str) -> Any:
         return receipt["evidence"]["financial_wealth_coherence"][key]
@@ -350,7 +351,7 @@ def checks(
         [
             "spine gates passed (control: " + passed("spine-ctl") + ")",
             passed("spine-lisa"),
-            passed("spine-lisa-b"),
+            passed(arm_name),
         ],
         [
             "twin against main: only the three cells differ, mass log gains the conserved was_lisa record",
@@ -374,13 +375,14 @@ def main() -> None:
     receipts = lane / "receipts"
     main_receipt = json.loads((receipts / "receipt-spine-lisa.json").read_text())
     arm_b_receipt = json.loads((receipts / "receipt-spine-lisa-b.json").read_text())
+    arm_d_receipt = json.loads((receipts / "receipt-spine-lisa-d.json").read_text())
     comparison = json.loads((receipts / "model-comparison.json").read_text())
     probe = json.loads(
         (receipts / "financial-wealth-probe-spine-lisa.json").read_text()
     )
     gates = {
         name: json.loads((lane / name / f"{name}.spine_gates.json").read_text())
-        for name in ("spine-ctl", "spine-lisa", "spine-lisa-b")
+        for name in ("spine-ctl", "spine-lisa", "spine-lisa-b", "spine-lisa-d")
     }
     twin = json.loads(
         (lane / "diff-spine-lisa-vs-spine-ctl" / "adjudication.json").read_text()
@@ -392,21 +394,29 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     main_evidence = main_receipt["evidence"]
     arm_b_evidence = arm_b_receipt["evidence"]
+    arm_d_evidence = arm_d_receipt["evidence"]
     write(out / "donor_audit.csv", ["item", "value"], donor_audit(main_evidence))
     write(
         out / "ownership_model_comparison.csv",
         ["group", "donor_pct"] + [f"{column}_pct" for _, column in MODELS],
         model_comparison(comparison),
     )
+    # Arm D (review round 1, item 3) sits beside arm B: the same rows, one more column.
+    rows_b = realised(main_evidence, arm_b_evidence, comparison)
+    rows_d = realised(main_evidence, arm_d_evidence, comparison)
+    assert all(b[:3] == d[:3] for b, d in zip(rows_b, rows_d, strict=True))
     write(
         out / "ownership_realised.csv",
-        ["group", "donor_pct", "spine_pct", "spine_arm_b_pct"],
-        realised(main_evidence, arm_b_evidence, comparison),
+        ["group", "donor_pct", "spine_pct", "spine_arm_b_pct", "spine_arm_d_pct"],
+        [b + [d[-1]] for b, d in zip(rows_b, rows_d, strict=True)],
     )
+    owners = balances(main_evidence, arm_b_evidence, comparison)
+    arm_d_owners = balances(main_evidence, arm_d_evidence, comparison)[-1]
+    owners.append(["spine owners, arm D (stage evidence)"] + arm_d_owners[1:])
     write(
         out / "balance_quantiles.csv",
         ["owners"] + [f"{q}_gbp" for q in QUANTILES] + ["weighted_mean_gbp"],
-        balances(main_evidence, arm_b_evidence, comparison),
+        owners,
     )
     write(
         out / "financial_draws_by_age.csv",
@@ -424,10 +434,14 @@ def main() -> None:
         ],
         financial_draws(probe),
     )
+    checks_b = checks(main_receipt, arm_b_receipt, gates, twin, determinism)
+    checks_d = checks(
+        main_receipt, arm_d_receipt, gates, twin, determinism, arm_name="spine-lisa-d"
+    )
     write(
         out / "checks.csv",
-        ["check", "spine", "spine_arm_b"],
-        checks(main_receipt, arm_b_receipt, gates, twin, determinism),
+        ["check", "spine", "spine_arm_b", "spine_arm_d"],
+        [b + [d[-1]] for b, d in zip(checks_b, checks_d, strict=True)],
     )
 
 

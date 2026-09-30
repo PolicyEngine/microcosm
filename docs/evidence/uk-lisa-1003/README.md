@@ -20,6 +20,9 @@ the same pinned inputs:
 - `spine-lisa-2`: a rebuild of `spine-lisa`, for determinism.
 - `spine-lisa-b`: the head without the four financial predictors. This is measurement only and was
   never committed.
+- `spine-lisa-d`: the head with the donor's income predictors uprated 2021 to 2024 by the engine's
+  OBR average-earnings index (review round 1, item 3). This is measurement only and was never
+  committed.
 
 Every tree carries the measurement-only PLAN_5 student-loan realisation relaxation (1.0 to 2.0)
 while #1049 is open. It is never committed.
@@ -35,14 +38,15 @@ while #1049 is open. It is never committed.
     gate, the gate tuned for rare events and the age-group rates.
   - Each model's held-out weighted log loss. The folds are five, by household.
 - `ownership_realised.csv`: receipt Part C.
-  - Weighted ownership shares of adults on the donor, the candidate spine and arm B, from the
-    stage evidence, plus the model's expected share.
+  - Weighted ownership shares of adults on the donor, the candidate spine, arm B and arm D, from
+    the stage evidence, plus the model's expected share.
   - Co-holding within households.
 - `balance_quantiles.csv`: weighted owner balance quantiles and means for four populations:
   - the donor's credible holders;
   - the held-out forest draws;
   - the spine;
-  - arm B.
+  - arm B;
+  - arm D.
 - `financial_draws_by_age.csv`: receipt Part F, by age group.
   - The spine's WAS financial draws against the donor's, overall and by support channel.
   - Weighted medians of gross financial wealth, and weighted means of log(1 + x) for the
