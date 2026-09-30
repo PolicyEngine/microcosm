@@ -155,12 +155,14 @@ def uk_take_up_population(frame: Frame, engine: object) -> UKTakeUpPopulation:
 
 
 def uk_engine_readable_frame(frame: Frame) -> Frame:
-    """Fill by-design NaN on auxiliary float columns so the engine can read them.
+    """Fill by-design NaN on float columns so the engine can read the frame.
 
     The #717 SPI channel leaves hmrc_spi_* auxiliaries (e.g.
-    ``other_investment_income``) NaN on FRS rows by design, and the engine
-    adapter refuses NaN. Reads of a person's working-age status never touch
-    those columns, so a copy with them filled at 0 gives the same answer.
+    ``other_investment_income``) NaN on FRS rows by design, and
+    policyengine-uk refuses a dataset with NaN in any column. A person's
+    working-age status reads only age, sex, ids and weights, so a copy with
+    those floats filled at 0 gives the same answer. Missing values in a
+    non-float column are left for the engine to refuse by name.
     """
 
     tables = {}
