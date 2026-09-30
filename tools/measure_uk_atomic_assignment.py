@@ -475,6 +475,23 @@ def _suppress(value: float, minimum: int) -> float | str:
     return f"<{minimum}" if 0 < value < minimum else value
 
 
+def _suppressed_area(row: dict, minimum: int) -> dict:
+    """One committed area row: counts below the minimum suppressed, z with them.
+
+    ``z`` is a function of ``rows`` and ``expected_rows`` (with the region's
+    scale), so a published z-score would let a reader recover a suppressed
+    count exactly; it is blanked wherever ``rows`` is.
+    """
+    suppressed = 0 < row["rows"] < minimum
+    return {
+        **row,
+        "rows": _suppress(row["rows"], minimum),
+        "ess": _suppress(row["ess"], minimum),
+        "sources": _suppress(row["sources"], minimum),
+        "z": None if suppressed else row["z"],
+    }
+
+
 def _peak_rss_bytes() -> int:
     usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(usage if sys.platform == "darwin" else usage * 1024)
@@ -552,12 +569,7 @@ def main(argv: list[str] | None = None) -> None:
                         if k_ not in {"region_mix", "geography_binding"}
                     },
                     "areas": [
-                        {
-                            **row,
-                            "rows": _suppress(row["rows"], args.minimum_count),
-                            "ess": _suppress(row["ess"], args.minimum_count),
-                            "sources": _suppress(row["sources"], args.minimum_count),
-                        }
+                        _suppressed_area(row, args.minimum_count)
                         for row in rows.to_dict("records")
                     ],
                 }
@@ -579,7 +591,8 @@ def main(argv: list[str] | None = None) -> None:
             "Assignment-level before/after evidence for the UK geography-first "
             "reordering (step 2): legacy sequential ladder draw versus the "
             "identity-keyed single-stage draw, design weights, no solve; per-area "
-            "counts below the minimum are suppressed and no unit records appear."
+            "counts below the minimum are suppressed together with their "
+            "z-scores, and no unit records appear."
         ),
         "date": dt.date.today().isoformat(),
         "model_period": model_period,
