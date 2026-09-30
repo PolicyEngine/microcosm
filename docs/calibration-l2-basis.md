@@ -18,7 +18,7 @@ otherwise), `w` for the calibrated weights, `r = w / d`, and `D = sum(d)`.
 |---|---|---|
 | penalty | `mean(r ** 2)` | `sum(d * (r - 1) ** 2) / D` = `sum((w - d) ** 2 / d) / D` |
 | value at `w = d` | 1 | 0 |
-| target-free optimum, `mass="conserve"` | `w ∝ d ** 2` | `w = d` |
+| target-free optimum, `mass="conserve"` | `w ∝ d ** 2` | `w = d` (an explicit anchor whose total differs is rescaled to the input total) |
 | target-free optimum, `mass="free"` | `w → 0` | `w = d` |
 | cost of a record collapsing to 0 | none (0 is its cheapest ratio) | its anchor share `d_i / D` |
 | `options["l2_penalty"]` (initial anchor) | `mean_initial_pre_gate_weight_ratio_squared` | `chi_square_initial_pre_gate_weight_distance` |
@@ -48,36 +48,62 @@ minimizers, is the penalty itself: adding the optimality inequalities of two
 solves at `l2_lambda` values `a < b` gives
 `(b - a) * (P(w_b) - P(w_a)) <= 0`. With unequal design weights, calibration can
 raise Kish ESS above the design's, and pulling back toward `d` then lowers it.
-In the ACS local release, calibration lowers ESS, from the design's 36,288 to
-13,631, so pulling toward `d` raises it.
+In the ACS local release, calibration lowers ESS from the design's 36,288 to
+13,631, and as `l2_lambda → ∞` the solve returns to the design's figure; the
+sweep measures the path in between.
+
+The path tests check each solve against the exact optimum of the same convex
+program, computed by CLARABEL on the tests' own problems (fixture
+`tests/fixtures/l2_basis_path_reference.json`, generator
+`experiments/us-acs-local-l2-basis-20260928/test_path_reference.py`). The
+largest excess measured there is 0.0026, and the monotonicity slack is derived
+from twice that. The exact optima also show the textbook structure: between
+`l2_lambda = 0.01` and `0.3` the optimal distance is flat, because the solve
+meets every feasible target exactly and picks the closest such point to `d`,
+which is GREG's solution.
 
 ## The mass parametrization
 
 Under `mass="conserve"` the historical solve takes an Adam step on the
 log-weights, then shifts every log-weight by the same amount so the total
 returns to the input total (`mass_parametrization="projection"`). Adam divides
-each coordinate's gradient by its own running RMS before stepping, so a
-coordinate moves about `lr` in the direction of its gradient's sign, whatever
-the gradient's size. When every record's gradient has the same sign, which
-happens whenever the targets want more (or less) total mass than the input,
-all records step up by about `lr` and the shift takes them straight back down.
-Any such point is a fixed point of the projected iteration, whether or not it
-is the constrained optimum. At the constrained optimum the log-weight gradient
-is proportional to `w` (the constraint's normal), not zero, so Adam never sees
-a vanishing gradient there and has no pull toward it.
+each coordinate's gradient by its own running RMS plus `eps` (1e-8) before
+stepping. When a gradient is well above `eps`, the coordinate moves about `lr`
+in the direction of the gradient's sign, whatever its size. If every record's
+gradient then has the same sign, all records step by about `lr` and the shift
+takes them straight back. Every target missing on the same side produces
+this; a net demand for mass with targets on both sides does not. Such a point
+is a fixed point of the projected iteration whether or not it is the
+constrained optimum. At the constrained optimum the log-weight gradient is
+proportional to `w` (the constraint's normal), not zero, so the iteration has
+no systematic pull toward it; it gets there only through records whose
+gradients change sign. Records whose gradient is zero or near `eps` take
+smaller steps, which the shift does not cancel, and that weakens the
+mechanism. At the ACS release's scale it is weak in exactly this way
+(`experiments/us-acs-local-l2-basis-20260928/gradient_scale.py`). At the
+design weights the median record's log-weight gradient is 3.8e-8 and 23% are
+at or below `eps`; at the release's weights the median is 1.2e-8 and 47% are
+at or below `eps`. The signs are mixed, 33% positive at the design and 52% at
+the release. So the sharp same-sign stall does not occur there, and whether
+the projection solve still falls short is an empirical question the
+full-scale sweep answers by solving the release's own surface both ways.
 
 `mass_parametrization="softmax"` optimizes `w = D * softmax(log_w)` instead.
 The total holds by construction, and autograd hands Adam the gradient with its
-component along the constraint already removed. That reduced gradient does
-vanish at the constrained optimum. The ratio cap remains a per-step clamp,
-iterated with the softmax-invariant renormalization, plus the closing float64
+component along the constraint already removed. For a smooth objective that
+reduced gradient vanishes at the constrained optimum; the capped-MAPE loss has
+kinks, so Adam still oscillates there on the scale of `lr`, as it does under
+`mass="free"`. The ratio cap remains a per-step clamp, alternated with the
+softmax-invariant renormalization for up to 32 rounds (a step that runs out is
+counted in `options["iterate_selection_receipt"]`), plus the closing float64
 projection that both parametrizations share. It requires `mass="conserve"` and
 no L0 gates.
 
 Evidence:
 
 - `test_projection_parametrization_stalls_under_uniform_mass_pressure` pins
-  the stall. When every target sits above its design total, the projection
+  the stall in its sharpest form. When every target sits above its design
+  total, the projection
   solve returns the design weights unchanged after 200 epochs, while the
   softmax solve halves the loss. The same mechanism means the record penalty
   alone never moves a projection solve: its log-space gradient is positive for
@@ -99,6 +125,10 @@ Evidence:
   distance, minus CLARABEL's optimum of the same program; the loss cap never
   binds on these surfaces. Receipts: `results/optimizer_reference.csv` and
   `results/optimizer_reference_summary.json` in that experiment directory.
+  The small problems where every target presses on the total show the stall.
+  On the larger problems with targets in both directions, projection is never
+  non-monotone but still lands two to six times further from the optimum than
+  softmax.
 
 ## Using it
 
@@ -122,8 +152,10 @@ The ACS local-area tool takes the same settings as
 `--l2-lambda`, `--l2-basis {record,chi_square}` and
 `--mass-parametrization {projection,softmax}`. It records them, with the
 realized chi-square distance, in `calibration_summary.json` and in the build
-manifest's `calibration` block, and `--resume` refuses a checkpoint solved
-under other settings. `calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
+manifest's `calibration` block. `--resume` refuses a checkpoint solved under
+other penalty settings: `l2_lambda`, `mass_parametrization`, and `l2_basis`
+when either side's penalty is positive. It does not check the cap, loss cap
+or seed. `calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
 and `refit_mass_parametrization`; `refit_l0_selection` and `static_aging` take
 `l2_basis`.
 
@@ -141,7 +173,10 @@ design mass with an ESS of 255, the national release's own Massachusetts figure,
 since the donor spine is that release's records at half weight. Together the
 state's design ESS is 1,020, and each of its nine districts is 108-134 (the ACS
 records alone give 2,020-2,444 per district). At `l2_lambda → ∞` those combined
-figures are the ceilings. Reaching the ACS-only figures needs a smaller donor
-share in the staging, which is a construction decision outside calibration.
+figures are the ceilings. Reaching the ACS-only figures needs a larger ACS
+share of the mass in the staging (`--acs-share`), which is a construction
+decision outside calibration; `experiments/us-acs-local-l2-basis-20260928/
+seeding_options.py` measures the starting ESS under other shares and under
+donor location clones.
 (Measured on the calibration checkpoint of the 2026-09-23 release,
 `populace-us-2024-buildo-acs-local-767312d60-20260923T074941Z`.)
