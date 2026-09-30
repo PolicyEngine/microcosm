@@ -475,6 +475,28 @@ def _write_shard(path: Path, tables: dict[str, pd.DataFrame], weights: np.ndarra
     tmp.replace(path)
 
 
+def spm_zero_adult_households(tables: dict[str, pd.DataFrame]) -> np.ndarray:
+    """Households with an SPM unit the pinned engine has no adult for.
+
+    spm_calculator's policyengine adapter counts a member as an adult when
+    ``age >= 18`` or ``age >= 15`` with ``is_spm_independent_minor_role``,
+    whose formula is ``is_household_head | is_household_spouse``; a unit with
+    no such member raises ``SPMInputError``. Returns one flag per household
+    row, in household-table order.
+    """
+    hh, person = tables["household"], tables["person"]
+    age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
+    role = np.zeros(len(person), dtype=bool)
+    for column in ("is_household_head", "is_household_spouse"):
+        if column in person:
+            role |= pd.Series(person[column]).fillna(False).astype(bool).to_numpy()
+    adult = (age >= 18) | ((age >= 15) & role)
+    unit_adults = pd.Series(adult).groupby(person["person_spm_unit_id"].to_numpy()).sum()
+    empty_units = unit_adults.index[unit_adults.to_numpy() == 0]
+    flagged = person.loc[person["person_spm_unit_id"].isin(empty_units), "person_household_id"]
+    return np.isin(hh["household_id"].to_numpy(), flagged.to_numpy())
+
+
 def _row_index_columns(tables: dict[str, pd.DataFrame], source: str) -> pd.DataFrame:
     """Per-household identity, geography and ACS-native evaluation columns."""
     hh = tables["household"]
@@ -525,6 +547,7 @@ def _row_index_columns(tables: dict[str, pd.DataFrame], source: str) -> pd.DataF
         out["channel"] = "acs"
         out["clone_index"] = 0
         out["group_quarters"] = pd.to_numeric(hh["TYPEHUGQ"], errors="coerce").fillna(1).to_numpy() != 1
+        out["spm_zero_adult_unit"] = spm_zero_adult_households(tables)
     return out
 
 
@@ -610,8 +633,39 @@ def do_shard(args) -> None:
         "source": args.source, "h5": str(args.h5), "h5_sha256": sha256_file(args.h5),
         "design_h5": str(args.design_h5) if args.design_h5 else None,
         "shards": len(index_parts), "households": len(index),
+        "group_quarters_households": int(index["group_quarters"].sum()),
+        "spm_zero_adult_households": int(index.get("spm_zero_adult_unit", pd.Series(dtype=bool)).sum()),
+        "spm_zero_adult_in_group_quarters": int(
+            (index.get("spm_zero_adult_unit", False) & index["group_quarters"]).sum()
+        ),
         "wall_s": round(time.time() - started, 1), "peak_rss_gb": round(peak_rss_gb(), 2),
     })
+
+
+def do_spm_flags(args) -> None:
+    """Recompute the SPM zero-adult flag on existing ACS shards (receipt)."""
+    rows = pd.read_parquet(args.work / "rows_acs.parquet")
+    flag = np.zeros(len(rows), dtype=bool)
+    for shard in sorted(rows["shard"].unique()):
+        with open(args.work / "shards" / "acs" / f"shard_{shard:03d}.pkl", "rb") as handle:
+            tables = pickle.load(handle)["tables"]
+        index = np.flatnonzero(rows["shard"].to_numpy() == shard)
+        if not np.array_equal(rows["household_id"].to_numpy()[index], tables["household"]["household_id"].to_numpy()):
+            raise SystemExit(f"shard {shard}: row index and shard disagree on household order")
+        flag[index] = spm_zero_adult_households(tables)
+    rows["spm_zero_adult_unit"] = flag
+    rows.to_parquet(args.work / "rows_acs.parquet", index=False)
+    gq = rows["group_quarters"].to_numpy()
+    write_json(args.work / "spm_flags.json", {
+        "acs_households": int(len(rows)),
+        "group_quarters_households": int(gq.sum()),
+        "group_quarters_share": float(gq.mean()),
+        "spm_zero_adult_households": int(flag.sum()),
+        "spm_zero_adult_share": float(flag.mean()),
+        "spm_zero_adult_in_group_quarters": int((flag & gq).sum()),
+        "rule": "age >= 18 or (age >= 15 and (is_household_head or is_household_spouse)), per SPM unit",
+    })
+    log(f"spm flags: {int(flag.sum())} households ({int((flag & gq).sum())} in group quarters)")
 
 
 # ------------------------------------------------------------------ materialize
@@ -679,6 +733,28 @@ def _materialize_frame(frame, concept_specs, *, summary_path: Path | None, batch
     household = target_frame.table("household")
     compilation = {**compilation, "formula_derived_inputs": formula_derived}
     return household, [spec.measure for spec in registry.specs], compilation, dropped
+
+
+def arm_inputs(work: Path, truth: Path, epochs: int) -> dict:
+    """Digests of everything an arm receipt depends on, so stale receipts rerun."""
+    return {
+        "targets": sha256_file(work / "targets.parquet"),
+        "rows_cps": sha256_file(work / "rows_cps.parquet"),
+        "rows_acs": sha256_file(work / "rows_acs.parquet"),
+        "truth": sha256_file(truth),
+        "concepts_cps": _concept_digest(work, "cps"),
+        "concepts_acs": _concept_digest(work, "acs"),
+        "epochs": int(epochs),
+    }
+
+
+def _concept_digest(work: Path, source: str) -> str:
+    digest = hashlib.sha256()
+    for path in sorted((work / "concepts" / source).glob("shard_*.npz")):
+        if not path.name.endswith(".tmp.npz"):
+            digest.update(path.name.encode())
+            digest.update(str(path.stat().st_size).encode())
+    return digest.hexdigest()
 
 
 def acs_rank(work: Path) -> np.ndarray:
@@ -820,6 +896,8 @@ def do_diffcheck(args) -> None:
         cd = pd.to_numeric(direct["congressional_district_geoid"]).to_numpy()
         worst, checked, skipped = 0.0, 0, 0
         per_family = {}
+        if targets["name"].duplicated().any():
+            raise SystemExit("target names are not unique; diffcheck keys on them")
         by_name = targets.set_index("name")
         for spec in sample_specs:
             row = by_name.loc[spec.name]
@@ -1053,10 +1131,15 @@ def do_arm(args) -> None:
     arm = parse_arm(args.arm)
     out = args.work / "arms" / args.product / f"{arm.label}.json"
     previous = json.loads(out.read_text()) if out.exists() else None
-    if previous is not None and previous.get("scored_all_levels") and not args.force:
+    inputs = arm_inputs(args.work, args.truth, args.epochs)
+    rescore = (
+        previous is not None and out.with_suffix(".weights.npy").exists() and not args.force
+        and (args.rescore or not previous.get("scored_all_levels"))
+    )
+    if (previous is not None and previous.get("scored_all_levels") and previous.get("inputs") == inputs
+            and not args.force and not args.rescore):
         log(f"{out} exists")
         return
-    rescore = previous is not None and out.with_suffix(".weights.npy").exists() and not args.force
     wait_for_memory(args.min_available_gb)
     import torch
 
@@ -1136,6 +1219,8 @@ def do_arm(args) -> None:
     benchmark = float(release_tool().US_BASE_PERSON_POPULATION_BENCHMARK)
     mass_factor = benchmark / float(selected["persons"].to_numpy() @ w0)
     w0 = w0 * mass_factor
+    rows_digest = hashlib.sha256(pd.util.hash_pandas_object(
+        selected[["source", "row", "copy", "cd_geoid"]], index=False).to_numpy().tobytes()).hexdigest()
     # ---------------- concept values for the selected rows
     stores = {}
     blocks = []
@@ -1200,7 +1285,7 @@ def do_arm(args) -> None:
     if rescore:
         # Re-score saved weights (a scoring change, no re-solve).
         weights = np.load(out.with_suffix(".weights.npy")).astype(np.float64)
-        if len(weights) != len(w0):
+        if len(weights) != len(w0) or previous.get("rows_digest", rows_digest) != rows_digest:
             raise SystemExit(f"{arm.label}: saved weights do not match the arm's rows")
         trajectory = np.array([previous["train"]["loss_initial"], previous["train"]["loss_final"]])
     else:
@@ -1283,13 +1368,16 @@ def do_arm(args) -> None:
                                  float(est0_map.get(geo_code, 0.0)), float(est1_map.get(geo_code, 0.0))))
     acs_eval = pd.DataFrame(acs_eval, columns=["level", "measure", "geo", "truth", "estimate_initial", "estimate"])
     report = {}
+    # Census puts ACS group quarters outside the SPM universe; report the
+    # rates over household rows only.
+    in_universe = ~selected["group_quarters"].astype(bool).to_numpy()
     for name in REPORT_SPECS:
         measure = f"bakeoff_{name.replace('.', '_')}"
         if measure in measure_col:
-            col = values[:, measure_col[measure]].toarray().ravel()
+            col = values[:, measure_col[measure]].toarray().ravel() * in_universe
             report[name] = {"initial": float(col @ w0), "calibrated": float(col @ weights)}
-    persons = selected["persons"].to_numpy()
-    children = selected["persons_0_17"].to_numpy()
+    persons = selected["persons"].to_numpy() * in_universe
+    children = selected["persons_0_17"].to_numpy() * in_universe
     if "report.spm_poor_persons" in report:
         report["spm_rate"] = {k: report["report.spm_poor_persons"][k] / float(persons @ w) for k, w in (("initial", w0), ("calibrated", weights))}
         report["spm_child_rate"] = {k: report["report.spm_poor_children"][k] / float(children @ w) for k, w in (("initial", w0), ("calibrated", weights))}
@@ -1322,9 +1410,15 @@ def do_arm(args) -> None:
         "report_only": report,
         "weights": {"mass": float(weights.sum()), "population_mass_factor": mass_factor, "max_ratio": float((weights / w0).max()),
                     "min_ratio": float((weights / w0).min())},
-        "runtime": {"wall_s": round(time.time() - started, 1), "solve_s": round(solve_s, 1),
-                    "epochs": args.epochs, "threads": args.threads,
-                    "peak_rss_gb": round(peak_rss_gb(), 2)},
+        "runtime": (
+            {**previous["runtime"], "rescore_wall_s": round(time.time() - started, 1),
+             "rescore_peak_rss_gb": round(peak_rss_gb(), 2)}
+            if rescore else
+            {"wall_s": round(time.time() - started, 1), "solve_s": round(solve_s, 1),
+             "epochs": args.epochs, "threads": args.threads, "peak_rss_gb": round(peak_rss_gb(), 2)}
+        ),
+        "inputs": inputs,
+        "rows_digest": rows_digest,
     }
     write_json(out, receipt)
     np.save(out.with_suffix(".weights.npy"), weights.astype(np.float32))
@@ -1337,13 +1431,16 @@ def do_run_grid(args) -> None:
     import subprocess
 
     arms = [a.label for a in arm_grid(not args.no_largest)]
+    current = arm_inputs(args.work, args.truth, args.epochs)
     if args.only:
         arms = [a for a in arms if any(token in a for token in args.only.split(","))]
     for product in args.products.split(","):
         for label in arms:
             out = args.work / "arms" / product / f"{label}.json"
-            if out.exists() and json.loads(out.read_text()).get("scored_all_levels"):
-                continue
+            if out.exists():
+                receipt = json.loads(out.read_text())
+                if receipt.get("scored_all_levels") and receipt.get("inputs") == current:
+                    continue
             wait_for_memory(args.min_available_gb)
             command = [sys.executable, str(Path(__file__).resolve()), "arm", "--work", str(args.work),
                        "--arm", label, "--product", product, "--truth", str(args.truth),
@@ -1370,7 +1467,10 @@ def do_report(args) -> None:
             records.append({**base, **t})
         for a in receipt["acs_native"]:
             acs_records.append({**base, **a})
+        loss_at = receipt["train"].get("loss_at", {})
         summary.append({**base, **receipt["counts"], **{f"rows_{k}": v for k, v in receipt["rows"].items()},
+                        "rescored": bool(receipt.get("rescored")),
+                        "loss_1000": loss_at.get("1000"), "loss_final": receipt["train"]["loss_final"],
                         "distinct_households": receipt["distinct_households"],
                         **{f"ess_{k}": v for k, v in receipt["ess"].items()},
                         "train_loss_final": receipt["train"]["loss_final"],
@@ -1378,6 +1478,10 @@ def do_report(args) -> None:
                         **{f"runtime_{k}": v for k, v in receipt["runtime"].items()},
                         **{f"report_{k}": (v["calibrated"] if isinstance(v, dict) else v)
                            for k, v in receipt["report_only"].items()}})
+    expected = {(product, arm.label) for product in ("national", "local") for arm in arm_grid(True)}
+    found = {(r["product"], r["arm"]) for r in summary}
+    if expected - found:
+        log(f"WARNING: {len(expected - found)} expected receipts missing: {sorted(expected - found)[:5]}")
     holdout = pd.DataFrame(records)
     acs_native = pd.DataFrame(acs_records)
     arms = pd.DataFrame(summary)
@@ -1431,6 +1535,11 @@ DIMENSION_COLUMNS = (
 def _write_dimensions(out: Path, arms: pd.DataFrame, holdout: pd.DataFrame, acs_native: pd.DataFrame) -> None:
     """Per-dimension held-out error (seed-0 arms; replicate spread alongside)."""
     by_dim = holdout.groupby(["product", "arm", "dimension", "level"])["capped"].mean()
+    # The release's own objective: loss-weighted capped error over every
+    # CPS-native held-out target at a level (fixed full-surface weights).
+    native = holdout[holdout["dimension_group"] == "cps_native"]
+    weighted = native.groupby(["product", "arm", "level"]).apply(
+        lambda g: np.average(g["capped"], weights=g["loss_weight"]))
     acs = acs_native[acs_native["measure"].isin(HEADLINE_ACS_MEASURES)].copy()
     acs["capped"] = acs["rel"].clip(upper=1.0)
     acs = acs.groupby(["product", "arm", "level"])["capped"].mean()
@@ -1440,6 +1549,8 @@ def _write_dimensions(out: Path, arms: pd.DataFrame, holdout: pd.DataFrame, acs_
                "cps_years": record.cps_years, "acs_fill_share": record.acs_fill_share,
                "seed": record.seed, "rows": record.rows_total,
                "ess_distinct": record.ess_distinct_households}
+        for level in ("state", "cd"):
+            row[f"cps_native_weighted.{level}"] = weighted.get((record.product, record.arm, level), np.nan)
         for dimension, level in DIMENSION_COLUMNS:
             row[f"{dimension}.{level}"] = by_dim.get((record.product, record.arm, dimension, level), np.nan)
         for level in ("state", "cd", "county"):
@@ -1448,13 +1559,20 @@ def _write_dimensions(out: Path, arms: pd.DataFrame, holdout: pd.DataFrame, acs_
     table = pd.DataFrame(rows).sort_values(["product", "budget", "cps_years", "acs_fill_share", "seed"])
     table.to_csv(out / "dimensions_by_arm.csv", index=False)
     replicate = table[table["arm"].str.contains("b300k") & table["acs_fill_share"].eq(1.0) & table["cps_years"].gt(0)]
-    spread = replicate.groupby(["product", "cps_years"])[[c for c in table.columns if "." in c]].std()
-    spread.to_csv(out / "replicate_spread.csv")
+    groups = replicate.groupby(["product", "cps_years"])
+    measures = [c for c in table.columns if "." in c]
+    seeded = [key for key, g in groups if g["seed"].nunique() > 1]
+    replicate = replicate.set_index(["product", "cps_years"]).loc[seeded].reset_index()
+    replicate.groupby(["product", "cps_years"])[measures].std().to_csv(out / "replicate_spread.csv")
+    replicate.groupby(["product", "cps_years"])[measures].mean().to_csv(out / "replicate_mean.csv")
 
 
+#: Household-universe measures only: the age bands count group-quarters people
+#: in both the truth and the ACS rows, and CPS rows have none, which would tilt
+#: the average toward ACS arms. Age bands stay in acs_native_by_level_measure.csv.
 HEADLINE_ACS_MEASURES = (
     "households", "owner", "renter", "rent_contract_annual_aggregate",
-    "real_estate_taxes_aggregate", "persons_in_households", "persons_0_17", "persons_65p",
+    "real_estate_taxes_aggregate", "persons_in_households",
 )
 
 
@@ -1530,7 +1648,8 @@ def main(argv=None) -> None:
     a.add_argument("--epochs", type=int, default=1_500)
     a.add_argument("--threads", type=int, default=6)
     a.add_argument("--exclude-gq", action="store_true")
-    a.add_argument("--force", action="store_true")
+    a.add_argument("--force", action="store_true", help="re-solve even if a receipt exists")
+    a.add_argument("--rescore", action="store_true", help="re-score saved weights without re-solving")
     a.add_argument("--min-available-gb", type=float, default=20.0)
     g = sub.add_parser("grid")
     g.add_argument("--no-largest", action="store_true")
@@ -1543,6 +1662,8 @@ def main(argv=None) -> None:
     rg.add_argument("--only")
     rg.add_argument("--no-largest", action="store_true")
     rg.add_argument("--min-available-gb", type=float, default=20.0)
+    f = sub.add_parser("spm-flags")
+    f.add_argument("--work", type=Path, required=True)
     r = sub.add_parser("report")
     r.add_argument("--work", type=Path, required=True)
     r.add_argument("--out", type=Path, required=True)
@@ -1550,7 +1671,7 @@ def main(argv=None) -> None:
     {
         "compile": do_compile, "shard": do_shard, "materialize": do_materialize,
         "diffcheck": do_diffcheck, "truth": do_truth, "arm": do_arm, "report": do_report,
-        "run-grid": do_run_grid,
+        "run-grid": do_run_grid, "spm-flags": do_spm_flags,
         "grid": lambda a: print("\n".join(arm.label for arm in arm_grid(not a.no_largest))),
     }[args.command](args)
 

@@ -60,6 +60,31 @@ def test_hash_uniform_matches_the_release_primitive() -> None:
         hash_uniform("key", salt="")
 
 
+#: (key, salt, draw) computed 2026-09-30 by the holdout port branch's own
+#: ``microcosm.build.holdout.hash_holdout_uniform`` (us-target-roles-holdout
+#: working copy), so the mirror is checked against that implementation, not
+#: only against a re-typed formula.
+PORT_BRANCH_FIXTURES = (
+    ("irs_soi.congressional_district_2022.all_returns.wv_total.net_capital_gains_returns",
+     "microcosm.us.target_split.v1.sealed", 0.568527776442365),
+    ("irs_soi.congressional_district_2022.all_returns.wv_total.net_capital_gains_returns",
+     "microcosm.us.target_split.v1.holdout", 0.2332024720189108),
+    ("census_pep.national_resident_population_age.20_to_24.population",
+     "microcosm.us.target_split.v1.sealed", 0.6698038027150819),
+    ("census_pep.national_resident_population_age.20_to_24.population",
+     "microcosm.us.target_split.v1.holdout", 0.888848284264564),
+    ("k0", "microcosm.us.target_split.v1.sealed", 0.13405297471660024),
+    ("k0", "microcosm.us.target_split.v1.holdout", 0.994075647032073),
+    ("usda_snap.state.06.households", "microcosm.us.target_split.v1.sealed", 0.20260546634959004),
+    ("usda_snap.state.06.households", "microcosm.us.target_split.v1.holdout", 0.9762431428888598),
+)
+
+
+@pytest.mark.parametrize(("key", "salt", "draw"), PORT_BRANCH_FIXTURES)
+def test_hash_uniform_matches_the_port_branch_fixtures(key: str, salt: str, draw: float) -> None:
+    assert hash_uniform(key, salt=salt) == draw
+
+
 @given(st.text(min_size=1, max_size=40), st.text(min_size=1, max_size=20))
 def test_hash_uniform_is_a_unit_interval_draw(key: str, salt: str) -> None:
     u = hash_uniform(key, salt=salt)
