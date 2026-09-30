@@ -283,10 +283,16 @@ def main(argv: list[str] | None = None) -> None:
             else:
                 target.update(parse_baf_district_file(lines, label=member))
         if fips == CT_STATE_FIPS:
+            # Connecticut's CBSAs are delineated by planning region, which a
+            # block reaches only through its town (see block_ladder_sources).
             member = f"BlockAssign_ST{fips}_{usps}_MCD.txt"
-            ct_cousub_by_block = parse_baf_county_subdivision_file(
-                _zip_member_lines(baf_zip, member), label=member
-            )
+            lines = _optional_baf_layer(baf_zip, member)
+            if lines is None:
+                raise SystemExit(
+                    f"{baf_zip} has no {member}; Connecticut blocks need their "
+                    "county subdivision to reach a CBSA."
+                )
+            ct_cousub_by_block = parse_baf_county_subdivision_file(lines, label=member)
 
     cbsa_county_by_block: dict[int, str] = {}
     if any(fips == CT_STATE_FIPS for fips, _, _ in states):

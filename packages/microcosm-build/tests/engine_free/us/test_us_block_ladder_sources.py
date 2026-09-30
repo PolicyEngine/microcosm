@@ -577,6 +577,25 @@ def test_assemble_refuses_malformed_county_equivalents(
         )
 
 
+def test_assemble_ignores_remap_entries_for_unpopulated_blocks() -> None:
+    # The MCD layer covers every block, populated or not; entries for blocks
+    # outside the ladder (before, between and after its rows) change nothing.
+    regions = {
+        **_ct_planning_regions(),
+        90010101011000: "09190",
+        90010900001000: "09120",
+        99999999999999: "09170",
+    }
+    payload = _assemble(
+        {_BRIDGEPORT_BLOCK: 40, _NEW_HAVEN_BLOCK: 10},
+        cbsa_by_county={"09120": 14860, "09170": 35300},
+        cbsa_county_by_block=regions,
+    )
+
+    assert payload["block_geoid"].tolist() == [_BRIDGEPORT_BLOCK, _NEW_HAVEN_BLOCK]
+    assert payload["cbsa_code"].tolist() == [14860, 35300]
+
+
 def test_assemble_ignores_delineation_rows_outside_the_built_states() -> None:
     # A smoke build of Delaware alone must not trip over Connecticut rows.
     payload = _assemble({_DE_BLOCK: 5}, cbsa_by_county=_CT_CBSA_BY_COUNTY)

@@ -122,8 +122,9 @@ _CD_DELEGATE = "98"
 #: (2022 planning regions) are not its 2020 block counties.
 CT_STATE_FIPS = "09"
 #: County-subdivision code for areas with no town ("County subdivisions not
-#: defined", water). Census lists it once per old-county/planning-region
-#: pair, so it names no single planning region.
+#: defined": the coastal water of Fairfield, Middlesex, New Haven and New
+#: London counties). Fairfield's is split between two planning regions, so the
+#: code does not identify one; no populated 2020 block carries it.
 _COUSUB_NOT_DEFINED = "00000"
 _CT_CROSSWALK_COLUMNS = (
     "STATEFP",
@@ -438,9 +439,9 @@ def parse_ct_planning_region_crosswalk(lines: Iterable[str]) -> dict[str, str]:
     the value :func:`parse_baf_county_subdivision_file` yields); values are
     the 5-digit planning-region county-equivalent FIPS the OMB 2023
     delineations use. The table ends at the first blank row (a glossary
-    follows). "County subdivisions not defined" rows are skipped,
-    because one old county's undefined area is listed under several planning
-    regions; a populated block there fails the block join instead.
+    follows). "County subdivisions not defined" rows are skipped: Fairfield
+    County's is listed under two planning regions, so the code names no
+    single region. A populated block there would fail the block join instead.
     """
 
     reader = csv.reader(_csv_lines(lines), delimiter="|")
@@ -474,7 +475,9 @@ def parse_ct_planning_region_crosswalk(lines: Iterable[str]) -> dict[str, str]:
         new_county = cells["NEW_COUNTYFP"]
         cousub = cells["COUSUBFP"]
         if state != CT_STATE_FIPS:
-            raise ValueError(f"{where} has STATEFP {state!r}; expected '09'.")
+            raise ValueError(
+                f"{where} has STATEFP {state!r}; expected {CT_STATE_FIPS!r}."
+            )
         for name, value, width in (
             ("OLD_COUNTYFP", old_county, 3),
             ("NEW_COUNTYFP", new_county, 3),
@@ -527,8 +530,9 @@ def ct_planning_region_by_block(
     result: dict[int, str] = {}
     missing_town: list[int] = []
     unmapped_town: set[str] = set()
+    ct_state = int(CT_STATE_FIPS)
     for block in blocks:
-        if f"{block:015d}"[:2] != CT_STATE_FIPS:
+        if block // 10**13 != ct_state:
             continue
         cousub = cousub_by_block.get(block)
         if cousub is None:
@@ -571,7 +575,9 @@ def us_block_ladder_cbsa_coverage_failures(ladder: UsBlockLadder) -> list[str]:
     The states come from the artifact's ``cbsa_delineated_states`` record.
     Artifacts built before that record fall back to every state they
     contain: the OMB 2023 delineations cover territory in all 50 states and
-    DC.
+    DC. For a ladder this module's join just built the check cannot fail,
+    since the join refuses an unreached delineated county-equivalent. Its
+    job is to catch a ladder built elsewhere or before that refusal existed.
     """
 
     block_state = ladder.block_geoid // 10**13
@@ -649,9 +655,13 @@ def assemble_us_block_ladder(
     place = np.asarray(
         [place_by_block.get(block, 0) for block in blocks.tolist()], dtype=np.int32
     )
-    cbsa_counties = _cbsa_county_equivalents(blocks, cbsa_county_by_block or {})
-    built_states = {county[:2] for county in cbsa_counties}
-    reached = set(cbsa_counties)
+    counties, county_index = np.unique(
+        _cbsa_county_equivalents(blocks, cbsa_county_by_block or {}),
+        return_inverse=True,
+    )
+    county_codes = [f"{county:05d}" for county in counties.tolist()]
+    reached = set(county_codes)
+    built_states = {county[:2] for county in reached}
     unreached = sorted(
         county
         for county in cbsa_by_county
@@ -667,9 +677,8 @@ def assemble_us_block_ladder(
             "cbsa_county_by_block from ct_planning_region_by_block)."
         )
     cbsa = np.asarray(
-        [cbsa_by_county.get(county, 0) for county in cbsa_counties],
-        dtype=np.int32,
-    )
+        [cbsa_by_county.get(county, 0) for county in county_codes], dtype=np.int32
+    )[county_index]
     return {
         "block_geoid": blocks,
         "population": population,
@@ -684,38 +693,44 @@ def assemble_us_block_ladder(
 
 def _cbsa_county_equivalents(
     blocks: np.ndarray, cbsa_county_by_block: Mapping[int, str]
-) -> list[str]:
-    """Each block's delineation county-equivalent (5-digit FIPS), in order."""
+) -> np.ndarray:
+    """Each block's delineation county-equivalent as a 5-digit FIPS int.
 
-    override_states: set[str] = set()
-    for block, county in cbsa_county_by_block.items():
-        geoid = f"{block:015d}"
+    ``blocks`` is sorted. Entries for blocks outside it (unpopulated blocks)
+    are validated and otherwise ignored.
+    """
+
+    counties = blocks // 10**10
+    if not cbsa_county_by_block:
+        return counties
+    override_block = np.fromiter(
+        cbsa_county_by_block, dtype=np.int64, count=len(cbsa_county_by_block)
+    )
+    override_county = np.empty(len(override_block), dtype=np.int64)
+    for index, (block, county) in enumerate(cbsa_county_by_block.items()):
         if not (isinstance(county, str) and county.isdigit() and len(county) == 5):
             raise ValueError(
-                f"cbsa_county_by_block maps block {geoid} to {county!r}; "
+                f"cbsa_county_by_block maps block {block:015d} to {county!r}; "
                 "expected a 5-digit county-equivalent FIPS."
             )
-        if county[:2] != geoid[:2]:
+        if int(county[:2]) != block // 10**13:
             raise ValueError(
-                f"cbsa_county_by_block maps block {geoid} to county-equivalent "
-                f"{county} in another state."
+                f"cbsa_county_by_block maps block {block:015d} to "
+                f"county-equivalent {county} in another state."
             )
-        override_states.add(geoid[:2])
-    counties: list[str] = []
-    missing: list[int] = []
-    for block in blocks.tolist():
-        geoid = f"{block:015d}"
-        county = cbsa_county_by_block.get(block)
-        if county is None:
-            if geoid[:2] in override_states:
-                missing.append(block)
-            county = geoid[:5]
-        counties.append(county)
-    if missing:
-        examples = [f"{block:015d}" for block in missing[:5]]
+        override_county[index] = int(county)
+    position = np.searchsorted(blocks, override_block)
+    populated = position < len(blocks)
+    populated[populated] = blocks[position[populated]] == override_block[populated]
+    counties[position[populated]] = override_county[populated]
+    remapped = np.zeros(len(blocks), dtype=bool)
+    remapped[position[populated]] = True
+    missing = ~remapped & np.isin(blocks // 10**13, np.unique(override_block // 10**13))
+    if missing.any():
+        examples = [f"{block:015d}" for block in blocks[missing][:5].tolist()]
         raise ValueError(
-            f"{len(missing)} populated block(s) lack a county-equivalent in "
-            "cbsa_county_by_block although other blocks in their state have "
+            f"{int(missing.sum())} populated block(s) lack a county-equivalent "
+            "in cbsa_county_by_block although other blocks in their state have "
             f"one; examples: {examples}."
         )
     return counties
