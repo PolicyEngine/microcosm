@@ -116,6 +116,7 @@ def _frame() -> object:
             "person_benunit_id": [10, 10, 20, 30],
             "person_household_id": [1, 1, 1, 2],
             "age": [5, 6, 40, 70],
+            "gender": ["FEMALE", "MALE", "FEMALE", "MALE"],
             "child_benefit_reported": [0, 10, 0, 0],
             "pension_credit_reported": [0, 0, 0, 5],
             "universal_credit_reported": [0, 0, 20, 0],

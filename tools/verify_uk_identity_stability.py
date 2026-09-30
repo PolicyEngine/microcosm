@@ -34,7 +34,6 @@ from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
     uc_age_eligible_benunits,
-    uk_engine_readable_frame,
     uk_take_up_population,
 )
 from microcosm.build.uk_runtime.national_frame import (
@@ -1331,9 +1330,8 @@ def main() -> int:
         # scoping rule the E5 receipt already applies).
         frame = _frs_only_frame(frame)
         engine = PolicyEngineUKEngine()
-        engine_frame = uk_engine_readable_frame(frame)
         lha_category = engine.materialize(
-            engine_frame, ("LHA_category",), uk_time_period(frame)
+            _engine_safe_frame(frame), ("LHA_category",), uk_time_period(frame)
         )["LHA_category"]
         receipt = e4_identity_receipt(
             frame,
@@ -1341,7 +1339,7 @@ def main() -> int:
             count_resource=load_brma_count_resource(),
             lha_category=lha_category,
             permutation_seed=args.permutation_seed,
-            population=uk_take_up_population(engine_frame, engine),
+            population=uk_take_up_population(frame, engine),
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
@@ -1765,6 +1763,38 @@ def _drop_stacked_layers(frame, flags: Sequence[str]):
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
         household_weights=weights,
+        mass_log=frame.mass_log,
+    )
+
+
+def _engine_safe_frame(frame):
+    """Fill by-design NaN on channel-only auxiliary columns for engine reads.
+
+    The #717 SPI channel leaves hmrc_spi_* auxiliaries (e.g.
+    other_investment_income) NaN on FRS rows by design; instruments fill 0,
+    matching stage-time semantics, because the engine adapter rejects NaN.
+    LHA_category derivation does not read these columns.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+
+    tables = {}
+    for entity in ("person", "benunit", "household"):
+        table = frame.table(entity).copy()
+        for column in table.columns:
+            if table[column].dtype.kind == "f" and table[column].isna().any():
+                table[column] = table[column].fillna(0.0)
+        tables[entity] = table
+    return uk_national_frame(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
     )
 

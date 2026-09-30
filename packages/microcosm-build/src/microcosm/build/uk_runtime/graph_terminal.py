@@ -596,6 +596,7 @@ class UKFullGateKernel(KernelBase):
         from . import (
             battery_bindings,
             diagnostics,
+            frs_take_up,
             full_gates,
             local_rowwise,
             weighted_integrity,
@@ -612,6 +613,8 @@ class UKFullGateKernel(KernelBase):
                         local_rowwise,
                         weighted_integrity,
                         diagnostics,
+                        # The take-up gate's population read lives here.
+                        frs_take_up,
                     ),
                     "country_resources": load_country_spec("uk").fingerprint,
                 }

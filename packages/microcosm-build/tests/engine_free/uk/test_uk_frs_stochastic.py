@@ -186,6 +186,7 @@ def test_uc_take_up_population_is_the_engines_per_person_status() -> None:
             "person_benunit_id": [10, 20, 30, 40],
             "person_household_id": [1, 2, 3, 4],
             "age": [66, 66, 67, 17],
+            "gender": ["MALE", "FEMALE", "MALE", "FEMALE"],
             "child_benefit_reported": [0, 0, 0, 0],
             "pension_credit_reported": [0, 0, 0, 0],
             "universal_credit_reported": [0, 0, 0, 0],

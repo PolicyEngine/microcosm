@@ -120,7 +120,7 @@ class UKTakeUpPopulation:
         object.__setattr__(self, "working_age_adult", values)
 
     def evidence(self) -> dict[str, object]:
-        """JSON-safe provenance for gate details and stage receipts."""
+        """JSON-safe provenance for the take-up gate's details."""
 
         return {
             "variable": UK_UC_WORKING_AGE_ADULT,
@@ -131,18 +131,75 @@ class UKTakeUpPopulation:
         }
 
 
+# is_WA_adult reads a person's age and sex, and the ids and weights by which
+# the engine places each date of birth within an age and sex
+# (policyengine-uk#1899). The engine reads the population from a projection
+# that holds only those, so a release-scale frame costs a narrow simulation,
+# and columns the answer cannot depend on (such as the SPI channel's by-design
+# NaN auxiliaries, which the engine refuses) never reach it.
+_UK_POPULATION_COLUMNS = {
+    "person": (
+        "person_id",
+        "person_benunit_id",
+        "person_household_id",
+        "age",
+        "gender",
+    ),
+    "benunit": ("benunit_id",),
+    "household": ("household_id",),
+}
+# policyengine-uk's dataset loader uprates these household columns whatever it
+# is asked, so the projection carries them when the frame has them. None of
+# them enters is_WA_adult, so a missing float among them is read as 0.
+_UK_LOADER_HOUSEHOLD_COLUMNS = ("region", "council_tax", "rent", "tenure_type")
+
+
+def uk_take_up_population_frame(frame: Frame) -> Frame:
+    """The columns of ``frame`` that the engine's ``is_WA_adult`` reads."""
+
+    tables = {}
+    for entity, columns in _UK_POPULATION_COLUMNS.items():
+        table = frame.table(entity)
+        missing = [column for column in columns if column not in table.columns]
+        if missing:
+            raise KeyError(
+                f"{entity} table is missing {missing}; the Universal Credit "
+                "take-up population cannot be read without them"
+            )
+        tables[entity] = table.loc[:, list(columns)].copy()
+    household = frame.table("household")
+    for column in _UK_LOADER_HOUSEHOLD_COLUMNS:
+        if column in household.columns:
+            values = household[column]
+            if values.dtype.kind == "f":
+                values = values.fillna(0.0)
+            tables["household"][column] = values.to_numpy()
+    return uk_national_frame(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
+
+
 def uk_take_up_population(frame: Frame, engine: object) -> UKTakeUpPopulation:
     """Read every person's ``is_WA_adult`` from the engine at the frame's period.
 
-    The engine computes it on the whole frame, the way a simulation of the
-    released data does: whether a person is under State Pension age depends on
-    their date of birth, which the engine places within each whole age and sex
-    from the person ids and weights (policyengine-uk#1899).
+    The engine computes it the way a simulation of the data does: whether a
+    person is under State Pension age depends on their date of birth, which
+    the engine places within each whole age and sex from the person ids and
+    weights across the whole population (policyengine-uk#1899). It reads the
+    whole population's projection (``uk_take_up_population_frame``).
     """
 
     assert_rules_engine_country(engine, "uk")
     period = uk_time_period(frame)
-    materialized = engine.materialize(frame, UK_TAKE_UP_ENGINE_PREDICTORS, period)
+    materialized = engine.materialize(
+        uk_take_up_population_frame(frame), UK_TAKE_UP_ENGINE_PREDICTORS, period
+    )
     values = np.asarray(materialized[UK_UC_WORKING_AGE_ADULT])
     if values.shape != (frame.n("person"),):
         raise ValueError(
@@ -154,33 +211,14 @@ def uk_take_up_population(frame: Frame, engine: object) -> UKTakeUpPopulation:
     )
 
 
-def uk_engine_readable_frame(frame: Frame) -> Frame:
-    """Fill by-design NaN on float columns so the engine can read the frame.
+def _default_engine() -> object:
+    # The release-cut and full-build batteries arm a coverage engine that
+    # answers metadata only; the population needs a simulation, so the gate
+    # reads it from policyengine-uk itself, as it read State Pension age from
+    # the engine's parameters before.
+    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
-    The #717 SPI channel leaves hmrc_spi_* auxiliaries (e.g.
-    ``other_investment_income``) NaN on FRS rows by design, and
-    policyengine-uk refuses a dataset with NaN in any column. A person's
-    working-age status reads only age, sex, ids and weights, so a copy with
-    those floats filled at 0 gives the same answer. Missing values in a
-    non-float column are left for the engine to refuse by name.
-    """
-
-    tables = {}
-    for entity in ("person", "benunit", "household"):
-        table = frame.table(entity).copy()
-        for column in table.columns:
-            if table[column].dtype.kind == "f" and table[column].isna().any():
-                table[column] = table[column].fillna(0.0)
-        tables[entity] = table
-    return uk_national_frame(
-        person=tables["person"],
-        benunit=tables["benunit"],
-        household=tables["household"],
-        time_period=uk_time_period(frame),
-        weight_kind=uk_household_weight_kind(frame),
-        household_weights=frame.weights_for("household").values,
-        mass_log=frame.mass_log,
-    )
+    return PolicyEngineUKEngine()
 
 
 def _engine_source() -> str:
@@ -194,17 +232,22 @@ def _engine_source() -> str:
 def assert_take_up_stage_population_declaration(stage: SourceStageSpec) -> None:
     """Refuse a manifest whose declared UC population differs from the code's."""
 
+    # Exact parameters: an extra key (a year rule the code does not honour, a
+    # dropped consumed_only) is a different declaration and is refused too.
     declared_engine_read = any(
         op.kind == "materialize_rules_engine_predictors"
-        and tuple(op.parameters.get("predictors") or ()) == UK_TAKE_UP_ENGINE_PREDICTORS
-        and op.parameters.get("consumed_only") is True
+        and dict(op.parameters)
+        == {"predictors": list(UK_TAKE_UP_ENGINE_PREDICTORS), "consumed_only": True}
         for op in stage.operations
     )
     declared_aggregate = any(
         op.kind == "aggregate_person_to_benunit"
-        and op.parameters.get("method") == UK_UC_AGE_ELIGIBLE_METHOD
-        and dict(op.parameters.get("aggregates") or {})
-        == {UK_UC_AGE_ELIGIBLE_AGGREGATE: UK_UC_AGE_ELIGIBLE_SOURCE}
+        and dict(op.parameters)
+        == {
+            "method": UK_UC_AGE_ELIGIBLE_METHOD,
+            "consumed_only": True,
+            "aggregates": {UK_UC_AGE_ELIGIBLE_AGGREGATE: UK_UC_AGE_ELIGIBLE_SOURCE},
+        }
         for op in stage.operations
     )
     declared_population = any(
@@ -405,7 +448,8 @@ def uk_take_up_signal_gate(
     """Require non-constant UK stochastic flags near contract target shares.
 
     The Universal Credit share is measured over the units with a working-age
-    adult, read from ``engine`` for this frame unless ``population`` is given.
+    adult, read for this frame from ``engine`` (policyengine-uk by default)
+    unless ``population`` is given.
     """
 
     resolved = contract if contract is not None else load_uk_take_up_contract()
@@ -426,14 +470,8 @@ def uk_take_up_signal_gate(
             # with a working-age adult, read from the engine for this frame at
             # its period. The gate measures the realized share on them.
             if uc_population is None:
-                if engine is None:
-                    raise ValueError(
-                        "the take-up signal gate reads the Universal Credit "
-                        "population from the rules engine; pass engine= or "
-                        "population="
-                    )
                 uc_population = uk_take_up_population(
-                    uk_engine_readable_frame(frame), engine
+                    frame, engine if engine is not None else _default_engine()
                 )
             units = uc_age_eligible_benunits(
                 frame.table("person"), table, uc_population

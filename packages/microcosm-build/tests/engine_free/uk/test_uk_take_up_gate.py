@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
@@ -52,6 +51,7 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
             "person_benunit_id": np.arange(201, 201 + n),
             "person_household_id": household_ids,
             "age": [30, 40] * 5,
+            "gender": ["MALE", "FEMALE"] * 5,
         }
     )
     benunit = pd.DataFrame(
@@ -193,11 +193,13 @@ def test_take_up_gate_fails_when_the_uc_population_is_empty() -> None:
     )
 
 
-def test_take_up_gate_reads_the_uc_population_from_the_engine() -> None:
+def test_take_up_gate_reads_the_uc_population_from_a_projection() -> None:
     """The gate asks the engine for is_WA_adult on the frame it measures.
 
-    Auxiliary float columns the SPI channel leaves NaN by design are filled
-    on the copy the engine reads, so the engine never refuses the frame.
+    The engine reads a projection holding only what is_WA_adult depends on
+    (ids, age, sex, weights) and the household columns its dataset loader
+    uprates; the SPI channel's by-design NaN auxiliaries, which the engine
+    refuses, never reach it, and the measured frame keeps them.
     """
 
     frame = _frame()
@@ -207,15 +209,22 @@ def test_take_up_gate_reads_the_uc_population_from_the_engine() -> None:
 
     class _Recording(WorkingAgeStubEngine):
         def materialize(self, frame, variables, period):
-            seen.append(frame.table("person")["other_investment_income"].isna().any())
+            seen.append({e: set(frame.table(e).columns) for e in frame.entities})
             return super().materialize(frame, variables, period)
 
     engine = _Recording()
     result = uk_take_up_signal_gate(frame, contract=_Contract(), engine=engine)
 
     assert engine.calls == [(UK_TAKE_UP_ENGINE_PREDICTORS, "2023")]
-    assert seen == [False]
-    # The frame the gate measures keeps its NaN: only the engine's copy fills.
+    assert seen[0]["person"] == {
+        "person_id",
+        "person_benunit_id",
+        "person_household_id",
+        "age",
+        "gender",
+    }
+    assert seen[0]["benunit"] == {"benunit_id"}
+    assert seen[0]["household"] - {"household_weight"} == {"household_id"}
     assert person["other_investment_income"].isna().sum() == 5
     population = result.details["universal_credit_population"]
     assert population["variable"] == "is_WA_adult"
@@ -239,20 +248,21 @@ def test_take_up_gate_follows_a_split_state_pension_age_cohort() -> None:
     assert result.details["benunit.would_claim_uc"]["population_units"] == 3
 
 
-def test_take_up_gate_refuses_to_guess_the_uc_population() -> None:
-    with pytest.raises(ValueError, match="reads the Universal Credit population"):
-        uk_take_up_signal_gate(_frame(), contract=_Contract())
+def test_take_up_gate_reads_policyengine_uk_by_default(monkeypatch) -> None:
+    """The batteries arm a metadata-only coverage engine, so without an
+    engine the gate reads the population from policyengine-uk itself."""
 
+    from microcosm.build.uk_runtime import frs_take_up
 
-def test_take_up_binding_passes_the_armed_rules_engine() -> None:
-    binding = UK_GATE_REGISTRY["take_up_signal"]
     engine = WorkingAgeStubEngine()
+    monkeypatch.setattr(frs_take_up, "_default_engine", lambda: engine)
+    binding = UK_GATE_REGISTRY["take_up_signal"]
 
-    assert "rules_engine" in binding.artifact_keys
     result = binding.evaluator(
-        EvidenceContext(frame=_frame(), artifacts={"rules_engine": engine}),
+        EvidenceContext(frame=_frame(), artifacts={}),
         {"maximum_share_deviation": 0.05},
     )
 
+    assert not binding.artifact_keys
     assert engine.calls == [(UK_TAKE_UP_ENGINE_PREDICTORS, "2023")]
     assert "benunit.would_claim_uc" in result.details
