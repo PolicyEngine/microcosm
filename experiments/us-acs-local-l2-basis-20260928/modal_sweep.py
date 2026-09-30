@@ -25,7 +25,13 @@ from pathlib import Path
 import modal
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parents[1]
+#: The worktree root when this file runs from the repository; ``None`` inside
+#: a container, where Modal mounts the launcher alone at /root.
+REPO = (
+    HERE.parents[1]
+    if len(HERE.parents) > 1 and (HERE.parents[1] / ".git").exists()
+    else None
+)
 CHECKPOINT = Path(
     "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/checkpoint"
 )
@@ -67,7 +73,7 @@ def _kernel_clean() -> bool:
     return not status
 
 
-GIT_SHA = _head() if (REPO / ".git").exists() else "container"
+GIT_SHA = _head() if REPO is not None else "container"
 
 image = (
     modal.Image.debian_slim(python_version="3.13")
@@ -92,14 +98,15 @@ image = (
         }
     )
 )
-for name in KERNEL:
-    image = image.add_local_dir(
-        str(REPO / "packages" / name), f"/opt/kernel/{name}", copy=True
-    )
-image = image.run_commands(
-    "python -m pip install --no-deps "
-    + " ".join(f"/opt/kernel/{name}" for name in KERNEL)
-).add_local_file(str(HERE / "sweep.py"), "/opt/sweep/sweep.py")
+if REPO is not None:
+    for name in KERNEL:
+        image = image.add_local_dir(
+            str(REPO / "packages" / name), f"/opt/kernel/{name}", copy=True
+        )
+    image = image.run_commands(
+        "python -m pip install --no-deps "
+        + " ".join(f"/opt/kernel/{name}" for name in KERNEL)
+    ).add_local_file(str(HERE / "sweep.py"), "/opt/sweep/sweep.py")
 
 app = modal.App("microcosm-acs-l2-basis-sweep", image=image)
 volume = modal.Volume.from_name("microcosm-acs-l2-basis-sweep", create_if_missing=True)
