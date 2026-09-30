@@ -867,7 +867,7 @@
     {
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
-      "state_pension_age"
+      "is_SP_age"
      ],
      "consumed_only": true
     },
@@ -881,7 +881,7 @@
     "esa_health_condition_proxy",
     "esa_support_group_proxy"
    ],
-   "notes": "The proxies are labels, not entitlement determinations. JSA hours compare against 16 * (365.25 / 7) on the E2 spine hours scale; state_pension_age is consumed but not persisted."
+   "notes": "The proxies are labels, not entitlement determinations. JSA hours compare against 16 * (365.25 / 7) on the E2 spine hours scale; is_SP_age is consumed but not persisted; State Pension age is the engine's per-person status, not a whole-age cut-off."
   },
   {
    "stage": "frs_education_grant_split",
@@ -946,11 +946,18 @@
      }
     },
     {
+     "kind": "materialize_rules_engine_predictors",
+     "predictors": [
+      "is_WA_adult"
+     ],
+     "consumed_only": true
+    },
+    {
      "kind": "aggregate_person_to_benunit",
-     "method": "any_adult_under_state_pension_age",
+     "method": "any",
      "consumed_only": true,
      "aggregates": {
-      "uc_age_eligible": "age"
+      "uc_age_eligible": "is_WA_adult"
      }
     },
     {
@@ -1052,7 +1059,7 @@
    "nonnegative_outputs": [
     "maximum_extended_childcare_hours_usage"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with an adult under State Pension age (66 for everyone who can reach it in this release; the engine lockstep test pins it), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with every adult at or over State Pension age is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867)."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with a working-age adult, read as each person's is_WA_adult from the engine at the build period (is_adult and under State Pension age, which the engine sets by date of birth, policyengine-uk#1899), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with no working-age adult is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867). is_WA_adult is consumed but not persisted."
   },
   {
    "stage": "frs_person_draws",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.gate_battery import EvidenceContext
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
@@ -11,14 +12,11 @@ from microcosm.build.uk_runtime.frs_household_draws import (
 )
 from microcosm.build.uk_runtime.frs_take_up import (
     FRS_TAKE_UP_OUTPUT_COLUMNS,
-    UKTakeUpPopulationPolicy,
+    UK_TAKE_UP_ENGINE_PREDICTORS,
     uk_take_up_signal_gate,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
-
-_POLICY = UKTakeUpPopulationPolicy(
-    adult_age=18, state_pension_age=66, instant="2025-01-01", source="test"
-)
+from test_support.microcosm_build.uk_take_up_population import WorkingAgeStubEngine
 
 
 class _Contract:
@@ -85,7 +83,7 @@ def _frame(*, brma_values=("LONDON_A", "LONDON_B")):
 
 def test_take_up_gate_seeded_fixture_passes() -> None:
     result = uk_take_up_signal_gate(
-        _frame(), contract=_Contract(), population_policy=_POLICY
+        _frame(), contract=_Contract(), engine=WorkingAgeStubEngine()
     )
 
     assert result.passed is True
@@ -97,7 +95,7 @@ def test_take_up_gate_constant_column_fails() -> None:
     frame.table("benunit")["would_claim_uc"] = True
 
     result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
+        frame, contract=_Contract(), engine=WorkingAgeStubEngine()
     )
 
     assert result.passed is False
@@ -109,7 +107,7 @@ def test_take_up_gate_out_of_band_share_fails() -> None:
     frame.table("household")["property_purchased"] = [True] * 9 + [False]
 
     result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
+        frame, contract=_Contract(), engine=WorkingAgeStubEngine()
     )
 
     assert result.passed is False
@@ -172,7 +170,7 @@ def test_take_up_gate_measures_uc_share_over_units_with_a_working_age_adult() ->
     benunit.loc[benunit["benunit_id"] >= 207, "would_claim_uc"] = True
 
     result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
+        frame, contract=_Contract(), engine=WorkingAgeStubEngine()
     )
 
     detail = result.details["benunit.would_claim_uc"]
@@ -186,10 +184,75 @@ def test_take_up_gate_fails_when_the_uc_population_is_empty() -> None:
     frame.table("person")["age"] = 70
 
     result = uk_take_up_signal_gate(
-        frame, contract=_Contract(), population_policy=_POLICY
+        frame, contract=_Contract(), engine=WorkingAgeStubEngine()
     )
 
     assert result.passed is False
     assert "would_claim_uc: no unit in the draw's population" in " ".join(
         result.failures
     )
+
+
+def test_take_up_gate_reads_the_uc_population_from_the_engine() -> None:
+    """The gate asks the engine for is_WA_adult on the frame it measures.
+
+    Auxiliary float columns the SPI channel leaves NaN by design are filled
+    on the copy the engine reads, so the engine never refuses the frame.
+    """
+
+    frame = _frame()
+    person = frame.table("person")
+    person["other_investment_income"] = [np.nan, 1.0] * 5
+    seen = []
+
+    class _Recording(WorkingAgeStubEngine):
+        def materialize(self, frame, variables, period):
+            seen.append(frame.table("person")["other_investment_income"].isna().any())
+            return super().materialize(frame, variables, period)
+
+    engine = _Recording()
+    result = uk_take_up_signal_gate(frame, contract=_Contract(), engine=engine)
+
+    assert engine.calls == [(UK_TAKE_UP_ENGINE_PREDICTORS, "2023")]
+    assert seen == [False]
+    # The frame the gate measures keeps its NaN: only the engine's copy fills.
+    assert person["other_investment_income"].isna().sum() == 5
+    population = result.details["universal_credit_population"]
+    assert population["variable"] == "is_WA_adult"
+    assert population["period"] == "2023"
+    assert population["working_age_adults"] == 10
+
+
+def test_take_up_gate_follows_a_split_state_pension_age_cohort() -> None:
+    """Units count by the engine's per-person answer, not by age.
+
+    Every person here is 66; the engine says the first three are under State
+    Pension age (as for 66-year-olds born from 6 April 1960 in 2026-27).
+    """
+
+    frame = _frame()
+    frame.table("person")["age"] = 66
+    engine = WorkingAgeStubEngine(working_age_adult=[True] * 3 + [False] * 7)
+
+    result = uk_take_up_signal_gate(frame, contract=_Contract(), engine=engine)
+
+    assert result.details["benunit.would_claim_uc"]["population_units"] == 3
+
+
+def test_take_up_gate_refuses_to_guess_the_uc_population() -> None:
+    with pytest.raises(ValueError, match="reads the Universal Credit population"):
+        uk_take_up_signal_gate(_frame(), contract=_Contract())
+
+
+def test_take_up_binding_passes_the_armed_rules_engine() -> None:
+    binding = UK_GATE_REGISTRY["take_up_signal"]
+    engine = WorkingAgeStubEngine()
+
+    assert "rules_engine" in binding.artifact_keys
+    result = binding.evaluator(
+        EvidenceContext(frame=_frame(), artifacts={"rules_engine": engine}),
+        {"maximum_share_deviation": 0.05},
+    )
+
+    assert engine.calls == [(UK_TAKE_UP_ENGINE_PREDICTORS, "2023")]
+    assert "benunit.would_claim_uc" in result.details

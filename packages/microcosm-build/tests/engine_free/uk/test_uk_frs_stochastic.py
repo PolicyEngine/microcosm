@@ -14,10 +14,14 @@ def test_take_up_anchor_missing_source_column_fails_loud() -> None:
 
 def test_take_up_anchors_or_over_persons_and_stage_writes_outputs() -> None:
     frame = _frame()
+    engine = WorkingAgeStubEngine()
     transformed = UKFRSTakeUpStageTransform(
-        contract=_Contract(), stage=_take_up_stage(), population_policy=_POLICY
+        contract=_Contract(), stage=_take_up_stage(), engine=engine
     )(frame)
     benunit = transformed.table("benunit")
+
+    # The stage asks the engine once, for is_WA_adult at the frame's period.
+    assert engine.calls == [(UK_TAKE_UP_ENGINE_PREDICTORS, "2024")]
 
     anchors = aggregate_person_reported_to_benunit(
         frame.table("person"), frame.table("benunit")
@@ -134,20 +138,13 @@ def test_brma_missing_cell_fails_closed() -> None:
 
 
 def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> None:
-    """A unit with no adult under State Pension age is never drawn into UC."""
+    """A unit with no working-age adult is never drawn into UC."""
 
     frame = _frame()
     person, benunit = frame.table("person"), frame.table("benunit")
 
-    eligible = uc_age_eligible_benunits(person, benunit, _POLICY)
+    eligible = uc_age_eligible_benunits(person, benunit, population_from_ages(person))
     assert eligible.tolist() == [False, True, False]  # children only / 40 / 70
-    # The bounds are the engine's is_WA_adult edges: 17 is out, 18 in, 66 out.
-    assert _POLICY.working_age(np.array([17, 18, 65, 66])).tolist() == [
-        False,
-        True,
-        True,
-        False,
-    ]
 
     anchors = aggregate_person_reported_to_benunit(person, benunit)
     derived = derive_frs_take_up(
@@ -166,8 +163,62 @@ def test_uc_take_up_population_excludes_units_without_a_working_age_adult() -> N
         derive_frs_take_up(
             benunit, anchors=anchors, contract=_Contract(), uc_age_eligible=eligible[:2]
         )
-    with pytest.raises(KeyError, match="person.age is missing"):
-        uc_age_eligible_benunits(person.drop(columns=["age"]), benunit, _POLICY)
+    misaligned = UKTakeUpPopulation(
+        working_age_adult=np.array([True, False]), period="2024", source="test"
+    )
+    with pytest.raises(ValueError, match="must align with the person table"):
+        uc_age_eligible_benunits(person, benunit, misaligned)
+
+
+def test_uc_take_up_population_is_the_engines_per_person_status() -> None:
+    """Units follow each member's is_WA_adult, not an age bound.
+
+    From 2026-27 State Pension age follows the date of birth, so of two
+    66-year-olds one can be under it and the other over (policyengine-uk#1899).
+    The stage takes the engine's per-person answer as it is: the unit whose
+    66-year-old is under State Pension age joins the draw's population, the
+    unit whose 66-year-old is over it does not.
+    """
+
+    person = pd.DataFrame(
+        {
+            "person_id": [101, 201, 301, 401],
+            "person_benunit_id": [10, 20, 30, 40],
+            "person_household_id": [1, 2, 3, 4],
+            "age": [66, 66, 67, 17],
+            "child_benefit_reported": [0, 0, 0, 0],
+            "pension_credit_reported": [0, 0, 0, 0],
+            "universal_credit_reported": [0, 0, 0, 0],
+        }
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame(
+            {"benunit_id": [10, 20, 30, 40], "is_married": [False] * 4}
+        ),
+        household=pd.DataFrame(
+            {"household_id": [1, 2, 3, 4], "household_weight": [1.0] * 4}
+        ),
+        time_period="2026",
+    )
+    engine = WorkingAgeStubEngine(working_age_adult=[True, False, False, False])
+
+    population = uk_take_up_population(frame, engine)
+
+    assert engine.calls == [(UK_TAKE_UP_ENGINE_PREDICTORS, "2026")]
+    assert population.working_age_adult.tolist() == [True, False, False, False]
+    assert population.period == "2026"
+    assert population.evidence()["working_age_adults"] == 1
+    eligible = uc_age_eligible_benunits(person, frame.table("benunit"), population)
+    assert eligible.tolist() == [True, False, False, False]
+
+    # The engine's answer must be one boolean per person row.
+    with pytest.raises(ValueError, match="one boolean per person row"):
+        uk_take_up_population(
+            frame, WorkingAgeStubEngine(working_age_adult=[1, 0, 0, 0])
+        )
+    with pytest.raises(ValueError, match="has shape"):
+        uk_take_up_population(frame, WorkingAgeStubEngine(working_age_adult=[True]))
 
 
 def test_take_up_stage_refuses_a_manifest_that_drops_the_population_declaration() -> (
@@ -187,10 +238,35 @@ def test_take_up_stage_refuses_a_manifest_that_drops_the_population_declaration(
     broken = replace(stage, operations=tuple(stripped))
     with pytest.raises(ValueError, match="population='uc_age_eligible'"):
         assert_take_up_stage_population_declaration(broken)
+    engine = WorkingAgeStubEngine()
     with pytest.raises(ValueError, match="population='uc_age_eligible'"):
-        UKFRSTakeUpStageTransform(
-            contract=_Contract(), stage=broken, population_policy=_POLICY
-        )(_frame())
+        UKFRSTakeUpStageTransform(contract=_Contract(), stage=broken, engine=engine)(
+            _frame()
+        )
+    # The refusal comes before the engine is asked anything.
+    assert engine.calls == []
+
+    # A manifest that stops declaring the engine read, or declares the
+    # aggregate over something else, is refused too.
+    for mutate in (
+        lambda op: (
+            SourceOperationSpec(op.kind, {**op.parameters, "predictors": ["age"]})
+            if op.kind == "materialize_rules_engine_predictors"
+            else op
+        ),
+        lambda op: (
+            SourceOperationSpec(
+                op.kind, {**op.parameters, "aggregates": {"uc_age_eligible": "age"}}
+            )
+            if op.parameters.get("method") == "any"
+            else op
+        ),
+    ):
+        mutated = replace(
+            stage, operations=tuple(mutate(op) for op in stage.operations)
+        )
+        with pytest.raises(ValueError, match="consumed engine read of"):
+            assert_take_up_stage_population_declaration(mutated)
 
 
 def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
@@ -203,7 +279,9 @@ def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
         benunit,
         anchors=anchors,
         contract=_Contract(),
-        uc_age_eligible=uc_age_eligible_benunits(person, benunit, _POLICY),
+        uc_age_eligible=uc_age_eligible_benunits(
+            person, benunit, population_from_ages(person)
+        ),
     )
     # Benefit unit 20 is the couple; its rate is 0.0 in the fixture contract.
     assert not derived.loc[1, "would_claim_uc_childcare"]
@@ -213,5 +291,7 @@ def test_uc_childcare_take_up_is_drawn_by_family_type() -> None:
             benunit.drop(columns=["is_married"]),
             anchors=anchors,
             contract=_Contract(),
-            uc_age_eligible=uc_age_eligible_benunits(person, benunit, _POLICY),
+            uc_age_eligible=uc_age_eligible_benunits(
+                person, benunit, population_from_ages(person)
+            ),
         )

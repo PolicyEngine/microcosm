@@ -478,7 +478,11 @@ def _evaluate_column_implication(
 def _evaluate_take_up_signal(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    return uk_take_up_signal_gate(context.frame, **dict(parameters))
+    # The Universal Credit share is measured over the units the armed engine
+    # counts as having a working-age adult on this frame.
+    return uk_take_up_signal_gate(
+        context.frame, engine=context.artifacts["rules_engine"], **dict(parameters)
+    )
 
 
 def _engine_enum_domain(engine: Any, column: str) -> Any:
@@ -1671,6 +1675,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="take_up_signal",
         evaluator=_evaluate_take_up_signal,
         parameter_keys=frozenset({"maximum_share_deviation"}),
+        artifact_keys=frozenset({"rules_engine"}),
     ),
     "enum_domain": UKGateBinding(
         name="enum_domain",

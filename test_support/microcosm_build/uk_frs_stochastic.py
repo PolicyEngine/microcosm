@@ -32,21 +32,21 @@ from microcosm.build.uk_runtime.frs_person_draws import (
 )
 from microcosm.build.uk_runtime.frs_take_up import (
     FRS_TAKE_UP_OUTPUT_COLUMNS,
+    UK_TAKE_UP_ENGINE_PREDICTORS,
+    UK_UC_WORKING_AGE_ADULT,
     UKFRSTakeUpStageTransform,
-    UKTakeUpPopulationPolicy,
+    UKTakeUpPopulation,
     aggregate_person_reported_to_benunit,
     assert_take_up_stage_population_declaration,
     derive_frs_take_up,
     uc_age_eligible_benunits,
-    uk_take_up_population_policy,
+    uk_take_up_population,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
-
-# The engine's 2025 working-age bounds (is_adult at 18, State Pension age 66),
-# injected so the hermetic tests need no engine; the lockstep test below checks
-# the reader returns exactly this.
-_POLICY = UKTakeUpPopulationPolicy(
-    adult_age=18, state_pension_age=66, instant="2025-01-01", source="test"
+from test_support.microcosm_build.uk_take_up_population import (
+    WorkingAgeStubEngine,
+    population_from_ages,
+    whole_age_working_age_adult,
 )
 
 

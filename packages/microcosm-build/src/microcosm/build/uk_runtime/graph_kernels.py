@@ -107,6 +107,7 @@ _STAGE_HELPER_MODULES = {
     "frs_spine": (uc_relationships,),
     "frs_legacy_proxies": (uk_engine_adapter,),
     "frs_education_grant_split": (uk_engine_adapter,),
+    "frs_take_up": (uk_engine_adapter,),
     "frs_brma": (uk_engine_adapter,),
     "was_wealth": (uk_engine_adapter,),
     "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
@@ -506,7 +507,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["frs_education_grant_split"], engine=engine
             ),
             "frs_take_up": UKFRSTakeUpStageTransform(
-                contract=contract, stage=stages["frs_take_up"]
+                contract=contract, stage=stages["frs_take_up"], engine=engine
             ),
             "frs_person_draws": UKFRSPersonDrawsStageTransform(
                 contract=contract, stage=stages["frs_person_draws"]

@@ -194,18 +194,11 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     ),
     "frs_legacy_proxies": None,
     "frs_education_grant_split": None,
-    "frs_take_up": frozenset(
-        ("person", column)
-        for column in (
-            "child_benefit_reported",
-            "pension_credit_reported",
-            "universal_credit_reported",
-            # The Universal Credit draw's population: units with an adult
-            # under State Pension age (#882).
-            "age",
-        )
-    )
-    | frozenset({("benunit", "is_married")}),
+    # The Universal Credit draw's population is the engine's is_WA_adult,
+    # read on the whole frame (#882): State Pension age follows each person's
+    # date of birth, which the engine places from ids and weights within each
+    # age and sex, so the input surface is genuinely open.
+    "frs_take_up": None,
     "frs_person_draws": frozenset({("person", "age")}),
     "frs_household_draws": frozenset(),
     "frs_brma": None,

@@ -12,6 +12,7 @@ import argparse
 import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -28,10 +29,12 @@ from microcosm.build.uk_runtime.frs_brma import (
 from microcosm.build.uk_runtime.frs_household_draws import derive_frs_household_draws
 from microcosm.build.uk_runtime.frs_person_draws import derive_frs_person_draws
 from microcosm.build.uk_runtime.frs_take_up import (
+    UKTakeUpPopulation,
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
     uc_age_eligible_benunits,
-    uk_take_up_population_policy,
+    uk_engine_readable_frame,
+    uk_take_up_population,
 )
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -44,6 +47,10 @@ from microcosm.build.uk_runtime.regional_uprating import (
 from microcosm.build.uk_runtime.was_wealth import (
     allocate_student_loan_balance_to_people,
 )
+
+# The engine's is_WA_adult rides on the person rows as a temporary column so
+# the permuted recomputation keeps each flag with its person.
+_WORKING_AGE_ADULT_COLUMN = "_uc_take_up_working_age_adult"
 
 
 def identity_stability_receipt(
@@ -88,13 +95,13 @@ def e4_identity_receipt(
     count_resource: Mapping[str, object],
     lha_category: Sequence[object],
     permutation_seed: int,
-    population_policy=None,
+    population: UKTakeUpPopulation,
 ) -> dict[str, object]:
     """Recompute every E4 column in original and permuted row order.
 
-    ``population_policy`` is the engine's working-age bounds the take-up draw
-    used (``uk_take_up_population_policy``); it is read from the engine when
-    not supplied, so a hermetic caller passes one.
+    ``population`` is the engine's working-age adults the take-up draw used
+    (``uk_take_up_population``), one flag per person row; it travels with its
+    row through the permutation.
 
     Two claims are receipted: a row permutation of the input tables changes
     no assignment per entity id, and the original-order recomputation equals
@@ -102,10 +109,11 @@ def e4_identity_receipt(
     """
 
     person = frame.table("person")
+    if population.working_age_adult.shape != (len(person),):
+        raise ValueError("The take-up population must align to person rows.")
+    person = person.assign(**{_WORKING_AGE_ADULT_COLUMN: population.working_age_adult})
     benunit = frame.table("benunit").copy()
     household = frame.table("household")
-    if population_policy is None:
-        population_policy = uk_take_up_population_policy(uk_time_period(frame))
     if len(lha_category) != len(benunit):
         raise ValueError("LHA_category materialization must align to benunit rows.")
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
@@ -118,7 +126,14 @@ def e4_identity_receipt(
             anchors=anchors,
             contract=contract,
             uc_age_eligible=uc_age_eligible_benunits(
-                person_t, benunit_t, population_policy
+                person_t,
+                benunit_t,
+                replace(
+                    population,
+                    working_age_adult=person_t[_WORKING_AGE_ADULT_COLUMN].to_numpy(
+                        dtype=bool
+                    ),
+                ),
             ),
         )
         take_up.index = benunit_t["benunit_id"].to_numpy()
@@ -1163,8 +1178,9 @@ def main() -> int:
         # scoping rule the E5 receipt already applies).
         frame = _frs_only_frame(frame)
         engine = PolicyEngineUKEngine()
+        engine_frame = uk_engine_readable_frame(frame)
         lha_category = engine.materialize(
-            _engine_safe_frame(frame), ("LHA_category",), uk_time_period(frame)
+            engine_frame, ("LHA_category",), uk_time_period(frame)
         )["LHA_category"]
         receipt = e4_identity_receipt(
             frame,
@@ -1172,7 +1188,7 @@ def main() -> int:
             count_resource=load_brma_count_resource(),
             lha_category=lha_category,
             permutation_seed=args.permutation_seed,
-            population_policy=uk_take_up_population_policy(uk_time_period(frame)),
+            population=uk_take_up_population(engine_frame, engine),
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
@@ -1437,38 +1453,6 @@ def _drop_stacked_layers(frame, flags: Sequence[str]):
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
         household_weights=weights,
-        mass_log=frame.mass_log,
-    )
-
-
-def _engine_safe_frame(frame):
-    """Fill by-design NaN on channel-only auxiliary columns for engine reads.
-
-    The #717 SPI channel leaves hmrc_spi_* auxiliaries (e.g.
-    other_investment_income) NaN on FRS rows by design; instruments fill 0,
-    matching stage-time semantics, because the engine adapter rejects NaN.
-    LHA_category derivation does not read these columns.
-    """
-
-    from microcosm.build.uk_runtime.national_frame import (
-        uk_household_weight_kind,
-        uk_national_frame,
-    )
-
-    tables = {}
-    for entity in ("person", "benunit", "household"):
-        table = frame.table(entity).copy()
-        for column in table.columns:
-            if table[column].dtype.kind == "f" and table[column].isna().any():
-                table[column] = table[column].fillna(0.0)
-        tables[entity] = table
-    return uk_national_frame(
-        person=tables["person"],
-        benunit=tables["benunit"],
-        household=tables["household"],
-        time_period=uk_time_period(frame),
-        weight_kind=uk_household_weight_kind(frame),
-        household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
     )
 

@@ -31,7 +31,12 @@ FRS_LEGACY_PROXY_OUTPUT_COLUMNS = (
     "esa_health_condition_proxy",
     "esa_support_group_proxy",
 )
-UK_LEGACY_PROXY_PREDICTORS = ("state_pension_age",)
+# Legacy JSA and ESA are working-age benefits. Whether a person is under State
+# Pension age is the engine's own is_SP_age: State Pension age follows the date
+# of birth (policyengine-uk#1899), so the engine's per-person
+# state_pension_age is a fractional age that a whole-year age cannot be
+# compared with.
+UK_LEGACY_PROXY_PREDICTORS = ("is_SP_age",)
 ESA_HEALTH_EMPLOYMENT_STATUSES = ("LONG_TERM_DISABLED", "SHORT_TERM_DISABLED")
 
 
@@ -70,7 +75,7 @@ class UKFRSLegacyProxiesStageTransform:
             frame,
             self.raw_dir,
             stage=self.stage,
-            state_pension_age=materialized["state_pension_age"],
+            over_state_pension_age=materialized["is_SP_age"],
             policy=self.policy or uk_legacy_jsa_policy(period),
         )
 
@@ -106,7 +111,7 @@ def add_frs_legacy_proxies(
     raw_dir: str | Path,
     *,
     stage: SourceStageSpec,
-    state_pension_age: np.ndarray,
+    over_state_pension_age: np.ndarray,
     policy: UKLegacyJSAPolicy,
 ) -> Frame:
     artifacts = _artifact_by_table(stage)
@@ -121,7 +126,7 @@ def add_frs_legacy_proxies(
     derived = derive_frs_legacy_proxies(
         person,
         employment_status_reported=reported,
-        state_pension_age=state_pension_age,
+        over_state_pension_age=over_state_pension_age,
         max_annual_hours=policy.max_weekly_hours_single * WEEKS_IN_YEAR,
     )
     for column in FRS_LEGACY_PROXY_OUTPUT_COLUMNS:
@@ -143,7 +148,7 @@ def derive_frs_legacy_proxies(
     person: pd.DataFrame,
     *,
     employment_status_reported,
-    state_pension_age,
+    over_state_pension_age,
     max_annual_hours: float,
 ) -> pd.DataFrame:
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
@@ -151,12 +156,17 @@ def derive_frs_legacy_proxies(
     hours = pd.to_numeric(person["hours_worked"], errors="coerce").fillna(0).to_numpy()
     education = person["current_education"].to_numpy()
     reported = np.asarray(employment_status_reported, dtype=bool)
-    spa = np.asarray(state_pension_age, dtype=float)
+    over_spa = np.asarray(over_state_pension_age)
+    if over_spa.dtype.kind != "b" or over_spa.shape != (len(person),):
+        raise ValueError(
+            "over_state_pension_age must be one boolean per person row; got "
+            f"shape {over_spa.shape} and dtype {over_spa.dtype}"
+        )
     values = pd.DataFrame(index=person.index)
     values["legacy_jobseeker_proxy"] = (
         reported
         & (age >= 18)
-        & (age < spa)
+        & ~over_spa
         & (status == "UNEMPLOYED")
         & (hours < max_annual_hours)
         & (education == "NOT_IN_EDUCATION")
@@ -164,7 +174,7 @@ def derive_frs_legacy_proxies(
     health = (
         reported
         & (age >= 16)
-        & (age < spa)
+        & ~over_spa
         & np.isin(status, ESA_HEALTH_EMPLOYMENT_STATUSES)
     )
     values["esa_health_condition_proxy"] = health

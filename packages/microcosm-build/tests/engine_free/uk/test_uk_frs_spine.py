@@ -23,7 +23,6 @@ from microcosm.build.uk_runtime import (
     frs_disability,
     frs_education_grants,
     frs_legacy_proxies,
-    frs_take_up,
     spine_build,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
@@ -608,7 +607,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {"kind": "read_tables"},
                         {
                             "kind": "materialize_rules_engine_predictors",
-                            "predictors": ["state_pension_age"],
+                            "predictors": ["is_SP_age"],
                         },
                         {"kind": "derive"},
                     ],
@@ -660,10 +659,15 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     operations=[
                         {"kind": "aggregate_person_to_benunit"},
                         {
-                            "kind": "aggregate_person_to_benunit",
-                            "method": "any_adult_under_state_pension_age",
+                            "kind": "materialize_rules_engine_predictors",
+                            "predictors": ["is_WA_adult"],
                             "consumed_only": True,
-                            "aggregates": {"uc_age_eligible": "age"},
+                        },
+                        {
+                            "kind": "aggregate_person_to_benunit",
+                            "method": "any",
+                            "consumed_only": True,
+                            "aggregates": {"uc_age_eligible": "is_WA_adult"},
                         },
                         {
                             "kind": "assign_binary_with_anchored_residual",
@@ -925,9 +929,15 @@ class _FakeUKEngine:
     def materialize(self, frame, variables, period):
         person_count = len(frame.table("person"))
         values = {}
+        age = frame.table("person")["age"].to_numpy(dtype=float)
         for variable in variables:
-            if variable == "state_pension_age":
-                values[variable] = np.full(person_count, 66.0)
+            # Whole-age answers, as the engine gives before 2026-27; unknown
+            # person variables fall through to zeros below, so the two the
+            # spine reads as booleans must be named here.
+            if variable == "is_SP_age":
+                values[variable] = age >= 66
+            elif variable == "is_WA_adult":
+                values[variable] = (age >= 18) & (age < 66)
             elif variable == "LHA_category":
                 values[variable] = np.array(["A"] * len(frame.table("benunit")))
             else:
@@ -1285,16 +1295,6 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
         "uk_dsa_policy",
         lambda period: frs_education_grants.UKDSAPolicy(
             maximum=0.0,
-            instant=f"{period}-01-01",
-            source="test stub",
-        ),
-    )
-    monkeypatch.setattr(
-        frs_take_up,
-        "uk_take_up_population_policy",
-        lambda period: frs_take_up.UKTakeUpPopulationPolicy(
-            adult_age=18,
-            state_pension_age=66,
             instant=f"{period}-01-01",
             source="test stub",
         ),

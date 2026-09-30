@@ -1351,7 +1351,7 @@ def _build_implementations(
             stage=stages["frs_education_grant_split"], engine=engine
         ),
         "frs_take_up": UKFRSTakeUpStageTransform(
-            contract=contract, stage=stages["frs_take_up"]
+            contract=contract, stage=stages["frs_take_up"], engine=engine
         ),
         "frs_person_draws": UKFRSPersonDrawsStageTransform(
             contract=contract, stage=stages["frs_person_draws"]

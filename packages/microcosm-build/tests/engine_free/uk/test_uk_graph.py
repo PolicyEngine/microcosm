@@ -180,6 +180,7 @@ def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
     stages = (
         "frs_legacy_proxies",
         "frs_education_grant_split",
+        "frs_take_up",
         "frs_brma",
         "was_wealth",
         "nts_bus_travel",

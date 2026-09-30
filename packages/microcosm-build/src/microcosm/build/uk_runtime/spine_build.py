@@ -1389,6 +1389,7 @@ def prepare_uk_spine_execution(
         "frs_take_up": UKFRSTakeUpStageTransform(
             contract=stochastic_contract,
             stage=stages_by_name["frs_take_up"],
+            engine=engine,
         ),
         "frs_person_draws": UKFRSPersonDrawsStageTransform(
             contract=stochastic_contract,

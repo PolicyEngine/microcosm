@@ -506,6 +506,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["frs_take_up"].operations] == [
             "aggregate_person_to_benunit",
+            "materialize_rules_engine_predictors",
             "aggregate_person_to_benunit",
             "assign_binary_with_anchored_residual",
             "assign_binary_from_rate",
@@ -691,6 +692,7 @@ class TestE3ManifestLockstep:
         )
         from microcosm.build.uk_runtime.frs_take_up import (
             UK_TAKE_UP_ANCHOR_AGGREGATES,
+            UK_TAKE_UP_ENGINE_PREDICTORS,
         )
         from microcosm.build.uk_runtime.lcfs_consumption import (
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
@@ -730,6 +732,10 @@ class TestE3ManifestLockstep:
         assert (
             stages["frs_take_up"].operations[0].parameters["aggregates"]
             == UK_TAKE_UP_ANCHOR_AGGREGATES
+        )
+        assert (
+            tuple(stages["frs_take_up"].operations[1].parameters["predictors"])
+            == UK_TAKE_UP_ENGINE_PREDICTORS
         )
         reporter = stages["uc_reporter_redraw"]
         assert (
