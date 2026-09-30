@@ -365,6 +365,40 @@ class TestSSNCardAssignment:
         assert int((in_pew_universe & in_labor_force).sum()) == 1
         assert status.iloc[2] == "UNDOCUMENTED"
 
+    def test_exact_student_closure_residue_never_spills_a_worker(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Regression for 5a89fed1e. The student control 0.3 equals, in exact
+        # arithmetic, the two working students' 0.1 + 0.2, so spilling the
+        # one nonworking student (weight 1.0) closes the student excess
+        # exactly. In binary floating point the recomputed remainder is
+        # 0.1 + 0.2 - 0.3 = 5.6e-17 > 0; compared with zero, that residue
+        # opened the second tier and spilled a worker the worker control
+        # still needed.
+        person = _person_table(
+            [
+                _noncitizen(A_HSCOL=2, person_weight=1.0),
+                _noncitizen(A_HSCOL=2, A_LFSR=1, person_weight=0.1),
+                _noncitizen(A_HSCOL=2, A_LFSR=1, person_weight=0.2),
+            ]
+        )
+        assert float(np.asarray([0.1, 0.2]).sum()) - 0.3 > 0.0
+        for seed in range(4):
+            output = _run(person, students=0.3, workers=100.0, seed=seed)
+            assert output["ssn_card_type"].tolist() == [
+                "NON_CITIZEN_VALID_EAD",
+                "NONE",
+                "NONE",
+            ], seed
+
+        # Sensitivity: without the closure tolerance the same case spills a
+        # worker, so the assertions above bind on the tolerance.
+        monkeypatch.setattr(
+            immigration_module, "_SPILL_CLOSURE_RELATIVE_TOLERANCE", 0.0
+        )
+        output = _run(person, students=0.3, workers=100.0, seed=0)
+        assert output.loc[1:, "ssn_card_type"].eq("NON_CITIZEN_VALID_EAD").any()
+
     def test_below_control_counts_spill_nothing(self) -> None:
         person = _person_table(
             [_noncitizen(A_LFSR=1, WSAL_VAL=10_000.0), _noncitizen(A_HSCOL=2)]
@@ -1405,6 +1439,67 @@ class TestCompositionGate:
             controls=_plausible_controls(),
         )
         assert gate.passed, gate.failures
+
+    def test_gate_rederives_the_daca_cohort_at_the_stage_period(self) -> None:
+        # Regression for 5a89fed1e: the gate re-derived cohort evidence at a
+        # hard-coded 2024. A worker who arrived in 2007 (PEINUSYR 20, the
+        # 2006-2007 bin) and is 33 entered at 16 when measured in 2024,
+        # outside the DACA cohort ("arrived by 2007 before age 16"), but at
+        # 15 when measured in 2025, inside it. The residual worker spill
+        # gives the row an EAD at either period.
+        rows = (
+            [{"PRCITSHP": 1} for _ in range(90)]
+            + [_noncitizen() for _ in range(9)]
+            + [_noncitizen(PEINUSYR=20, A_AGE=33, A_LFSR=1)]
+        )
+        controls = ImmigrationControls(
+            undocumented=UndocumentedControls(
+                workers=0.5,
+                students=100.0,
+                population_anchor=10.0,
+                sources=_plausible_controls().undocumented.sources,
+            ),
+            humanitarian=_humanitarian_draws(),
+        )
+
+        def stage_frame(period: int) -> Frame:
+            output = run_source_stage(
+                _stage_spec(workers=0.5, students=100.0, anchor=10.0),
+                tables={"person": _person_table(rows)},
+                operation_handlers=_HANDLERS,
+                config=SourceRuntimeConfig(seed=0, target_year=period),
+            )
+            return _us_frame(output.drop(columns=["person_weight"]).to_dict("records"))
+
+        by_period = {period: stage_frame(period) for period in (2024, 2025)}
+        labels = {
+            period: frame.table("person").iloc[-1][list(US_IMMIGRATION_OUTPUT_COLUMNS)]
+            for period, frame in by_period.items()
+        }
+        assert labels[2024].tolist() == [
+            "NON_CITIZEN_VALID_EAD",
+            "LEGAL_PERMANENT_RESIDENT",
+        ]
+        assert labels[2025].tolist() == ["NON_CITIZEN_VALID_EAD", "DACA"]
+
+        cohort_failure = (
+            "1 person(s) violate the source-aware Cuban/Haitian entrant or DACA "
+            "cohort contract."
+        )
+        for stage_period, frame in by_period.items():
+            for gate_period in (2024, 2025):
+                gate = us_immigration_composition_gate(
+                    frame, time_period=gate_period, controls=controls
+                )
+                invalid = gate.details["evidence_derived_status_compatibility"][
+                    "invalid_rows"
+                ]
+                if gate_period == stage_period:
+                    assert gate.passed, (stage_period, gate.failures)
+                    assert invalid == 0
+                else:
+                    assert gate.failures == (cohort_failure,)
+                    assert invalid == 1
 
     def test_fails_when_columns_missing(self) -> None:
         gate = us_immigration_composition_gate(
