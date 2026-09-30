@@ -8577,6 +8577,38 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "artifact_role",
+      "resource",
+      "population_period",
+      "method",
+      "state_pension_age"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_spi_donor_ages_by_population"
+      },
+      "artifact_role": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "population_period": {
+       "type": "integer"
+      },
+      "method": {
+       "type": "string"
+      },
+      "state_pension_age": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "carrier_column",
       "band_column",
       "band_lower_bounds",
@@ -8621,6 +8653,48 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "age_pool_minimum": {
+       "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "spi_state_pension_leaf",
+      "spi_channel_columns",
+      "base_channel_columns",
+      "state_pension_age",
+      "receipt"
+     ],
+     "properties": {
+      "kind": {
+       "const": "zero_pension_age_reports_below_state_pension_age"
+      },
+      "spi_state_pension_leaf": {
+       "type": "string"
+      },
+      "spi_channel_columns": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "base_channel_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "state_pension_age": {
+       "type": "string"
+      },
+      "receipt": {
+       "type": "string"
       }
      }
     },

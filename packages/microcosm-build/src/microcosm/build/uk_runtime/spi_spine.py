@@ -48,14 +48,19 @@ from microcosm.build.uk_runtime.spi_band_donors import (
 )
 from microcosm.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
+    SPI_DONOR_AGE_DRAW_METHOD,
+    SPI_DONOR_AGE_POPULATION_PERIOD,
+    SPI_DONOR_AGE_POPULATION_RESOURCE,
     SPI_DONOR_INCOME_YEAR,
     SPI_INCOME_UPRATING_VARIABLES,
     SPI_MINIMUM_RECIPIENT_AGE,
     SPI_SOURCE_TI_FORMULA,
     SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
+    UKSPIStatePensionAgeGuard,
     assert_frs_hmrc_auxiliary_crosswalk_available,
     impute_uk_spi_income_support,
+    load_spi_donor_age_model,
     verify_spi_donor_identity,
 )
 from microcosm.build.uk_runtime.spi_support import (
@@ -93,9 +98,38 @@ UK_HMRC_SPI_SPINE_REPLAY_REPORT_KIND = "uk_hmrc_spi_income_spine_208_fact_replay
 #: The reserved band carriers' pool: the full prepared tape by published band.
 SPI_SPINE_BAND_DONOR_POOL = (
     "full prepared donor tape by published total income band (TEI + TII), "
-    "narrowed to the carrier's region where that pool holds the minimum"
+    "narrowed to the carrier's SPI age band where that pool holds the age "
+    "minimum (composites never age-match), then to the carrier's region where "
+    "that pool holds the regional minimum"
 )
 SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM = 20
+SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM = 20
+SPI_SPINE_STATE_PENSION_AGE_SOURCE = (
+    "policyengine-uk gov.dwp.state_pension.age at the build instant"
+)
+#: Reviewed declaration of the donor age draw (microcosm#1069, WP2 c5).
+SPI_SPINE_DONOR_AGE_DRAW: Mapping[str, object] = {
+    "artifact_role": "qrf_donor",
+    "resource": SPI_DONOR_AGE_POPULATION_RESOURCE,
+    "population_period": SPI_DONOR_AGE_POPULATION_PERIOD,
+    "method": SPI_DONOR_AGE_DRAW_METHOD,
+    "state_pension_age": SPI_SPINE_STATE_PENSION_AGE_SOURCE,
+}
+#: Reviewed declaration of the State Pension age guard (ruling R8: zero with
+#: a receipt). The SPI State Pension leaf is zeroed before the stage-2 receipt
+#: bridge; imputed synthetic-channel reports after stage 2; the base
+#: channel's State Pension reports before stage 2 trains on them.
+SPI_SPINE_STATE_PENSION_AGE_GUARD: Mapping[str, object] = {
+    "spi_state_pension_leaf": SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
+    "spi_channel_columns": [
+        "state_pension_reported",
+        "pension_credit_reported",
+        "winter_fuel_allowance_reported",
+    ],
+    "base_channel_columns": ["state_pension_reported"],
+    "state_pension_age": SPI_SPINE_STATE_PENSION_AGE_SOURCE,
+    "receipt": "rows, weighted people and amounts removed per column and step",
+}
 
 UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS = (
     *FRS_HMRC_RETAINED_LEAF_COLUMNS,
@@ -252,6 +286,8 @@ class UKSPIIncomeSpineResult:
             "pension_receipt_bridge": self.imputation.pension_receipt_bridge,
             "income_uprating": self.imputation.income_uprating,
             "band_donor_resample": self.imputation.band_donor_resample,
+            "donor_age_draw": self.imputation.donor_age_draw,
+            "state_pension_age_guard": list(self.imputation.state_pension_age_guard),
             "targets": {
                 "count": len(self.source_targets.targets),
                 "classification": dict(self.replay_report.summary),
@@ -549,7 +585,34 @@ class UKSPIIncomeSpineStageTransform:
                     resample_op.parameters["regional_pool_minimum"]
                 ),
                 "seed": int(resample_op.parameters["seed"]),
+                **(
+                    {
+                        "age_pool_minimum": int(
+                            resample_op.parameters["age_pool_minimum"]
+                        )
+                    }
+                    if "age_pool_minimum" in resample_op.parameters
+                    else {}
+                ),
             }
+        )
+        age_op = _optional_operation(self.stage, "draw_spi_donor_ages_by_population")
+        guard_op = _optional_operation(
+            self.stage, "zero_pension_age_reports_below_state_pension_age"
+        )
+        donor_age_model = (
+            load_spi_donor_age_model(uk_time_period(frame))
+            if age_op is not None or guard_op is not None
+            else None
+        )
+        state_pension_age_guard = (
+            None
+            if guard_op is None or donor_age_model is None
+            else UKSPIStatePensionAgeGuard(
+                state_pension_age=donor_age_model.state_pension_age,
+                spi_channel_columns=tuple(guard_op.parameters["spi_channel_columns"]),
+                base_channel_columns=tuple(guard_op.parameters["base_channel_columns"]),
+            )
         )
         imputation = impute_uk_spi_income_support(
             support,
@@ -574,6 +637,8 @@ class UKSPIIncomeSpineStageTransform:
                 ]
             ),
             band_donor_resample=band_donor_resample,
+            donor_age_model=donor_age_model if age_op is not None else None,
+            state_pension_age_guard=state_pension_age_guard,
         )
         result_frame = uk_national_frame(
             person=imputation.person,
@@ -956,6 +1021,7 @@ def _assert_income_stage_parameters(
             "band_lower_bounds": list(SPI_INCOME_BAND_DONOR_LOWER_BOUNDS),
             "pool": SPI_SPINE_BAND_DONOR_POOL,
             "regional_pool_minimum": SPI_SPINE_BAND_DONOR_REGIONAL_POOL_MINIMUM,
+            "age_pool_minimum": SPI_SPINE_BAND_DONOR_AGE_POOL_MINIMUM,
             "weighting": "FACT",
             "with_replacement": True,
             "outputs": "stage-1 outputs, uprated as the stage-1 draws",
@@ -971,6 +1037,27 @@ def _assert_income_stage_parameters(
             raise ValueError(
                 "SPI income resample_band_donor_leaves declaration drifted from "
                 f"the reviewed mapping on parameter(s) {drifted}."
+            )
+    for kind, reviewed in (
+        ("draw_spi_donor_ages_by_population", SPI_SPINE_DONOR_AGE_DRAW),
+        (
+            "zero_pension_age_reports_below_state_pension_age",
+            SPI_SPINE_STATE_PENSION_AGE_GUARD,
+        ),
+    ):
+        operation = _optional_operation(stage, kind)
+        if operation is None:
+            continue
+        actual = dict(operation.parameters)
+        if actual != dict(reviewed):
+            drifted = sorted(
+                key
+                for key in {*actual, *reviewed}
+                if actual.get(key) != reviewed.get(key)
+            )
+            raise ValueError(
+                f"SPI income {kind} declaration drifted from the reviewed mapping "
+                f"on parameter(s) {drifted}."
             )
 
 

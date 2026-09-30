@@ -2470,6 +2470,13 @@
           "survey": "HMRC Personal Incomes Tables 3.6 and 3.7",
           "tax_year_start": 2023,
           "vintage": "2023-24"
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "ons_single_year_age_populations.json",
+          "role": "donor_age_populations",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "person",
@@ -2540,6 +2547,14 @@
           "runtime_sha256_required": true,
           "seed": 42,
           "weight": "FACT"
+        },
+        {
+          "artifact_role": "qrf_donor",
+          "kind": "draw_spi_donor_ages_by_population",
+          "method": "whole-year age drawn within the AGERANGE band in proportion to the ONS single-year population of the donor's sex, then a uniform fraction of a year; State Pension recipients (SRP > 0) are drawn at or above State Pension age, and the band's below-State-Pension-age population share is drawn from its non-recipients",
+          "population_period": 2023,
+          "resource": "ons_single_year_age_populations.json",
+          "state_pension_age": "policyengine-uk gov.dwp.state_pension.age at the build instant"
         },
         {
           "assessable_income_source_semantics": "QRF draws leaves only; TEI, TII, and TI are deterministic post-draw accounting aggregates and TI equals TEI + TII exactly",
@@ -2721,6 +2736,7 @@
           "training_artifact_role": "qrf_donor"
         },
         {
+          "age_pool_minimum": 20,
           "band_column": "spi_income_band_donor_lower_bound",
           "band_lower_bounds": [
             200000,
@@ -2731,7 +2747,7 @@
           "carrier_column": "person_is_spi_income_band_carrier",
           "kind": "resample_band_donor_leaves",
           "outputs": "stage-1 outputs, uprated as the stage-1 draws",
-          "pool": "full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's region where that pool holds the minimum",
+          "pool": "full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's SPI age band where that pool holds the age minimum (composites never age-match), then to the carrier's region where that pool holds the regional minimum",
           "regional_pool_minimum": 20,
           "seed": 44,
           "weighting": "FACT",
@@ -2818,6 +2834,20 @@
           "training_population": "uk_frs_raw_spine_base_support_channel",
           "weight": "household_weight",
           "weight_mapping": "household_to_person"
+        },
+        {
+          "base_channel_columns": [
+            "state_pension_reported"
+          ],
+          "kind": "zero_pension_age_reports_below_state_pension_age",
+          "receipt": "rows, weighted people and amounts removed per column and step",
+          "spi_channel_columns": [
+            "state_pension_reported",
+            "pension_credit_reported",
+            "winter_fuel_allowance_reported"
+          ],
+          "spi_state_pension_leaf": "hmrc_spi_state_pension_income",
+          "state_pension_age": "policyengine-uk gov.dwp.state_pension.age at the build instant"
         },
         {
           "columns": [

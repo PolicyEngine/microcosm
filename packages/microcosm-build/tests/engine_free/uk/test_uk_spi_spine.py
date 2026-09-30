@@ -23,6 +23,7 @@ from microcosm.build.uk_runtime.spi_income import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_DONOR_REQUIRED_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
+    SPIDonorAgeModel,
     impute_uk_spi_income_support,
 )
 from microcosm.build.uk_runtime.spi_spine import (
@@ -544,6 +545,19 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
         )
 
     monkeypatch.setattr(spi_income, "_spi_income_uprating_factors", uprating_factors)
+    # State Pension age is an engine read; the engine lane covers the real
+    # model (tests/engine/uk/test_uk_spi_state_pension_age.py).
+    monkeypatch.setattr(
+        spi_spine,
+        "load_spi_donor_age_model",
+        lambda _build_period: SPIDonorAgeModel(
+            populations={
+                (sex, age): 1.0 for sex in ("MALE", "FEMALE") for age in range(0, 91)
+            },
+            state_pension_age=66,
+            source="engine-free fixture",
+        ),
+    )
     support_frame = UKSPISupportChannelStageTransform(
         stage=_committed_stage("spi_support_channel"),
         sample_fraction=0.0002,

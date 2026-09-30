@@ -853,6 +853,33 @@
           "expected_row_count": 48
         }
       ]
+    },
+    {
+      "resource": "ons_single_year_age_populations.json",
+      "purpose": "ONS mid-2023 UK resident population by single year of age (0 to 89 and 90 and over) and sex (MYE2). Consumed by the SPI income stage, which draws each SPI 2022-23 donor's age within its published AGERANGE band in proportion to these single-year populations instead of uniformly, with State Pension recipients drawn at or above State Pension age (microcosm#1069).",
+      "consumers": [
+        "uk_runtime.spi_income"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "mye2_uk_single_year_of_age_by_sex_mid2023",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.mid_year_population_estimate",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023"
+            ],
+            "dimensions": [
+              "age",
+              "sex"
+            ]
+          },
+          "expected_row_count": 182
+        }
+      ]
     }
   ]
 }

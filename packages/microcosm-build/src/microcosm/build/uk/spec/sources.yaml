@@ -1327,6 +1327,11 @@ stages:
     mapped_build_period: 2024
     period_mapping: latest_published_tax_year
     runtime_sha256_required: true
+  - role: donor_age_populations
+    kind: public_aggregate_reference
+    resource: ons_single_year_age_populations.json
+    format: json
+    runtime_sha256_required: true
   operations:
   - kind: verify_pinned_hmrc_source_pair
     artifact_roles:
@@ -1373,6 +1378,12 @@ stages:
     fail_on_missing_columns: true
     fail_on_invalid_weight: true
     seed: 42
+  - kind: draw_spi_donor_ages_by_population
+    artifact_role: qrf_donor
+    resource: ons_single_year_age_populations.json
+    population_period: 2023
+    method: whole-year age drawn within the AGERANGE band in proportion to the ONS single-year population of the donor's sex, then a uniform fraction of a year; State Pension recipients (SRP > 0) are drawn at or above State Pension age, and the band's below-State-Pension-age population share is drawn from its non-recipients
+    state_pension_age: policyengine-uk gov.dwp.state_pension.age at the build instant
   - kind: fit_weighted_qrf_stage1
     training_artifact_role: qrf_donor
     recipient_minimum_age: 16
@@ -1524,8 +1535,9 @@ stages:
     - 500000
     - 1000000
     - 2000000
-    pool: full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's region where that pool holds the minimum
+    pool: full prepared donor tape by published total income band (TEI + TII), narrowed to the carrier's SPI age band where that pool holds the age minimum (composites never age-match), then to the carrier's region where that pool holds the regional minimum
     regional_pool_minimum: 20
+    age_pool_minimum: 20
     weighting: FACT
     with_replacement: true
     outputs: stage-1 outputs, uprated as the stage-1 draws
@@ -1602,6 +1614,16 @@ stages:
     require_all_outputs: false
     n_estimators: 100
     seed: 43
+  - kind: zero_pension_age_reports_below_state_pension_age
+    spi_state_pension_leaf: hmrc_spi_state_pension_income
+    spi_channel_columns:
+    - state_pension_reported
+    - pension_credit_reported
+    - winter_fuel_allowance_reported
+    base_channel_columns:
+    - state_pension_reported
+    state_pension_age: policyengine-uk gov.dwp.state_pension.age at the build instant
+    receipt: rows, weighted people and amounts removed per column and step
   - kind: redraw_columns_from_fitted_qrf
     fit: stage1
     columns:
