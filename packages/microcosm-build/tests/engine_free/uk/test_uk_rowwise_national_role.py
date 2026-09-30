@@ -1192,6 +1192,18 @@ def test_uk_national_role_evaluates_after_staging_the_bundle(
     full_receipt = json.loads((out / "score_vs_incumbent.json").read_text())
     assert full_receipt["target_drift"][0]["winner"] == "candidate"
     assert calls[0]["candidate_sha256"] == manifest["outputs"]["dataset"]["sha256"]
+    # The completion marker binds the final bytes: the build record gained
+    # the delivery summary and the manifest its receipts after publication,
+    # and ``build.json`` was re-issued over both.
+    completion = json.loads((out / "build.json").read_text())
+    for role, name in (
+        ("build_record", "build_record.json"),
+        ("rowwise_candidate_manifest", builder.MANIFEST_FILENAME),
+    ):
+        assert completion[role]["sha256"] == _sha(out / name), role
+        assert completion[role]["size_bytes"] == (out / name).stat().st_size
+        assert "note" not in completion[role]
+    assert completion["dataset"]["sha256"] == _sha(out / "microcosm_uk_2024_25.h5")
 
 
 def test_uk_national_dry_run_records_the_incumbent(monkeypatch, tmp_path, capsys):

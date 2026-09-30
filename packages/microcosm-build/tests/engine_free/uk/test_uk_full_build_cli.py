@@ -1322,3 +1322,18 @@ def test_gate_battery_recorded_exception_is_named_not_a_missing_artifact():
         }
     )
     cli._require_gate_kernel_completed(passed, "uk.full.gates.calibrated")
+
+
+def test_dense_completion_marker_binds_the_closed_manifest(tmp_path, monkeypatch):
+    """``build.json`` is re-issued after the close step appends the staging
+    receipts to the manifest, so its digest is the manifest's final bytes."""
+    status, out = run_dense_main(tmp_path, monkeypatch)
+    assert status == 0
+    completion = json.loads((out / "build.json").read_text())
+    entry = completion["rowwise_candidate_manifest"]
+    manifest_path = out / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    assert "staged_dataset" in manifest and "staging_delivery" in manifest
+    assert entry["sha256"] == hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+    assert entry["size_bytes"] == manifest_path.stat().st_size
+    assert "note" not in entry

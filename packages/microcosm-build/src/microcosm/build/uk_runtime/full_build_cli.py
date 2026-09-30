@@ -41,6 +41,7 @@ import sys
 import tempfile
 import time
 import uuid
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -1061,6 +1062,25 @@ def execute_full_build(
     return status
 
 
+def _refresh_completion(output: Path, roles: Mapping[str, Path]) -> None:
+    """Re-issue the completion marker over the files the close step rewrote.
+
+    ``publish_staged_bundle`` places ``build.json`` last, binding the staged
+    bytes. The close step then appends the staging receipts to the rowwise
+    manifest (both lines) and the delivery summary to the build record (the
+    national line, whose release assembler reads it there), so the marker is
+    re-issued with those files' final digests: it stays the bundle's binding
+    of what is on disk rather than of what was published a moment earlier.
+    """
+    marker = output / "build.json"
+    completion = json.loads(marker.read_text())
+    for role, path in roles.items():
+        entry = dict(completion.get(role) or {})
+        entry.pop("note", None)
+        completion[role] = {**entry, **file_artifact(path)}
+    materialize_bytes(canonical_json(completion), marker)
+
+
 def _close_attempt(
     args: argparse.Namespace,
     attempt: dict,
@@ -1094,6 +1114,9 @@ def _close_attempt(
             replace_manifest(output / MANIFEST_FILENAME, manifest)
             if (output / SHA256SUMS_FILENAME).is_file():
                 refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+            _refresh_completion(
+                output, {"rowwise_candidate_manifest": output / MANIFEST_FILENAME}
+            )
         state.artifact_location = local_artifact_reference(
             output / f"{stem}.h5", repository_hint=REPOSITORY
         )
@@ -2224,6 +2247,13 @@ def _close_national_attempt(
                         output, paths["score_receipt"].name
                     )
                 refresh_sha256sums_entry(output, MANIFEST_FILENAME)
+            _refresh_completion(
+                output,
+                {
+                    "build_record": paths["build_record"],
+                    "rowwise_candidate_manifest": paths["manifest"],
+                },
+            )
     else:
         finalize_staging_telemetry(args, telemetry)
     spool_path = record_candidate_attempt(
