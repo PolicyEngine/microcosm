@@ -1119,6 +1119,16 @@ class TestMalformedInput:
                 "'input_count'",
             ),
             (
+                "report:policyengine-uk",
+                lambda d: d.update(input_count=-3),
+                "'input_count' must be a non-negative integer",
+            ),
+            (
+                "report:policyengine-uk",
+                lambda d: d.update(unmapped_concepts={"fact:person.age": 5}),
+                "'unmapped_concepts' must map text to text",
+            ),
+            (
                 "alignment",
                 lambda d: d.update(canonical_concept=7),
                 "'canonical_concept' must be text",

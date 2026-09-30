@@ -1684,8 +1684,10 @@ class CoverageReport:
         )
         for name in ("input_count", "covered_count"):
             value = fields[name]
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise ValueError(f"A coverage report's {name!r} must be an integer.")
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(
+                    f"A coverage report's {name!r} must be a non-negative integer."
+                )
 
         def refs(name: str, values: object) -> tuple[InputRef, ...]:
             if not isinstance(values, list | tuple):
@@ -1704,9 +1706,16 @@ class CoverageReport:
                 out.append(InputRef(**ref))
             return tuple(out)
 
-        for name in ("concept_inputs", "unmapped_concepts"):
-            if not isinstance(fields[name], Mapping):
-                raise ValueError(f"A coverage report's {name!r} must be an object.")
+        if not isinstance(fields["concept_inputs"], Mapping):
+            raise ValueError("A coverage report's 'concept_inputs' must be an object.")
+        unmapped = fields["unmapped_concepts"]
+        if not isinstance(unmapped, Mapping) or not all(
+            isinstance(key, str) and isinstance(reason, str)
+            for key, reason in unmapped.items()
+        ):
+            raise ValueError(
+                "A coverage report's 'unmapped_concepts' must map text to text."
+            )
         report = cls(
             engine=fields["engine"],
             engine_version=fields["engine_version"],
