@@ -96,7 +96,7 @@ Donor ownership by group (weighted share of adults):
 | Group | Share |
 | --- | --- |
 | all adults | 0.890% |
-| 18–24 | 2.09% |
+| 16–24 | 2.09% |
 | 25–34 | 2.39% |
 | 35–44 | 1.70% |
 | 45–54 | 0 (the rule) |
@@ -104,6 +104,12 @@ Donor ownership by group (weighted share of adults):
 | female / male | 0.72% / 1.07% |
 | private renters / other tenures | 2.74% / 0.54% |
 | household net income tertiles 1–2 / tertile 3 | 0.45% / 1.78% |
+
+The donor's first age group spans 16 to 24, not 18 to 24. WAS counts adults from 16, and the
+public file's band 15–19 cannot separate the 16- and 17-year-olds, who cannot hold a LISA, from
+the 18- and 19-year-olds. That band is about 30% of the group's weight and holds fewer than 10 of
+its holders. The model keeps the band, because it carries the 18–19-year-old holders, and applies
+the group's coefficient to recipients aged 18 to 24.
 
 ## Part B. The ownership model
 
@@ -121,7 +127,7 @@ the held-out weighted log loss:
 | Held out | Donor | Stage logistic | House gate | Tuned boosting | Age-group rates |
 | --- | --- | --- | --- | --- | --- |
 | all adults | 0.890% | 0.873% | 0.622% | 0.711% | 0.884% |
-| 18–24 | 2.09% | 2.03% | 1.25% | 1.49% | 2.09% |
+| 16–24 | 2.09% | 2.03% | 1.25% | 1.49% | 2.09% |
 | 25–34 | 2.39% | 2.33% | 1.73% | 1.88% | 2.36% |
 | 35–44 | 1.70% | 1.67% | 0.92% | 1.43% | 1.69% |
 | 45–54 | 0 | 0.006% | 0.094% | 0.017% | 0 |
@@ -175,7 +181,7 @@ persons under 18 are set to zero. Weighted ownership share of adults:
 | --- | --- | --- | --- |
 | all adults | 0.890% | 1.25% | 1.06% |
 | model's expected share on the spine | | 1.36% | 1.09% |
-| 18–24 | 2.09% | 4.14% | 2.91% |
+| 18–24 (donor 16–24) | 2.09% | 4.14% | 2.91% |
 | 25–34 | 2.39% | 3.02% | 3.00% |
 | 35–44 | 1.70% | 2.61% | 2.15% |
 | 45–54 | 0 | 0.020% | 0.020% |
@@ -301,7 +307,7 @@ to the stage-time weight.
 
 | Age | Median gross financial wealth, donor | Median, spine | Ratio | Mean log, gross financial wealth, donor / spine | Mean log, savings, donor / spine | Private renters, donor / spine |
 | --- | --- | --- | --- | --- | --- | --- |
-| 18–24 | £12,200 | £48,800 | 4.0 | 9.21 / 10.37 | 5.72 / 6.75 | 19.0% / 30.3% |
+| 18–24 (donor 16–24) | £12,200 | £48,800 | 4.0 | 9.21 / 10.37 | 5.72 / 6.75 | 19.0% / 30.3% |
 | 25–34 | £8,820 | £26,300 | 3.0 | 8.75 / 9.87 | 5.02 / 5.93 | 26.0% / 35.1% |
 | 35–44 | £12,000 | £30,200 | 2.5 | 9.13 / 10.10 | 5.13 / 5.99 | 21.0% / 23.6% |
 | 45–54 | £15,000 | £47,000 | 3.1 | 9.25 / 10.43 | 5.53 / 6.43 | 17.7% / 15.4% |
@@ -325,7 +331,7 @@ Three options, measured or implied on the same inputs:
 
 - **(a) Keep the approved design.** On the spine:
   - Ownership is 1.25% (660,000 weighted holders on 52.7 million adults at stage time) and twice
-    the donor's share at 18–24.
+    the donor's share in the youngest group (18–24 on the spine, 16–24 in the donor).
   - Owner balances run higher: median £6,500, p90 £15,000.
   - The cap removes 0.5% of the LISA mass.
 - **(b) Drop the four financial predictors** (gross financial wealth, savings, cash ISA,

@@ -1,6 +1,6 @@
 group,donor_pct,stage_logistic_pct,house_gate_boosting_defaults_pct,boosting_tuned_rare_events_pct,age_group_rates_pct
 all adults,0.890,0.873,0.622,0.711,0.884
-18-24,2.092,2.032,1.251,1.491,2.092
+16-24,2.092,2.032,1.251,1.491,2.092
 25-34,2.388,2.328,1.733,1.881,2.357
 35-44,1.700,1.665,0.920,1.434,1.693
 45-54,0.000,0.006,0.094,0.017,0.000

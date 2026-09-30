@@ -8,7 +8,10 @@ banded and ownership-imputed classes apart); the donor's lowest household-income
 tertile holds fewer than 10 holders, so income is published as tertiles 1-2
 against tertile 3; balance quantiles and means are rounded to two significant
 figures; no single respondent's value (a donor maximum, the spine's maximum draw)
-is written.
+is written. The stage evidence keys the youngest age group by the recipient's
+label (18-24); on the donor side that group spans 16-24 (WAS adults start at 16
+and the public file's band 15-19 cannot separate 16-17 from 18-19), so every
+donor figure for it is labelled 16-24 here.
 
     python docs/evidence/uk-lisa-1003/scripts/extract_lisa_1003_evidence.py \
         --lane-dir data/ukds/acceptance/1003-lisa \
@@ -31,6 +34,8 @@ MODELS = (
     ("age-group rates", "age_group_rates"),
 )
 QUANTILES = ("p10", "p25", "p50", "p75", "p90")
+#: The donor's span for each recipient age-group label (review round 1, item 4).
+DONOR_AGE_LABELS = {"18-24": "16-24"}
 
 
 def pct(value: float | None) -> str:
@@ -112,7 +117,9 @@ def donor_audit(evidence: dict[str, Any]) -> list[list[Any]]:
 def model_comparison(comparison: dict[str, Any]) -> list[list[Any]]:
     rows: list[list[Any]] = []
     keys = [("all_adults", "all adults")]
-    keys += [(f"age {group}", group) for group in AGE_GROUPS]
+    keys += [
+        (f"age {group}", DONOR_AGE_LABELS.get(group, group)) for group in AGE_GROUPS
+    ]
     keys += [
         ("private renters", "private renters"),
         ("other tenures", "other tenures"),
@@ -161,9 +168,10 @@ def realised(
         ],
     ]
     for group in AGE_GROUPS:
+        donor_group = DONOR_AGE_LABELS.get(group, group)
         rows.append(
             [
-                group,
+                group if donor_group == group else f"{group} (donor {donor_group})",
                 pct(donor["by_age_group"][group]),
                 pct(spine["by_age_group"][group]),
                 pct(spine_b["by_age_group"][group]),
@@ -259,7 +267,7 @@ def financial_draws(probe: dict[str, Any]) -> list[list[Any]]:
             rows.append(
                 [
                     name,
-                    group,
+                    DONOR_AGE_LABELS.get(group, group) if name == "donor" else group,
                     f"{row['weighted_adult_share'] * 100:.1f}",
                     int(row["gross_financial_wealth_weighted_median"]),
                     row["gross_financial_wealth_weighted_mean_log1p"],

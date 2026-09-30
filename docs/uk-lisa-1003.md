@@ -163,8 +163,10 @@ unknown type remain inside gross financial wealth only.
 Measured on the licensed candidate spine (receipts, Parts C to F):
 
 - 1.25% of weighted adults hold a LISA, against the donor's 0.89%. Every age
-  group under 45 is above the donor's share, and 18 to 24 most (4.1% against
-  2.1%).
+  group under 45 is above the donor's share, the youngest most: 4.1% of the
+  spine's adults aged 18 to 24, against 2.1% of the donor's aged 16 to 24. The
+  donor's first group includes 16- and 17-year-olds, who cannot hold a LISA,
+  because the public file bands age 15 to 19.
 - The weighted median owner balance is £6,500, against the donor's £6,000, and
   the p90 is £15,000 against £10,000.
 - The excess comes from the inputs, not the fit. The spine's WAS financial

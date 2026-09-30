@@ -1,5 +1,5 @@
 population,age_group,weighted_adult_share_pct,gross_financial_wealth_weighted_median_gbp,gross_financial_wealth_weighted_mean_log1p,savings_weighted_mean_log1p,cash_isa_weighted_mean_log1p,stocks_and_shares_isa_weighted_mean_log1p,employment_income_weighted_mean_log1p,private_renter_share_pct
-donor,18-24,9.3,12200,9.21,5.72,2.5,1.11,5.59,19.0
+donor,16-24,9.3,12200,9.21,5.72,2.5,1.11,5.59,19.0
 donor,25-34,17.3,8820,8.75,5.02,2.34,0.92,7.76,26.0
 donor,35-44,16.6,12000,9.13,5.13,2.71,1.08,7.83,21.0
 donor,45-54,17.1,15000,9.25,5.53,2.61,1.32,7.52,17.7
