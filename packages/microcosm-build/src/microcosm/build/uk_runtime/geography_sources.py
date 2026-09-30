@@ -14,6 +14,7 @@ import time
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -202,20 +203,15 @@ def load_ew_oa_lad_region_lookup(
 
     Returns one row per OA with ``oa_code``, ``la_code`` and ``region_code``
     (blank for Wales, whose region is the ``W99999999`` sentinel downstream).
-    The LAD column is accepted under any ``LAD<yy>CD`` name; the December 2024
-    file carries the April 2023 LAD code set as ``LAD24CD``.
+    The LAD column is accepted as ``LAD23CD`` or ``LAD24CD`` only (the
+    December 2024 file carries the April 2023 LAD code set as ``LAD24CD``);
+    a later vintage such as ``LAD25CD`` is the separate recode follow-up, and
+    a file carrying two of the accepted names is refused rather than guessed.
     """
 
     frame = _read_csv_url(url, dtype=str)
     upper_to_column = {str(column).strip().upper(): column for column in frame}
-    lad_column = next(
-        (
-            column
-            for upper, column in upper_to_column.items()
-            if upper.startswith("LAD") and upper.endswith("CD")
-        ),
-        None,
-    )
+    lad_column = _lad23_code_column(upper_to_column)
     region_column = next(
         (
             column
@@ -1498,13 +1494,36 @@ def normalise_lad23_names(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+#: Column names under which the April 2023 LAD code set is published: the
+#: April 2023 lookups name it ``LAD23CD``, the December 2024 OA lookup
+#: ``LAD24CD`` (the same code set). ``LAD25CD`` carries the April 2025
+#: recode (Barnsley/Sheffield among others) and is not accepted here.
+LAD23_CODE_COLUMNS: tuple[str, ...] = ("LAD23CD", "LAD24CD")
+
+
+def _lad23_code_column(upper_to_column: Mapping[str, str]) -> str | None:
+    """The one accepted LAD-code column, ``None`` when absent, refused when two."""
+
+    present = [
+        upper_to_column[name] for name in LAD23_CODE_COLUMNS if name in upper_to_column
+    ]
+    if len(present) > 1:
+        raise ValueError(
+            "E/W LAD lookup carries more than one LAD code column: "
+            f"{[str(column) for column in present]}."
+        )
+    return present[0] if present else None
+
+
 def _normalise_ew_lad_lookup(frame: pd.DataFrame) -> pd.DataFrame:
+    upper_to_column = {str(column).strip().upper(): column for column in frame.columns}
+    lad_column = _lad23_code_column(upper_to_column)
     column_map = {}
     for column in frame.columns:
-        upper = str(column).upper()
+        upper = str(column).strip().upper()
         if upper == "OA21CD":
             column_map[column] = "oa_code"
-        elif upper.startswith("LAD") and upper.endswith("CD"):
+        elif lad_column is not None and column == lad_column:
             column_map[column] = "lad23_code"
     lookup = frame.rename(columns=column_map)
     missing = sorted({"oa_code", "lad23_code"} - set(lookup.columns))
