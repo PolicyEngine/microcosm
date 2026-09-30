@@ -956,6 +956,46 @@ entries:
     consumers: []
     notes: []
   - entity: household
+    column: household_vehicles_owned
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      ACS VEH counts vehicles available, long-term leased and employer-provided ones
+      included, not vehicles owned, so the owned count keeps the engine default 0 and VEH
+      is recorded only as availability (microcosm#1064 review; reviewed limitation
+      acs_household_vehicle_value_default). With household_vehicles_value also 0, the
+      count only scales exemptions of a zero value or averages it, except in the
+      count-only rules of San Francisco CAAP, Los Angeles General Relief and
+      lives_in_vehicle.
+    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    notes:
+      - programs: [general_assistance]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          A zero count always passes San Francisco CAAP's vehicle count limit
+          (ca_sf_caap_vehicle_eligible, one vehicle for a single person) and Los Angeles
+          General Relief's vehicle cap (la_general_relief_motor_vehicle_value_eligible),
+          so both overstate eligibility for households that own more vehicles than the
+          cap, the same direction as the zero value. lives_in_vehicle is never true on
+          ACS rows; it only picks Los Angeles's value limit and Marin's vehicle
+          exemption, both applied to the zero value. Contra Costa, Marin, San
+          Bernardino, Santa Clara and San Mateo use the count only to average or exempt
+          the zero value.
+      - programs: [aca_ptc, chip, ctc, head_start, housing_assistance, lifeline,
+          medicaid, school_meals, snap, state_benefits, tanf, wic]
+        verdict: harmless
+        note: >-
+          Texas's broad-based categorical eligibility asset test for SNAP
+          (meets_tanf_non_cash_asset_test) uses the count only to scale the per-vehicle
+          exclusions applied to vehicle value, and Montana
+          and Washington TANF (Washington RCA through it) and Illinois AABD (its
+          Medicaid buy-in) use it only to average value across vehicles; with
+          household_vehicles_value 0 on the same rows none of them moves. The other
+          programs are reached only through those results.
+  - entity: household
     column: household_vehicles_value
     fill_value: "0"
     spines: [acs_2024_1yr]

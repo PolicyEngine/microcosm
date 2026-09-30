@@ -4602,7 +4602,7 @@ def _reviewed_fill(entity, column, fill_value="0", spine="acs_2024_1yr") -> dict
 
 
 def test_the_register_covers_every_remaining_reviewed_fill() -> None:
-    """Release 767312d60 default-filled 79 columns; the stack now fills 21 of
+    """Release 767312d60 default-filled 79 columns; the stack now fills 20 of
     them (NEVER_DEFAULT_FILLED), and every other one has a register entry."""
 
     module = _load_tool_module()
@@ -4621,9 +4621,10 @@ def test_the_register_covers_every_remaining_reviewed_fill() -> None:
     assert len(released) == 79
     now_filled = released & set(module.NEVER_DEFAULT_FILLED)
     registered = {(entry["entity"], entry["column"]) for entry in document["entries"]}
-    # At this change 21 are filled natively and 58 are registered. A column
-    # that returns to a reviewed fill (microcosm#1064's vehicle count) leaves
-    # NEVER_DEFAULT_FILLED and gains an entry together, and this still holds.
+    # 20 are filled natively and 59 are registered. The ACS vehicle count
+    # returned to a reviewed fill after the microcosm#1064 review (VEH counts
+    # vehicles available, not owned): it left NEVER_DEFAULT_FILLED and gained
+    # an entry together, so this still holds.
     assert registered == released - now_filled
 
 

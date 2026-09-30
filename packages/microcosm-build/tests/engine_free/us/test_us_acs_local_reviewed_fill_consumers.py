@@ -282,8 +282,9 @@ def test_an_entry_the_release_did_not_use_is_reported_not_failed() -> None:
 
 def test_an_entry_for_a_never_default_filled_column_fails() -> None:
     """A column the release tool refuses to default-fill cannot be a reviewed
-    fill, so its entry is stale by construction (microcosm#1064's vehicle
-    count must leave NEVER_DEFAULT_FILLED in the same change that adds it)."""
+    fill, so its entry is stale by construction (the ACS vehicle count left
+    NEVER_DEFAULT_FILLED in the change that added its entry, after the
+    microcosm#1064 review)."""
 
     never = {("household", "household_vehicles_value")}
 
@@ -504,6 +505,43 @@ def test_the_committed_register_carries_the_triage_verdicts_for_snap() -> None:
         if "tanf" in note["programs"]
     )
     assert (tanf["verdict"], tanf["direction"]) == ("known_bias", "overstates")
+
+
+def test_the_committed_register_notes_the_acs_owned_vehicle_count() -> None:
+    """microcosm#1064 review: ACS VEH counts vehicles available, so the owned
+    count is a reviewed fill at 0. Its count-only readers (San Francisco CAAP,
+    Los Angeles General Relief) overstate eligibility; it is harmless for SNAP
+    while the vehicle value is also 0."""
+
+    document = load_reviewed_fill_consumer_register()
+    (entry,) = [
+        entry
+        for entry in document["entries"]
+        if entry["column"] == "household_vehicles_owned"
+    ]
+    assert (entry["entity"], entry["fill_value"], entry["spines"]) == (
+        "household",
+        "0",
+        ["acs_2024_1yr"],
+    )
+    verdicts = {
+        program: (note["verdict"], note.get("direction"))
+        for note in entry["notes"]
+        for program in note["programs"]
+    }
+    assert set(verdicts) == set(entry["consumers"])
+    assert verdicts["general_assistance"] == ("known_bias", "overstates")
+    assert verdicts["snap"] == ("harmless", None)
+    text = " ".join([entry["summary"], *(note["note"] for note in entry["notes"])])
+    for fragment in (
+        "vehicles available",
+        "microcosm#1064 review",
+        "ca_sf_caap_vehicle_eligible",
+        "la_general_relief_motor_vehicle_value_eligible",
+        "lives_in_vehicle",
+        "meets_tanf_non_cash_asset_test",
+    ):
+        assert fragment in text, fragment
 
 
 def test_the_loader_refuses_duplicate_keys(tmp_path) -> None:
