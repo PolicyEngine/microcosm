@@ -158,6 +158,14 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     monkeypatch.setattr(
         acs_multispine, "split_acs_adult_nonrelative_spm_units", _must_not_run
     )
+    # microcosm#1022: so is the native FS receipt anchor; the pool keeps the
+    # transfer's receives_snap.
+    monkeypatch.setattr(
+        acs_multispine, "require_acs_receipt_anchor_sources", _must_not_run
+    )
+    monkeypatch.setattr(
+        acs_multispine, "with_acs_local_snap_receipt_anchor", _must_not_run
+    )
 
     result = acs_multispine.build_optional_acs_multispine(
         cast(Frame, base),
@@ -297,6 +305,84 @@ def test__given_spm_split__then_it_runs_on_the_loader_frame_before_mapping(
     assert result.provenance["acs_local_spm_units"] == {
         "issue": "microcosm#1023",
         "persons_moved": 3,
+    }
+    json.dumps(result.provenance, allow_nan=False)
+
+
+def test__given_receipt_anchors__then_fs_overrides_the_transfer_before_pooling(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """microcosm#1022: the local lane checks FS/PAP on the loader frame before
+    any fit, overrides the transferred receives_snap on the ACS-only frame
+    after the shared transfer, pools the anchored frame, and records the
+    receipt."""
+
+    events: list[tuple[Any, ...]] = []
+    raw_acs = object()
+    mapped_acs = object()
+    transferred_acs = SimpleNamespace(table=lambda entity: pd.DataFrame())
+    anchored_acs = object()
+    base = object()
+    receipt = {"issue": "microcosm#1022", "snap": {"units_anchored": np.int64(4)}}
+
+    monkeypatch.setattr(
+        acs_multispine,
+        "build_acs_pums_unit_frame",
+        lambda source, *, chunksize: (raw_acs, {"spine": "acs_2024_1yr"}),
+    )
+
+    def fake_check(frame):
+        events.append(("check", frame))
+
+    def fake_map(frame):
+        events.append(("map", frame))
+        return SimpleNamespace(frame=mapped_acs, native_inputs={})
+
+    def fake_transfer(recipient, donor, **kwargs):
+        events.append(("transfer", recipient))
+        return SimpleNamespace(
+            frame=transferred_acs,
+            imputed_inputs=(),
+            fit_records=(),
+            deferred_inputs=(),
+            resolved_donor_channel="puf_support",
+        )
+
+    def fake_anchor(frame):
+        events.append(("anchor", frame))
+        return anchored_acs, receipt
+
+    def fake_pool(actual_base, actual_acs, **kwargs):
+        events.append(("pool", actual_base, actual_acs))
+        return object()
+
+    monkeypatch.setattr(
+        acs_multispine, "require_acs_receipt_anchor_sources", fake_check
+    )
+    monkeypatch.setattr(acs_multispine, "map_acs_native_inputs", fake_map)
+    monkeypatch.setattr(acs_multispine, "transfer_acs_inputs", fake_transfer)
+    monkeypatch.setattr(
+        acs_multispine, "with_acs_local_snap_receipt_anchor", fake_anchor
+    )
+    monkeypatch.setattr(acs_multispine, "with_optional_acs_spine", fake_pool)
+
+    result = acs_multispine.build_optional_acs_multispine(
+        cast(Frame, base),
+        AcsPumsSource(tmp_path / "csv_hus.zip", tmp_path / "csv_pus.zip"),
+        native_receipt_anchors=True,
+    )
+
+    assert events == [
+        ("check", raw_acs),
+        ("map", raw_acs),
+        ("transfer", mapped_acs),
+        ("anchor", transferred_acs),
+        ("pool", base, anchored_acs),
+    ]
+    assert result.provenance["acs_local_receipt_anchors"] == {
+        "issue": "microcosm#1022",
+        "snap": {"units_anchored": 4},
     }
     json.dumps(result.provenance, allow_nan=False)
 
