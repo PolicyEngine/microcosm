@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1152
+ACTIVE_REFERENCE_COUNT = 1212
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -229,6 +229,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_window",
         "linear_combination",
         "monthly_window_average",
+        "monthly_window_count_x_mean",
         "monthly_window_sum_average",
         "scaled_by_ratio",
     ]
@@ -749,7 +750,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1152,
+        "active": 1212,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 15,
     }
@@ -857,6 +858,19 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "of the cross-grain rule (microcosm#905). The former single "
                 "UK-wide row per band is retired: the tier sums to it within "
                 "the same publication."
+            ),
+        },
+        {
+            "family": "dwp_state_pension",
+            "status": "active_english_region_and_amount_band_fanout",
+            # 18 English-region cells and 20 weekly amount bands (microcosm#1069).
+            "active_reference_count": 38,
+            "signed_rationale": (
+                "The State Pension recipients by type fan out over the nine "
+                "English regions (Scotland and Wales are their own rows, since "
+                "DWP publishes no Northern Ireland cell for a twelve-area tier) "
+                "and over DWP's weekly amount bands, whose 'all' margin is a "
+                "total row the detail measure pin leaves out (microcosm#1069)."
             ),
         },
     ]
@@ -1489,7 +1503,7 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         for target in contract["targets"]
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
-    assert len(two_level) == 50
+    assert len(two_level) == 52
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
@@ -1566,8 +1580,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         candidates = membership["targets"][target_id]["candidates"]
         assert [entry["geography_id"] for entry in candidates] == cells
         assert {entry["status"] for entry in candidates} == {"active"}
-    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows.
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 573
+    # 108 ONS + 81 MHCLG + 24 CGT + 360 SPI Table 3.11 region-tier rows, and
+    # 18 English-region State Pension cells (microcosm#1069).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 591
     # The twelve ONS cells of a band sum to the retired UK row of the same
     # publication (the 0-9 band: 7,553,013 at mid-2024).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]

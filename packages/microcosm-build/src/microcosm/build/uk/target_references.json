@@ -48,6 +48,9 @@
       },
       "mhclg": {
         "label": "Ministry of Housing, Communities and Local Government"
+      },
+      "dfc_ni": {
+        "label": "Department for Communities (Northern Ireland)"
       }
     },
     "categories": {
@@ -206,9 +209,19 @@
       "hmrc.income_tax_liabilities_statistics": {
         "provider_id": "hmrc",
         "label": "Income Tax liabilities statistics"
+      },
+      "dwp.state_pension": {
+        "provider_id": "dwp",
+        "label": "State Pension"
+      },
+      "dfc_ni.state_pension": {
+        "provider_id": "dfc_ni",
+        "label": "State Pension"
       }
     },
     "target_categories": {
+      "dfc_ni.state_pension.amount": "dfc_ni.state_pension",
+      "dfc_ni.state_pension.recipients": "dfc_ni.state_pension",
       "dfe.funded_childcare.early_learning_2_year_olds": "dfe.funded_childcare",
       "dfe.funded_childcare.universal_only_children": "dfe.funded_childcare",
       "dfe.funded_childcare.working_parent_children_2_to_4": "dfe.funded_childcare",
@@ -239,6 +252,30 @@
       "dwp.hb.households_private_rented": "dwp.housing_benefit",
       "dwp.hb.households_social_rented": "dwp.housing_benefit",
       "dwp.jsa_claimants": "dwp.legacy_benefits",
+      "dwp.state_pension.amount": "dwp.state_pension",
+      "dwp.state_pension.recipients": "dwp.state_pension",
+      "dwp.state_pension.recipients_female_66_69_new": "dwp.state_pension",
+      "dwp.state_pension.recipients_female_70_74_new": "dwp.state_pension",
+      "dwp.state_pension.recipients_female_70_74_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_female_75_79_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_female_80_84_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_female_85_89_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_female_90_plus_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_male_66_69_new": "dwp.state_pension",
+      "dwp.state_pension.recipients_male_70_74_new": "dwp.state_pension",
+      "dwp.state_pension.recipients_male_70_74_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_male_75_79_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_male_80_84_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_male_85_89_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_male_90_plus_pre_2016": "dwp.state_pension",
+      "dwp.state_pension.recipients_new_by_english_region": "dwp.state_pension",
+      "dwp.state_pension.recipients_new_by_weekly_amount": "dwp.state_pension",
+      "dwp.state_pension.recipients_new_scotland": "dwp.state_pension",
+      "dwp.state_pension.recipients_new_wales": "dwp.state_pension",
+      "dwp.state_pension.recipients_pre_2016_by_english_region": "dwp.state_pension",
+      "dwp.state_pension.recipients_pre_2016_by_weekly_amount": "dwp.state_pension",
+      "dwp.state_pension.recipients_pre_2016_scotland": "dwp.state_pension",
+      "dwp.state_pension.recipients_pre_2016_wales": "dwp.state_pension",
       "dwp.uc.households": "dwp.universal_credit",
       "dwp.uc.households_carer_element": "dwp.universal_credit",
       "dwp.uc.households_childcare_element": "dwp.universal_credit",
@@ -491,6 +528,8 @@
       "welshgov.council_tax_stock.total": "welshgov.council_tax_stock"
     },
     "target_labels": {
+      "dfc_ni.state_pension.amount": "State Pension paid, Northern Ireland",
+      "dfc_ni.state_pension.recipients": "State Pension recipients, Northern Ireland",
       "dfe.funded_childcare.early_learning_2_year_olds": "Early learning 2 year olds",
       "dfe.funded_childcare.universal_only_children": "Universal only children",
       "dfe.funded_childcare.working_parent_children_2_to_4": "Working parent children 2 to 4",
@@ -521,6 +560,30 @@
       "dwp.hb.households_private_rented": "Housing Benefit claimants, private rented",
       "dwp.hb.households_social_rented": "Housing Benefit claimants, social rented",
       "dwp.jsa_claimants": "Jobseeker\u2019s Allowance claimants",
+      "dwp.state_pension.amount": "State Pension paid, Great Britain residents",
+      "dwp.state_pension.recipients": "State Pension recipients, Great Britain residents",
+      "dwp.state_pension.recipients_female_66_69_new": "State Pension recipients, female 66 to 69, New State Pension",
+      "dwp.state_pension.recipients_female_70_74_new": "State Pension recipients, female 70 to 74, New State Pension",
+      "dwp.state_pension.recipients_female_70_74_pre_2016": "State Pension recipients, female 70 to 74, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_female_75_79_pre_2016": "State Pension recipients, female 75 to 79, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_female_80_84_pre_2016": "State Pension recipients, female 80 to 84, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_female_85_89_pre_2016": "State Pension recipients, female 85 to 89, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_female_90_plus_pre_2016": "State Pension recipients, female 90 and over, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_male_66_69_new": "State Pension recipients, male 66 to 69, New State Pension",
+      "dwp.state_pension.recipients_male_70_74_new": "State Pension recipients, male 70 to 74, New State Pension",
+      "dwp.state_pension.recipients_male_70_74_pre_2016": "State Pension recipients, male 70 to 74, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_male_75_79_pre_2016": "State Pension recipients, male 75 to 79, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_male_80_84_pre_2016": "State Pension recipients, male 80 to 84, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_male_85_89_pre_2016": "State Pension recipients, male 85 to 89, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_male_90_plus_pre_2016": "State Pension recipients, male 90 and over, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_new_by_english_region": "State Pension recipients, New State Pension, English regions",
+      "dwp.state_pension.recipients_new_by_weekly_amount": "State Pension recipients by weekly amount, New State Pension",
+      "dwp.state_pension.recipients_new_scotland": "State Pension recipients, New State Pension, Scotland",
+      "dwp.state_pension.recipients_new_wales": "State Pension recipients, New State Pension, Wales",
+      "dwp.state_pension.recipients_pre_2016_by_english_region": "State Pension recipients, Pre-2016 State Pension, English regions",
+      "dwp.state_pension.recipients_pre_2016_by_weekly_amount": "State Pension recipients by weekly amount, Pre-2016 State Pension",
+      "dwp.state_pension.recipients_pre_2016_scotland": "State Pension recipients, Pre-2016 State Pension, Scotland",
+      "dwp.state_pension.recipients_pre_2016_wales": "State Pension recipients, Pre-2016 State Pension, Wales",
       "dwp.uc.households": "Universal Credit households",
       "dwp.uc.households_carer_element": "Households with carer entitlement",
       "dwp.uc.households_childcare_element": "Households receiving the childcare element",
@@ -783,6 +846,7 @@
     "calendar_year_window",
     "linear_combination",
     "monthly_window_average",
+    "monthly_window_count_x_mean",
     "monthly_window_sum_average",
     "scaled_by_ratio"
   ],
@@ -41250,6 +41314,2977 @@
       "uprating_index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.state_pension.recipients",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "category_of_pension": "all",
+          "gender": "all"
+        },
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "total_recipients",
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.amount",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "category_of_pension": "all",
+          "gender": "all"
+        },
+        "source_concept": [
+          "dwp.state_pension_caseload",
+          "dwp.state_pension_mean_weekly_amount"
+        ],
+        "source_measure_id": [
+          "total_recipients",
+          "total_mean_weekly_amount"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/amount",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "value_operation": "monthly_window_count_x_mean",
+      "value_operands": [
+        {
+          "role": "count",
+          "concept": "dwp.state_pension_recipients"
+        },
+        {
+          "role": "mean",
+          "concept": "dwp.state_pension_mean_weekly_amount",
+          "period_factor": 52
+        }
+      ]
+    },
+    {
+      "name": "dfc_ni.state_pension.recipients",
+      "ledger_selector": {
+        "source_name": "dfc_ni",
+        "dimensions": [],
+        "source_measure_id": "claimants_all",
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "dfc_ni/state_pension/recipients",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfc_ni.state_pension.recipients",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dfc_ni.state_pension.amount",
+      "ledger_selector": {
+        "source_name": "dfc_ni",
+        "dimensions": [],
+        "source_measure_id": [
+          "claimants_all",
+          "average_weekly_payment_all"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "person",
+      "measure": "dfc_ni/state_pension/amount",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfc_ni.state_pension.amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "value_operation": "monthly_window_count_x_mean",
+      "value_operands": [
+        {
+          "role": "count",
+          "concept": "dwp.state_pension_recipients"
+        },
+        {
+          "role": "mean",
+          "concept": "dwp.state_pension_mean_weekly_amount",
+          "period_factor": 52
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_male_66_69_new",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            66,
+            67,
+            68,
+            69
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_male_66_69_new",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_male_66_69_new",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 66,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 67,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 68,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 69,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_female_66_69_new",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            66,
+            67,
+            68,
+            69
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_female_66_69_new",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_female_66_69_new",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 66,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 67,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 68,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 69,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_male_70_74_new",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_male_70_74_new",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_male_70_74_new",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_male_70_74_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_male_70_74_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_male_70_74_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_female_70_74_new",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_female_70_74_new",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_female_70_74_new",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_female_70_74_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_female_70_74_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_female_70_74_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_male_75_79_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_male_75_79_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_male_75_79_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 75,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 76,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 77,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 78,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 79,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_female_75_79_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_female_75_79_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_female_75_79_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 75,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 76,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 77,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 78,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 79,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_male_80_84_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            80,
+            81,
+            82,
+            83,
+            84
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_male_80_84_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_male_80_84_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 80,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 81,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 82,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 83,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 84,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_female_80_84_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            80,
+            81,
+            82,
+            83,
+            84
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_female_80_84_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_female_80_84_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 80,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 81,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 82,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 83,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 84,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_male_85_89_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            85,
+            86,
+            87,
+            88,
+            89
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_male_85_89_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_male_85_89_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 85,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 86,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 87,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 88,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 89,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_female_85_89_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            85,
+            86,
+            87,
+            88,
+            89
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_female_85_89_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_female_85_89_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 85,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 86,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 87,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 88,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 89,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "name": "dwp.state_pension.recipients_male_90_plus_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "90 and over",
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_male_90_plus_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_male_90_plus_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_female_90_plus_pre_2016",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "90 and over",
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_female_90_plus_pre_2016",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_female_90_plus_pre_2016",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000001",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000001",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000002",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000002",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000003",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000003",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000004",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000004",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000005",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000005",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000006",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000006",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000007",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000007",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000008",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000008",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_english_region@E12000009",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_english_region@E12000009",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_scotland",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_new_scotland",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_scotland",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_wales",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_new_wales",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_wales",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000001",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000001",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000001",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000002",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000002"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000002",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000002",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"NORTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000003",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000003"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000003",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000003",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"YORKSHIRE\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000004",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000004"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000004",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000004",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000005",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000005"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000005",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000005",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"WEST_MIDLANDS\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000006",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000006"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000006",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000006",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"EAST_OF_ENGLAND\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000007",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000007"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000007",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000007",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"LONDON\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000008",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000008"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000008",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000008",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_EAST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000009",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "region",
+        "geography_id": "E12000009"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000009",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]",
+        "geography_level": "region",
+        "geography_id": "E12000009",
+        "geography_predicate": "{\"entity\":\"household\",\"map_to\":\"person\",\"operator\":\"==\",\"reduce\":\"any\",\"value\":\"SOUTH_WEST\",\"variable\":\"region\"}",
+        "cross_grain_grain": "region"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_scotland",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "S92000003"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_pre_2016_scotland",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_scotland",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_wales",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "dwp/state_pension/recipients_pre_2016_wales",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_wales",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.under_20_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "Under \u00a320.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.under_20_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.100_00_to_under_150_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a3100.00 to under \u00a3150.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.100_00_to_under_150_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.150_00_to_under_200_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a3150.00 to under \u00a3200.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.150_00_to_under_200_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.20_00_to_under_40_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a320.00 to under \u00a340.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.20_00_to_under_40_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.200_00_to_under_250_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a3200.00 to under \u00a3250.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.200_00_to_under_250_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.250_00_to_under_300_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a3250.00 to under \u00a3300.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.250_00_to_under_300_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.300_00_and_over__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a3300.00 and over"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.300_00_and_over__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a340.00 to under \u00a360.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a360.00 to under \u00a380.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_new_by_weekly_amount.80_00_to_under_100_00__new_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "grouped_amount_of_benefit": "\u00a380.00 to under \u00a3100.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.80_00_to_under_100_00__new_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.under_20_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "Under \u00a320.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.under_20_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.100_00_to_under_150_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a3100.00 to under \u00a3150.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.100_00_to_under_150_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.150_00_to_under_200_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a3150.00 to under \u00a3200.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.150_00_to_under_200_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.20_00_to_under_40_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a320.00 to under \u00a340.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.20_00_to_under_40_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.200_00_to_under_250_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a3200.00 to under \u00a3250.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.200_00_to_under_250_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.250_00_to_under_300_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a3250.00 to under \u00a3300.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.250_00_to_under_300_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.300_00_and_over__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a3300.00 and over"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.300_00_and_over__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.40_00_to_under_60_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a340.00 to under \u00a360.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.40_00_to_under_60_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.60_00_to_under_80_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a360.00 to under \u00a380.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.60_00_to_under_80_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.80_00_to_under_100_00__pre_2016_state_pension",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "grouped_amount_of_benefit": "\u00a380.00 to under \u00a3100.00"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.80_00_to_under_100_00__pre_2016_state_pension",
+      "family": "dwp_state_pension",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     }
   ]
 }

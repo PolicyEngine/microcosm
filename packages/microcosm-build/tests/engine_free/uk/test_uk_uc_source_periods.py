@@ -551,9 +551,28 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert reference.value_operation == "monthly_window_sum_average"
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
+    # The State Pension rows bind the four quarterly points inside calendar
+    # 2025; the amount bands keep the three DWP pays at the 2025-26 rate the
+    # engine pays (microcosm#1069 R1).
+    pension = [
+        reference for reference in references if reference.family == "dwp_state_pension"
+    ]
+    assert len(pension) == 60
+    for reference in pension:
+        months = json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS])
+        assert months == reference.ledger_selector["period_value"]
+        assert reference.period_match_policy == "source_window"
+        assert months == (
+            esa_quarters[1:] if "_by_weekly_amount." in reference.name else esa_quarters
+        )
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
         if reference.family
-        not in {"dwp_universal_credit", "dwp_housing_benefit", "dwp_legacy_benefits"}
+        not in {
+            "dwp_universal_credit",
+            "dwp_housing_benefit",
+            "dwp_legacy_benefits",
+            "dwp_state_pension",
+        }
     )

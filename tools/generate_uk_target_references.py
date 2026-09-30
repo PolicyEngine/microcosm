@@ -929,6 +929,18 @@ def _add_uk_membership_accounting(
                 "the same publication."
             ),
         },
+        {
+            "family": "dwp_state_pension",
+            "status": "active_english_region_and_amount_band_fanout",
+            "active_reference_count": fanout_counts.get("dwp_state_pension", 0),
+            "signed_rationale": (
+                "The State Pension recipients by type fan out over the nine "
+                "English regions (Scotland and Wales are their own rows, since "
+                "DWP publishes no Northern Ireland cell for a twelve-area tier) "
+                "and over DWP's weekly amount bands, whose 'all' margin is a "
+                "total row the detail measure pin leaves out (microcosm#1069)."
+            ),
+        },
     ]
     report["signed_exclusion_rationales"] = [
         {

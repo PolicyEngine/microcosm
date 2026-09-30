@@ -9,6 +9,7 @@
     "calendar_year_average",
     "monthly_window_average",
     "monthly_window_sum_average",
+    "monthly_window_count_x_mean",
     "linear_combination",
     "scaled_by_ratio",
     "calendar_year_window"
@@ -782,7 +783,33 @@
       "hmrc.spi_region.income_tax_by_region_70000_100000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
       "hmrc.spi_region.income_tax_by_region_100000_150000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
       "hmrc.spi_region.income_tax_by_region_150000_200000": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
-      "hmrc.spi_region.income_tax_by_region_200000_plus": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane)."
+      "hmrc.spi_region.income_tax_by_region_200000_plus": "New declaration backed by SPI 2023-24 Table 3.11 (income and tax by sex, region and country) in Chronicle (spi_income_by_region_2023_24), uprated to the calibration year by HMRC's projected growth in the containing Table 2.5 band(s); the incumbent registry has no regional SPI band metric (PolicyEngine/chronicle#280 lane).",
+      "dwp.state_pension.recipients": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.amount": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dfc_ni.state_pension.recipients": "Post-freeze fact family (DfC Northern Ireland State Pension statistics, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dfc_ni.state_pension.amount": "Post-freeze fact family (DfC Northern Ireland State Pension statistics, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_male_66_69_new": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_female_66_69_new": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_male_70_74_new": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_male_70_74_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_female_70_74_new": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_female_70_74_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_male_75_79_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_female_75_79_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_male_80_84_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_female_80_84_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_male_85_89_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_female_85_89_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_male_90_plus_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_female_90_plus_pre_2016": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_new_by_english_region": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_new_scotland": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_new_wales": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_pre_2016_by_english_region": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_pre_2016_scotland": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_pre_2016_wales": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_new_by_weekly_amount": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.state_pension.recipients_pre_2016_by_weekly_amount": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1110,7 +1137,33 @@
       "hmrc.spi_region.income_tax_by_region_70000_100000",
       "hmrc.spi_region.income_tax_by_region_100000_150000",
       "hmrc.spi_region.income_tax_by_region_150000_200000",
-      "hmrc.spi_region.income_tax_by_region_200000_plus"
+      "hmrc.spi_region.income_tax_by_region_200000_plus",
+      "dwp.state_pension.recipients",
+      "dwp.state_pension.amount",
+      "dfc_ni.state_pension.recipients",
+      "dfc_ni.state_pension.amount",
+      "dwp.state_pension.recipients_male_66_69_new",
+      "dwp.state_pension.recipients_female_66_69_new",
+      "dwp.state_pension.recipients_male_70_74_new",
+      "dwp.state_pension.recipients_male_70_74_pre_2016",
+      "dwp.state_pension.recipients_female_70_74_new",
+      "dwp.state_pension.recipients_female_70_74_pre_2016",
+      "dwp.state_pension.recipients_male_75_79_pre_2016",
+      "dwp.state_pension.recipients_female_75_79_pre_2016",
+      "dwp.state_pension.recipients_male_80_84_pre_2016",
+      "dwp.state_pension.recipients_female_80_84_pre_2016",
+      "dwp.state_pension.recipients_male_85_89_pre_2016",
+      "dwp.state_pension.recipients_female_85_89_pre_2016",
+      "dwp.state_pension.recipients_male_90_plus_pre_2016",
+      "dwp.state_pension.recipients_female_90_plus_pre_2016",
+      "dwp.state_pension.recipients_new_by_english_region",
+      "dwp.state_pension.recipients_new_scotland",
+      "dwp.state_pension.recipients_new_wales",
+      "dwp.state_pension.recipients_pre_2016_by_english_region",
+      "dwp.state_pension.recipients_pre_2016_scotland",
+      "dwp.state_pension.recipients_pre_2016_wales",
+      "dwp.state_pension.recipients_new_by_weekly_amount",
+      "dwp.state_pension.recipients_pre_2016_by_weekly_amount"
     ]
   },
   "profile_parity": {
@@ -20251,6 +20304,3684 @@
       "label": "Income Tax liabilities by region, total income 200,000 and over"
     },
     {
+      "target_id": "dwp.state_pension.recipients",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): every recipient living in Great Britain, as the mean of the four quarterly points inside calendar 2025 (February, May, August, November), the Employment and Support Allowance window precedent (microcosm#1069 R1, R2). Pensioners paid abroad are outside the cube and outside any household frame."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "category_of_pension": "all",
+          "gender": "all"
+        },
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "total_recipients",
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, Great Britain residents",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.amount",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.benefits.state_pension.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/amount",
+          "value_variable": "state_pension",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): recipients times their mean weekly amount times 52 at each quarterly point inside calendar 2025, averaged (monthly_window_count_x_mean). Each point's mean is restated at the new State Pension rate the engine pays in 2025, so only February (paid at the 2024-25 rate) moves (microcosm#1069 R1)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/amount",
+          "status": "pending",
+          "value_rule": "uk.benefits.state_pension.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "category_of_pension": "all",
+          "gender": "all"
+        },
+        "source_concept": [
+          "dwp.state_pension_caseload",
+          "dwp.state_pension_mean_weekly_amount"
+        ],
+        "source_measure_id": [
+          "total_recipients",
+          "total_mean_weekly_amount"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension paid, Great Britain residents",
+      "value_operation": "monthly_window_count_x_mean",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "role": "count",
+          "concept": "dwp.state_pension_recipients"
+        },
+        {
+          "role": "mean",
+          "concept": "dwp.state_pension_mean_weekly_amount",
+          "period_factor": 52
+        }
+      ],
+      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "selector_note": "Restated per point by the new State Pension weekly rate the engine pays (221.20 for 2024-25, 230.25 for 2025-26 on the pinned engine)."
+    },
+    {
+      "target_id": "dfc_ni.state_pension.recipients",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "northern_ireland"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dfc_ni/state_pension/recipients",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "NORTHERN_IRELAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DfC Northern Ireland benefit statistics, State Pension (PolicyEngine/chronicle#302 via #305): all claimants, as the mean of the four quarterly points inside calendar 2025. With the Great Britain rows it completes the UK resident level (microcosm#1069 R2)."
+        },
+        "axiom": {
+          "metric_name": "dfc_ni/state_pension/recipients",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfc_ni",
+        "dimensions": [],
+        "source_measure_id": "claimants_all",
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dfc_ni.state_pension",
+      "label": "State Pension recipients, Northern Ireland",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dfc_ni.state_pension.amount",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.benefits.state_pension.amount",
+        "filters": [
+          {
+            "concept": "uk.geography.country",
+            "equals": "northern_ireland"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dfc_ni/state_pension/amount",
+          "value_variable": "state_pension",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "NORTHERN_IRELAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DfC Northern Ireland benefit statistics, State Pension (PolicyEngine/chronicle#302 via #305): claimants times the average weekly payment times 52 at each quarterly point inside calendar 2025, averaged, with each point restated at the engine's 2025 rate (microcosm#1069 R1)."
+        },
+        "axiom": {
+          "metric_name": "dfc_ni/state_pension/amount",
+          "status": "pending",
+          "value_rule": "uk.benefits.state_pension.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfc_ni",
+        "dimensions": [],
+        "source_measure_id": [
+          "claimants_all",
+          "average_weekly_payment_all"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dfc_ni.state_pension",
+      "label": "State Pension paid, Northern Ireland",
+      "value_operation": "monthly_window_count_x_mean",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "role": "count",
+          "concept": "dwp.state_pension_recipients"
+        },
+        {
+          "role": "mean",
+          "concept": "dwp.state_pension_mean_weekly_amount",
+          "period_factor": 52
+        }
+      ],
+      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_male_66_69_new",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 66
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 69
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_male_66_69_new",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 66
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 69
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): male recipients aged 66 to 69 on the New State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_male_66_69_new",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            66,
+            67,
+            68,
+            69
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, male 66 to 69, New State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 66,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 67,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 68,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 69,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_female_66_69_new",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 66
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 69
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_female_66_69_new",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 66
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 69
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): female recipients aged 66 to 69 on the New State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_female_66_69_new",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            66,
+            67,
+            68,
+            69
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, female 66 to 69, New State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 66,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 67,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 68,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 69,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_male_70_74_new",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 70
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 74
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_male_70_74_new",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 70
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 74
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): male recipients aged 70 to 74 on the New State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_male_70_74_new",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, male 70 to 74, New State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "New State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_male_70_74_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 70
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 74
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_male_70_74_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 70
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 74
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): male recipients aged 70 to 74 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_male_70_74_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, male 70 to 74, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_female_70_74_new",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 70
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 74
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_female_70_74_new",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 70
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 74
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): female recipients aged 70 to 74 on the New State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_female_70_74_new",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "New State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, female 70 to 74, New State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "New State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_female_70_74_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 70
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 74
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_female_70_74_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 70
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 74
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): female recipients aged 70 to 74 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_female_70_74_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            70,
+            71,
+            72,
+            73,
+            74
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, female 70 to 74, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 70,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 71,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 72,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 73,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 74,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_male_75_79_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 75
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 79
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_male_75_79_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 75
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 79
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): male recipients aged 75 to 79 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_male_75_79_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, male 75 to 79, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 75,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 76,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 77,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 78,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 79,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_female_75_79_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 75
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 79
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_female_75_79_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 75
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 79
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): female recipients aged 75 to 79 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_female_75_79_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            75,
+            76,
+            77,
+            78,
+            79
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, female 75 to 79, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 75,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 76,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 77,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 78,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 79,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_male_80_84_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 80
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 84
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_male_80_84_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 80
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 84
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): male recipients aged 80 to 84 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_male_80_84_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            80,
+            81,
+            82,
+            83,
+            84
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, male 80 to 84, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 80,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 81,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 82,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 83,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 84,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_female_80_84_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 80
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 84
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_female_80_84_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 80
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 84
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): female recipients aged 80 to 84 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_female_80_84_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            80,
+            81,
+            82,
+            83,
+            84
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, female 80 to 84, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 80,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 81,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 82,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 83,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 84,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_male_85_89_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 85
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 89
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_male_85_89_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 85
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 89
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): male recipients aged 85 to 89 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_male_85_89_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            85,
+            86,
+            87,
+            88,
+            89
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, male 85 to 89, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 85,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 86,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 87,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 88,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 89,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Male"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_female_85_89_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 85
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 89
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_female_85_89_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 85
+            },
+            {
+              "variable": "age",
+              "operator": "<=",
+              "value": 89
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): female recipients aged 85 to 89 on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_female_85_89_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": [
+            85,
+            86,
+            87,
+            88,
+            89
+          ],
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, female 85 to 89, Pre-2016 State Pension",
+      "value_operation": "monthly_window_sum_average",
+      "period_match_policy": "source_window",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 85,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 86,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 87,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 88,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        },
+        {
+          "dimension_values": {
+            "age_bands_and_single_year": 89,
+            "category_of_pension": "Pre-2016 State Pension",
+            "gender": "Female"
+          }
+        }
+      ]
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_male_90_plus_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 90
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_male_90_plus_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 90
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): male recipients aged 90 and over on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_male_90_plus_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "90 and over",
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Male"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, male 90 and over, Pre-2016 State Pension",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_female_90_plus_pre_2016",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 90
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_female_90_plus_pre_2016",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 90
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): female recipients aged 90 and over on the Pre-2016 State Pension, summed over the published single years of age at each quarterly point inside calendar 2025 and averaged. Only the cells DWP populates are bound: the type follows the State Pension age date, so 66 to 69 is all new State Pension and 75 and over all pre-2016 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_female_90_plus_pre_2016",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_age_gender_type",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "90 and over",
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "Female"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, female 90 and over, Pre-2016 State Pension",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_new_by_english_region",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_new_by_english_region",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): New State Pension recipients in each of the nine English regions (one row per region); Scotland and Wales are their own rows because the region tier fans out over England or the whole UK and DWP publishes no Northern Ireland cell, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_new_by_english_region",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, New State Pension, English regions",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_new_scotland",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "scotland"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_new_scotland",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "SCOTLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): New State Pension recipients in Scotland, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_new_scotland",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, New State Pension, Scotland",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_new_wales",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "wales"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_new_wales",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "WALES",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): New State Pension recipients in Wales, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_new_wales",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, New State Pension, Wales",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_pre_2016_by_english_region",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country",
+        "region"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_pre_2016_by_english_region",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): Pre-2016 State Pension recipients in each of the nine English regions (one row per region); Scotland and Wales are their own rows because the region tier fans out over England or the whole UK and DWP publishes no Northern Ireland cell, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_pre_2016_by_english_region",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, Pre-2016 State Pension, English regions",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_pre_2016_scotland",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "scotland"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_pre_2016_scotland",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "SCOTLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): Pre-2016 State Pension recipients in Scotland, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_pre_2016_scotland",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, Pre-2016 State Pension, Scotland",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_pre_2016_wales",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "wales"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_pre_2016_wales",
+          "value_variable": "person_count",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "WALES",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): Pre-2016 State Pension recipients in Wales, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c3)."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_pre_2016_wales",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "groupby_dimension": "dwp.state_pension_region_type_gender",
+        "dimensions": [
+          "category_of_pension",
+          "gender"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients, Pre-2016 State Pension, Wales",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "new"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_new_by_weekly_amount",
+          "value_variable": "person_count",
+          "groupby_variable": "state_pension",
+          "band_period_factor": 52,
+          "band_filter_dimension": "grouped_amount_of_benefit",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "NEW"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): New State Pension recipients by weekly amount band (DWP's half-open bands, 'Under £20.00' to '£300.00 and over'), sliced on the engine's annual State Pension at 52 weeks. Counts by band cannot be restated to another year's rates, so the window keeps the May, August and November 2025 points, which DWP pays at the 2025-26 rate the engine pays (microcosm#1069 R1). The publisher's 'all' margin is a total row and is left out by the detail measure pin."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_new_by_weekly_amount",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "New State Pension"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients by weekly amount, New State Pension",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+      "family": "dwp_state_pension",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.state_pension.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.state_pension.type",
+            "equals": "pre_2016"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "from_entity": "person",
+          "map_to": "household",
+          "metric_name": "dwp/state_pension/recipients_pre_2016_by_weekly_amount",
+          "value_variable": "person_count",
+          "groupby_variable": "state_pension",
+          "band_period_factor": 52,
+          "band_filter_dimension": "grouped_amount_of_benefit",
+          "filters": [
+            {
+              "variable": "state_pension",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "state_pension_type",
+              "operator": "==",
+              "value": "BASIC"
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore State Pension caseload, Great Britain residents (PolicyEngine/chronicle#302 via #305): Pre-2016 State Pension recipients by weekly amount band (DWP's half-open bands, 'Under £20.00' to '£300.00 and over'), sliced on the engine's annual State Pension at 52 weeks. Counts by band cannot be restated to another year's rates, so the window keeps the May, August and November 2025 points, which DWP pays at the 2025-26 rate the engine pays (microcosm#1069 R1). The publisher's 'all' margin is a total row and is left out by the detail measure pin."
+        },
+        "axiom": {
+          "metric_name": "dwp/state_pension/recipients_pre_2016_by_weekly_amount",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.state_pension_caseload"
+        ],
+        "source_measure_id": "recipients",
+        "groupby_dimension": "dwp.state_pension_amount_band_type",
+        "dimensions": [
+          "category_of_pension",
+          "grouped_amount_of_benefit"
+        ],
+        "dimension_values": {
+          "category_of_pension": "Pre-2016 State Pension"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.state_pension",
+      "label": "State Pension recipients by weekly amount, Pre-2016 State Pension",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -23186,6 +26917,9 @@
       },
       "mhclg": {
         "label": "Ministry of Housing, Communities and Local Government"
+      },
+      "dfc_ni": {
+        "label": "Department for Communities (Northern Ireland)"
       }
     },
     "categories": {
@@ -23344,6 +27078,14 @@
       "hmrc.income_tax_liabilities_statistics": {
         "provider_id": "hmrc",
         "label": "Income Tax liabilities statistics"
+      },
+      "dwp.state_pension": {
+        "provider_id": "dwp",
+        "label": "State Pension"
+      },
+      "dfc_ni.state_pension": {
+        "provider_id": "dfc_ni",
+        "label": "State Pension"
       }
     }
   }

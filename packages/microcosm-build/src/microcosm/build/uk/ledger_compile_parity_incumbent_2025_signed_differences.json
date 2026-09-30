@@ -1,11 +1,11 @@
 {
- "compiled_count": 1152,
+ "compiled_count": 1212,
  "counts_by_kind": {
   "calibration_drift": 555,
   "fixture_only": 53,
-  "ledger_only": 568
+  "ledger_only": 628
  },
- "difference_count": 1176,
+ "difference_count": 1236,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -380,6 +380,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 3710881810.1898503,
+   "name": "dfc_ni.state_pension.amount",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 330147.5,
+   "name": "dfc_ni.state_pension.recipients",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 95031.0,
    "name": "dfe.funded_childcare.early_learning_2_year_olds",
    "period": 2025,
@@ -550,6 +564,412 @@
    "kind": "ledger_only",
    "ledger_value": 1381089.75,
    "name": "dwp.hb.households_social_rented",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 138623908111.01526,
+   "name": "dwp.state_pension.amount",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12052874.0,
+   "name": "dwp.state_pension.recipients",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1388613.5,
+   "name": "dwp.state_pension.recipients_female_66_69_new",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 717078.5,
+   "name": "dwp.state_pension.recipients_female_70_74_new",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 822163.0,
+   "name": "dwp.state_pension.recipients_female_70_74_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1502398.25,
+   "name": "dwp.state_pension.recipients_female_75_79_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1016169.75,
+   "name": "dwp.state_pension.recipients_female_80_84_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 644697.25,
+   "name": "dwp.state_pension.recipients_female_85_89_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 404408.75,
+   "name": "dwp.state_pension.recipients_female_90_plus_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1323018.25,
+   "name": "dwp.state_pension.recipients_male_66_69_new",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1222116.75,
+   "name": "dwp.state_pension.recipients_male_70_74_new",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 194617.75,
+   "name": "dwp.state_pension.recipients_male_70_74_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1333148.5,
+   "name": "dwp.state_pension.recipients_male_75_79_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 823789.0,
+   "name": "dwp.state_pension.recipients_male_80_84_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 452540.25,
+   "name": "dwp.state_pension.recipients_male_85_89_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 207357.5,
+   "name": "dwp.state_pension.recipients_male_90_plus_pre_2016",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 221933.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 542356.0,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 406034.0,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 363537.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 416229.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 457239.25,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 421776.5,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 658266.75,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 464841.0,
+   "name": "dwp.state_pension.recipients_new_by_english_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 124804.0,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.100_00_to_under_150_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 661720.6666666666,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.150_00_to_under_200_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3390794.6666666665,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.200_00_to_under_250_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2481.3333333333335,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.20_00_to_under_40_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 433550.3333333333,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.250_00_to_under_300_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 64770.0,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.300_00_and_over__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2903.0,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24329.333333333332,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 31134.333333333332,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.80_00_to_under_100_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2401.3333333333335,
+   "name": "dwp.state_pension.recipients_new_by_weekly_amount.under_20_00__new_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 445194.0,
+   "name": "dwp.state_pension.recipients_new_scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 253534.75,
+   "name": "dwp.state_pension.recipients_new_wales",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 324237.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000001",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 835347.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000002",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 631830.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000003",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 586131.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000004",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 682017.5,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000005",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 782615.75,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000006",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 593093.25,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000007",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1134987.25,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000008",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 806881.5,
+   "name": "dwp.state_pension.recipients_pre_2016_by_english_region@E12000009",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 880177.3333333334,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.100_00_to_under_150_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1589409.6666666667,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.150_00_to_under_200_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2730401.3333333335,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.200_00_to_under_250_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8063.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.20_00_to_under_40_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1338030.3333333333,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.250_00_to_under_300_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 737995.6666666666,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.300_00_and_over__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12135.666666666666,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.40_00_to_under_60_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17155.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.60_00_to_under_80_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23048.0,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.80_00_to_under_100_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12621.333333333334,
+   "name": "dwp.state_pension.recipients_pre_2016_by_weekly_amount.under_20_00__pre_2016_state_pension",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 621000.25,
+   "name": "dwp.state_pension.recipients_pre_2016_scotland",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 403793.0,
+   "name": "dwp.state_pension.recipients_pre_2016_wales",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
