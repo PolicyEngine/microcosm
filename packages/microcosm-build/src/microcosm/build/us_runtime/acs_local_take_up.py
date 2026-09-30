@@ -54,6 +54,25 @@ an engine default that biases SNAP (microcosm#1022). None needs the engine:
   person; a blank or a code other than 1/2 reads as not covered, and the
   receipt and gate count both (unweighted, weighted and at 65+) for review.
 
+One more shipped at an engine default although it does not move SNAP in
+practice (microcosm#1022); the helpers of
+:mod:`~microcosm.build.us_runtime.acs_local_vehicles_head_start` fill it here
+too:
+
+- ``takes_up_head_start_if_eligible`` (person): persons aged 3-5 draw a
+  stable uniform keyed on ``acs_2024_1yr:SERIALNO:SPORDER`` and take up below
+  the donor spine's weighted share there, the output of the donor's SIPP
+  model; everyone else is ``False``.
+
+The same helpers record native ACS ``VEH`` in the receipt as vehicle
+availability only. ``VEH`` counts vehicles available, long-term leased and
+employer-provided ones included, while ``household_vehicles_owned`` is an
+owned count that San Francisco CAAP, Los Angeles General Relief and
+``lives_in_vehicle`` read on its own, so ``VEH`` is written to no engine
+input (microcosm#1064 review): ``household_vehicles_owned`` and
+``household_vehicles_value`` keep the reviewed engine default, 0, on ACS
+rows, and the gate fails on any other ACS owned count.
+
 SNAP draws come from :func:`~microcosm.build.us_runtime.take_up._stable_unit_draws`,
 which keys a unit without complete source identity on its own ids, so the
 assignment depends only on ``seed``, the frame and its weights. The
@@ -61,9 +80,9 @@ per-state recalibration of the ASEC lane is not applied; the release's state
 SNAP household targets reweight instead. Other ``takes_up_*`` flags on ACS
 rows are not this stage's: SSI and Medicaid take-up are assigned after an
 engine pre-pass by
-:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`, and Head
-Start, EITC and the rest still ship at the engine default (microcosm#1022);
-the gate here does not grade them.
+:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`, and EITC,
+Early Head Start and the rest still ship at the engine default
+(microcosm#1022); the gate here does not grade them.
 """
 
 from __future__ import annotations
@@ -74,6 +93,17 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.us_runtime.acs_local_vehicles_head_start import (
+    ACS_VEHICLES_AVAILABLE,
+    HEAD_START_AGES,
+    US_HEAD_START_TAKE_UP_COLUMN,
+    US_VEHICLES_OWNED_COLUMN,
+    donor_head_start_share,
+    grade_head_start,
+    grade_vehicles_owned,
+    head_start_fill,
+    vehicles_available_summary,
+)
 from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
 from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
 from microcosm.build.us_runtime.base_pool import spine_column
@@ -113,6 +143,7 @@ __all__ = [
     "ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS",
     "ACS_LOCAL_TAKE_UP_COLUMNS",
     "ACS_LOCAL_TAKE_UP_GATE_NAME",
+    "ACS_VEHICLES_AVAILABLE_RECEIPT",
     "US_HOUSING_ASSISTANCE_RECEIPT_COLUMN",
     "US_TANF_TAKE_UP_OUTPUT_COLUMN",
     "acs_local_take_up_signal_gate",
@@ -133,13 +164,22 @@ ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE = "microcosm#1022"
 _DISCRETIONARY = US_SNAP_DISCRETIONARY_EXEMPTION_OUTPUT_COLUMN
 _HOUSING = US_HOUSING_ASSISTANCE_RECEIPT_COLUMN
 (_MEDICARE,) = US_MEDICARE_TAKE_UP_OUTPUT_COLUMNS
+_VEHICLES_OWNED = US_VEHICLES_OWNED_COLUMN
+_HEAD_START = US_HEAD_START_TAKE_UP_COLUMN
 #: The ``(entity, column)`` inputs this stage fills on ACS rows without the
-#: engine (microcosm#1022).
+#: engine (microcosm#1022). ``household_vehicles_owned`` is not one: ACS
+#: ``VEH`` counts vehicles available, not owned, so the owned count keeps its
+#: reviewed default and ``VEH`` is recorded under
+#: :data:`ACS_VEHICLES_AVAILABLE_RECEIPT` (microcosm#1064 review).
 ACS_LOCAL_ENGINE_FREE_FILL_COLUMNS: tuple[tuple[str, str], ...] = (
     ("person", _DISCRETIONARY),
     ("spm_unit", _HOUSING),
     ("person", _MEDICARE),
+    ("person", _HEAD_START),
 )
+#: The ``engine_free_fills`` receipt key of the ACS ``VEH`` availability
+#: summary, which reaches no engine input.
+ACS_VEHICLES_AVAILABLE_RECEIPT = "vehicles_available"
 
 _ID_COLUMN = "spm_unit_id"
 #: Reported SNAP receipt: the survey anchor (on ACS rows, native household
@@ -179,6 +219,7 @@ _ENGINE_DEFAULT_EFFECT = {
     _DISCRETIONARY: "no one is discretionarily exempt",
     _HOUSING: "no one receives housing assistance",
     _MEDICARE: "every eligible person enrolls in Medicare",
+    _HEAD_START: "every Head Start-eligible child aged 3-5 takes Head Start up",
 }
 
 
@@ -285,13 +326,15 @@ def _hins3_audit(
     }
 
 
-def _acs_person_draw_keys(frame: Frame, rows: np.ndarray) -> pd.Series:
+def _acs_person_draw_keys(
+    frame: Frame, rows: np.ndarray, *, purpose: str = "discretionary-exemption"
+) -> pd.Series:
     """``acs_2024_1yr:SERIALNO:SPORDER`` for the selected persons; unique."""
     household = frame.table("household")
     person = frame.table("person")
     if "SERIALNO" not in household or "SPORDER" not in person:
         raise ValueError(
-            "ACS local take-up keys the discretionary-exemption draws on household "
+            f"ACS local take-up keys the {purpose} draws on household "
             "SERIALNO and person SPORDER; the frame lacks one of them."
         )
     selected = person.loc[rows]
@@ -301,7 +344,7 @@ def _acs_person_draw_keys(frame: Frame, rows: np.ndarray) -> pd.Series:
     order = pd.to_numeric(selected["SPORDER"], errors="coerce")
     if serial.isna().any() or order.isna().any():
         raise ValueError(
-            "Every ACS person drawing a discretionary exemption needs its household "
+            f"Every ACS person in the {purpose} draws needs its household "
             "SERIALNO and its SPORDER."
         )
     keys = (
@@ -465,7 +508,8 @@ def _assignment_sha256(
     person: pd.DataFrame,
     persons: np.ndarray,
 ) -> str:
-    """Digest of the ACS rows' ids and owned flags, to prove two passes agree."""
+    """Digest of the ACS rows' ids and assigned cells, to prove two passes
+    agree. ACS ``VEH`` is not in it: it reaches no engine input."""
     selected = (
         pd.DataFrame(
             {
@@ -481,7 +525,7 @@ def _assignment_sha256(
                 "person_id": person.loc[persons, "person_id"].to_numpy(),
                 **{
                     column: _flags(person.loc[persons, column])[0]
-                    for column in (_DISCRETIONARY, _MEDICARE)
+                    for column in (_DISCRETIONARY, _MEDICARE, _HEAD_START)
                 },
             }
         ),
@@ -504,29 +548,39 @@ def with_acs_local_take_up_inputs(
             columns, ``receives_snap``, ``receives_housing_assistance`` and
             the transferred ``takes_up_housing_assistance_if_eligible``;
             person ``is_snap_abawd_discretionary_exempt``,
-            ``takes_up_medicare_if_eligible``, ``age`` and ACS ``HINS3``.
-            Filling a discretionary cell also needs household ``SERIALNO``
-            and person ``SPORDER``; filling a housing receipt, household
-            ``TYPEHUGQ``.
+            ``takes_up_medicare_if_eligible``,
+            ``takes_up_head_start_if_eligible``, ``age`` and ACS ``HINS3``;
+            household ACS ``VEH`` and ``TYPEHUGQ``, and complete household
+            origin tags. Filling a discretionary or Head Start cell also
+            needs household ``SERIALNO`` and person ``SPORDER``.
         seed: The build seed for the draws.
 
     Returns:
         The frame with filled ACS cells (unchanged if none were missing) and
-        a JSON-ready receipt, including a digest of the ACS assignment.
+        a JSON-ready receipt, including a digest of the ACS assignment and
+        the ACS ``VEH`` vehicle-availability summary, which reaches no engine
+        input: ``household_vehicles_owned`` is left to its reviewed default.
 
     Raises:
         ValueError: If the frame is not US-schema, origin tags are missing,
             a required column is absent, or an ACS row lacks what its fill
             reads (a unique draw key, a group-quarters code, a transferred
-            housing take-up flag).
+            housing take-up flag), or the donor spine's Head Start share is
+            unreadable.
     """
     if frame.schema != US_SCHEMA:
         raise ValueError("ACS local take-up inputs require the US schema.")
     spm_unit = frame.table("spm_unit")
     person = frame.table("person")
+    household = frame.table("household")
     tag = spine_column("spm_unit")
     person_tag = spine_column("person")
-    for table, column in ((spm_unit, tag), (person, person_tag)):
+    household_tag = spine_column("household")
+    for table, column in (
+        (spm_unit, tag),
+        (person, person_tag),
+        (household, household_tag),
+    ):
         if column not in table or table[column].isna().any():
             raise ValueError(
                 f"ACS local take-up requires complete origin tags: {column}."
@@ -545,19 +599,40 @@ def with_acs_local_take_up_inputs(
         f"{entity}.{column}"
         for entity, columns in (
             ("spm_unit", (_HOUSING, _HOUSING_TAKE_UP)),
-            ("person", (_DISCRETIONARY, _MEDICARE, _AGE_COLUMN, _MEDICARE_COVERAGE)),
+            (
+                "person",
+                (
+                    _DISCRETIONARY,
+                    _MEDICARE,
+                    _HEAD_START,
+                    _AGE_COLUMN,
+                    _MEDICARE_COVERAGE,
+                ),
+            ),
+            ("household", (ACS_VEHICLES_AVAILABLE, _HOUSEHOLD_KIND)),
         )
         for column in columns
         if column not in frame.table(entity)
     ]
     if absent:
+        staging = (
+            f" ACS {ACS_VEHICLES_AVAILABLE} comes from staging: re-run "
+            "tools/build_us_acs_multispine_base.py with the current builder."
+            if ACS_VEHICLES_AVAILABLE not in household
+            else ""
+        )
         raise ValueError(
             f"ACS local take-up requires column(s) {absent} for the engine-free "
-            f"fills ({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); a missing column would "
-            "reach the engine at its default."
+            "fills and the vehicle-availability receipt "
+            f"({ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE}); a missing fill input would "
+            f"reach the engine at its default.{staging}"
         )
     acs = spm_unit[tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
     acs_persons = person[person_tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
+    acs_households = (
+        household[household_tag].eq(ACS_2024_1YR_SPINE).to_numpy(dtype=bool)
+    )
+    donor_persons = person[person_tag].eq(ASEC_PUF_DONOR_SPINE).to_numpy(dtype=bool)
     units = _units_with_source_identity(frame, "spm_unit")
     if not np.array_equal(units[_ID_COLUMN].to_numpy(), spm_unit[_ID_COLUMN]):
         raise ValueError("SPM-unit source identity does not align with the table.")
@@ -606,6 +681,24 @@ def with_acs_local_take_up_inputs(
     )
     housing_missing, housing_assigned, housing = _housing_fill(frame, acs)
     medicare_missing, medicare_assigned, medicare = _medicare_fill(frame, acs_persons)
+    household_weights = np.asarray(
+        frame.resolve_weights("household").values, dtype=np.float64
+    )
+    # microcosm#1064 review: VEH counts vehicles available, not owned; it
+    # is recorded here and written to no engine input.
+    vehicles_available = vehicles_available_summary(
+        household, acs_households, household_weights
+    )
+    head_start_missing, head_start_assigned, head_start = head_start_fill(
+        person,
+        acs_persons,
+        donor_persons,
+        np.asarray(frame.resolve_weights("person").values, dtype=np.float64),
+        seed=int(seed),
+        draw_keys=lambda rows: _acs_person_draw_keys(
+            frame, rows, purpose="Head Start take-up"
+        ),
+    )
 
     result = frame
     replaced: dict[str, pd.DataFrame] = {}
@@ -618,11 +711,16 @@ def with_acs_local_take_up_inputs(
         ):
             updated[column] = _filled(spm_unit[column], missing, assigned)
         replaced["spm_unit"] = updated
-    if discretionary_missing.any() or medicare_missing.any():
+    if (
+        discretionary_missing.any()
+        or medicare_missing.any()
+        or head_start_missing.any()
+    ):
         updated = person.copy()
         for column, missing, assigned in (
             (_DISCRETIONARY, discretionary_missing, discretionary_assigned),
             (_MEDICARE, medicare_missing, medicare_assigned),
+            (_HEAD_START, head_start_missing, head_start_assigned),
         ):
             updated[column] = _filled(person[column], missing, assigned)
         replaced["person"] = updated
@@ -647,6 +745,9 @@ def with_acs_local_take_up_inputs(
     age = _numeric(final_person[_AGE_COLUMN])
     covered = acs_persons & _covered_age(age)
     aged = acs_persons & (age >= _MEDICARE_AGE)
+    head_start_ages = (
+        acs_persons & (age >= HEAD_START_AGES[0]) & (age <= HEAD_START_AGES[1])
+    )
     discretionary["weighted_covered_exempt_share"] = _share(
         person_weights[covered], _flags(final_person.loc[covered, _DISCRETIONARY])[0]
     )
@@ -655,6 +756,10 @@ def with_acs_local_take_up_inputs(
     )
     medicare["weighted_aged_take_up_share"] = _share(
         person_weights[aged], _flags(final_person.loc[aged, _MEDICARE])[0]
+    )
+    head_start["weighted_age_domain_take_up_share"] = _share(
+        person_weights[head_start_ages],
+        _flags(final_person.loc[head_start_ages, _HEAD_START])[0],
     )
     medicare["hins3_audit"] = _hins3_audit(
         final_person.loc[acs_persons, _MEDICARE_COVERAGE],
@@ -696,11 +801,14 @@ def with_acs_local_take_up_inputs(
         "engine_free_fills": {
             "issue": ACS_LOCAL_ENGINE_FREE_FILLS_ISSUE,
             "acs_persons": int(acs_persons.sum()),
+            "acs_households": int(acs_households.sum()),
             "columns": {
                 _DISCRETIONARY: discretionary,
                 _HOUSING: housing,
                 _MEDICARE: medicare,
+                _HEAD_START: head_start,
             },
+            ACS_VEHICLES_AVAILABLE_RECEIPT: vehicles_available,
         },
         "assigned_sha256": _assignment_sha256(final, acs, final_person, acs_persons),
     }
@@ -755,22 +863,31 @@ def _engine_free_fill_grades(
     *,
     units: np.ndarray,
     persons: np.ndarray,
+    households: np.ndarray,
     unit_weights: np.ndarray,
     person_weights: np.ndarray,
+    household_weights: np.ndarray,
+    head_start_donor_share: float | None,
     graded: bool,
     columns: dict[str, object],
 ) -> list[str]:
     """Grade the #1022 columns on one spine's rows; record entries in ``columns``.
 
-    Every spine must carry each column complete and non-constant. Only
+    Every spine must carry each fill complete and non-constant. Only
     ``graded`` (ACS) rows are held to the fill's own contract: the exempt
-    share band and age scope, the copied housing receipt, and native
-    ``HINS3`` Medicare coverage. Donor rows are reported only.
+    share band and age scope, the copied housing receipt, native ``HINS3``
+    Medicare coverage, and Head Start take-up within ages 3-5 around the
+    donor spine's share. The owned vehicle count is graded per spine by
+    :func:`grade_vehicles_owned`: complete and varying on donor rows, the
+    reviewed default on ACS rows, where ``VEH`` is recorded as availability
+    only. Donor rows are otherwise reported only.
     """
     person = frame.table("person").loc[persons]
     spm_unit = frame.table("spm_unit").loc[units]
+    household = frame.table("household").loc[households]
     person_weights = person_weights[persons]
     unit_weights = unit_weights[units]
+    household_weights = household_weights[households]
     failures: list[str] = []
     recorded = {"columns": columns, "failures": failures}
     graded_flags = _complete_flags(
@@ -797,6 +914,26 @@ def _engine_free_fill_grades(
     if graded_flags is not None:
         failures += _grade_medicare(
             person, graded_flags[0], person_weights, graded_flags[1], graded=graded
+        )
+    vehicles: dict[str, object] = {"entity": "household"}
+    if _VEHICLES_OWNED not in household:
+        failures.append(f"missing {_VEHICLES_OWNED}.")
+    else:
+        columns[_VEHICLES_OWNED] = vehicles
+        failures += grade_vehicles_owned(
+            household, household_weights, vehicles, graded=graded
+        )
+    graded_flags = _complete_flags(
+        person, _HEAD_START, person_weights, entity="person", **recorded
+    )
+    if graded_flags is not None:
+        failures += grade_head_start(
+            person,
+            graded_flags[0],
+            person_weights,
+            graded_flags[1],
+            donor_share=head_start_donor_share,
+            graded=graded,
         )
     return failures
 
@@ -926,30 +1063,53 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
     constant (the engine-default universal take-up this lane shipped). On the
     ACS spine, whose cells this stage assigns, it also fails when a share
     leaves its plausibility band or (SNAP) a ``receives_snap`` reporter does
-    not take up. The #1022 columns are held to the same completeness and
+    not take up. The #1022 fills are held to the same completeness and
     variation on both spines and, on the ACS spine, to their fills: an
     exempt share of ages 18-64 around the manifest rate and no one exempt
     outside them, a housing receipt equal to the transferred take-up flag
-    (``False`` in group quarters), and Medicare take-up equal to ``HINS3 ==
-    1`` with a high share at 65+; blank and invalid ``HINS3`` cells are
-    counted in the ACS detail but not graded. Donor-spine shares and anchors
-    are reported
-    but not graded: those cells come from the donor release, whose own gates
-    graded them. Other ``takes_up_*`` columns are not graded (microcosm#1022).
+    (``False`` in group quarters), Medicare take-up equal to ``HINS3 == 1``
+    with a high share at 65+ (blank and invalid ``HINS3`` cells are counted
+    in the ACS detail but not graded), and Head Start take-up only at ages
+    3-5, at a share around the donor spine's. The owned vehicle count must be
+    complete and vary on the donor spine and stay at the reviewed default on
+    the ACS spine (missing, or 0 once filled): ACS ``VEH`` counts vehicles
+    available, not owned, and is recorded beside it as information only
+    (microcosm#1064 review). Donor-spine shares and anchors are reported but
+    not graded: those cells come from the donor release, whose own gates
+    graded them. Other ``takes_up_*`` columns are not graded
+    (microcosm#1022).
     """
     spm_unit = frame.table("spm_unit")
     person = frame.table("person")
+    household = frame.table("household")
     tag = spine_column("spm_unit")
     person_tag = spine_column("person")
+    household_tag = spine_column("household")
     failures: list[str] = []
     by_spine: dict[str, object] = {}
     if tag not in spm_unit or spm_unit[tag].isna().any():
         failures.append(f"Missing SPM-unit origin tags: {tag}.")
     elif person_tag not in person or person[person_tag].isna().any():
         failures.append(f"Missing person origin tags: {person_tag}.")
+    elif household_tag not in household or household[household_tag].isna().any():
+        failures.append(f"Missing household origin tags: {household_tag}.")
     else:
         weights = np.asarray(frame.resolve_weights("spm_unit").values, dtype=float)
         person_weights = np.asarray(frame.resolve_weights("person").values, dtype=float)
+        household_weights = np.asarray(
+            frame.resolve_weights("household").values, dtype=float
+        )
+        head_start_share: float | None = None
+        if _HEAD_START in person and _AGE_COLUMN in person:
+            try:
+                head_start_share = donor_head_start_share(
+                    person[_HEAD_START],
+                    _numeric(person[_AGE_COLUMN]),
+                    person[person_tag].eq(ASEC_PUF_DONOR_SPINE).to_numpy(dtype=bool),
+                    person_weights,
+                )
+            except ValueError as exc:
+                failures.append(f"{ACS_2024_1YR_SPINE}: {exc}")
         for spine in (ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE):
             selected = spm_unit[tag].eq(spine).to_numpy(dtype=bool)
             # Only the ACS cells are this stage's output; grade their
@@ -1015,15 +1175,20 @@ def acs_local_take_up_signal_gate(frame: Frame) -> GateResult:
                     frame,
                     units=selected,
                     persons=person[person_tag].eq(spine).to_numpy(dtype=bool),
+                    households=household[household_tag].eq(spine).to_numpy(dtype=bool),
                     unit_weights=weights,
                     person_weights=person_weights,
+                    household_weights=household_weights,
+                    head_start_donor_share=head_start_share,
                     graded=graded,
                     columns=columns,
                 )
             ]
         known = {ASEC_PUF_DONOR_SPINE, ACS_2024_1YR_SPINE}
-        if set(spm_unit[tag].unique()) - known or set(person[person_tag].unique()) - (
-            known
+        if (
+            set(spm_unit[tag].unique()) - known
+            or set(person[person_tag].unique()) - known
+            or set(household[household_tag].unique()) - known
         ):
             failures.append("Local take-up origin tags contain an unsupported spine.")
     return GateResult(
