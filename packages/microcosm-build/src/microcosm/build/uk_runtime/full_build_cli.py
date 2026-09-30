@@ -79,7 +79,7 @@ from ..staging_cli import (
     validate_staging_arguments,
 )
 from ..staging_dataset import SHA256SUMS_FILENAME, refresh_sha256sums_entry
-from . import national_role
+from . import country_adapter, national_role
 from .atomic_area_support import (
     IDENTITY_COLUMN,
     uk_atomic_assignment_definition,
@@ -505,6 +505,14 @@ def _prepare_geography(
     """
     if args.geography_assignment != "atomic":
         return None, {"assignment": "legacy"}
+    # A release candidate builds on the registered supports (sources.yaml,
+    # the provenance register): the operator's pin proves the bytes are the
+    # ones requested, the register proves they are the ones reviewed.
+    register = (
+        country_adapter.uk_atomic_support_register()
+        if getattr(args, "release_candidate", False)
+        else None
+    )
     support_pins = {}
     payloads = {}
     for system, label in _SUPPORT_ARGUMENTS.items():
@@ -515,6 +523,13 @@ def _prepare_geography(
                 "--atomic-support-scotland and --atomic-support-ni."
             )
         pin = _pin(path, getattr(args, f"atomic_support_sha256_{label}"))
+        if register is not None and pin != register[system]:
+            raise ValueError(
+                f"--release-candidate requires the registered atomic-area support "
+                f"for --atomic-support-{label}: sha256 {pin['sha256']} "
+                f"({pin['size_bytes']} bytes) is not the sources.yaml row "
+                f"{register[system]['sha256']} ({register[system]['size_bytes']} bytes)."
+            )
         pins[ATOMIC_SUPPORT_SOURCES[system]] = pin
         support_pins[system] = pin
         payloads[system] = load_raw_bytes(path)

@@ -10,7 +10,15 @@ from pathlib import Path
 
 import pytest
 
+from microcosm.build.uk_runtime import country_adapter
+from test_support.microcosm_build.uk_full_build_cli import (
+    patch_support_register,
+    synthetic_geography_binding,
+)
 from test_support.paths import paths_for
+
+#: The committed register reader, kept before the autouse fixture replaces it.
+_REAL_REGISTER = country_adapter.uk_atomic_support_register
 
 _TEST_PATHS = paths_for("microcosm-build")
 
@@ -118,6 +126,7 @@ def _good_candidate(tmp_path: Path) -> Path:
             }
         },
         "identity": {"spine": {"pin_verified": True}, "ladder": {"pin_verified": True}},
+        "geography": {"assignment": synthetic_geography_binding()},
         "outputs": {
             "dataset": {"path": str(h5), "sha256": hashlib.sha256(b"h5").hexdigest()}
         },
@@ -135,6 +144,12 @@ KEY = base64.b64encode(b"\x06" * 32).decode()
 @pytest.fixture(autouse=True)
 def _trusted_key(monkeypatch) -> None:
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", KEY)
+
+
+@pytest.fixture(autouse=True)
+def _registered_supports(monkeypatch) -> None:
+    """The synthetic candidates bind synthetic support pins; register them."""
+    patch_support_register(monkeypatch)
 
 
 def _signed_report() -> dict:
@@ -287,6 +302,59 @@ def test_each_missing_flag_is_named(tmp_path: Path, mutate, needle: str) -> None
     )
     failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
     assert any(needle in failure for failure in failures), failures
+
+
+@pytest.mark.parametrize(
+    "mutate, needle",
+    [
+        (
+            lambda m: m["geography"]["assignment"].__setitem__("assignment", "legacy"),
+            "geography.assignment.assignment is 'legacy', not 'atomic'",
+        ),
+        (
+            lambda m: m["geography"]["assignment"]["support_pins"][
+                "uk_ni_data_zone_2021"
+            ].__setitem__("sha256", "9" * 64),
+            "support_pins.uk_ni_data_zone_2021 is not the registered support",
+        ),
+        (
+            lambda m: m["geography"]["assignment"]["support_pins"][
+                "uk_ew_output_area_2021"
+            ].__setitem__("size_bytes", 1),
+            "support_pins.uk_ew_output_area_2021 is not the registered support",
+        ),
+        (lambda m: m.pop("geography"), "geography.assignment.assignment is None"),
+    ],
+)
+def test_preflight_requires_the_registered_atomic_assignment(
+    tmp_path: Path, mutate, needle: str
+) -> None:
+    """A release candidate is the identity-keyed assignment on the registered
+    supports (microcosm#932 round 1): the pre-flight refuses the legacy law, a
+    pre-#932 manifest with no binding, and a pin that is not the register's."""
+    candidate = _good_candidate(tmp_path)
+    path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(path.read_text())
+    mutate(manifest)
+    path.write_text(json.dumps(manifest))
+    failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert any(needle in line for line in failures), failures
+
+
+def test_preflight_reads_the_committed_support_register(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Against sources.yaml itself the synthetic pins are not the register's."""
+    monkeypatch.setattr(country_adapter, "uk_atomic_support_register", _REAL_REGISTER)
+    candidate = _good_candidate(tmp_path)
+    failures = _load().check_candidate_dir(candidate, today=date(2026, 9, 4))
+    refused = [line for line in failures if "support_pins" in line]
+    assert len(refused) == 3, failures
+    register = _REAL_REGISTER()
+    assert set(register) == set(synthetic_geography_binding()["support_pins"])
+    assert all(
+        len(row["sha256"]) == 64 and row["size_bytes"] > 0 for row in register.values()
+    )
 
 
 def test_env_check_names_the_missing_key_and_pins(tmp_path: Path) -> None:

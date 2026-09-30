@@ -6,6 +6,7 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.country_adapter import (
+    uk_atomic_support_register,
     validate_uk_country_source_projection,
 )
 from test_support.paths import paths_for
@@ -46,3 +47,23 @@ def test_country_source_projection_refuses_divergent_header_pin(tmp_path):
     spec = load_country_spec(destination)
     with pytest.raises(ValueError, match="raw-source pins differ"):
         validate_uk_country_source_projection(spec)
+
+
+def test_atomic_support_register_is_the_committed_provenance():
+    """The register a release candidate is checked against (microcosm#932
+    round 1) is sources.yaml's, and it agrees with the provenance resource."""
+    import json
+
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    register = uk_atomic_support_register()
+    assert tuple(register) == SYSTEMS
+    package = paths_for("microcosm-build").package / "src/microcosm/build/uk"
+    provenance = json.loads(
+        (package / "uk_atomic_area_supports.provenance.json").read_text()
+    )
+    for system, row in register.items():
+        assert row == {
+            "sha256": provenance["supports"][system]["sha256"],
+            "size_bytes": provenance["supports"][system]["size_bytes"],
+        }
