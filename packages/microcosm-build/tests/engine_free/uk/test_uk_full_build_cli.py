@@ -41,8 +41,9 @@ def test_geography_assignment_arguments_are_closed(tmp_path):
     release = arguments(tmp_path, "--release-candidate")
     assert release.release_candidate and release.geography_assignment == "atomic"
     cli.validate_cli_args(release)
-    # The national role is dispatched to the seam: the supports are refused
-    # by name with the other dense-only flags, and its default needs none.
+    # The national role builds on the bound checkpoint with no geography
+    # assignment: the supports are refused by name with the other dense-only
+    # flags, and its default needs none.
     cli.validate_cli_args(cli.parse_args(_national_argv(tmp_path)))
     national = cli.parse_args(
         _national_argv(tmp_path, "--atomic-support-sha256-ni", "e" * 64)

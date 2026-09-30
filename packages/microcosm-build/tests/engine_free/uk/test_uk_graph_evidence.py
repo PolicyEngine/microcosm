@@ -256,3 +256,53 @@ def test_sample_admission_carries_the_transferred_gate_posture(synthetic_smoke):
     )
     assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
     assert gate.params["synthetic_smoke"] is synthetic_smoke
+
+
+@pytest.mark.parametrize("synthetic_smoke", [False, True])
+def test_sample_admission_holds_under_the_default_atomic_law(synthetic_smoke):
+    """The same admission composed under the default law (microcosm#932): the
+    identity-keyed assignment follows the sample node and does not move the
+    transferred-gate parameters the sample admission reads."""
+    from microcosm.build.uk_runtime.atomic_area_support import (
+        uk_atomic_assignment_definition,
+    )
+    from microcosm.build.uk_runtime.graph_population import append_uk_population_nodes
+    from test_support.microcosm_build.uk_atomic_support_fixtures import (
+        toy_support_payloads,
+    )
+    from test_support.microcosm_build.uk_full_population_graph import SOURCE_VINTAGE
+
+    country = load_country_spec("uk")
+    spine = uk_spine_graph(country)
+    gated = add_uk_spine_gate_nodes(
+        spine,
+        spec=country,
+        engine_identity="test-engine",
+        synthetic_smoke=synthetic_smoke,
+    )
+    graph = append_uk_population_nodes(
+        gated,
+        population=uk_spine_endpoint(spine).population,
+        time_period="2024",
+        weight_kind="importance",
+        sample_fraction=0.1,
+        n_clones=2,
+        seed=7,
+        atomic_geography_definition=uk_atomic_assignment_definition(
+            toy_support_payloads(), seed=7
+        ),
+        source_vintage=SOURCE_VINTAGE,
+    )
+    gate = graph.node("spine.gates.transferred")
+    sample = graph.node("uk.full.sample")
+    assert {edge.producer for edge in sample.artifact_inputs} >= {gate.id}
+    assert sample.params["spine_gate_phase"] == "transferred"
+    assert sample.params["spine_gate_release_candidate"] is bool(
+        gate.params["release_candidate"]
+    )
+    assert sample.params["spine_gate_synthetic_smoke"] is synthetic_smoke
+    assert graph.node("uk.full.identity").kernel == "uk.full.identity@1"
+    compiled = compile_graph(graph)
+    assert compiled.order.index("uk.full.sample") < compiled.order.index(
+        "uk.full.identity"
+    )
