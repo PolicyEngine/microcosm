@@ -434,6 +434,19 @@ def test_parse_ct_planning_region_crosswalk_refuses_a_town_in_two_regions() -> N
         parse_ct_planning_region_crosswalk(conflicting.splitlines(keepends=True))
 
 
+def test_parse_ct_planning_region_crosswalk_refuses_a_table_without_towns() -> None:
+    header, rest = _CT_CROSSWALK.split("COUSUB_CLASSFP\n", 1)
+    undefined_only = "".join(
+        line + "\n" for line in rest.split("\n") if "|00000|" in line
+    )
+    with pytest.raises(ValueError, match="no town rows"):
+        parse_ct_planning_region_crosswalk(
+            (header + "COUSUB_CLASSFP\n" + undefined_only + "\nGLOSSARY\n").splitlines(
+                keepends=True
+            )
+        )
+
+
 def test_parse_ct_planning_region_crosswalk_refuses_a_changed_header() -> None:
     with pytest.raises(ValueError, match="header must be"):
         parse_ct_planning_region_crosswalk(
@@ -467,6 +480,15 @@ def test_parse_baf_county_subdivision_file_refuses_bad_rows(
 ) -> None:
     with pytest.raises(ValueError, match=match):
         parse_baf_county_subdivision_file([_CT_MCD[0], row], label="MCD")
+
+
+def test_parse_baf_county_subdivision_file_refuses_repeats_and_other_headers() -> None:
+    with pytest.raises(ValueError, match="more than once"):
+        parse_baf_county_subdivision_file([*_CT_MCD, _CT_MCD[1]], label="MCD")
+    with pytest.raises(ValueError, match="header must be"):
+        parse_baf_county_subdivision_file(
+            ["BLOCKID|COUSUBFP\n", "090010701001000|08070\n"], label="MCD"
+        )
 
 
 def test_ct_planning_region_by_block_follows_each_town() -> None:
@@ -596,6 +618,16 @@ def test_assemble_ignores_remap_entries_for_unpopulated_blocks() -> None:
     assert payload["cbsa_code"].tolist() == [14860, 35300]
 
 
+def test_assemble_applies_the_whole_state_rule_to_unpopulated_entries() -> None:
+    # A remap that names only unpopulated CT blocks still claims the state.
+    with pytest.raises(ValueError, match="2 populated block"):
+        _assemble(
+            {_BRIDGEPORT_BLOCK: 40, _NEW_HAVEN_BLOCK: 10},
+            cbsa_by_county={},
+            cbsa_county_by_block={90010101011000: "09190"},
+        )
+
+
 def test_assemble_ignores_delineation_rows_outside_the_built_states() -> None:
     # A smoke build of Delaware alone must not trip over Connecticut rows.
     payload = _assemble({_DE_BLOCK: 5}, cbsa_by_county=_CT_CBSA_BY_COUNTY)
@@ -649,6 +681,33 @@ def test_cbsa_coverage_check_follows_the_recorded_states(tmp_path) -> None:
         tmp_path, _legacy_ct_payload(cbsa_delineated_states="09")
     )
     assert "must be a list" in us_block_ladder_cbsa_coverage_failures(malformed)[0]
+
+
+def test_cbsa_coverage_check_covers_every_recorded_state(tmp_path) -> None:
+    # CT is fine and Delaware, second in order, is all zero.
+    payload = _assemble(
+        {_BRIDGEPORT_BLOCK: 40, _DE_BLOCK: 5},
+        cbsa_by_county={"09120": 14860},
+        cbsa_county_by_block={_BRIDGEPORT_BLOCK: "09120"},
+        metadata=_ladder_metadata(cbsa_delineated_states=["09", "10", "36"]),
+    )
+    failures = us_block_ladder_cbsa_coverage_failures(
+        _write_loaded_ladder(tmp_path, payload)
+    )
+
+    # New York is recorded but has no blocks in this ladder: not a failure.
+    assert [failure[:8] for failure in failures] == ["state 10"]
+
+
+@pytest.mark.parametrize("recorded", [["9"], [9], ["090"], [None]])
+def test_cbsa_coverage_check_refuses_malformed_state_entries(
+    tmp_path, recorded: list
+) -> None:
+    ladder = _write_loaded_ladder(
+        tmp_path, _legacy_ct_payload(cbsa_delineated_states=recorded)
+    )
+
+    assert "must be a list" in us_block_ladder_cbsa_coverage_failures(ladder)[0]
 
 
 def test_cbsa_delineated_states_keeps_built_states_with_delineated_territory() -> None:

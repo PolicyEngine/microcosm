@@ -737,15 +737,9 @@ def _cbsa_county_equivalents(
 
 
 def _csv_lines(lines: Iterable[str]) -> Iterator[str]:
-    """Lines as csv needs them for quoted cells that span lines.
-
-    A byte-order mark ahead of the first quote would hide the quoting, and
-    csv joins a quoted cell's lines only when each keeps its terminator.
-    """
+    """Lines with a leading byte-order mark removed; it would hide the quoting."""
     for index, line in enumerate(lines):
-        if index == 0:
-            line = line.removeprefix("\ufeff")
-        yield line if line.endswith(("\n", "\r")) else line + "\n"
+        yield line.removeprefix("\ufeff") if index == 0 else line
 
 
 def _crosswalk_column_name(cell: str) -> str:
