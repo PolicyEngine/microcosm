@@ -1,0 +1,1335 @@
+# Reviewed default fills of the ACS local lane and their means-tested consumers
+# (microcosm#1022, part 6).
+#
+# fill_reviewed_nulls in tools/build_us_acs_local_release.py writes the
+# policyengine-us default into every missing cell of a registered engine input.
+# "Registered" only means the fill is allowed. This file says, for each fill the
+# lane still applies, which means-tested programs read it and whether the
+# default is harmless for each of them or biases it in a known direction.
+#
+# Method
+# - programs: the means-tested program roots. They are the engine's own list
+#   gov.household.cbo_means_tested_transfers (Medicaid, CHIP, SNAP, housing
+#   assistance, SSI, TANF, free and reduced-price school meals, the SPM energy
+#   subsidy and general assistance), plus the income-tested programs
+#   microcosm#1022 names that the CBO list leaves out (ACA premium tax credit,
+#   WIC, Lifeline, Head Start, EITC, CTC), plus the engine's state benefit
+#   aggregate household_state_benefits for state means-tested programs, and the
+#   county general assistance and relief programs policyengine-us models as
+#   standalone outputs. State income tax credits are out of scope.
+# - consumers: every program with a root the column reaches in the static
+#   dependency graph of the pinned engine
+#   (PolicyEngineUSVariableMetadataIndex.consumer_receipts, walked from the
+#   column to its consumers until nothing new is reached). A column that is a
+#   root reaches its own program. The engine-tier test
+#   test_us_acs_local_reviewed_fill_consumers.py recomputes the walk and fails
+#   when a list here differs from it.
+# - notes: each consumer is covered by exactly one note. verdict is harmless
+#   when the default does not change the program's result on the filled rows,
+#   or changes it only negligibly, and the note says why (the default is the
+#   true value there, the path is inert on those rows, or it is second-order).
+#   verdict is known_bias when the default moves the program's result for an
+#   identifiable group; direction is overstates (more eligibility or benefit
+#   than the true value would give), understates or mixed. via names the
+#   programs whose results carry an inherited effect.
+#
+# The release tool's acs_local_reviewed_fill_consumers gate fails finalize and
+# package when a fill the release applies has no entry here, when an entry's
+# fill value or spines differ from the fill manifests, or when a declared
+# consumer has no note. An entry for a column the release did not fill is
+# reported, not failed. Adding an entry for a new reviewed fill is a data-only
+# change to this file.
+schema_version: 1
+issue: "microcosm#1022"
+reviewed_against:
+  policyengine_us: "2.2.1"
+programs:
+  aca_ptc:
+    label: "ACA premium tax credit"
+    roots: [aca_ptc, assigned_aca_ptc]
+  chip:
+    label: "CHIP"
+    roots: [chip]
+  ctc:
+    label: "Federal CTC"
+    roots: [refundable_ctc, non_refundable_ctc]
+  eitc:
+    label: "Federal EITC"
+    roots: [eitc]
+  general_assistance:
+    label: >-
+      General assistance: the CBO input and the county general assistance and relief
+      programs policyengine-us models
+    roots: [general_assistance, ca_ala_general_assistance, ca_cc_general_assistance,
+      ca_marin_general_relief, ca_oc_general_relief, ca_riv_general_relief,
+      ca_sbd_general_relief, ca_scc_general_assistance, ca_sf_caap,
+      ca_smc_general_assistance, la_general_relief]
+  head_start:
+    label: "Head Start and Early Head Start"
+    roots: [head_start, early_head_start]
+  housing_assistance:
+    label: "HUD housing assistance"
+    roots: [housing_assistance]
+  lifeline:
+    label: "Lifeline"
+    roots: [lifeline]
+  liheap:
+    label: "LIHEAP (the SPM energy subsidy input)"
+    roots: [spm_unit_energy_subsidy]
+  medicaid:
+    label: "Medicaid"
+    roots: [medicaid]
+  school_meals:
+    label: "Free and reduced-price school meals"
+    roots: [free_school_meals, reduced_price_school_meals]
+  snap:
+    label: "SNAP"
+    roots: [snap]
+  ssi:
+    label: "SSI"
+    roots: [ssi]
+  state_benefits:
+    label: "State means-tested benefits (household_state_benefits)"
+    roots: [household_state_benefits]
+  tanf:
+    label: "TANF, the federal total of every state program"
+    roots: [tanf]
+  wic:
+    label: "WIC"
+    roots: [wic]
+entries:
+  - entity: person
+    column: attends_eligible_educational_institution_for_american_opportunity_credit
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      One of five American opportunity credit (AOTC) conditions, all False on ACS rows
+      because the ACS asks none of them, so no ACS student claims the AOTC and qualified
+      tuition goes to the lifetime learning credit instead.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          The CTC reads education credits only as nonrefundable credits ahead of it in
+          its tax-liability limit (ctc_limiting_tax_liability). With the lifetime
+          learning credit in place of the AOTC's nonrefundable part, that limit moves a
+          little either way, and only where tax liability binds the CTC.
+      - programs: [aca_ptc, chip, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the tax-liability chain: nonrefundable credits ahead of
+          the CTC, then refundable_ctc, eligible_for_refundable_credits and
+          tax_unit_is_filer, which Medicaid's non-filer rules and the PTC's filing
+          condition read, and programs that read Medicaid enrollment. A change in tax
+          liability moves the refundable CTC to or from zero only for a unit with
+          positive income tax, which is already required to file, so the filer flag and
+          everything past it do not change. County general assistance subtracts income
+          tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
+          but its applicants owe almost none.
+  - entity: person
+    column: cps_race
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      CPS race code. Read only by race, a demographic label no means-tested program
+      reads (ACS RAC1P could fill it natively).
+    consumers: []
+    notes: []
+  - entity: person
+    column: detailed_occupation_recode
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: "No policyengine-us 2.2.1 variable reads it."
+    consumers: []
+    notes: []
+  - entity: person
+    column: educational_assistance
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Scholarships, grants and other educational assistance received; no ACS item
+      isolates it. SNAP does not count it.
+    consumers: [general_assistance, school_meals, state_benefits, wic]
+    notes:
+      - programs: [school_meals, wic]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          Both count educational assistance as income
+          (gov.usda.school_meals.income.sources, gov.usda.wic.income.sources). At 0,
+          families with a student receiving aid look slightly poorer, so eligibility is
+          slightly overstated.
+      - programs: [general_assistance, state_benefits]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          Orange County and San Bernardino County general relief count it as unearned
+          income; California's CVRP increased rebate reads the school-meal income ratio
+          and CARE reads WIC receipt, so they inherit the same small overstatement.
+  - entity: person
+    column: employment_income_before_lsr
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "ACS persons under 15, outside the WAGP universe"
+    summary: >-
+      Wages before labor-supply responses. ACS WAGP is asked from age 15, so only
+      persons under 15 are filled.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, ssi,
+          state_benefits, tanf, wic]
+        verdict: harmless
+        note: >-
+          0 is the source-consistent value: WAGP is not asked below age 15, and the
+          certified ASEC frame also carries an explicit zero there
+          (acs_income_universe).
+  - entity: person
+    column: fsla_overtime_premium
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      FLSA overtime premium, which the ACS does not separate from WAGP. Read by the
+      federal overtime deduction (tax years 2025-2028, P.L. 119-21) and Georgia's
+      overtime exclusion.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          No effect for 2024. From tax year 2025 the missing overtime deduction leaves
+          ACS taxable income and tax too high, which leaves more room for the
+          nonrefundable CTC, so the CTC is weakly overstated where tax liability limits
+          it.
+      - programs: [aca_ptc, chip, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          A below-the-line deduction leaves AGI and MAGI unchanged. Reached only through
+          the tax-liability chain: nonrefundable credits ahead of the CTC, then
+          refundable_ctc, eligible_for_refundable_credits and tax_unit_is_filer, which
+          Medicaid's non-filer rules and the PTC's filing condition read, and programs
+          that read Medicaid enrollment. A change in tax liability moves the refundable
+          CTC to or from zero only for a unit with positive income tax, which is already
+          required to file, so the filer flag and everything past it do not change.
+          County general assistance subtracts income tax or payroll withholding from
+          earnings (Santa Clara, Marin, Los Angeles), but its applicants owe almost
+          none.
+  - entity: person
+    column: has_american_opportunity_credit_1098_t_or_exception
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      One of five American opportunity credit (AOTC) conditions, all False on ACS rows
+      because the ACS asks none of them, so no ACS student claims the AOTC and qualified
+      tuition goes to the lifetime learning credit instead.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          The CTC reads education credits only as nonrefundable credits ahead of it in
+          its tax-liability limit (ctc_limiting_tax_liability). With the lifetime
+          learning credit in place of the AOTC's nonrefundable part, that limit moves a
+          little either way, and only where tax liability binds the CTC.
+      - programs: [aca_ptc, chip, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the tax-liability chain: nonrefundable credits ahead of
+          the CTC, then refundable_ctc, eligible_for_refundable_credits and
+          tax_unit_is_filer, which Medicaid's non-filer rules and the PTC's filing
+          condition read, and programs that read Medicaid enrollment. A change in tax
+          liability moves the refundable CTC to or from zero only for a unit with
+          positive income tax, which is already required to file, so the filer flag and
+          everything past it do not change. County general assistance subtracts income
+          tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
+          but its applicants owe almost none.
+  - entity: person
+    column: has_american_opportunity_credit_institution_ein
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      One of five American opportunity credit (AOTC) conditions, all False on ACS rows
+      because the ACS asks none of them, so no ACS student claims the AOTC and qualified
+      tuition goes to the lifetime learning credit instead.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          The CTC reads education credits only as nonrefundable credits ahead of it in
+          its tax-liability limit (ctc_limiting_tax_liability). With the lifetime
+          learning credit in place of the AOTC's nonrefundable part, that limit moves a
+          little either way, and only where tax liability binds the CTC.
+      - programs: [aca_ptc, chip, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the tax-liability chain: nonrefundable credits ahead of
+          the CTC, then refundable_ctc, eligible_for_refundable_credits and
+          tax_unit_is_filer, which Medicaid's non-filer rules and the PTC's filing
+          condition read, and programs that read Medicaid enrollment. A change in tax
+          liability moves the refundable CTC to or from zero only for a unit with
+          positive income tax, which is already required to file, so the filer flag and
+          everything past it do not change. County general assistance subtracts income
+          tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
+          but its applicants owe almost none.
+  - entity: person
+    column: has_never_worked
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by the FLSA overtime occupation category
+      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
+      program.
+    consumers: []
+    notes: []
+  - entity: person
+    column: health_insurance_premiums
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      A direct premium override. The statutory medical-expense aggregate
+      (medical_expense_health_insurance_premiums) reads 0 as not supplied and uses the
+      transferred health_insurance_premiums_without_medicare_part_b plus the modeled
+      Part B premium instead. The self-employed health insurance deduction, Missouri's
+      child care subsidy, Orange County general relief and a few state income taxes read
+      it directly.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
+      wic]
+    notes:
+      - programs: [aca_ptc, chip, eitc, medicaid]
+        verdict: known_bias
+        direction: understates
+        note: >-
+          Jointly with is_self_employed, also at its default on ACS rows: no ACS person
+          gets the self-employed health insurance deduction, so AGI and MAGI are
+          slightly too high for self-employed people who buy their own coverage (the
+          EITC phase-out reads AGI).
+      - programs: [lifeline, wic]
+        verdict: known_bias
+        direction: understates
+        via: [medicaid]
+        note: >-
+          Only through Medicaid enrollment (adjunctive eligibility); Lifeline's income
+          test reads IRS gross income, before the deduction.
+      - programs: [general_assistance, state_benefits]
+        verdict: known_bias
+        direction: understates
+        note: >-
+          Missouri's child care subsidy deducts only these premiums from gross income
+          (mo_ccs_adjusted_income) and Orange County general relief deducts them from
+          countable income, so at 0 both see slightly too much income; California's CVRP
+          reads AGI (above).
+      - programs: [ctc, head_start, housing_assistance, school_meals, snap, tanf]
+        verdict: harmless
+        note: >-
+          SNAP's excess medical deduction and HUD's medical expenses read the
+          medical-expense aggregate, where 0 means not supplied, and so read the
+          transferred premiums. The remaining paths are second-order and negligible:
+          Missouri's smaller child care subsidy leaves slightly larger out-of-pocket
+          child care for the SNAP, HUD and Missouri TANF child-care deductions and the
+          CDCC ahead of the CTC; the CTC phases out only above $200,000 of AGI; Head
+          Start and school meals follow SNAP and TANF receipt.
+  - entity: person
+    column: hourly_wage
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: "No policyengine-us 2.2.1 variable reads it."
+    consumers: []
+    notes: []
+  - entity: person
+    column: is_computer_scientist
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by the FLSA overtime occupation category
+      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
+      program.
+    consumers: []
+    notes: []
+  - entity: person
+    column: is_enrolled_at_least_half_time_for_american_opportunity_credit
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      One of five American opportunity credit (AOTC) conditions, all False on ACS rows
+      because the ACS asks none of them, so no ACS student claims the AOTC and qualified
+      tuition goes to the lifetime learning credit instead.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          The CTC reads education credits only as nonrefundable credits ahead of it in
+          its tax-liability limit (ctc_limiting_tax_liability). With the lifetime
+          learning credit in place of the AOTC's nonrefundable part, that limit moves a
+          little either way, and only where tax liability binds the CTC.
+      - programs: [aca_ptc, chip, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the tax-liability chain: nonrefundable credits ahead of
+          the CTC, then refundable_ctc, eligible_for_refundable_credits and
+          tax_unit_is_filer, which Medicaid's non-filer rules and the PTC's filing
+          condition read, and programs that read Medicaid enrollment. A change in tax
+          liability moves the refundable CTC to or from zero only for a unit with
+          positive income tax, which is already required to file, so the filer flag and
+          everything past it do not change. County general assistance subtracts income
+          tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
+          but its applicants owe almost none.
+  - entity: person
+    column: is_executive_administrative_professional
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by the FLSA overtime occupation category
+      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
+      program.
+    consumers: []
+    notes: []
+  - entity: person
+    column: is_farmer_fisher
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by the FLSA overtime occupation category
+      (fsla_overtime_occupation_exemption_category), which reaches no means-tested
+      program.
+    consumers: []
+    notes: []
+  - entity: person
+    column: is_hispanic
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by race, a demographic label no means-tested program reads (ACS HISP
+      could fill it natively).
+    consumers: []
+    notes: []
+  - entity: person
+    column: is_military
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by the FLSA overtime occupation category and the 2021 recovery rebate
+      credit's armed-forces exception, neither of which reaches a means-tested program
+      (ACS MIL == 1 could fill it natively).
+    consumers: []
+    notes: []
+  - entity: person
+    column: is_paid_hourly
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by is_eligible_for_fsla_overtime, which reaches no means-tested program.
+    consumers: []
+    notes: []
+  - entity: person
+    column: is_pursuing_credential_for_american_opportunity_credit
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      One of five American opportunity credit (AOTC) conditions, all False on ACS rows
+      because the ACS asks none of them, so no ACS student claims the AOTC and qualified
+      tuition goes to the lifetime learning credit instead.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          The CTC reads education credits only as nonrefundable credits ahead of it in
+          its tax-liability limit (ctc_limiting_tax_liability). With the lifetime
+          learning credit in place of the AOTC's nonrefundable part, that limit moves a
+          little either way, and only where tax liability binds the CTC.
+      - programs: [aca_ptc, chip, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through the tax-liability chain: nonrefundable credits ahead of
+          the CTC, then refundable_ctc, eligible_for_refundable_credits and
+          tax_unit_is_filer, which Medicaid's non-filer rules and the PTC's filing
+          condition read, and programs that read Medicaid enrollment. A change in tax
+          liability moves the refundable CTC to or from zero only for a unit with
+          positive income tax, which is already required to file, so the filer flag and
+          everything past it do not change. County general assistance subtracts income
+          tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
+          but its applicants owe almost none.
+  - entity: person
+    column: is_self_employed
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only as the defined_for condition of self_employed_health_insurance_premiums,
+      the input to the self-employed health insurance deduction. ACS COW 6/7 could fill
+      it natively, but the deduction also needs health_insurance_premiums, which is 0 on
+      ACS rows.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
+      wic]
+    notes:
+      - programs: [aca_ptc, chip, eitc, medicaid]
+        verdict: known_bias
+        direction: understates
+        note: >-
+          Jointly with health_insurance_premiums, also at its default on ACS rows: no
+          ACS person gets the self-employed health insurance deduction, so AGI and MAGI
+          are slightly too high for self-employed people who buy their own coverage (the
+          EITC phase-out reads AGI).
+      - programs: [lifeline, wic]
+        verdict: known_bias
+        direction: understates
+        via: [medicaid]
+        note: >-
+          Only through Medicaid enrollment (adjunctive eligibility); Lifeline's income
+          test reads IRS gross income, before the deduction.
+      - programs: [state_benefits]
+        verdict: known_bias
+        direction: understates
+        note: "California's CVRP income test reads AGI (above)."
+      - programs: [ctc, general_assistance, head_start, housing_assistance,
+          school_meals, snap, tanf]
+        verdict: harmless
+        note: >-
+          They count self-employment income before this deduction and read AGI only
+          through Medicare IRMAA (AGI two years prior, above $103,000 for a single filer
+          in 2024, far above their limits), the 2020-only unemployment exclusion
+          (taxable_uc_agi) and South Carolina TANF's count of taxable Social Security;
+          the CTC phases out only above $200,000 of AGI. All negligible.
+  - entity: person
+    column: is_separated
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      ACS MAR 4 (separated) is not mapped, so every ACS person reads as not separated.
+      policyengine-us uses the flag for the separate filing status (a separated head
+      without a qualifying child files separately), the IRC 7703(b) head-of-household
+      path, and to stop any member of a separated person's tax unit from being ranked
+      the tax-unit spouse. A native fill from MAR is a follow-up.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          Separated ACS filers without a qualifying child file single instead of
+          separately, so the PTC's separate-filer bar (is_aca_ptc_eligible) never
+          applies to them.
+      - programs: [chip, ctc, eitc, general_assistance, housing_assistance, medicaid,
+          snap, ssi, tanf]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          Filing status and the tax-unit spouse role change: a separated head's unit
+          files single or head of household instead of separately, and another adult in
+          the unit can be ranked the tax-unit spouse (is_tax_unit_spouse), which moves
+          joint thresholds, SSI spousal deeming, SNAP and TANF dependency rules, HUD
+          dependents and Los Angeles and Marin general relief marital rules. ACS MAR 4
+          persons have no spouse in the household, so this matters only in units that
+          hold another adult.
+      - programs: [head_start, lifeline, school_meals, state_benefits, wic]
+        verdict: known_bias
+        direction: mixed
+        via: [medicaid, snap, tanf]
+        note: "Only through Medicaid, SNAP and TANF results."
+  - entity: person
+    column: is_surviving_spouse
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Not mapped from ACS MAR 2 (widowed), so no ACS head qualifies for the
+      surviving-spouse filing status (surviving_spouse_eligible also needs a child
+      dependent); such heads file as head of household. The status needs a death in the
+      two prior years, which ACS MARHW (widowed in the past 12 months) only
+      approximates.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
+      wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
+          tanf, wic]
+        verdict: harmless
+        note: >-
+          These programs read filing status only as joint or separate (the PTC's
+          separate-filer bar, Medicaid's head-and-spouse count and MAGI, DC TANF's
+          single-parent exemption, Massachusetts TAFDC), through Medicare IRMAA
+          thresholds (above $103,000 for a single filer in 2024) or California's CVRP
+          income caps (above $135,000), and surviving spouse versus head of household
+          moves none of them. The CTC sees only the tax-liability difference, for the
+          few recently widowed parents whose liability limits it; negligible.
+  - entity: person
+    column: is_union_member_or_covered
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: "No policyengine-us 2.2.1 variable reads it."
+    consumers: []
+    notes: []
+  - entity: person
+    column: other_health_insurance_premiums
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by spm_unit_health_insurance_premiums (SPM resources), which no
+      means-tested program reads; statutory medical expenses read the transferred
+      health_insurance_premiums_without_medicare_part_b.
+    consumers: []
+    notes: []
+  - entity: person
+    column: pre_subsidy_rent
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "ACS group-quarters persons (TYPEHUGQ 2/3)"
+    summary: >-
+      Transferred for ACS housing-unit persons; group-quarters persons are outside the
+      ACS rent universe and keep the default.
+    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
+          tanf, wic]
+        verdict: harmless
+        note: >-
+          Group-quarters residents pay no housing-unit rent, so 0 is the right value for
+          SNAP's shelter deduction, HUD gross rent, the TANF shelter allowances
+          (Arizona, Florida, New York, Vermont), Head Start and school-meal housing
+          costs, Nebraska AABD and Los Angeles and Riverside general relief. SNAP
+          excludes most institutional residents (7 CFR 273.1(e)) and HUD assistance
+          attaches to housing units. The other programs are reached only through those
+          results and the tax chain.
+  - entity: person
+    column: previous_year_income_available
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it; it is a provenance flag the prior-year
+      income gate reads.
+    consumers: []
+    notes: []
+  - entity: person
+    column: real_estate_taxes
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: >-
+      ACS persons in households outside the TAXAMT universe (renters, units occupied
+      without payment, group quarters)
+    summary: >-
+      Native TAXAMT on the reference person of owner-occupied units; TAXAMT is blank for
+      every other household, whose members keep the default.
+    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
+          tanf, wic]
+        verdict: harmless
+        note: >-
+          The filled households own no home, so they pay no property tax directly and 0
+          is the right value for SNAP's shelter costs, the TANF shelter allowances, Head
+          Start and school-meal housing costs, state property-tax relief (which reads
+          rent for renters) and itemized deductions.
+  - entity: person
+    column: roth_401k_contributions_desired
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Desired Roth 401(k) deferrals; the ACS has no retirement contribution item. Roth
+      deferrals do not reduce AGI; they share the 402(g) scale with traditional
+      deferrals (also 0 on ACS rows) and count for the saver's credit.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
+      wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          No saver's credit for Roth deferrals on ACS rows, so tax liability is too high
+          and leaves more room for the nonrefundable CTC; weak, for low-income savers.
+      - programs: [aca_ptc, chip, eitc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
+          tanf, wic]
+        verdict: harmless
+        note: >-
+          Roth deferrals do not reduce AGI or MAGI, and the 402(g) scale is inert while
+          traditional deferrals are also 0 on ACS rows. The saver's credit reaches these
+          programs only through the tax-liability chain, which cannot flip the filer
+          flag of a unit not already required to file.
+  - entity: person
+    column: roth_ira_contributions_desired
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Desired Roth IRA contributions; the ACS has no retirement contribution item. Roth
+      contributions do not reduce AGI; they share the annual IRA limit with the
+      transferred traditional IRA contributions (ira_contribution_scale) and count for
+      the saver's credit.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
+      wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          No saver's credit for Roth IRA contributions on ACS rows, so tax liability is
+          too high and leaves more room for the nonrefundable CTC; weak, for low-income
+          savers.
+      - programs: [aca_ptc, chip, eitc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits,
+          tanf, wic]
+        verdict: harmless
+        note: >-
+          Roth contributions do not reduce AGI or MAGI. The shared IRA limit scales
+          traditional contributions down only when desired Roth plus traditional
+          contributions exceed it ($7,000 in 2024), rare at these programs' incomes; the
+          saver's credit reaches them only through the tax-liability chain, which cannot
+          flip the filer flag of a unit not already required to file.
+  - entity: person
+    column: s_corp_income
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      S corporation income. The ACS asks no separate item: SEMP covers unincorporated
+      businesses and owners report salaries from their own corporation in WAGP, so
+      pass-through profit is missing on ACS rows. SNAP's income sources do not include
+      it.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
+      wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, eitc, housing_assistance, lifeline, medicaid,
+          state_benefits, tanf]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          It counts in MAGI, AGI (the EITC and CTC phase-outs), HUD unearned income, IRS
+          gross income (Lifeline), South Carolina TANF unearned income and several state
+          benefits' income (California CARE and FERA, New Jersey, child care in
+          Massachusetts, Oklahoma and Wisconsin), so owners' incomes are understated and
+          eligibility overstated. S corporation owners are rarely in these programs'
+          income ranges.
+      - programs: [wic]
+        verdict: known_bias
+        direction: overstates
+        via: [medicaid]
+        note: "WIC does not count it; only adjunctive eligibility through Medicaid."
+      - programs: [general_assistance, head_start, school_meals, snap]
+        verdict: harmless
+        note: >-
+          They do not count S corporation income. Their static paths run through
+          Medicare IRMAA, TANF and child-care subsidy results and income tax
+          withholding; negligible.
+  - entity: person
+    column: self_employment_income_before_lsr
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "ACS persons under 15, outside the SEMP universe"
+    summary: >-
+      Self-employment income before labor-supply responses. ACS SEMP is asked from age
+      15, so only persons under 15 are filled.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, ssi, state_benefits,
+      tanf, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+          housing_assistance, lifeline, medicaid, school_meals, snap, ssi,
+          state_benefits, tanf, wic]
+        verdict: harmless
+        note: >-
+          0 is the source-consistent value: SEMP is not asked below age 15, and the
+          certified ASEC frame also carries an explicit zero there
+          (acs_income_universe).
+  - entity: person
+    column: self_employment_income_last_year
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by earned_income_last_year, which reaches no means-tested program.
+    consumers: []
+    notes: []
+  - entity: person
+    column: ssi_reported
+    fill_value: "0"
+    spines: [acs_2024_1yr, asec_puf]
+    rows: >-
+      ACS persons under 15 (outside the SSIP universe) and donor-spine persons without a
+      reported amount
+    summary: >-
+      Read only by applicable_ssi, which policyengine-us 2.2.1 documents as deprecated:
+      no program reads it, and programs count ssi directly (policyengine-us#9111).
+    consumers: []
+    notes: []
+  - entity: person
+    column: tip_income
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Tips, which ACS WAGP already includes and does not separate. Read by the federal
+      tip deduction (tax years 2025-2028, P.L. 119-21), Florida School Readiness income
+      (from October 2025), Georgia's cash tip exclusion and Washington's long-term care
+      wage base.
+    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          No effect for 2024. From tax year 2025 the missing tip deduction leaves ACS
+          taxable income and tax too high, which leaves more room for the nonrefundable
+          CTC, so the CTC is weakly overstated where tax liability limits it.
+      - programs: [aca_ptc, chip, general_assistance, head_start, housing_assistance,
+          lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+        verdict: harmless
+        note: >-
+          Florida School Readiness counts employment_income and tip_income, and ACS WAGP
+          already includes tips, so 0 avoids counting them twice. The tip deduction is
+          below the line, so AGI and MAGI are unchanged. Reached only through the
+          tax-liability chain: nonrefundable credits ahead of the CTC, then
+          refundable_ctc, eligible_for_refundable_credits and tax_unit_is_filer, which
+          Medicaid's non-filer rules and the PTC's filing condition read, and programs
+          that read Medicaid enrollment. A change in tax liability moves the refundable
+          CTC to or from zero only for a unit with positive income tax, which is already
+          required to file, so the filer flag and everything past it do not change.
+          County general assistance subtracts income tax or payroll withholding from
+          earnings (Santa Clara, Marin, Los Angeles), but its applicants owe almost
+          none.
+  - entity: person
+    column: traditional_401k_contributions_desired
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Desired traditional 401(k) deferrals; the ACS has no retirement contribution item,
+      and WAGP is gross of deferrals. At 0, irs_employment_income, AGI and MAGI include
+      wages that savers defer.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, head_start,
+      housing_assistance, lifeline, medicaid, school_meals, snap, state_benefits, tanf,
+      wic]
+    notes:
+      - programs: [aca_ptc, chip, eitc, lifeline, medicaid, state_benefits]
+        verdict: known_bias
+        direction: understates
+        note: >-
+          MAGI (Medicaid, CHIP, PTC), AGI (the EITC phase-out, California's CVRP) and
+          IRS gross income (Lifeline, Los Angeles EZ Save) are too high for workers who
+          defer wages, so their eligibility and amounts are understated. EITC earned
+          income is gross of deferrals, so only the phase-out moves.
+      - programs: [ctc]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          Higher AGI phases the CTC out only above $200,000, while higher tax, and the
+          missing saver's credit, leave more room for its nonrefundable part.
+      - programs: [wic]
+        verdict: known_bias
+        direction: understates
+        via: [medicaid]
+        note: "WIC counts gross income; only adjunctive eligibility through Medicaid."
+      - programs: [general_assistance, head_start, housing_assistance, school_meals,
+          snap, tanf]
+        verdict: harmless
+        note: >-
+          They count wages gross of deferrals (employment_income). The AGI paths reach
+          them only through Medicare IRMAA (above $103,000 of MAGI for a single filer in
+          2024), the 2020-only unemployment exclusion and South Carolina TANF's count of
+          taxable Social Security; Los Angeles General Relief reads
+          irs_employment_income, but its applicants rarely defer wages. All negligible.
+  - entity: person
+    column: treasury_tipped_occupation_code
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Treasury tipped-occupation code for the tip deduction (tax years 2025-2028); ACS
+      OCCP is not mapped to it.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Inert while tip_income is the reviewed default 0 on the same rows: without
+          tips the tip deduction is zero whatever the occupation. Revisit if tip_income
+          is filled.
+  - entity: person
+    column: weeks_unemployed
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS person"
+    summary: >-
+      Read only by the Alabama, New York, Oklahoma and Pennsylvania unemployment benefit
+      calculators, which feed no means-tested program. SNAP's work-registration test
+      reads unemployment_compensation > 0, not weeks.
+    consumers: []
+    notes: []
+  - entity: household
+    column: auto_loan_balance
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it; the auto loan interest deduction reads
+      qualified_passenger_vehicle_loan_interest.
+    consumers: []
+    notes: []
+  - entity: household
+    column: auto_loan_interest
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it; the auto loan interest deduction reads
+      qualified_passenger_vehicle_loan_interest.
+    consumers: []
+    notes: []
+  - entity: household
+    column: block_geoid
+    fill_value: "''"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      limitation mixed_sub_puma_column_coverage).
+    consumers: []
+    notes: []
+  - entity: household
+    column: cbsa_code
+    fill_value: "''"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      limitation mixed_sub_puma_column_coverage).
+    consumers: []
+    notes: []
+  - entity: household
+    column: household_vehicles_owned
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      ACS VEH counts vehicles available, long-term leased and employer-provided ones
+      included, not vehicles owned, so the owned count keeps the engine default 0 and VEH
+      is recorded only as availability (microcosm#1064 review; reviewed limitation
+      acs_household_vehicle_value_default). With household_vehicles_value also 0, the
+      count only scales exemptions of a zero value or averages it, except in the
+      count-only rules of San Francisco CAAP, Los Angeles General Relief and
+      lives_in_vehicle.
+    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    notes:
+      - programs: [general_assistance]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          A zero count always passes San Francisco CAAP's vehicle count limit
+          (ca_sf_caap_vehicle_eligible, one vehicle for a single person) and Los Angeles
+          General Relief's vehicle cap (la_general_relief_motor_vehicle_value_eligible),
+          so both overstate eligibility for households that own more vehicles than the
+          cap, the same direction as the zero value. lives_in_vehicle is never true on
+          ACS rows; it only picks Los Angeles's value limit and Marin's vehicle
+          exemption, both applied to the zero value. Contra Costa, Marin, San
+          Bernardino, Santa Clara and San Mateo use the count only to average or exempt
+          the zero value.
+      - programs: [aca_ptc, chip, ctc, head_start, housing_assistance, lifeline,
+          medicaid, school_meals, snap, state_benefits, tanf, wic]
+        verdict: harmless
+        note: >-
+          Texas's broad-based categorical eligibility asset test for SNAP
+          (meets_tanf_non_cash_asset_test) uses the count only to scale the per-vehicle
+          exclusions applied to vehicle value, and Montana
+          and Washington TANF (Washington RCA through it) and Illinois AABD (its
+          Medicaid buy-in) use it only to average value across vehicles; with
+          household_vehicles_value 0 on the same rows none of them moves. The other
+          programs are reached only through those results.
+  - entity: household
+    column: household_vehicles_value
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      The ACS asks how many vehicles a household keeps (VEH) but not their value
+      (reviewed limitation acs_household_vehicle_value_default). SNAP's own asset test
+      (snap_assets) reads no vehicle.
+    consumers: [aca_ptc, chip, ctc, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, tanf, wic]
+    notes:
+      - programs: [snap]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          Overstates eligibility in Texas, whose broad-based categorical eligibility
+          asset test (meets_tanf_non_cash_asset_test) counts vehicle value above $22,500
+          for the first vehicle and $8,700 for each other against a $5,000 limit.
+          Elsewhere it acts only through TANF: more TANF cash (SNAP unearned income) and
+          CalWORKs child care (a smaller dependent-care deduction) slightly lower SNAP.
+      - programs: [general_assistance, medicaid, state_benefits, tanf]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          Zero vehicle equity passes the vehicle resource tests of TANF in Texas,
+          Washington, Montana, Tennessee, California and Wisconsin, California CAPI,
+          Washington RCA (through the TANF resource test), the California county general
+          assistance and relief programs (Contra Costa, Marin, Orange, Riverside, San
+          Bernardino, Santa Clara, San Francisco CAAP, San Mateo, Los Angeles), and
+          Illinois's AABD vehicle count behind its Medicaid buy-in for workers with
+          disabilities.
+      - programs: [head_start, school_meals, wic]
+        verdict: known_bias
+        direction: overstates
+        via: [snap, tanf]
+        note: "Only through TANF and SNAP categorical or adjunctive eligibility."
+      - programs: [aca_ptc, chip, ctc, housing_assistance, lifeline]
+        verdict: harmless
+        note: >-
+          Second-order and negligible: Illinois's Medicaid buy-in (which bars the PTC
+          and CHIP and grants Lifeline), TANF income in HUD income, and CalWORKs child
+          care in the CDCC ahead of the CTC and in HUD's child-care deduction.
+  - entity: household
+    column: net_worth
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it; SNAP's asset test reads snap_assets
+      (bank, stock and bond holdings).
+    consumers: []
+    notes: []
+  - entity: household
+    column: place_fips
+    fill_value: "''"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      limitation mixed_sub_puma_column_coverage).
+    consumers: []
+    notes: []
+  - entity: household
+    column: qualified_passenger_vehicle_loan_interest
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      Interest on a qualified passenger vehicle loan for the auto loan interest
+      deduction (tax years 2025-2028, P.L. 119-21); the ACS has no item.
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [ctc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          No effect for 2024. From tax year 2025 the missing auto loan interest
+          deduction leaves ACS taxable income and tax too high, which leaves more room
+          for the nonrefundable CTC, so the CTC is weakly overstated where tax liability
+          limits it.
+      - programs: [aca_ptc, chip, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          A below-the-line deduction leaves AGI and MAGI unchanged. Reached only through
+          the tax-liability chain: nonrefundable credits ahead of the CTC, then
+          refundable_ctc, eligible_for_refundable_credits and tax_unit_is_filer, which
+          Medicaid's non-filer rules and the PTC's filing condition read, and programs
+          that read Medicaid enrollment. A change in tax liability moves the refundable
+          CTC to or from zero only for a unit with positive income tax, which is already
+          required to file, so the filer flag and everything past it do not change.
+          County general assistance subtracts income tax or payroll withholding from
+          earnings (Santa Clara, Marin, Los Angeles), but its applicants owe almost
+          none.
+  - entity: household
+    column: sldl
+    fill_value: "''"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      limitation mixed_sub_puma_column_coverage).
+    consumers: []
+    notes: []
+  - entity: household
+    column: sldu
+    fill_value: "''"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      limitation mixed_sub_puma_column_coverage).
+    consumers: []
+    notes: []
+  - entity: household
+    column: tenure_type
+    fill_value: "'NONE'"
+    spines: [acs_2024_1yr]
+    rows: "ACS group-quarters households (TYPEHUGQ 2/3)"
+    summary: >-
+      Native ACS TEN for housing units; group quarters have none. No policyengine-us
+      2.2.1 variable reads it: programs read spm_unit_tenure_type.
+    consumers: []
+    notes: []
+  - entity: household
+    column: tract_geoid
+    fill_value: "''"
+    spines: [acs_2024_1yr]
+    rows: "every ACS household"
+    summary: >-
+      No policyengine-us 2.2.1 variable reads it. Donor-spine-only geography (reviewed
+      limitation mixed_sub_puma_column_coverage).
+    consumers: []
+    notes: []
+  - entity: tax_unit
+    column: second_home_mortgage_balance
+    fill_value: "0.0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS tax unit"
+    summary: "Second-home mortgage balance; the ACS has no item."
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Inert while second_home_mortgage_interest is the reviewed default 0 on the
+          same rows; the balance prorates deductible mortgage interest only above the
+          $750,000 acquisition-debt cap.
+  - entity: tax_unit
+    column: second_home_mortgage_interest
+    fill_value: "0.0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS tax unit"
+    summary: "Second-home mortgage interest; the ACS has no item."
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          It lowers tax only for itemizers with a second-home mortgage, few of whom have
+          a CTC limited by tax liability; negligible. Itemized deductions leave AGI and
+          MAGI unchanged. Reached only through the tax-liability chain: nonrefundable
+          credits ahead of the CTC, then refundable_ctc, eligible_for_refundable_credits
+          and tax_unit_is_filer, which Medicaid's non-filer rules and the PTC's filing
+          condition read, and programs that read Medicaid enrollment. A change in tax
+          liability moves the refundable CTC to or from zero only for a unit with
+          positive income tax, which is already required to file, so the filer flag and
+          everything past it do not change. County general assistance subtracts income
+          tax or payroll withholding from earnings (Santa Clara, Marin, Los Angeles),
+          but its applicants owe almost none.
+  - entity: tax_unit
+    column: second_home_mortgage_origination_year
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS tax unit"
+    summary: "Second-home mortgage origination year; the ACS has no item."
+    consumers: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [aca_ptc, chip, ctc, general_assistance, lifeline, medicaid,
+          state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Inert while second_home_mortgage_interest is the reviewed default 0 on the
+          same rows; the year selects the acquisition-debt cap.
+  - entity: tax_unit
+    column: selected_marketplace_plan_benchmark_ratio
+    fill_value: "1.0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS tax unit"
+    summary: >-
+      Read only by selected_marketplace_plan_premium_proxy, a net-premium proxy; the
+      premium tax credit reads the benchmark (SLCSP) premium, not the selected plan.
+    consumers: []
+    notes: []
+  - entity: tax_unit
+    column: takes_up_aca_if_eligible
+    fill_value: "True"
+    spines: [acs_2024_1yr]
+    rows: "every ACS tax unit"
+    summary: >-
+      Runtime-owned take-up flag, not seeded on ACS rows (reviewed limitation
+      acs_take_up_engine_defaults).
+    consumers: [aca_ptc]
+    notes:
+      - programs: [aca_ptc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          Universal take-up: assigned_aca_ptc is the full credit for every eligible ACS
+          unit, while donor rows carry the seeded draw.
+  - entity: tax_unit
+    column: takes_up_eitc
+    fill_value: "True"
+    spines: [acs_2024_1yr]
+    rows: "every ACS tax unit"
+    summary: >-
+      Runtime-owned take-up flag, not seeded on ACS rows (reviewed limitation
+      acs_take_up_engine_defaults). The EITC it gates also sets
+      eligible_for_refundable_credits, which feeds the filer flag.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [eitc]
+        verdict: known_bias
+        direction: overstates
+        note: "Universal take-up on ACS rows, while donor rows carry the seeded draw."
+      - programs: [aca_ptc]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          Every EITC-eligible unit counts as eligible for refundable credits, so more
+          ACS units file (tax_unit_is_filer) and meet the PTC's filing condition.
+      - programs: [chip, medicaid]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          More ACS units count as filers, so Medicaid's non-filer household rules
+          (medicaid_uses_non_filer_rules) apply to fewer of them; the direction depends
+          on the household.
+      - programs: [lifeline, state_benefits, wic]
+        verdict: known_bias
+        direction: mixed
+        via: [medicaid]
+        note: "Only through Medicaid enrollment."
+      - programs: [ctc, general_assistance]
+        verdict: harmless
+        note: >-
+          The CTC reads the EITC only in the additional CTC's alternative phase-in for
+          three or more children (Social Security taxes minus the EITC); county general
+          assistance reads only income tax withholding. Negligible.
+  - entity: tax_unit
+    column: would_file_taxes_voluntarily
+    fill_value: "False"
+    spines: [acs_2024_1yr]
+    rows: "every ACS tax unit"
+    summary: >-
+      Voluntary-filing propensity, which donor rows carry (voluntary_filing) and ACS
+      rows do not. It feeds the filer flag and the EITC's filing condition.
+    consumers: [aca_ptc, chip, ctc, eitc, general_assistance, lifeline, medicaid,
+      state_benefits, wic]
+    notes:
+      - programs: [aca_ptc, eitc]
+        verdict: known_bias
+        direction: understates
+        note: >-
+          Both require a filed return. ACS units neither required to file nor filing for
+          refundable credits never file, so the few that would file anyway lose these
+          credits (small for the EITC, whose eligible units mostly file for credits).
+      - programs: [chip, medicaid]
+        verdict: known_bias
+        direction: mixed
+        note: >-
+          Fewer ACS units count as filers, so Medicaid's non-filer household rules apply
+          to more of them; the direction depends on the household.
+      - programs: [lifeline, state_benefits, wic]
+        verdict: known_bias
+        direction: mixed
+        via: [medicaid]
+        note: "Only through Medicaid enrollment."
+      - programs: [ctc, general_assistance]
+        verdict: harmless
+        note: >-
+          The CTC reads the EITC only in the additional CTC's alternative phase-in for
+          three or more children; county general assistance reads only income tax
+          withholding. Negligible.
+  - entity: spm_unit
+    column: spm_unit_energy_subsidy
+    fill_value: "0"
+    spines: [acs_2024_1yr]
+    rows: "every ACS SPM unit"
+    summary: >-
+      The LIHEAP amount itself: policyengine-us does not model LIHEAP and counts this
+      input as a means-tested transfer (gov.household.cbo_means_tested_transfers). Its
+      only readers are spm_unit_benefits and the CBO transfer total; SNAP's standard
+      utility allowance reads has_heating_cooling_expense and heating_type, not this.
+    consumers: [liheap]
+    notes:
+      - programs: [liheap]
+        verdict: known_bias
+        direction: understates
+        note: >-
+          No ACS SPM unit receives an energy subsidy, while donor rows carry the
+          ASEC-based amount (energy_subsidy), so LIHEAP receipt, and the SPM resources
+          that count it, are understated on ACS rows.
+  - entity: spm_unit
+    column: spm_unit_tenure_type
+    fill_value: "'RENTER'"
+    spines: [acs_2024_1yr]
+    rows: "ACS group-quarters SPM units (TYPEHUGQ 2/3)"
+    summary: >-
+      Native ACS TEN for housing units; group quarters have none and read as renters.
+    consumers: [aca_ptc, chip, general_assistance, head_start, housing_assistance,
+      lifeline, medicaid, school_meals, snap, state_benefits, wic]
+    notes:
+      - programs: [housing_assistance]
+        verdict: known_bias
+        direction: overstates
+        note: >-
+          Group-quarters units pass HUD's renter test
+          (is_eligible_for_housing_assistance). With pre_subsidy_rent 0 their gross rent
+          is the HUD utility allowance, which policyengine-us encodes only for Los
+          Angeles County, the Texas TDHCA area and four Kansas PHAs, so a payment arises
+          only there, and only where the transferred housing take-up flag is True
+          (microcosm#975).
+      - programs: [aca_ptc, chip, general_assistance, head_start, lifeline, medicaid,
+          school_meals, snap, state_benefits, wic]
+        verdict: harmless
+        note: >-
+          Reached only through housing_assistance into rent, which stays 0 for these
+          units because their pre-subsidy rent is 0, and into California CARE and FERA
+          income (Los Angeles County group quarters only); negligible.

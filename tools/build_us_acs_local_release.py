@@ -49,13 +49,19 @@ package; each is separately resumable):
                 register for this lineage (inherited #507 SSI aged-band
                 collapse, #393 miscellaneous-income defect, CD marginal
                 vintage, ESS concentration, sparse-selection donor, mixed
-                sub-PUMA coverage), and flip the summary simulation-ready.
+                sub-PUMA coverage), grade the reviewed default fills both
+                engine passes applied against their means-tested consumer
+                register (microcosm#1022,
+                ``acs_local_reviewed_fill_consumers.yaml``), and flip the
+                summary simulation-ready.
   package     : refuse a calibrated H5 that stores a model input the
                 installed policyengine-us does not define (microcosm#1026;
                 ``microcosm.data.stored_inputs``), refuse ACS persons made
                 SSI-criteria-positive while the run records no SSI take-up
                 handling for ACS rows (the SSI take-up release block,
-                microcosm#1022), then
+                microcosm#1022), re-grade the packaged fill manifests
+                against the reviewed-fill consumer register (microcosm#1022),
+                then
                 assemble releases/<id>/ with the non-default local-area
                 manifest shape (dataset_role ``non_default_local_area``,
                 namespace ``buildo_acs_local``, donor identity chain, the
@@ -104,6 +110,13 @@ from microcosm.build.us_runtime.acs_local_receipt_anchors import (
     ACS_LOCAL_RECEIPT_ANCHOR_ISSUE,
     ACS_LOCAL_RECEIPT_ANCHOR_METHOD,
     acs_local_receipt_anchor_signal_gate,
+)
+from microcosm.build.us_runtime.acs_local_reviewed_fill_consumers import (
+    ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME,
+    ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE,
+    acs_local_reviewed_fill_consumer_gate,
+    load_reviewed_fill_consumer_register,
+    reviewed_fill_register_summary,
 )
 from microcosm.build.us_runtime.acs_local_spm_units import (
     ACS_LOCAL_SPM_UNIT_GATE_NAME,
@@ -2098,6 +2111,7 @@ def finalize_reviewed_limitations(
     donor_release = (staging_summary.get("base") or {}).get("donor_release") or {}
     limitations = list(staging_summary.get("reviewed_limitations", []))
     aged_ssi = (spine_qa or {}).get("per_spine", {})
+    register = reviewed_fill_register_summary(load_reviewed_fill_consumer_register())
     limitations += [
         {
             "id": "ssi_aged_band_collapse_inherited",
@@ -2164,7 +2178,9 @@ def finalize_reviewed_limitations(
                 "(acs_local_ssi_medicaid_take_up). The other runtime-owned "
                 "takes_up_* flags (EITC, ACA, Early Head Start and the rest) "
                 "are neither transferred nor seeded on ACS rows, so they ship "
-                "at the engine default, universal take-up."
+                "at the engine default, universal take-up; the reviewed-fill "
+                "consumer register records their known biases "
+                "(acs_reviewed_default_fill_consumers)."
             ),
             "treatment": "Tracked via microcosm#1022.",
             "calibration_blocker": False,
@@ -2267,8 +2283,10 @@ def finalize_reviewed_limitations(
             ),
             "treatment": (
                 "Reviewed-null fill to 0 for both, recorded in the consumer fill "
-                "manifest; acs_local_take_up_signal fails on an ACS owned count "
-                "other than 0, and the take-up receipt keeps VEH as "
+                "manifest; their per-program notes are in the reviewed-fill "
+                "consumer register (acs_reviewed_default_fill_consumers). "
+                "acs_local_take_up_signal fails on an ACS owned count other "
+                "than 0, and the take-up receipt keeps VEH as "
                 f"availability (engine_free_fills.{ACS_VEHICLES_AVAILABLE_RECEIPT}: "
                 "code counts, top-coded rows and the weighted share of housing "
                 "units with a vehicle available). If the count-limited county "
@@ -2581,6 +2599,40 @@ def finalize_reviewed_limitations(
             "calibration_blocker": False,
         },
         {
+            "id": "acs_reviewed_default_fill_consumers",
+            "status": "reviewed_modeling_decision",
+            "register": register["register"],
+            "register_sha256": register["sha256"],
+            "reason": (
+                "The engine inputs the lane still fills with their "
+                f"policyengine-us defaults are listed in {register['register']} "
+                f"({register['entries']} entries, reviewed against "
+                "policyengine-us "
+                f"{register['reviewed_against']['policyengine_us']}; "
+                f"{ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE}), each with the "
+                "means-tested programs that read it in the engine's static "
+                "dependency graph and, for every one of them, a note that the "
+                "default is harmless there (and why) or biases it in a stated "
+                "direction. Known biases: "
+                + "; ".join(
+                    f"{column} ({', '.join(programs)})"
+                    for column, programs in register["known_bias"].items()
+                )
+                + "."
+            ),
+            "treatment": (
+                "Gated by acs_local_reviewed_fill_consumers at finalize and "
+                "package: a fill either engine pass applied without an entry, "
+                "an entry whose fill value or spines differ from the fill "
+                "manifests, and a declared consumer without a note fail; an "
+                "entry the release did not use is reported. The engine-tier "
+                "test recomputes every entry's consumers from the installed "
+                "engine."
+            ),
+            "known_bias": register["known_bias"],
+            "calibration_blocker": False,
+        },
+        {
             "id": "cd_population_marginal_vintage_2020",
             "status": "reviewed_vintage",
             "reason": (
@@ -2865,6 +2917,46 @@ def _require_local_receipt_anchors(staging_summary: dict) -> dict:
     return receipt
 
 
+#: The fill manifests of the two engine passes: materialize's (the calibrated
+#: surface) and the consumer export's (the published H5).
+REVIEWED_FILL_MANIFESTS = (
+    "reviewed_null_fills.json",
+    "consumer_reviewed_null_fills.json",
+)
+
+
+def _installed_engine_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("policyengine-us")
+    except Exception:
+        return "unknown"
+
+
+def _reviewed_fill_consumer_gate(
+    manifests: dict[str, object], document: object | None = None
+):
+    """microcosm#1022: grade the reviewed default fills the manifests record.
+
+    Every fill an engine pass applied must have an entry in the packaged
+    register ``acs_local_reviewed_fill_consumers.yaml`` (or ``document``) whose
+    fill value and spines match, and every means-tested consumer the entry
+    declares must carry a harmless or known-bias note. Engine-free.
+    """
+
+    return acs_local_reviewed_fill_consumer_gate(
+        manifests,
+        document=document,
+        never_default_filled=NEVER_DEFAULT_FILLED,
+        installed_engine_version=_installed_engine_version(),
+    )
+
+
+def _checkpoint_fill_manifests(checkpoint_dir: Path) -> dict[str, object]:
+    return {name: _load_json(checkpoint_dir / name) for name in REVIEWED_FILL_MANIFESTS}
+
+
 def _recorded_ssi_take_up_handling(identity: dict, checkpoint_dir: Path) -> dict | None:
     """The run's recorded SSI take-up handling for ACS rows, or ``None``.
 
@@ -3060,6 +3152,13 @@ def do_finalize(args) -> None:
             "Re-run --stage qa and --stage finalize against the current artifact."
         )
 
+    # microcosm#1022: refuse a reviewed default fill either engine pass applied
+    # without a register entry, or a declared means-tested consumer of one
+    # without a harmless or known-bias note.
+    reviewed_fill_gate = _reviewed_fill_consumer_gate(
+        _checkpoint_fill_manifests(args.checkpoint_dir)
+    )
+
     breakdown: dict[str, int] = {}
     for target in targets:
         name = target["name"]
@@ -3144,6 +3243,12 @@ def do_finalize(args) -> None:
             "passed": bool(receipt_anchor_gate.passed),
             "failures": list(receipt_anchor_gate.failures),
             "detail": dict(receipt_anchor_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
+        ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME: {
+            "passed": bool(reviewed_fill_gate.passed),
+            "failures": list(reviewed_fill_gate.failures),
+            "detail": dict(reviewed_fill_gate.details),
             "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
@@ -3244,7 +3349,13 @@ def do_finalize(args) -> None:
                 "household FS on every ACS SPM unit before pooling, gated by "
                 "acs_local_receipt_anchor_signal "
                 f"({ACS_LOCAL_RECEIPT_ANCHOR_ISSUE}; reviewed limitation "
-                "acs_snap_receipt_anchor)."
+                "acs_snap_receipt_anchor). The inputs that remain reviewed "
+                "engine-default fills are listed, with each means-tested "
+                "consumer and a harmless or known-bias note, in "
+                "acs_local_reviewed_fill_consumers.yaml, gated by "
+                "acs_local_reviewed_fill_consumers "
+                f"({ACS_LOCAL_REVIEWED_FILL_CONSUMERS_ISSUE}; reviewed limitation "
+                "acs_reviewed_default_fill_consumers)."
             ),
         },
         "spine_composition": {
@@ -3300,6 +3411,7 @@ def do_finalize(args) -> None:
             ACS_LOCAL_SSI_MEDICAID_TAKE_UP_GATE_NAME,
             ACS_LOCAL_SPM_UNIT_GATE_NAME,
             ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME,
+            ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME,
             "calibration",
             "consumer_ready",
         )
@@ -3569,6 +3681,11 @@ def do_package(args) -> dict:
     # microcosm#1022: nor, before the receipt-anchor gate existed, for the
     # packaged ACS SNAP reporters.
     _require_bound_finalize_gate(gates, ACS_LOCAL_RECEIPT_ANCHOR_GATE_NAME, h5_sha)
+    # microcosm#1022: nor, before the reviewed-fill consumer gate existed, for
+    # the notes on the packaged fills.
+    _require_bound_finalize_gate(
+        gates, ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME, h5_sha
+    )
     # Old summaries can say simulation_ready despite #765. Recheck the
     # actual artifact and the source-null evidence before packaging it, and
     # bind that result to the bytes being packaged: the finalize-time report
@@ -3589,6 +3706,31 @@ def do_package(args) -> dict:
         raise SystemExit(
             "Local hours coverage failed: " + "; ".join(package_hours_gate.failures)
         )
+    consumer_fills = _load_json(
+        args.checkpoint_dir / "consumer_reviewed_null_fills.json"
+    )
+    if not consumer_fills:
+        raise SystemExit(
+            "The per-column consumer fill ledger "
+            "(consumer_reviewed_null_fills.json) is missing; the published "
+            "fills must ship with their evidence."
+        )
+    # microcosm#1022: re-grade the manifests being packaged against the
+    # register being packaged; the finalize verdict covered earlier copies.
+    fill_register = load_reviewed_fill_consumer_register()
+    package_fill_gate = _reviewed_fill_consumer_gate(
+        {
+            "reviewed_null_fills.json": null_fills,
+            "consumer_reviewed_null_fills.json": consumer_fills,
+        },
+        fill_register,
+    )
+    if not package_fill_gate.passed:
+        raise SystemExit(
+            "Refusing to package: reviewed default fills without their "
+            f"means-tested consumer notes ({ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME}): "
+            + "; ".join(package_fill_gate.failures)
+        )
     gate_report = {
         **gate_report,
         "gates": {
@@ -3602,6 +3744,13 @@ def do_package(args) -> dict:
             },
             "stored_inputs": {
                 **stored_inputs_gate,
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+            ACS_LOCAL_REVIEWED_FILL_CONSUMER_GATE_NAME: {
+                "passed": True,
+                "failures": [],
+                "detail": dict(package_fill_gate.details),
                 "artifact_sha256": h5_sha,
                 "checked_at_stage": "package",
             },
@@ -3694,6 +3843,9 @@ def do_package(args) -> dict:
         "run_identity": identity,
         "staging_orchestration": staging_orchestration,
         "ssi_take_up_release_block": ssi_take_up_block,
+        "reviewed_fill_consumer_register": reviewed_fill_register_summary(
+            fill_register
+        ),
         "refresh_recipe": refresh_recipe,
     }
 
@@ -3717,16 +3869,9 @@ def do_package(args) -> dict:
     }
     contract_files["spine_qa.json"] = spine_qa
     contract_files["consumer_export.json"] = consumer_export
-    consumer_fills = _load_json(
-        args.checkpoint_dir / "consumer_reviewed_null_fills.json"
-    )
-    if not consumer_fills:
-        raise SystemExit(
-            "The per-column consumer fill ledger "
-            "(consumer_reviewed_null_fills.json) is missing; the published "
-            "fills must ship with their evidence."
-        )
     contract_files["consumer_reviewed_null_fills.json"] = consumer_fills
+    # microcosm#1022: the notes the fills were graded against ship beside them.
+    contract_files["reviewed_fill_consumer_register.json"] = fill_register
     for name, payload in contract_files.items():
         (release_dir / name).write_text(json.dumps(payload, indent=1))
     if diagnostics_status["status"] == "available":
