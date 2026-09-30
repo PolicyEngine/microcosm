@@ -1,13 +1,21 @@
-"""Build the 117th->119th CD vintage crosswalk artifact from Census sources.
+"""Build the 117th->119th CD vintage crosswalk artifact from the CD plan registry.
 
-Downloads (with a local cache) the 119th Congressional District block
-equivalency file, the 2020 Block Assignment File ``CD`` layer for each state,
-and the 2020 P.L. 94-171 geographic headers (block populations); joins them at
-2020-tabulation-block grain weighted by block population; and writes the
+Reads the pinned US block -> congressional-district plan registry (every
+populated 2020 block's district under each plan, with its 2020 P.L. 94-171
+population), overlays its ``117th_congress`` and ``119th_congress`` plans on
+the same blocks weighted by block population, and writes the
 ``source_geography_id,target_geography_id,weight`` crosswalk that
 ``congressional_district_vintage.translate_congressional_district_facts_to_current_vintage``
-consumes, plus a sidecar provenance JSON recording every source file's SHA-256,
-the build metadata, and per-state population conservation.
+consumes, plus a sidecar provenance JSON recording the registry's SHA-256, its
+117th-plan known deviations, the build metadata, and per-state population
+conservation.
+
+The registry carries the 117th plan correctly for North Carolina, whose 117th
+districts (the 2019 remedial plan) differ from the 116th plan in the 2020
+Block Assignment Files; an earlier version of this tool read the BAF layer
+directly and so mapped North Carolina's SOI districts through the wrong plan.
+The registry's sources and checks are documented in
+``packages/microcosm-build/src/microcosm/build/us_runtime/US_CD_PLAN_REGISTRY.md``.
 
 The method and rationale live in
 ``microcosm.build.us_runtime.congressional_district_vintage_crosswalk``. The
@@ -18,13 +26,14 @@ translation that PolicyEngine/microcosm#205 requires.
 Example:
     uv run --python 3.13 --package microcosm-build --group dev python \
         tools/build_us_congressional_district_vintage_crosswalk.py \
+        --cd-plan-registry build/us/us_cd_plan_registry_2020.npz \
         --out packages/microcosm-build/src/microcosm/build/us_runtime/data/\
-congressional_district_vintage_crosswalk.csv \
-        --cache-dir ~/.cache/populace-us-geography
+congressional_district_vintage_crosswalk.csv
 
     # Smoke run over a few states:
     uv run python tools/build_us_congressional_district_vintage_crosswalk.py \
-        --out /tmp/cd_xwalk_smoke.csv --states 08,30,11
+        --cd-plan-registry build/us/us_cd_plan_registry_2020.npz \
+        --out /tmp/cd_xwalk_smoke.csv --states 08,30,37
 """
 
 from __future__ import annotations
@@ -32,38 +41,20 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
-import io
 import json
 import sys
-import urllib.request
-import zipfile
 from pathlib import Path
 
-from microcosm.build.us_runtime.block_ladder_sources import (
-    US_STATES,
-    parse_pl_geo_blocks,
+from microcosm.build.us_runtime.block_ladder_sources import US_STATES
+from microcosm.build.us_runtime.cd_plan_registry import (
+    US_CD_PLAN_REGISTRY_PROVENANCE_RESOURCE,
+    load_pinned_us_cd_plan_registry,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
 )
 from microcosm.build.us_runtime.congressional_district_vintage_crosswalk import (
     build_cd_vintage_crosswalk_rows,
-    parse_baf_cd_layer,
-    parse_national_cd_bef_districts,
-)
-
-CD119_BEF_URL = (
-    "https://www2.census.gov/programs-surveys/decennial/rdo/mapping-files/"
-    "2025/119-congressional-district-befs/cd119.zip"
-)
-CD119_NATIONAL_MEMBER = "NationalCD119.txt"
-BAF2020_URL_TEMPLATE = (
-    "https://www2.census.gov/geo/docs/maps-data/data/baf2020/"
-    "BlockAssign_ST{fips}_{usps}.zip"
-)
-PL94171_URL_TEMPLATE = (
-    "https://www2.census.gov/programs-surveys/decennial/2020/data/"
-    "01-Redistricting_File--PL_94-171/{dirname}/{usps_lower}2020.pl.zip"
 )
 
 SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE = "117th_congress"
@@ -75,10 +66,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
-        "--cache-dir",
+        "--cd-plan-registry",
+        required=True,
         type=Path,
-        default=Path.home() / ".cache" / "populace-us-geography",
-        help="Download cache; re-runs reuse verified files.",
+        help=(
+            "The block -> CD-plan registry NPZ. It must be the artifact the "
+            "package pins (us_cd_plan_registry.provenance.json)."
+        ),
     )
     parser.add_argument(
         "--states",
@@ -108,31 +102,6 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _download(url: str, cache_dir: Path) -> Path:
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    destination = cache_dir / url.rsplit("/", 1)[-1]
-    if destination.exists() and destination.stat().st_size > 0:
-        return destination
-    _log(f"  downloading {url}")
-    request = urllib.request.Request(
-        url, headers={"User-Agent": "microcosm-build (cd vintage crosswalk)"}
-    )
-    with urllib.request.urlopen(request) as response:
-        payload = response.read()
-    if not payload:
-        raise RuntimeError(f"Empty download from {url}")
-    partial = destination.with_suffix(destination.suffix + ".partial")
-    partial.write_bytes(payload)
-    partial.replace(destination)
-    return destination
-
-
-def _zip_member_lines(archive_path: Path, member: str) -> list[str]:
-    with zipfile.ZipFile(archive_path) as archive:
-        with archive.open(member) as stream:
-            return io.TextIOWrapper(stream, encoding="latin-1").readlines()
-
-
 def main(argv: list[str] | None = None) -> None:
     args = _parse_args(argv)
     selected = (
@@ -143,64 +112,45 @@ def main(argv: list[str] | None = None) -> None:
         unknown = selected - {entry[0] for entry in US_STATES}
         if unknown:
             raise SystemExit(f"Unknown state FIPS in --states: {sorted(unknown)}")
+    selected_fips = {int(fips) for fips, _, _ in states}
     _log(f"Building CD117->CD119 crosswalk for {len(states)} state(s)")
 
-    source_files: dict[str, dict[str, str]] = {}
-
-    cd_zip = _download(CD119_BEF_URL, args.cache_dir)
-    source_files["cd119_bef"] = {
-        "url": CD119_BEF_URL,
-        "member": CD119_NATIONAL_MEMBER,
-        "sha256": _sha256(cd_zip),
+    registry = load_pinned_us_cd_plan_registry(args.cd_plan_registry)
+    for plan in (
+        SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE,
+        CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+    ):
+        if plan not in registry.plans:
+            raise SystemExit(f"The CD plan registry has no {plan!r} plan.")
+    blocks = registry.block_geoid.tolist()
+    in_scope = [block // 10**13 in selected_fips for block in blocks]
+    old_cd_by_block = {
+        block: f"{district % 100:02d}"
+        for block, district, keep in zip(
+            blocks,
+            registry.plans[SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE].tolist(),
+            in_scope,
+            strict=True,
+        )
+        if keep
     }
-    _log("  parsing national CD119 BEF (current vintage)")
-    current_cd_by_block = parse_national_cd_bef_districts(
-        _zip_member_lines(cd_zip, CD119_NATIONAL_MEMBER)
-    )
-    selected_fips = {fips for fips, _, _ in states}
-    if selected is not None:
-        current_cd_by_block = {
-            block: district
-            for block, district in current_cd_by_block.items()
-            if f"{block:015d}"[:2] in selected_fips
-        }
-
-    old_cd_by_block: dict[int, str] = {}
-    block_population: dict[int, int] = {}
-    for fips, usps, dirname in states:
-        _log(f"  state {fips} {usps}")
-        baf_zip = _download(
-            BAF2020_URL_TEMPLATE.format(fips=fips, usps=usps), args.cache_dir
+    current_cd_by_block = {
+        block: f"{district % 100:02d}"
+        for block, district, keep in zip(
+            blocks,
+            registry.plans[CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE].tolist(),
+            in_scope,
+            strict=True,
         )
-        source_files[f"baf2020_cd_{usps.lower()}"] = {
-            "url": BAF2020_URL_TEMPLATE.format(fips=fips, usps=usps),
-            "member": f"BlockAssign_ST{fips}_{usps}_CD.txt",
-            "sha256": _sha256(baf_zip),
-        }
-        old_cd_by_block.update(
-            parse_baf_cd_layer(
-                _zip_member_lines(baf_zip, f"BlockAssign_ST{fips}_{usps}_CD.txt"),
-                label=f"BlockAssign_ST{fips}_{usps}_CD.txt",
-            )
+        if keep
+    }
+    block_population = {
+        block: population
+        for block, population, keep in zip(
+            blocks, registry.population.tolist(), in_scope, strict=True
         )
-
-        pl_zip = _download(
-            PL94171_URL_TEMPLATE.format(dirname=dirname, usps_lower=usps.lower()),
-            args.cache_dir,
-        )
-        source_files[f"pl94171_{usps.lower()}"] = {
-            "url": PL94171_URL_TEMPLATE.format(
-                dirname=dirname, usps_lower=usps.lower()
-            ),
-            "member": f"{usps.lower()}geo2020.pl",
-            "sha256": _sha256(pl_zip),
-        }
-        block_population.update(
-            parse_pl_geo_blocks(
-                _zip_member_lines(pl_zip, f"{usps.lower()}geo2020.pl"),
-                state_fips=fips,
-            )
-        )
+        if keep
+    }
 
     rows, diagnostics = build_cd_vintage_crosswalk_rows(
         old_cd_by_block=old_cd_by_block,
@@ -225,21 +175,38 @@ def main(argv: list[str] | None = None) -> None:
             writer.writerow(row)
     crosswalk_sha256 = _sha256(args.out)
 
+    source_spec = registry.plan_sources[SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE]
     provenance = {
         "schema_version": 1,
         "kind": "us_congressional_district_vintage_crosswalk",
         "source_geography_vintage": SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE,
         "target_geography_vintage": CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
-        "block_vintage": "2020_tabulation_blocks",
+        "block_vintage": registry.metadata["block_vintage"],
         "crosswalk_sha256": crosswalk_sha256,
         "method": (
-            "Population-weighted overlay of the old (117th, via the 2020 BAF CD "
-            "layer) and current (119th BEF) congressional-district assignments on "
-            "2020 tabulation blocks, weighted by 2020 P.L. 94-171 block "
-            "populations. Each old district's population is redistributed across "
-            "current districts; totals conserve by construction."
+            "Population-weighted overlay of the 117th and 119th plans of the US "
+            "block -> congressional-district plan registry on 2020 tabulation "
+            "blocks, weighted by 2020 P.L. 94-171 block populations. Each old "
+            "district's population is redistributed across current districts; "
+            "totals conserve by construction. The registry's 117th plan is the "
+            "2020 BAF CD layer except North Carolina, carried from its 2019 plan "
+            "(see known_deviations)."
         ),
-        "sources": source_files,
+        "sources": {
+            "cd_plan_registry": {
+                "artifact": args.cd_plan_registry.name,
+                "sha256": registry.sha256,
+                "receipt": (
+                    "microcosm.build.us_runtime/"
+                    f"{US_CD_PLAN_REGISTRY_PROVENANCE_RESOURCE}"
+                ),
+                "plans": [
+                    SOURCE_CONGRESSIONAL_DISTRICT_VINTAGE,
+                    CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE,
+                ],
+            }
+        },
+        "known_deviations": source_spec.get("known_deviations", {}),
         "diagnostics": diagnostics,
         "states": [fips for fips, _, _ in states],
     }
@@ -263,9 +230,9 @@ def main(argv: list[str] | None = None) -> None:
 def _validate_conservation(diagnostics: dict[str, object]) -> None:
     """Fail loudly if any state loses population beyond a small block-coverage gap.
 
-    Populated blocks the BAF/BEF do not cover are a source-coverage gap, not a
-    silent redistribution. A published crosswalk should cover essentially every
-    populated block; a large gap means a source or field-layout drift.
+    The registry assigns every populated block a district under every plan,
+    so any uncovered population means the registry and this tool disagree on
+    the block universe: a defect, not a silent redistribution.
     """
 
     state_conservation = diagnostics.get("state_conservation")

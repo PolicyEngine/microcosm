@@ -373,7 +373,7 @@ _STACKED_CD_CROSSWALK_SOURCE_REF = (
     "source:us_congressional_district_vintage_crosswalk_117_to_119"
 )
 _STACKED_CD_CROSSWALK_SHA256 = (
-    "c7cb040b1f57ca2ea2adcbfe60cc2b250ca23acbc4b640cd421e766fa54c1aec"
+    "a347303fff3fea145f758488c43cb94355df5a8cb5e512552b2ee3791d2aa233"
 )
 _STACKED_CD_CROSSWALK_SOURCE_VINTAGE_REF = "vintage:cd_117"
 _STACKED_CD_CROSSWALK_SOURCE_VINTAGE = "117th_congress"

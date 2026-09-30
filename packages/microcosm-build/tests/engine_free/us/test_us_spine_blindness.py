@@ -251,6 +251,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Block -> congressional-district plan registry: artifact assembly,
+        # validating loader and 2010->2020 plan crosswalk. Assigns no
+        # households and applies no population treatment.
+        "cd_plan_registry.py",
         # Reviewed Chronicle feed pin loader; no population treatment. Remains
         # subject to the all-runtime source-identity scan.
         "chronicle_feed.py",
@@ -295,6 +299,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "reform_validation.py",
         "register_consistency.py",
         "relationship_inputs.py",
+        # The release dry run's certainty model and report; no population
+        # treatment (the gates it grades live in the release tool).
+        "release_gate_dry_run.py",
         "release_gate_preflight.py",
         "release_input_coverage.py",
         "release_target_parity.py",
@@ -3472,13 +3479,15 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        # 73 = main's 70 plus spm_independence_role.py, spm_role_source.py and
+        # 74 = main's 70 plus spm_independence_role.py, spm_role_source.py and
         # spm_composition.py, reached because the pool's engine-input
-        # projection names the SPM role as a required source input (#893).
-        # All three are classified in _OTHER_US_RUNTIME_MODULES and scanned
-        # below like every other reached module.
-        assert len(runtime_graph) == 73, (
-            f"{tool.name} must reach the pinned 73-module runtime graph; "
+        # projection names the SPM role as a required source input (#893),
+        # plus asec_sources.py, whose default ASEC pool the education sidecar
+        # loader now defaults to. All four are classified in
+        # _OTHER_US_RUNTIME_MODULES and scanned below like every other
+        # reached module.
+        assert len(runtime_graph) == 74, (
+            f"{tool.name} must reach the pinned 74-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

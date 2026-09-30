@@ -106,7 +106,7 @@ def test_income_years_map_to_next_survey_year() -> None:
         assert pins.survey_year == income_year + 1
         assert str(pins.survey_year) in pins.zip_url
         assert pins.member == f"pppub{str(pins.survey_year)[2:]}.csv"
-    assert ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS == (2022, 2023, 2024)
+    assert ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS == (2022, 2023, 2024, 2025)
 
 
 def test_loader_reads_pinned_zip_and_audits(pinned_archive) -> None:

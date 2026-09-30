@@ -52,9 +52,12 @@ refuses. The cross-grain legs of English constituencies and authorities come
 from `region_code_by_area` in `local_area_crosswalk.json`, regenerated from
 the sha-pinned ladder with `tools/generate_uk_local_area_crosswalk.py`.
 
-The national calibration runner refuses a feed whose facts or manifest digest
-differs from the committed pin. `--allow-unpinned-feed` is an explicit
-diagnostic override recorded in the run manifest; it is not a re-pin procedure.
+Both release roles of `microcosm-build-uk` refuse a feed whose facts or
+manifest digest differs from the committed pin. On the national role
+`--allow-unpinned-feed` is an explicit diagnostic override recorded in the run
+manifest; it is not a re-pin procedure. The dense role refuses that flag: the
+graph's target compilation checks the supplied hashes and the artifact against
+the committed pin and has no override.
 
 History: the `ec7169b` re-pin (#887/#900) moved census household targets onto
 the same Chronicle compile path as every other bound UK local family; the

@@ -578,7 +578,9 @@ def test_calibration_diagnostics_carry_the_post_export_plan(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+    def fake_write_calibration_diagnostics(
+        result, path, *, target_registry, target_surface, build
+    ):
         captured["build"] = build
         return path
 
@@ -595,6 +597,7 @@ def test_calibration_diagnostics_carry_the_post_export_plan(
     )
     common = dict(
         result=SimpleNamespace(),
+        target_surface={"sha256": "b" * 64, "n_targets": 0},
         release_dir=tmp_path,
         registry=TargetRegistry((), country="us"),
         base_dataset_sha256="base-sha",
