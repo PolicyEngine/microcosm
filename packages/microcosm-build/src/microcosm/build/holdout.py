@@ -10,16 +10,33 @@ aggregates the per-fold losses into the publishable numbers.
 The fold structure is pure and deterministic (seeded permutation), so a
 scorer on any machine reproduces the same rotation from ``(n_targets,
 n_folds, seed)``.
+
+:func:`hash_holdout_unit` is the other shape: a sealed holdout whose
+membership is a pure function of each unit's own key. A seeded permutation
+reshuffles every fold when one target is added or the surface is reordered;
+a keyed hash does not, so a holdout assigned this way stays the same set of
+units across surface revisions, and raising the fraction only adds units.
 """
 
 from __future__ import annotations
 
+import hashlib
+import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
 
-__all__ = ["rotated_folds", "summarize_rotations", "RotationSummary"]
+__all__ = [
+    "rotated_folds",
+    "summarize_rotations",
+    "RotationSummary",
+    "hash_holdout_uniform",
+    "hash_holdout_unit",
+]
+
+#: Units per draw: the first 8 bytes of a SHA-256 digest, read big-endian.
+_HASH_UNIFORM_SCALE = float(2**64)
 
 
 def rotated_folds(
@@ -94,3 +111,45 @@ def summarize_rotations(fold_losses: Iterable[float]) -> RotationSummary:
         worst_holdout_loss=float(np.max(losses)),
         fold_losses=tuple(losses),
     )
+
+
+def hash_holdout_uniform(key: str, *, salt: str) -> float:
+    """A unit's deterministic uniform draw on ``[0, 1)``.
+
+    ``sha256(salt + "\x1f" + key)``, first 8 bytes big-endian, divided by
+    ``2**64``. The unit separator keeps ``("ab", "c")`` and ``("a", "bc")``
+    apart. The draw depends only on the unit's own key and the salt, never on
+    which other units exist or their order.
+
+    Raises:
+        ValueError: If ``key`` or ``salt`` is not a non-empty string.
+    """
+    if not isinstance(key, str) or not key:
+        raise ValueError(f"holdout key must be a non-empty string, got {key!r}.")
+    if not isinstance(salt, str) or not salt:
+        raise ValueError(f"holdout salt must be a non-empty string, got {salt!r}.")
+    digest = hashlib.sha256(f"{salt}\x1f{key}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") / _HASH_UNIFORM_SCALE
+
+
+def hash_holdout_unit(key: str, *, fraction: float, salt: str) -> bool:
+    """Whether the unit named ``key`` is held out at ``fraction``.
+
+    A unit is held out iff :func:`hash_holdout_uniform` is below
+    ``fraction``. Membership is therefore deterministic, independent of the
+    other units and their order, and nested in the fraction: every unit held
+    out at ``f1`` is held out at any ``f2 >= f1``. ``fraction=0`` holds out
+    nothing and ``fraction=1`` everything.
+
+    Raises:
+        ValueError: If ``fraction`` is not a finite number in ``[0, 1]``, or
+            from :func:`hash_holdout_uniform`.
+    """
+    if (
+        isinstance(fraction, bool)
+        or not isinstance(fraction, int | float)
+        or not math.isfinite(fraction)
+        or not 0.0 <= float(fraction) <= 1.0
+    ):
+        raise ValueError(f"holdout fraction must be in [0, 1], got {fraction!r}.")
+    return hash_holdout_uniform(key, salt=salt) < float(fraction)

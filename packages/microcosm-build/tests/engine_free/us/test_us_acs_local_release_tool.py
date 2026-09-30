@@ -19,6 +19,9 @@ from test_support.paths import paths_for
 
 _TEST_PATHS = paths_for("microcosm-build")
 
+#: The sampling block a full-scale materialize records in run_identity.json.
+_FULL_RUNG = {"sample_fraction": 1.0, "rung": "f100", "sampled": False}
+
 # Tests that write real H5 bytes go through pandas' HDFStore, which needs
 # pytables; the base wheel gate installs the shards without it.
 requires_pytables = pytest.mark.skipif(
@@ -407,6 +410,7 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         "run_identity.json": {
             "staging_sha256": module._sha256(staging),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
@@ -587,6 +591,7 @@ def _package_args_before_evidence(
             {
                 "staging_sha256": module._sha256(staging),
                 "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
             }
         )
     )
@@ -676,6 +681,7 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
             {
                 "staging_sha256": module._sha256(staging),
                 "population_cells_dropped": [],
+                "sampling": _FULL_RUNG,
             }
         )
     )
@@ -739,10 +745,10 @@ def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
     asking for them."""
 
     module = _load_tool_module()
-    assert module.SOI_MODES == ("state", "totals", "full")
+    assert module.SOI_MODES == ("state", "totals", "full", "state_cd")
     assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
     assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
-    for mode in ("totals", "full"):
+    for mode in ("totals", "full", "state_cd"):
         assert (
             module._parse_args(_materialize_argv(tmp_path, "--soi-mode", mode)).soi_mode
             == mode
@@ -1214,6 +1220,7 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
             "staging_sha256": module._sha256(args.staging_h5),
             "ladder_sha256": module._sha256(args.ladder),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
@@ -1244,6 +1251,96 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
         == module._sha256(Path(result["root_artifact"]["local_path"]))
         == artifact_sha
     )
+
+
+def test_a_sparse_era_calibration_is_bound_through_finalize_and_package(
+    tmp_path, monkeypatch
+) -> None:
+    """The run-identity, weights and QA bindings at their real call sites.
+
+    A sparse-era checkpoint (its identity records the roles digest) round-trips
+    when every piece of evidence names the same materialization, weights and
+    bytes; an interrupted recalibration (the export's weights differ from the
+    summary's) or QA of other bytes is refused before any gate report or
+    release directory is written.
+    """
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    ckpt = args.checkpoint_dir
+    for name, content in (
+        ("target_registry.json", "{}"),
+        (module.TARGET_ROLES_FILENAME, "[]"),
+        (module.TARGET_MATRIX_FILENAME, "matrix"),
+    ):
+        (ckpt / name).write_text(content)
+    identity = {
+        "staging_sha256": module._sha256(args.staging_h5),
+        "ladder_sha256": module._sha256(args.ladder),
+        "population_cells_dropped": [],
+        "sampling": _FULL_RUNG,
+        "target_registry_sha256": module._sha256(ckpt / "target_registry.json"),
+        "target_roles_sha256": module._sha256(ckpt / module.TARGET_ROLES_FILENAME),
+        "target_matrix": {
+            "sha256": module._sha256(ckpt / module.TARGET_MATRIX_FILENAME)
+        },
+    }
+    stamp = module._run_identity_digest(identity)
+    summary = {
+        **json.loads((ckpt / "calibration_summary.json").read_text()),
+        "run_identity_sha256": stamp,
+        "weights_sha256": "w",
+    }
+    export = {
+        "staging_sha256": artifact_sha,
+        "run_identity_sha256": stamp,
+        "out_h5_sha256": artifact_sha,
+        "weights_sha256": "w",
+    }
+    qa = {
+        "plain_consumption": True,
+        "artifact_sha256": artifact_sha,
+        "per_spine": {},
+        "run_identity_sha256": stamp,
+    }
+    evidence = {
+        "run_identity.json": identity,
+        "calibration_summary.json": summary,
+        "consumer_export.json": export,
+        "spine_qa.json": qa,
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (ckpt / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+
+    # An interrupted recalibration: a new H5 and export, the old summary.
+    (ckpt / "consumer_export.json").write_text(
+        json.dumps({**export, "weights_sha256": "new"})
+    )
+    with pytest.raises(SystemExit, match="describe different weights"):
+        module.do_finalize(args)
+    assert not args.gate_report.exists()
+    (ckpt / "consumer_export.json").write_text(json.dumps(export))
+
+    module.do_finalize(args)
+    assert json.loads(args.out_summary.read_text())["simulation_ready"] is True
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+
+    # QA of the wrong materialization: package refuses before any release dir.
+    (ckpt / "spine_qa.json").write_text(
+        json.dumps({**qa, "run_identity_sha256": "old"})
+    )
+    with pytest.raises(SystemExit, match="another materialization"):
+        module.do_package(args)
+    assert not (args.out / "releases").exists()
+    (ckpt / "spine_qa.json").write_text(json.dumps(qa))
+
+    result = module.do_package(args)
+    assert result["root_artifact"]["sha256"] == artifact_sha
 
 
 def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
@@ -1281,6 +1378,7 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
         "run_identity.json": {
             "staging_sha256": module._sha256(args.staging_h5),
             "population_cells_dropped": [],
+            "sampling": _FULL_RUNG,
         },
         "spine_qa.json": {
             "plain_consumption": True,
