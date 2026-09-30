@@ -56,10 +56,15 @@ UK_TAKE_UP_DECLARED_SEEDS = {output: 0 for output in FRS_TAKE_UP_OUTPUT_COLUMNS}
 # (``uk_take_up_population``), so the population follows the engine's own
 # State Pension age: by date of birth since policyengine-uk#1899, which from
 # 2026-27 puts some 66-year-olds under it and others over, so no age bound can
-# stand in for it. The stage manifest declares the engine read and the
-# any-member aggregate, and the population on the ``would_claim_uc``
-# operation; ``assert_take_up_stage_population_declaration`` refuses a manifest
-# that stops saying so, so the declaration and the code cannot drift apart.
+# stand in for it. The draw fixes build-period status: the released data
+# does not age people, so a unit whose adults are all 66 is outside a 2024
+# draw even though simulations of 2026-27 onward put some 66-year-olds (and
+# from 2028-29 all of them) under State Pension age; such a unit can then
+# claim Universal Credit but never takes it up. The stage manifest declares
+# the engine read and the any-member aggregate, and the population on the
+# ``would_claim_uc`` operation; ``assert_take_up_stage_population_declaration``
+# refuses a manifest that stops saying so, so the declaration and the code
+# cannot drift apart.
 UK_UC_WORKING_AGE_ADULT = "is_WA_adult"
 UK_TAKE_UP_ENGINE_PREDICTORS = (UK_UC_WORKING_AGE_ADULT,)
 UK_UC_AGE_ELIGIBLE_AGGREGATE = "uc_age_eligible"
