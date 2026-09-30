@@ -53,8 +53,11 @@ which keys a unit without complete source identity on its own ids, so the
 assignment depends only on ``seed``, the frame and its weights. The
 per-state recalibration of the ASEC lane is not applied; the release's state
 SNAP household targets reweight instead. Other ``takes_up_*`` flags on ACS
-rows (SSI, Medicaid, Head Start, EITC and the rest) still ship at the engine
-default (microcosm#1022) and the gate here does not grade them.
+rows are not this stage's: SSI and Medicaid take-up are assigned after an
+engine pre-pass by
+:mod:`~microcosm.build.us_runtime.acs_local_ssi_medicaid_take_up`, and Head
+Start, EITC and the rest still ship at the engine default (microcosm#1022);
+the gate here does not grade them.
 """
 
 from __future__ import annotations
