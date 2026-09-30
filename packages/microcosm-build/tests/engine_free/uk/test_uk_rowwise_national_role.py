@@ -672,6 +672,45 @@ def test_uk_national_role_marks_the_staging_run_failed_on_a_refusal(
     assert rows[0].pipeline == "uk-frs-calibration"
 
 
+def test_uk_national_role_refuses_an_occupied_output_directory(monkeypatch, tmp_path):
+    """The seam refused to overwrite an existing candidate artifact; the graph
+    driver keeps that refusal before any work, so a second run into the same
+    ``--out`` leaves the first candidate's bytes under its Logbook row."""
+    pytest.importorskip("tables")
+    builder = candidate._load_builder_module()
+    input_h5, _registry, _artifact, _pin = _national_inputs(monkeypatch, tmp_path)
+    out = tmp_path / "national"
+    assert builder.main(_argv(input_h5, out, "--no-staging", "--epochs", "5")) == 0
+    first = {
+        name: _sha(out / name)
+        for name in ("microcosm_uk_2024_25.h5", "build_record.json", "build.json")
+    }
+    head = load_spool_rows(out / "logbook-spool")[0].row_digest
+
+    assert (
+        builder.main(
+            _argv(
+                input_h5,
+                out,
+                "--no-staging",
+                "--epochs",
+                "5",
+                "--logbook-prev-row-digest",
+                head,
+            )
+        )
+        == 1
+    )
+
+    failure = json.loads((out / "failure.json").read_text())
+    assert failure["error_type"] == "FileExistsError"
+    assert "refusing to overwrite existing candidate artifact" in failure["message"]
+    assert {name: _sha(out / name) for name in first} == first
+    rows = load_spool_rows(out / "logbook-spool")
+    assert [row.disposition for row in rows] == ["iterating", "failed"]
+    assert "input_sha_verified" not in rows[1].phases_reached
+
+
 def test_uk_national_role_blocks_on_a_failed_seam_gate(monkeypatch, tmp_path):
     """A blocking calibration-seam outcome stops the artifact after the
     battery, block included, is on disk: no H5, no build record, a failed row."""

@@ -1619,6 +1619,17 @@ def prepare_national_build(
     args._calibration_year = calibration_year
     args._frs_vintage = str(release.vintage)
     args._doctrine_override_receipt = overrides
+    if not args.dry_run:
+        # The seam refused an occupied output directory before any work
+        # (``_validate_output_paths`` in ``_run_national_attempt``); the
+        # publication step replaces whatever is at ``--out``, so without this
+        # a second run would silently replace the first candidate's bytes
+        # under the Logbook row that names them.
+        national_role.validate_output_paths(
+            output_paths(args.out, posture=posture, vintage=args._frs_vintage),
+            input_h5=input_h5,
+            ladder_path=None,
+        )
     config = UKNationalBuildConfig(
         calibration_year=calibration_year,
         time_period=time_period,
