@@ -142,7 +142,10 @@ _UK_TAKE_UP_EVIDENCE: dict[str, tuple[str, str]] = {
         "Whether this family would claim the Universal Credit if eligible. "
         "Generated stochastically in the dataset using take-up rates.",
         "The UK build forces reported recipients to take up and draws the rest "
-        "(frs_take_up.py); a threshold alone has no such anchor.",
+        "only among benefit units with an adult under State Pension age, the "
+        "units Universal Credit can reach (frs_take_up.py, "
+        "stochastic_assignment.py); a threshold alone has neither the anchor "
+        "nor the population.",
     ),
     "uc_childcare": (
         "Whether this family would claim the Universal Credit childcare element "
@@ -355,7 +358,7 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
                     ("lower_secondary", "LOWER_SECONDARY"),
                     ("upper_secondary", "UPPER_SECONDARY"),
                     ("post_secondary_non_tertiary", "POST_SECONDARY"),
-                    ("short_cycle_tertiary", "TERTIARY"),
+                    ("short_cycle_tertiary", "POST_SECONDARY"),
                     ("bachelor_or_equivalent", "TERTIARY"),
                     ("master_or_equivalent", "TERTIARY"),
                     ("doctoral_or_equivalent", "TERTIARY"),
@@ -364,7 +367,13 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             AlignmentRelation.BROAD_MATCH,
             (
                 "Engine enum EducationType, label 'Highest status education "
-                "completed'; TERTIARY covers ISCED 5-8."
+                "completed'. The enum states no ISCED correspondence, and the "
+                "engine reads TERTIARY as a graduate (student-loan plan "
+                "assignment, data/economic_assumptions.py). The mapping "
+                "follows the UK build's EDUCQUAL_MAP (frs_education.py): "
+                "degree and above (ISCED 6-8) is TERTIARY, and higher "
+                "education below degree (ISCED 5) joins post-secondary "
+                "non-tertiary (ISCED 4) as POST_SECONDARY."
             ),
         ),
         bind(
@@ -489,9 +498,11 @@ POLICYENGINE_UK_CONCEPT_MAPPING = ConceptMapping(
             "formula-owned."
         ),
         "fact:household.reference_person_id": (
-            "is_household_head is formula-owned (the oldest member), and every "
-            "housing input is household-level, so nothing is allocated to the "
-            "reference person."
+            "is_household_head is formula-owned (the oldest member). The UK "
+            "build overrides it with the FRS household reference person "
+            "(frs_spine.py), an override the loader accepts, but it is not an "
+            "input, so the mapping does not target it. Every housing input is "
+            "household-level, so nothing is allocated to the reference person."
         ),
         "fact:person.public_pension_income": (
             "The State Pension is computed from state_pension_reported, which "

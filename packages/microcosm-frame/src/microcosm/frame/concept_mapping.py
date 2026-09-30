@@ -47,6 +47,9 @@ from microcosm.frame.concepts import (
     Concept,
     ConceptAlignment,
     Unit,
+    _parsing,
+    _record_fields,
+    _text_fields,
     concept,
     concept_schema_sha256,
     derive_take_up_draws,
@@ -405,10 +408,17 @@ def transform_from_dict(data: Mapping[str, object]) -> Transform:
     """The transform ``data`` describes.
 
     Raises:
-        ValueError: If the kind is unknown, a field is missing, unexpected or
-            of the wrong type.
+        ValueError: If ``data`` is not an object, the kind is unknown, or a
+            field is missing, unexpected or of the wrong shape.
     """
 
+    with _parsing("transform"):
+        return _read_transform(data)
+
+
+def _read_transform(data: object) -> Transform:
+    if not isinstance(data, Mapping):
+        raise ValueError(f"A transform must be an object, not {type(data).__name__}.")
     fields = dict(data)
     kind = fields.pop("kind", None)
     if kind not in _TRANSFORM_KINDS:
@@ -428,6 +438,14 @@ def transform_from_dict(data: Mapping[str, object]) -> Transform:
             raise ValueError(f"Transform {kind!r} field {name!r} must be text.")
         return value
 
+    def pairs(name: str) -> tuple[tuple[object, object], ...]:
+        value = required(name)
+        if not isinstance(value, list | tuple) or not all(
+            isinstance(pair, list | tuple) and len(pair) == 2 for pair in value
+        ):
+            raise ValueError(f"Transform {kind!r} field {name!r} must list pairs.")
+        return tuple((first, second) for first, second in value)
+
     def optional_age(name: str) -> int | None:
         value = fields.get(name)
         if value is not None and (
@@ -437,18 +455,24 @@ def transform_from_dict(data: Mapping[str, object]) -> Transform:
         return value
 
     if kind == "recode":
-        return Recode(pairs=tuple(tuple(pair) for pair in required("pairs")))
+        return Recode(pairs=pairs("pairs"))
     if kind == "share":
         complement = fields.get("complement", False)
         if not isinstance(complement, bool):
             raise ValueError("A share's complement must be true or false.")
         return Share(parameter=text("parameter"), complement=complement)
     if kind == "predicate":
-        return Predicate(
-            clauses=tuple(
-                (concept_id, tuple(values))
-                for concept_id, values in required("clauses")
+        clauses = pairs("clauses")
+        if not all(
+            isinstance(concept_id, str) and isinstance(values, list | tuple)
+            for concept_id, values in clauses
+        ):
+            raise ValueError(
+                "Transform 'predicate' field 'clauses' must pair concept ids "
+                "with value lists."
             )
+        return Predicate(
+            clauses=tuple((concept_id, tuple(values)) for concept_id, values in clauses)
         )
     if kind == "relationship_role":
         return RelationshipRole(
@@ -640,29 +664,43 @@ class InputBinding:
         """The binding ``data`` describes (see :meth:`to_dict`).
 
         Raises:
-            ValueError: If a field is missing, unexpected or malformed.
+            ValueError: If ``data`` is not an object, or a field is missing,
+                unexpected or malformed.
         """
-        fields = dict(data)
-        allowed = {
-            "engine_input",
-            "engine_entity",
-            "concepts",
-            "transform",
-            "relation",
-            "note",
-            "group_rule",
-            "module",
-            "canonical_input",
-        }
-        extra = set(fields) - allowed
-        if extra:
-            raise ValueError(f"A binding has unexpected fields {sorted(extra)}.")
-        missing = {"engine_input", "engine_entity", "concepts", "transform", "relation"}
-        if missing - set(fields):
-            raise ValueError(f"A binding lacks {sorted(missing - set(fields))}.")
-        fields["concepts"] = tuple(fields["concepts"])
-        fields["transform"] = transform_from_dict(fields["transform"])
-        return cls(**fields)
+        with _parsing("binding"):
+            fields = _record_fields(
+                data,
+                "binding",
+                required=(
+                    "engine_input",
+                    "engine_entity",
+                    "concepts",
+                    "transform",
+                    "relation",
+                ),
+                optional=("note", "group_rule", "module", "canonical_input"),
+            )
+            _text_fields(
+                fields,
+                "binding",
+                (
+                    "engine_input",
+                    "engine_entity",
+                    "relation",
+                    "note",
+                    "group_rule",
+                    "module",
+                    "canonical_input",
+                ),
+            )
+            concepts = fields["concepts"]
+            if not isinstance(concepts, list | tuple) or not all(
+                isinstance(concept_id, str) for concept_id in concepts
+            ):
+                raise ValueError("A binding's 'concepts' must list concept ids.")
+            fields["concepts"] = tuple(concepts)
+            fields["transform"] = transform_from_dict(fields["transform"])
+            return cls(**fields)
 
     @property
     def concept_entity(self) -> str:
@@ -1051,19 +1089,56 @@ class ConceptMapping:
         """The mapping ``data`` describes, validated like any other.
 
         Raises:
-            ValueError: If the format is not :data:`MAPPING_FORMAT` or the
-                mapping breaks a construction rule.
+            ValueError: If the format is not :data:`MAPPING_FORMAT`, a field is
+                missing, unexpected or malformed, or the mapping breaks a
+                construction rule.
         """
-        fields = dict(data)
-        if fields.pop("format", None) != MAPPING_FORMAT:
-            raise ValueError(
-                f"A concept mapping must declare format {MAPPING_FORMAT!r}."
+        with _parsing("concept mapping"):
+            fields = _record_fields(
+                data,
+                "concept mapping",
+                required=(
+                    "engine",
+                    "engine_version",
+                    "entity_correspondence",
+                    "input_declaration",
+                    "bindings",
+                    "unmapped",
+                ),
+                optional=("format", "structural_inputs"),
             )
-        fields["bindings"] = tuple(
-            InputBinding.from_dict(binding) for binding in fields["bindings"]
-        )
-        fields["structural_inputs"] = tuple(fields.get("structural_inputs", ()))
-        return cls(**fields)
+            if fields.pop("format", None) != MAPPING_FORMAT:
+                raise ValueError(
+                    f"A concept mapping must declare format {MAPPING_FORMAT!r}."
+                )
+            _text_fields(
+                fields,
+                "concept mapping",
+                ("engine", "engine_version", "input_declaration"),
+            )
+            for name in ("entity_correspondence", "unmapped"):
+                value = fields[name]
+                if not isinstance(value, Mapping) or not all(
+                    isinstance(key, str) and isinstance(text, str)
+                    for key, text in value.items()
+                ):
+                    raise ValueError(
+                        f"A concept mapping's {name!r} must map text to text."
+                    )
+            if not isinstance(fields["bindings"], list | tuple):
+                raise ValueError("A concept mapping's 'bindings' must be a list.")
+            fields["bindings"] = tuple(
+                InputBinding.from_dict(binding) for binding in fields["bindings"]
+            )
+            structural = fields.get("structural_inputs", ())
+            if not isinstance(structural, list | tuple) or not all(
+                isinstance(name, str) for name in structural
+            ):
+                raise ValueError(
+                    "A concept mapping's 'structural_inputs' must list input names."
+                )
+            fields["structural_inputs"] = tuple(structural)
+            return cls(**fields)
 
     # --- Queries -----------------------------------------------------------
 
@@ -1477,11 +1552,10 @@ def _invert(
             flagged[_PERSON_ID].to_numpy(),
             index=flagged[_PERSON_HOUSEHOLD_ID].to_numpy(),
         )
-        return (
-            lookup.reindex(household[_HOUSEHOLD_ID].to_numpy())
-            .astype("Int64")
-            .to_numpy()
-        )
+        households = household[_HOUSEHOLD_ID].to_numpy()
+        if not pd.Index(households).isin(lookup.index).all():
+            raise ValueError("A household has no reference person.")
+        return lookup.reindex(households).astype("Int64").to_numpy()
     raise TypeError(
         f"{item.id} has no inverse through {transform!r}."
     )  # pragma: no cover
@@ -1579,28 +1653,78 @@ class CoverageReport:
         """Read a report :meth:`to_dict` wrote.
 
         Raises:
-            ValueError: If the recorded covered count disagrees with the
-                covered inputs listed.
+            ValueError: If ``data`` is not an object, a field is missing,
+                unexpected or malformed, or the recorded covered count
+                disagrees with the covered inputs listed.
         """
+        with _parsing("coverage report"):
+            return cls._read(data)
 
-        def refs(values: Iterable[Mapping[str, str]]) -> tuple[InputRef, ...]:
-            return tuple(InputRef(**value) for value in values)
-
-        report = cls(
-            engine=data["engine"],
-            engine_version=data["engine_version"],
-            schema_sha256=data["schema_sha256"],
-            input_count=data["input_count"],
-            concept_inputs=MappingProxyType(
-                {key: refs(value) for key, value in data["concept_inputs"].items()}
+    @classmethod
+    def _read(cls, data: object) -> CoverageReport:
+        fields = _record_fields(
+            data,
+            "coverage report",
+            required=(
+                "engine",
+                "engine_version",
+                "schema_sha256",
+                "input_count",
+                "covered_count",
+                "concept_inputs",
+                "covered_inputs",
+                "unmapped_concepts",
+                "uncovered_inputs",
+                "structural_inputs",
+                "unknown_inputs",
             ),
-            covered_inputs=refs(data["covered_inputs"]),
-            unmapped_concepts=MappingProxyType(dict(data["unmapped_concepts"])),
-            uncovered_inputs=refs(data["uncovered_inputs"]),
-            structural_inputs=refs(data["structural_inputs"]),
-            unknown_inputs=refs(data["unknown_inputs"]),
         )
-        if report.covered_count != data["covered_count"]:
+        _text_fields(
+            fields, "coverage report", ("engine", "engine_version", "schema_sha256")
+        )
+        for name in ("input_count", "covered_count"):
+            value = fields[name]
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"A coverage report's {name!r} must be an integer.")
+
+        def refs(name: str, values: object) -> tuple[InputRef, ...]:
+            if not isinstance(values, list | tuple):
+                raise ValueError(
+                    f"A coverage report's {name!r} must list input references."
+                )
+            out = []
+            for value in values:
+                ref = _record_fields(
+                    value,
+                    "input reference",
+                    required=("name", "entity"),
+                    optional=("module",),
+                )
+                _text_fields(ref, "input reference", ("name", "entity", "module"))
+                out.append(InputRef(**ref))
+            return tuple(out)
+
+        for name in ("concept_inputs", "unmapped_concepts"):
+            if not isinstance(fields[name], Mapping):
+                raise ValueError(f"A coverage report's {name!r} must be an object.")
+        report = cls(
+            engine=fields["engine"],
+            engine_version=fields["engine_version"],
+            schema_sha256=fields["schema_sha256"],
+            input_count=fields["input_count"],
+            concept_inputs=MappingProxyType(
+                {
+                    key: refs("concept_inputs", value)
+                    for key, value in fields["concept_inputs"].items()
+                }
+            ),
+            covered_inputs=refs("covered_inputs", fields["covered_inputs"]),
+            unmapped_concepts=MappingProxyType(dict(fields["unmapped_concepts"])),
+            uncovered_inputs=refs("uncovered_inputs", fields["uncovered_inputs"]),
+            structural_inputs=refs("structural_inputs", fields["structural_inputs"]),
+            unknown_inputs=refs("unknown_inputs", fields["unknown_inputs"]),
+        )
+        if report.covered_count != fields["covered_count"]:
             raise ValueError(
                 "A coverage report's covered count disagrees with its list."
             )

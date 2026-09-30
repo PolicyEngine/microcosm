@@ -9,6 +9,7 @@ row-by-row reference. Country-specific expectations live in the
 mapped input exists in the installed engine is checked by the engine tests.
 """
 
+import copy
 import json
 from dataclasses import replace
 
@@ -47,6 +48,7 @@ from microcosm.frame.concepts import (
     CONCEPTS,
     AlignmentRelation,
     CanonicalConceptKind,
+    ConceptAlignment,
     concept,
     derive_take_up_draws,
 )
@@ -68,6 +70,64 @@ PROPERTY = settings(max_examples=100, deadline=None)
 MAPPINGS = concept_mappings()
 mapping_names = st.sampled_from(sorted(MAPPINGS))
 _PARENTS = ("fact:person.parent_1_person_id", "fact:person.parent_2_person_id")
+
+# The round-trip and idempotence properties check exactly the concepts
+# invertible_concepts() returns, so the sets are pinned here: a decoder that
+# quietly stops inverting a transform shrinks a set and fails a test instead
+# of dropping concepts from every round trip.
+INVERTIBLE = {
+    "policyengine-us": (
+        "fact:person.age",
+        "fact:person.sex",
+        "fact:household.reference_person_id",
+        "fact:person.employment_income",
+        "fact:person.nonfarm_self_employment_income",
+        "fact:person.farm_self_employment_income",
+        "fact:person.interest_income",
+        "fact:person.dividend_income",
+        "fact:person.rental_income",
+        "fact:person.realized_capital_gains",
+        "fact:person.private_pension_income",
+        "fact:person.public_pension_income",
+        "fact:person.usual_weekly_hours",
+        "fact:person.has_disability",
+        "fact:household.rent",
+        "fact:household.mortgage_interest",
+        "fact:household.property_tax",
+    ),
+    "policyengine-uk": (
+        "fact:person.age",
+        "fact:person.sex",
+        "fact:person.employment_income",
+        "fact:person.interest_income",
+        "fact:person.dividend_income",
+        "fact:person.rental_income",
+        "fact:person.realized_capital_gains",
+        "fact:person.private_pension_income",
+        "fact:person.has_disability",
+        "fact:household.rent",
+        "fact:household.mortgage_interest",
+        "fact:household.mortgage_principal",
+        "fact:household.property_tax",
+    ),
+    "axiom-nz": (
+        "fact:person.age",
+        "fact:person.employment_income",
+        "fact:person.has_disability",
+        "fact:person.enrolled_full_time",
+    ),
+    "axiom-be": (
+        "fact:person.age",
+        "fact:person.employment_income",
+        "fact:person.interest_income",
+        "fact:person.dividend_income",
+        "fact:person.public_pension_income",
+        "fact:person.usual_weekly_hours",
+        "fact:person.has_disability",
+        "fact:household.rent",
+        "fact:household.mortgage_interest",
+    ),
+}
 
 
 def _parameters(mapping: ConceptMapping, data) -> dict[str, dict[str, float]]:
@@ -118,6 +178,10 @@ class TestEveryMapping:
         assert again == mapping
         assert hash(again) == hash(mapping)
         assert again.structural_inputs == mapping.structural_inputs
+
+    @pytest.mark.parametrize("name", sorted(MAPPINGS))
+    def test_the_invertible_concepts_are_pinned(self, name) -> None:
+        assert MAPPINGS[name].invertible_concepts() == INVERTIBLE[name]
 
     @pytest.mark.parametrize("name", sorted(MAPPINGS))
     def test_no_binding_targets_a_structural_input(self, name) -> None:
@@ -445,6 +509,31 @@ class TestDecodeGuards:
             "household": pd.DataFrame({"household_id": [1]}),
         }
         with pytest.raises(ValueError, match="more than one reference person"):
+            mapping.decode(tables)
+
+    def test_a_household_without_a_reference_person_is_refused(self) -> None:
+        mapping = _mapping(
+            [
+                _binding(
+                    engine_input="head",
+                    concepts=("fact:household.reference_person_id",),
+                    transform=RelationshipRole(role=Role.REFERENCE_PERSON),
+                )
+            ]
+        )
+        # Ids beyond 2**53 would round if the missing household turned the
+        # lookup into floats, so the refusal must come before any upcast.
+        tables = {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [2**53 + 1, 2**53 + 3],
+                    "person_household_id": [1, 2],
+                    "head": [True, False],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [1, 2]}),
+        }
+        with pytest.raises(ValueError, match="no reference person"):
             mapping.decode(tables)
 
     def test_a_boolean_concept_refuses_missing_values(self) -> None:
@@ -881,3 +970,181 @@ class TestLegalAlignments:
             MAPPINGS[name].legal_alignments(authority="microcosm", legal_vintage="x")
             == ()
         )
+
+
+# --- Malformed serialized input --------------------------------------------
+
+_JSON = st.recursive(
+    st.none()
+    | st.booleans()
+    | st.integers()
+    | st.floats(allow_nan=False)
+    | st.text(max_size=6),
+    lambda inner: (
+        st.lists(inner, max_size=3)
+        | st.dictionaries(st.text(max_size=6), inner, max_size=3)
+    ),
+    max_leaves=6,
+)
+
+
+def _paths(value, prefix=()):
+    yield prefix
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from _paths(item, (*prefix, key))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from _paths(item, (*prefix, index))
+
+
+@st.composite
+def _corrupted(draw, record):
+    """``record`` with one value replaced, one field deleted or one added."""
+    data = copy.deepcopy(record)
+    path = draw(st.sampled_from(list(_paths(data))))
+    action = draw(st.sampled_from(("replace", "delete", "add")))
+    if not path or action == "replace":
+        if not path:
+            return draw(_JSON)
+        parent = data
+        for step in path[:-1]:
+            parent = parent[step]
+        parent[path[-1]] = draw(_JSON)
+        return data
+    parent = data
+    for step in path[:-1]:
+        parent = parent[step]
+    if action == "delete" and isinstance(parent, dict):
+        del parent[path[-1]]
+    elif isinstance(parent, dict):
+        parent[draw(st.text(min_size=1, max_size=6))] = draw(_JSON)
+    else:
+        parent[path[-1]] = draw(_JSON)
+    return data
+
+
+def _alignment_record() -> dict:
+    return ConceptAlignment(
+        canonical_concept="nz:statutes/income_tax#input.x",
+        source_concept="fact:person.age",
+        relation="exact",
+        authority="axiom",
+        evidence_notes="Engine label.",
+        legal_vintage="2026-09-01",
+    ).to_dict()
+
+
+_READERS = {
+    **{
+        f"mapping:{name}": (ConceptMapping.from_dict, MAPPINGS[name].to_dict())
+        for name in sorted(MAPPINGS)
+    },
+    **{
+        f"report:{name}": (
+            CoverageReport.from_dict,
+            json.loads(coverage_golden(name).read_text(encoding="utf-8")),
+        )
+        for name in sorted(MAPPINGS)
+    },
+    "alignment": (ConceptAlignment.from_dict, _alignment_record()),
+    **{
+        f"transform:{kind}": (transform_from_dict, transform_to_dict(transform))
+        for kind, transform in (
+            ("recode", Recode(pairs=(("female", "F"), ("male", "M")))),
+            ("predicate", Predicate(clauses=(("fact:person.sex", ("female",)),))),
+            ("scale", Scale(factor=1 / 52)),
+            ("role", RelationshipRole(role=Role.PARENT_OF_CORESIDENT_CHILD)),
+        )
+    },
+}
+
+
+class TestMalformedInput:
+    """Every reader refuses malformed input with ValueError, and nothing else."""
+
+    @pytest.mark.parametrize("reader", sorted(_READERS))
+    @settings(max_examples=60, deadline=None)
+    @given(data=st.data())
+    def test_corrupted_records_raise_only_value_errors(self, reader, data) -> None:
+        read, record = _READERS[reader]
+        corrupted = data.draw(_corrupted(json.loads(json.dumps(record))))
+        try:
+            read(corrupted)
+        except ValueError:
+            pass
+
+    @pytest.mark.parametrize(
+        ("reader", "change", "message"),
+        [
+            (
+                "mapping:policyengine-uk",
+                lambda d: d.pop("bindings"),
+                r"lacks \['bindings'\]",
+            ),
+            (
+                "mapping:policyengine-uk",
+                lambda d: d.update(bindngs=d.pop("bindings")),
+                r"unexpected fields \['bindngs'\]",
+            ),
+            (
+                "mapping:policyengine-uk",
+                lambda d: d["bindings"][0].update(concepts=5),
+                "'concepts' must list concept ids",
+            ),
+            (
+                "mapping:policyengine-uk",
+                lambda d: d["bindings"][0].update(transform="identity"),
+                "transform must be an object",
+            ),
+            (
+                "mapping:policyengine-uk",
+                lambda d: d["bindings"][0].update(engine_input=7),
+                "'engine_input' must be text",
+            ),
+            (
+                "mapping:policyengine-uk",
+                lambda d: d.update(unmapped=[]),
+                "'unmapped' must map",
+            ),
+            ("report:policyengine-uk", lambda d: d.pop("covered_inputs"), "lacks"),
+            (
+                "report:policyengine-uk",
+                lambda d: d["covered_inputs"][0].update(nmae="x"),
+                r"input reference has unexpected fields \['nmae'\]",
+            ),
+            (
+                "report:policyengine-uk",
+                lambda d: d.update(input_count="9"),
+                "'input_count'",
+            ),
+            (
+                "alignment",
+                lambda d: d.update(canonical_concept=7),
+                "'canonical_concept' must be text",
+            ),
+        ],
+    )
+    def test_malformed_fields_are_named(self, reader, change, message) -> None:
+        read, record = _READERS[reader]
+        data = json.loads(json.dumps(record))
+        change(data)
+        with pytest.raises(ValueError, match=message):
+            read(data)
+
+    @pytest.mark.parametrize(
+        ("data", "message"),
+        [
+            ("identity", "must be an object"),
+            ({"kind": "predicate", "clauses": 5}, "'clauses' must list pairs"),
+            (
+                {"kind": "predicate", "clauses": [[1, ["x"]]]},
+                "pair concept ids with value lists",
+            ),
+            ({"kind": "recode", "pairs": [["a"]]}, "'pairs' must list pairs"),
+            ({"kind": "scale", "factor": 10**400}, "Malformed transform"),
+        ],
+    )
+    def test_malformed_transform_shapes_are_refused(self, data, message) -> None:
+        with pytest.raises(ValueError, match=message):
+            transform_from_dict(data)

@@ -43,7 +43,5 @@ def test_concepts_round_trip_through_the_engine(engine, tables, data) -> None:
         US_SCHEMA,
         2024,
         shares={name: data.draw(shares) for name in MAPPING.share_parameters()},
-        take_up_rates={
-            name: data.draw(shares) for name in MAPPING.take_up_programs()
-        },
+        take_up_rates={name: data.draw(shares) for name in MAPPING.take_up_programs()},
     )

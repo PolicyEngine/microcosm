@@ -58,7 +58,8 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import blake2b, sha256
@@ -324,6 +325,59 @@ _ALIGNMENT_FIELDS: tuple[str, ...] = (
 )
 
 
+def _record_fields(
+    data: object,
+    what: str,
+    *,
+    required: Iterable[str],
+    optional: Iterable[str] = (),
+) -> dict[str, object]:
+    """``data`` as a dict, checked to be an object holding only allowed fields.
+
+    Raises:
+        ValueError: If ``data`` is not an object, or a field is unexpected or
+            missing; the message names the fields.
+    """
+
+    if not isinstance(data, Mapping):
+        raise ValueError(f"A {what} must be an object, not {type(data).__name__}.")
+    fields = dict(data)
+    required = frozenset(required)
+    unexpected = sorted(map(str, set(fields) - required - frozenset(optional)))
+    if unexpected:
+        raise ValueError(f"A {what} has unexpected fields {unexpected}.")
+    missing = sorted(required - set(fields))
+    if missing:
+        raise ValueError(f"A {what} lacks {missing}.")
+    return fields
+
+
+def _text_fields(fields: Mapping[str, object], what: str, names: Iterable[str]) -> None:
+    """Check that each named field is text where present and not null."""
+
+    for name in names:
+        value = fields.get(name)
+        if value is not None and not isinstance(value, str):
+            raise ValueError(
+                f"A {what}'s {name!r} must be text, not {type(value).__name__}."
+            )
+
+
+@contextmanager
+def _parsing(what: str) -> Iterator[None]:
+    """Report any other structural fault in a serialized record as ValueError.
+
+    Readers check the shapes they expect and name the field at fault; this
+    catches what those checks leave (an unhashable value, a list where a pair
+    belongs), so malformed input never escapes as another exception type.
+    """
+
+    try:
+        yield
+    except (AttributeError, IndexError, KeyError, OverflowError, TypeError) as error:
+        raise ValueError(f"Malformed {what}: {error}") from error
+
+
 @dataclass(frozen=True, kw_only=True)
 class ConceptAlignment:
     """One source-to-canonical concept alignment: Chronicle's record.
@@ -405,16 +459,23 @@ class ConceptAlignment:
         """Read a Chronicle ``concept_alignment`` record.
 
         Raises:
-            ValueError: If a key is not one of the record's fields or a
-                required one is missing.
+            ValueError: If ``data`` is not an object, a key is not one of the
+                record's fields, a required one is missing, or a value is not
+                text.
         """
-        unknown = set(data) - set(_ALIGNMENT_FIELDS)
-        if unknown:
-            raise ValueError(f"Unknown concept-alignment fields {sorted(unknown)}.")
-        missing = {"canonical_concept", "source_concept", "relation"} - set(data)
-        if missing:
-            raise ValueError(f"Concept alignment lacks {sorted(missing)}.")
-        return cls(**data)
+        with _parsing("concept alignment"):
+            if not isinstance(data, Mapping):
+                raise ValueError("A concept alignment must be an object.")
+            unknown = set(data) - set(_ALIGNMENT_FIELDS)
+            if unknown:
+                raise ValueError(
+                    f"Unknown concept-alignment fields {sorted(map(str, unknown))}."
+                )
+            missing = {"canonical_concept", "source_concept", "relation"} - set(data)
+            if missing:
+                raise ValueError(f"Concept alignment lacks {sorted(missing)}.")
+            _text_fields(data, "concept alignment", _ALIGNMENT_FIELDS)
+            return cls(**data)
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -91,7 +91,8 @@ def test_structural_inputs_are_engine_inputs(engine) -> None:
 
 
 def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
-    # Named in notes and unmapped reasons as formula-owned, never inputs.
+    # Every variable the mapping's notes, unmapped reasons or module header
+    # call formula-owned (or a loader override rather than an input).
     claimed = {
         "employment_income",
         "capital_gains",
@@ -101,7 +102,6 @@ def test_the_mapping_notes_formula_ownership_claims_hold(engine) -> None:
         "is_married",
         "is_benunit_head",
         "is_household_head",
-        "current_education",
         "weekly_hours",
         "tax_free_savings_income",
     }
@@ -141,8 +141,6 @@ def test_concepts_round_trip_through_the_engine(engine, tables, data) -> None:
         UK_SCHEMA,
         2025,
         shares={name: data.draw(shares) for name in MAPPING.share_parameters()},
-        take_up_rates={
-            name: data.draw(shares) for name in MAPPING.take_up_programs()
-        },
+        take_up_rates={name: data.draw(shares) for name in MAPPING.take_up_programs()},
         context={"household": {"region": "LONDON"}},
     )
