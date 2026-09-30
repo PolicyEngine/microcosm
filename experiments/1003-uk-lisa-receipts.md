@@ -33,6 +33,12 @@ realisation deviation limit is raised from 1.0 to 2.0 in `uk/gates.json`. The bu
 - `spine-lisa-b`: the head with the four financial predictors removed from both models. This is
   measurement only and was not committed (Part F).
 
+Rebased 2026-09-30 onto main `c5a1cba87`, after #932, #1057 and #1045. The licensed builds here
+were measured before that, at `360e7846c` on main `5187fce25`. Every spine change in #1045 is
+downstream of `was_lisa` (`cgt_support_split` replaces `cgt_band_donors`), so the stage-time
+population and the stage evidence in Parts A to D and F stand. The H5 cross-check in Part C and
+the twin in Part E describe the old base's downstream stages.
+
 ## Part A. The donor audit
 
 The stage reads two licensed tabs, pinned in `uk/spec/sources.yaml` and checked by size and
