@@ -381,8 +381,9 @@ def _vehicle_source(tmp_path: Path) -> AcsPumsSource:
 
 
 def test_acs_loader_keeps_vehicles_available(tmp_path: Path) -> None:
-    """microcosm#1022: the local lane writes VEH as the household vehicle
-    count; the top code and the group-quarters blank are kept as read."""
+    """microcosm#1022: the local lane records VEH as vehicle availability,
+    never as the owned count; the top code and the group-quarters blank are
+    kept as read."""
 
     tables, _ = load_acs_pums_tables(_vehicle_source(tmp_path))
     household = tables["household"].set_index("SERIALNO")

@@ -273,39 +273,61 @@ def test_finalize_reviewed_limitations_carries_staging_and_dedupes() -> None:
         "is_snap_abawd_discretionary_exempt",
         "receives_housing_assistance",
         "takes_up_medicare_if_eligible",
-        "household_vehicles_owned",
         "takes_up_head_start_if_eligible",
     }
     assert "acs_local_take_up_signal" in fills["treatment"]
     for fragment in (
+        "Four inputs",
         "SERIALNO:SPORDER",
         "microcosm#975",
         "HINS3 == 1",
-        "ACS VEH",
+        "ACS VEH is not filled into household_vehicles_owned",
+        "microcosm#1064 review",
         "TVEH_NUM",
         "sipp_head_start",
         "acs_household_vehicle_value_default",
         "cap-based proxy, not an observed exemption assignment",
         "upper-bound propensity",
     ):
-        assert fragment in fills["reason"]
+        assert fragment in fills["reason"], fragment
     assert "Head Start take-up only at ages 3-5" in fills["treatment"]
+    assert "no ACS owned vehicle count but the default" in fills["treatment"]
+    assert "counts equal to VEH" not in fills["treatment"]
     assert "Blank and invalid HINS3 counts" in fills["treatment"]
-    # microcosm#1022: the ACS vehicle value keeps its default, documented.
+    # microcosm#1022 and the #1064 review: both ACS vehicle columns keep their
+    # default; VEH is availability, not the owned count.
     value = by_id["acs_household_vehicle_value_default"]
     assert value["status"] == "reviewed_modeling_decision"
     assert value["calibration_blocker"] is False
     assert value["affected_spines"] == ["acs_2024_1yr"]
-    assert value["columns"] == ["household_vehicles_value"]
+    assert value["columns"] == ["household_vehicles_owned", "household_vehicles_value"]
     for fragment in (
         "microcosm#1022",
+        "microcosm#1064 review",
+        "Both ACS vehicle columns stay at the reviewed engine default",
+        "long-term leased and employer-provided ones included",
+        "TVEH_NUM",
+        "ca_sf_caap_vehicle_eligible",
+        "la_general_relief_motor_vehicle_value_eligible",
+        "lives_in_vehicle",
+        "leases two cars and owns none",
+        "no vehicles-available input",
+        "overstate eligibility",
+        "the same direction as the zero value",
+        "harmless for SNAP",
         "meets_tanf_non_cash_asset_test",
         "$22,500",
         "SNAP's own asset test reads no vehicle",
         "TANF is SNAP unearned income",
     ):
         assert fragment in value["reason"], fragment
-    assert "native VEH count" in value["treatment"]
+    for fragment in (
+        "Reviewed-null fill to 0 for both",
+        "fails on an ACS owned count other than 0",
+        "engine_free_fills.vehicles_available",
+        "VEH as a predictor rather than the count",
+    ):
+        assert fragment in value["treatment"], fragment
     # microcosm#1022: the ACS SSI disability criteria are a reviewed method,
     # and SSI take-up is assigned against them.
     ssi = by_id["acs_local_ssi_disability_criteria"]
@@ -533,17 +555,18 @@ _ENGINE_FREE_FILLS = (
     ("person", "is_snap_abawd_discretionary_exempt"),
     ("spm_unit", "receives_housing_assistance"),
     ("person", "takes_up_medicare_if_eligible"),
-    ("household", "household_vehicles_owned"),
     ("person", "takes_up_head_start_if_eligible"),
 )
 
-#: A current (post-#1022) materialize receipt, as run_identity.json records it.
+#: A current materialize receipt, as run_identity.json records it: the
+#: engine-free fills and the ACS VEH availability receipt (#1064 review).
 _TAKE_UP_RECEIPT = {
     "seed": 0,
     "assigned_sha256": "a" * 64,
     "engine_free_fills": {
         "issue": "microcosm#1022",
         "columns": {column: {} for _, column in _ENGINE_FREE_FILLS},
+        "vehicles_available": {"households": 4},
     },
 }
 
@@ -576,32 +599,111 @@ def test_take_up_consumers_refuse_a_pre_1022_checkpoint(fills) -> None:
         module._recorded_take_up({"acs_local_take_up": receipt})
 
 
-@pytest.mark.parametrize(
-    "missing", ["household_vehicles_owned", "takes_up_head_start_if_eligible"]
-)
-def test_take_up_consumers_refuse_a_checkpoint_before_the_vehicle_and_head_start_fills(
-    missing,
-) -> None:
-    """A checkpoint whose engine-free fills omit the vehicle count or Head
-    Start take-up calibrated against their engine defaults."""
+def test_take_up_consumers_refuse_a_checkpoint_before_the_head_start_fill() -> None:
+    """A checkpoint whose engine-free fills omit Head Start take-up
+    calibrated against its engine default, universal take-up."""
 
     module = _load_tool_module()
     fills = dict(_TAKE_UP_RECEIPT["engine_free_fills"])
-    fills["columns"] = {column: {} for column in fills["columns"] if column != missing}
+    fills["columns"] = {
+        column: {}
+        for column in fills["columns"]
+        if column != "takes_up_head_start_if_eligible"
+    }
     receipt = {**_TAKE_UP_RECEIPT, "engine_free_fills": fills}
-    with pytest.raises(SystemExit, match=r"vehicle count and Head Start take-up"):
+    with pytest.raises(SystemExit, match=r"without Head Start take-up"):
+        module._recorded_take_up({"acs_local_take_up": receipt})
+
+
+@pytest.mark.parametrize(
+    "owned_fill, availability",
+    [(True, False), (True, True), (False, False)],
+    ids=["before_the_1064_review", "owned_fill", "no_availability_receipt"],
+)
+def test_take_up_consumers_refuse_a_checkpoint_that_wrote_veh_as_the_owned_count(
+    owned_fill, availability
+) -> None:
+    """microcosm#1064 review: before it, materialize wrote ACS VEH (vehicles
+    available) as household_vehicles_owned, recorded it as a fill and kept
+    no availability receipt. Its engine pass and digest cover counts this
+    build no longer writes, so calibrate and the export refuse it early."""
+
+    module = _load_tool_module()
+    fills = {
+        "issue": "microcosm#1022",
+        "columns": {column: {} for _, column in _ENGINE_FREE_FILLS},
+    }
+    if owned_fill:
+        fills["columns"]["household_vehicles_owned"] = {"filled_rows": 4}
+    if availability:
+        fills["vehicles_available"] = {"households": 4}
+    receipt = {**_TAKE_UP_RECEIPT, "engine_free_fills": fills}
+    with pytest.raises(
+        SystemExit,
+        match=r"ACS VEH written as the owned vehicle count.*Re-run --stage materialize",
+    ):
         module._recorded_take_up({"acs_local_take_up": receipt})
 
 
 def test_engine_free_fills_are_never_default_filled() -> None:
     """microcosm#1022: each engine default ignores measured or donor evidence
-    on ACS rows; the vehicle value keeps its reviewed default."""
+    on ACS rows. Both vehicle columns keep their reviewed default: the ACS has
+    no value item, and VEH counts vehicles available, not owned (#1064
+    review)."""
 
     module = _load_tool_module()
     for key in _ENGINE_FREE_FILLS:
         assert key in module.NEVER_DEFAULT_FILLED
         assert "microcosm#1022" in module._NEVER_DEFAULT_FILLED_REASONS[key]
-    assert ("household", "household_vehicles_value") not in module.NEVER_DEFAULT_FILLED
+    for column in ("household_vehicles_owned", "household_vehicles_value"):
+        assert ("household", column) not in module.NEVER_DEFAULT_FILLED
+
+
+def test_reviewed_null_fill_allows_the_acs_owned_vehicle_count(
+    tmp_path, monkeypatch
+) -> None:
+    """microcosm#1064 review: the ACS owned vehicle count is a reviewed
+    default fill again. The fill gets past the never-default refusal and on to
+    the engine import, which this engine-free test blocks, instead of raising
+    DeniedDefaultFillError."""
+
+    import sys
+
+    from microcosm.frame import Frame
+
+    module = _load_tool_module()
+    frame = _plausible_hours_frame()
+    n = len(frame.table("household"))
+    household = frame.table("household").assign(
+        household_vehicles_owned=np.where(
+            np.arange(n) < n // 2, np.arange(n) % 3, np.nan
+        )
+    )
+    frame = Frame(
+        {
+            name: household if name == "household" else frame.table(name)
+            for name in frame.entities
+        },
+        frame.schema,
+        {"household": frame.weights_for("household")},
+    )
+    summary = tmp_path / "staging.summary.json"
+    summary.write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [
+                    {
+                        "entity": "household",
+                        "column": "household_vehicles_owned",
+                        "missing_rows": n - n // 2,
+                    }
+                ]
+            }
+        )
+    )
+    monkeypatch.setitem(sys.modules, "policyengine_us", None)
+    with pytest.raises(ImportError):
+        module.fill_reviewed_nulls(frame, summary)
 
 
 @pytest.mark.parametrize("entity,column", _ENGINE_FREE_FILLS)
@@ -3146,7 +3248,8 @@ def _take_up_gate_frame(*, spm_columns=(), person_columns=()):
             spine_column("household"): spines,
             "TYPEHUGQ": [np.nan] * 4 + [1.0] * 4,
             "VEH": [np.nan] * 4 + [1.0, 0.0, 2.0, 1.0],
-            "household_vehicles_owned": [1, 2, 0, 1, 1, 0, 2, 1],
+            # The ACS owned count keeps its reviewed default (#1064 review).
+            "household_vehicles_owned": [1, 2, 0, 1, 0, 0, 0, 0],
         }
     )
     replaced = {"spm_unit": spm_unit, "person": person, "household": household}
