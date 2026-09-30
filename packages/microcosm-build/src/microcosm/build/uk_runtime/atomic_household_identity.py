@@ -13,10 +13,13 @@ import numpy as np
 
 from microcosm.graph.canonical import canonical_json
 
+#: Structural branches in spine order: the SPI support channel, the CGT
+#: support split (copy ``k`` of a household, microcosm#1045), the incidence
+#: clone and the geographic pool expansion.
 _BRANCHES = (
     "spi_support_channel",
+    "cgt_support_split",
     "cgt_incidence_clone",
-    "cgt_band_donors",
     "geographic_support",
 )
 

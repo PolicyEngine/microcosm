@@ -117,13 +117,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "c786386558f42fa149bb03bad9aa8d84ed9d30b8f343fcf6ba43cb1be4cc407f"
+    "e729814c1f4fbed346d59bf8713bc2cb342537edd8154b0e72bf049df4e168a9"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "80043d361fe61beae9a787e4d1d318e7aa1a3eef8d6859208c382317fa1e3378"
+    "dd6afb4c1f95007303413743c702927dae865783da352f37e7c22b139bb7eb8e"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "5c5166d81cf6b987786e74a42e188d5634090323de09076dcc176d538b1657ac"
+    "3f7dbdf16de49dfddae3941bbf088df6b9d61f38f10ab09816271b9ffa9aeb5b"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -178,12 +178,12 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
-    "uk_stage_cgt_incidence_clone_mass": (
+    "uk_stage_cgt_support_split_mass": (
         "stage_health",
         "transferred",
         None,
     ),
-    "uk_stage_cgt_band_donors_support": (
+    "uk_stage_cgt_incidence_clone_mass": (
         "stage_health",
         "transferred",
         None,
@@ -1230,8 +1230,8 @@ def _gate_battery_payload(
         "hmrc_spi_income_spine",
         "uc_capital_coherence",
         "uc_deduction_attributes",
+        "cgt_support_split",
         "cgt_incidence_clone",
-        "cgt_band_donors",
         "hmrc_cgt_gains_spine",
         "salary_sacrifice",
         "student_loans",
@@ -1251,8 +1251,8 @@ def _gate_battery_payload(
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_cgt_support_split_mass": "cgt_support_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
-        "uk_stage_cgt_band_donors_support": "cgt_band_donors",
         "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
         "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",

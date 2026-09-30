@@ -62,6 +62,7 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
 )
+from microcosm.build.uk_runtime.diagnostics import uk_support_family_weights
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
@@ -947,15 +948,27 @@ def _evaluate_zero_weight_strata(
 def _evaluate_weight_ess(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    weights = _household_weights(_uk_gate_surface(context.frame).household)
-    return uk_weight_ess_gate(weights, **dict(parameters))
+    household = _uk_gate_surface(context.frame).household
+    family_weights, family_fold = uk_support_family_weights(household)
+    return uk_weight_ess_gate(
+        _household_weights(household),
+        family_weights=family_weights,
+        family_fold=family_fold,
+        **dict(parameters),
+    )
 
 
 def _evaluate_weight_ratio(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    weights = _household_weights(_uk_gate_surface(context.frame).household)
-    return uk_weight_ratio_gate(weights, **dict(parameters))
+    household = _uk_gate_surface(context.frame).household
+    family_weights, family_fold = uk_support_family_weights(household)
+    return uk_weight_ratio_gate(
+        _household_weights(household),
+        family_weights=family_weights,
+        family_fold=family_fold,
+        **dict(parameters),
+    )
 
 
 def _evaluate_geography_ladder(
@@ -1599,6 +1612,8 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_abs_realization_deviation",
                 "allow_cap_bound",
                 "stocks",
+                # microcosm#1049 student_loan_plans stage-health check.
+                "maximum_stock_relative_deviation",
                 "maximum_relative_mass_imbalance",
                 "spi_prior_mass_share",
                 "absolute_tolerance",
@@ -1621,6 +1636,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_relative_composition_error",
                 "maximum_pair_relative_error",
                 "minimum_pair_count",
+                # #1045 cgt_support_split stage-health check: the split rule's
+                # declared constants and the conservation tolerance.
+                "clone_split_factor",
+                "headroom",
+                "maximum_copy_weight",
+                "maximum_relative_mass_deviation",
                 # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
                 # reserved bands and the donors each must carry.
                 "band_lower_bounds",

@@ -90,8 +90,8 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
     "uc_deduction_attributes": "uc_deduction_attributes",
+    "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
-    "cgt_band_donors": "cgt_structure",
     "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
     "hmrc_cgt_asset_type_spine": "cgt_asset_type",
@@ -332,19 +332,29 @@ def _fixture_cgt_distribution(path: Path):
 
 
 def _fixture_asset_type_facts(path: Path):
-    from .cgt_asset_type import HMRCCGTAssetTypeFacts, HMRCCGTTable7Type
+    from .cgt_asset_type import (
+        HMRCCGTAssetTypeFacts,
+        HMRCCGTBADRBand,
+        HMRCCGTTable7Type,
+    )
 
     payload = dict(_json_mapping(path, label="CGT asset-type facts"))
     raw_rows = payload.pop("table7_types")
-    if not isinstance(raw_rows, list):
+    raw_bands = payload.pop("table4_bands")
+    if not isinstance(raw_rows, list) or not isinstance(raw_bands, list):
         raise ValueError(
-            "UK parity fixture CGT asset-type table7_types must be a list."
+            "UK parity fixture CGT asset-type table7_types and table4_bands must "
+            "be lists."
         )
     return HMRCCGTAssetTypeFacts(
         **payload,
         table7_types=tuple(
             HMRCCGTTable7Type(**dict(_mapping(row, label="Table 7 row")))
             for row in raw_rows
+        ),
+        table4_bands=tuple(
+            HMRCCGTBADRBand(**dict(_mapping(row, label="Table 4.1 band")))
+            for row in raw_bands
         ),
     )
 
@@ -388,13 +398,13 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
     from .age_tail import UKAgeTailStageTransform
-    from .cgt_asset_type import UKCGTAssetTypeStageTransform
+    from .cgt_asset_type import UKCGTAssetTypeStageTransform, UKCGTBADRParameters
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_structure import (
-        UKCGTBandDonorStageTransform,
         UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
     )
+    from .cgt_support import UKCGTSupportSplitStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
@@ -472,6 +482,11 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     cgt_parameters = UKCGTPolicyParameters(
         **dict(_mapping(descriptor.get("cgt_parameters"), label="CGT parameters"))
+    )
+    cgt_badr_parameters = UKCGTBADRParameters(
+        **dict(
+            _mapping(descriptor.get("cgt_badr_parameters"), label="CGT BADR parameters")
+        )
     )
 
     engine = PolicyEngineUKEngine()
@@ -579,11 +594,13 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]
             ),
+            "cgt_support_split": UKCGTSupportSplitStageTransform(
+                stage=stages["cgt_support_split"],
+                distribution=cgt_distribution,
+                parameters=cgt_parameters,
+            ),
             "cgt_incidence_clone": UKCGTIncidenceCloneStageTransform(
                 stage=stages["cgt_incidence_clone"]
-            ),
-            "cgt_band_donors": UKCGTBandDonorStageTransform(
-                stage=stages["cgt_band_donors"]
             ),
             "hmrc_cgt_gains_spine": uk_cgt_spine_stage_transform(
                 stages["hmrc_cgt_gains_spine"],
@@ -594,6 +611,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 stage=stages["hmrc_cgt_asset_type_spine"],
                 facts=cgt_asset_type_facts,
                 parameters=cgt_parameters,
+                badr_parameters=cgt_badr_parameters,
             ),
             "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
                 stage=stages["cgt_incidence_anchor"],
@@ -917,10 +935,15 @@ def _source_lineage(
 
         # CGT stages retain long-lived source-id provenance from the SPI
         # support stage, so their immediate clone lineage is the stage's
-        # reviewed ID offset, not that older provenance column.
+        # reviewed ID offset, not that older provenance column.  Copy ``k``
+        # of a CGT structural stage takes ``source + k * offset`` (the clone
+        # stage mints one copy, the support split up to ``ceil(w / cap)``,
+        # microcosm#1045), and every incumbent id lies below the offset, so
+        # the copy index is the integer quotient.
         if id_offset is not None:
-            candidate = target - id_offset
-            if candidate in before_ids:
+            copy_index = int(target) // int(id_offset)
+            candidate = target - copy_index * id_offset
+            if copy_index >= 1 and candidate in before_ids:
                 targets.append(target)
                 values.append(candidate)
                 continue
@@ -985,7 +1008,7 @@ class UKExpandStageKernel(KernelBase):
             )
         cells = _expand_cells(context)
         id_offset = None
-        if self.stage in {"cgt_incidence_clone", "cgt_band_donors"}:
+        if self.stage in {"cgt_support_split", "cgt_incidence_clone"}:
             id_offset = id_multiplier_for_values(
                 *(
                     before.table(entity)[before.schema.entity_id_column(entity)]
@@ -1109,8 +1132,8 @@ def build_uk_registry(
         if stage in {
             "spi_support_channel",
             "spi_income_band_donors",
+            "cgt_support_split",
             "cgt_incidence_clone",
-            "cgt_band_donors",
             "cgt_incidence_anchor",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))

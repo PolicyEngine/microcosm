@@ -734,10 +734,20 @@ def _donor_energy_rake_iterations(stage: SourceStageSpec) -> int:
 
 
 def _recipient_energy_rake_iterations(stage: SourceStageSpec) -> int:
-    """The declared post-imputation energy IPF (the one with the region margin)."""
+    """The declared post-imputation energy IPF (the one with the region margin).
+
+    Refuses a stage without that IPF or its declared sweep count instead of
+    falling back to a default: the energy_rake gate reads the residual's
+    convergence over the last sweeps of exactly the declared count.
+    """
 
     operation = _energy_rake_operation(stage, margin="region")
-    return 50 if operation is None else int(operation.parameters.get("iterations", 50))
+    if operation is None or "iterations" not in operation.parameters:
+        raise ValueError(
+            f"{stage.stage}: the post-imputation energy IPF (the one with the "
+            "region margin) and its declared iterations are required."
+        )
+    return int(operation.parameters["iterations"])
 
 
 def support_clip_exempt(stage: SourceStageSpec) -> set[str]:

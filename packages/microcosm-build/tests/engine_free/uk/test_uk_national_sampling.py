@@ -248,7 +248,7 @@ def _spine_family_frame(
             "household_support_clone_index": [row["support_clone"] for row in rows],
             "household_is_spi_synthetic": [row["spi"] for row in rows],
             "household_is_capital_gains_clone": [row["cgt"] for row in rows],
-            "household_is_cgt_band_donor": [row["band_donor"] for row in rows],
+            "household_is_cgt_support_copy": [row["band_donor"] for row in rows],
             "region": [row["region"] for row in rows],
             "household_weight": [row["weight"] for row in rows],
         }

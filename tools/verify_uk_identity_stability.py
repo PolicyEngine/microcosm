@@ -13,6 +13,7 @@ import json
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -417,12 +418,14 @@ def e6_identity_receipt(
     # stage that redistributes mass leaves these rows carrying a fraction of
     # the weight E6 normalized against. The SPI support rows (and their band
     # donors) are stacked before E6 and imputed there, so they stay in scope at
-    # their allocated mass. The CGT clone and band donors are stacked after:
-    # their rows are dropped and the clone's mass (equal halves before the #970
-    # anchor, pair-conserving afterwards) is folded back by pair.
+    # their allocated mass. The CGT support split and the clone are stacked
+    # after: their created rows (copies and clones) are dropped and their mass
+    # is folded back - the clone's by pair (equal halves before the #970
+    # anchor, pair-conserving afterwards) and the split's by family onto the
+    # root - so the surviving rows carry the pre-split weights E6 saw.
     later_flags = _flags_stacked_after(_E6_FIRST_STAGE, household)
     if later_flags:
-        household["household_weight"] = _pre_clone_household_weights(frame)
+        household["household_weight"] = _pre_split_household_weights(frame)
         spine_mask = ~household[later_flags].astype(bool).any(axis=1)
         household = household.loc[spine_mask].reset_index(drop=True)
         spine_household_ids = set(household["household_id"].tolist())
@@ -666,15 +669,21 @@ def e7_identity_receipt(
     }
 
 
-def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
+def _e8_clone_pairs(
+    frame, problems: dict[str, object], *, parameters=None
+) -> dict[str, object]:
     """Check the clone/original pairs, before or after the #970 anchor.
 
-    Before the anchor both halves carry the same weight. After it (the
-    frame's mass log carries the anchor's record) each pair still sums to
-    its pre-clone weight, the clone side never exceeds the original, and the
-    anchor is recomputed from the reconstructed pre-anchor state (both halves
-    at half the pair sum, the clone stage's split up to rounding) in original
-    and reversed person order and compared with the stored weights.
+    Every pre-clone household is paired, the support split's copies included
+    (they are pre-clone rows with clones of their own). Before the anchor
+    both halves carry the same weight. After it (the frame's mass log
+    carries the anchor's record) each pair still sums to its pre-clone
+    weight, the clone side never exceeds the original, and the anchor is
+    recomputed from the reconstructed pre-anchor state (both halves at half
+    the pair sum, the clone stage's split up to rounding) in original and
+    reversed person order and compared with the stored weights.
+    ``parameters`` are the policy parameters the anchor's proxy reads; they
+    are read from the engine when not supplied.
     """
 
     from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_policy_parameters
@@ -734,7 +743,8 @@ def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
         mass_log=tuple(frame.mass_log[: anchor_records[0]]),
     )
     distribution = load_advani_summers_distribution()
-    parameters = uk_cgt_policy_parameters(uk_time_period(frame))
+    if parameters is None:
+        parameters = uk_cgt_policy_parameters(uk_time_period(frame))
     recomputed = anchor_cgt_incidence(
         pre_frame, distribution=distribution, parameters=parameters
     )
@@ -765,6 +775,240 @@ def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
     return receipt
 
 
+def _e8_support_split(
+    frame,
+    problems: dict[str, object],
+    *,
+    distribution,
+    parameters,
+    permutation_seed: int,
+) -> dict[str, object]:
+    """Recompute the CGT support split from the folded pre-split frame.
+
+    The split (microcosm#1045) is deterministic - no draw, no seed - so it is
+    reconstructible from the artifact alone: every clone folded onto its
+    original and every support copy onto its root gives the pre-split
+    household table at the weights the stage saw, and the stage's own helpers
+    rerun its rule on that table from the vendored Table 3 joint
+    (``distribution``), the stored income components under the policy
+    ``parameters``, and the stored wealth columns. The stored layer must
+    agree: the households the rule divides are exactly the roots of the
+    flagged copies (the pre-clone rows carrying ``cgt_support_copies`` above
+    one), each family's count is ``ceil(w / maximum_copy_weight)``, every
+    member of a family carries ``w / n`` at stage time (its clone pair sum,
+    since the clone runs afterwards), the copies of each root are indexed
+    ``1..n-1`` without gaps and carry the root's count, no count is below
+    one, and the stage's mass record conserves the total. The recompute is
+    repeated on permuted person and household tables and must reproduce the
+    divided set and the counts exactly. A selected household light enough
+    for a single copy leaves no trace in the artifact, so only families are
+    compared. Problems land under ``support_split_*`` keys.
+    """
+
+    from microcosm.build.uk_runtime.cgt_support import (
+        CGT_SUPPORT_CLONE_SPLIT_FACTOR,
+        CGT_SUPPORT_COPIES_COLUMN,
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
+        CGT_SUPPORT_HEADROOM,
+        CGT_SUPPORT_MASS_CHANGE_REASON,
+        CGT_SUPPORT_MAXIMUM_COPY_WEIGHT,
+        CGT_SUPPORT_MINIMUM_GAIN_BAND_LOWER,
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+        cgt_support_copy_counts,
+        cgt_support_household_wealth,
+        cgt_support_income_band,
+        cgt_support_mass_by_income_band,
+        select_cgt_support_households,
+    )
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+    missing = [
+        column
+        for column in (HOUSEHOLD_IS_CGT_SUPPORT_COPY, CGT_SUPPORT_COPIES_COLUMN)
+        if column not in household.columns
+    ]
+    if missing:
+        # An artifact without the split layer cannot be receipted for it, and
+        # skipping the block would report a pass over an unchecked layer (the
+        # E7 rule). Refuse instead.
+        raise ValueError(
+            "e8 identity receipt: the artifact carries no "
+            f"{missing} column(s), so the CGT support-split layer is absent "
+            "and there is nothing to receipt. Receipt the artifact with the "
+            "tool at the commit that built it."
+        )
+    receipt: dict[str, object] = {}
+    mass_records = [
+        record
+        for record in frame.mass_log
+        if record.reason == CGT_SUPPORT_MASS_CHANGE_REASON
+    ]
+    if not mass_records:
+        problems["support_split_mass_record"] = "missing"
+    else:
+        record = mass_records[-1]
+        receipt["mass"] = {
+            "old_total": float(record.old_total),
+            "new_total": float(record.new_total),
+        }
+        if not np.isclose(record.new_total, record.old_total, rtol=1e-9, atol=0.0):
+            problems["support_split_mass_record"] = [
+                float(record.old_total),
+                float(record.new_total),
+            ]
+    try:
+        lineage = _support_copy_lineage(person, benunit, household)
+    except ValueError as error:
+        problems["support_split_lineage"] = str(error)
+        return receipt
+    household_ids = lineage.household_ids
+    pre_split = lineage.pre_split
+    stored_copies = (
+        pd.to_numeric(household[CGT_SUPPORT_COPIES_COLUMN], errors="raise")
+        .astype("int64")
+        .to_numpy()
+    )
+    receipt["id_multiplier"] = int(lineage.multiplier)
+    receipt["pre_split_households"] = int(pre_split.sum())
+    receipt["copies"] = int(len(lineage.copy_positions))
+    # The explicit copy index (microcosm#1045 review): present on artifacts
+    # built since it was added, checked against the id scheme by the lineage
+    # above, and recorded so a receipt says which lineage it read.
+    receipt["copy_index_column_stored"] = bool(
+        CGT_SUPPORT_COPY_INDEX_COLUMN in household.columns
+    )
+
+    # Flag and count consistency of the stored layer: every copy carries its
+    # root's count and the root's count exceeds one; each family's copies are
+    # indexed 1..n-1 exactly; no count is below one.
+    root_positions = lineage.root_positions
+    root_copies = stored_copies[root_positions]
+    copy_copies = stored_copies[lineage.copy_positions]
+    flag_problems: dict[str, int] = {}
+    disagreeing = int(((copy_copies != root_copies) | (root_copies < 2)).sum())
+    if disagreeing:
+        flag_problems["copies_disagreeing_with_root"] = disagreeing
+    copy_index_by_root: dict[int, list[int]] = {}
+    for root, index in zip(
+        root_positions.tolist(), lineage.copy_index.tolist(), strict=True
+    ):
+        copy_index_by_root.setdefault(root, []).append(index)
+    family_positions = np.flatnonzero(pre_split & (stored_copies > 1))
+    gapped = 0
+    for position in family_positions.tolist():
+        expected_indices = list(range(1, int(stored_copies[position])))
+        if sorted(copy_index_by_root.get(position, [])) != expected_indices:
+            gapped += 1
+    if gapped:
+        flag_problems["families_with_missing_or_extra_copies"] = gapped
+    below_one = int((stored_copies < 1).sum())
+    if below_one:
+        flag_problems["counts_below_one"] = below_one
+    if flag_problems:
+        problems["support_split_flags"] = flag_problems
+    receipt["families"] = int(len(family_positions))
+
+    # Fold: clones onto originals (pair sums), then copies onto roots.
+    pre_clone = _pre_clone_household_weights(frame)
+    folded = pre_clone.copy()
+    np.add.at(folded, root_positions, pre_clone[lineage.copy_positions])
+
+    # Each family member's stage-time weight (its clone pair sum) is w / n.
+    expected = np.full(len(household), np.nan)
+    expected[family_positions] = folded[family_positions] / np.maximum(
+        stored_copies[family_positions], 1
+    )
+    expected[lineage.copy_positions] = folded[root_positions] / np.maximum(
+        stored_copies[root_positions], 1
+    )
+    members = np.concatenate([family_positions, lineage.copy_positions])
+    if members.size:
+        difference = np.abs(pre_clone[members] - expected[members])
+        receipt["max_abs_family_weight_diff"] = float(difference.max())
+        off = ~np.isclose(pre_clone[members], expected[members], rtol=1e-9, atol=1e-6)
+        if off.any():
+            problems["support_split_family_weights"] = int(off.sum())
+
+    # The rule rerun on the folded pre-split table with the stage's helpers.
+    mass_rows = cgt_support_mass_by_income_band(
+        distribution,
+        clone_split_factor=CGT_SUPPORT_CLONE_SPLIT_FACTOR,
+        headroom=CGT_SUPPORT_HEADROOM,
+        minimum_gain_band_lower=CGT_SUPPORT_MINIMUM_GAIN_BAND_LOWER,
+    )
+    support_by_band = {
+        int(row["income_lower_bound"]): float(row["support_mass"]) for row in mass_rows
+    }
+    pre_household = household.loc[pre_split].reset_index(drop=True)
+    pre_ids = household_ids[pre_split]
+    pre_weights = folded[pre_split]
+    pre_person = person.loc[
+        person["person_household_id"].isin(set(pre_ids.tolist()))
+    ].reset_index(drop=True)
+
+    def recompute(person_t, household_t, weights_t):
+        ids_t = (
+            pd.to_numeric(household_t["household_id"], errors="raise")
+            .astype("int64")
+            .to_numpy()
+        )
+        wealth = cgt_support_household_wealth(household_t)
+        band = cgt_support_income_band(
+            person_t, household_ids=ids_t, parameters=parameters
+        )
+        selected, band_rows = select_cgt_support_households(
+            ids_t, weights_t, band, wealth, support_by_band
+        )
+        copies = np.ones(len(ids_t), dtype="int64")
+        copies[selected] = cgt_support_copy_counts(
+            weights_t[selected], CGT_SUPPORT_MAXIMUM_COPY_WEIGHT
+        )
+        return (
+            pd.DataFrame({"selected": selected, "copies": copies}, index=ids_t),
+            band_rows,
+        )
+
+    original, band_rows = recompute(pre_person, pre_household, pre_weights)
+    receipt["bands"] = [dict(row) for row in band_rows]
+    receipt["support_mass"] = float(sum(support_by_band.values()))
+    receipt["households_selected"] = int(original["selected"].sum())
+    receipt["copies_recomputed"] = int((original["copies"] - 1).sum())
+
+    recomputed_family = original["selected"] & (original["copies"] > 1)
+    stored_family = pd.Series(stored_copies[pre_split] > 1, index=pre_ids)
+    stored_count = pd.Series(stored_copies[pre_split], index=pre_ids)
+    missing_families = int((stored_family & ~recomputed_family).sum())
+    extra_families = int((recomputed_family & ~stored_family).sum())
+    if missing_families or extra_families:
+        problems["support_split_selection_stored"] = {
+            "missing": missing_families,
+            "extra": extra_families,
+        }
+    agreed = (recomputed_family & stored_family).to_numpy()
+    count_off = int(
+        (original["copies"].to_numpy()[agreed] != stored_count.to_numpy()[agreed]).sum()
+    )
+    if count_off:
+        problems["support_split_copies_stored"] = count_off
+
+    rng = np.random.default_rng(permutation_seed)
+    household_order = rng.permutation(len(pre_household))
+    permuted, _ = recompute(
+        pre_person.iloc[rng.permutation(len(pre_person))].reset_index(drop=True),
+        pre_household.iloc[household_order].reset_index(drop=True),
+        pre_weights[household_order],
+    )
+    permuted = permuted.reindex(original.index)
+    if not (
+        np.array_equal(original["selected"].to_numpy(), permuted["selected"].to_numpy())
+        and np.array_equal(original["copies"].to_numpy(), permuted["copies"].to_numpy())
+    ):
+        problems["support_split_selection_permutation"] = True
+    return receipt
+
+
 def e8_identity_receipt(
     frame,
     *,
@@ -772,39 +1016,39 @@ def e8_identity_receipt(
 ) -> dict[str, object]:
     """Receipt E8 deterministic layers under row permutation by entity id.
 
-    Covered: (1) the clone-pair structure — the non-donor population splits
-    into equal-count original/clone halves paired by the clone stage's id
-    offset; before the #970 anchor their paired weights agree to the
-    exact-total correction tolerance and their half-masses match, after it
-    the clone side never exceeds the original and the anchor recomputed
-    from the reconstructed pre-anchor halves reproduces the stored weights
-    in original and reversed person order; (2) the CGT band-donor selection recomputed from the committed
-    resources over id-sorted candidates in original and permuted row order
-    (set equality with the flagged donors, 30 donors per band, band-exact
-    stored weights and carrier gains); (3) the student-loan plan column
+    Covered: (1) the clone-pair structure - every pre-clone household, the
+    support split's copies included, has exactly one clone paired by the
+    clone stage's id offset; before the #970 anchor their paired weights
+    agree to the exact-total correction tolerance and their half-masses
+    match, after it the clone side never exceeds the original and the anchor
+    recomputed from the reconstructed pre-anchor halves reproduces the
+    stored weights in original and reversed person order; (2) the CGT
+    support split (microcosm#1045) recomputed from the folded pre-split
+    frame with the stage's own helpers - the wealthiest households of each
+    Table 3 income band (bands from the stored income components under the
+    policy parameters, wealth from the stored columns, support masses from
+    the vendored joint) divided into ``ceil(w / 60)`` copies at ``w / n`` -
+    in original and permuted row order, against the stored copies, counts,
+    family weights, flags and mass record; (3) the student-loan plan column
     recomputed in full (identity-keyed top-ups at the release calibration
     year) in original and permuted row order against the stored column.
     The A&S prior amounts (overwritten by the Table 3 redraw and its
-    sub-AEA remainder mapping), the redraw's seeded within-band draws (covered by
-    the merged #560 embedded published-surface tests), and the
+    sub-AEA remainder mapping), the redraw's seeded within-band draws
+    (covered by the merged #560 embedded published-surface tests), and the
     salary-sacrifice QRF and conversion (the pre-conversion state is
     consumed by the stage) are covered by twin-build determinism.
     """
 
-    from microcosm.build.uk_runtime.cgt_structure import (
-        DONOR_SEED,
-        DONORS_PER_BAND,
-        HOUSEHOLD_IS_CGT_BAND_DONOR,
-        HOUSEHOLD_IS_CGT_CLONE,
-        _component_sum_income,
-        _incidence_propensity,
-        _oldest_adult_indices,
-        _retained_size_bands,
-        load_advani_summers_distribution,
-        load_hmrc_cgt_size_bands,
+    from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_policy_parameters
+    from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+    from microcosm.build.uk_runtime.cgt_support import (
+        CGT_SUPPORT_COPIES_COLUMN,
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
     )
     from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
-    from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+    from microcosm.build.uk_runtime.hmrc_capital_gains import (
+        load_hmrc_cgt_joint_distribution,
+    )
     from microcosm.build.uk_runtime.student_loans import (
         assign_student_loan_plans,
         load_slc_liable_stocks,
@@ -812,121 +1056,30 @@ def e8_identity_receipt(
 
     problems: dict[str, object] = {}
     person = frame.table("person")
-    benunit = frame.table("benunit")
-    household = frame.table("household").copy()
-    household["household_weight"] = frame.weights_for("household").values
+    household = frame.table("household")
 
-    # (1) Clone-pair structure on the non-donor population.
-    donor_mask = household[HOUSEHOLD_IS_CGT_BAND_DONOR].astype(bool)
-    non_donor = household.loc[~donor_mask]
-    originals = non_donor.loc[
-        ~non_donor[HOUSEHOLD_IS_CGT_CLONE].astype(bool)
-    ].sort_values("household_id")
-    clones = non_donor.loc[non_donor[HOUSEHOLD_IS_CGT_CLONE].astype(bool)].sort_values(
-        "household_id"
-    )
-    if len(originals) != len(clones):
-        problems["clone_half_counts"] = [len(originals), len(clones)]
-    clone_pairs = _e8_clone_pairs(frame, problems)
+    # (1) Clone-pair structure over every household: the support split's
+    # copies are pre-clone rows with clones of their own.
+    is_clone = household[HOUSEHOLD_IS_CGT_CLONE].astype(bool).to_numpy()
+    if int((~is_clone).sum()) != int(is_clone.sum()):
+        problems["clone_half_counts"] = [int((~is_clone).sum()), int(is_clone.sum())]
+    # The split's income-band proxy and the anchor read the same policy
+    # parameters (the tapered Personal Allowance and the annual exempt
+    # amount) at the frame's build period.
+    parameters = uk_cgt_policy_parameters(uk_time_period(frame))
+    clone_pairs = _e8_clone_pairs(frame, problems, parameters=parameters)
 
-    # (2) Band-donor selection recomputed from the committed resources.
-    # Same contract as the E6 NHS check: age_tail now runs immediately after
-    # frs_spine, so the donor stage selected its oldest-adult carriers from
-    # the disaggregated age surface stored in the artifact.
-    distribution = load_advani_summers_distribution()
-    bands = _retained_size_bands(load_hmrc_cgt_size_bands())
-    non_donor_ids = set(non_donor["household_id"].tolist())
-    nd_person = person.loc[
-        person["person_household_id"].isin(non_donor_ids)
-    ].reset_index(drop=True)
-    nd_benunit = benunit.loc[
-        benunit["benunit_id"].isin(set(nd_person["person_benunit_id"].tolist()))
-    ].reset_index(drop=True)
-    nd_household = non_donor.reset_index(drop=True)
-    multiplier = id_multiplier_for_values(
-        nd_person["person_id"],
-        nd_person["person_household_id"],
-        nd_person["person_benunit_id"],
-        nd_benunit["benunit_id"],
-        nd_household["household_id"],
+    # (2) Support split recomputed from the folded pre-split frame. Same
+    # contract as the E6 NHS check: age_tail runs immediately after
+    # frs_spine, so the split classified each household by its oldest-adult
+    # carrier on the disaggregated age surface stored in the artifact.
+    support_split = _e8_support_split(
+        frame,
+        problems,
+        distribution=load_hmrc_cgt_joint_distribution(),
+        parameters=parameters,
+        permutation_seed=permutation_seed,
     )
-
-    def select_donors(person_t: pd.DataFrame) -> np.ndarray:
-        carriers = _oldest_adult_indices(person_t, household_ids=non_donor_ids)
-        candidates = person_t.loc[carriers].copy()
-        candidates["_income"] = _component_sum_income(candidates)
-        candidates["_propensity"] = _incidence_propensity(
-            candidates["_income"].to_numpy(dtype=float), distribution=distribution
-        )
-        candidates = candidates.sort_values("person_household_id", kind="stable")
-        propensities = candidates["_propensity"].to_numpy(dtype=float)
-        rng = np.random.default_rng(DONOR_SEED)
-        return rng.choice(
-            candidates["person_household_id"].to_numpy(),
-            size=DONORS_PER_BAND * len(bands),
-            replace=False,
-            p=propensities / propensities.sum(),
-        )
-
-    selected = select_donors(nd_person)
-    permuted_rng = np.random.default_rng(permutation_seed)
-    selected_permuted = select_donors(
-        nd_person.iloc[permuted_rng.permutation(len(nd_person))].reset_index(drop=True)
-    )
-    if selected.tolist() != selected_permuted.tolist():
-        problems["donor_selection_permutation"] = True
-    stored_donors = household.loc[donor_mask]
-    stored_source_ids = set(
-        (stored_donors["household_id"].astype("int64") - multiplier).tolist()
-    )
-    if stored_source_ids != set(int(value) for value in selected):
-        problems["donor_selection_stored"] = {
-            "missing": len(stored_source_ids - set(int(v) for v in selected)),
-            "extra": len(set(int(v) for v in selected) - stored_source_ids),
-        }
-    taxpayers = np.asarray([band["taxpayers"] for band in bands], dtype=float)
-    means = np.asarray([band["mean_gain"] for band in bands], dtype=float)
-    band_by_source = {
-        int(source_id): position // DONORS_PER_BAND
-        for position, source_id in enumerate(selected)
-    }
-    donor_band = (
-        (stored_donors["household_id"].astype("int64") - multiplier)
-        .map(band_by_source)
-        .to_numpy()
-    )
-    if pd.isna(donor_band).any():
-        problems["donor_band_mapping"] = True
-    else:
-        donor_band = donor_band.astype(int)
-        counts = np.bincount(donor_band, minlength=len(bands))
-        if not (counts == DONORS_PER_BAND).all():
-            problems["donors_per_band"] = counts.tolist()
-        expected_weights = taxpayers[donor_band] / DONORS_PER_BAND
-        stored_weights = stored_donors["household_weight"].to_numpy(dtype=float)
-        if not np.allclose(stored_weights, expected_weights, rtol=1e-12, atol=0.0):
-            problems["donor_stored_weights"] = True
-        donor_person = person.loc[
-            person["person_household_id"].isin(set(stored_donors["household_id"]))
-        ].copy()
-        # Stage-time age basis again: the stored disaggregated age selected
-        # each donor household's carrier before the donor rows were copied.
-        carrier_rows = _oldest_adult_indices(
-            donor_person, household_ids=set(stored_donors["household_id"])
-        )
-        carrier_gain = (
-            donor_person.loc[carrier_rows]
-            .set_index("person_household_id")["capital_gains"]
-            .reindex(stored_donors["household_id"].to_numpy())
-            .to_numpy(dtype=float)
-        )
-        expected_gains = means[donor_band]
-        # The Table 3 redraw runs after the stack and moves carrier amounts
-        # within its own gain bands, so band means are not asserted against
-        # the stored carrier gains bitwise; presence and positivity are.
-        if not (np.isfinite(carrier_gain) & (carrier_gain > 0.0)).all():
-            problems["donor_carrier_gains"] = True
-        del expected_gains
 
     # (3) Student-loan plan recomputed in full.
     stocks = load_slc_liable_stocks()
@@ -953,25 +1106,22 @@ def e8_identity_receipt(
     if not plan_permutation_stable:
         problems["student_loan_plan_permutation"] = True
 
-    structural_ok = not problems
     return {
         "check": "uk_e8_identity_stability",
-        "donor_age_basis": "stage_time_disaggregated",
+        "carrier_age_basis": "stage_time_disaggregated",
         "permutation_seed": permutation_seed,
-        "identical_under_permutation": bool(
-            "donor_selection_permutation" not in problems
-            and "student_loan_plan_permutation" not in problems
-            and "anchor_permutation" not in problems
+        "identical_under_permutation": not any(
+            key.endswith("_permutation") for key in problems
         ),
         "clone_pairs": clone_pairs,
+        "support_split": support_split,
         "permutation_mismatches": {
             key: value
             for key, value in problems.items()
             if key.endswith("_permutation")
         },
-        "matches_stored_columns": bool(
-            structural_ok
-            or not any(not key.endswith("_permutation") for key in problems)
+        "matches_stored_columns": not any(
+            not key.endswith("_permutation") for key in problems
         ),
         "stored_column_mismatches": {
             key: value
@@ -983,17 +1133,21 @@ def e8_identity_receipt(
             "atol 1e-6, reversed-order recompute exact; unanchored clone-pair "
             "weights and half-masses: rtol 1e-12 / atol 1e-6 "
             "(the exact-total correction may move single weights by bit "
-            "corrections); donor stored weights: rtol 1e-12 bitwise-class "
-            "against published band taxpayers / 30; donor selection and "
+            "corrections); support-split family weights: each member's clone "
+            "pair sum against w / n at rtol 1e-9 / atol 1e-6 (the fold and "
+            "the anchor each cost one float rounding generation); "
+            "support-split mass record: new_total against old_total at rtol "
+            "1e-9; support-split families, copy counts, flags and "
             "student_loan_plan: exact equality"
         ),
         "columns_by_entity": {
             "household": [
                 HOUSEHOLD_IS_CGT_CLONE,
-                HOUSEHOLD_IS_CGT_BAND_DONOR,
+                HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+                CGT_SUPPORT_COPIES_COLUMN,
                 "household_weight",
             ],
-            "person": ["student_loan_plan", "capital_gains"],
+            "person": ["student_loan_plan"],
         },
         "qrf_draw_columns_scope": (
             "excluded: the A&S prior amounts (overwritten by the Table 3 "
@@ -1016,15 +1170,14 @@ def e9_identity_receipt(
     The four benunit columns are pure functions of ``benunit_id`` and the
     household region under the committed resource, so they are re-derived
     here in full and compared with the stored artifact. The stage runs
-    before CGT cloning and band-donor stacking, which copy the completed
-    columns onto re-keyed rows; those rows are excluded and their count is
-    reported, since their ids are not the ids the stage drew on.
+    before the CGT support split and the clone, which copy the completed
+    columns onto re-keyed rows (support copies and clones); those rows are
+    excluded and their count is reported, since their ids are not the ids
+    the stage drew on. A split root keeps its ids and stays in scope.
     """
 
-    from microcosm.build.uk_runtime.cgt_structure import (
-        HOUSEHOLD_IS_CGT_BAND_DONOR,
-        HOUSEHOLD_IS_CGT_CLONE,
-    )
+    from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+    from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
     from microcosm.build.uk_runtime.uc_deduction_attributes import (
         UC_DEDUCTION_OUTPUT_COLUMNS,
         UK_UC_DEDUCTION_ATTRIBUTES_DECLARED_SEEDS,
@@ -1042,7 +1195,7 @@ def e9_identity_receipt(
     household = frame.table("household")
     copied_flags = [
         column
-        for column in (HOUSEHOLD_IS_CGT_CLONE, HOUSEHOLD_IS_CGT_BAND_DONOR)
+        for column in (HOUSEHOLD_IS_CGT_CLONE, HOUSEHOLD_IS_CGT_SUPPORT_COPY)
         if column in household.columns
     ]
     copied_households = (
@@ -1210,8 +1363,9 @@ def main() -> int:
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
         )
     elif args.check == "e9":
-        # E9 drew on every benunit present after the SPI stack and before CGT
-        # cloning; the block excludes the cloned and band-donor copies itself.
+        # E9 drew on every benunit present after the SPI stack and before the
+        # CGT support split and clone; the block excludes the support copies
+        # and the clones itself.
         receipt = e9_identity_receipt(
             frame,
             permutation_seed=args.permutation_seed,
@@ -1248,7 +1402,7 @@ _STACKING_STAGE_BY_FLAG = {
     # #717 SPI support channel; the #1006 income band donors carry the same flag.
     "household_is_spi_synthetic": "spi_support_channel",
     "household_is_capital_gains_clone": "cgt_incidence_clone",  # E8 clone
-    "household_is_cgt_band_donor": "cgt_band_donors",  # E8 CGT band donors
+    "household_is_cgt_support_copy": "cgt_support_split",  # E8 support copies
 }
 _STACKED_ROW_FLAGS = tuple(_STACKING_STAGE_BY_FLAG)
 
@@ -1257,11 +1411,15 @@ _STACKED_ROW_FLAGS = tuple(_STACKING_STAGE_BY_FLAG)
 _E5_FIRST_STAGE = "was_wealth"
 _E6_FIRST_STAGE = "nts_bus_travel"
 
-#: The stage that stacks each flag, for artifacts that carry it. The weight
-#: restoration is driven by what the *artifact* actually contains rather than
-#: by the committed roster: a spine built before a stacking stage existed
-#: never had that stage's mass factor applied, and dividing it out anyway
-#: skews the comparison in the opposite direction.
+#: The stage that stacks each flag, for artifacts that carry it, when that
+#: stage's mass move is a uniform divisor (``_stage_time_weight_divisor``).
+#: The weight restoration is driven by what the *artifact* actually contains
+#: rather than by the committed roster: a spine built before a stacking stage
+#: existed never had that stage's mass factor applied, and dividing it out
+#: anyway skews the comparison in the opposite direction. The CGT clone and
+#: the CGT support split are deliberately absent: neither is a uniform
+#: factor, so their mass is restored by fold instead
+#: (``_pre_split_household_weights``).
 _MASS_STAGE_BY_FLAG = {
     "household_is_spi_synthetic": "spi_support_channel",
 }
@@ -1274,13 +1432,12 @@ def _pre_clone_household_weights(frame) -> np.ndarray:
     the split varies per pair while the pair sum is still the pre-clone
     weight (the anchor conserves every pair to rounding). Folding the clone
     onto its original is therefore exact either way, where a uniform
-    ``mass_split`` divisor would be wrong after the anchor. An artifact
-    without the clone layer is returned unchanged; one with the clone flag
-    but no donor flag is treated as carrying no donors.
+    ``mass_split`` divisor would be wrong after the anchor. Every pre-clone
+    household is paired, the support split's copies included. An artifact
+    without the clone layer is returned unchanged.
     """
 
     from microcosm.build.uk_runtime.cgt_structure import (
-        HOUSEHOLD_IS_CGT_BAND_DONOR,
         HOUSEHOLD_IS_CGT_CLONE,
         pair_clone_households,
     )
@@ -1289,12 +1446,149 @@ def _pre_clone_household_weights(frame) -> np.ndarray:
     weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
     if HOUSEHOLD_IS_CGT_CLONE not in household.columns:
         return weights
-    if HOUSEHOLD_IS_CGT_BAND_DONOR not in household.columns:
-        household = household.assign(**{HOUSEHOLD_IS_CGT_BAND_DONOR: False})
     clone_positions, original_positions, _ = pair_clone_households(
         frame.table("person"), frame.table("benunit"), household
     )
     weights[original_positions] += weights[clone_positions]
+    return weights
+
+
+class _SupportCopyLineage(NamedTuple):
+    """Where every CGT support copy sits and which root it came from."""
+
+    household_ids: np.ndarray
+    pre_split: np.ndarray
+    copy_positions: np.ndarray
+    root_positions: np.ndarray
+    copy_index: np.ndarray
+    multiplier: int
+
+
+def _support_copy_lineage(
+    person: pd.DataFrame, benunit: pd.DataFrame, household: pd.DataFrame
+) -> _SupportCopyLineage:
+    """Every support copy's position, its root's position and its index ``k``.
+
+    The split offsets ids by ``id_multiplier_for_values`` over the rows it
+    saw, and those rows are recoverable from the artifact: the households
+    whose copy flag is false, the clone stage's rows excluded (the split runs
+    before the clone, so a clone of a copy carries the copy flag but is not a
+    pre-clone row). Copy ``k`` of root ``r`` carries ``r + k * M1``, so ``k =
+    id // M1`` and ``r = id - k * M1``. A copy without a root, or with index
+    zero, fails closed. An artifact that carries the split's explicit
+    ``cgt_support_copy_index`` (0 on roots and unsplit households, ``k`` on
+    copy ``k``; the lineage the geography identity keys on) must agree with
+    the id scheme on every row, or the lineage fails closed too.
+    """
+
+    from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+    from microcosm.build.uk_runtime.cgt_support import (
+        CGT_SUPPORT_COPY_INDEX_COLUMN,
+        HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+    )
+    from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+
+    household_ids = (
+        pd.to_numeric(household["household_id"], errors="raise")
+        .astype("int64")
+        .to_numpy()
+    )
+    if len(np.unique(household_ids)) != len(household_ids):
+        raise ValueError("CGT support-copy lineage requires unique household ids.")
+    is_copy = household[HOUSEHOLD_IS_CGT_SUPPORT_COPY].to_numpy(dtype=bool)
+    stored_index = None
+    if CGT_SUPPORT_COPY_INDEX_COLUMN in household.columns:
+        # The explicit lineage is authoritative: the flag and the stored index
+        # must agree before any id arithmetic is read.
+        stored_index = (
+            pd.to_numeric(household[CGT_SUPPORT_COPY_INDEX_COLUMN], errors="raise")
+            .astype("int64")
+            .to_numpy()
+        )
+        flag_disagreements = int(((stored_index != 0) != is_copy).sum())
+        if flag_disagreements:
+            raise ValueError(
+                "CGT support-copy flag and stored copy index disagree on "
+                f"{flag_disagreements} household(s)."
+            )
+    pre_clone = (
+        ~household[HOUSEHOLD_IS_CGT_CLONE].to_numpy(dtype=bool)
+        if HOUSEHOLD_IS_CGT_CLONE in household.columns
+        else np.ones(len(household), dtype=bool)
+    )
+    pre_split = pre_clone & ~is_copy
+    pre_split_ids = set(household_ids[pre_split].tolist())
+    person_pre_split = person["person_household_id"].isin(pre_split_ids).to_numpy()
+    benunit_pre_split = (
+        benunit["benunit_id"]
+        .isin(set(person.loc[person_pre_split, "person_benunit_id"].tolist()))
+        .to_numpy()
+    )
+    multiplier = id_multiplier_for_values(
+        person.loc[person_pre_split, "person_id"],
+        person.loc[person_pre_split, "person_household_id"],
+        person.loc[person_pre_split, "person_benunit_id"],
+        benunit.loc[benunit_pre_split, "benunit_id"],
+        household_ids[pre_split],
+    )
+    copy_positions = np.flatnonzero(pre_clone & is_copy)
+    copy_ids = household_ids[copy_positions]
+    copy_index = copy_ids // multiplier
+    root_ids = copy_ids - copy_index * multiplier
+    position_by_id = {int(value): index for index, value in enumerate(household_ids)}
+    root_positions = np.empty(len(copy_positions), dtype=np.int64)
+    for slot, (copy_id, index, root_id) in enumerate(
+        zip(copy_ids.tolist(), copy_index.tolist(), root_ids.tolist(), strict=True)
+    ):
+        root = position_by_id.get(int(root_id))
+        if index < 1 or root is None or not pre_split[root]:
+            raise ValueError(
+                "CGT support copy without a root household: household_id "
+                f"{copy_id} (id multiplier {multiplier})."
+            )
+        root_positions[slot] = root
+    if stored_index is not None:
+        scheme_disagreements = int((stored_index[copy_positions] != copy_index).sum())
+        if scheme_disagreements:
+            raise ValueError(
+                f"CGT support copy index stored on {scheme_disagreements} "
+                f"copy(ies) disagrees with the id scheme (id // {multiplier})."
+            )
+    return _SupportCopyLineage(
+        household_ids=household_ids,
+        pre_split=pre_split,
+        copy_positions=copy_positions,
+        root_positions=root_positions,
+        copy_index=copy_index,
+        multiplier=multiplier,
+    )
+
+
+def _pre_split_household_weights(frame) -> np.ndarray:
+    """Household weights with every created CGT row folded back onto its source.
+
+    Clones fold onto their originals first (``_pre_clone_household_weights``:
+    pair sums, exact before and after the #970 anchor), then every support
+    copy folds onto its root, so a household the split divided into ``n``
+    rows at ``w / n`` is back at ``w``: the pre-split table's weights, which
+    are what every stage before ``cgt_support_split`` saw. The fold is exact
+    by construction where no uniform divisor could be - copy counts vary per
+    household (microcosm#1045). An artifact without the copy layer returns
+    the pre-clone weights; one without the clone layer folds the copies
+    only. Copies and clones keep their own weights in the returned vector;
+    the scoping that calls this drops those rows.
+    """
+
+    from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+
+    weights = _pre_clone_household_weights(frame)
+    household = frame.table("household")
+    if HOUSEHOLD_IS_CGT_SUPPORT_COPY not in household.columns:
+        return weights
+    lineage = _support_copy_lineage(
+        frame.table("person"), frame.table("benunit"), household
+    )
+    np.add.at(weights, lineage.root_positions, weights[lineage.copy_positions])
     return weights
 
 
@@ -1341,8 +1635,11 @@ def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
     is read from the declared operation rather than hardcoded, so a change
     is picked up automatically; a *new* uniform mass-redistributing op kind
     still has to be added here. The capital-gains clone is not uniform once
-    the #970 anchor has run, so its mass is restored by pair sum instead
-    (``_pre_clone_household_weights``).
+    the #970 anchor has run, so its mass is restored by pair sum instead,
+    and the capital-gains support split (microcosm#1045) is not a divisor at
+    all - it divides each selected household's weight among ``ceil(w / 60)``
+    copies at conserved mass - so its mass is restored by folding each copy
+    onto its root after the clone fold (``_pre_split_household_weights``).
 
     ``after_stages`` names only the stages that actually ran in the artifact
     under receipt — see ``_MASS_STAGE_BY_FLAG``. Deriving it from the
@@ -1380,8 +1677,9 @@ def _frs_only_frame(frame):
 
     On the E8 roster this leaves the 16,288 raw FRS households, which is the
     population the pre-stacking stages actually drew for. Their weights fold
-    each clone back onto its original, exact before and after the #970
-    anchor.
+    each clone back onto its original (exact before and after the #970
+    anchor) and each CGT support copy back onto its root, so every surviving
+    row carries its pre-split weight.
     """
 
     household = frame.table("household")
@@ -1399,6 +1697,8 @@ def _frame_as_stage_saw(frame, stage: str):
 
 
 def _drop_stacked_layers(frame, flags: Sequence[str]):
+    from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+    from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
         uk_national_frame,
@@ -1410,12 +1710,24 @@ def _drop_stacked_layers(frame, flags: Sequence[str]):
         return frame
     stacked = household[flags].astype(bool).any(axis=1)
     keep = ~stacked
-    # Fold clone mass back only when the clone layer is the one being dropped.
-    all_weights = (
-        _pre_clone_household_weights(frame)
-        if "household_is_capital_gains_clone" in flags
-        else np.asarray(frame.weights_for("household").values, dtype=float)
-    )
+    # Fold created CGT rows' mass back only when their layer is the one being
+    # dropped: the clone by pair, the support copy by family onto its root.
+    # The split runs before the clone, so dropping the split layer while the
+    # artifact's clone layer stays in scope would fold clones that remain.
+    if HOUSEHOLD_IS_CGT_SUPPORT_COPY in flags:
+        if HOUSEHOLD_IS_CGT_CLONE in household.columns and (
+            HOUSEHOLD_IS_CGT_CLONE not in flags
+        ):
+            raise ValueError(
+                "Dropping the CGT support-split layer requires dropping the "
+                "clone layer stacked after it; the artifact carries "
+                f"{HOUSEHOLD_IS_CGT_CLONE!r} but {flags} does not name it."
+            )
+        all_weights = _pre_split_household_weights(frame)
+    elif HOUSEHOLD_IS_CGT_CLONE in flags:
+        all_weights = _pre_clone_household_weights(frame)
+    else:
+        all_weights = np.asarray(frame.weights_for("household").values, dtype=float)
     weights = all_weights[keep.to_numpy()]
     household = household.loc[keep].reset_index(drop=True)
     ids = set(household["household_id"].tolist())

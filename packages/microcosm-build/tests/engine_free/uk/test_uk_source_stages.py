@@ -68,8 +68,8 @@ E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
 E8_STAGE_NAMES = [
+    "cgt_support_split",
     "cgt_incidence_clone",
-    "cgt_band_donors",
     "hmrc_cgt_gains_spine",
     "hmrc_cgt_asset_type_spine",
     "cgt_incidence_anchor",
@@ -145,13 +145,12 @@ class TestUKSourceStagesManifest:
     def test_e5_and_e6_follow_e7_and_precede_the_uc_rewrites(self) -> None:
         # uc_reporter_redraw stays after the donor stages: its engine screen
         # reads the WAS capital proxy where the FRS capital answer is missing.
+        # The CGT block opens with the support split (microcosm#1045).
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         names = [stage["stage"] for stage in canonical["stages"]]
 
         assert names[
-            names.index("hmrc_spi_income_spine") + 1 : names.index(
-                "cgt_incidence_clone"
-            )
+            names.index("hmrc_spi_income_spine") + 1 : names.index("cgt_support_split")
         ] == [
             *HOUSING_SHELL_STAGE_NAMES,
             *E5_STAGE_NAMES,
@@ -229,8 +228,8 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
                     "uc_deduction_attributes": _identity,
+                    "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,
-                    "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
                     "hmrc_cgt_asset_type_spine": _identity,
                     "cgt_incidence_anchor": _identity,
@@ -425,9 +424,11 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert not (set(income.outputs) & set(income.rewrites))
 
     def test_e8_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
-        from microcosm.build.uk_runtime.cgt_structure import (
-            HOUSEHOLD_IS_CGT_BAND_DONOR,
-            HOUSEHOLD_IS_CGT_CLONE,
+        from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+        from microcosm.build.uk_runtime.cgt_support import (
+            CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
         )
         from microcosm.build.uk_runtime.salary_sacrifice import SALSAC_OUTPUT
 
@@ -438,11 +439,12 @@ class TestDeclaredOutputsAreWrittenColumns:
             "capital_gains",
         )
         assert stages["cgt_incidence_clone"].rewrites == ("capital_gains",)
-        assert stages["cgt_band_donors"].outputs == (
-            HOUSEHOLD_IS_CGT_BAND_DONOR,
-            "capital_gains",
+        assert stages["cgt_support_split"].outputs == (
+            HOUSEHOLD_IS_CGT_SUPPORT_COPY,
+            CGT_SUPPORT_COPIES_COLUMN,
+            CGT_SUPPORT_COPY_INDEX_COLUMN,
         )
-        assert stages["cgt_band_donors"].rewrites == ("capital_gains",)
+        assert stages["cgt_support_split"].rewrites == ()
         assert stages["hmrc_cgt_gains_spine"].outputs == ("capital_gains",)
         assert stages["hmrc_cgt_gains_spine"].rewrites == ("capital_gains",)
         assert stages["salary_sacrifice"].outputs == (
@@ -630,8 +632,8 @@ class TestE3ManifestLockstep:
             "clone_records",
             "draw_capital_gains_prior_from_banded_quantiles",
         ]
-        assert [op.kind for op in stages["cgt_band_donors"].operations] == [
-            "stack_band_donor_households"
+        assert [op.kind for op in stages["cgt_support_split"].operations] == [
+            "split_top_wealth_support_households"
         ]
         assert [op.kind for op in stages["spi_income_band_donors"].operations] == [
             "stack_income_band_donor_households"
@@ -900,7 +902,9 @@ class TestE3ManifestLockstep:
         stages = load_country_spec("uk").sources.stage_map()
 
         assert stages["cgt_incidence_clone"].operations[1].parameters["seed"] == 0
-        assert stages["cgt_band_donors"].operations[0].parameters["seed"] == 1
+        # The support split is deterministic: no seed, no salt (microcosm#1045).
+        assert "seed" not in stages["cgt_support_split"].operations[0].parameters
+        assert "salt" not in stages["cgt_support_split"].operations[0].parameters
         assert (
             stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
         )

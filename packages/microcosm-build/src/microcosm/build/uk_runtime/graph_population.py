@@ -71,14 +71,16 @@ LOCATION_DRAW_TYPE = ArtifactType("microcosm.uk.ladder-location-draw", 1)
 GEOGRAPHY_GATE_TYPE = ArtifactType("microcosm.uk.geography-gate", 1)
 GEOGRAPHY_ASSIGNMENTS = ("atomic", "legacy")
 #: Lineage columns the post-clone household identity is keyed on. The support
-#: channel and CGT flags come from the spine stages; the geographic clone index
-#: from ``uk.full.expand``. Calibration K, weights and remapped ids are not inputs.
+#: channel, the CGT support split's copy flag and index (microcosm#1045) and
+#: the clone flag come from the spine stages; the geographic clone index from
+#: ``uk.full.expand``. Calibration K, weights and remapped ids are not inputs.
 UK_GEOGRAPHY_IDENTITY_INPUTS = (
     "source_household_id",
     "household_support_channel",
     "household_support_clone_index",
+    "household_is_cgt_support_copy",
+    "cgt_support_copy_index",
     "household_is_capital_gains_clone",
-    "household_is_cgt_band_donor",
     ladder_clone_index_column("household"),
 )
 _BASE_SUPPORT_CHANNEL = "frs"
@@ -367,9 +369,10 @@ class UKGeographyIdentityKernel(_PopulationKernel):
     The path is read from the spine's explicit lineage columns, never inferred
     from ids, weights or financial values: ``spi_support_channel`` with the
     support clone index when the household is an SPI support copy,
-    ``cgt_incidence_clone`` and ``cgt_band_donors`` (ordinal 1) from their
-    flags, ``geographic_support`` with the pool clone index when it is not
-    the original copy. Growing K never changes an existing household's key.
+    ``cgt_support_split`` with the copy index when it is a support copy
+    (microcosm#1045), ``cgt_incidence_clone`` (ordinal 1) from its flag,
+    ``geographic_support`` with the pool clone index when it is not the
+    original copy. Growing K never changes an existing household's key.
     """
 
     ref = "uk.full.identity@1"
@@ -392,40 +395,56 @@ class UKGeographyIdentityKernel(_PopulationKernel):
             raise ValueError("Geography identity refuses null lineage values.")
         if lineage["source_household_id"].dtype != np.dtype("int64"):
             raise ValueError("Geography identity requires int64 source household ids.")
+        if lineage["cgt_support_copy_index"].dtype != np.dtype("int64"):
+            raise ValueError("Geography identity requires an int64 support copy index.")
         for column in (
+            "household_is_cgt_support_copy",
             "household_is_capital_gains_clone",
-            "household_is_cgt_band_donor",
         ):
             dtype = lineage[column].dtype
             if dtype != np.dtype("bool") and not isinstance(dtype, pd.BooleanDtype):
                 raise ValueError(f"Geography identity requires a boolean {column}.")
         keys = []
-        for source_id, channel, support_index, cgt, donor, clone_index in zip(
+        for (
+            source_id,
+            channel,
+            support_index,
+            support_copy,
+            copy_index,
+            cgt,
+            clone_index,
+        ) in zip(
             lineage["source_household_id"].to_numpy(),
             lineage["household_support_channel"].to_numpy(),
             lineage["household_support_clone_index"].to_numpy(),
+            lineage["household_is_cgt_support_copy"].to_numpy(),
+            lineage["cgt_support_copy_index"].to_numpy(),
             lineage["household_is_capital_gains_clone"].to_numpy(),
-            lineage["household_is_cgt_band_donor"].to_numpy(),
             lineage[ladder_clone_index_column("household")].to_numpy(),
             strict=True,
         ):
             channel = str(channel)
             support_index, clone_index = int(support_index), int(clone_index)
+            copy_index = int(copy_index)
             if channel not in {_BASE_SUPPORT_CHANNEL, _SPI_SUPPORT_CHANNEL}:
                 raise ValueError(f"Unknown household support channel {channel!r}.")
-            if support_index < 0 or clone_index < 0:
+            if support_index < 0 or clone_index < 0 or copy_index < 0:
                 raise ValueError("Geography identity refuses negative clone indices.")
             if (channel == _SPI_SUPPORT_CHANNEL) != (support_index != 0):
                 raise ValueError(
                     "Household support channel and support clone index disagree."
                 )
+            if bool(support_copy) != (copy_index != 0):
+                raise ValueError(
+                    "Household support-copy flag and support copy index disagree."
+                )
             path = []
             if support_index:
                 path.append(("spi_support_channel", support_index))
+            if copy_index:
+                path.append(("cgt_support_split", copy_index))
             if bool(cgt):
                 path.append(("cgt_incidence_clone", 1))
-            if bool(donor):
-                path.append(("cgt_band_donors", 1))
             if clone_index:
                 path.append(("geographic_support", clone_index))
             keys.append(

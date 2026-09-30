@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 from dataclasses import replace
 from functools import lru_cache
 
@@ -24,14 +23,8 @@ from microcosm.build.uk_runtime.cgt_structure import (
     CGT_ANCHOR_MASS_CHANGE_REASON,
     CGT_CLONE_MASS_CHANGE_REASON,
     CGT_INCIDENCE_ANCHOR_STAGE_NAME,
-    DONOR_BAND_COUNT,
-    DONOR_TOTAL,
-    DONORS_PER_BAND,
-    HOUSEHOLD_IS_CGT_BAND_DONOR,
     HOUSEHOLD_IS_CGT_CLONE,
-    MIN_DONOR_BAND_LOWER,
     UKCGTIncidenceAnchorStageTransform,
-    _assert_cgt_donor_stage_parameters,
     _assert_cgt_incidence_anchor_stage_parameters,
     _assert_cgt_incidence_stage_parameters,
     _draw_banded_priors,
@@ -39,12 +32,11 @@ from microcosm.build.uk_runtime.cgt_structure import (
     anchor_cgt_incidence,
     cgt_incidence_anchor_operation_parameters,
     clone_cgt_incidence,
-    load_hmrc_cgt_size_bands,
     pair_clone_households,
     reporter_composition_quantiles,
-    stack_cgt_band_donors,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
 from microcosm.frame import MassChangeRecord, WeightKind
 
 
@@ -181,53 +173,6 @@ def test_prior_spline_keeps_negative_values_and_extrapolates_linearly() -> None:
     assert draws[3] > draws[2]
 
 
-def test_band_donors_are_band_exact_positive_and_permutation_stable() -> None:
-    first = stack_cgt_band_donors(
-        _one_person_households(300),
-        size_bands=load_hmrc_cgt_size_bands(),
-        distribution=_distribution(),
-    )
-    second = stack_cgt_band_donors(
-        _one_person_households(300, reverse_people=True),
-        size_bands=load_hmrc_cgt_size_bands(),
-        distribution=_distribution(),
-    )
-    donor_households = first.frame.table("household").loc[
-        lambda table: table[HOUSEHOLD_IS_CGT_BAND_DONOR]
-    ]
-
-    assert len(donor_households) == DONOR_TOTAL == DONORS_PER_BAND * DONOR_BAND_COUNT
-    assert (first.frame.weights_for("household").values[-DONOR_TOTAL:] > 0).all()
-    assert [row["donor_count"] for row in first.band_rows] == [DONORS_PER_BAND] * 9
-    assert [row["lower_limit"] for row in first.band_rows][0] == MIN_DONOR_BAND_LOWER
-    assert [row["realized_min_gain"] for row in first.band_rows] == [
-        row["mean_gain"] for row in first.band_rows
-    ]
-    assert [row["realized_max_gain"] for row in first.band_rows] == [
-        row["mean_gain"] for row in first.band_rows
-    ]
-    # HMRC Table 2.1a 2024-25 individuals from GBP 12,300 (the vendored
-    # conditioning facts), not the retired 2023-24 hand copy.
-    assert [row["weighted_taxpayers"] for row in first.band_rows] == pytest.approx(
-        [97_000, 98_000, 78_000, 61_000, 25_000, 16_000, 9_000, 5_000, 3_000]
-    )
-    second_donors = second.frame.table("household").loc[
-        lambda table: table[HOUSEHOLD_IS_CGT_BAND_DONOR]
-    ]
-    assert set(donor_households.household_id) == set(second_donors.household_id)
-
-
-def test_never_zero_band_weight_assertion_fires() -> None:
-    resource = copy.deepcopy(load_hmrc_cgt_size_bands())
-    retained = next(row for row in resource["rows"] if row["lower_limit"] == 12_300)
-    retained["taxpayers"] = 0
-
-    with pytest.raises(ValueError, match="zero initial weight"):
-        _assert_cgt_donor_stage_parameters(
-            _stage("cgt_band_donors"), size_bands=resource
-        )
-
-
 @pytest.mark.parametrize(
     "operation_index,parameter",
     [
@@ -274,53 +219,10 @@ def test_incidence_drift_assert_covers_every_reviewed_parameter(
         )
 
 
-@pytest.mark.parametrize(
-    "parameter",
-    (
-        "size_band_resource",
-        "incidence_resource",
-        "minimum_band_lower",
-        "donors_per_band",
-        "expected_band_count",
-        "expected_donor_count",
-        "candidate_order",
-        "draw",
-        "seed",
-        "flag_column",
-        "carrier",
-        "initial_weight",
-        "never_zero_weight",
-        "weight_kind_out",
-        "reason",
-    ),
-)
-def test_donor_drift_assert_covers_every_reviewed_parameter(parameter: str) -> None:
-    with pytest.raises(ValueError, match="drifted"):
-        _assert_cgt_donor_stage_parameters(
-            _drift(_stage("cgt_band_donors"), 0, parameter),
-            size_bands=load_hmrc_cgt_size_bands(),
-        )
-
-
-def test_donor_drift_assert_rejects_propensity_and_extra_keys() -> None:
-    """Closed-world equality: undeclared and extra parameters both fail."""
-    for parameter in ("propensity", "undeclared_extra_key"):
-        with pytest.raises(ValueError, match="drifted"):
-            _assert_cgt_donor_stage_parameters(
-                _drift(_stage("cgt_band_donors"), 0, parameter),
-                size_bands=load_hmrc_cgt_size_bands(),
-            )
-
-
 def test_drift_asserts_reject_extra_operations() -> None:
     for name, check in (
         ("cgt_incidence_clone", _assert_cgt_incidence_stage_parameters),
-        (
-            "cgt_band_donors",
-            lambda stage: _assert_cgt_donor_stage_parameters(
-                stage, size_bands=load_hmrc_cgt_size_bands()
-            ),
-        ),
+        ("cgt_incidence_anchor", _assert_cgt_incidence_anchor_stage_parameters),
     ):
         stage = _stage(name)
         extra = replace(
@@ -371,20 +273,28 @@ def _parameters(annual_exempt_amount: float = 50.0) -> UKCGTPolicyParameters:
     )
 
 
+SUPPORT_COPY_FLAG = "household_is_cgt_support_copy"
+SUPPORT_COPIES_COLUMN = "cgt_support_copies"
+#: The two support-split copies of household 1 carry its clone gain.
+SUPPORT_COPY_COUNT = 2
+
+
 def _anchor_input(
     pattern: list[float],
     *,
     weights: np.ndarray | None = None,
-    donors: bool = True,
+    support_copies: bool = True,
     permutation: np.ndarray | None = None,
 ):
     """Two-person households cloned at equal mass with carrier gains set.
 
     Each source household holds a 40-year-old carrier and a 30-year-old; the
     clone stage draws the prior on the carrier and the pattern overwrites it.
-    Two band donors copied from the first clone are appended with the donor
-    flag set and the inherited clone flag left true, as the donor stage
-    leaves them.
+    With ``support_copies`` the first household is split before the clone
+    into a root and two copies at a third of its weight each, as the support
+    split leaves them (microcosm#1045): pre-clone rows flagged as copies with
+    the family count on every member, so the clone stage pairs each copy
+    with its own clone. The copies' clones take the first pattern gain.
     """
 
     n = len(pattern)
@@ -402,57 +312,79 @@ def _anchor_input(
     for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS:
         if column not in person:
             person[column] = 0.0
+    benunit = pd.DataFrame({"benunit_id": household_ids})
+    household = pd.DataFrame(
+        {
+            "household_id": household_ids,
+            SUPPORT_COPY_FLAG: False,
+            SUPPORT_COPIES_COLUMN: np.ones(n, dtype="int64"),
+        }
+    )
+    source_weights = (
+        np.linspace(10.0, 20.0, n) if weights is None else np.asarray(weights, float)
+    ).copy()
+    full_pattern = list(pattern)
+    mass_log: tuple[MassChangeRecord, ...] = ()
+    if support_copies:
+        multiplier = id_multiplier_for_values(
+            person["person_id"],
+            person["person_household_id"],
+            person["person_benunit_id"],
+            benunit["benunit_id"],
+            household["household_id"],
+        )
+        family = SUPPORT_COPY_COUNT + 1
+        old_total = float(source_weights.sum())
+        source_weights[0] = source_weights[0] / family
+        household.loc[0, SUPPORT_COPIES_COLUMN] = family
+        for k in range(1, family):
+            copy_person = person.loc[person.person_household_id == 1].copy()
+            for column in ("person_id", "person_benunit_id", "person_household_id"):
+                copy_person[column] = copy_person[column] + k * multiplier
+            copy_benunit = benunit.loc[benunit.benunit_id == 1].copy()
+            copy_benunit["benunit_id"] = copy_benunit["benunit_id"] + k * multiplier
+            copy_household = household.loc[household.household_id == 1].copy()
+            copy_household["household_id"] = copy_household["household_id"] + (
+                k * multiplier
+            )
+            copy_household[SUPPORT_COPY_FLAG] = True
+            person = pd.concat([person, copy_person], ignore_index=True)
+            benunit = pd.concat([benunit, copy_benunit], ignore_index=True)
+            household = pd.concat([household, copy_household], ignore_index=True)
+            source_weights = np.r_[source_weights, source_weights[0]]
+            full_pattern.append(pattern[0])
+        mass_log = (
+            MassChangeRecord(
+                entity="household",
+                old_total=old_total,
+                new_total=float(source_weights.sum()),
+                declared_factor=1.0,
+                reason="test support split",
+            ),
+        )
     frame = uk_national_frame(
         person=person,
-        benunit=pd.DataFrame({"benunit_id": household_ids}),
-        household=pd.DataFrame({"household_id": household_ids}),
-        household_weights=np.linspace(10.0, 20.0, n) if weights is None else weights,
+        benunit=benunit,
+        household=household,
+        household_weights=source_weights,
         time_period="2024",
+        mass_log=mass_log,
     )
     cloned = clone_cgt_incidence(frame, distribution=_anchor_distribution()).frame
     person = cloned.table("person").copy()
     benunit = cloned.table("benunit").copy()
     household = cloned.table("household").copy()
-    household[HOUSEHOLD_IS_CGT_BAND_DONOR] = False
     clone_ids = household.loc[
         household[HOUSEHOLD_IS_CGT_CLONE], "household_id"
     ].tolist()
     carriers = person["age"].eq(40).to_numpy()
-    for household_id, gain in zip(clone_ids, pattern, strict=True):
+    for household_id, gain in zip(clone_ids, full_pattern, strict=True):
         person.loc[
             carriers & person["person_household_id"].eq(household_id).to_numpy(),
             "capital_gains",
         ] = gain
     household_weights = np.asarray(cloned.weights_for("household").values, dtype=float)
     mass_log = cloned.mass_log
-    if donors:
-        source = clone_ids[0]
-        for offset in (1_000, 2_000):
-            donor_person = person.loc[person.person_household_id == source].copy()
-            for column in ("person_id", "person_benunit_id", "person_household_id"):
-                donor_person[column] = donor_person[column] + offset
-            donor_person["capital_gains"] = np.where(
-                donor_person["age"] == 40, 500.0, 0.0
-            )
-            donor_benunit = benunit.loc[benunit.benunit_id == source].copy()
-            donor_benunit["benunit_id"] = donor_benunit["benunit_id"] + offset
-            donor_household = household.loc[household.household_id == source].copy()
-            donor_household["household_id"] = donor_household["household_id"] + offset
-            donor_household[HOUSEHOLD_IS_CGT_BAND_DONOR] = True
-            person = pd.concat([person, donor_person], ignore_index=True)
-            benunit = pd.concat([benunit, donor_benunit], ignore_index=True)
-            household = pd.concat([household, donor_household], ignore_index=True)
-            household_weights = np.r_[household_weights, 7.0]
-        mass_log = (
-            *mass_log,
-            MassChangeRecord(
-                entity="household",
-                old_total=cloned.weights_for("household").total,
-                new_total=float(household_weights.sum()),
-                declared_factor=None,
-                reason="test donors",
-            ),
-        )
     if permutation is not None:
         # Group ids must stay sorted; person order is free.
         person = person.iloc[permutation].reset_index(drop=True)
@@ -474,7 +406,7 @@ def _weights_by_id(frame) -> pd.Series:
     )
 
 
-def test_pairing_is_a_bijection_and_ignores_donors() -> None:
+def test_pairing_is_a_bijection_and_pairs_support_copies_with_their_clones() -> None:
     frame = _anchor_input(ANCHOR_PATTERN)
     person, benunit, household = (
         frame.table("person"),
@@ -485,14 +417,20 @@ def test_pairing_is_a_bijection_and_ignores_donors() -> None:
         person, benunit, household
     )
 
-    assert multiplier == 100
-    assert len(clone_positions) == len(ANCHOR_PATTERN)
+    # The split copies' ids (1 + k x 100) push the clone multiplier to 1,000.
+    assert multiplier == 1_000
+    assert len(clone_positions) == len(ANCHOR_PATTERN) + SUPPORT_COPY_COUNT
     ids = household["household_id"].to_numpy()
     assert (ids[clone_positions] - multiplier == ids[original_positions]).all()
-    donors = household[HOUSEHOLD_IS_CGT_BAND_DONOR].to_numpy()
-    assert donors.sum() == 2
-    assert household[HOUSEHOLD_IS_CGT_CLONE].to_numpy()[donors].all()
-    assert not donors[clone_positions].any() and not donors[original_positions].any()
+    copies = household[SUPPORT_COPY_FLAG].to_numpy()
+    clones = household[HOUSEHOLD_IS_CGT_CLONE].to_numpy()
+    # Copies and their clones both carry the copy flag; each copy is an
+    # original paired with the clone at its id plus the multiplier.
+    assert copies.sum() == 2 * SUPPORT_COPY_COUNT
+    copy_originals = np.flatnonzero(copies & ~clones)
+    assert set(copy_originals) <= set(original_positions)
+    assert set(ids[copy_originals] + multiplier) <= set(ids[clone_positions])
+    assert (household[SUPPORT_COPIES_COLUMN].to_numpy()[copies] == 3).all()
 
     orphaned = household.loc[household.household_id != 3]
     with pytest.raises(ValueError, match="without a paired original"):
@@ -502,9 +440,9 @@ def test_pairing_is_a_bijection_and_ignores_donors() -> None:
     )
     with pytest.raises(ValueError, match="exactly one clone per original"):
         pair_clone_households(person, benunit, extra)
-    with pytest.raises(ValueError, match=HOUSEHOLD_IS_CGT_BAND_DONOR):
+    with pytest.raises(ValueError, match=HOUSEHOLD_IS_CGT_CLONE):
         pair_clone_households(
-            person, benunit, household.drop(columns=[HOUSEHOLD_IS_CGT_BAND_DONOR])
+            person, benunit, household.drop(columns=[HOUSEHOLD_IS_CGT_CLONE])
         )
 
 
@@ -562,8 +500,9 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     person_weight = before[position.reindex(person["person_household_id"]).to_numpy()]
     liable = person["capital_gains"].to_numpy() > 50.0
     assert result.liable_mass == pytest.approx(person_weight[liable].sum())
-    assert result.liable_persons == 5  # three liable clones and two donors
-    pattern = np.asarray(ANCHOR_PATTERN)
+    # Three liable clones of the pattern and the two support copies' clones.
+    assert result.liable_persons == 5
+    pattern = np.asarray([*ANCHOR_PATTERN, *[ANCHOR_PATTERN[0]] * SUPPORT_COPY_COUNT])
     for group, mask in (
         ("sub_exempt", (pattern > 0.0) & (pattern <= 50.0)),
         ("loss", pattern < 0.0),
@@ -577,8 +516,6 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     assert result.after["liable"] == result.before["liable"]
     liable_clones = clone_positions[pattern > 50.0]
     np.testing.assert_array_equal(after[liable_clones], before[liable_clones])
-    donors = household[HOUSEHOLD_IS_CGT_BAND_DONOR].to_numpy()
-    np.testing.assert_array_equal(after[donors], before[donors])
     np.testing.assert_allclose(
         after[clone_positions] + after[original_positions],
         before[clone_positions] + before[original_positions],
@@ -621,7 +558,6 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
         "zero_gain_clone_mass",
         "max_pair_relative_error",
         "mass_by_clone_flag",
-        "donor_mass",
         "by_income_band",
     }
     composition = evidence["composition"]
@@ -629,7 +565,7 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     assert composition["implied_reporter_mass"] == pytest.approx(
         result.liable_mass / (1.0 - composition["exempt_quantile"])
     )
-    assert evidence["pair_count"] == len(ANCHOR_PATTERN)
+    assert evidence["pair_count"] == len(ANCHOR_PATTERN) + SUPPORT_COPY_COUNT
     assert evidence["zero_gain_clone_households"] == 3
     zero_gain = clone_positions[pattern == 0.0]
     assert evidence["zero_gain_clone_mass"] == pytest.approx(before[zero_gain].sum())
@@ -649,12 +585,11 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     assert evidence["mass_by_clone_flag"]["true"] == pytest.approx(
         after[clone_positions].sum()
     )
-    assert evidence["donor_mass"] == 14.0
     assert sum(row["sub_exempt_after"] for row in evidence["by_income_band"]) == (
         pytest.approx(result.after["sub_exempt"])
     )
     assert sum(row["clone_households"] for row in evidence["by_income_band"]) == (
-        len(ANCHOR_PATTERN)
+        len(ANCHOR_PATTERN) + SUPPORT_COPY_COUNT
     )
 
 
@@ -670,7 +605,8 @@ def test_anchor_factor_rises_with_band_incidence() -> None:
     )
     factors = after[clone_positions] / before[clone_positions]
     income = np.linspace(10_000.0, 120_000.0, len(ANCHOR_PATTERN))
-    pattern = np.asarray(ANCHOR_PATTERN)
+    income = np.r_[income, [income[0]] * SUPPORT_COPY_COUNT]
+    pattern = np.asarray([*ANCHOR_PATTERN, *[ANCHOR_PATTERN[0]] * SUPPORT_COPY_COUNT])
     for mask in ((pattern > 0.0) & (pattern <= 50.0), pattern < 0.0):
         low_band = factors[mask & (income < 50_000.0)]
         high_band = factors[mask & (income >= 50_000.0)]
@@ -706,7 +642,9 @@ def test_anchor_leaves_a_group_already_below_its_target_untouched() -> None:
 
 
 def test_anchor_is_deterministic_under_person_permutation() -> None:
-    permutation = np.random.default_rng(5).permutation(len(ANCHOR_PATTERN) * 4 + 4)
+    permutation = np.random.default_rng(5).permutation(
+        (len(ANCHOR_PATTERN) + SUPPORT_COPY_COUNT) * 4
+    )
     straight = anchor_cgt_incidence(
         _anchor_input(ANCHOR_PATTERN),
         distribution=_anchor_distribution(),
@@ -730,7 +668,7 @@ def test_anchor_is_deterministic_under_person_permutation() -> None:
 
 
 def test_anchor_refuses_missing_liable_mass_and_stray_gains() -> None:
-    no_liable = _anchor_input([20.0, -5.0, 0.0, 20.0], donors=False)
+    no_liable = _anchor_input([20.0, -5.0, 0.0, 20.0], support_copies=False)
     with pytest.raises(ValueError, match="positive liable mass"):
         anchor_cgt_incidence(
             no_liable, distribution=_anchor_distribution(), parameters=_parameters()
@@ -739,10 +677,7 @@ def test_anchor_refuses_missing_liable_mass_and_stray_gains() -> None:
     frame = _anchor_input(ANCHOR_PATTERN)
     person = frame.table("person").copy()
     household = frame.table("household")
-    clone_id = household.loc[
-        household[HOUSEHOLD_IS_CGT_CLONE] & ~household[HOUSEHOLD_IS_CGT_BAND_DONOR],
-        "household_id",
-    ].iloc[0]
+    clone_id = household.loc[household[HOUSEHOLD_IS_CGT_CLONE], "household_id"].iloc[0]
     stray = person["person_household_id"].eq(clone_id) & person["age"].eq(30)
     person.loc[stray, "capital_gains"] = 1.0
     tainted = uk_national_frame(

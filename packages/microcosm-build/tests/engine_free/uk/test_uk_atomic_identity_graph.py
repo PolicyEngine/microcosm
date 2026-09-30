@@ -58,15 +58,16 @@ from test_support.microcosm_build.uk_full_population_graph import (
 
 CLONE = ladder_clone_index_column("household")
 
-# household_id, source_household_id, channel, support clone index, cgt, donor, region
+# household_id, source_household_id, channel, support clone index, cgt,
+# support copy index (0 on roots), region
 LINEAGE = [
-    (1, 1, "frs", 0, False, False, "LONDON"),
-    (2, 2, "frs", 0, False, False, "SCOTLAND"),
-    (11, 1, "spi", 1, False, False, "LONDON"),
-    (21, 2, "spi", 1, False, False, "SCOTLAND"),
-    (101, 1, "frs", 0, True, False, "LONDON"),
-    (111, 1, "spi", 1, True, False, "LONDON"),
-    (1001, 2, "frs", 0, False, True, "SCOTLAND"),
+    (1, 1, "frs", 0, False, 0, "LONDON"),
+    (2, 2, "frs", 0, False, 0, "SCOTLAND"),
+    (11, 1, "spi", 1, False, 0, "LONDON"),
+    (21, 2, "spi", 1, False, 0, "SCOTLAND"),
+    (101, 1, "frs", 0, True, 0, "LONDON"),
+    (111, 1, "spi", 1, True, 0, "LONDON"),
+    (1001, 2, "frs", 0, False, 1, "SCOTLAND"),
 ]
 
 
@@ -84,7 +85,8 @@ def lineage_frame(rows=LINEAGE):
             ),
             "household_is_spi_synthetic": np.asarray([r[2] == "spi" for r in rows]),
             "household_is_capital_gains_clone": np.asarray([r[4] for r in rows]),
-            "household_is_cgt_band_donor": np.asarray([r[5] for r in rows]),
+            "household_is_cgt_support_copy": np.asarray([r[5] != 0 for r in rows]),
+            "cgt_support_copy_index": np.asarray([r[5] for r in rows], dtype=np.int64),
         }
     )
     person = pd.DataFrame(
@@ -160,14 +162,14 @@ def run_identity(frame, tmp_path, *, k=2, endpoint="uk.full.identity"):
     return manifest, graph
 
 
-def expected_key(source_id, channel, support_index, cgt, donor, clone_index):
+def expected_key(source_id, channel, support_index, cgt, copy_index, clone_index):
     path = []
     if channel == "spi":
         path.append(("spi_support_channel", int(support_index)))
+    if copy_index:
+        path.append(("cgt_support_split", int(copy_index)))
     if cgt:
         path.append(("cgt_incidence_clone", 1))
-    if donor:
-        path.append(("cgt_band_donors", 1))
     if clone_index:
         path.append(("geographic_support", int(clone_index)))
     return household_draw_key(
@@ -201,18 +203,18 @@ def test_identity_node_matches_the_receipt_based_projector(tmp_path):
             ((11, 1), (21, 1)),
         ),
         HouseholdExpansion(
-            "cgt_incidence_clone",
+            "cgt_support_split",
             (1, 2, 11, 21),
-            (1, 2, 11, 21, 101, 111),
-            ((101, 1), (111, 11)),
-            ((101, 1), (111, 1)),
-        ),
-        HouseholdExpansion(
-            "cgt_band_donors",
-            (1, 2, 11, 21, 101, 111),
-            (1, 2, 11, 21, 101, 111, 1001),
+            (1, 2, 11, 21, 1001),
             ((1001, 2),),
             ((1001, 1),),
+        ),
+        HouseholdExpansion(
+            "cgt_incidence_clone",
+            (1, 2, 11, 21, 1001),
+            (1, 2, 11, 21, 1001, 101, 111),
+            ((101, 1), (111, 11)),
+            ((101, 1), (111, 1)),
         ),
     )
     before = tuple(int(r[0]) for r in LINEAGE)
@@ -241,9 +243,9 @@ def test_identity_node_matches_the_receipt_based_projector(tmp_path):
 @pytest.mark.parametrize("k", [1, 2])
 def test_every_lineage_combination_encodes_its_declared_branch_path(tmp_path, k):
     rows = [
-        (100 + index, 1, channel, int(channel == "spi"), cgt, donor, "LONDON")
-        for index, (channel, cgt, donor) in enumerate(
-            itertools.product(("frs", "spi"), (False, True), (False, True))
+        (100 + index, 1, channel, int(channel == "spi"), cgt, copy_index, "LONDON")
+        for index, (channel, cgt, copy_index) in enumerate(
+            itertools.product(("frs", "spi"), (False, True), (0, 2))
         )
     ]
     manifest, _ = run_identity(lineage_frame(rows), tmp_path, k=k)
@@ -255,7 +257,7 @@ def test_every_lineage_combination_encodes_its_declared_branch_path(tmp_path, k)
             row.household_support_channel,
             row.household_support_clone_index,
             row.household_is_capital_gains_clone,
-            row.household_is_cgt_band_donor,
+            row.cgt_support_copy_index,
             getattr(row, CLONE),
         )
         assert getattr(row, IDENTITY_COLUMN) == expected
@@ -274,22 +276,29 @@ def test_every_lineage_combination_encodes_its_declared_branch_path(tmp_path, k)
         "unknown_channel",
         "duplicate_lineage",
         "null_lineage",
+        "copy_flag_index_disagree",
+        "negative_copy_index",
     ],
 )
 def test_identity_refusals(tmp_path, defect):
     rows = list(LINEAGE)
     if defect == "channel_index_disagree":
-        rows[2] = (11, 1, "spi", 0, False, False, "LONDON")
+        rows[2] = (11, 1, "spi", 0, False, 0, "LONDON")
         message = "disagree"
     elif defect == "negative_index":
-        rows[2] = (11, 1, "spi", -1, False, False, "LONDON")
+        rows[2] = (11, 1, "spi", -1, False, 0, "LONDON")
         message = "negative"
     elif defect == "unknown_channel":
-        rows[2] = (11, 1, "puf", 1, False, False, "LONDON")
+        rows[2] = (11, 1, "puf", 1, False, 0, "LONDON")
         message = "support channel"
     elif defect == "duplicate_lineage":
-        rows[2] = (11, 1, "frs", 0, False, False, "LONDON")
+        rows[2] = (11, 1, "frs", 0, False, 0, "LONDON")
         message = "not unique"
+    elif defect == "copy_flag_index_disagree":
+        message = "support-copy flag and support copy index disagree"
+    elif defect == "negative_copy_index":
+        rows[6] = (1001, 2, "frs", 0, False, -1, "SCOTLAND")
+        message = "negative"
     else:
         message = "null lineage"
     frame = lineage_frame(rows)
@@ -297,6 +306,11 @@ def test_identity_refusals(tmp_path, defect):
         table = frame.table("household")
         table["household_support_channel"] = pd.array(
             [pd.NA, *table["household_support_channel"][1:]], dtype="string"
+        )
+    if defect == "copy_flag_index_disagree":
+        table = frame.table("household")
+        table["household_is_cgt_support_copy"] = np.asarray(
+            [True, *table["household_is_cgt_support_copy"][1:]]
         )
     with pytest.raises((NodeRejectedError, ValueError), match=message):
         run_identity(frame, tmp_path)
@@ -307,7 +321,8 @@ def test_identity_inputs_are_the_declared_lineage_columns():
         "source_household_id",
         "household_support_channel",
         "household_support_clone_index",
+        "household_is_cgt_support_copy",
+        "cgt_support_copy_index",
         "household_is_capital_gains_clone",
-        "household_is_cgt_band_donor",
         CLONE,
     )

@@ -238,8 +238,8 @@ def test_distinct_post_clone_keys_assign_then_remain_stable_under_order_subset_a
         (("spi_support_channel", 1), ("cgt_incidence_clone", 1)),
         (
             ("spi_support_channel", 1),
+            ("cgt_support_split", 1),
             ("cgt_incidence_clone", 1),
-            ("cgt_band_donors", 1),
         ),
     ]
     original = pd.DataFrame(

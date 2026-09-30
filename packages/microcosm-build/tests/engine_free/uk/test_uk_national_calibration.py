@@ -53,7 +53,7 @@ from microcosm.calibrate import TargetRegistry, TargetSpec, calibrate
 from microcosm.calibrate.artifacts import decode_problem
 from microcosm.frame import EntitySchema, Frame, MassChange, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 1124
+ACTIVE_REFERENCE_COUNT = 1152
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
