@@ -68,9 +68,10 @@ predictors:
   reported together.
 - 21 holders recoded by the rule.
 
-Over the 141 released holders, 126 reported an exact value. The other 15 reported a band or had
-one imputed, and ONS's imputed value lies inside the band for every one of them (the plan's audit
-against the round-8 codebook).
+Most released holders reported an exact value. For every holder who reported a band or had one
+imputed, ONS's imputed value lies inside the band (the plan's audit against the round-8 codebook).
+The released split between exact and banded values is not published: together with the classes
+after the rule it would reveal, by subtraction, a count under 10 among the recoded holders.
 
 The credibility rule (`clean_was_lisa_donor.credibility_rule`; its basis is in the topic doc):
 

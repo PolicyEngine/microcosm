@@ -55,10 +55,10 @@ stage evidence and never used as a predictor:
   imputed;
 - holder recoded by the credibility rule below.
 
-On the pinned tab, 126 of the 141 released holders reported an exact value. The
-other 15 reported or were imputed a band, and ONS's imputed value lies inside
-the band for every one of them. The model trains on the ONS-completed values, as
-the `was_wealth` stage trains on ONS-completed household aggregates.
+On the pinned tab, most released holders reported an exact value. For every
+holder who reported a band or had one imputed, ONS's imputed value lies inside
+the band. The model trains on the ONS-completed values, as the `was_wealth`
+stage trains on ONS-completed household aggregates.
 
 ## Credibility rule
 
