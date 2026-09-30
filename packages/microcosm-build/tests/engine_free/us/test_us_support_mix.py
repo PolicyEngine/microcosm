@@ -10,7 +10,8 @@ Invariants checked for every drawn input:
   one across households;
 - mass: starting weights are positive, sum to the requested total, give each
   CPS income year an equal share, and split CPS and ACS mass in proportion to
-  source households; a row's copies sum back to its per-year weight;
+  source households; a row's copies sum back to its per-year weight; the
+  weights are linear in the requested total;
 - ESS: distinct-unit ESS never exceeds the row ESS or the number of distinct
   units, and equals the row ESS when every unit is distinct;
 - assembly (differential): the sparse target matrix equals a naive dense
@@ -183,6 +184,13 @@ def test_initial_weights_conserve_and_split_mass(cps, acs, clones, mass) -> None
                            rtol=1e-9)
     if len(acs):
         assert np.allclose(acs_out, acs_w * (acs_out.sum() / acs_w.sum()), rtol=1e-9)
+    # Linear in the mass, so the driver's population mass repair (a common
+    # rescale) makes the repaired weights independent of it.
+    cps_k, acs_k = arm_initial_weights(
+        cps_design_weights=weights, cps_income_year=years, cps_copies=copies,
+        acs_design_weights=acs_w, counts=counts, total_mass=2.5 * mass,
+    )
+    assert np.allclose(cps_k, 2.5 * cps_out, rtol=1e-12) and np.allclose(acs_k, 2.5 * acs_out, rtol=1e-12)
 
 
 def test_initial_weights_refuse_bad_inputs() -> None:

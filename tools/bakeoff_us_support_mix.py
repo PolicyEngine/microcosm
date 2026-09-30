@@ -18,7 +18,7 @@ household shards for the concept specs. ``arm`` then selects rows, assembles
 the sparse target matrix, calls the production ``_optimize`` and scores.
 
 Subcommands, in order: compile, shard, spm-flags, materialize, diffcheck,
-truth, arm (or run-grid for every arm), report. Every subcommand writes a JSON
+partcheck, truth, arm (or run-grid for every arm), report. Every subcommand writes a JSON
 receipt with wall time and peak RSS.
 """
 
@@ -487,6 +487,8 @@ def spm_zero_adult_households(tables: dict[str, pd.DataFrame]) -> np.ndarray:
     """
     hh, person = tables["household"], tables["person"]
     age = pd.to_numeric(person["age"], errors="coerce").fillna(0).to_numpy()
+    # Either role column alone still classifies its members; with neither,
+    # 15-17-year-old heads and spouses would silently count as minors.
     role_columns = [c for c in ("is_household_head", "is_household_spouse") if c in person]
     if not role_columns:
         raise ValueError("person table has neither is_household_head nor is_household_spouse")
@@ -760,8 +762,10 @@ def arm_input_keys(arm: SupportMixArm) -> tuple[str, ...]:
     """The inputs an arm's result depends on.
 
     An arm without CPS years reads the CPS row index only for the starting
-    mass, which the population mass repair rescales away; an arm without a
-    budget has no ACS fill and no clones (clones draw geography from ACS rows).
+    mass, which the population mass repair rescales away (the starting
+    weights are linear in it), and for validations that raise rather than
+    change results; an arm without a budget has no ACS fill and no clones
+    (clones draw geography from ACS rows).
     """
     keys = ["targets", "truth", "epochs"]
     if arm.cps_income_years:
@@ -771,13 +775,20 @@ def arm_input_keys(arm: SupportMixArm) -> tuple[str, ...]:
     return tuple(keys)
 
 
-def arm_inputs(digests: dict, arm: SupportMixArm) -> dict:
-    return {key: digests[key] for key in arm_input_keys(arm)}
+#: Arm options that change results, with the value a receipt that does not
+#: record them was solved under.
+ARM_OPTION_DEFAULTS = {"exclude_gq": False}
+
+
+def arm_inputs(digests: dict, arm: SupportMixArm, *, exclude_gq: bool = False) -> dict:
+    return {**{key: digests[key] for key in arm_input_keys(arm)}, "exclude_gq": bool(exclude_gq)}
 
 
 def inputs_current(previous: dict | None, current: dict) -> bool:
     """A receipt is current when every input its arm depends on is unchanged."""
-    return isinstance(previous, dict) and all(previous.get(k) == v for k, v in current.items())
+    return isinstance(previous, dict) and all(
+        previous.get(k, ARM_OPTION_DEFAULTS.get(k)) == v for k, v in current.items()
+    )
 
 
 def rescore_refusal(previous: dict, inputs: dict, rows_digest: str) -> str | None:
@@ -812,20 +823,36 @@ def shard_source_sha(work: Path, source: str) -> str:
     return json.loads((work / "shards" / source / "shard.json").read_text())["h5_sha256"]
 
 
-def stale_concept_parts(directory: Path, source_sha: str) -> list[Path]:
-    """Materialized parts not built from the current shards' source h5.
+def part_provenance(work: Path, source: str, summary: Path | None = None, *, with_summary: bool = True) -> dict:
+    """What a materialized part's values depend on besides its rows.
 
-    A part's receipt records the h5 digest its shard came from; a part with
-    no receipt or another digest holds values for rows that may no longer
-    exist or may now be different households.
+    The source h5 fixes the households, the compiled concept specs fix what
+    each column means (``measures.json`` names are positional), and the
+    reviewed-null summary fixes how null inputs were filled.
+    """
+    provenance = {
+        "source_h5_sha256": shard_source_sha(work, source),
+        "concept_specs_sha256": sha256_file(work / "concept_specs.pkl"),
+    }
+    if with_summary:
+        provenance["summary_sha256"] = sha256_file(summary) if summary else None
+    return provenance
+
+
+def stale_concept_parts(directory: Path, expected: dict) -> list[Path]:
+    """Materialized parts whose receipt does not match ``expected`` provenance.
+
+    A part with no receipt, a different source h5, different concept specs
+    or a different null-fill summary may hold values for other households or
+    under other column meanings.
     """
     stale = []
     for path in sorted(directory.glob("shard_*.npz")):
         if path.name.endswith(".tmp.npz"):
             continue
         receipt = path.with_suffix(".json")
-        recorded = json.loads(receipt.read_text()).get("source_h5_sha256") if receipt.exists() else None
-        if recorded != source_sha:
+        recorded = json.loads(receipt.read_text()) if receipt.exists() else {}
+        if any(recorded.get(key, "missing") != value for key, value in expected.items()):
             stale.append(path)
     return stale
 
@@ -846,18 +873,24 @@ def acs_rank(work: Path) -> np.ndarray:
     return rank
 
 
+def compiled_measures(work: Path) -> list[str]:
+    """Column names of every materialized part, in order."""
+    with open(work / "concept_specs.pkl", "rb") as handle:
+        return [spec.measure for spec in pickle.load(handle)] + ["state_income_tax"]
+
+
 def do_materialize(args) -> None:
     with open(args.work / "concept_specs.pkl", "rb") as handle:
         concept_specs = pickle.load(handle)
-    measures = [spec.measure for spec in concept_specs] + ["state_income_tax"]
+    measures = compiled_measures(args.work)
     shard_dir = args.work / "shards" / args.source
     out_dir = args.work / "concepts" / args.source
     out_dir.mkdir(parents=True, exist_ok=True)
-    source_sha = shard_source_sha(args.work, args.source)
-    stale = stale_concept_parts(out_dir, source_sha)
+    provenance = part_provenance(args.work, args.source, args.summary)
+    stale = stale_concept_parts(out_dir, provenance)
     if stale and not args.replace_stale:
         raise SystemExit(f"{len(stale)} {args.source} concept parts (e.g. {stale[0].name}) were not built "
-                         "from the current shards; rerun with --replace-stale to rebuild them")
+                         "from the current shards, concept specs and summary; rerun with --replace-stale")
     for path in stale:
         for old in (path, path.with_suffix(".rows.npy"), path.with_suffix(".json")):
             old.unlink(missing_ok=True)
@@ -911,7 +944,7 @@ def do_materialize(args) -> None:
         sp.save_npz(out.with_suffix(".tmp.npz"), csr)
         out.with_suffix(".tmp.npz").replace(out)
         write_json(out.with_suffix(".json"), {
-            "shard": shard_path.name, "source_h5_sha256": source_sha,
+            "shard": shard_path.name, **provenance,
             "rank_range": [low, high] if args.rank_range else None,
             "households": len(household), "nnz": int(csr.nnz),
             "missing_measures": missing, "compiled_concepts": len(compiled),
@@ -925,6 +958,76 @@ def do_materialize(args) -> None:
         del frame, household, matrix, csr
         gc.collect()
     write_json(out_dir / "measures.json", measures)
+
+
+def do_partcheck(args) -> None:
+    """Differential: re-materialize a sample of each stored part's households
+    with the current concept specs and compare with the stored values.
+
+    Guards against parts whose columns no longer mean what ``measures.json``
+    says (a part built under other concept specs) or whose rows are other
+    households. ``--shards`` points at shard pickles cut from the same h5 when
+    the work directory's own were removed.
+    """
+    started = time.time()
+    with open(args.work / "concept_specs.pkl", "rb") as handle:
+        concept_specs = pickle.load(handle)
+    measures = compiled_measures(args.work)
+    shards_dir = args.shards or (args.work / "shards" / args.source)
+    shard_sha = json.loads((shards_dir / "shard.json").read_text())["h5_sha256"]
+    if shard_sha != shard_source_sha(args.work, args.source):
+        raise SystemExit(f"{shards_dir} was cut from another h5 than the work directory's {args.source} shards")
+    rows = pd.read_parquet(args.work / f"rows_{args.source}.parquet", columns=["household_id", "shard"])
+    parts = sorted(p for p in (args.work / "concepts" / args.source).glob("shard_*.npz")
+                   if not p.name.endswith(".tmp.npz"))
+    if args.parts:
+        wanted = {x.strip() for x in args.parts.split(",") if x.strip()}
+        parts = [p for p in parts if p.stem in wanted]
+    rng = np.random.default_rng(20260930)
+    results = {}
+    for path in parts:
+        wait_for_memory(args.min_available_gb)
+        shard = int(path.stem.split("_")[1].split(".")[0])
+        rows_path = path.with_suffix(".rows.npy")
+        positions = (np.load(rows_path) if rows_path.exists()
+                     else np.flatnonzero(rows["shard"].to_numpy() == shard))
+        stored = sp.load_npz(path).tocsr()
+        if stored.shape != (len(positions), len(measures)):
+            raise SystemExit(f"{path.name}: shape {stored.shape} vs {len(positions)} rows x {len(measures)} measures")
+        pick = np.sort(rng.choice(len(positions), min(args.per_part, len(positions)), replace=False))
+        hh_ids = rows["household_id"].to_numpy()[positions[pick]]
+        frame = _load_shard_frame(shards_dir / f"shard_{shard:03d}.pkl")
+        frame = frame.select(np.isin(frame.table("person")["person_household_id"].to_numpy(), hh_ids))
+        household, _, _, _ = _materialize_frame(frame, concept_specs, summary_path=args.summary, batch=args.batch)
+        order = pd.Series(np.arange(len(household)), index=household["household_id"].to_numpy()).reindex(hh_ids)
+        if order.isna().any():
+            raise SystemExit(f"{path.name}: sampled households missing from the re-materialized frame")
+        fresh = np.column_stack([
+            household[m].to_numpy(np.float64) if m in household.columns else np.zeros(len(household))
+            for m in measures
+        ])[order.to_numpy().astype(np.int64)]
+        old = stored[pick].toarray().astype(np.float64)
+        scaled = np.abs(fresh - old).max(axis=0) / np.maximum(1.0, np.abs(fresh).max(axis=0))
+        bad = np.flatnonzero(scaled > args.tolerance)
+        results[path.name] = {
+            "households": int(len(pick)), "max_scaled_abs_diff": float(scaled.max()),
+            "columns_over_tolerance": [measures[j] for j in bad[:20]], "n_columns_over_tolerance": int(len(bad)),
+        }
+        log(f"partcheck {args.source} {path.name}: {len(pick)} hh, max scaled diff {scaled.max():.2e}, "
+            f"{len(bad)} columns over {args.tolerance:g}")
+        del frame, household
+        gc.collect()
+    receipt = {
+        "source": args.source, "shards": str(shards_dir), "source_h5_sha256": shard_sha,
+        "concept_specs_sha256": sha256_file(args.work / "concept_specs.pkl"),
+        "summary_sha256": sha256_file(args.summary) if args.summary else None,
+        "tolerance": args.tolerance, "per_part": args.per_part, "parts": results,
+        "max_scaled_abs_diff": max((r["max_scaled_abs_diff"] for r in results.values()), default=0.0),
+        "wall_s": round(time.time() - started, 1), "peak_rss_gb": round(peak_rss_gb(), 2),
+    }
+    write_json(args.work / f"partcheck_{args.source}.json", receipt)
+    if any(r["n_columns_over_tolerance"] for r in results.values()):
+        raise SystemExit(f"partcheck {args.source}: stored values disagree with the current concept specs")
 
 
 # ------------------------------------------------------------------ diffcheck
@@ -1127,13 +1230,15 @@ class _ConceptStore:
 
     def __init__(self, work: Path, source: str):
         directory = work / "concepts" / source
-        stale = stale_concept_parts(directory, shard_source_sha(work, source))
+        stale = stale_concept_parts(directory, part_provenance(work, source, with_summary=False))
         if stale:
             raise RuntimeError(f"{len(stale)} {source} concept parts (e.g. {stale[0].name}) were not built "
-                               "from the current shards; rerun materialize --replace-stale")
+                               "from the current shards and concept specs; rerun materialize --replace-stale")
         shard_of = pd.read_parquet(work / f"rows_{source}.parquet", columns=["shard"])["shard"].to_numpy()
         n_rows = len(shard_of)
         self.measures = json.loads((directory / "measures.json").read_text())
+        if self.measures != compiled_measures(work):
+            raise RuntimeError(f"{source} measures.json disagrees with concept_specs.pkl; rerun materialize")
         rows_parts, parts = [], []
         self.materialized = np.zeros(n_rows, dtype=bool)
         for path in sorted(directory.glob("shard_*.npz")):
@@ -1226,7 +1331,7 @@ def do_arm(args) -> None:
     arm = parse_arm(args.arm)
     out = args.work / "arms" / args.product / f"{arm.label}.json"
     previous = json.loads(out.read_text()) if out.exists() else None
-    inputs = arm_inputs(input_digests(args.work, args.truth, args.epochs), arm)
+    inputs = arm_inputs(input_digests(args.work, args.truth, args.epochs), arm, exclude_gq=args.exclude_gq)
     rescore = (
         previous is not None and out.with_suffix(".weights.npy").exists() and not args.force
         and (args.rescore or not previous.get("scored_all_levels"))
@@ -1331,6 +1436,8 @@ def do_arm(args) -> None:
         if unmaterialized:
             raise SystemExit(f"{arm.label}: {unmaterialized} {source} rows are not materialized yet")
         blocks.append(stores[source].matrix[needed])
+    if len({tuple(store.measures) for store in stores.values()}) > 1:
+        raise SystemExit("CPS and ACS concept stores disagree on their columns")
     measures = next(iter(stores.values())).measures
     values = sp.vstack(blocks, format="csr")
     del stores
@@ -1564,10 +1671,19 @@ def do_run_grid(args) -> None:
 
 def do_report(args) -> None:
     records, acs_records, summary = [], [], []
+    expected = {(product, arm.label) for product in ("national", "local") for arm in arm_grid(True, args.newest_year)}
+    digests = input_digests(args.work, args.truth, args.epochs)
+    stale = []
     for path in sorted((args.work / "arms").glob("*/*.json")):
         receipt = json.loads(path.read_text())
-        base = {"arm": receipt["arm"], "product": receipt["product"]}
+        if (receipt["product"], receipt["arm"]) not in expected:
+            log(f"report: skipping {receipt['product']} {receipt['arm']} (not in the {args.newest_year} grid)")
+            continue
         arm = parse_arm(receipt["arm"])
+        if not inputs_current(receipt.get("inputs"), arm_inputs(digests, arm)):
+            stale.append(f"{receipt['product']} {receipt['arm']}")
+            continue
+        base = {"arm": receipt["arm"], "product": receipt["product"]}
         base.update({"budget": arm.budget or 0, "cps_years": len(arm.cps_income_years),
                      "acs_fill_share": arm.acs_fill_share, "seed": arm.seed})
         for t in receipt["holdout_targets"]:
@@ -1585,7 +1701,9 @@ def do_report(args) -> None:
                         **{f"runtime_{k}": v for k, v in receipt["runtime"].items()},
                         **{f"report_{k}": (v["calibrated"] if isinstance(v, dict) else v)
                            for k, v in receipt["report_only"].items()}})
-    expected = {(product, arm.label) for product in ("national", "local") for arm in arm_grid(True, args.newest_year)}
+    if stale and not args.allow_stale:
+        raise SystemExit(f"{len(stale)} receipts are stale against the current inputs (e.g. {stale[:3]}); "
+                         "re-solve them or pass --allow-stale to leave them out")
     missing = sorted(expected - {(r["product"], r["arm"]) for r in summary})
     if missing and not args.allow_missing:
         raise SystemExit(f"{len(missing)} expected receipts missing (e.g. {missing[:3]}); "
@@ -1746,6 +1864,16 @@ def main(argv=None) -> None:
     m.add_argument("--min-available-gb", type=float, default=20.0)
     m.add_argument("--replace-stale", action="store_true",
                    help="delete and rebuild parts not built from the current shards' source h5")
+    pc = sub.add_parser("partcheck")
+    pc.add_argument("--work", type=Path, required=True)
+    pc.add_argument("--source", choices=("cps", "acs"), required=True)
+    pc.add_argument("--shards", type=Path, help="shard pickles cut from the same h5 (default: the work directory's)")
+    pc.add_argument("--summary", type=Path)
+    pc.add_argument("--parts", help="comma-separated part stems (default: every part)")
+    pc.add_argument("--per-part", type=int, default=200)
+    pc.add_argument("--tolerance", type=float, default=1e-5)
+    pc.add_argument("--batch", type=int, default=5_000)
+    pc.add_argument("--min-available-gb", type=float, default=20.0)
     d = sub.add_parser("diffcheck")
     d.add_argument("--work", type=Path, required=True)
     d.add_argument("--feed", type=Path, required=True)
@@ -1789,11 +1917,14 @@ def main(argv=None) -> None:
     r.add_argument("--out", type=Path, required=True)
     r.add_argument("--newest-year", type=int, default=NEWEST_INCOME_YEAR)
     r.add_argument("--allow-missing", action="store_true", help="write a report even if receipts are missing")
+    r.add_argument("--truth", type=Path, required=True)
+    r.add_argument("--epochs", type=int, default=1_500)
+    r.add_argument("--allow-stale", action="store_true", help="leave stale receipts out instead of refusing")
     args = parser.parse_args(argv)
     {
         "compile": do_compile, "shard": do_shard, "materialize": do_materialize,
         "diffcheck": do_diffcheck, "truth": do_truth, "arm": do_arm, "report": do_report,
-        "run-grid": do_run_grid, "spm-flags": do_spm_flags,
+        "run-grid": do_run_grid, "spm-flags": do_spm_flags, "partcheck": do_partcheck,
         "grid": lambda a: print("\n".join(arm.label for arm in arm_grid(not a.no_largest, a.newest_year))),
     }[args.command](args)
 

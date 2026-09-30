@@ -5,13 +5,15 @@ Invariants:
 - SPM flag: a household is flagged exactly when one of its SPM units has no
   member the pinned engine counts as an adult, and the rule refuses a person
   table without household-role columns rather than falling back to age;
-- staleness: an arm's receipt depends only on the inputs its arm reads, the
-  concept digest moves with part contents (not just sizes), a concept part is
-  reusable only if built from the current shards' source h5, and saved
-  weights are re-scored only for the same rows and inputs;
+- staleness: an arm's receipt depends only on the inputs and options its arm
+  reads, the concept digest moves with part contents (not just sizes), a
+  concept part is reusable only if built from the current shards' source h5,
+  concept specs and null-fill summary, and saved weights are re-scored only
+  for the same rows and inputs;
 - grid: ACS-only arms carry no years, so a grid on newer CPS years keeps them;
-- reporting: replicate tables cover only groups with more than one draw, and
-  a report with missing receipts is refused unless asked for.
+- reporting: a report reads only current receipts of its own grid,
+  replicate tables cover only groups with more than one draw, and a report
+  with missing or stale receipts is refused unless asked for.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import importlib.util
 import json
 import pickle
 import sys
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -80,9 +83,12 @@ def test_spm_flags_leaves_an_unchanged_row_index_alone(tool, tmp_path) -> None:
     rows = pd.DataFrame({"household_id": [1, 2], "shard": [0, 0], "group_quarters": [False, True],
                          "spm_zero_adult_unit": [False, True]})
     rows.to_parquet(tmp_path / "rows_acs.parquet", index=False)
-    before = (tmp_path / "rows_acs.parquet").read_bytes()
-    tool.do_spm_flags(argparse.Namespace(work=tmp_path))
-    assert (tmp_path / "rows_acs.parquet").read_bytes() == before
+    def refuse(*_args, **_kwargs):
+        raise AssertionError("an unchanged row index was rewritten")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(pd.DataFrame, "to_parquet", refuse)
+        tool.do_spm_flags(argparse.Namespace(work=tmp_path))
     receipt = json.loads((tmp_path / "spm_flags.json").read_text())
     assert receipt["spm_zero_adult_households"] == 1 == receipt["spm_zero_adult_in_group_quarters"]
     rows.assign(spm_zero_adult_unit=False).to_parquet(tmp_path / "rows_acs.parquet", index=False)
@@ -98,6 +104,7 @@ def test_arm_inputs_cover_exactly_what_each_arm_reads(tool, newest) -> None:
         assert ({"rows_cps", "concepts_cps"} <= keys) == bool(arm.cps_income_years)
         assert ({"rows_cps", "concepts_cps"} & keys == set()) == (not arm.cps_income_years)
         assert ({"rows_acs", "concepts_acs"} <= keys) == (arm.budget is not None)
+        assert tool.arm_inputs(dict.fromkeys(keys, "d"), arm)["exclude_gq"] is False
 
 
 def test_acs_only_arms_survive_a_newer_cps_grid(tool) -> None:
@@ -114,6 +121,10 @@ def test_inputs_current_compares_only_the_arms_inputs(tool) -> None:
     assert not tool.inputs_current({**current, "targets": "x"}, current)
     assert not tool.inputs_current({"targets": "t", "truth": "u"}, current)
     assert not tool.inputs_current(None, current)
+    # Arm options: a receipt that predates recording them was solved with the default.
+    assert tool.inputs_current(current, {**current, "exclude_gq": False})
+    assert not tool.inputs_current(current, {**current, "exclude_gq": True})
+    assert not tool.inputs_current({**current, "exclude_gq": True}, {**current, "exclude_gq": False})
 
 
 def test_rescore_needs_the_same_rows_and_inputs(tool) -> None:
@@ -125,13 +136,13 @@ def test_rescore_needs_the_same_rows_and_inputs(tool) -> None:
     assert "inputs" in tool.rescore_refusal(previous, {**inputs, "targets": "new"}, "r")
 
 
-def _write_part(directory, name, values, source_sha=None, rows=None):
+def _write_part(directory, name, values, receipt=None, rows=None):
     directory.mkdir(parents=True, exist_ok=True)
     sp.save_npz(directory / f"{name}.npz", sp.csr_matrix(np.asarray(values, dtype=np.float32)))
     if rows is not None:
         np.save(directory / f"{name}.rows.npy", np.asarray(rows, dtype=np.int64))
-    if source_sha is not None:
-        (directory / f"{name}.json").write_text(json.dumps({"source_h5_sha256": source_sha}))
+    if receipt is not None:
+        (directory / f"{name}.json").write_text(json.dumps(receipt))
 
 
 def test_concept_digest_moves_with_contents_of_the_same_size(tool, tmp_path) -> None:
@@ -147,12 +158,20 @@ def test_concept_digest_moves_with_contents_of_the_same_size(tool, tmp_path) -> 
     assert tool._concept_digest(tmp_path, "acs") != second
 
 
-def test_stale_parts_are_those_not_built_from_the_current_source(tool, tmp_path) -> None:
+def test_stale_parts_are_those_not_built_from_the_current_provenance(tool, tmp_path) -> None:
     directory = tmp_path / "parts"
-    _write_part(directory, "shard_000", [[1.0]], source_sha="new")
-    _write_part(directory, "shard_001", [[1.0]], source_sha="old")
-    _write_part(directory, "shard_002", [[1.0]])
-    assert [p.name for p in tool.stale_concept_parts(directory, "new")] == ["shard_001.npz", "shard_002.npz"]
+    current = {"source_h5_sha256": "new", "concept_specs_sha256": "specs", "summary_sha256": None}
+    _write_part(directory, "shard_000", [[1.0]], receipt=current)
+    _write_part(directory, "shard_001", [[1.0]], receipt={**current, "source_h5_sha256": "old"})
+    _write_part(directory, "shard_002", [[1.0]], receipt={**current, "concept_specs_sha256": "older"})
+    _write_part(directory, "shard_003", [[1.0]], receipt={**current, "summary_sha256": "filled"})
+    _write_part(directory, "shard_004", [[1.0]], receipt={"source_h5_sha256": "new"})
+    _write_part(directory, "shard_005", [[1.0]])
+    stale = [p.name for p in tool.stale_concept_parts(directory, current)]
+    assert stale == [f"shard_00{i}.npz" for i in range(1, 6)]
+    # The concept store checks the source and specs only.
+    without_summary = {k: v for k, v in current.items() if k != "summary_sha256"}
+    assert "shard_003.npz" not in [p.name for p in tool.stale_concept_parts(directory, without_summary)]
 
 
 def _materialize_args(work, replace_stale):
@@ -160,18 +179,35 @@ def _materialize_args(work, replace_stale):
                               only=None, summary=None, batch=5_000, min_available_gb=0.0)
 
 
-def test_materialize_refuses_then_replaces_stale_parts(tool, tmp_path) -> None:
+def _materialize_work(tmp_path):
     (tmp_path / "concept_specs.pkl").write_bytes(pickle.dumps([]))
     (tmp_path / "shards" / "cps").mkdir(parents=True)
     (tmp_path / "shards" / "cps" / "shard.json").write_text(json.dumps({"h5_sha256": "new"}))
     pd.DataFrame({"shard": pd.Series([], dtype=np.int64)}).to_parquet(tmp_path / "rows_cps.parquet")
-    concepts = tmp_path / "concepts" / "cps"
-    _write_part(concepts, "shard_000", [[1.0]], source_sha="old", rows=[0])
+    return tmp_path / "concepts" / "cps"
+
+
+def test_materialize_refuses_then_replaces_stale_parts(tool, tmp_path) -> None:
+    concepts = _materialize_work(tmp_path)
+    current = tool.part_provenance(tmp_path, "cps", None)
+    _write_part(concepts, "shard_000", [[1.0]], receipt={**current, "source_h5_sha256": "old"}, rows=[0])
+    _write_part(concepts, "shard_001", [[1.0]], receipt=current, rows=[1])
     with pytest.raises(SystemExit, match="replace-stale"):
         tool.do_materialize(_materialize_args(tmp_path, replace_stale=False))
     assert (concepts / "shard_000.npz").exists()
     tool.do_materialize(_materialize_args(tmp_path, replace_stale=True))
     assert not list(concepts.glob("shard_000*"))
+    assert (concepts / "shard_001.npz").exists()
+
+
+def test_a_recompile_makes_every_part_stale(tool, tmp_path) -> None:
+    concepts = _materialize_work(tmp_path)
+    _write_part(concepts, "shard_000", [[1.0]], receipt=tool.part_provenance(tmp_path, "cps", None), rows=[0])
+    assert not tool.stale_concept_parts(concepts, tool.part_provenance(tmp_path, "cps", None))
+    (tmp_path / "concept_specs.pkl").write_bytes(pickle.dumps([SimpleNamespace(measure="bakeoff_concept_00000")]))
+    assert tool.stale_concept_parts(concepts, tool.part_provenance(tmp_path, "cps", None))
+    with pytest.raises(SystemExit, match="replace-stale"):
+        tool.do_materialize(_materialize_args(tmp_path, replace_stale=False))
 
 
 def test_replicate_tables_cover_only_groups_with_several_draws(tool) -> None:
@@ -188,8 +224,28 @@ def test_replicate_tables_cover_only_groups_with_several_draws(tool) -> None:
     assert spread.loc[("national", 1), "x.state"] == pytest.approx(0.1)
 
 
+def _report_work(tmp_path):
+    for name in ("targets.parquet", "rows_cps.parquet", "rows_acs.parquet", "truth.parquet"):
+        pd.DataFrame({"x": [1]}).to_parquet(tmp_path / name)
+    (tmp_path / "arms" / "national").mkdir(parents=True)
+    return argparse.Namespace(work=tmp_path, out=tmp_path / "report", newest_year=2024, truth=tmp_path / "truth.parquet",
+                              epochs=1500, allow_missing=False, allow_stale=False)
+
+
 def test_report_refuses_missing_receipts(tool, tmp_path) -> None:
-    (tmp_path / "arms").mkdir()
-    args = argparse.Namespace(work=tmp_path, out=tmp_path / "report", newest_year=2024, allow_missing=False)
+    args = _report_work(tmp_path)
     with pytest.raises(SystemExit, match="60 expected receipts missing"):
+        tool.do_report(args)
+
+
+def test_report_skips_other_grids_and_refuses_stale_receipts(tool, tmp_path) -> None:
+    args = _report_work(tmp_path)
+    arms = tmp_path / "arms" / "national"
+    (arms / "b300k.cps2025.acs100.s0.json").write_text(json.dumps(
+        {"arm": "b300k.cps2025.acs100.s0", "product": "national", "inputs": {}}))
+    with pytest.raises(SystemExit, match="60 expected receipts missing"):
+        tool.do_report(args)  # the 2025-grid receipt is skipped, not counted or read
+    (arms / "b300k.cps0.acs100.s0.json").write_text(json.dumps(
+        {"arm": "b300k.cps0.acs100.s0", "product": "national", "inputs": {"targets": "old"}}))
+    with pytest.raises(SystemExit, match="1 receipts are stale"):
         tool.do_report(args)

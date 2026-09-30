@@ -40,7 +40,8 @@ trade-offs.
 
   Stopping at 300k is a cost call. Larger ACS fills keep lowering district
   error (0.291, 0.266, 0.244 at 300k, 600k, 1.2M) but leave state error flat
-  (0.113, 0.115, 0.113), edge state tax items up (0.113, 0.116, 0.118) and do
+  at 300k and 1.2M (0.113) and slightly worse at 600k (0.115), edge state tax
+  items up (0.113, 0.116, 0.118) and do
   not help state program receipt (0.198, 0.225, 0.239; the 600k and 1.2M arms
   are single draws, and only the 1.2M gap exceeds draw noise). The best
   state-level arm is the 600k 50/50 fill (0.111; income 0.213, tax items
@@ -456,7 +457,7 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
 - Rerun on the newest three CPS years (2023–2025) once a Route A export on main
   at or after `5187fce25` exists: `shard --source cps` on it, `materialize
   --source cps --replace-stale`, `diffcheck --sources cps`, then `run-grid
-  --newest-year 2025` and `report --newest-year 2025`. `materialize` refuses
+  --newest-year 2025` and `report --newest-year 2025 --truth <acs_truth>`. `materialize` refuses
   concept parts cut from another source h5 unless told to replace them, and
   each receipt carries digests of only the inputs its arm reads, so the
   ACS-only arms are kept and every arm with CPS rows is solved fresh.
@@ -487,6 +488,6 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
   per-part materialization receipts under `materialize/`.
 
 Reproduce: `compile`, `shard` (both sources), `truth`, `materialize` (both
-sources; ACS by rank range), `diffcheck`, `run-grid --products national` and
-`--products local`, `report`, then `memo_tables.py`. Each step writes a receipt
-with wall time and peak RSS.
+sources; ACS by rank range), `diffcheck`, `partcheck` (both sources),
+`run-grid --products national` and `--products local`, `report --truth`, then
+`memo_tables.py`. Each step writes a receipt with wall time and peak RSS.
