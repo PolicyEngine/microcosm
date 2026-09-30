@@ -201,7 +201,10 @@ value between epochs 1,000 and 1,500 (`arms.csv` has `loss_1000` and
 scored before scoring covered every level, the receipts carry the solve peak
 restored from the grid log and no solve wall time. Every receipt's `inputs`
 digests were added after its solve, once the tool recorded them, from the
-files then in place (`inputs_note` says so in each receipt).
+files then in place (`inputs_note` says so in each receipt). Each concept
+part's receipt likewise had its source-h5, concept-spec and null-fill-summary
+digests added afterwards, from `shard.json`, `concept_specs.pkl` and the
+`partcheck` below (`*_note` fields).
 
 ## Design
 
@@ -411,7 +414,8 @@ Income years 2020 and 2021 **pass**: their response rates are above the
 pinned years'; their whole-record imputation shares sit between the
 pre-pandemic years' and the pinned years'; their item-allocation shares are
 the highest of the seven years (22.6% and 21.8%) but within 1.6 points of
-every other year; and homeownership and weight dispersion show no break. Three caveats:
+every other year; and homeownership and weight dispersion show no break.
+Three caveats:
 
 - Census asks users to take care comparing data years 2019, 2020 and 2021
   with other years, and documents that nonrespondents in the 2020–2026
@@ -456,11 +460,13 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
 
 - Rerun on the newest three CPS years (2023–2025) once a Route A export on main
   at or after `5187fce25` exists: `shard --source cps` on it, `materialize
-  --source cps --replace-stale`, `diffcheck --sources cps`, then `run-grid
-  --newest-year 2025` and `report --newest-year 2025 --truth <acs_truth>`. `materialize` refuses
-  concept parts cut from another source h5 unless told to replace them, and
-  each receipt carries digests of only the inputs its arm reads, so the
-  ACS-only arms are kept and every arm with CPS rows is solved fresh.
+  --source cps --replace-stale`, `diffcheck --sources cps`, `partcheck
+  --source cps`, then `run-grid --newest-year 2025` and `report --newest-year
+  2025 --truth <acs_truth>`. `materialize` refuses concept parts built from
+  another source h5, other concept specs or another null-fill summary unless
+  told to replace them, and each receipt carries digests of only the inputs
+  its arm reads, so the ACS-only arms are kept and every arm with CPS rows is
+  solved fresh.
 - Add five-year arms (2020–2024 or 2021–2025) once those years have Route A
   enrichment.
 - When `microcosm.build.us_runtime.target_split` merges, swap it in and
@@ -476,16 +482,26 @@ Rotation overlap: a housing unit appears in at most two adjacent files, so
   (`diffcheck.json`). The ACS half was written by the tool on 2026-09-29; the
   CPS half is the tool's own log line from 2026-09-28, copied into the file
   after the CPS shard files were removed to free disk.
+- Stored parts against the final concept specs: `partcheck` re-materialized
+  200 households from each of the 8 CPS parts and 8 of the 62 ACS parts
+  (both rank ranges) with the final specs and the branch's code, and compared
+  every column with the stored values: maximum scaled difference 5.8e-8,
+  float32 rounding (`partcheck_cps.json`, `partcheck_acs.json`). Three CPS
+  parts were built before the last `compile`, which added loss weights only;
+  this confirms their columns. The CPS shards were rebuilt from the same h5
+  for the check, and their row index equals the one the arms used.
+- Re-running `report` on the 60 receipts reproduces every committed table
+  byte for byte.
 - Tests: `test_us_support_mix.py`, 22 tests (properties, the dense
   differential and the port-branch hash fixtures), and
-  `test_bakeoff_us_support_mix_tool.py`, 13 tests of the driver's SPM flag,
+  `test_bakeoff_us_support_mix_tool.py`, 15 tests of the driver's SPM flag,
   staleness guards, grid and report.
-- Independent review (Opus 5.5, Subfleet), three rounds; every finding is
+- Independent review (Opus 5.5, Subfleet), four rounds; every finding is
   fixed or stated here.
 - Receipts in `experiments/us-support-mix-bakeoff-20260930/`: the report
-  tables, `compile.json`, `diffcheck.json`, `spm_flags.json`,
-  `asec_quality.json` (with its script), `acs_truth.json`, and the
-  per-part materialization receipts under `materialize/`.
+  tables, `compile.json`, `diffcheck.json`, `partcheck_*.json`,
+  `spm_flags.json`, `asec_quality.json` (with its script), `acs_truth.json`,
+  and the per-part materialization receipts under `materialize/`.
 
 Reproduce: `compile`, `shard` (both sources), `truth`, `materialize` (both
 sources; ACS by rank range), `diffcheck`, `partcheck` (both sources),
