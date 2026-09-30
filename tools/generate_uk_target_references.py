@@ -34,6 +34,7 @@ from microcosm.calibrate.geography_constants import (
 UK_GEOGRAPHY_IDS = {
     "uk": "K02000001",
     "great_britain": "K03000001",
+    "england_and_wales": "K04000001",
     "england": "E92000001",
     "scotland": "S92000003",
     "wales": "W92000004",
@@ -435,6 +436,14 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     ("welshgov.", "wales"),
     ("nithc.", "northern_ireland"),
     ("dfi_ni.", "northern_ireland"),
+    # Northern Ireland's State Pension and Pension Credit come from DfC, not
+    # DWP (Chronicle stamps them N92000002); the substring rule sees no nation
+    # in "dfc_ni" (microcosm#1069).
+    ("dfc_ni.", "northern_ireland"),
+    # Scotland replaced Winter Fuel Payment with its Pension Age Winter
+    # Heating Payment from winter 2024-25, so DWP publishes the 2024-25 and
+    # 2025-26 statistics for England and Wales (K04000001) only (microcosm#1069).
+    ("dwp.winter_fuel_payment.", "england_and_wales"),
 )
 # DfT BUS05i rows name their area in the selector; the geography follows the
 # declared area, never a prefix, so a London or UK row can never be stamped

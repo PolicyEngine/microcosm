@@ -39,6 +39,7 @@ from typing import Any
 
 from microcosm.build.ledger_targets import (
     CALENDAR_YEAR_WINDOW_WEIGHTS,
+    MONTHLY_WINDOW_COUNT_X_MEAN,
     LedgerTargetReference,
     TargetRegistry,
 )
@@ -48,6 +49,21 @@ UK_ENGINE_PARAMETER_INDEX_PREFIX = "policyengine_uk_parameter:"
 UK_ENGINE_INDEX_BASIS = (
     "policyengine-uk parameter ratio between 1 January of the fact's opening "
     "year and 1 January of the calibration year (the SPI donor rebasing convention)"
+)
+#: The month DWP's annual uprating takes effect. The engine keys a tax-year
+#: rate at 1 January of the year it opens (policyengine-uk moves the April
+#: values to 1 January), so a month from April on is paid at that year's rate
+#: and January to March at the previous year's.
+UK_BENEFIT_UPRATING_MONTH = 4
+UK_ENGINE_MONTHLY_INDEX_BASIS = (
+    "policyengine-uk parameter ratio between 1 January of the year whose rate "
+    "is paid in each window month (from April, that year; before, the previous "
+    "year) and 1 January of the calibration year, per month"
+)
+UK_MONTHLY_UPRATING_ADJUDICATION = (
+    "microcosm#1069 R1 (María, 2026-09-30): the State Pension level binds the "
+    "calendar-2025 Stat-Xplore points, each put on the engine's 2025 rate "
+    "basis, so only the February point (paid at the 2024-25 rate) moves"
 )
 
 #: The parameter paths a UK reference may name behind the prefix. One per SPI
@@ -351,6 +367,16 @@ def align_hmrc_row_by_engine_index(
     target_year = _target_year(reference)
     aligned = []
     for spec in registry.specs:
+        if reference.value_operation == MONTHLY_WINDOW_COUNT_X_MEAN:
+            aligned.append(
+                _align_monthly_count_x_mean(
+                    spec,
+                    parameter_path=parameter_path,
+                    parameter_value=parameter_value,
+                    target_year=target_year,
+                )
+            )
+            continue
         opening_year = _opening_year(spec, reference)
         _refuse_fact_after_target(spec, opening_year, target_year)
         if opening_year == target_year:
@@ -377,6 +403,75 @@ def align_hmrc_row_by_engine_index(
         }
         aligned.append(replace(spec, value=spec.value * factor, metadata=metadata))
     return TargetRegistry(aligned, country="uk")
+
+
+def _engine_rate_year(month: str) -> int:
+    """The engine year whose 1 January value is the rate paid in ``month``."""
+
+    year, number = int(month[:4]), int(month[5:7])
+    return year if number >= UK_BENEFIT_UPRATING_MONTH else year - 1
+
+
+def _align_monthly_count_x_mean(
+    spec: Any,
+    *,
+    parameter_path: str,
+    parameter_value: ParameterValue,
+    target_year: int,
+) -> Any:
+    """Restate every month's mean at the calibration year's engine rate.
+
+    A count x mean window averages points on both sides of an April uprating;
+    each point's mean moves by ``rate(target) / rate(paid that month)``, so
+    only the points paid at an earlier year's rate change (microcosm#1069 R1).
+    The window value moves by the count x mean weighted factor, which leaves it
+    exactly as compiled when every point is already at the target rate.
+    """
+
+    members = json.loads(spec.metadata["ledger_window_count_x_mean_members"])
+    to_instant = f"{target_year}-01-01"
+    to_value = parameter_value(parameter_path, to_instant)
+    weighted = unweighted = 0.0
+    restated = []
+    for member in members:
+        month = str(member["month"])
+        if int(month[:4]) > target_year:
+            raise ValueError(
+                f"UK target {spec.name!r}: the window month {month} falls after "
+                f"the calibration year {target_year}; a declared uprating never "
+                "moves a value backwards."
+            )
+        from_instant = f"{_engine_rate_year(month)}-01-01"
+        from_value = parameter_value(parameter_path, from_instant)
+        factor = to_value / from_value
+        product = float(member["count"]) * float(member["mean"])
+        weighted += product * factor
+        unweighted += product
+        restated.append(
+            {
+                **member,
+                "uprating_from_instant": from_instant,
+                "uprating_from_value": f"{from_value:.15g}",
+                "uprating_factor": f"{factor:.15g}",
+            }
+        )
+    ratio = weighted / unweighted if unweighted else 1.0
+    metadata = {
+        **spec.metadata,
+        "uprating_index": f"{UK_ENGINE_PARAMETER_INDEX_PREFIX}{parameter_path}",
+        "uprating_index_basis": UK_ENGINE_MONTHLY_INDEX_BASIS,
+        "uprating_index_parameter": parameter_path,
+        "uprating_index_engine": f"policyengine-uk {_engine_version()}",
+        "uprating_index_to_instant": to_instant,
+        "uprating_index_to_value": f"{to_value:.15g}",
+        "uprating_window_members": json.dumps(
+            restated, sort_keys=True, separators=(",", ":")
+        ),
+        "uprating_factor": f"{ratio:.15g}",
+        "ledger_value_before_alignment": f"{spec.value:.15g}",
+        "uprating_adjudication": UK_MONTHLY_UPRATING_ADJUDICATION,
+    }
+    return replace(spec, value=spec.value * ratio, metadata=metadata)
 
 
 def _spi_band_lower_edge(spec: Any, reference: LedgerTargetReference) -> int:

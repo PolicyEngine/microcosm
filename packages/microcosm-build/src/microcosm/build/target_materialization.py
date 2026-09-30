@@ -21,9 +21,10 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # spec carries its own band's lower edge in Ledger filter metadata. Two
 # encodings are in use — a numeric lower bound (HMRC SPI income bands) and a
 # published range label (DWP award bands, in monthly units, hence
-# ``band_period_factor``) — and both reduce to one lower edge, because no
-# reference anywhere declares an upper bound. A band's upper edge is its
-# sibling's lower edge within the same compiled contract target. Edges must
+# ``band_period_factor``) — and both reduce to one lower edge. A band's upper
+# edge is its sibling's lower edge within the same compiled contract target,
+# except for DWP's half-open labels ("£20.00 to under £40.00", "Under £20.00"),
+# which publish their own exclusive upper edge and keep it. Edges must
 # never derive from an exclusion-pruned roster, or excluding a band silently
 # widens its lower neighbour; only the compiled register's top band runs to
 # infinity unless the binding declares a source-unit ``band_upper_bound``.
@@ -33,13 +34,22 @@ _COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
 _RANGE_LABEL = re.compile(
-    r"([\d,]+(?:\.\d+)?)\s*(?:to|–|—|-)\s*(?:£\s*)?([\d,]+(?:\.\d+)?)",
+    r"([\d,]+(?:\.\d+)?)\s*(?:to(?:\s+under)?|–|—|-)\s*(?:£\s*)?([\d,]+(?:\.\d+)?)",
     re.IGNORECASE,
 )
 _OPEN_LABEL = re.compile(
     r"([\d,]+(?:\.\d+)?)\s*(?:or more|or over|and over|and above|\+)",
     re.IGNORECASE,
 )
+# DWP's half-open amount bands publish their own exclusive upper edge:
+# "£20.00 to under £40.00", and the bottom band "Under £20.00" (lower edge
+# zero). The bottom form needs the pound sign, so an age filter such as
+# "Under 25" never reads as an amount band.
+_HALF_OPEN_LABEL = re.compile(
+    r"^\s*£?\s*([\d,]+(?:\.\d+)?)\s*to\s+under\s*£?\s*([\d,]+(?:\.\d+)?)\s*$",
+    re.IGNORECASE,
+)
+_UNDER_LABEL = re.compile(r"^\s*under\s*£\s*([\d,]+(?:\.\d+)?)\s*$", re.IGNORECASE)
 _MISSING_COLUMN = re.compile(r"^'(?:([a-z_0-9]+)\.)?([A-Za-z_0-9]+)'$")
 
 #: Provider kinds whose values are additionally masked by the binding's
@@ -342,6 +352,9 @@ def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
         if key.endswith(_BAND_LOWER_BOUND_SUFFIX):
             numeric.append((key, float(str(value).replace(",", ""))))
             continue
+        if _UNDER_LABEL.match(str(value)):
+            labelled.append((key, 0.0))
+            continue
         match = _RANGE_LABEL.search(str(value)) or _OPEN_LABEL.search(str(value))
         if match is not None:
             labelled.append((key, float(match.group(1).replace(",", ""))))
@@ -350,6 +363,31 @@ def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
             continue
         return _select_band_edge(spec, binding, candidates) * factor
     return None
+
+
+def _band_label_upper_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
+    """The exclusive upper edge a half-open band label publishes, if any.
+
+    ``"£20.00 to under £40.00"`` and ``"Under £20.00"`` state their own upper
+    edge, so the band never borrows it from a sibling (whose exclusion would
+    otherwise widen it), in model units after ``band_period_factor``.
+    """
+
+    metadata = getattr(spec, "metadata", None) or {}
+    factor = float(binding.get("band_period_factor", 1) or 1)
+    uppers: list[tuple[str, float]] = []
+    for key, value in sorted(metadata.items()):
+        if not key.startswith(_LEDGER_FILTER_PREFIX) or key.endswith(
+            _BAND_LOWER_BOUND_SUFFIX
+        ):
+            continue
+        match = _HALF_OPEN_LABEL.match(str(value)) or _UNDER_LABEL.match(str(value))
+        if match is not None:
+            upper = match.group(match.lastindex or 1).replace(",", "")
+            uppers.append((key, float(upper)))
+    if not uppers:
+        return None
+    return _select_band_edge(spec, binding, uppers) * factor
 
 
 def _select_band_edge(
@@ -451,6 +489,15 @@ def _band_bounds(
         if edge > lower:
             upper = edge
             break
+    own_upper = _band_label_upper_edge(spec, binding)
+    if own_upper is not None:
+        if not own_upper > lower:
+            raise ValueError(
+                f"banded measure {getattr(spec, 'measure', '?')!r} publishes an "
+                f"upper edge {own_upper!r} that is not above its lower edge "
+                f"{lower!r}"
+            )
+        upper = own_upper
     # A consumer may bind only the finite portion of a published histogram.
     # Declare its source-unit ceiling instead of allowing the last included
     # row to absorb a separately published, unbound top-coded category.
