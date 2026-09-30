@@ -22,15 +22,31 @@ Sources and their formats (verified against the published files):
   state against the summary-level 040 state row).
 - OMB CBSA delineations (``list1_2023.xlsx``): county → CBSA rows keyed by
   the FIPS state + county code columns.
+- 2020 BAF county-subdivision layer (``_MCD``): pipe-delimited
+  ``BLOCKID|COUNTYFP|COUSUBFP``; 2020 blocks nest in county subdivisions.
+- Census Connecticut crosswalk (``ct_cou_to_cousub_crosswalk.txt``):
+  pipe-delimited, a quoted multi-line header, one row per county subdivision
+  giving its 2020 county and its 2022 planning region (the county-equivalent
+  that replaced it), then a glossary after a blank line.
+
+Connecticut is the one state whose county-equivalents differ between the
+two vintages joined here. Its 2020 blocks carry the eight old counties
+(09001-09015), while the OMB 2023 delineations list its nine 2022 planning
+regions (09110-09190). A CT block reaches its CBSA through its town, because
+planning regions are unions of whole towns.
 """
 
 from __future__ import annotations
 
+import csv
 import json
-from collections.abc import Iterable, Mapping
-from typing import Any
+from collections.abc import Iterable, Iterator, Mapping
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from microcosm.build.us_runtime.geography_ladder import UsBlockLadder
 
 #: The 50 states plus DC: (state FIPS, USPS abbreviation, P.L. 94-171
 #: directory name). Puerto Rico and the island territories are outside the
@@ -101,6 +117,29 @@ _SLD_UNASSIGNED_MARKERS = frozenset({"ZZZ", "ZZ"})
 #: Non-voting delegate districts (DC) are the district-00 rung of the
 #: Microcosm at-large convention ``state_fips * 100 + 00``.
 _CD_DELEGATE = "98"
+
+#: Connecticut's state FIPS: the state whose OMB 2023 county-equivalents
+#: (2022 planning regions) are not its 2020 block counties.
+CT_STATE_FIPS = "09"
+#: County-subdivision code for areas with no town ("County subdivisions not
+#: defined", water). Census lists it once per old-county/planning-region
+#: pair, so it names no single planning region.
+_COUSUB_NOT_DEFINED = "00000"
+_CT_CROSSWALK_COLUMNS = (
+    "STATEFP",
+    "OLD_COUNTYFP",
+    "OLD_COUNTY_NAMELSAD",
+    "NEW_COUNTYFP",
+    "NEW_COUNTY_NAMELSAD",
+    "COUSUBFP",
+    "OLD_COUSUB_GEOID",
+    "NEW_COUSUB_GEOID",
+    "COUSUB_NAMELSAD",
+    "COUSUBNS",
+    "COUSUB_LSAD",
+    "COUSUB_FUNCSTAT",
+    "COUSUB_CLASSFP",
+)
 
 
 def parse_national_cd_bef(lines: Iterable[str]) -> dict[int, int]:
@@ -224,6 +263,59 @@ def parse_baf_place_file(lines: Iterable[str], *, label: str) -> dict[int, int]:
     return result
 
 
+def parse_baf_county_subdivision_file(
+    lines: Iterable[str], *, label: str
+) -> dict[int, str]:
+    """Parse a BAF MCD file into block geoid → 10-digit county-subdivision geoid.
+
+    The geoid is state + 2020 county + county-subdivision FIPS, the key the
+    Census Connecticut crosswalk uses for a town's 2020 identity. A row whose
+    ``COUNTYFP`` disagrees with the block's own county prefix is refused.
+    """
+
+    iterator = iter(lines)
+    header = _required_header(iterator, source=label)
+    if [part.strip().upper() for part in header.split("|")] != [
+        "BLOCKID",
+        "COUNTYFP",
+        "COUSUBFP",
+    ]:
+        raise ValueError(
+            f"{label} header must be 'BLOCKID|COUNTYFP|COUSUBFP', got {header!r}."
+        )
+    result: dict[int, str] = {}
+    for line_number, line in enumerate(iterator, start=2):
+        stripped = line.rstrip("\n")
+        if not stripped.strip():
+            continue
+        parts = stripped.split("|")
+        if len(parts) != 3:
+            raise ValueError(
+                f"{label} line {line_number} must have three fields, got {stripped!r}."
+            )
+        block_raw, county_raw, cousub_raw = (part.strip() for part in parts)
+        block = _block_geoid(block_raw, source=f"{label} line {line_number}")
+        if not (county_raw.isdigit() and len(county_raw) == 3):
+            raise ValueError(
+                f"{label} line {line_number} has COUNTYFP {county_raw!r}; "
+                "expected 3 digits."
+            )
+        if not (cousub_raw.isdigit() and len(cousub_raw) == 5):
+            raise ValueError(
+                f"{label} line {line_number} has COUSUBFP {cousub_raw!r}; "
+                "expected 5 digits."
+            )
+        if block_raw[2:5] != county_raw:
+            raise ValueError(
+                f"{label} line {line_number} puts block {block_raw} in county "
+                f"{county_raw}, but the block geoid's county is {block_raw[2:5]}."
+            )
+        if block in result:
+            raise ValueError(f"{label} assigns block {block_raw} more than once.")
+        result[block] = block_raw[:5] + cousub_raw
+    return result
+
+
 def parse_pl_geo_blocks(lines: Iterable[str], *, state_fips: str) -> dict[int, int]:
     """Parse a P.L. 94-171 geo header into populated block geoid → POP100.
 
@@ -339,6 +431,176 @@ def parse_cbsa_delineations(
     return result
 
 
+def parse_ct_planning_region_crosswalk(lines: Iterable[str]) -> dict[str, str]:
+    """Parse the Census CT crosswalk into town → 2022 planning region.
+
+    Keys are 2020 county-subdivision geoids (``09`` + old county + town,
+    the value :func:`parse_baf_county_subdivision_file` yields); values are
+    the 5-digit planning-region county-equivalent FIPS the OMB 2023
+    delineations use. The table ends at the first blank row (a glossary
+    follows). "County subdivisions not defined" rows are skipped,
+    because one old county's undefined area is listed under several planning
+    regions; a populated block there fails the block join instead.
+    """
+
+    reader = csv.reader(_csv_lines(lines), delimiter="|")
+    header: list[str] | None = None
+    for row in reader:
+        if any(cell.strip() for cell in row):
+            # "STATEFP\n(INCITS38)" → "STATEFP": the parenthesized standard
+            # is a second header line inside the quoted cell.
+            header = [_crosswalk_column_name(cell) for cell in row]
+            break
+    if header is None:
+        raise ValueError("CT planning-region crosswalk is empty.")
+    if tuple(header) != _CT_CROSSWALK_COLUMNS:
+        raise ValueError(
+            "CT planning-region crosswalk header must be "
+            f"{list(_CT_CROSSWALK_COLUMNS)}, got {header}."
+        )
+    column = {name: index for index, name in enumerate(header)}
+    result: dict[str, str] = {}
+    for row in reader:
+        if not any(cell.strip() for cell in row):
+            break
+        where = f"CT planning-region crosswalk line {reader.line_num}"
+        if len(row) != len(header):
+            raise ValueError(
+                f"{where} must have {len(header)} fields, got {len(row)}: {row!r}."
+            )
+        cells = {name: row[index].strip() for name, index in column.items()}
+        state = cells["STATEFP"]
+        old_county = cells["OLD_COUNTYFP"]
+        new_county = cells["NEW_COUNTYFP"]
+        cousub = cells["COUSUBFP"]
+        if state != CT_STATE_FIPS:
+            raise ValueError(f"{where} has STATEFP {state!r}; expected '09'.")
+        for name, value, width in (
+            ("OLD_COUNTYFP", old_county, 3),
+            ("NEW_COUNTYFP", new_county, 3),
+            ("COUSUBFP", cousub, 5),
+        ):
+            if not (value.isdigit() and len(value) == width):
+                raise ValueError(
+                    f"{where} has {name} {value!r}; expected {width} digits."
+                )
+        old_geoid = state + old_county + cousub
+        new_geoid = state + new_county + cousub
+        if (cells["OLD_COUSUB_GEOID"], cells["NEW_COUSUB_GEOID"]) != (
+            old_geoid,
+            new_geoid,
+        ):
+            raise ValueError(
+                f"{where} geoids {cells['OLD_COUSUB_GEOID']!r}/"
+                f"{cells['NEW_COUSUB_GEOID']!r} disagree with its code columns "
+                f"({old_geoid}/{new_geoid})."
+            )
+        if cousub == _COUSUB_NOT_DEFINED:
+            continue
+        region = state + new_county
+        existing = result.get(old_geoid)
+        if existing is not None and existing != region:
+            raise ValueError(
+                f"CT planning-region crosswalk puts town {old_geoid} in both "
+                f"{existing} and {region}."
+            )
+        result[old_geoid] = region
+    if not result:
+        raise ValueError("CT planning-region crosswalk contained no town rows.")
+    return result
+
+
+def ct_planning_region_by_block(
+    blocks: Iterable[int],
+    *,
+    cousub_by_block: Mapping[int, str],
+    planning_region_by_cousub: Mapping[str, str],
+) -> dict[int, str]:
+    """Map each Connecticut block to its 2022 planning region, via its town.
+
+    ``blocks`` are the populated blocks to map; blocks outside Connecticut
+    are ignored. 2020 blocks nest in towns and planning regions are unions of
+    whole towns, so the mapping is exact. A CT block without a town, or in a
+    town the crosswalk does not list, is a source defect and raises.
+    """
+
+    result: dict[int, str] = {}
+    missing_town: list[int] = []
+    unmapped_town: set[str] = set()
+    for block in blocks:
+        if f"{block:015d}"[:2] != CT_STATE_FIPS:
+            continue
+        cousub = cousub_by_block.get(block)
+        if cousub is None:
+            missing_town.append(block)
+            continue
+        region = planning_region_by_cousub.get(cousub)
+        if region is None:
+            unmapped_town.add(cousub)
+            continue
+        result[block] = region
+    if missing_town:
+        examples = [f"{block:015d}" for block in sorted(missing_town)[:5]]
+        raise ValueError(
+            f"{len(missing_town)} Connecticut block(s) have no county "
+            f"subdivision in the BAF MCD layer; examples: {examples}."
+        )
+    if unmapped_town:
+        raise ValueError(
+            "Connecticut county subdivision(s) absent from the planning-region "
+            f"crosswalk: {sorted(unmapped_town)[:10]}."
+        )
+    return result
+
+
+def cbsa_delineated_states(
+    cbsa_by_county: Mapping[str, int], states: Iterable[str]
+) -> list[str]:
+    """Return the ``states`` (2-digit FIPS) with any CBSA-delineated territory."""
+
+    delineated = {county[:2] for county in cbsa_by_county}
+    return sorted(state for state in set(states) if state in delineated)
+
+
+def us_block_ladder_cbsa_coverage_failures(ladder: UsBlockLadder) -> list[str]:
+    """Return one failure per CBSA-delineated state whose blocks all lack a CBSA.
+
+    Every state with OMB-delineated territory has populated blocks inside a
+    CBSA, so a state whose every block carries ``cbsa_code == 0`` is a join
+    defect (Connecticut's planning regions against 2020 counties was one).
+    The states come from the artifact's ``cbsa_delineated_states`` record.
+    Artifacts built before that record fall back to every state they
+    contain: the OMB 2023 delineations cover territory in all 50 states and
+    DC.
+    """
+
+    block_state = ladder.block_geoid // 10**13
+    present = {f"{state:02d}" for state in np.unique(block_state).tolist()}
+    recorded = ladder.metadata.get("cbsa_delineated_states")
+    if recorded is None:
+        delineated = sorted(present)
+    elif isinstance(recorded, list) and all(
+        isinstance(state, str) and state.isdigit() and len(state) == 2
+        for state in recorded
+    ):
+        delineated = sorted(set(recorded) & present)
+    else:
+        return [
+            "metadata cbsa_delineated_states must be a list of 2-digit state "
+            f"FIPS strings, got {recorded!r}"
+        ]
+    failures: list[str] = []
+    for state in delineated:
+        in_state = block_state == int(state)
+        if not (ladder.cbsa_code[in_state] > 0).any():
+            failures.append(
+                f"state {state}: all {int(in_state.sum()):,} populated blocks "
+                "have cbsa_code 0, although the CBSA delineation covers "
+                "territory there"
+            )
+    return failures
+
+
 def assemble_us_block_ladder(
     *,
     block_population: Mapping[int, int],
@@ -348,6 +610,7 @@ def assemble_us_block_ladder(
     place_by_block: Mapping[int, int],
     cbsa_by_county: Mapping[str, int],
     metadata: Mapping[str, Any],
+    cbsa_county_by_block: Mapping[int, str] | None = None,
 ) -> dict[str, np.ndarray]:
     """Join the parsed sources into the ladder artifact's NPZ payload.
 
@@ -355,6 +618,14 @@ def assemble_us_block_ladder(
     block the CD BEF does not cover is a source defect, not a skippable row.
     SLD and place maps may legitimately not cover a block (states without a
     layer); absent entries mean unassigned.
+
+    A block's CBSA is looked up by its county-equivalent in the delineation
+    vintage: its 2020 county, unless ``cbsa_county_by_block`` names another
+    (Connecticut's planning regions, from :func:`ct_planning_region_by_block`).
+    A state with any such entry must have one for every populated block.
+    Every delineated county-equivalent in a built state must be reached by at
+    least one populated block; one that is not means the delineation and the
+    blocks disagree on county-equivalents, and the join refuses.
     """
 
     blocks = np.asarray(sorted(block_population), dtype=np.int64)
@@ -378,8 +649,25 @@ def assemble_us_block_ladder(
     place = np.asarray(
         [place_by_block.get(block, 0) for block in blocks.tolist()], dtype=np.int32
     )
+    cbsa_counties = _cbsa_county_equivalents(blocks, cbsa_county_by_block or {})
+    built_states = {county[:2] for county in cbsa_counties}
+    reached = set(cbsa_counties)
+    unreached = sorted(
+        county
+        for county in cbsa_by_county
+        if county[:2] in built_states and county not in reached
+    )
+    if unreached:
+        raise ValueError(
+            f"{len(unreached)} CBSA-delineated county-equivalent(s) in the "
+            "built states match no populated block's county-equivalent; "
+            f"examples: {unreached[:10]}. The delineation and the blocks use "
+            "different county-equivalents (Connecticut's 2022 planning "
+            "regions against 2020 counties is the known case: pass "
+            "cbsa_county_by_block from ct_planning_region_by_block)."
+        )
     cbsa = np.asarray(
-        [cbsa_by_county.get(f"{block:015d}"[:5], 0) for block in blocks.tolist()],
+        [cbsa_by_county.get(county, 0) for county in cbsa_counties],
         dtype=np.int32,
     )
     return {
@@ -392,6 +680,63 @@ def assemble_us_block_ladder(
         "cbsa_code": cbsa,
         "metadata_json": np.asarray(json.dumps(dict(metadata), sort_keys=True)),
     }
+
+
+def _cbsa_county_equivalents(
+    blocks: np.ndarray, cbsa_county_by_block: Mapping[int, str]
+) -> list[str]:
+    """Each block's delineation county-equivalent (5-digit FIPS), in order."""
+
+    override_states: set[str] = set()
+    for block, county in cbsa_county_by_block.items():
+        geoid = f"{block:015d}"
+        if not (isinstance(county, str) and county.isdigit() and len(county) == 5):
+            raise ValueError(
+                f"cbsa_county_by_block maps block {geoid} to {county!r}; "
+                "expected a 5-digit county-equivalent FIPS."
+            )
+        if county[:2] != geoid[:2]:
+            raise ValueError(
+                f"cbsa_county_by_block maps block {geoid} to county-equivalent "
+                f"{county} in another state."
+            )
+        override_states.add(geoid[:2])
+    counties: list[str] = []
+    missing: list[int] = []
+    for block in blocks.tolist():
+        geoid = f"{block:015d}"
+        county = cbsa_county_by_block.get(block)
+        if county is None:
+            if geoid[:2] in override_states:
+                missing.append(block)
+            county = geoid[:5]
+        counties.append(county)
+    if missing:
+        examples = [f"{block:015d}" for block in missing[:5]]
+        raise ValueError(
+            f"{len(missing)} populated block(s) lack a county-equivalent in "
+            "cbsa_county_by_block although other blocks in their state have "
+            f"one; examples: {examples}."
+        )
+    return counties
+
+
+def _csv_lines(lines: Iterable[str]) -> Iterator[str]:
+    """Lines as csv needs them for quoted cells that span lines.
+
+    A byte-order mark ahead of the first quote would hide the quoting, and
+    csv joins a quoted cell's lines only when each keeps its terminator.
+    """
+    for index, line in enumerate(lines):
+        if index == 0:
+            line = line.removeprefix("\ufeff")
+        yield line if line.endswith(("\n", "\r")) else line + "\n"
+
+
+def _crosswalk_column_name(cell: str) -> str:
+    """Header cell → column name, dropping a parenthesized standard suffix."""
+    tokens = cell.split("(", 1)[0].split()
+    return tokens[0] if tokens else ""
 
 
 def _five_digit_code(value: str) -> int | None:
@@ -418,11 +763,17 @@ def _block_geoid(value: str, *, source: str) -> int:
 
 
 __all__ = [
+    "CT_STATE_FIPS",
     "US_STATES",
     "assemble_us_block_ladder",
+    "cbsa_delineated_states",
+    "ct_planning_region_by_block",
+    "parse_baf_county_subdivision_file",
     "parse_baf_district_file",
     "parse_baf_place_file",
     "parse_cbsa_delineations",
+    "parse_ct_planning_region_crosswalk",
     "parse_national_cd_bef",
     "parse_pl_geo_blocks",
+    "us_block_ladder_cbsa_coverage_failures",
 ]
