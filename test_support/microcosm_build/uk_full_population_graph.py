@@ -1,5 +1,6 @@
 """Synthetic full-build population graph: the seam-frame source kernel and
-the graph/registry pair the UK full-graph tests build on."""
+the graph/registry pair (legacy ladder draw or identity-keyed atomic-area
+assignment) the UK full-graph tests build on."""
 
 # ruff: noqa: F401
 
@@ -38,13 +39,25 @@ from test_support.microcosm_build.uk_ladder_rowwise_clone import (
     toy_ladder as toy_ladder,
 )
 
+SOURCE_VINTAGE = "toy_2023_24"
+
 
 def source_frame():
     original = _seam_frame()
     tables = {e: original.table(e).copy() for e in original.entities}
     tables["person"]["age"] = 40
     tables["benunit"]["would_claim_uc"] = True
-    tables["household"]["region"] = tables["household"]["region"].astype("string")
+    household = tables["household"]
+    household["region"] = household["region"].astype("string")
+    # Explicit spine lineage: every toy household is its own FRS original.
+    household["source_household_id"] = household["household_id"].astype("int64")
+    household["household_support_channel"] = pd.array(
+        ["frs"] * len(household), dtype="string"
+    )
+    household["household_support_clone_index"] = np.zeros(len(household), dtype="int64")
+    household["household_is_spi_synthetic"] = False
+    household["household_is_capital_gains_clone"] = False
+    household["household_is_cgt_band_donor"] = False
     return Frame(
         tables,
         original.schema,
@@ -68,9 +81,8 @@ class Source(KernelBase):
         return KernelResult(frame=source_frame())
 
 
-def graph_and_registry(k):
-    frame = source_frame()
-    source = Node(
+def source_node(frame):
+    return Node(
         "source",
         Source.ref,
         structural=StructuralDelta.CREATE,
@@ -94,14 +106,24 @@ def graph_and_registry(k):
             }
         ),
     )
+
+
+def graph_and_registry(k, *, geography_assignment="legacy", definition=None, seed=7):
     graph = append_uk_population_nodes(
-        Graph("uk", (SourceRef("fixture", "raw-bytes-v1"),), (source,)),
+        Graph(
+            "uk",
+            (SourceRef("fixture", "raw-bytes-v1"),),
+            (source_node(source_frame()),),
+        ),
         population="source",
         time_period="2023",
         weight_kind="importance",
         n_clones=k,
-        seed=7,
+        seed=seed,
         source_year=2023,
+        geography_assignment=geography_assignment,
+        atomic_geography_definition=definition,
+        source_vintage=SOURCE_VINTAGE if geography_assignment == "atomic" else None,
     )
     registry = KernelRegistry()
     registry.register(Source())

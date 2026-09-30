@@ -11,6 +11,7 @@ from microcosm.build.uk_runtime.national_frame import (
     write_uk_national_frame,
 )
 from microcosm.graph import ContentStore, compile_graph, run_graph
+from test_support.microcosm_build.uk_atomic_support_fixtures import write_toy_supports
 from test_support.microcosm_build.uk_calibration_run import _bound_checkpoint
 from test_support.microcosm_build.uk_full_population_graph import source_frame
 from test_support.microcosm_build.uk_ladder_rowwise_clone import (
@@ -47,6 +48,7 @@ def checkpoint_request(tmp_path, toy_ladder, monkeypatch):
             str(gates_path),
             "--ladder",
             str(ladder_path),
+            *support_arguments(tmp_path),
             "--ledger-facts",
             str(ledger),
             "--out",
@@ -60,6 +62,25 @@ def checkpoint_request(tmp_path, toy_ladder, monkeypatch):
     return args, sidecar_path, gates_path
 
 
+def support_arguments(tmp_path):
+    _, paths = write_toy_supports(tmp_path / "supports")
+    ew, scotland, ni = (paths[system] for system in sorted(paths, key=_system_order))
+    return [
+        "--atomic-support-ew",
+        str(ew),
+        "--atomic-support-scotland",
+        str(scotland),
+        "--atomic-support-ni",
+        str(ni),
+    ]
+
+
+def _system_order(system):
+    from microcosm.build.uk_runtime.atomic_area_support import SYSTEMS
+
+    return SYSTEMS.index(system)
+
+
 def test_prepare_real_checkpoint_preserves_source_year_and_wires_preflight(
     checkpoint_request, tmp_path
 ):
@@ -67,6 +88,24 @@ def test_prepare_real_checkpoint_preserves_source_year_and_wires_preflight(
     prepared = cli.prepare_full_build(args)
     assert prepared.full.config.source_year == 2023
     assert prepared.full.config.geography_levels is None
+    assert prepared.full.config.geography_assignment == "atomic"
+    geography = prepared.bindings["geography"]
+    assert geography["assignment"] == "atomic"
+    assert geography["identity"] == "geography_household_key"
+    assert geography["stream"][:2] == ["sha256-u53-v1", "uk-post-clone-atomic-area-v1"]
+    assert set(geography["support_pins"]) == {
+        "uk_ew_output_area_2021",
+        "uk_scotland_output_area_2022",
+        "uk_ni_data_zone_2021",
+    }
+    assert {
+        "uk_ew_output_area_2021_support",
+        "uk_scotland_output_area_2022_support",
+        "uk_ni_data_zone_2021_support",
+    } <= set(prepared.sources)
+    assert prepared.full.graph.node("uk.full.pool").artifact_inputs[0].producer == (
+        "uk.full.geography.gate"
+    )
     dense = prepared.full.graph.node("uk.full.dense")
     assert any(
         a.name == "preflight" and a.producer == "uk.full.gates.preflight"

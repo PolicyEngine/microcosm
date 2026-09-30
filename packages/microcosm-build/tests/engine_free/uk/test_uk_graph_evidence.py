@@ -243,6 +243,9 @@ def test_sample_admission_carries_the_transferred_gate_posture(synthetic_smoke):
         weight_kind="importance",
         sample_fraction=0.1,
         n_clones=2,
+        # The admission under test sits on the sample node, before any
+        # assignment; the legacy law needs no atomic definition here.
+        geography_assignment="legacy",
     )
     gate = graph.node("spine.gates.transferred")
     sample = graph.node("uk.full.sample")

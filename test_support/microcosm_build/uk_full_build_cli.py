@@ -78,6 +78,23 @@ from test_support.paths import paths_for
 PIN = "0" * 64
 
 STEM = "microcosm_uk_2024_25_local"
+SUPPORT_ARGUMENTS = (
+    "--atomic-support-ew",
+    "supports/ew.npz",
+    "--atomic-support-scotland",
+    "supports/scotland.npz",
+    "--atomic-support-ni",
+    "supports/ni.npz",
+)
+#: Synthetic support digests: a release candidate must pin all three.
+RELEASE_PINS = (
+    "--atomic-support-sha256-ew",
+    "c" * 64,
+    "--atomic-support-sha256-scotland",
+    "d" * 64,
+    "--atomic-support-sha256-ni",
+    "e" * 64,
+)
 
 _TEST_PATHS = paths_for("microcosm-build")
 
@@ -93,14 +110,26 @@ def _placeholder(path: Path, payload: bytes) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
+def arguments(
+    tmp_path,
+    *extra,
+    role="dense",
+    staging="--no-staging",
+    supports=SUPPORT_ARGUMENTS,
+    release_pins=None,
+):
     """A dense request over stand-in input files, with staging disabled.
 
     The pins are the stand-ins' real digests so the validator and a real
     preparation would both accept them; the Ledger pins are synthetic
     because these tests never compile targets. ``staging=None`` passes no
     staging switch at all, which is the remote (``local_and_remote``) mode.
+    The atomic-area supports are unread stand-in paths (these tests stub the
+    preparation) and a ``--release-candidate`` request gets the synthetic
+    support pins unless ``release_pins`` says otherwise.
     """
+    if release_pins is None:
+        release_pins = RELEASE_PINS if "--release-candidate" in extra else ()
     spine = tmp_path / "spine.h5"
     ladder = tmp_path / "ladder.npz"
     return _PARSE_ARGS(
@@ -115,6 +144,8 @@ def arguments(tmp_path, *extra, role="dense", staging="--no-staging"):
             str(ladder),
             "--ladder-sha256",
             _placeholder(ladder, b"ladder stand-in"),
+            *supports,
+            *release_pins,
             "--ledger-facts",
             str(tmp_path / "ledger"),
             "--ledger-facts-sha256",

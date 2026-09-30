@@ -19,6 +19,9 @@ from microcosm.build.uk_runtime import (
     graph_targets,
     ledger_targets,
 )
+from microcosm.build.uk_runtime.atomic_area_support import (
+    uk_atomic_assignment_definition,
+)
 from microcosm.build.uk_runtime.graph_build import (
     UKFullBuildConfig,
     register_uk_full_kernels,
@@ -44,10 +47,15 @@ from microcosm.graph import (
     compile_graph,
     run_graph,
 )
+from test_support.microcosm_build.uk_atomic_support_fixtures import (
+    toy_support_sources,
+    write_toy_supports,
+)
 from test_support.microcosm_build.uk_full_calibration_graph import (
     preflight_payload,
 )
 from test_support.microcosm_build.uk_full_population_graph import (
+    SOURCE_VINTAGE,
     Source,
     graph_and_registry,
 )
@@ -225,6 +233,7 @@ def build(
     dataset_households=None,
     resume="auto",
     forbid_execution=False,
+    geography_assignment="atomic",
 ):
     primitive, _ = graph_and_registry(1)
     base = Graph(
@@ -239,11 +248,24 @@ def build(
         n_clones=n_clones,
         geography_levels=levels,
         seed=seed,
+        geography_assignment=geography_assignment,
+        source_vintage=SOURCE_VINTAGE,
         calibration=UKGraphCalibrationConfig(
             epochs=8, seed=seed, dataset_households=dataset_households
         ),
     )
-    full = uk_full_graph(config, spine=base, spine_population="source")
+    payloads, support_paths = write_toy_supports(tmp_path / "supports")
+    definition = (
+        uk_atomic_assignment_definition(payloads, seed=seed)
+        if geography_assignment == "atomic"
+        else None
+    )
+    full = uk_full_graph(
+        config,
+        spine=base,
+        spine_population="source",
+        atomic_geography_definition=definition,
+    )
     preflight = Node(
         "fixture.preflight",
         Preflight.ref,
@@ -300,6 +322,11 @@ def build(
             "fixture": ladder_path,
             "uk_ladder": ladder_path,
             "uk_ledger_facts": ladder_path,
+            **(
+                toy_support_sources(support_paths)
+                if geography_assignment == "atomic"
+                else {}
+            ),
         },
         store=store,
         kernels=registry,
