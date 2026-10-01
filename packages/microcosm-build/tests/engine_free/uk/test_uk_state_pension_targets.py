@@ -63,12 +63,13 @@ def _filter(binding: dict, variable: str, operator: str = "==") -> list:
     ]
 
 
-def test_the_state_pension_family_is_26_targets_and_60_references() -> None:
+def test_the_state_pension_family_is_26_targets_and_59_references() -> None:
     targets = _pension_targets()
     references = _pension_references()
 
     assert len(targets) == 26
-    assert len(references) == 60
+    # The empty new State Pension £40-£60 band is signed out (no frame support).
+    assert len(references) == 59
     assert {target["category_id"] for target in targets} == {
         "dwp.state_pension",
         "dfc_ni.state_pension",
@@ -161,8 +162,9 @@ def test_the_amount_bands_keep_the_points_paid_at_the_2025_26_rate() -> None:
         for reference in _pension_references()
         if "_by_weekly_amount." in reference.name
     ]
-    assert len(rows) == 20
+    assert len(rows) == 19
     assert not any("grouped_amount_of_benefit_all" in name for name in rows)
+    assert not any("40_00_to_under_60_00__new_state_pension" in name for name in rows)
 
 
 def _state_pension_facts() -> list[dict]:

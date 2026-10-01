@@ -557,7 +557,7 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
     pension = [
         reference for reference in references if reference.family == "dwp_state_pension"
     ]
-    assert len(pension) == 60
+    assert len(pension) == 59
     for reference in pension:
         months = json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS])
         assert months == reference.ledger_selector["period_value"]

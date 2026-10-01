@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1211
+ACTIVE_REFERENCE_COUNT = 1210
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -750,9 +750,9 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1211,
+        "active": 1210,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 15,
+        "signed_excluded": 16,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
@@ -863,14 +863,16 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "dwp_state_pension",
             "status": "active_english_region_and_amount_band_fanout",
-            # 18 English-region cells and 20 weekly amount bands (microcosm#1069).
-            "active_reference_count": 38,
+            # 18 English-region cells and 19 weekly amount bands: the empty new
+            # State Pension £40-£60 band is signed out (microcosm#1069).
+            "active_reference_count": 37,
             "signed_rationale": (
                 "The State Pension recipients by type fan out over the nine "
                 "English regions (Scotland and Wales are their own rows, since "
                 "DWP publishes no Northern Ireland cell for a twelve-area tier) "
                 "and over DWP's weekly amount bands, whose 'all' margin is a "
-                "total row the detail measure pin leaves out (microcosm#1069)."
+                "total row the detail measure pin leaves out; the empty new "
+                "State Pension £40-£60 band is signed out (microcosm#1069)."
             ),
         },
     ]
@@ -895,7 +897,22 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         ("hmrc.cgt.taxpayers_by_gain_band", "hmrc/cgt_taxpayers_band_0"),
     ]
     assert all(entry["status"] == "signed_excluded" for entry in cgt_rows)
-    assert [entry for entry in rationales if entry["family"] != "hmrc_cgt"] == [
+    pension_rows = [
+        entry for entry in rationales if entry["family"] == "dwp_state_pension"
+    ]
+    assert [(entry["target_id"], entry["row"]) for entry in pension_rows] == [
+        (
+            "dwp.state_pension.recipients_new_by_weekly_amount",
+            "dwp.state_pension.recipients_new_by_weekly_amount."
+            "40_00_to_under_60_00__new_state_pension",
+        )
+    ]
+    assert "no record on the frame" in pension_rows[0]["signed_rationale"]
+    assert [
+        entry
+        for entry in rationales
+        if entry["family"] not in {"hmrc_cgt", "dwp_state_pension"}
+    ] == [
         {
             "family": "hmrc_spi",
             "target_id": "hmrc.spi.property_income.amount_by_total_income_band",

@@ -3,11 +3,11 @@
   "target_period": 2025,
   "candidate_count": 1233,
   "contract_target_count": 320,
-  "active_reference_count": 1211,
+  "active_reference_count": 1210,
   "status_counts": {
-    "active": 1211,
+    "active": 1210,
     "no_fact_at_or_before_period": 7,
-    "signed_excluded": 15
+    "signed_excluded": 16
   },
   "geography_pins": {
     "obr.income_tax": {
@@ -28627,14 +28627,14 @@
         },
         {
           "name": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
-          "status": "active",
+          "status": "signed_excluded",
           "matched_fact_count_overall": 3,
           "matched_fact_count_at_or_before_period": 3,
-          "matched_fact_count_in_source_window": 3,
-          "resolved_period": 2025,
-          "resolved_value": 2903.0,
-          "resolved_fact_period": "2025-11",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_94b2164b496c302cf91c77e6"
+          "signed_row": {
+            "dimension": "grouped_amount_of_benefit",
+            "value": "\u00a340.00 to under \u00a360.00"
+          },
+          "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the two nearest (\u00a358.59 a week) restate to \u00a360.99 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
         },
         {
           "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
@@ -28823,8 +28823,8 @@
     {
       "family": "dwp_state_pension",
       "status": "active_english_region_and_amount_band_fanout",
-      "active_reference_count": 38,
-      "signed_rationale": "The State Pension recipients by type fan out over the nine English regions (Scotland and Wales are their own rows, since DWP publishes no Northern Ireland cell for a twelve-area tier) and over DWP's weekly amount bands, whose 'all' margin is a total row the detail measure pin leaves out (microcosm#1069)."
+      "active_reference_count": 37,
+      "signed_rationale": "The State Pension recipients by type fan out over the nine English regions (Scotland and Wales are their own rows, since DWP publishes no Northern Ireland cell for a twelve-area tier) and over DWP's weekly amount bands, whose 'all' margin is a total row the detail measure pin leaves out; the empty new State Pension \u00a340-\u00a360 band is signed out (microcosm#1069)."
     }
   ],
   "signed_exclusion_rationales": [
@@ -28839,6 +28839,13 @@
       "target_id": "ons.population.scotland_households_3plus_children",
       "status": "signed_excluded",
       "signed_rationale": "Signed out pending a Scotland household-composition fact: the current selector reaches person-level ONS mid-year population age rows, not households with three or more children. microcosm#736 tracks the missing declaration."
+    },
+    {
+      "family": "dwp_state_pension",
+      "target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
+      "row": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
+      "status": "signed_excluded",
+      "signed_rationale": "DWP's new State Pension \u00a340.00 to under \u00a360.00 a week cell (2,903 recipients over May to November 2025, 0.06% of new State Pension recipients) has no record on the frame: about thirty distinct new State Pension recipients report under \u00a3100 a week in FRS 2024-25, and the two nearest (\u00a358.59 a week) restate to \u00a360.99 at the 2025 rate the engine pays, so the row would always measure zero. Signed out of the weekly-amount fan-out; the other nine new State Pension bands stay bound."
     },
     {
       "family": "hmrc_cgt",

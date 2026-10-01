@@ -938,7 +938,8 @@ def _add_uk_membership_accounting(
                 "English regions (Scotland and Wales are their own rows, since "
                 "DWP publishes no Northern Ireland cell for a twelve-area tier) "
                 "and over DWP's weekly amount bands, whose 'all' margin is a "
-                "total row the detail measure pin leaves out (microcosm#1069)."
+                "total row the detail measure pin leaves out; the empty new "
+                "State Pension £40-£60 band is signed out (microcosm#1069)."
             ),
         },
     ]
@@ -960,15 +961,27 @@ def _add_uk_membership_accounting(
             ]["candidates"][0]["signed_rationale"],
         },
     ]
+    row_families = (
+        ("hmrc.cgt.", "hmrc_cgt"),
+        ("dwp.state_pension.", "dwp_state_pension"),
+    )
     for target_id, entry in sorted(report["targets"].items()):
-        if not str(target_id).startswith("hmrc.cgt."):
+        family = next(
+            (
+                name
+                for prefix, name in row_families
+                if str(target_id).startswith(prefix)
+            ),
+            None,
+        )
+        if family is None:
             continue
         for candidate in entry["candidates"]:
             if candidate.get("status") != "signed_excluded":
                 continue
             report["signed_exclusion_rationales"].append(
                 {
-                    "family": "hmrc_cgt",
+                    "family": family,
                     "target_id": target_id,
                     "row": candidate["name"],
                     "status": "signed_excluded",

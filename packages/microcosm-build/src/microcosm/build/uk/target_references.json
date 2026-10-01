@@ -43758,45 +43758,6 @@
       "value_operation": "monthly_window_average"
     },
     {
-      "name": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": [
-          "dwp.state_pension_caseload"
-        ],
-        "source_measure_id": "recipients",
-        "groupby_dimension": "dwp.state_pension_amount_band_type",
-        "dimensions": [
-          "category_of_pension",
-          "grouped_amount_of_benefit"
-        ],
-        "dimension_values": {
-          "category_of_pension": "New State Pension",
-          "grouped_amount_of_benefit": "\u00a340.00 to under \u00a360.00"
-        },
-        "entity_name": "person",
-        "period_type": "month",
-        "period_value": [
-          "2025-05",
-          "2025-08",
-          "2025-11"
-        ],
-        "geography_level": "country",
-        "geography_id": "K03000001"
-      },
-      "entity": "person",
-      "measure": "dwp.state_pension.recipients_new_by_weekly_amount.40_00_to_under_60_00__new_state_pension",
-      "family": "dwp_state_pension",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "dwp.state_pension.recipients_new_by_weekly_amount",
-        "measure_kind": "prepared_column",
-        "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
-      },
-      "period_match_policy": "source_window",
-      "value_operation": "monthly_window_average"
-    },
-    {
       "name": "dwp.state_pension.recipients_new_by_weekly_amount.60_00_to_under_80_00__new_state_pension",
       "ledger_selector": {
         "source_name": "dwp",
