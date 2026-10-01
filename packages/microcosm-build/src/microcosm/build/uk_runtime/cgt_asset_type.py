@@ -95,7 +95,7 @@ family gate requires.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from importlib.resources import files
 from pathlib import Path
@@ -132,27 +132,29 @@ __all__ = [
     "CGT_ASSET_TYPE_NONE",
     "CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES",
     "CGT_ASSET_TYPE_RESIDENTIAL",
-    "CGT_ASSET_TYPE_SEED",
     "CGT_ASSET_TYPE_SUB_AEA",
     "CGT_BADR_ELIGIBLE_TYPES",
     "CGT_BADR_FLAG_SEED",
     "CGT_BADR_GAINS_COLUMN",
+    "CGT_CLAIMANT_STATUSES",
     "CGT_RESIDENTIAL_FLAG_SEED",
     "CGT_RESIDENTIAL_GAINS_COLUMN",
+    "CGT_RESIDENTIAL_TOP_STAKE_ROWS",
+    "HMRCCGTAssetTypeFacts",
+    "HMRCCGTBADRBand",
     "HMRC_CGT_ASSET_TYPE_RECORD_SETS",
     "HMRC_CGT_ASSET_TYPE_RESOURCE",
     "HMRC_CGT_TABLE4_BAND_LOWER_BOUNDS",
     "HMRC_CGT_TABLE4_SOURCE_SHA256",
     "HMRC_CGT_TABLE7_SOURCE_SHA256",
     "HMRC_CGT_TABLE8_SOURCE_SHA256",
-    "HMRCCGTAssetTypeFacts",
-    "HMRCCGTBADRBand",
     "UKCGTAssetTypeStageTransform",
     "UKCGTAssetTypeSummary",
     "UKCGTBADRParameters",
     "UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON",
     "UK_CGT_ASSET_TYPE_STAGE_NAME",
     "assign_uk_cgt_asset_types",
+    "claimant_status_share_targets",
     "load_hmrc_cgt_asset_type_facts",
     "uk_cgt_asset_type_stage_transform",
     "uk_cgt_badr_parameters",
@@ -258,7 +260,9 @@ CGT_ASSET_TYPE_LOG_SIGMA = 1.5
 #: distinct from the amounts stage's 552 so the two stages never share a
 #: stream.
 CGT_RESIDENTIAL_FLAG_SEED = 553
-CGT_ASSET_TYPE_SEED = 554
+#: Rows the residential receipt's concentration reading covers: the share of
+#: the realised residential gains on this many of the largest flagged stakes.
+CGT_RESIDENTIAL_TOP_STAKE_ROWS = 10
 CGT_BADR_FLAG_SEED = 555
 
 _BISECTION_ITERATIONS = 200
@@ -915,11 +919,113 @@ def _weighted_systematic_flags(
     owed = 0.0
     for index in order:
         weight = float(weights[index])
+        if weight <= 0.0:
+            # A row without weight carries no mass to flag or to owe.
+            continue
         owed += weight * float(probabilities[index])
         if owed >= (1.0 - offset) * weight:
             flags[index] = True
             owed -= weight
     return flags
+
+
+def _banded_systematic_flags(
+    *,
+    probabilities: np.ndarray,
+    weights: np.ndarray,
+    gains: np.ndarray,
+    person_id: np.ndarray,
+    band_lower_bounds: Sequence[float],
+    offsets: np.ndarray,
+) -> tuple[np.ndarray, list[dict[str, object]]]:
+    """Weighted systematic sampling within each gain band (microcosm#1063).
+
+    Each band is walked on its own, in ascending ``(gain, person_id)`` order,
+    with its own offset and a balance that starts at zero. One walk over the
+    whole population let the balance a heavy row leaves behind be paid by the
+    next row whatever its weight, so a light row at the top of the gains order
+    was flagged far more often than its own probability; a band's walk can
+    only carry the balance of that band's rows.
+
+    The walk's balance after every step lies in ``[-theta W, (1 - theta) W)``
+    with ``theta`` the band's offset and ``W`` its largest weight. The realised
+    count therefore sits within ``max(theta, 1 - theta) W`` of the expected
+    count, and, summing by parts along the ascending gains, the realised gains
+    within ``W (g_max - min(theta, 1 - theta) g_min)`` of the expected gains.
+    Both bounds are returned per band; they are properties of the walk, not
+    tolerances.
+    """
+
+    flags = np.zeros(probabilities.shape, dtype=bool)
+    bounds = np.asarray(band_lower_bounds, dtype=float)
+    if offsets.shape != bounds.shape:
+        raise ValueError("One offset per gain band is required.")
+    band = np.searchsorted(bounds, gains, side="right") - 1
+    if (band < 0).any():
+        raise ValueError("A gain lies below the lowest gain band.")
+    receipts: list[dict[str, object]] = []
+    for position, lower in enumerate(bounds):
+        rows = np.flatnonzero(band == position)
+        theta = float(offsets[position])
+        receipt: dict[str, object] = {
+            "gain_lower_bound": float(lower),
+            "gain_upper_bound": (
+                float(bounds[position + 1]) if position + 1 < bounds.size else None
+            ),
+            "offset": theta,
+            "pool_rows": int(rows.size),
+        }
+        if rows.size == 0:
+            receipt.update(
+                {
+                    key: 0.0
+                    for key in (
+                        "pool_mass",
+                        "pool_gains",
+                        "max_pool_weight",
+                        "expected_count",
+                        "expected_gains",
+                        "achieved_count",
+                        "achieved_gains",
+                        "count_bound",
+                        "gains_bound",
+                    )
+                }
+            )
+            receipt["achieved_rows"] = 0
+            receipts.append(receipt)
+            continue
+        order = rows[np.lexsort((person_id[rows], gains[rows]))]
+        band_flags = _weighted_systematic_flags(probabilities, weights, order, theta)
+        flags |= band_flags
+        band_weights = weights[rows]
+        band_gains = gains[rows]
+        flagged = band_flags[rows]
+        heaviest = float(band_weights.max())
+        lean = min(theta, 1.0 - theta)
+        receipt.update(
+            {
+                "pool_mass": float(band_weights.sum()),
+                "pool_gains": float((band_weights * band_gains).sum()),
+                "pool_min_gain": float(band_gains.min()),
+                "pool_max_gain": float(band_gains.max()),
+                "max_pool_weight": heaviest,
+                "expected_count": float((band_weights * probabilities[rows]).sum()),
+                "expected_gains": float(
+                    (band_weights * band_gains * probabilities[rows]).sum()
+                ),
+                "achieved_count": float(band_weights[flagged].sum()),
+                "achieved_gains": float(
+                    (band_weights[flagged] * band_gains[flagged]).sum()
+                ),
+                "achieved_rows": int(flagged.sum()),
+                "count_bound": max(theta, 1.0 - theta) * heaviest,
+                "gains_bound": heaviest
+                * (float(band_gains.max()) - lean * float(band_gains.min())),
+            }
+        )
+        receipts.append(receipt)
+    return flags, receipts
 
 
 # ---------------------------------------------------------------------------
@@ -1219,6 +1325,92 @@ def fit_type_weights(
     return type_weights, probabilities, iterations
 
 
+CGT_CLAIMANT_STATUSES: tuple[str, ...] = ("claimants", "non_claimants")
+
+
+def claimant_status_share_targets(
+    share_targets: Mapping[str, float], claimant_gains_share: float
+) -> dict[str, dict[str, float]]:
+    """Table 7's composition split by claimant status (microcosm#1063).
+
+    Claimants take Table 7's shares among the types the reliefs apply to,
+    ``c_t = s_t / S_E`` with ``S_E`` those types' summed share; non-claimants
+    take the shares that restore the published composition over everyone,
+    ``n_t = (s_t - k c_t) / (1 - k)`` with ``k`` the claimants' share of the
+    non-residential gains. A non-claimant share is negative exactly when ``k``
+    exceeds ``S_E``, which the stage refuses before it calls this.
+    """
+
+    eligible_share = float(sum(share_targets[name] for name in CGT_BADR_ELIGIBLE_TYPES))
+    if not eligible_share > 0.0:
+        raise ValueError("Table 7 gives the BADR-eligible types no gains share.")
+    if not 0.0 <= claimant_gains_share < 1.0:
+        raise ValueError(
+            f"The claimants' share of the non-residential gains must lie in "
+            f"[0, 1), got {claimant_gains_share}."
+        )
+    claimants = {
+        name: (
+            float(share_targets[name]) / eligible_share
+            if name in CGT_BADR_ELIGIBLE_TYPES
+            else 0.0
+        )
+        for name in CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES
+    }
+    non_claimants = {
+        name: (float(share_targets[name]) - claimant_gains_share * claimants[name])
+        / (1.0 - claimant_gains_share)
+        for name in CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES
+    }
+    if min(non_claimants.values()) < -_SHARE_FIT_TOLERANCE:
+        raise ValueError(
+            "The non-claimant composition that restores Table 7 has a negative "
+            f"share: {non_claimants}."
+        )
+    return {
+        "claimants": claimants,
+        "non_claimants": {
+            name: max(share, 0.0) for name, share in non_claimants.items()
+        },
+    }
+
+
+def _diffuse_types(
+    probabilities: np.ndarray, stakes: np.ndarray, order: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Assign one type per person so the realised gains by type track the fit.
+
+    Walking the persons in ``order``, each adds its stake (weight times gain)
+    times its type probabilities to a running balance per type and takes the
+    type it may hold whose balance is largest, which is then drawn down by the
+    whole stake. An independent draw lets a handful of heavy rows decide the
+    realised composition; here every row's assignment repays what the rows
+    before it left owing, so the realised gains by type stay within a few of
+    the largest stakes of the fitted composition throughout. Returns the type
+    index per person and the final balances (expected less realised gains).
+    """
+
+    choice = np.zeros(stakes.shape, dtype=int)
+    owed = np.zeros(probabilities.shape[1])
+    for index in order:
+        row = probabilities[index]
+        stake = float(stakes[index])
+        owed += stake * row
+        chosen = int(np.argmax(np.where(row > 0.0, owed, -np.inf)))
+        choice[index] = chosen
+        owed[chosen] -= stake
+    return choice, owed
+
+
+def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float | None:
+    if values.size == 0 or not float(weights.sum()) > 0.0:
+        return None
+    order = np.argsort(values, kind="stable")
+    cumulative = np.cumsum(weights[order])
+    position = int(np.searchsorted(cumulative, 0.5 * cumulative[-1], side="left"))
+    return float(values[order][min(position, values.size - 1)])
+
+
 # ---------------------------------------------------------------------------
 # Stage
 # ---------------------------------------------------------------------------
@@ -1257,7 +1449,6 @@ def assign_uk_cgt_asset_types(
     *,
     residential_seed: int = CGT_RESIDENTIAL_FLAG_SEED,
     badr_seed: int = CGT_BADR_FLAG_SEED,
-    asset_type_seed: int = CGT_ASSET_TYPE_SEED,
     mass_change_reason: str = UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
 ) -> tuple[Frame, UKCGTAssetTypeSummary]:
     """Write the asset-type, residential gains and BADR qualifying gains columns."""
@@ -1311,9 +1502,13 @@ def assign_uk_cgt_asset_types(
     )
     probabilities = _logistic(np.log(liable_gains) - centre, a, b, residential_offset)
     rng_flag = np.random.default_rng((residential_seed, int(time_period)))
-    order = np.lexsort((person_id[liable_index], liable_gains))
-    flags = _weighted_systematic_flags(
-        probabilities, liable_weights, order, float(rng_flag.random())
+    flags, residential_bands = _banded_systematic_flags(
+        probabilities=probabilities,
+        weights=liable_weights,
+        gains=liable_gains,
+        person_id=person_id[liable_index],
+        band_lower_bounds=HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
+        offsets=rng_flag.random(len(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS)),
     )
     residential_rows = liable_index[flags]
     asset_type[residential_rows] = CGT_ASSET_TYPE_RESIDENTIAL
@@ -1400,33 +1595,85 @@ def assign_uk_cgt_asset_types(
             f"reliefs apply to ({eligible_share_target}); the restricted type "
             "fit cannot reach the Table 7 shares."
         )
-    type_weights = np.full(len(CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES), np.nan)
-    fit_iterations = 0
-    if remainder_index.size:
-        allowed = np.ones(
-            (remainder_index.size, len(CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES)),
-            dtype=bool,
+    type_names = CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES
+    status_targets = claimant_status_share_targets(share_targets, claimant_gains_share)
+    status_reports: dict[str, dict[str, object]] = {}
+    remainder_types = np.zeros(remainder_index.size, dtype=int)
+    for status in CGT_CLAIMANT_STATUSES:
+        in_status = (
+            claimant_in_remainder if status == "claimants" else ~claimant_in_remainder
         )
-        allowed[claimant_in_remainder] = eligible_type
-        allowed = allowed * stocks["type_factor"][remainder_index]
-        type_weights, type_probabilities, fit_iterations = fit_type_weights(
-            gains[remainder_index],
-            person_weight[remainder_index],
+        rows = remainder_index[in_status]
+        targets = status_targets[status]
+        report: dict[str, object] = {
+            "rows": int(rows.size),
+            "target_gains_share": dict(targets),
+        }
+        status_reports[status] = report
+        if rows.size == 0:
+            continue
+        allowed = stocks["type_factor"][rows].copy()
+        if status == "claimants":
+            allowed = allowed * eligible_type
+        fitted_weights, type_probabilities, iterations = fit_type_weights(
+            gains[rows],
+            person_weight[rows],
             medians=medians,
-            share_targets=share_targets,
+            share_targets=targets,
             allowed=allowed,
         )
-        rng_type = np.random.default_rng((asset_type_seed, int(time_period)))
-        # Draws are consumed in person order so the stream is reproducible.
-        remainder_order = np.argsort(person_id[remainder_index], kind="stable")
-        uniforms = np.empty(remainder_index.size)
-        uniforms[remainder_order] = rng_type.random(remainder_index.size)
-        cumulative = np.cumsum(type_probabilities, axis=1)
-        choice = (uniforms[:, None] > cumulative).sum(axis=1)
-        choice = np.minimum(choice, len(CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES) - 1)
-        asset_type[remainder_index] = np.asarray(
-            CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES, dtype=object
-        )[choice]
+        stakes = person_weight[rows] * gains[rows]
+        # Largest gain first, so the rows that could move the composition most
+        # are placed while every later row can still repay the balance.
+        order = np.lexsort((person_id[rows], -gains[rows]))
+        choice, balances = _diffuse_types(type_probabilities, stakes, order)
+        remainder_types[in_status] = choice
+        mass = float(stakes.sum())
+        expected = (stakes[:, None] * type_probabilities).sum(axis=0)
+        realised = np.asarray(
+            [float(stakes[choice == index].sum()) for index in range(len(type_names))]
+        )
+        assigned_probability = type_probabilities[np.arange(rows.size), choice]
+        report.update(
+            {
+                "gains_mass": mass,
+                "type_weights": {
+                    name: float(fitted_weights[index])
+                    for index, name in enumerate(type_names)
+                },
+                "share_fit_iterations": int(iterations),
+                "expected_gains_share": {
+                    name: float(expected[index] / mass) if mass > 0.0 else 0.0
+                    for index, name in enumerate(type_names)
+                },
+                "achieved_gains_share": {
+                    name: float(realised[index] / mass) if mass > 0.0 else 0.0
+                    for index, name in enumerate(type_names)
+                },
+                "final_balance": {
+                    name: float(balances[index])
+                    for index, name in enumerate(type_names)
+                },
+                "largest_stake": float(stakes.max()),
+                # How far the walk departs from the fit row by row: the
+                # stake-weighted mean fitted probability of the type taken,
+                # beside what an independent draw gives in expectation.
+                "mean_assigned_probability": (
+                    float((stakes * assigned_probability).sum() / mass)
+                    if mass > 0.0
+                    else 0.0
+                ),
+                "independent_draw_mean_probability": (
+                    float((stakes * (type_probabilities**2).sum(axis=1)).sum() / mass)
+                    if mass > 0.0
+                    else 0.0
+                ),
+            }
+        )
+    if remainder_index.size:
+        asset_type[remainder_index] = np.asarray(type_names, dtype=object)[
+            remainder_types
+        ]
 
     if (asset_type[liable] == CGT_ASSET_TYPE_NONE).any() or (
         asset_type[liable] == CGT_ASSET_TYPE_SUB_AEA
@@ -1438,15 +1685,16 @@ def assign_uk_cgt_asset_types(
     # Reporting.
     expected_count = float((liable_weights * probabilities).sum())
     expected_gains = float((liable_weights * liable_gains * probabilities).sum())
-    bernoulli = probabilities * (1.0 - probabilities)
-    count_sigma = float(np.sqrt((liable_weights**2 * bernoulli).sum()))
-    gains_sigma = float(
-        np.sqrt(((liable_weights * liable_gains) ** 2 * bernoulli).sum())
-    )
     achieved_count = float(person_weight[residential_rows].sum())
     achieved_gains = float(
         residential_gains[residential_rows].dot(person_weight[residential_rows])
     )
+    # Concentration: how much of the realised residential gains, and of the
+    # target, rides on single rows. A stake is one row's weight times its gain.
+    liable_stakes = liable_weights * liable_gains
+    flagged_stakes = np.sort(liable_stakes[flags])[::-1]
+    top_stakes = float(flagged_stakes[:CGT_RESIDENTIAL_TOP_STAKE_ROWS].sum())
+    largest_pool_stake = float(liable_stakes.max()) if liable_stakes.size else 0.0
     residential = {
         "count_target_individuals_basis": count_target,
         "gains_target_individuals_basis": gains_target,
@@ -1456,8 +1704,25 @@ def assign_uk_cgt_asset_types(
         "achieved_gains": achieved_gains,
         "achieved_rows": int(residential_rows.size),
         "max_liable_weight": float(liable_weights.max()),
-        "count_bernoulli_sigma": count_sigma,
-        "gains_bernoulli_sigma": gains_sigma,
+        "walk": "per gain band, ascending (gain, person_id), one offset per band",
+        "bands": residential_bands,
+        "count_bound": float(
+            sum(float(row["count_bound"]) for row in residential_bands)
+        ),
+        "gains_bound": float(
+            sum(float(row["gains_bound"]) for row in residential_bands)
+        ),
+        "top_stake_rows": CGT_RESIDENTIAL_TOP_STAKE_ROWS,
+        "top_stakes_share_of_achieved_gains": (
+            top_stakes / achieved_gains if achieved_gains > 0.0 else 0.0
+        ),
+        "largest_flagged_stake": (
+            float(flagged_stakes[0]) if flagged_stakes.size else 0.0
+        ),
+        "largest_pool_stake": largest_pool_stake,
+        "largest_pool_stake_share_of_gains_target": (
+            largest_pool_stake / gains_target if gains_target > 0.0 else 0.0
+        ),
         "logistic_intercept": float(a),
         "logistic_slope": float(b),
         "log_gain_centre": float(centre),
@@ -1490,13 +1755,15 @@ def assign_uk_cgt_asset_types(
     asset_type_report = {
         "log_sigma": CGT_ASSET_TYPE_LOG_SIGMA,
         "median_anchor_gbp": medians,
-        "type_weights": {
-            asset_type_name: float(type_weights[index])
-            for index, asset_type_name in enumerate(
-                CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES
+        "composition_by_claimant_status": status_reports,
+        "realization": "error diffusion in descending (gain, person_id) order",
+        "achieved_median_gain_gbp": {
+            asset_type_name: _weighted_median(
+                gains[asset_type == asset_type_name],
+                person_weight[asset_type == asset_type_name],
             )
+            for asset_type_name in CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES
         },
-        "share_fit_iterations": int(fit_iterations),
         "target_gains_share": dict(share_targets),
         "achieved_gains_share": {
             asset_type_name: (value / remainder_mass if remainder_mass > 0 else 0.0)
@@ -1621,7 +1888,6 @@ def assign_uk_cgt_asset_types(
         seeds={
             "residential_flag": residential_seed,
             "badr_flag": badr_seed,
-            "asset_type": asset_type_seed,
         },
     )
 
@@ -1759,13 +2025,19 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
                 "attributed to residential property"
             ),
             "realization": (
-                "weighted systematic sampling in ascending gain order with one "
-                "seeded offset: a person is flagged when the expected weight owed "
-                "so far reaches their own weight, so the flagged weight tracks the "
-                "expected weight within one person's weight along the gains axis "
-                "and the realised count and gains sit close to their expectations; "
-                "the Bernoulli sigma of each is reported as the envelope"
+                "weighted systematic sampling within each HMRC gain band in "
+                "ascending (gain, person_id) order with one seeded offset per "
+                "band, drawn in band order: a person is flagged when the expected "
+                "weight owed so far in the band reaches their own weight, and the "
+                "balance starts at zero in every band, so a heavy row's balance is "
+                "never paid by a row of another band; per band the realised count "
+                "sits within max(offset, 1 - offset) of the band's largest weight "
+                "of its expectation and the realised gains within that weight "
+                "times (largest gain - min(offset, 1 - offset) x smallest gain), "
+                "the walk's own bounds, reported per band with the share of the "
+                "realised gains on the ten largest flagged stakes"
             ),
+            "gain_band_lower_bounds": list(HMRC_CGT_GAIN_BAND_LOWER_BOUNDS),
             "seed": CGT_RESIDENTIAL_FLAG_SEED,
             "seed_mixing": "seed combined with the build period",
             "output_column": CGT_RESIDENTIAL_GAINS_COLUMN,
@@ -1860,22 +2132,38 @@ def cgt_asset_type_operation_parameters() -> dict[str, dict[str, Any]]:
                 "Table 7 2023-24 gains by asset type excluding residential land "
                 "and buildings, as shares"
             ),
+            "claimant_share_targets": (
+                "the share targets among the claimant categories, each over their sum"
+            ),
+            "non_claimant_share_targets": (
+                "(share target - k x claimant share target) / (1 - k) with k the "
+                "claimants' share of the non-residential gains, the composition "
+                "that restores the share targets over claimants and non-claimants "
+                "together"
+            ),
+            "basis_assumption": (
+                "Table 7 does not split gains by relief, so claimants are given "
+                "its composition among the claimant categories"
+            ),
             "weight_fitting": (
-                "multiplicative updates of the type weights, with claimants "
-                "restricted to the claimant categories, until the "
-                "household-weighted expected gains shares by type match the share "
-                "targets; the fit refuses if it has not converged within the "
-                "iteration limit, and refuses up front when claimants hold more "
-                "of the gains than the claimant categories' share"
+                "one fit per claimant status: multiplicative updates of the type "
+                "weights until the household-weighted expected gains shares by "
+                "type match that status's share targets; a fit refuses if it has "
+                "not converged within the iteration limit, and the stage refuses "
+                "up front when claimants hold more of the gains than the claimant "
+                "categories' share"
             ),
             "weight_fitting_iterations": _SHARE_FIT_ITERATIONS,
             "weight_fitting_tolerance": _SHARE_FIT_TOLERANCE,
             "realization": (
-                "one seeded uniform per person against the cumulative type "
-                "probabilities, consumed in person_id order"
+                "error diffusion per claimant status in descending (gain, "
+                "person_id) order: each person adds weight x gain x type "
+                "probability to a running balance per type and takes the type it "
+                "may hold with the largest balance, which is drawn down by the "
+                "whole weight x gain, so the realised gains by type track the "
+                "fitted composition instead of following the heaviest rows; "
+                "deterministic, no seed"
             ),
-            "seed": CGT_ASSET_TYPE_SEED,
-            "seed_mixing": "seed combined with the build period",
             "output_column": CGT_ASSET_TYPE_COLUMN,
             "value_domain": list(CGT_ASSET_TYPE_DOMAIN),
             "none_semantics": "no positive net gains",

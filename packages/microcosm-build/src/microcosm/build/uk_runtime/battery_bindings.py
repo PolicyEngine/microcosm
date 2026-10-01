@@ -1640,7 +1640,6 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "max_grid_reciprocity_mismatches",
                 "require_partition_closure",
                 # #725 cgt_asset_type_summary stage-health check.
-                "maximum_gains_sigma",
                 "maximum_solve_relative_error",
                 "support_bounds_resource",
                 "minimum_band_rows",

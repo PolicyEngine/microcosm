@@ -1559,14 +1559,16 @@ def _cgt_asset_type_summary_gate(
     """The residential flag and the BADR claims realised the totals they were solved to.
 
     The stage solves the logistic exactly in expectation and realises it by
-    systematic sampling. This gate holds the solve to its targets, the
-    realised weighted count to within one carrier row's weight of the
-    expectation (``max_liable_weight``, the weighted systematic walk's
-    deterministic bound; about 3,300 people at full scale), and the realised
-    gains to the wider of the reviewed relative band and a multiple of the
-    Bernoulli sigma the stage reports, which overstates a systematic draw's
-    noise and so is a conservative envelope, so a tiny frame is judged by its
-    noise floor and a production frame by the band. Every liable gainer must
+    systematic sampling within each gain band (microcosm#1063). This gate
+    holds the solve to its targets and every band to the walk's own bounds,
+    which the stage reports per band: the realised weighted count within
+    ``max(offset, 1 - offset)`` of the band's largest weight of its
+    expectation, and the realised gains within that weight times (largest gain
+    - ``min(offset, 1 - offset)`` x smallest gain). Over the whole population
+    the count must sit within the sum of the band bounds and the gains within
+    the wider of the reviewed relative band and the sum of the band bounds;
+    the details also say whether the gains sit inside the relative band alone
+    and how much of them rides on the largest stakes. Every liable gainer must
     carry an asset type and the composition receipt must be finite
     (microcosm#725).
 
@@ -1586,9 +1588,6 @@ def _cgt_asset_type_summary_gate(
     max_relative = _finite_number(
         parameters["maximum_relative_deviation"],
         label=f"{stage}.maximum_relative_deviation",
-    )
-    max_sigma = _finite_number(
-        parameters["maximum_gains_sigma"], label=f"{stage}.maximum_gains_sigma"
     )
     max_solve_error = _finite_number(
         parameters["maximum_solve_relative_error"],
@@ -1612,26 +1611,71 @@ def _cgt_asset_type_summary_gate(
                 f"{stage}: residential {measure} solve error {solve_error} "
                 f"exceeds {max_solve_error}."
             )
+    slack = 1.0 + 1e-9
     count_gap = abs(number("achieved_count") - number("expected_count"))
-    count_bound = number("max_liable_weight") * (1.0 + 1e-9)
+    count_bound = number("count_bound") * slack
     details["residential_count_gap"] = count_gap
+    details["residential_count_bound"] = count_bound
     if count_gap > count_bound:
         failures.append(
-            f"{stage}: residential count gap {count_gap} exceeds one person "
-            f"({count_bound})."
+            f"{stage}: residential count gap {count_gap} exceeds the sum of the "
+            f"gain bands' walk bounds ({count_bound})."
         )
     gains_target = number("gains_target_individuals_basis")
     gains_gap = abs(number("achieved_gains") - number("expected_gains"))
-    gains_bound = max(
-        max_relative * gains_target, max_sigma * number("gains_bernoulli_sigma")
-    )
+    walk_bound = number("gains_bound") * slack
+    gains_bound = max(max_relative * gains_target, walk_bound)
     details["residential_gains_gap"] = gains_gap
     details["residential_gains_bound"] = gains_bound
-    if gains_target > 0.0 and gains_gap > gains_bound:
-        failures.append(
-            f"{stage}: residential gains gap {gains_gap} exceeds {gains_bound} "
-            f"(the wider of {max_relative} relative and {max_sigma} sigma)."
+    details["residential_gains_walk_bound"] = walk_bound
+    if gains_target > 0.0:
+        details["residential_gains_relative_gap"] = gains_gap / gains_target
+        details["residential_gains_within_relative_band"] = bool(
+            gains_gap <= max_relative * gains_target
         )
+        if gains_gap > gains_bound:
+            failures.append(
+                f"{stage}: residential gains gap {gains_gap} exceeds {gains_bound} "
+                f"(the wider of {max_relative} relative and the sum of the gain "
+                "bands' walk bounds)."
+            )
+    bands = residential.get("bands")
+    if not isinstance(bands, list) or not bands:
+        failures.append(f"{stage}: residential receipt carries no gain bands.")
+        bands = []
+    band_totals = {"expected_count": 0.0, "expected_gains": 0.0}
+    for position, band in enumerate(bands):
+        label = f"{stage}.residential.bands[{position}]"
+        row = _mapping(band, label=label)
+
+        def band_number(key: str, row=row, label=label) -> float:
+            return _finite_number(row.get(key), label=f"{label}.{key}")
+
+        for measure in ("count", "gains"):
+            band_totals[f"expected_{measure}"] += band_number(f"expected_{measure}")
+            gap = abs(
+                band_number(f"achieved_{measure}") - band_number(f"expected_{measure}")
+            )
+            bound = band_number(f"{measure}_bound") * slack
+            if gap > bound:
+                failures.append(
+                    f"{stage}: residential {measure} gap {gap} in the gain band "
+                    f"from {row.get('gain_lower_bound')} exceeds the walk's bound "
+                    f"{bound}."
+                )
+    for measure, total in band_totals.items():
+        expected = number(measure)
+        if bands and abs(total - expected) > max_solve_error * max(abs(expected), 1.0):
+            failures.append(
+                f"{stage}: the gain bands' {measure} sums to {total}, not the "
+                f"residential receipt's {expected}."
+            )
+    details["residential_gain_bands"] = len(bands)
+    for key in (
+        "top_stakes_share_of_achieved_gains",
+        "largest_pool_stake_share_of_gains_target",
+    ):
+        details[f"residential_{key}"] = number(key)
     counts = _mapping(evidence.get("value_counts"), label=f"{stage}.value_counts")
     for value, rows in counts.items():
         if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:

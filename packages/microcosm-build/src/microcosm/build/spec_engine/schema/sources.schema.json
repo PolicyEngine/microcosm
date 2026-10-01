@@ -5569,6 +5569,13 @@
       "count_target": {
        "type": "string"
       },
+      "gain_band_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       },
+       "minItems": 1
+      },
       "gains_target": {
        "type": "string"
       },
@@ -5609,6 +5616,7 @@
      "required": [
       "basis_assumption",
       "count_target",
+      "gain_band_lower_bounds",
       "gains_target",
       "kind",
       "model",
@@ -5710,6 +5718,9 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "basis_assumption": {
+       "type": "string"
+      },
       "categories": {
        "type": "array",
        "items": {
@@ -5725,6 +5736,9 @@
       "claimant_restriction": {
        "type": "string"
       },
+      "claimant_share_targets": {
+       "type": "string"
+      },
       "diagnostic_only": {
        "const": true
       },
@@ -5737,6 +5751,9 @@
       "log_sigma": {
        "type": "number"
       },
+      "non_claimant_share_targets": {
+       "type": "string"
+      },
       "none_semantics": {
        "type": "string"
       },
@@ -5747,12 +5764,6 @@
        "type": "string"
       },
       "realization": {
-       "type": "string"
-      },
-      "seed": {
-       "type": "number"
-      },
-      "seed_mixing": {
        "type": "string"
       },
       "share_targets": {
@@ -5787,19 +5798,20 @@
       }
      },
      "required": [
+      "basis_assumption",
       "categories",
       "claimant_categories",
       "claimant_restriction",
+      "claimant_share_targets",
       "diagnostic_only",
       "kernel",
       "kind",
       "log_sigma",
+      "non_claimant_share_targets",
       "none_semantics",
       "output_column",
       "population",
       "realization",
-      "seed",
-      "seed_mixing",
       "share_targets",
       "stock_signals",
       "stock_type_floor",

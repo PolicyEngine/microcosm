@@ -21,6 +21,7 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
     CGT_BADR_ELIGIBLE_TYPES,
     CGT_BADR_GAINS_COLUMN,
     CGT_BUSINESS_STOCK_SIGNAL,
+    CGT_CLAIMANT_STATUSES,
     CGT_RESIDENTIAL_GAINS_COLUMN,
     CGT_RESIDENTIAL_STOCK_SIGNAL,
     CGT_STOCK_HOUSEHOLD_COLUMNS,
@@ -39,6 +40,7 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
     UKCGTBADRParameters,
     assign_uk_cgt_asset_types,
     cgt_asset_type_operation_parameters,
+    claimant_status_share_targets,
     fit_type_weights,
     load_hmrc_cgt_asset_type_facts,
     solve_residential_logistic,
@@ -709,6 +711,162 @@ class TestStockConditioning:
             )
 
 
+class TestBandedWalk:
+    BOUNDS = (0, 10_000, 50_000, 250_000, 1_000_000, 5_000_000)
+
+    def _walk(self, probabilities, weights, gains, offsets):
+        return cgt_asset_type._banded_systematic_flags(
+            probabilities=probabilities,
+            weights=weights,
+            gains=gains,
+            person_id=np.arange(gains.size),
+            band_lower_bounds=self.BOUNDS,
+            offsets=np.asarray(offsets, dtype=float),
+        )
+
+    @pytest.mark.parametrize("seed", range(12))
+    def test_every_band_stays_inside_the_walks_own_bounds(self, seed: int) -> None:
+        """The count and gains bounds are properties of the walk: they hold for
+        any weights, probabilities and offsets, heavy rows beside light ones."""
+
+        rng = np.random.default_rng(seed)
+        rows = 600
+        gains = np.exp(rng.normal(11.0, 2.4, rows))
+        weights = np.where(
+            rng.random(rows) < 0.1, 2_000.0, rng.uniform(5.0, 60.0, rows)
+        )
+        probabilities = rng.uniform(0.0, 0.6, rows)
+        offsets = rng.random(len(self.BOUNDS))
+
+        flags, receipts = self._walk(probabilities, weights, gains, offsets)
+
+        assert len(receipts) == len(self.BOUNDS)
+        assert sum(row["pool_rows"] for row in receipts) == rows
+        assert sum(row["achieved_rows"] for row in receipts) == int(flags.sum())
+        for row in receipts:
+            if row["pool_rows"] == 0:
+                continue
+            assert abs(row["achieved_count"] - row["expected_count"]) <= row[
+                "count_bound"
+            ] * (1 + 1e-9)
+            assert abs(row["achieved_gains"] - row["expected_gains"]) <= row[
+                "gains_bound"
+            ] * (1 + 1e-9)
+
+    def test_a_heavy_rows_balance_is_not_paid_by_a_light_row_of_another_band(
+        self,
+    ) -> None:
+        """The defect the per-band walk closes (microcosm#1063): in one walk
+        over every gain, the balance a heavy row leaves behind flags the next
+        row whatever its own probability; a light top row with a 1% chance and
+        a huge gain was flagged, and the realised gains moved by its whole
+        stake."""
+
+        gains = np.array([200_000.0, 300_000.0, 500_000_000.0])
+        weights = np.array([2_000.0, 2_000.0, 20.0])
+        probabilities = np.array([0.2, 0.2, 0.01])
+        order = np.argsort(gains)
+
+        single = cgt_asset_type._weighted_systematic_flags(
+            probabilities, weights, order, 0.5
+        )
+        # One walk: the two heavy rows leave 800 of expected weight owed, short
+        # of either's own threshold, and the light row pays it: a stake of ten
+        # billion flagged on a probability of one percent.
+        assert single.tolist() == [False, False, True]
+
+        banded, receipts = self._walk(probabilities, weights, gains, [0.5] * 6)
+        # Per band: the light row answers only for its own 0.2 of expected
+        # weight, and is not flagged.
+        assert banded.tolist() == [False, False, False]
+        top = receipts[-1]
+        assert top["pool_rows"] == 1 and top["achieved_rows"] == 0
+        assert top["expected_count"] == pytest.approx(0.2)
+
+    def test_a_row_without_weight_is_never_flagged(self) -> None:
+        flags, _ = self._walk(
+            np.array([0.9, 0.9]),
+            np.array([0.0, 10.0]),
+            np.array([20_000.0, 30_000.0]),
+            [0.5] * 6,
+        )
+        assert flags.tolist() == [False, True]
+
+    def test_refuses_a_gain_below_the_lowest_band(self) -> None:
+        with pytest.raises(ValueError, match="below the lowest gain band"):
+            self._walk(np.array([0.5]), np.array([1.0]), np.array([-5.0]), [0.5] * 6)
+
+
+class TestClaimantStatusTargets:
+    def test_the_two_compositions_restore_the_published_one(self) -> None:
+        targets = load_hmrc_cgt_asset_type_facts().non_residential_gains_shares()
+        share = 0.34
+
+        split = claimant_status_share_targets(targets, share)
+
+        assert tuple(split) == CGT_CLAIMANT_STATUSES
+        eligible = sum(targets[name] for name in CGT_BADR_ELIGIBLE_TYPES)
+        for name in CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES:
+            claimants = split["claimants"][name]
+            if name in CGT_BADR_ELIGIBLE_TYPES:
+                assert claimants == pytest.approx(targets[name] / eligible)
+            else:
+                assert claimants == 0.0
+            assert share * claimants + (1 - share) * split["non_claimants"][
+                name
+            ] == pytest.approx(targets[name])
+        assert sum(split["claimants"].values()) == pytest.approx(1.0)
+        assert sum(split["non_claimants"].values()) == pytest.approx(1.0)
+
+    def test_without_claimants_everyone_takes_the_published_composition(self) -> None:
+        targets = load_hmrc_cgt_asset_type_facts().non_residential_gains_shares()
+
+        split = claimant_status_share_targets(targets, 0.0)
+
+        assert split["non_claimants"] == pytest.approx(dict(targets))
+
+    def test_refuses_claimants_holding_more_than_the_eligible_types_share(
+        self,
+    ) -> None:
+        targets = load_hmrc_cgt_asset_type_facts().non_residential_gains_shares()
+
+        with pytest.raises(ValueError, match="negative share"):
+            claimant_status_share_targets(targets, 0.8)
+        with pytest.raises(ValueError, match=r"\[0, 1\)"):
+            claimant_status_share_targets(targets, 1.0)
+
+
+class TestTypeDiffusion:
+    def test_realised_gains_track_the_fit_whatever_the_heaviest_rows_draw(
+        self,
+    ) -> None:
+        """An independent draw lets a few heavy rows decide the composition;
+        the walk places the largest gains first and every later row repays the
+        balance, so the realised shares stay within a few of the largest stakes
+        of the fitted ones."""
+
+        rng = np.random.default_rng(11)
+        rows = 400
+        gains = np.exp(rng.normal(12.0, 2.5, rows))
+        weights = rng.uniform(5.0, 60.0, rows)
+        raw = rng.uniform(0.05, 1.0, (rows, 5))
+        raw[::9, [0, 2]] = 0.0
+        probabilities = raw / raw.sum(axis=1, keepdims=True)
+        stakes = weights * gains
+        order = np.lexsort((np.arange(rows), -gains))
+
+        choice, balances = cgt_asset_type._diffuse_types(probabilities, stakes, order)
+
+        # Nobody takes a type they may not hold.
+        assert (probabilities[np.arange(rows), choice] > 0.0).all()
+        expected = (stakes[:, None] * probabilities).sum(axis=0)
+        realised = np.asarray([stakes[choice == index].sum() for index in range(5)])
+        np.testing.assert_allclose(balances, expected - realised, rtol=1e-9, atol=1.0)
+        assert np.abs(balances).max() <= 3.2 * stakes.max()
+        again, _ = cgt_asset_type._diffuse_types(probabilities, stakes, order)
+        assert (again == choice).all()
+
+
 class TestAssignment:
     def test_flags_and_types_every_liable_gainer_and_nobody_else(self) -> None:
         facts = load_hmrc_cgt_asset_type_facts()
@@ -746,31 +904,83 @@ class TestAssignment:
         assert residential_receipt["expected_gains"] == pytest.approx(
             facts.residential_gains_individuals_basis, rel=1e-6
         )
-        # Systematic sampling lands within one person of the expected count.
+        # Each gain band is walked on its own: the band's realised count and
+        # gains sit within the walk's bounds, and the bands restate the totals.
+        bands = residential_receipt["bands"]
+        assert len(bands) == 10
+        for band in bands:
+            assert abs(band["achieved_count"] - band["expected_count"]) <= band[
+                "count_bound"
+            ] * (1 + 1e-9)
+            assert abs(band["achieved_gains"] - band["expected_gains"]) <= band[
+                "gains_bound"
+            ] * (1 + 1e-9)
+            # Equal weights of 60: the count bound is at most one person.
+            assert band["count_bound"] <= 60.0
+        assert sum(band["expected_count"] for band in bands) == pytest.approx(
+            residential_receipt["expected_count"]
+        )
+        assert sum(band["achieved_gains"] for band in bands) == pytest.approx(
+            residential_receipt["achieved_gains"]
+        )
+        assert residential_receipt["count_bound"] == pytest.approx(
+            sum(band["count_bound"] for band in bands)
+        )
         assert (
             abs(
                 residential_receipt["achieved_count"]
                 - residential_receipt["expected_count"]
             )
-            <= 60.0
+            <= residential_receipt["count_bound"]
         )
-        assert residential_receipt["achieved_gains"] == pytest.approx(
-            residential_receipt["expected_gains"], rel=0.05
+        assert (
+            abs(
+                residential_receipt["achieved_gains"]
+                - residential_receipt["expected_gains"]
+            )
+            <= residential_receipt["gains_bound"]
         )
+        assert 0.0 < residential_receipt["top_stakes_share_of_achieved_gains"] <= 1.0
+        assert residential_receipt["largest_pool_stake"] == pytest.approx(
+            60.0 * gains.max()
+        )
+        assert "gains_bernoulli_sigma" not in residential_receipt
         assert residential_receipt["logistic_slope"] < 0
-        shares = evidence["asset_type"]["achieved_gains_share"]
+        asset_types = evidence["asset_type"]
+        shares = asset_types["achieved_gains_share"]
         assert sum(shares.values()) == pytest.approx(1.0)
-        assert shares["unlisted_shares"] > 0.4
+        # The realisation tracks the fit: the composition lands on Table 7
+        # overall and on each claimant status's own targets, to within a
+        # couple of the largest stakes.
+        targets = facts.non_residential_gains_shares()
+        for name in CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES:
+            assert shares[name] == pytest.approx(targets[name], abs=0.02)
+        by_status = asset_types["composition_by_claimant_status"]
+        assert tuple(by_status) == CGT_CLAIMANT_STATUSES
+        for status in CGT_CLAIMANT_STATUSES:
+            report = by_status[status]
+            assert report["rows"] > 0
+            tolerance = 3.2 * report["largest_stake"] / report["gains_mass"]
+            for name in CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES:
+                assert report["expected_gains_share"][name] == pytest.approx(
+                    report["target_gains_share"][name], abs=1e-5
+                )
+                assert report["achieved_gains_share"][name] == pytest.approx(
+                    report["target_gains_share"][name], abs=tolerance
+                )
+        ineligible = set(CGT_ASSET_TYPE_NON_RESIDENTIAL_TYPES) - set(
+            CGT_BADR_ELIGIBLE_TYPES
+        )
+        for name in ineligible:
+            assert by_status["claimants"]["target_gains_share"][name] == 0.0
+            assert by_status["claimants"]["achieved_gains_share"][name] == 0.0
         assert evidence["value_counts"][CGT_ASSET_TYPE_RESIDENTIAL] == int(
             flagged.sum()
         )
         assert len(evidence["composition_by_band"]) == 10
         assert evidence["facts"]["resource_sha256"] == facts.resource_sha256
-        assert evidence["seeds"] == {
-            "residential_flag": 553,
-            "badr_flag": 555,
-            "asset_type": 554,
-        }
+        # The main type is assigned by a deterministic walk: no seed.
+        assert evidence["seeds"] == {"residential_flag": 553, "badr_flag": 555}
         badr = evidence["badr"]
         assert set(badr["invariants"].values()) == {0}
         assert badr["totals"]["gains_target"] == pytest.approx(
@@ -786,7 +996,7 @@ class TestAssignment:
         first, _ = assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
         second, _ = assign_uk_cgt_asset_types(frame, facts, PARAMETERS, BADR_PARAMETERS)
         other, _ = assign_uk_cgt_asset_types(
-            frame, facts, PARAMETERS, BADR_PARAMETERS, asset_type_seed=999
+            frame, facts, PARAMETERS, BADR_PARAMETERS, residential_seed=999
         )
 
         assert uk_frame_content_identity(first) == uk_frame_content_identity(second)

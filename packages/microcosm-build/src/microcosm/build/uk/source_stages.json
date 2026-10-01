@@ -5121,7 +5121,19 @@
      "count_target": "Table 8a 2024-25 total taxpayers reporting residential property disposals times the Table 8b 2024-25 individuals/all taxpayer share on the UK Property service",
      "gains_target": "Table 8a 2024-25 total residential property gains times the Table 8b 2024-25 individuals/all gains share on the UK Property service",
      "basis_assumption": "trusts hold the same share of the Self Assessment component as of the UK Property service, and a flagged person's whole net gain is attributed to residential property",
-     "realization": "weighted systematic sampling in ascending gain order with one seeded offset: a person is flagged when the expected weight owed so far reaches their own weight, so the flagged weight tracks the expected weight within one person's weight along the gains axis and the realised count and gains sit close to their expectations; the Bernoulli sigma of each is reported as the envelope",
+     "realization": "weighted systematic sampling within each HMRC gain band in ascending (gain, person_id) order with one seeded offset per band, drawn in band order: a person is flagged when the expected weight owed so far in the band reaches their own weight, and the balance starts at zero in every band, so a heavy row's balance is never paid by a row of another band; per band the realised count sits within max(offset, 1 - offset) of the band's largest weight of its expectation and the realised gains within that weight times (largest gain - min(offset, 1 - offset) x smallest gain), the walk's own bounds, reported per band with the share of the realised gains on the ten largest flagged stakes",
+     "gain_band_lower_bounds": [
+      0,
+      10000,
+      25000,
+      50000,
+      100000,
+      250000,
+      500000,
+      1000000,
+      2000000,
+      5000000
+     ],
      "seed": 553,
      "seed_mixing": "seed combined with the build period",
      "output_column": "capital_gains_residential_property",
@@ -5175,12 +5187,13 @@
       "other_financial_assets": "household gross financial wealth above zero"
      },
      "share_targets": "Table 7 2023-24 gains by asset type excluding residential land and buildings, as shares",
-     "weight_fitting": "multiplicative updates of the type weights, with claimants restricted to the claimant categories, until the household-weighted expected gains shares by type match the share targets; the fit refuses if it has not converged within the iteration limit, and refuses up front when claimants hold more of the gains than the claimant categories' share",
+     "claimant_share_targets": "the share targets among the claimant categories, each over their sum",
+     "non_claimant_share_targets": "(share target - k x claimant share target) / (1 - k) with k the claimants' share of the non-residential gains, the composition that restores the share targets over claimants and non-claimants together",
+     "basis_assumption": "Table 7 does not split gains by relief, so claimants are given its composition among the claimant categories",
+     "weight_fitting": "one fit per claimant status: multiplicative updates of the type weights until the household-weighted expected gains shares by type match that status's share targets; a fit refuses if it has not converged within the iteration limit, and the stage refuses up front when claimants hold more of the gains than the claimant categories' share",
      "weight_fitting_iterations": 200,
      "weight_fitting_tolerance": 1e-06,
-     "realization": "one seeded uniform per person against the cumulative type probabilities, consumed in person_id order",
-     "seed": 554,
-     "seed_mixing": "seed combined with the build period",
+     "realization": "error diffusion per claimant status in descending (gain, person_id) order: each person adds weight x gain x type probability to a running balance per type and takes the type it may hold with the largest balance, which is drawn down by the whole weight x gain, so the realised gains by type track the fitted composition instead of following the heaviest rows; deterministic, no seed",
      "output_column": "capital_gains_asset_type",
      "value_domain": [
       "none",
@@ -5223,7 +5236,7 @@
     "capital_gains_residential_property",
     "capital_gains_badr"
    ],
-   "notes": "Spine stage after the amounts redraw: every liable gainer carries one main asset type; where flagged residential, its net gain is restated in capital_gains_residential_property; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725)."
+   "notes": "Spine stage after the amounts redraw: every liable gainer carries one main asset type; where flagged residential, its net gain is restated in capital_gains_residential_property; where drawn as a BADR or Investors' Relief claimant, its qualifying gain is written to capital_gains_badr and its main type is one the reliefs apply to. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the BADR claims are solved band by band to Table 4.1 2024-25, whose individuals band rows the hmrc.cgt.badr_ir_taxpayers_by_band and hmrc.cgt.badr_ir_qualifying_gains_by_band targets bind (microcosm#1014); the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only: since microcosm#1063 the type is fitted once per claimant status (claimants to Table 7's composition among the types the reliefs apply to, non-claimants to the composition that restores Table 7 overall) and realised by a deterministic walk that keeps the realised gains by type on the fit. The residential flag is walked within each HMRC gain band, so a heavy row's balance is never paid by a light row at the top of the gains order. Carried interest (Table 9) is not modelled (microcosm#725)."
   },
   {
    "stage": "cgt_incidence_anchor",

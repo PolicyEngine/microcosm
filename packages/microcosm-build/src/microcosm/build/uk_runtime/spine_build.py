@@ -720,7 +720,6 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                 elif operation.kind in (
                     "assign_residential_property_flag",
                     "assign_badr_qualifying_gains",
-                    "assign_main_asset_type",
                 ):
                     stage_seeds[operation.kind] = seed
                 elif operation.kind == "convert_donors_to_target_stock":
