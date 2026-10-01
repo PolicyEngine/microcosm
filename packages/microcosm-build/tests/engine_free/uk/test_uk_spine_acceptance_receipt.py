@@ -111,6 +111,12 @@ def _apply_pending_roster_transformations(
     # the post-SPI incomes, so it runs right after UC capital coherence.
     assert "pension_credit_take_up" not in roster
     roster.insert(roster.index("uc_capital_coherence") + 1, "pension_credit_take_up")
+    # microcosm#1063 re-mint pending: the Child Benefit redraw reads the same
+    # post-SPI incomes, right after the Pension Credit redraw.
+    assert "child_benefit_take_up" not in roster
+    roster.insert(
+        roster.index("pension_credit_take_up") + 1, "child_benefit_take_up"
+    )
     return tuple(roster)
 
 

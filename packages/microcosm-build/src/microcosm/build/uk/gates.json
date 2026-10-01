@@ -457,6 +457,23 @@
       "notes": "Stage-time gate over the Pension Credit take-up receipt (microcosm#1069 R9): each component band (Guarantee Credit, Savings Credit only) realizes its DWP FYE 2024 caseload take-up within 0.05 at the stage's weights, or at least the rate where its reporters alone exceed it. The terminal take-up signal gate no longer measures would_claim_pc, whose rate is a share of the entitled units the engine finds, not of every benefit unit."
     },
     {
+      "id": "uk_stage_child_benefit_take_up",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "child_benefit_take_up",
+        "check": "child_benefit_take_up",
+        "maximum_claim_rate_deviation": 0.02,
+        "maximum_age_claim_rate_deviation": 0.05,
+        "minimum_age_child_rows": 200,
+        "maximum_opt_out_share_deviation": 0.01,
+        "minimum_eligible_family_units": 1
+      },
+      "notes": "Stage-time gate over the Child Benefit take-up receipt (microcosm#1063): the share of eligible children claimed for is within 0.02 of HMRC's published claim rates by single year of age (Table 15, May 2025) at the frame's age mix, and within 0.05 at each age with at least 200 child rows whose solved rate was not clipped (clipped ages are reported); the opted-out share of claiming families is within 0.01 of the published opted-out share of registered families (August 2025), or below it only where the charged families are exhausted. The terminal take-up signal gate no longer measures would_claim_child_benefit or child_benefit_opts_out, whose rates are shares of eligible children and of claiming families, not of every benefit unit."
+    },
+    {
       "id": "uk_stage_cgt_incidence_clone_mass",
       "gate": "stage_health",
       "phase": "transferred",
@@ -871,7 +888,7 @@
       "parameters": {
         "maximum_share_deviation": 0.05
       },
-      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9)."
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target. would_claim_pc is measured by uk_stage_pension_credit_take_up instead (microcosm#1069 R9), and would_claim_child_benefit and child_benefit_opts_out by uk_stage_child_benefit_take_up (microcosm#1063)."
     },
     {
       "id": "uk_brma_enum_domain",

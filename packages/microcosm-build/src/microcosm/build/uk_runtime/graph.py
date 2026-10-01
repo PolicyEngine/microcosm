@@ -107,6 +107,9 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
         # The Pension Credit redraw rewrites ``frs_take_up``'s would_claim_pc,
         # which the open-surface readers before it bind (microcosm#1069).
         "pension_credit_take_up",
+        # The Child Benefit redraw rewrites ``frs_take_up``'s two Child Benefit
+        # flags, which the open-surface readers before it bind (microcosm#1063).
+        "child_benefit_take_up",
         # ``frs_education_grant_split`` rewrites the root cell
         # ``education_grants`` that the open-surface ``frs_legacy_proxies``
         # reader already bound to.  In the root version that rewrite opened a
@@ -271,6 +274,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # One temporary engine materialization of Pension Credit entitlement over
     # the whole frame: an open surface, like the UC award screen.
     "pension_credit_take_up": None,
+    # One temporary engine materialization of Child Benefit eligibility and
+    # adjusted net income over the whole frame: an open surface.
+    "child_benefit_take_up": None,
     "uc_capital_coherence": frozenset(
         {
             ("person", "is_benunit_head"),
@@ -769,6 +775,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("benunit", "would_claim_uc", "bool"),
     ),
     "pension_credit_take_up": (_Cell("benunit", "would_claim_pc", "bool"),),
+    "child_benefit_take_up": (
+        _Cell("benunit", "would_claim_child_benefit", "bool"),
+        _Cell("benunit", "child_benefit_opts_out", "bool"),
+    ),
     "uc_deduction_attributes": (
         _Cell("benunit", "uc_deduction_random_draw", "float64"),
         _Cell("benunit", "uc_deduction_type_random_draw", "float64"),

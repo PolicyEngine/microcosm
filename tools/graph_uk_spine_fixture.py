@@ -50,6 +50,9 @@ from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTIncidenceCloneStageTransform,
 )
 from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
+from microcosm.build.uk_runtime.child_benefit_take_up import (
+    UKChildBenefitTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -154,11 +157,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 36
+UK_FIXTURE_STAGE_COUNT = 37
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 36-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 37-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -1594,6 +1597,9 @@ def _build_implementations(
         "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
             stage=stages["pension_credit_take_up"], engine=engine
         ),
+        "child_benefit_take_up": UKChildBenefitTakeUpStageTransform(
+            stage=stages["child_benefit_take_up"], engine=engine
+        ),
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
         ),
@@ -1634,7 +1640,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 36-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 37-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")

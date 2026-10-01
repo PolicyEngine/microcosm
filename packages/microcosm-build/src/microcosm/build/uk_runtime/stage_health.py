@@ -45,6 +45,8 @@ def uk_stage_health_gate(
         return _spi_income_spine_gate(stage, evidence, parameters)
     if check == "pension_credit_take_up":
         return _pension_credit_take_up_gate(stage, evidence, parameters)
+    if check == "child_benefit_take_up":
+        return _child_benefit_take_up_gate(stage, evidence, parameters)
     if check == "source_signal":
         return _source_signal_gate(stage, evidence, parameters)
     if check == "age_tail_targets":
@@ -796,6 +798,121 @@ def _spi_support_channel_gate(
         parameters["minimum_spi_households"]
     ):
         failures.append(f"{stage}: spi_households below declared minimum.")
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _child_benefit_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Claims meet HMRC's rates by child age and opt-outs its family share.
+
+    The claimed share of eligible children is held overall against the
+    published rates at the frame's own age mix, and at each single year of age
+    with enough child rows to measure it; an age whose solved rate was clipped
+    (reporters alone exceed the published rate, or every family claiming
+    falls short of it) is reported, not held. The opted-out share of claiming
+    families is held to the published share, or may fall short of it only
+    where the receipt shows the charged families exhausted (microcosm#1063).
+    """
+
+    check = "child_benefit_take_up"
+    overall_tolerance = _finite_number(
+        parameters["maximum_claim_rate_deviation"],
+        label=f"{stage}.maximum_claim_rate_deviation",
+    )
+    age_tolerance = _finite_number(
+        parameters["maximum_age_claim_rate_deviation"],
+        label=f"{stage}.maximum_age_claim_rate_deviation",
+    )
+    minimum_age_rows = int(parameters["minimum_age_child_rows"])
+    opt_out_tolerance = _finite_number(
+        parameters["maximum_opt_out_share_deviation"],
+        label=f"{stage}.maximum_opt_out_share_deviation",
+    )
+    minimum_families = int(parameters["minimum_eligible_family_units"])
+    failures: list[str] = []
+    claims = _mapping(evidence.get("claims"), label=f"{stage}.claims")
+    opt_outs = _mapping(evidence.get("opt_outs"), label=f"{stage}.opt_outs")
+    families = int(claims.get("eligible_family_units", 0))
+    details: dict[str, object] = {"eligible_family_units": families}
+    target = claims.get("target_rate")
+    realized = claims.get("realized_rate")
+    if families < minimum_families or target is None or realized is None:
+        failures.append(f"{stage}: the receipt has {families} eligible families.")
+    else:
+        target = _finite_number(target, label=f"{stage}.claims.target_rate")
+        realized = _finite_number(realized, label=f"{stage}.claims.realized_rate")
+        details["claim_rate"] = {"target": target, "realized": realized}
+        if abs(realized - target) > overall_tolerance:
+            failures.append(
+                f"{stage}: {realized:.4f} of eligible children are claimed for "
+                f"against {target:.4f} at the published rates by age (tolerance "
+                f"{overall_tolerance})."
+            )
+    ages = claims.get("ages")
+    if not isinstance(ages, list) or not ages:
+        failures.append(f"{stage}: the receipt carries no claim rates by age.")
+        ages = []
+    worst: tuple[float, int] | None = None
+    clipped: list[int] = []
+    measured = 0
+    for row in ages:
+        row = _mapping(row, label=f"{stage}.claims.ages[]")
+        age = int(row.get("age", -1))
+        if row.get("clipped") is True:
+            clipped.append(age)
+            continue
+        if int(row.get("eligible_child_rows", 0)) < minimum_age_rows:
+            continue
+        published = _finite_number(
+            row.get("published_rate"), label=f"{stage}.age {age}.published_rate"
+        )
+        achieved = _finite_number(
+            row.get("realized_rate"), label=f"{stage}.age {age}.realized_rate"
+        )
+        measured += 1
+        deviation = abs(achieved - published)
+        if worst is None or deviation > worst[0]:
+            worst = (deviation, age)
+        if deviation > age_tolerance:
+            failures.append(
+                f"{stage}: at age {age} {achieved:.4f} of eligible children are "
+                f"claimed for against the published {published:.4f} (tolerance "
+                f"{age_tolerance})."
+            )
+    details["ages_measured"] = measured
+    details["clipped_ages"] = clipped
+    if worst is not None:
+        details["largest_age_deviation"] = {"age": worst[1], "deviation": worst[0]}
+
+    share = opt_outs.get("realized_share")
+    target_share = _finite_number(
+        opt_outs.get("target_share"), label=f"{stage}.opt_outs.target_share"
+    )
+    exhausted = opt_outs.get("pool_exhausted") is True
+    if share is None:
+        failures.append(f"{stage}: the receipt carries no opted-out share.")
+    else:
+        share = _finite_number(share, label=f"{stage}.opt_outs.realized_share")
+        details["opt_out_share"] = {
+            "target": target_share,
+            "realized": share,
+            "pool_exhausted": exhausted,
+        }
+        if share > target_share + opt_out_tolerance or (
+            not exhausted and share < target_share - opt_out_tolerance
+        ):
+            failures.append(
+                f"{stage}: {share:.4f} of claiming families opted out against "
+                f"the published {target_share:.4f} (tolerance {opt_out_tolerance}, "
+                f"charged families exhausted: {exhausted})."
+            )
     return (
         _fail(stage, check, failures, details)
         if failures

@@ -1622,6 +1622,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 # microcosm#1069 c7 pension_credit_take_up stage-health check.
                 "maximum_take_up_deviation",
                 "minimum_entitled_units",
+                # microcosm#1063 child_benefit_take_up stage-health check.
+                "maximum_claim_rate_deviation",
+                "maximum_age_claim_rate_deviation",
+                "minimum_age_child_rows",
+                "maximum_opt_out_share_deviation",
+                "minimum_eligible_family_units",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",

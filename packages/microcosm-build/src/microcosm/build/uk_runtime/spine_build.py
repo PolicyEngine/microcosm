@@ -72,6 +72,9 @@ from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTIncidenceCloneStageTransform,
 )
 from microcosm.build.uk_runtime.cgt_support import UKCGTSupportSplitStageTransform
+from microcosm.build.uk_runtime.child_benefit_take_up import (
+    UKChildBenefitTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
 from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
@@ -1529,6 +1532,11 @@ def prepare_uk_spine_execution(
     if "pension_credit_take_up" in stage_names:
         implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(
             stage=stages_by_name["pension_credit_take_up"],
+            engine=engine,
+        )
+    if "child_benefit_take_up" in stage_names:
+        implementations["child_benefit_take_up"] = UKChildBenefitTakeUpStageTransform(
+            stage=stages_by_name["child_benefit_take_up"],
             engine=engine,
         )
     if "uc_deduction_attributes" in stage_names:

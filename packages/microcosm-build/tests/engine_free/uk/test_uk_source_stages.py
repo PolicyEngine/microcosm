@@ -69,6 +69,9 @@ UC_COHERENCE_STAGE_NAMES = [
 PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
     "pension_credit_take_up",
 ]
+CHILD_BENEFIT_TAKE_UP_STAGE_NAMES = [
+    "child_benefit_take_up",
+]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
@@ -95,6 +98,7 @@ UK_SOURCE_STAGE_NAMES = [
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
     *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+    *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -164,6 +168,7 @@ class TestUKSourceStagesManifest:
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
             *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
+            *CHILD_BENEFIT_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
@@ -236,6 +241,7 @@ class TestUKSourceStagesManifest:
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
                     "pension_credit_take_up": _identity,
+                    "child_benefit_take_up": _identity,
                     "uc_deduction_attributes": _identity,
                     "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,

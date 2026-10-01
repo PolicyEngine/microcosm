@@ -6499,6 +6499,130 @@
       "kind",
       "output",
       "draw",
+      "seed",
+      "anchor",
+      "eligibility",
+      "family_key",
+      "resource",
+      "rate_measure",
+      "rate_period",
+      "weight_mapping",
+      "rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_family_claims_by_child_age"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "eligibility": {
+       "type": "string"
+      },
+      "family_key": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "rate_measure": {
+       "type": "string"
+      },
+      "rate_period": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "seed",
+      "resource",
+      "numerator_measure",
+      "denominator_measure",
+      "caseload_period",
+      "charge_income",
+      "charge_parameters",
+      "pools",
+      "weight_mapping",
+      "rule",
+      "payment_rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_opt_out_by_charge_income"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "numerator_measure": {
+       "type": "string"
+      },
+      "denominator_measure": {
+       "type": "string"
+      },
+      "caseload_period": {
+       "type": "string"
+      },
+      "charge_income": {
+       "type": "string"
+      },
+      "charge_parameters": {
+       "type": "string"
+      },
+      "pools": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "rule": {
+       "type": "string"
+      },
+      "payment_rule": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
       "anchor",
       "rate_key",
       "seed"

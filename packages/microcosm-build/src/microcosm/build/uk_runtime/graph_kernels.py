@@ -97,6 +97,7 @@ _STAGE_MODULES = {
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
     "pension_credit_take_up": "pension_credit_take_up",
+    "child_benefit_take_up": "child_benefit_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
@@ -129,6 +130,8 @@ _STAGE_HELPER_MODULES = {
     # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
     # weight mapping and the adapter's engine materialization.
     "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
+    # The Child Benefit redraw shares the weight mapping and the adapter.
+    "child_benefit_take_up": (uc_capital_coherence, uk_engine_adapter),
 }
 
 _COMPUTE = Capabilities(
@@ -400,7 +403,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 36-stage spine "
+            "UK parity fixture must describe the current 37-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -419,6 +422,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
         UKCGTIncidenceCloneStageTransform,
     )
     from .cgt_support import UKCGTSupportSplitStageTransform
+    from .child_benefit_take_up import UKChildBenefitTakeUpStageTransform
     from .etb_services import UKETBServicesStageTransform
     from .etb_vat import UKETBVATStageTransform
     from .frs_brma import UKFRSBRMAStageTransform
@@ -618,6 +622,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
                 stage=stages["pension_credit_take_up"], engine=engine
+            ),
+            "child_benefit_take_up": UKChildBenefitTakeUpStageTransform(
+                stage=stages["child_benefit_take_up"], engine=engine
             ),
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]

@@ -1611,3 +1611,68 @@ def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
     # the failure without blocking, every other posture blocks on it.
     committed = _gate_parameters("uk_stage_pension_credit_take_up")
     assert committed["check"] == "pension_credit_take_up"
+
+
+def test_child_benefit_take_up_holds_claims_by_age_and_the_opt_out_share() -> None:
+    parameters = {
+        "stage": "child_benefit_take_up",
+        "check": "child_benefit_take_up",
+        "maximum_claim_rate_deviation": 0.02,
+        "maximum_age_claim_rate_deviation": 0.05,
+        "minimum_age_child_rows": 200,
+        "maximum_opt_out_share_deviation": 0.01,
+        "minimum_eligible_family_units": 1,
+    }
+
+    def age(value, published, realized, *, rows=1_000, clipped=False):
+        return {
+            "age": value,
+            "published_rate": published,
+            "realized_rate": realized,
+            "eligible_child_rows": rows,
+            "clipped": clipped,
+        }
+
+    def gate(*, realized=0.868, ages=None, share=0.0905, exhausted=False, units=100):
+        evidence = {
+            "stage": "child_benefit_take_up",
+            "claims": {
+                "eligible_family_units": units,
+                "target_rate": 0.871,
+                "realized_rate": realized,
+                "ages": ages
+                if ages is not None
+                else [age(0, 0.688, 0.69), age(1, 0.768, 0.75)],
+            },
+            "opt_outs": {
+                "target_share": 0.0907,
+                "realized_share": share,
+                "pool_exhausted": exhausted,
+            },
+        }
+        return uk_stage_health_gate(
+            evidence=evidence,
+            stage="child_benefit_take_up",
+            check="child_benefit_take_up",
+            parameters=parameters,
+        )
+
+    result = gate()
+    assert _passed(result)
+    assert result.details["ages_measured"] == 2
+    assert result.details["largest_age_deviation"]["age"] == 1
+    # The overall claimed share is held to the published rates at the frame's
+    # age mix.
+    assert "against 0.8710" in " ".join(gate(realized=0.90).failures)
+    # An age is held where it has the rows to measure and was not clipped.
+    assert "at age 1" in " ".join(gate(ages=[age(1, 0.768, 0.70)]).failures)
+    assert _passed(gate(ages=[age(1, 0.768, 0.70, rows=50)]))
+    clipped = gate(ages=[age(19, 0.497, 0.60, clipped=True)])
+    assert _passed(clipped) and clipped.details["clipped_ages"] == [19]
+    # The opted-out share may fall short only where the charged families ran
+    # out, and never exceeds the published share.
+    assert "opted out against" in " ".join(gate(share=0.05).failures)
+    assert _passed(gate(share=0.05, exhausted=True))
+    assert not gate(share=0.12, exhausted=True).passed
+    assert not gate(units=0).passed
+    assert not gate(ages=[]).passed
