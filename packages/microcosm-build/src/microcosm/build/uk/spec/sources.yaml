@@ -4270,7 +4270,7 @@ stages:
   operations:
   - kind: fit_weighted_qrf
     training_population: support_channel == frs and not capital-gains clone and not CGT support copy and salary_sacrifice_asked == 1
-    target_population: salary_sacrifice_asked != 1 frame-wide
+    target_population: salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people not asked who have no employment income are set to zero
     predictors:
     - age
     - employment_income

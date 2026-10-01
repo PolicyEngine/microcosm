@@ -4408,7 +4408,7 @@
           ],
           "preserve_asked_rows": true,
           "seed": 42,
-          "target_population": "salary_sacrifice_asked != 1 frame-wide",
+          "target_population": "salary_sacrifice_asked != 1 and employment_income > 0, frame-wide; people not asked who have no employment income are set to zero",
           "targets": [
             "pension_contributions_via_salary_sacrifice"
           ],
