@@ -751,22 +751,49 @@ def _spi_support_channel_gate(
         evidence.get("spi_prior_mass_share"), label=f"{stage}.spi_prior_mass_share"
     )
     failures = []
-    if abs(share - expected_share) > _finite_number(
+    tolerance = _finite_number(
         parameters.get("absolute_tolerance", 0.0), label=f"{stage}.absolute_tolerance"
-    ):
+    )
+    if abs(share - expected_share) > tolerance:
         failures.append(
             f"{stage}: spi_prior_mass_share {share} != declared {expected_share}."
         )
+    details = {
+        "spi_prior_mass_share": share,
+        "spi_households": evidence.get("spi_households"),
+    }
+    if "pension_age_spi_prior_mass_share" in parameters:
+        # microcosm#1069 c6: the channel takes its own share of the strata of
+        # households with a member at or over State Pension age.
+        expected_pension_share = _finite_number(
+            parameters["pension_age_spi_prior_mass_share"],
+            label=f"{stage}.pension_age_spi_prior_mass_share",
+        )
+        pension_share = evidence.get("pension_age_spi_prior_mass_share")
+        details["pension_age_spi_prior_mass_share"] = pension_share
+        if pension_share is None:
+            failures.append(
+                f"{stage}: the receipt carries no pension_age_spi_prior_mass_share."
+            )
+        elif (
+            abs(
+                _finite_number(
+                    pension_share, label=f"{stage}.pension_age_spi_prior_mass_share"
+                )
+                - expected_pension_share
+            )
+            > tolerance
+        ):
+            failures.append(
+                f"{stage}: pension_age_spi_prior_mass_share {pension_share} != "
+                f"declared {expected_pension_share}."
+            )
     if evidence.get("household_weight_kind") != parameters.get("household_weight_kind"):
         failures.append(f"{stage}: household_weight_kind drifted.")
     if int(evidence.get("spi_households", 0)) < int(
         parameters["minimum_spi_households"]
     ):
         failures.append(f"{stage}: spi_households below declared minimum.")
-    details = {
-        "spi_prior_mass_share": share,
-        "spi_households": evidence.get("spi_households"),
-    }
     return (
         _fail(stage, check, failures, details)
         if failures

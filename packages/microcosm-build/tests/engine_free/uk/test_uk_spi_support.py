@@ -677,3 +677,119 @@ def test_spi_fill_rejects_missing_source_ids() -> None:
             entity="person",
             columns=["employment_income"],
         )
+
+
+def _pension_age_frames():
+    household = pd.DataFrame(
+        {
+            "household_id": [1, 2, 3, 4],
+            "household_weight": [10.0, 30.0, 20.0, 40.0],
+            "region": ["LONDON"] * 4,
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_id": [1001, 2001, 3001, 3002, 4001],
+            "person_household_id": [1, 2, 3, 3, 4],
+            "person_benunit_id": [101, 201, 301, 301, 401],
+            "age": [70, 40, 66, 30, 65],
+            "employment_income": [0.0] * 5,
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": [101, 201, 301, 401]})
+    return person, benunit, household
+
+
+def test_build_spi_support_channel_gives_pension_age_households_their_own_share() -> (
+    None
+):
+    person, benunit, household = _pension_age_frames()
+
+    result = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=4,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        pension_age_share=0.2,
+        state_pension_age=66,
+    )
+
+    # Households 1 and 3 have a member at or over 66 (30 of the 100 prior
+    # mass): the SPI channel takes 20% of it and 50% of the other 70.
+    channel = support_channel_column("household")
+    table = result.household.set_index(["source_household_id", channel])[
+        "household_weight"
+    ]
+    spi, base = SPI_SYNTHETIC_SUPPORT_CHANNEL, BASE_FRS_SUPPORT_CHANNEL
+    assert table[(1, base)] == pytest.approx(8.0)
+    assert table[(3, base)] == pytest.approx(16.0)
+    assert table[(1, spi)] + table[(3, spi)] == pytest.approx(6.0)
+    assert table[(2, base)] == pytest.approx(15.0)
+    assert table[(4, base)] == pytest.approx(20.0)
+    assert table[(2, spi)] + table[(4, spi)] == pytest.approx(35.0)
+    assert result.household["household_weight"].sum() == 100.0
+    assert spi_support.SPI_PENSION_AGE_STRATUM_COLUMN not in result.household
+    assert result.pension_age_spi_prior_mass_share == 0.2
+    assert result.state_pension_age == 66
+    assert result.pension_age_allocation == {
+        "pension_age_households": 2,
+        "pension_age_spi_households": 2,
+        "pension_age_prior_mass": 30.0,
+        "pension_age_spi_mass": pytest.approx(6.0),
+        "other_prior_mass": 70.0,
+        "other_spi_mass": pytest.approx(35.0),
+    }
+    assert "0.2 in households with" in result.mass_log[-1].reason
+
+
+def test_build_spi_support_channel_without_a_pension_age_share_is_unchanged() -> None:
+    person, benunit, household = _pension_age_frames()
+
+    result = build_uk_spi_support_channel(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=4,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+    )
+
+    assert result.pension_age_spi_prior_mass_share is None
+    assert result.pension_age_allocation is None
+    assert result.mass_log[-1].reason == SPI_PRIOR_MASS_CHANGE_REASON
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"pension_age_share": 1.0, "state_pension_age": 66}, "finite and in"),
+        ({"pension_age_share": 0.2}, "positive integer state_pension_age"),
+        (
+            {
+                "pension_age_share": 0.2,
+                "state_pension_age": 66,
+                "strata_columns": ("region", "household_has_state_pension_age_member"),
+            },
+            "derived by the allocation",
+        ),
+    ],
+)
+def test_build_spi_support_channel_refuses_invalid_pension_age_arguments(
+    kwargs: dict, message: str
+) -> None:
+    person, benunit, household = _pension_age_frames()
+    arguments = {"strata_columns": ("region",), **kwargs}
+    with pytest.raises(ValueError, match=message):
+        build_uk_spi_support_channel(
+            person=person,
+            benunit=benunit,
+            household=household,
+            spi_household_count=4,
+            seed=42,
+            source_year=2023,
+            **arguments,
+        )

@@ -1425,3 +1425,44 @@ def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None
     assert not result.passed and "differ from the published" in " ".join(
         result.failures
     )
+
+
+def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:
+    evidence = {
+        "stage": "spi_support_channel",
+        "spi_prior_mass_share": 0.5,
+        "pension_age_spi_prior_mass_share": 0.25,
+        "household_weight_kind": "importance",
+        "spi_households": 10,
+    }
+    parameters = {
+        "stage": "spi_support_channel",
+        "check": "spi_support_channel",
+        "spi_prior_mass_share": 0.5,
+        "pension_age_spi_prior_mass_share": 0.25,
+        "absolute_tolerance": 0.0,
+        "household_weight_kind": "importance",
+        "minimum_spi_households": 10,
+    }
+
+    def gate(evidence, parameters):
+        return uk_stage_health_gate(
+            evidence=evidence,
+            stage="spi_support_channel",
+            check="spi_support_channel",
+            parameters=parameters,
+        )
+
+    passed = gate(evidence, parameters)
+    assert _passed(passed)
+    assert passed.details["pension_age_spi_prior_mass_share"] == 0.25
+    drifted = gate(evidence, {**parameters, "pension_age_spi_prior_mass_share": 0.5})
+    assert not drifted.passed
+    assert "pension_age_spi_prior_mass_share 0.25 != declared 0.5" in str(
+        drifted.failures
+    )
+    missing = gate(
+        {k: v for k, v in evidence.items() if k != "pension_age_spi_prior_mass_share"},
+        parameters,
+    )
+    assert not missing.passed

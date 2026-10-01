@@ -7331,6 +7331,12 @@
       "conservation": {
        "type": "string"
       },
+      "pension_age_share": {
+       "type": "number"
+      },
+      "pension_age_stratum": {
+       "type": "string"
+      },
       "share": {
        "type": "number"
       },

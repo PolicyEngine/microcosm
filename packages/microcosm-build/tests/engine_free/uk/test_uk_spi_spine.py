@@ -28,6 +28,7 @@ from microcosm.build.uk_runtime.spi_income import (
 )
 from microcosm.build.uk_runtime.spi_spine import (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
+    SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE,
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
@@ -700,13 +701,48 @@ def test_income_stage_parameters_refuse_stage2_output_drift() -> None:
 
 
 def test_support_stage_parameters_accept_the_committed_manifest() -> None:
-    count, share, strata, declarations = _support_stage_parameters(
+    count, share, strata, declarations, pension_age_share = _support_stage_parameters(
         _committed_stage("spi_support_channel"), seed=42
     )
     assert count == 10000
     assert share == 0.5
     assert strata == ("region",)
     assert len(declarations) == 1
+    assert pension_age_share == SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE
+
+
+@pytest.mark.parametrize(
+    ("changes", "message"),
+    [
+        ({"pension_age_share": 0.31}, "pension-age prior-mass share drifted"),
+        (
+            {"pension_age_stratum": "household_head_at_state_pension_age"},
+            "stratum must",
+        ),
+        (
+            {"pension_age_share": None},
+            "pension-age stratum declared without a share",
+        ),
+    ],
+)
+def test_support_stage_parameters_refuse_pension_age_drift(
+    changes: dict, message: str
+) -> None:
+    committed = _committed_stage("spi_support_channel")
+    operations = []
+    for operation in committed.operations:
+        payload = {"kind": operation.kind, **dict(operation.parameters)}
+        if operation.kind == "allocate_zero_weight_prior_mass":
+            payload.update(changes)
+            payload = {
+                key: value for key, value in payload.items() if value is not None
+            }
+        operations.append(payload)
+    stage = SourceStageSpec.from_mapping(
+        {**committed.__dict__, "operations": operations}
+    )
+    with pytest.raises(ValueError, match=message):
+        _support_stage_parameters(stage, seed=42)
 
 
 def test_support_transform_refuses_missing_builder_weight_kind(monkeypatch) -> None:
@@ -727,7 +763,7 @@ def test_support_transform_refuses_missing_builder_weight_kind(monkeypatch) -> N
         _stub_builder,
     )
     transform = UKSPISupportChannelStageTransform(
-        stage=_committed_stage("spi_support_channel")
+        stage=_committed_stage("spi_support_channel"), state_pension_age=66
     )
 
     with pytest.raises(ValueError, match="importance household weights"):

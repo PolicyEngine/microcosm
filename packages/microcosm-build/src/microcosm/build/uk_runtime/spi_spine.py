@@ -20,6 +20,7 @@ from microcosm.build.uk_runtime.frs_hmrc_source import (
     _materialize_source_leaves,
     _read_raw_frs_table,
 )
+from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
 from microcosm.build.uk_runtime.hmrc_income import (
     HMRCIncomeTargetSet,
     materialize_hmrc_spi_income_band_targets,
@@ -238,6 +239,14 @@ SPI_SPINE_FRS_CHANNEL_INITIALIZATION = {
 SPI_SPINE_BASE_REDRAW_COLUMNS = ("dividend_income",)
 SPI_SPINE_SUPPORT_CHANNELS = {"base": "frs", "synthetic": SPI_SYNTHETIC_SUPPORT_CHANNEL}
 SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
+#: The reviewed SPI-channel prior share of households with a member at or over
+#: State Pension age, and the stratum rule the manifest declares beside it
+#: (microcosm#1069 c6). The channel's households are drawn unweighted with one
+#: weight per region, so a region-only allocation gave the channel more
+#: pension-age mass than the FRS design gives pension-age households, every
+#: adult of it on a taxpayer's income.
+SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE = 0.5
+SPI_SPINE_PENSION_AGE_STRATUM = "any_member_at_or_over_state_pension_age"
 SPI_SPINE_EFFECTIVE_MASS_COLUMNS = ("gift_aid", "charitable_investment_gifts")
 
 
@@ -422,18 +431,29 @@ class UKSPISupportChannelStageTransform:
     # by the survey-side sample fraction so the prior-mass pairing holds at
     # every rung (f100 keeps the declared count exactly).
     sample_fraction: float = 1.0
+    # The engine's State Pension age at the build instant; None reads it from
+    # policyengine-uk (tests without the engine pass it).
+    state_pension_age: int | None = None
     # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKSPISupportResult | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
         validate_uk_national_frame(frame)
         tables = engine_tables(frame)
-        count, share, strata, declarations = _support_stage_parameters(
-            self.stage,
-            seed=self.seed,
+        count, share, strata, declarations, pension_age_share = (
+            _support_stage_parameters(self.stage, seed=self.seed)
         )
         if self.sample_fraction != 1.0 and count is not None:
             count = max(1, int(round(count * self.sample_fraction)))
+        state_pension_age = None
+        if pension_age_share is not None:
+            state_pension_age = (
+                self.state_pension_age
+                if self.state_pension_age is not None
+                else uk_take_up_population_policy(
+                    uk_time_period(frame)
+                ).state_pension_age
+            )
         result = build_uk_spi_support_channel(
             tables["person"],
             tables["benunit"],
@@ -446,6 +466,8 @@ class UKSPISupportChannelStageTransform:
             input_weight_kind=uk_household_weight_kind(frame),
             mass_log=frame.mass_log,
             zero_weight_declarations=declarations,
+            pension_age_share=pension_age_share,
+            state_pension_age=state_pension_age,
         )
         if result.household_weight_kind is not WeightKind.IMPORTANCE:
             got = (
@@ -484,6 +506,15 @@ class UKSPISupportChannelStageTransform:
                 "stage": "spi_support_channel",
                 "spi_households": self.last_result.n_spi_households,
                 "spi_prior_mass_share": self.last_result.spi_prior_mass_share,
+                "pension_age_spi_prior_mass_share": (
+                    self.last_result.pension_age_spi_prior_mass_share
+                ),
+                "state_pension_age": self.last_result.state_pension_age,
+                "pension_age_allocation": (
+                    None
+                    if self.last_result.pension_age_allocation is None
+                    else dict(self.last_result.pension_age_allocation)
+                ),
                 "household_weight_kind": (
                     self.last_result.household_weight_kind.value
                     if self.last_result.household_weight_kind is not None
@@ -893,7 +924,13 @@ def _support_stage_parameters(
     stage: SourceStageSpec,
     *,
     seed: int,
-) -> tuple[int, float, tuple[str, ...], tuple[UKZeroWeightStratumDeclaration, ...]]:
+) -> tuple[
+    int,
+    float,
+    tuple[str, ...],
+    tuple[UKZeroWeightStratumDeclaration, ...],
+    float | None,
+]:
     stack = _operation(stage, "stack_zero_weight_donors")
     gate = _operation(stage, "gate_zero_weight_strata")
     allocation = _operation(stage, "allocate_zero_weight_prior_mass")
@@ -918,6 +955,22 @@ def _support_stage_parameters(
     strata = tuple(allocation.parameters.get("strata", ()))
     if strata != ("region",):
         raise ValueError("SPI support spine allocation must use strata ['region'].")
+    pension_age_share = allocation.parameters.get("pension_age_share")
+    if pension_age_share is not None:
+        if pension_age_share != SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE:
+            raise ValueError(
+                "SPI support pension-age prior-mass share drifted from "
+                f"{SPI_SPINE_PENSION_AGE_PRIOR_MASS_SHARE}."
+            )
+        if allocation.parameters.get("pension_age_stratum") != (
+            SPI_SPINE_PENSION_AGE_STRATUM
+        ):
+            raise ValueError(
+                "SPI support pension-age stratum must be "
+                f"{SPI_SPINE_PENSION_AGE_STRATUM!r}."
+            )
+    elif "pension_age_stratum" in allocation.parameters:
+        raise ValueError("SPI support pension-age stratum declared without a share.")
     declarations = _coerce_declarations(gate.parameters.get("declarations", ()))
     if len(declarations) != 1:
         raise ValueError("SPI support gate must declare exactly one pre-clone stratum.")
@@ -936,6 +989,7 @@ def _support_stage_parameters(
         float(allocation.parameters["share"]),
         strata,
         declarations,
+        None if pension_age_share is None else float(pension_age_share),
     )
 
 

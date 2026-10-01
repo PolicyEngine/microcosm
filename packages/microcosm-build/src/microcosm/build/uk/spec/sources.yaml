@@ -1195,6 +1195,8 @@ stages:
     share: 0.5
     strata:
     - region
+    pension_age_share: 0.5
+    pension_age_stratum: any_member_at_or_over_state_pension_age
     weight_kind_out: importance
     conservation: exact_total
   outputs:
@@ -1220,7 +1222,7 @@ stages:
   - household_source_id
   - source_household_id
   - source_year
-  notes: Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates 50 percent of each region stratum prior mass to the SPI channel with exact national conservation.
+  notes: "Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates prior mass with exact national conservation within each region, split by whether the household has a member at or over State Pension age (the engine's at the build instant): the SPI channel takes 50 percent of the stratum mass of households without one and pension_age_share of those with one. The channel's households are drawn unweighted with one weight per stratum and every adult in them carries a taxpayer's income, so a region-only allocation gave the channel more pension-age mass than the FRS design gives pension-age households (microcosm#1069)."
 - stage: spi_income_band_donors
   survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Income Tax liabilities statistics July 2026 Table 2.5
   source: Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (PolicyEngine/chronicle#280 lane).
