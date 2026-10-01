@@ -2057,6 +2057,8 @@ def test_builder_exact_k_stages_without_moving_pointers(tmp_path, monkeypatch) -
     # telemetry stays under its own run prefix.
     assert constructed["update_pointers"] is False
     assert constructed["background_uploads"] is True
+    # Without a write token the run warns and stays local; it is never refused.
+    assert constructed["check_write_access"] is True
 
 
 def test_builder_pool_release_identity_is_manifest_authenticated() -> None:

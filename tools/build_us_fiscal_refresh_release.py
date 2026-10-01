@@ -12062,6 +12062,8 @@ def _staging_telemetry(
         update_pointers=getattr(args, "exact_k", None) is None,
         # A slow or unreachable Hub must not stall the build thread.
         background_uploads=True,
+        # No write token: warn, keep telemetry local, build as usual.
+        check_write_access=True,
     )
     return _ACTIVE_TELEMETRY
 
