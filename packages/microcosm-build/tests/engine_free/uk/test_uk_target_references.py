@@ -64,7 +64,7 @@ from tools.generate_uk_target_references import (
 
 _TEST_PATHS = paths_for("microcosm-build")
 
-ACTIVE_REFERENCE_COUNT = 1224
+ACTIVE_REFERENCE_COUNT = 1276
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -750,7 +750,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 1224,
+        "active": 1276,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 16,
     }
@@ -768,7 +768,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "hmrc_spi",
             "status": "active_with_signed_property_amount_exclusion",
-            "active_reference_count": 169,
+            "active_reference_count": 221,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
                 "dimension pins, except the HMRC property-income amount "

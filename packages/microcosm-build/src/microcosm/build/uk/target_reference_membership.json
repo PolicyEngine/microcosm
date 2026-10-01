@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1247,
-  "contract_target_count": 334,
-  "active_reference_count": 1224,
+  "candidate_count": 1299,
+  "contract_target_count": 338,
+  "active_reference_count": 1276,
   "status_counts": {
-    "active": 1224,
+    "active": 1276,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 16
   },
@@ -2257,6 +2257,22 @@
       "geography_id": "K02000001"
     },
     "hmrc.spi.savings_interest_income.count_by_total_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
+    },
+    "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -8126,6 +8142,422 @@
       "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "factor": "1.21716287215412",
       "value_before_uprating": "1070000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_100000_150000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "1580000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_1000000_plus",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "9000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_12570_15000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "151000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_15000_20000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "677000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_150000_200000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "710000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_20000_30000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "2680000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_200000_300000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "378000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_30000_40000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "3580000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_300000_500000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "136000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_40000_50000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "3620000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_50000_70000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "4830000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_500000_1000000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "28000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_70000_100000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "2410000000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_100000_150000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.24430523917995",
+      "value_before_uprating": "182000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_1000000_plus",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.16666666666667",
+      "value_before_uprating": "1000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_12570_15000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.04298245614035",
+      "value_before_uprating": "335000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_15000_20000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "0.97875226039783",
+      "value_before_uprating": "1010000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_150000_200000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.16581632653061",
+      "value_before_uprating": "60000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_20000_30000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.00245098039216",
+      "value_before_uprating": "2430000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_200000_300000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.19774919614148",
+      "value_before_uprating": "32000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_30000_40000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.12268518518519",
+      "value_before_uprating": "1890000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_300000_500000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.19774919614148",
+      "value_before_uprating": "12000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_40000_50000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.12268518518519",
+      "value_before_uprating": "1270000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_50000_70000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.21716287215412",
+      "value_before_uprating": "1200000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_500000_1000000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.21296296296296",
+      "value_before_uprating": "4000.0"
+    },
+    {
+      "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_70000_100000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.21716287215412",
+      "value_before_uprating": "428000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_100000_150000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "2610000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_1000000_plus",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "76000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_12570_15000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "175000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_15000_20000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "701000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_150000_200000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "1450000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_20000_30000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "2820000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_200000_300000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "1140000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_30000_40000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "2560000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_300000_500000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "410000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_40000_50000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "1950000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_50000_70000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "2620000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_500000_1000000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "167000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_70000_100000",
+      "from": "2023",
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "factor": "1.10670439319018",
+      "value_before_uprating": "2390000000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_100000_150000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.24430523917995",
+      "value_before_uprating": "267000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_1000000_plus",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.16666666666667",
+      "value_before_uprating": "7000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_12570_15000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.04298245614035",
+      "value_before_uprating": "516000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_15000_20000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "0.97875226039783",
+      "value_before_uprating": "1310000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_150000_200000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.16581632653061",
+      "value_before_uprating": "93000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_20000_30000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.00245098039216",
+      "value_before_uprating": "3260000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_200000_300000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.19774919614148",
+      "value_before_uprating": "62000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_30000_40000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.12268518518519",
+      "value_before_uprating": "1970000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_300000_500000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.19774919614148",
+      "value_before_uprating": "28000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_40000_50000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.12268518518519",
+      "value_before_uprating": "1080000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_50000_70000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.21716287215412",
+      "value_before_uprating": "981000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_500000_1000000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.21296296296296",
+      "value_before_uprating": "14000.0"
+    },
+    {
+      "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_70000_100000",
+      "from": "2023",
+      "to": "2025",
+      "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "factor": "1.21716287215412",
+      "value_before_uprating": "486000.0"
     },
     {
       "name": "hmrc.spi_region.taxpayers_by_region_12570_15000@E12000001",
@@ -21725,6 +22157,806 @@
         }
       ]
     },
+    "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_100000_150000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1748592941.2404864,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_69ca3488034d7d0999ea4445",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "1580000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_1000000_plus",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 9960339.538711632,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e09d754eff2e1e564909379b",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "9000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_12570_15000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 167112363.37171736,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a39a596f4452ac87dce45705",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "151000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_15000_20000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 749238874.1897527,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ce714b4f80dbbd968c06ba36",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "677000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_150000_200000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 785760119.1650287,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9adb54bc49ea4994b46468e5",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "710000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_20000_30000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2965967773.749686,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_11d669d44fe0ac81e7ac9fcc",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "2680000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_200000_300000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 418334260.6258885,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2211d55a20fbe6510985fab1",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "378000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_30000_40000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3962001727.6208487,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6663f19bf07b337d0f596bee",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "3580000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_300000_500000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 150511797.47386464,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a0fa23c34ca03fb21900996a",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "136000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_40000_50000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4006269903.348456,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cc84f08131e4e6b264c7fd80",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "3620000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_50000_70000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 5345382219.108575,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9598d3c1f8b6f7f20c749957",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "4830000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_500000_1000000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 30987723.009325072,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d881d51cc1c615ace3627f11",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "28000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band.band_70000_100000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2667157587.588337,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c2dea35b8f673106284a6d14",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "2410000000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_100000_150000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 226463.55353075173,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_da03a2780fbba864d40f7010",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.24430523917995",
+            "value_before_uprating": "182000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_1000000_plus",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1166.6666666666667,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aee102e14c8660157ed202cf",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.16666666666667",
+            "value_before_uprating": "1000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_12570_15000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 349399.1228070175,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_52052dcfa84c3b0620d8b980",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.04298245614035",
+            "value_before_uprating": "335000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_15000_20000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 988539.7830018083,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5857734e278d6dd9c6f038c6",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "0.97875226039783",
+            "value_before_uprating": "1010000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_150000_200000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 69948.97959183673,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_eca0d63510daab5cd94b5c08",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.16581632653061",
+            "value_before_uprating": "60000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_20000_30000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2435955.882352941,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7b2fe2031fef3b5548e3f3c4",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.00245098039216",
+            "value_before_uprating": "2430000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_200000_300000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 38327.974276527326,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_63aa600ed5f19c9fe4a56f51",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.19774919614148",
+            "value_before_uprating": "32000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_30000_40000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2121875.0,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e67144b24c53ca5969c5e99b",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.12268518518519",
+            "value_before_uprating": "1890000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_300000_500000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 14372.990353697749,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3dedd2e692e38c826782d028",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.19774919614148",
+            "value_before_uprating": "12000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_40000_50000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1425810.1851851852,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7347727cb44787847d8e1292",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.12268518518519",
+            "value_before_uprating": "1270000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_50000_70000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1460595.4465849388,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_df636cc5cb9af8d5b4772e17",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.21716287215412",
+            "value_before_uprating": "1200000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_500000_1000000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 4851.851851851852,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c260f5cd6c361c9311f0bb82",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.21296296296296",
+            "value_before_uprating": "4000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band.band_70000_100000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 520945.7092819615,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bb1de045c936f54320cc8681",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.21716287215412",
+            "value_before_uprating": "428000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_100000_150000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2888498466.226373,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ad786b998eed3e49ad12c0a7",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "2610000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_1000000_plus",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 84109533.88245377,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_8fa1705682f55cff9e18a0b5",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "76000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_12570_15000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 193673268.80828172,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d85ca871c404258929b62b14",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "175000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_15000_20000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 775799779.626317,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f613cd427677fd0c6ec74446",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "701000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_150000_200000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1604721370.1257627,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_28dfee53a20f51baa78ce2e2",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "1450000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_20000_30000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3120906388.796311,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_818ba25d69b70814b2e69129",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "2820000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_200000_300000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1261643008.2368066,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1685e6eb7c2cd733e8666e0",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "1140000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_30000_40000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2833163246.566864,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0a83445ae5da86296e31e6ae",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "2560000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_300000_500000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 453748801.2079743,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a2ed3fe8cb8ea8cdafbb57eb",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "410000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_40000_50000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2158073566.7208533,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_43c82cc4e382737eae7e59b6",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "1950000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_50000_70000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2899565510.1582747,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1b0ff080c0f6274ec84d8194",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "2620000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_500000_1000000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 184819633.66276026,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7094bdafe2aafc7ebdbdbf71",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "167000000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band.band_70000_100000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2645023499.724533,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cce64f76ec702d7156fc0a7f",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "factor": "1.10670439319018",
+            "value_before_uprating": "2390000000.0"
+          }
+        }
+      ]
+    },
+    "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_100000_150000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 332229.49886104785,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_0e72018eb0ad9245363dfa56",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.24430523917995",
+            "value_before_uprating": "267000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_1000000_plus",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 8166.666666666667,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a7220ffd945f41bc1f8420a8",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.16666666666667",
+            "value_before_uprating": "7000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_12570_15000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 538178.947368421,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b9b586efc9ab9d4a6b054d9d",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.04298245614035",
+            "value_before_uprating": "516000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_15000_20000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1282165.4611211573,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7b95a6a4cc78d60a04dd89f3",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "0.97875226039783",
+            "value_before_uprating": "1310000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_150000_200000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 108420.91836734694,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_610c984d016f5d1de385c867",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.16581632653061",
+            "value_before_uprating": "93000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_20000_30000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 3267990.1960784313,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_627613cc1f1ee670ad30ccb8",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.00245098039216",
+            "value_before_uprating": "3260000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_200000_300000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 74260.4501607717,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_906b2677a58cad2e8dbe77af",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.19774919614148",
+            "value_before_uprating": "62000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_30000_40000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2211689.814814815,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_7c4ca60e993c754568b1e747",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.12268518518519",
+            "value_before_uprating": "1970000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_300000_500000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 33536.977491961414,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1382eb43553da82b11fc0ea3",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.19774919614148",
+            "value_before_uprating": "28000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_40000_50000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1212500.0,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c4f2ea45e164ef5b82da6b42",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.12268518518519",
+            "value_before_uprating": "1080000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_50000_70000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 1194036.7775831874,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3be9ba98483d526840fb85be",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.21716287215412",
+            "value_before_uprating": "981000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_500000_1000000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 16981.48148148148,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c101024b1a2949a598bb4685",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.21296296296296",
+            "value_before_uprating": "14000.0"
+          }
+        },
+        {
+          "name": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band.band_70000_100000",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 591541.1558669002,
+          "resolved_fact_period": "2023",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e4e549331f3c79ca34cef20f",
+          "uprating": {
+            "index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+            "factor": "1.21716287215412",
+            "value_before_uprating": "486000.0"
+          }
+        }
+      ]
+    },
     "hmrc.spi_region.taxpayers_by_region_12570_15000": {
       "status": "active",
       "candidates": [
@@ -29060,7 +30292,7 @@
     {
       "family": "hmrc_spi",
       "status": "active_with_signed_property_amount_exclusion",
-      "active_reference_count": 169,
+      "active_reference_count": 221,
       "signed_rationale": "SPI income-band targets fan out by strict total-income-band dimension pins, except the HMRC property-income amount surface. Those 13 rows are signed out because Ledger carries the official SPI Table 3.7 net property-income amounts, while the incumbent target applies the populace-side x1.9 property-income undercount adjustment traced to policyengine-uk-data PR #311 / issue #230 and HMRC Property Rental Income Statistics."
     },
     {

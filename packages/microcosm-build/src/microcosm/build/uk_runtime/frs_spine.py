@@ -732,14 +732,18 @@ def _add_person_expenses(
     )
     penprov = frs["penprov"]
     pension_amount = _number(penprov, "penamt")
-    pension_clip = float(pension_amount.quantile(0.95)) if len(pension_amount) else 0.0
+    # Personal and stakeholder pension contributions as reported, no longer
+    # clipped at the 95th percentile of every PENPROV amount: the clip removed
+    # 28% of the reported amount (1.8% of rows) against HMRC's relief-at-source
+    # total, which SPI Table 3.8 now binds by income band; the engine caps the
+    # relief itself at the annual allowance (microcosm#1069 c8).
     pe_person["personal_pension_contributions"] = np.maximum(
         0,
         _sum_to_entity(
             pension_amount[_number(penprov, "stemppen").isin((5, 6))],
             penprov.loc[_number(penprov, "stemppen").isin((5, 6)), "person_id"],
             person["person_id"],
-        ).clip(0, pension_clip)
+        )
         * WEEKS_IN_YEAR,
     )
     job = frs["job"]
