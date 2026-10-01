@@ -167,10 +167,11 @@ recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-2026092
 - **Record basis.** The record basis at `0.1` lowers national ESS from 13,646
   to 8,689, as its `w ∝ d ** 2` optimum predicts.
 - **Chi-square basis.** The chi-square basis raises ESS smoothly with
-  `l2_lambda`. At `0.03` under projection it fits held-out targets better than
-  the release on both measures (capped error and share within 10%) on both
-  rotated folds it was run on, with 0.3 points less training fit. Those folds
-  also chose `l2_lambda`, so the held-out gain is optimistic by that selection.
+  `l2_lambda`. At `0.03` under projection it costs 0.3 points of training fit
+  and no held-out fit: it is slightly ahead of the release on both measures
+  (capped error and share within 10%) on both rotated folds, by margins of the
+  same order as the solve's run-to-run variation. Those folds also chose
+  `l2_lambda`.
 - **What limits ESS is the starting weights.** The experiment's README has the
   frontier, the holdout, candidate ESS floors and the recommendation.
 

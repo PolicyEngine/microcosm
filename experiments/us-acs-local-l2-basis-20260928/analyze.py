@@ -3,9 +3,11 @@
 Reads ``results/runs/*.json`` (one ``sweep.py`` payload per run) and writes
 ``results/frontier.csv``, ``results/frontier.md``, ``results/floors.md``,
 ``results/key_configs.md`` (also spliced into the README) and
-``results/frontier.png``. ``dup_*`` runs are head-equivalence reruns, kept out
-of the frontier; ``results/head_equivalence.json`` compares their weights,
-byte for byte, with the original runs' (``weights.npz`` beside the checkpoint).
+``results/frontier.png``. ``dup_*`` runs repeat a first-head configuration at
+a later head and are kept out of the frontier; ``results/rerun_variation.json``
+compares each with its original: whether weights and trajectory are
+byte-identical, the first epoch where the trajectories differ, and every
+frontier metric's relative change (``weights.npz`` beside the checkpoint).
 
 Run: ``uv run --with matplotlib python experiments/us-acs-local-l2-basis-20260928/analyze.py``
 """
@@ -25,6 +27,22 @@ LOCAL_RUNS = Path(
     "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/runs"
 )
 #: Reruns of a first-head run at a later kernel head, and the run they repeat.
+#: The frontier metrics the rerun comparison reports.
+RERUN_METRICS = (
+    "final_loss",
+    "within_10pct",
+    "kish_ess",
+    "top_1pct_share",
+    "state_ess_min",
+    "cd_ess_median",
+    "cd_ess_min",
+    "cds_below_50",
+    "cds_below_0.25_of_prior",
+    "ma_ess",
+    "chi_square_distance_from_prior",
+    "donor_mass_share",
+    "within_10pct_soi",
+)
 HEAD_PAIRS = {
     "dup_release_repro": "release_repro",
     "dup_soft_chi_s050_0.03": "soft_chi_s050_0.03",
@@ -427,8 +445,8 @@ def chart(frame: pd.DataFrame, path: Path) -> None:
     fig.savefig(path, dpi=150, facecolor=surface)
 
 
-def head_equivalence() -> dict:
-    """Each rerun's weights and trajectory against its original's, exactly."""
+def rerun_variation() -> dict:
+    """Each rerun against its original: bytes, divergence, metric changes."""
 
     pairs = {}
     for dup, original in HEAD_PAIRS.items():
@@ -437,7 +455,9 @@ def head_equivalence() -> dict:
         if not all(path.exists() for path in (*paths, *receipts)):
             pairs[dup] = {"original": original, "status": "not collected"}
             continue
-        heads = [_head(json.loads(path.read_text())) for path in receipts]
+        payloads = [json.loads(path.read_text()) for path in receipts]
+        heads = [_head(payload) for payload in payloads]
+        rows = [row(payload) for payload in payloads]
         arrays = [np.load(path) for path in paths]
         weights = [a["weights"] for a in arrays]
         trajectories = [
@@ -460,7 +480,33 @@ def head_equivalence() -> dict:
             "trajectory_byte_identical": bool(
                 trajectories[0].tobytes() == trajectories[1].tobytes()
             ),
-            "max_abs_weight_difference": float(np.max(np.abs(weights[0] - weights[1]))),
+            "first_trajectory_difference_epoch": (
+                int(np.argmax(trajectories[0] != trajectories[1]))
+                if (trajectories[0] != trajectories[1]).any()
+                else None
+            ),
+            "trajectory_relative_difference_at_epochs_0_1": [
+                float(abs(a - b) / abs(b))
+                for a, b in zip(trajectories[0][:2], trajectories[1][:2], strict=True)
+            ],
+            "weight_relative_difference_median_p99": [
+                float(q)
+                for q in np.quantile(
+                    np.abs(weights[0] - weights[1]) / weights[1], (0.5, 0.99)
+                )
+            ],
+            "metrics": {
+                name: {
+                    "rerun": float(rows[0][name]),
+                    "original": float(rows[1][name]),
+                    "relative_change": (
+                        float(rows[0][name] / rows[1][name] - 1.0)
+                        if rows[1][name]
+                        else None
+                    ),
+                }
+                for name in RERUN_METRICS
+            },
         }
     return pairs
 
@@ -473,8 +519,8 @@ def main() -> None:
     (out / "floors.md").write_text(floor_table(frame))
     table = key_config_table(frame)
     (out / "key_configs.md").write_text(table)
-    (out / "head_equivalence.json").write_text(
-        json.dumps(head_equivalence(), indent=1) + "\n"
+    (out / "rerun_variation.json").write_text(
+        json.dumps(rerun_variation(), indent=1) + "\n"
     )
     readme = HERE / "README.md"
     start, end = (

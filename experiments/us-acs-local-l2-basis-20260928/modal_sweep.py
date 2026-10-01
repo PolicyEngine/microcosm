@@ -233,8 +233,8 @@ def grid() -> list[dict]:
             }
         )
     # Provenance: the grid ran on three kernel heads. These rerun two
-    # first-head configurations at a later head; their weights must match
-    # byte for byte (compare_heads in analyze.py).
+    # first-head configurations at a later head; analyze.py's
+    # rerun_variation compares them with the originals.
     specs.append(
         {
             "run_id": "dup_release_repro",

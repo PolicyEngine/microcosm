@@ -30,10 +30,10 @@ what that anchor buys, what it costs, and what limits it.
    - The 1,531,614 ACS rows alone have an ESS of 812,434.
    - Calibration then moves the donor share of mass from 50% to 68% and cuts ESS to 13,646.
    - Receipts: `results/seeding_options.{json,md}`, and the national and per-spine blocks of every run.
-2. **The anchor works, and at the current seeding it improves out-of-sample fit.**
+2. **The anchor works, and at the current seeding it costs no out-of-sample fit.**
    - The chi-square penalty pulls toward the design weights themselves. The old record-weighted L2 penalty pulls toward their square: at λ = 0.1 it *lowers* ESS to 8,689.
    - With the chi-square basis, ESS rises smoothly with λ.
-   - On held-out targets, projection at λ = 0.03 fits better than the release on both measures and both folds (see the table), consistent with a small penalty trading a little training fit for less overfitting. The λ was picked on the same two folds it is reported on.
+   - On held-out targets, projection at λ = 0.03 is no worse than the release. It is ahead on both measures and both folds (see the table), but by margins (3.6-3.8% in capped error, 0.9-1.2 points within 10%) of the same order as the unpenalized solve's run-to-run variation (its training loss moved 2.7% between two identical runs; see "How it was run"). The λ was also picked on those two folds.
 3. **The seeding sets the limit.** As λ grows the solve returns to the starting weights. On every tested path the national ESS stays below the prior's (at share 0.5, λ = 3 reaches 35,386 against the prior's 36,288), though the penalty is a distance, not an ESS bound, and single districts can exceed their prior's ESS (at λ = 1 some do).
    - A larger ACS share raises that limit several-fold. At share 0.9 without a penalty: ESS 93,524, Massachusetts 2,704, no district below 50, and 95.8% of targets within 10%.
    - It also worsens held-out fit, mainly on SOI targets (held-out SOI within 10% falls from 64% to 54% at share 0.9), while held-out district populations improve.
@@ -83,7 +83,7 @@ default `--mass-parametrization projection`.
   - Massachusetts from 448 to 589;
   - districts below ESS 50 from 352 to 278;
   - the smallest district from 12 to 22.
-- Out of sample it is better on both measures and both folds: held-out error 0.1247 and 0.1191 against 0.1296 and 0.1236, and held-out within 10% 64.2% and 67.0% against 63.3% and 65.8%.
+- Out of sample it is no worse: held-out error 0.1247 and 0.1191 against 0.1296 and 0.1236, and held-out within 10% 64.2% and 67.0% against 63.3% and 65.8%. Those margins are within the order of run-to-run variation, so they are not a measured improvement.
 - In sample it costs a little: training loss rises from 0.0155 to 0.0181, and training targets within 10% fall from 97.6% to 97.3%.
 - Softmax at λ = 0.03 gives a little more ESS (21,835) and lower held-out error, but its held-out within 10% is slightly *below* the release's on fold 0 (63.1% vs 63.3%), its training fit is worse, and its cap loop runs out at this scale (finding 4). Projection is the default and the better-supported choice.
 - λ = 0.1 (softmax) buys more ESS (24,895; 132 districts below 50) and lower held-out error than the release, but lower held-out within 10% on both folds (61.5% and 63.8%), and 2 pp of training fit.
@@ -153,7 +153,9 @@ summary, so the gate is a finalize-stage check on data it already has.
   container from the committed kernel, gated on a reproduction of the release.
   - The reproduction matched the release: loss 0.015485 against 0.015491,
     within-10% 97.58% against 97.58%, ESS 13,646 against 13,631, and
-    chi-square distance 0.7269 against 0.7270.
+    chi-square distance 0.7269 against 0.7270. A second run of the same
+    configuration gave loss 0.015069 and ESS 13,635, so the loss match is
+    closer than the solve's run-to-run variation.
   - Every run's metrics are in `results/runs/`. Weights stay in
     `_build_artifacts/acs-local-l2-basis-20260928/runs/` and the Modal volume
     `microcosm-acs-l2-basis-sweep`.
@@ -172,7 +174,21 @@ summary, so the gate is a finalize-stage check on data it already has.
   only in docstrings and comments, the softmax cap-exhaustion counter (a
   receipt field), an `assert` on an unreachable branch, a guard that only
   raises, and an `L0RefitResult` property; the other changed calibrate
-  modules came from main and are not on `calibrate`'s path. HEAD_EQUIVALENCE
+  modules came from main and are not on `calibrate`'s path.
+- **Run-to-run variation.** The solves are not bit-reproducible across Modal
+  containers. Two first-head runs (`release_repro` and softmax λ = 0.03) were
+  repeated at d82ff85b as `dup_*` (`results/rerun_variation.json`). Neither
+  pair is byte-identical. The trajectories already differ at epoch 0 for
+  softmax (the loss at the starting weights, 1.2e-6 relative) and at epoch 1
+  for the release (7e-8 relative), which no code change between the heads
+  touches. Over 800 epochs that grows to:
+  - final loss: −2.7% for the release, −0.3% at λ = 0.03;
+  - per-record weights: median 0.3-0.5% and 99th percentile 4-9% apart;
+  - every concentration measure in the key table within 1%, training within 10% within 0.05 points;
+  - districts below a quarter of their starting ESS: 15 and 16 for the release, 0 and 0 at λ = 0.03.
+
+  The cause (thread scheduling, CPU type or library code path) was not
+  isolated. The penalized solve varies much less than the unpenalized one.
 
 ## Limits
 
@@ -188,5 +204,9 @@ summary, so the gate is a finalize-stage check on data it already has.
   ESS. A solve on cloned rows needs a rebuilt target matrix. The support-mix
   bake-off (#1067) compares clones and ACS rows in the solve.
 - **Epochs.** 800 epochs, like the release; longer solves were not run.
+- **One run per configuration.** Apart from the two reruns, each configuration
+  was solved once, so differences smaller than the run-to-run variation above
+  (notably the held-out margins and the softmax-versus-projection comparison
+  at λ = 0.03) are not resolved.
 - **Not measured.** Poverty and program estimates were not recomputed, since
   the engine was not run. ESS is the proxy for their precision.
