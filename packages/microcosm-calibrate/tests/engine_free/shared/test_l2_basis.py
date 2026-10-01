@@ -354,16 +354,32 @@ def _path_reference() -> dict:
     return json.loads(path.read_text())
 
 
-def _problem_digest(frame: Frame, targets: TargetSet) -> str:
+def _problem_fingerprint(frame: Frame, targets: TargetSet) -> list[float]:
+    """Moments that pin the generated problem, up to float rounding.
+
+    Not a byte digest: a SHA-256 of the generated arrays, written on macOS
+    arm64, failed on Linux CI for one of the twelve cases while the other
+    eleven matched, so the generated floats are not bit-stable. For each
+    target, the measure's sum, sum of squares and position-weighted sum, then
+    the target value; then the same three moments of the design weights. Any
+    change to the generator moves these far more than rounding does.
+    """
     household = frame.table("household")
-    digest = hashlib.sha256()
+    design = frame.resolve_weights("household").values.astype(np.float64)
+    position = np.arange(1, len(design) + 1, dtype=np.float64)
+
+    def moments(values: np.ndarray) -> list[float]:
+        return [
+            float(values.sum()),
+            float((values**2).sum()),
+            float((position * values).sum()),
+        ]
+
+    fingerprint: list[float] = []
     for target in targets:
-        digest.update(household[target.measure].to_numpy(np.float64).tobytes())
-        digest.update(np.float64(target.value).tobytes())
-    digest.update(
-        frame.resolve_weights("household").values.astype(np.float64).tobytes()
-    )
-    return digest.hexdigest()
+        fingerprint += moments(household[target.measure].to_numpy(np.float64))
+        fingerprint.append(float(target.value))
+    return fingerprint + moments(design)
 
 
 def _objective_parts(frame, targets, weights: np.ndarray) -> tuple[float, float]:
@@ -405,14 +421,16 @@ def test_path_solves_reach_the_exact_optimum(case: dict) -> None:
 
     The fixture holds the exact optimum of the same convex program for these
     very problems (``experiments/us-acs-local-l2-basis-20260928/
-    path_reference.py``); its problem digests guard against generator
+    path_reference.py``); its problem fingerprints guard against generator
     drift. The loss cap never binds on them, so the solver's capped loss and
     the program's loss coincide.
     """
     reference = _path_reference()
     entry = reference["cases"][path_case_id(case)]
     frame, targets, results = _solved_path(path_case_id(case))
-    assert _problem_digest(frame, targets) == entry["problem_sha256"]
+    assert _problem_fingerprint(frame, targets) == pytest.approx(
+        entry["problem_fingerprint"], rel=1e-9, abs=1e-12
+    )
     bound = reference["excess_objective_bound"]
     for lam, result in zip(_LAMBDAS, results, strict=True):
         loss, distance = _objective_parts(frame, targets, result.weights)

@@ -96,7 +96,7 @@ def main() -> None:
             excess[str(lam)] = loss + lam * distance - optimum[str(lam)]["objective"]
         measured.extend(excess.values())
         entries[case_id] = {
-            "problem_sha256": module._problem_digest(frame, targets),
+            "problem_fingerprint": module._problem_fingerprint(frame, targets),
             "optimum": optimum,
             "solver_excess_when_generated": excess,
         }
