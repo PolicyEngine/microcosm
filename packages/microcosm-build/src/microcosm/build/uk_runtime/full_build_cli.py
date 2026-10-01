@@ -1618,6 +1618,32 @@ def _ledger_facts_pin(path: Path) -> dict:
     return {"sha256": artifact["sha256"], "size_bytes": int(artifact["size_bytes"])}
 
 
+def refuse_occupied_national_output(args: argparse.Namespace) -> None:
+    """Refuse an occupied ``--out`` before any national attempt exists.
+
+    The publication step replaces whatever is at ``--out``, so a second run into
+    a candidate's directory would silently replace the first candidate's bytes
+    under the Logbook row that names them (review C2); the retired seam refused
+    it before any work (``_validate_output_paths``). The refusal runs with the
+    other argument refusals, before the attempt id is minted and telemetry
+    opens, so it writes nothing into the occupied directory: no failure
+    sidecar, no Logbook row, no staging run (microcosm#1057 review round 2,
+    item 9). Dry runs write nothing and are not refused.
+    """
+
+    national_role.validate_output_paths(
+        output_paths(
+            args.out,
+            posture=posture_of(args),
+            vintage=str(load_uk_frs_release().vintage),
+        ),
+        # The input's existence is checked inside the attempt, as before; the
+        # collision check needs only its path.
+        input_h5=Path(args.input_h5).expanduser(),
+        ladder_path=None,
+    )
+
+
 def prepare_national_build(
     args: argparse.Namespace, *, telemetry=None, attempt: dict | None = None
 ) -> PreparedUKNationalBuild:
@@ -1657,17 +1683,9 @@ def prepare_national_build(
     args._calibration_year = calibration_year
     args._frs_vintage = str(release.vintage)
     args._doctrine_override_receipt = overrides
-    if not args.dry_run:
-        # The seam refused an occupied output directory before any work
-        # (``_validate_output_paths`` in ``_run_national_attempt``); the
-        # publication step replaces whatever is at ``--out``, so without this
-        # a second run would silently replace the first candidate's bytes
-        # under the Logbook row that names them.
-        national_role.validate_output_paths(
-            output_paths(args.out, posture=posture, vintage=args._frs_vintage),
-            input_h5=input_h5,
-            ladder_path=None,
-        )
+    # An occupied ``--out`` is refused in ``_national_main`` before the attempt
+    # opens (``refuse_occupied_national_output``), so a refused run leaves
+    # nothing in the first candidate's directory.
     config = UKNationalBuildConfig(
         calibration_year=calibration_year,
         time_period=time_period,
@@ -2299,6 +2317,10 @@ def _national_main(args: argparse.Namespace) -> int:
                 args
             ).national.operation_inventory(),
         )
+    # Argument refusals cost nothing, the occupied output directory included;
+    # the credential check reaches the Hub, so it runs last, still before any
+    # input is read.
+    refuse_occupied_national_output(args)
     preflight_staged_dataset(args)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)

@@ -6691,6 +6691,33 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "method",
+      "aggregates"
+     ],
+     "properties": {
+      "kind": {
+       "const": "aggregate_person_to_household"
+      },
+      "method": {
+       "type": "string"
+      },
+      "consumed_only": {
+       "type": "boolean"
+      },
+      "aggregates": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "output",
       "count_resource",
       "cell_columns",
@@ -9527,6 +9554,316 @@
          }
         }
        }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "household_key",
+      "person_columns",
+      "household_aggregate",
+      "aggregate_tolerance_gbp",
+      "non_dependent_code",
+      "female_code",
+      "age_band_edges",
+      "sentinel_codes",
+      "sentinel_recode_columns",
+      "household_predictors",
+      "credibility_rule"
+     ],
+     "properties": {
+      "kind": {
+       "const": "clean_was_lisa_donor"
+      },
+      "scope": {
+       "type": "string"
+      },
+      "household_key": {
+       "type": "string"
+      },
+      "person_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "person_number",
+        "is_dependent_child",
+        "age_band",
+        "sex",
+        "employment_income",
+        "holds_lifetime_isa",
+        "holding_imputed",
+        "reported_value",
+        "value_imputed",
+        "reported_band",
+        "band_imputed",
+        "lifetime_isa_balance"
+       ],
+       "properties": {
+        "person_number": {
+         "type": "string"
+        },
+        "is_dependent_child": {
+         "type": "string"
+        },
+        "age_band": {
+         "type": "string"
+        },
+        "sex": {
+         "type": "string"
+        },
+        "employment_income": {
+         "type": "string"
+        },
+        "holds_lifetime_isa": {
+         "type": "string"
+        },
+        "holding_imputed": {
+         "type": "string"
+        },
+        "reported_value": {
+         "type": "string"
+        },
+        "value_imputed": {
+         "type": "string"
+        },
+        "reported_band": {
+         "type": "string"
+        },
+        "band_imputed": {
+         "type": "string"
+        },
+        "lifetime_isa_balance": {
+         "type": "string"
+        }
+       }
+      },
+      "household_aggregate": {
+       "type": "string"
+      },
+      "aggregate_tolerance_gbp": {
+       "type": "number"
+      },
+      "non_dependent_code": {
+       "type": "integer"
+      },
+      "female_code": {
+       "type": "integer"
+      },
+      "age_band_edges": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "sentinel_codes": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "sentinel_recode_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "household_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "credibility_rule": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "maximum_holder_age_band_lower",
+        "balance_ceiling_gbp"
+       ],
+       "properties": {
+        "maximum_holder_age_band_lower": {
+         "type": "integer"
+        },
+        "balance_ceiling_gbp": {
+         "type": "number"
+        },
+        "basis": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed",
+      "salt",
+      "model",
+      "penalty_c",
+      "solver",
+      "max_iter",
+      "standardise",
+      "age_group_lower_bounds",
+      "log1p_predictors",
+      "indicator_predictors",
+      "count_predictors",
+      "population"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_lifetime_isa_ownership"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "model": {
+       "enum": [
+        "weighted_ridge_logistic"
+       ]
+      },
+      "penalty_c": {
+       "type": "number"
+      },
+      "solver": {
+       "type": "string"
+      },
+      "max_iter": {
+       "type": "integer"
+      },
+      "standardise": {
+       "enum": [
+        "donor_unweighted_mean_sd"
+       ]
+      },
+      "age_group_lower_bounds": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "log1p_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "indicator_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "count_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "population": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "minimum_age"
+       ],
+       "properties": {
+        "minimum_age": {
+         "type": "integer"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed",
+      "salt",
+      "model",
+      "n_estimators",
+      "training_rows",
+      "expected_regime",
+      "predictors"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_lifetime_isa_balance"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "salt": {
+       "type": "string"
+      },
+      "model": {
+       "enum": [
+        "regime_gated_qrf"
+       ]
+      },
+      "n_estimators": {
+       "type": "integer"
+      },
+      "training_rows": {
+       "enum": [
+        "credible_holders"
+       ]
+      },
+      "expected_regime": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "column",
+      "cap_column",
+      "method",
+      "ownership_output"
+     ],
+     "properties": {
+      "kind": {
+       "const": "cap_lifetime_isa_to_financial_wealth"
+      },
+      "column": {
+       "type": "string"
+      },
+      "cap_column": {
+       "type": "string"
+      },
+      "method": {
+       "enum": [
+        "pro_rata_within_household"
+       ]
+      },
+      "ownership_output": {
+       "type": "string"
       }
      }
     },

@@ -152,6 +152,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -290,6 +291,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private WAS round-8 household tab for was_wealth.",
     )
     parser.add_argument(
+        "--was-person-tab",
+        type=Path,
+        help=(
+            "Caller-supplied private WAS round-8 person tab for was_lisa (with "
+            "--was-tab)."
+        ),
+    )
+    parser.add_argument(
         "--nts-household-tab",
         type=Path,
         help="Caller-supplied private NTS household tab for nts_bus_travel.",
@@ -367,6 +376,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             flag
             for flag, value in (
                 ("--was-tab", args.was_tab),
+                ("--was-person-tab", args.was_person_tab),
                 ("--nts-household-tab", args.nts_household_tab),
                 ("--nts-individual-tab", args.nts_individual_tab),
                 ("--nts-trip-tab", args.nts_trip_tab),
@@ -474,6 +484,7 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         raise ValueError("Synthetic fixture inputs must be an object.")
     names = {
         "was": "was",
+        "was_person": "was_person",
         "nts_household": "nts_household",
         "nts_individual": "nts_individual",
         "nts_trip": "nts_trip",
@@ -1286,6 +1297,20 @@ def prepare_uk_spine_execution(
         raise ValueError(
             "--was-tab is required when the was_wealth stage is scheduled."
         )
+    if args.synthetic_fixture_dir is None and "was_lisa" in stage_names:
+        missing_was = [
+            flag
+            for flag, value in (
+                ("--was-tab", args.was_tab),
+                ("--was-person-tab", args.was_person_tab),
+            )
+            if value is None
+        ]
+        if missing_was:
+            raise ValueError(
+                "was_lisa requires caller-supplied private inputs: "
+                f"{', '.join(missing_was)}."
+            )
     if args.synthetic_fixture_dir is None and "nts_bus_travel" in stage_names:
         missing_nts = [
             flag
@@ -1408,6 +1433,15 @@ def prepare_uk_spine_execution(
                 stage=stages_by_name["was_wealth"],
                 engine=engine,
                 was_tab_path=sources["was"],
+            )
+        )
+    if "was_lisa" in stage_names:
+        implementations["was_lisa"] = _GraphSourceTransform(
+            lambda sources: UKWASLISAStageTransform(
+                stage=stages_by_name["was_lisa"],
+                engine=engine,
+                was_tab_path=sources["was"],
+                was_person_tab_path=sources["was_person"],
             )
         )
     if "nts_bus_travel" in stage_names:
@@ -1569,8 +1603,10 @@ def prepare_uk_spine_execution(
         graph_sources = _synthetic_graph_sources(args.synthetic_fixture_dir)
     else:
         graph_sources = {"frs": args.frs_raw_dir}
-        if "was_wealth" in stage_names:
+        if "was_wealth" in stage_names or "was_lisa" in stage_names:
             graph_sources["was"] = args.was_tab
+        if "was_lisa" in stage_names:
+            graph_sources["was_person"] = args.was_person_tab
         if "nts_bus_travel" in stage_names:
             graph_sources["nts_household"] = args.nts_household_tab
             graph_sources["nts_individual"] = args.nts_individual_tab

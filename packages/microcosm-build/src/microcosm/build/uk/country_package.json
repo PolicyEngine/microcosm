@@ -268,6 +268,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "was_lisa_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "local_binding_adjudications.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

@@ -201,6 +201,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_is_cgt_support_copy",
     "household.household_is_spi_income_band_donor",
     "household.household_is_spi_synthetic",
+    # #1003: the WAS Lifetime ISA stage's household total and person cells.
+    "household.household_lifetime_isa_balance",
     # #930: the NTS bus-travel stage's household journey cell.
     "household.household_local_bus_trips",
     "household.spi_income_band_donor_lower_bound",
@@ -243,12 +245,14 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.esa_health_condition_proxy",
     "person.esa_support_group_proxy",
     "person.gift_aid",
+    "person.has_lifetime_isa",
     "person.highest_education",
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
     "person.is_in_non_advanced_education",
     "person.is_parent",
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
+    "person.lifetime_isa_balance",
     "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",

@@ -50,9 +50,10 @@ uv run --no-sync python tools/build_uk_full.py --release-role national \
 ```
 
 `--out` must not already hold a candidate: the role refuses an occupied
-output directory before any work (`failure.json` names the
-`FileExistsError`, the Logbook row is `failed`), so a rebuild goes into a
-fresh directory rather than over the bytes an earlier row names. An
+output directory with the other argument refusals, before the attempt opens
+(a `FileExistsError`; nothing is written into the directory, no Logbook row,
+no staging run), so a rebuild goes into a fresh directory rather than over
+the bytes an earlier row names. An
 operator interrupt (Ctrl-C) records a `discarded` row and closes the staging
 run as failed. `--review-date` (default today) dates the measure-exclusion
 windows and the target-fit deferral register on this line, as it does on

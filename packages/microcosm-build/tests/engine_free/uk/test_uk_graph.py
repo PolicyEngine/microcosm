@@ -40,14 +40,14 @@ def test_uk_spine_graph_contains_every_manifest_stage() -> None:
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
-    # 34 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
+    # 35 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine, #970
     # cgt_incidence_anchor, #930 nts_bus_travel and the income-anchor lane's
-    # (PolicyEngine/chronicle#280) spi_income_band_donors stages and the #1012
-    # spi_housing_shell; the frs_hmrc_retained_leaves / hmrc_spi_income
-    # certified-pair alternatives are retired (#901), so the manifest roster is
-    # the graph roster.
-    assert len(expected) == 34
+    # (PolicyEngine/chronicle#280) spi_income_band_donors stages, the #1012
+    # spi_housing_shell and the #1003 was_lisa; the frs_hmrc_retained_leaves /
+    # hmrc_spi_income certified-pair alternatives are retired (#901), so the
+    # manifest roster is the graph roster.
+    assert len(expected) == 35
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(expected)
     assert set(expected) <= ids
     assert {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.isdisjoint(ids)
@@ -101,6 +101,7 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     assert {source.name for source in graph.sources} == {
         "frs",
         "was",
+        "was_person",
         "nts_household",
         "nts_individual",
         "nts_trip",
@@ -116,6 +117,7 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "lcfs_household",
         "lcfs_person",
     )
+    assert graph.node("was_lisa").sources == ("was", "was_person")
     assert graph.node("hmrc_spi_income_spine").sources == (
         "spi",
         "hmrc_income",
@@ -182,6 +184,7 @@ def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
         "frs_education_grant_split",
         "frs_brma",
         "was_wealth",
+        "was_lisa",
         "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",

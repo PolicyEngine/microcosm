@@ -36,6 +36,7 @@ To include raw spine construction in the same execution, pass `--spine-request /
   "--spi-tab", "/data/spi/put2223uk.tab",
   "--hmrc-ods", "/data/hmrc/collated.ods",
   "--was-tab", "/data/was/household.tab",
+  "--was-person-tab", "/data/was/person.tab",
   "--nts-household-tab", "/data/nts/household.tab",
   "--nts-individual-tab", "/data/nts/individual.tab",
   "--nts-trip-tab", "/data/nts/trip.tab",
@@ -59,7 +60,7 @@ For smaller outputs, add `--dataset-households 100000` to use the common informe
 
 ## Graph owners and shared contracts
 
-The spine graph is the 33-stage source roster declared by the UK spec, built by `uk_runtime.spine_build` (the spine tool moved into the package; `tools/build_uk_frs_spine.py` is a six-line shim over it). The superseded `frs_hmrc_retained_leaves` and `hmrc_spi_income` stages and the `UK_SPINE_EXCLUSIONS` list that hid them are removed; the active HMRC path is `frs_hmrc_spine_leaves`, `spi_support_channel`, `spi_income_band_donors` and `hmrc_spi_income_spine`, and the FRS HMRC leaf columns come from `uk_runtime.frs_hmrc_source`. The spine's assembled and transferred gate batteries are graph nodes (`uk_runtime.graph_evidence`); stage evidence and fit-weight records are read back from the content store through the shared `stage_evidence` artifact rather than from in-memory collectors; the HMRC replay sidecar is rebuilt from the SPI stage's checkpoint metadata; the spine sidecar records the operation inventory and the graph manifest, and the graph manifest is saved as `spine.graph.json` under the checkpoint root.
+The spine graph is the 35-stage source roster declared by the UK spec, built by `uk_runtime.spine_build` (the spine tool moved into the package; `tools/build_uk_frs_spine.py` is a six-line shim over it). The superseded `frs_hmrc_retained_leaves` and `hmrc_spi_income` stages and the `UK_SPINE_EXCLUSIONS` list that hid them are removed; the active HMRC path is `frs_hmrc_spine_leaves`, `spi_support_channel`, `spi_income_band_donors` and `hmrc_spi_income_spine`, and the FRS HMRC leaf columns come from `uk_runtime.frs_hmrc_source`. The spine's assembled and transferred gate batteries are graph nodes (`uk_runtime.graph_evidence`); stage evidence and fit-weight records are read back from the content store through the shared `stage_evidence` artifact rather than from in-memory collectors; the HMRC replay sidecar is rebuilt from the SPI stage's checkpoint metadata; the spine sidecar records the operation inventory and the graph manifest, and the graph manifest is saved as `spine.graph.json` under the checkpoint root.
 
 | Operation | Graph owner |
 | --- | --- |
@@ -123,7 +124,7 @@ Recorded for review in `experiments/901-uk-main-rebase-receipts.md` (R3):
 Recorded at the review of the national line's move onto the graph (`experiments/901-uk-national-graph-path-receipts.md`):
 
 - The measure-exclusion windows and the target-fit deferral register are evaluated at `--review-date` (default today) on the national line, as the dense graph already did; the retired seam evaluated both at the run clock. A back-dated review date therefore keeps expired exclusions and deferrals in force, which the seam never allowed; the date is a node parameter (`uk.full.national_targets`, `uk.full.gates.calibrated`) and is recorded in the request bindings.
-- An occupied `--out` is refused before any work on the national line (the seam's `FileExistsError`), so a repeated run never replaces a candidate under the Logbook row that names it. A `KeyboardInterrupt` records a `discarded` row on both lines and re-raises, as the seam did.
+- An occupied `--out` is refused on the national line with the other argument refusals, before the attempt opens (the seam's `FileExistsError`), so a repeated run never replaces a candidate under the Logbook row that names it and writes nothing into its directory. A `KeyboardInterrupt` records a `discarded` row on both lines and re-raises, as the seam did.
 - `build.json` is re-issued after the close step on both lines: the staging receipts are appended to the rowwise manifest and, on the national line, the delivery summary to the build record (the release assembler reads it there), and the completion marker then carries those files' final digests rather than the note that receipts follow.
 - The measure receipt records a scratch-mode resolver's `source_path` relative to the per-run scratch root (`simulation-input.h5`), so the measure and national problem nodes are deterministic between identical runs; the receipt no longer carries a temporary directory.
 - Under `--release-candidate` the three atomic-area supports must be the `sources.yaml` rows (sha256 and byte size), whatever digest was pinned on the command line, and `tools/preflight_uk_local_release_candidate.py` refuses a manifest whose `geography.assignment` is not the atomic law on those same pins (microcosm#932, round 1).

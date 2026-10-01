@@ -966,6 +966,7 @@ class TestUKCountryPackage:
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
             "nts_bus_travel_support_bounds.json",
+            "was_lisa_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -1002,13 +1003,13 @@ class TestUKCountryPackage:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 34 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # 35 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
-        # spi_income_band_donors (PolicyEngine/chronicle#280 lane) and the SPI
-        # housing shell (#1012) as the newest); the frs_hmrc_retained_leaves /
-        # hmrc_spi_income pair is retired (#901).
-        assert len(spec.sources.stages) == 34
+        # spi_income_band_donors (PolicyEngine/chronicle#280 lane), the SPI
+        # housing shell (#1012) and was_lisa (#1003) as the newest); the
+        # frs_hmrc_retained_leaves / hmrc_spi_income pair is retired (#901).
+        assert len(spec.sources.stages) == 35
         assert not {"frs_hmrc_retained_leaves", "hmrc_spi_income"}.intersection(
             stage.stage for stage in spec.sources.stages
         )
@@ -1084,6 +1085,7 @@ class TestExistingPackagesGeneralize:
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
             "nts_bus_travel_support_bounds.json",
+            "was_lisa_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -1365,6 +1367,7 @@ class TestUKGatesManifest:
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
+            "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
@@ -1466,6 +1469,7 @@ class TestUKGatesManifest:
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
         assert flagged == [
             "uk_stage_was_wealth_support",
+            "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
@@ -1527,6 +1531,7 @@ class TestUKGatesManifest:
             "etb_services_support_bounds.json",
             "uc_deduction_support_bounds.json",
             "nts_bus_travel_support_bounds.json",
+            "was_lisa_support_bounds.json",
         )
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15
