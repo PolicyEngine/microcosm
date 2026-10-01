@@ -50,6 +50,7 @@ configuration's training fit and concentration come from its full-surface run.
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | Release: share 0.5, projection, λ 0 | 13,646 | 69.3% | 195 | 33 / 12 | 352 | 448 | 97.6% | 0.1296 / 0.1236 |
 | Share 0.5, chi-square λ 0.03 | 21,835 | 61.6% | 213 | 49 / 23 | 239 | 620 | 97.1% | 0.1242 / 0.1166 |
+| Share 0.5, chi-square λ 0.03 (projection) | 20,690 | 63.7% | 204 | 46 / 22 | 278 | 589 | 97.3% | 0.1247 / 0.1191 |
 | Share 0.5, chi-square λ 0.1 | 24,895 | 59.2% | 222 | 55 / 29 | 132 | 664 | 95.5% | 0.1263 / 0.1210 |
 | Share 0.5, chi-square λ 1 | 33,418 | 53.3% | 269 | 73 / 47 | 4 | 907 | 75.7% | 0.1505 / – |
 | Share 0.7, chi-square λ 0.01 | 34,280 | 46.9% | 319 | 81 / 24 | 30 | 992 | 97.1% | 0.1466 / 0.1416 |
@@ -78,7 +79,7 @@ On today's loss, use `--l2-basis chi_square --l2-lambda 0.03` with
 - Training targets within 10% fall from 97.6% to 97.1%.
 - Held-out error is lower than the release's on both folds (0.1242 vs 0.1296, and 0.1166 vs 0.1236).
 - λ = 0.1 buys more ESS (24,895; 132 districts below 50) and still beats the release out of sample, at 2 pp of training fit.
-- Projection at λ = 0.03 lands close to softmax (fold 1: held-out 0.1191 vs 0.1166, ESS 21,220 vs 22,415), so the parametrization is a minor choice.
+- Projection at λ = 0.03 lands just behind softmax on every measure (ESS 20,690 vs 21,835; held-out 0.1247 and 0.1191 vs 0.1242 and 0.1166), so the parametrization is a minor choice.
 - **λ is in units of the loss.** The ACS local build weights every target equally today (`calibrate` gets no `target_loss_weights`), and IRS SOI cells are 3,819 of the 4,459 targets. A change to weight them as the national release does is planned. Re-pick λ on that loss by rerunning this harness with its target weights before shipping a default; the shape of the trade is unlikely to change, but its scale may.
 
 **2. Construction: the ACS share of the mass is the bigger lever, and it costs out-of-sample fit.**

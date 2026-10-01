@@ -138,7 +138,7 @@ recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-2026092
 - **Parametrization.** Projection and softmax land on the same frontier. At
   `l2_lambda = 0` softmax finds ESS 16,132 at loss 0.0160, against
   projection's 13,646 at 0.0155, and neither dominates. At `0.03`, softmax is
-  slightly ahead on one holdout fold.
+  slightly ahead on ESS and on both holdout folds.
 - **Record basis.** The record basis at `0.1` lowers national ESS from 13,646
   to 8,689, as its `w ∝ d ** 2` optimum predicts.
 - **Chi-square basis.** The chi-square basis raises ESS smoothly with
