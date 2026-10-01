@@ -1009,10 +1009,316 @@ def _e8_support_split(
     return receipt
 
 
+def _e8_band_donors(
+    frame,
+    problems: dict[str, object],
+    *,
+    propensity: pd.DataFrame | None,
+    band_taxpayers: Mapping[int, float] | None,
+    permutation_seed: int,
+) -> dict[str, object]:
+    """Reconstruct the SPI income band donor seating from ids (microcosm#1063).
+
+    The donors are a funded support channel: each band's donors carry equal
+    weights and their mass left the incumbent households of each donor's
+    region in proportion. Folding the CGT layers stacked afterwards gives the
+    frame the stage wrote; scaling each region's incumbents back to the
+    region's whole mass gives the weights it read. The stored layer must
+    agree with itself (one carrier per donor, each source household copied
+    once, equal weights within a band, the mass record conserving the total)
+    and, when the tape's band propensities are supplied (they need the
+    licensed SPI tape), with the stage's own function rerun on the
+    reconstructed pre-donor frame: the same source households in the same
+    bands, the same carriers and the same band weights, in original and
+    permuted row order. The seating is keyed on person ids, so the rerun
+    needs no stage-time row order. Without the propensities the receipt says
+    the seating was not recomputed. Problems land under ``band_donor_*`` keys.
+    """
+
+    from microcosm.build.uk_runtime.cgt_structure import HOUSEHOLD_IS_CGT_CLONE
+    from microcosm.build.uk_runtime.cgt_support import HOUSEHOLD_IS_CGT_SUPPORT_COPY
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+    from microcosm.build.uk_runtime.spi_band_donors import (
+        HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
+        PERSON_IS_SPI_INCOME_BAND_CARRIER,
+        SPI_INCOME_BAND_DONOR_DRAW_SALT,
+        SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
+        SPI_INCOME_BAND_DONOR_LOWER_BOUNDS,
+        SPI_INCOME_BAND_DONOR_MASS_CHANGE_REASON,
+        SPI_INCOME_BAND_DONOR_SEED,
+        _funding_strata,
+        stack_spi_income_band_donors,
+    )
+
+    if HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR not in frame.table("household").columns:
+        raise ValueError(
+            "e8 identity receipt: the artifact carries no "
+            f"{HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR!r} column, so the SPI income "
+            "band donor layer is absent and there is nothing to receipt. "
+            "Receipt the artifact with the tool at the commit that built it."
+        )
+    receipt: dict[str, object] = {
+        "seed": SPI_INCOME_BAND_DONOR_SEED,
+        "salt": SPI_INCOME_BAND_DONOR_DRAW_SALT,
+    }
+    mass_records = [
+        record
+        for record in frame.mass_log
+        if record.reason == SPI_INCOME_BAND_DONOR_MASS_CHANGE_REASON
+    ]
+    if not mass_records:
+        problems["band_donor_mass_record"] = "missing"
+    else:
+        record = mass_records[-1]
+        receipt["mass"] = {
+            "old_total": float(record.old_total),
+            "new_total": float(record.new_total),
+            "declared_factor": record.declared_factor,
+        }
+        if record.declared_factor != 1.0 or not np.isclose(
+            record.new_total, record.old_total, rtol=1e-9, atol=0.0
+        ):
+            problems["band_donor_mass_record"] = [
+                float(record.old_total),
+                float(record.new_total),
+                record.declared_factor,
+            ]
+
+    # The frame the donor stage wrote: the CGT layers stacked after it folded
+    # back, so every remaining household carries the weight the stage left.
+    staged = _drop_stacked_layers(
+        frame,
+        [
+            flag
+            for flag in (HOUSEHOLD_IS_CGT_CLONE, HOUSEHOLD_IS_CGT_SUPPORT_COPY)
+            if flag in frame.table("household").columns
+        ],
+    )
+    household = staged.table("household")
+    person = staged.table("person")
+    benunit = staged.table("benunit")
+    weights = np.asarray(staged.weights_for("household").values, dtype=float)
+    is_donor = household[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].astype(bool).to_numpy()
+    donor_band = household[SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN].to_numpy(float)
+    donor_source = (
+        pd.to_numeric(household.loc[is_donor, "household_source_id"], errors="raise")
+        .astype("int64")
+        .to_numpy()
+    )
+    receipt["donor_households"] = int(is_donor.sum())
+    stored_seats = pd.Series(donor_band[is_donor], index=donor_source).sort_index()
+
+    # Stored-layer consistency.
+    layer: dict[str, int] = {}
+    if not stored_seats.index.is_unique:
+        layer["source_households_copied_twice"] = int(
+            stored_seats.index.duplicated().sum()
+        )
+    undeclared = ~np.isin(donor_band[is_donor], SPI_INCOME_BAND_DONOR_LOWER_BOUNDS)
+    if undeclared.any():
+        layer["donors_in_undeclared_bands"] = int(undeclared.sum())
+    if (donor_band[~is_donor] != 0.0).any():
+        layer["incumbents_carrying_a_band"] = int((donor_band[~is_donor] != 0.0).sum())
+    carriers = person[PERSON_IS_SPI_INCOME_BAND_CARRIER].astype(bool)
+    carriers_per_household = (
+        person.loc[carriers, "person_household_id"].value_counts().to_dict()
+    )
+    donor_ids = household.loc[is_donor, "household_id"].tolist()
+    without_one = sum(
+        1 for value in donor_ids if carriers_per_household.get(value, 0) != 1
+    )
+    if without_one or len(carriers_per_household) != len(donor_ids):
+        layer["donors_without_exactly_one_carrier"] = int(without_one)
+    band_rows: list[dict[str, object]] = []
+    unequal = 0
+    for band in SPI_INCOME_BAND_DONOR_LOWER_BOUNDS:
+        band_weights = weights[is_donor & (donor_band == band)]
+        if band_weights.size and not np.allclose(
+            band_weights, band_weights[0], rtol=1e-9, atol=1e-6
+        ):
+            unequal += 1
+        band_rows.append(
+            {
+                "lower_bound": int(band),
+                "donor_households": int(band_weights.size),
+                "donor_weight": (float(band_weights[0]) if band_weights.size else None),
+                "weighted_taxpayers": float(band_weights.sum()),
+            }
+        )
+    if unequal:
+        layer["bands_with_unequal_donor_weights"] = unequal
+    if layer:
+        problems["band_donor_layer"] = layer
+    receipt["bands"] = band_rows
+
+    # The weights the stage read: every region's incumbents gave up the
+    # region's donor mass in proportion, so scaling them back to the region's
+    # whole mass restores them.
+    strata = _funding_strata(household).to_numpy()
+    region_mass = pd.Series(weights).groupby(strata).sum()
+    incumbent_mass = pd.Series(weights[~is_donor]).groupby(strata[~is_donor]).sum()
+    if (incumbent_mass.reindex(region_mass.index).fillna(0.0) <= 0.0).any():
+        problems["band_donor_funding"] = "a donor stratum has no incumbent mass"
+        return receipt
+    factor = incumbent_mass / region_mass.reindex(incumbent_mass.index)
+    receipt["funding"] = {
+        str(stratum): float(value) for stratum, value in factor.sort_index().items()
+    }
+    pre_weights = weights[~is_donor] / pd.Series(strata[~is_donor]).map(
+        factor
+    ).to_numpy(dtype=float)
+    pre_household = (
+        household.loc[~is_donor]
+        .drop(
+            columns=[
+                HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
+                SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN,
+            ]
+        )
+        .reset_index(drop=True)
+    )
+    donor_id_set = set(donor_ids)
+    pre_person_rows = ~person["person_household_id"].isin(donor_id_set)
+    pre_person = (
+        person.loc[pre_person_rows]
+        .drop(columns=[PERSON_IS_SPI_INCOME_BAND_CARRIER])
+        .reset_index(drop=True)
+    )
+    pre_benunit = benunit.loc[
+        benunit["benunit_id"].isin(set(pre_person["person_benunit_id"]))
+    ].reset_index(drop=True)
+    stored_carriers = set(
+        pd.to_numeric(person.loc[carriers, "person_source_id"], errors="raise")
+        .astype("int64")
+        .tolist()
+    )
+
+    if propensity is None or band_taxpayers is None:
+        receipt["seating_recomputed"] = False
+        receipt["seating_scope"] = (
+            "not recomputed: the propensities come from the licensed SPI tape; "
+            "pass --spi-tab to rerun the seating from ids"
+        )
+        return receipt
+    period = int(uk_time_period(frame))
+
+    def recompute(person_t, household_t, weights_t):
+        result = stack_spi_income_band_donors(
+            uk_national_frame(
+                person=person_t,
+                benunit=pre_benunit,
+                household=household_t,
+                time_period=uk_time_period(frame),
+                weight_kind=uk_household_weight_kind(frame),
+                household_weights=weights_t,
+            ),
+            propensity=propensity,
+            band_taxpayers=band_taxpayers,
+            seed=SPI_INCOME_BAND_DONOR_SEED,
+            taxpayer_period=period,
+        )
+        table = result.frame.table("household")
+        seated = table[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].astype(bool)
+        seats = pd.Series(
+            table.loc[seated, SPI_INCOME_BAND_DONOR_LOWER_BOUND_COLUMN].to_numpy(float),
+            index=pd.to_numeric(table.loc[seated, "household_source_id"])
+            .astype("int64")
+            .to_numpy(),
+        ).sort_index()
+        people = result.frame.table("person")
+        carrier_ids = set(
+            pd.to_numeric(
+                people.loc[
+                    people[PERSON_IS_SPI_INCOME_BAND_CARRIER].astype(bool),
+                    "person_source_id",
+                ]
+            )
+            .astype("int64")
+            .tolist()
+        )
+        return seats, carrier_ids, result.evidence()
+
+    seats, carrier_ids, evidence = recompute(pre_person, pre_household, pre_weights)
+    receipt["seating_recomputed"] = True
+    receipt["seating_scale"] = evidence["seating_scale"]
+    receipt["mass_scale"] = evidence["mass_scale"]
+    missing = int((~stored_seats.index.isin(seats.index)).sum())
+    extra = int((~seats.index.isin(stored_seats.index)).sum())
+    if missing or extra:
+        problems["band_donor_seats_stored"] = {"missing": missing, "extra": extra}
+    else:
+        moved = int((seats.to_numpy() != stored_seats.to_numpy()).sum())
+        if moved:
+            problems["band_donor_bands_stored"] = moved
+    if carrier_ids != stored_carriers:
+        problems["band_donor_carriers_stored"] = len(carrier_ids ^ stored_carriers)
+    recomputed_weight = {
+        int(row["lower_bound"]): float(row["donor_weight"]) for row in evidence["bands"]
+    }
+    weight_off = [
+        int(row["lower_bound"])
+        for row in band_rows
+        if row["donor_weight"] is None
+        or not np.isclose(
+            row["donor_weight"],
+            recomputed_weight[int(row["lower_bound"])],
+            rtol=1e-9,
+            atol=1e-6,
+        )
+    ]
+    if weight_off:
+        problems["band_donor_weights_stored"] = weight_off
+
+    # A frame keeps its group tables sorted by id, so the permutation is over
+    # the person rows, the table the candidates are read from.
+    rng = np.random.default_rng(permutation_seed)
+    permuted_seats, permuted_carriers, _ = recompute(
+        pre_person.iloc[rng.permutation(len(pre_person))].reset_index(drop=True),
+        pre_household,
+        pre_weights,
+    )
+    if not (permuted_seats.equals(seats) and permuted_carriers == carrier_ids):
+        problems["band_donor_seats_permutation"] = True
+    return receipt
+
+
+def _band_donor_seating_inputs(
+    frame, spi_tab: Path | None
+) -> tuple[pd.DataFrame | None, dict[int, float] | None]:
+    """The tape's band propensities and the build year's Table 2.5 taxpayers.
+
+    Built exactly as the stage builds them, from the verified licensed tape;
+    ``(None, None)`` without one.
+    """
+
+    from microcosm.build.uk_runtime.spi_band_donors import (
+        load_hmrc_itl_band_taxpayers,
+        spi_income_band_donor_propensity,
+    )
+    from microcosm.build.uk_runtime.spi_income import (
+        load_spi_donor_age_model,
+        verify_spi_donor_identity,
+    )
+
+    if spi_tab is None:
+        return None, None
+    identity = verify_spi_donor_identity(spi_tab)
+    period = int(uk_time_period(frame))
+    propensity = spi_income_band_donor_propensity(
+        pd.read_csv(identity.path, delimiter="\t"),
+        age_model=load_spi_donor_age_model(period),
+    )
+    return propensity, load_hmrc_itl_band_taxpayers(period)
+
+
 def e8_identity_receipt(
     frame,
     *,
     permutation_seed: int,
+    spi_tab: Path | None = None,
 ) -> dict[str, object]:
     """Receipt E8 deterministic layers under row permutation by entity id.
 
@@ -1031,7 +1337,11 @@ def e8_identity_receipt(
     in original and permuted row order, against the stored copies, counts,
     family weights, flags and mass record; (3) the student-loan plan column
     recomputed in full (identity-keyed top-ups at the release calibration
-    year) in original and permuted row order against the stored column.
+    year) in original and permuted row order against the stored column;
+    (4) the SPI income band donors (microcosm#1063) - the stored layer's
+    structure, equal band weights and conserving mass record, and, with the
+    licensed SPI tape (``spi_tab``), the identity-keyed seating rerun on the
+    reconstructed pre-donor frame in original and permuted row order.
     The A&S prior amounts (overwritten by the Table 3 redraw and its
     sub-AEA remainder mapping), the redraw's seeded within-band draws
     (covered by the merged #560 embedded published-surface tests), and the
@@ -1081,6 +1391,16 @@ def e8_identity_receipt(
         permutation_seed=permutation_seed,
     )
 
+    # (4) SPI income band donors: the seating reconstructed from ids.
+    propensity, band_taxpayers = _band_donor_seating_inputs(frame, spi_tab)
+    band_donors = _e8_band_donors(
+        frame,
+        problems,
+        propensity=propensity,
+        band_taxpayers=band_taxpayers,
+        permutation_seed=permutation_seed,
+    )
+
     # (3) Student-loan plan recomputed in full.
     stocks = load_slc_liable_stocks()
     year = load_uk_frs_release().calibration_year
@@ -1115,6 +1435,7 @@ def e8_identity_receipt(
         ),
         "clone_pairs": clone_pairs,
         "support_split": support_split,
+        "band_donors": band_donors,
         "permutation_mismatches": {
             key: value
             for key, value in problems.items()
@@ -1138,7 +1459,11 @@ def e8_identity_receipt(
             "the anchor each cost one float rounding generation); "
             "support-split mass record: new_total against old_total at rtol "
             "1e-9; support-split families, copy counts, flags and "
-            "student_loan_plan: exact equality"
+            "student_loan_plan: exact equality; band-donor seats, bands and "
+            "carriers: exact equality; band-donor weights within a band and "
+            "against the rerun: rtol 1e-9 / atol 1e-6; band-donor mass "
+            "record: new_total against old_total at rtol 1e-9 with declared "
+            "factor one"
         ),
         "columns_by_entity": {
             "household": [
@@ -1303,6 +1628,16 @@ def main() -> int:
         "--check", choices=("e4", "e5", "e6", "e7", "e8", "e9"), default="e4"
     )
     parser.add_argument("--permutation-seed", type=int, default=123)
+    parser.add_argument(
+        "--spi-tab",
+        type=Path,
+        default=None,
+        help=(
+            "Licensed SPI public use tape (put2223uk.tab). With it the e8 "
+            "receipt reruns the income band donor seating from ids; without "
+            "it that layer is checked for structure and mass only."
+        ),
+    )
     args = parser.parse_args()
 
     frame, _provenance = load_uk_national_frame(args.input_h5)
@@ -1377,6 +1712,7 @@ def main() -> int:
         receipt = e8_identity_receipt(
             frame,
             permutation_seed=args.permutation_seed,
+            spi_tab=args.spi_tab,
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]

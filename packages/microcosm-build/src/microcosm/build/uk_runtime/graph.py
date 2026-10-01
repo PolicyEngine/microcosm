@@ -72,9 +72,11 @@ UK_SPINE_STRUCTURAL_STAGES = frozenset(
 # invariant itself (``UKExpandStageKernel``).
 _STRUCTURAL_MASS = {
     "spi_support_channel": "declared",
-    # Reserved income rows add their published band mass (microcosm#1063 owes
-    # them the channel treatment).
-    "spi_income_band_donors": "free",
+    # The reserved income rows are funded from the incumbent households of
+    # each donor's region (microcosm#1063): household mass is conserved
+    # exactly, and person mass moves with the composition of the copied
+    # households, as it does for the support channel.
+    "spi_income_band_donors": "declared",
     "cgt_support_split": "conserve",
     "cgt_incidence_clone": "conserve",
     "cgt_incidence_anchor": "conserve",

@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
+from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.frs_disability import (
     UKDWPDisabilityCategoryRates,
     UKDWPDisabilityFlagRates,
@@ -1015,6 +1016,10 @@ def impute_uk_spi_income_support(
 
 SPI_INCOME_BAND_CARRIER_COLUMN = "person_is_spi_income_band_carrier"
 SPI_INCOME_BAND_LOWER_BOUND_COLUMN = "spi_income_band_donor_lower_bound"
+#: The carrier's leaf draw is keyed on the FRS person it copies (the support
+#: lineage column), falling back to ``person_id`` on a frame without lineage.
+SPI_INCOME_BAND_CARRIER_KEY_COLUMN = "person_source_id"
+SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT = "spi_income_band_donor_leaf_draw"
 
 
 def _spi_agerange_codes(ages: np.ndarray) -> np.ndarray:
@@ -1060,7 +1065,10 @@ def _resample_band_donor_leaves(
     not inherit the zero State Pension leaf of a donor drawn below it. One
     record is drawn FACT-weighted with replacement and all stage-1 leaves are
     copied from it, then uprated exactly as the forest draws were; the
-    accounting aggregates derive after the draw as usual. Composite records
+    accounting aggregates derive after the draw as usual. The draw is keyed on
+    the carrier's identity (the id of the FRS person it copies, where the frame
+    carries it), so a carrier draws the same record whatever the row order and
+    whoever else is seated (microcosm#1063). Composite records
     stay in the pools as published. Every carrier's realised total income is
     checked against its band after the draw and any breach refuses the stage.
     """
@@ -1096,6 +1104,9 @@ def _resample_band_donor_leaves(
         household,
         ("household_id", "region", SPI_INCOME_BAND_LOWER_BOUND_COLUMN),
         label="band donor households",
+    )
+    _require_columns(
+        person, ("person_id", "person_household_id"), label="band donor carriers"
     )
     for column in ("total_income", "is_composite", "region", "FACT"):
         if column not in donor.columns:
@@ -1172,7 +1183,16 @@ def _resample_band_donor_leaves(
         if state_pension_age is not None
         else np.zeros(len(carrier_rows), dtype=bool)
     )
-    rng = np.random.default_rng(seed)
+    key_column = (
+        SPI_INCOME_BAND_CARRIER_KEY_COLUMN
+        if SPI_INCOME_BAND_CARRIER_KEY_COLUMN in carrier_rows.columns
+        else "person_id"
+    )
+    uniforms = stable_identity_uniforms(
+        carrier_rows[key_column].to_numpy(),
+        seed=seed,
+        salt=SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
+    )
     drawn = np.empty(len(carrier_rows), dtype=np.int64)
     matched = np.zeros(len(carrier_rows), dtype=bool)
     age_matched = np.zeros(len(carrier_rows), dtype=bool)
@@ -1206,8 +1226,12 @@ def _resample_band_donor_leaves(
                 base_is_sided,
             )
         pool, matched[index], age_matched[index], side_matched[index] = pool_cache[key]
-        weights = fact[pool]
-        drawn[index] = int(rng.choice(pool, p=weights / weights.sum()))
+        # Inverse CDF over the pool in tape order at the carrier's own uniform.
+        cumulative = np.cumsum(fact[pool])
+        position = int(
+            np.searchsorted(cumulative, uniforms[index] * cumulative[-1], side="right")
+        )
+        drawn[index] = int(pool[min(position, pool.size - 1)])
     leaves = leaf_values[drawn] * factors
     person = person.copy()
     person.loc[carriers, columns] = leaves
@@ -1259,6 +1283,8 @@ def _resample_band_donor_leaves(
         "age_pool_minimum": age_pool_minimum,
         "state_pension_age": state_pension_age,
         "seed": seed,
+        "salt": SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT,
+        "draw_key": key_column,
         "weighting": "FACT",
         "with_replacement": True,
         "total_income_basis": "published TEI + TII, 2022-23 terms",
@@ -2021,6 +2047,8 @@ __all__ = [
     "SPI_QRF_SOURCE_COLUMNS",
     "SPI_SOURCE_COMPOSITE_INDICATOR",
     "SPI_INCOME_BAND_CARRIER_COLUMN",
+    "SPI_INCOME_BAND_CARRIER_KEY_COLUMN",
+    "SPI_INCOME_BAND_DONOR_LEAF_DRAW_SALT",
     "SPI_INCOME_BAND_LOWER_BOUND_COLUMN",
     "prepare_spi_donor_table",
     "SPI_SOURCE_LEAF_RECONCILIATION_ABS_TOLERANCE_GBP",

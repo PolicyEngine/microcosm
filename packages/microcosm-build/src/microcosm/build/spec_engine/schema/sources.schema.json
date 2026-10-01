@@ -8551,21 +8551,33 @@
       "taxpayer_count_measure",
       "taxpayer_count_period",
       "band_lower_bounds",
-      "donors_per_band",
+      "minimum_donors_per_band",
+      "maximum_donor_weight",
+      "count_rule",
+      "weight_rule",
       "expected_band_count",
-      "expected_donor_count",
       "candidate_population",
       "candidate_order",
       "draw",
       "propensity",
+      "tape_preparation",
+      "tape_preparation_seed",
       "seed",
+      "salt",
       "clone_index",
       "flag_column",
       "band_column",
       "carrier_column",
-      "initial_weight",
+      "funding",
+      "funding_strata",
+      "maximum_reallocation_share",
+      "maximum_donor_household_share",
+      "seating_scale",
+      "mass_scale",
       "never_zero_weight",
       "weight_kind_out",
+      "conservation",
+      "declared_factor",
       "reason"
      ],
      "properties": {
@@ -8588,13 +8600,21 @@
         "type": "integer"
        }
       },
-      "donors_per_band": {
-       "type": "integer"
+      "minimum_donors_per_band": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "maximum_donor_weight": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      },
+      "count_rule": {
+       "type": "string"
+      },
+      "weight_rule": {
+       "type": "string"
       },
       "expected_band_count": {
-       "type": "integer"
-      },
-      "expected_donor_count": {
        "type": "integer"
       },
       "candidate_population": {
@@ -8609,8 +8629,17 @@
       "propensity": {
        "type": "string"
       },
+      "tape_preparation": {
+       "type": "string"
+      },
+      "tape_preparation_seed": {
+       "type": "integer"
+      },
       "seed": {
        "type": "integer"
+      },
+      "salt": {
+       "type": "string"
       },
       "clone_index": {
        "type": "integer"
@@ -8624,7 +8653,30 @@
       "carrier_column": {
        "type": "string"
       },
-      "initial_weight": {
+      "funding": {
+       "type": "string"
+      },
+      "funding_strata": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
+      "maximum_reallocation_share": {
+       "type": "number",
+       "exclusiveMinimum": 0,
+       "exclusiveMaximum": 1
+      },
+      "maximum_donor_household_share": {
+       "type": "number",
+       "exclusiveMinimum": 0,
+       "exclusiveMaximum": 1
+      },
+      "seating_scale": {
+       "type": "string"
+      },
+      "mass_scale": {
        "type": "string"
       },
       "never_zero_weight": {
@@ -8632,6 +8684,12 @@
       },
       "weight_kind_out": {
        "type": "string"
+      },
+      "conservation": {
+       "const": "exact_total"
+      },
+      "declared_factor": {
+       "const": 1.0
       },
       "reason": {
        "type": "string"
@@ -8715,6 +8773,9 @@
       "weighting",
       "with_replacement",
       "outputs",
+      "draw",
+      "draw_key",
+      "salt",
       "seed"
      ],
      "properties": {
@@ -8745,6 +8806,15 @@
       },
       "with_replacement": {
        "type": "boolean"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "draw_key": {
+       "type": "string"
+      },
+      "salt": {
+       "type": "string"
       },
       "outputs": {
        "type": "string"

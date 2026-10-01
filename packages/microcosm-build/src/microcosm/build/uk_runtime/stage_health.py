@@ -1145,16 +1145,82 @@ def _spi_income_band_donor_support_gate(
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """Every reserved band carries its donors at positive band-exact weight."""
+    """Every reserved band carries its donors, and their mass was reallocated.
+
+    The donors are a mass-conserving support channel (microcosm#1063): total
+    household mass is unchanged, no incumbent stratum gives up more than the
+    declared share, and no donor starts above the declared weight. On a full
+    frame (both scales one) each band seats its planned count, never fewer
+    than the minimum, and carries its published taxpayers; a build declaring
+    the full survey sample must be at full scale.
+    """
 
     check = "spi_income_band_donor_support"
-    donors_per_band = int(parameters["donors_per_band"])
+    minimum_donors = int(parameters["minimum_donors_per_band"])
+    maximum_donor_weight = _finite_number(
+        parameters["maximum_donor_weight"], label=f"{stage}.maximum_donor_weight"
+    )
+    minimum_funding_factor = _finite_number(
+        parameters["minimum_funding_factor"], label=f"{stage}.minimum_funding_factor"
+    )
+    taxpayer_tolerance = _finite_number(
+        parameters["maximum_band_taxpayer_deviation"],
+        label=f"{stage}.maximum_band_taxpayer_deviation",
+    )
+    tolerance = _finite_number(
+        parameters["maximum_relative_mass_deviation"],
+        label=f"{stage}.maximum_relative_mass_deviation",
+    )
     expected_bands = [int(value) for value in parameters["band_lower_bounds"]]
+    failures: list[str] = []
+
+    for key, expected in (
+        ("minimum_donors_per_band", float(minimum_donors)),
+        ("maximum_donor_weight", maximum_donor_weight),
+    ):
+        value = _finite_number(evidence.get(key), label=f"{stage}.{key}")
+        if value != expected:
+            failures.append(
+                f"{stage}: receipt {key} {value} differs from the gate's {expected}."
+            )
+    scales: dict[str, float] = {}
+    for key in ("seating_scale", "mass_scale"):
+        scales[key] = _finite_number(evidence.get(key), label=f"{stage}.{key}")
+        if not 0.0 < scales[key] <= 1.0:
+            failures.append(f"{stage}: {key} {scales[key]} is outside (0, 1].")
+    full_seating = scales["seating_scale"] == 1.0
+    full_scale = full_seating and scales["mass_scale"] == 1.0
+    sample_fraction = _finite_number(
+        evidence.get("sample_fraction"), label=f"{stage}.sample_fraction"
+    )
+    if sample_fraction == 1.0 and not full_scale:
+        failures.append(
+            f"{stage}: a full-sample build must seat and fund the donors at full "
+            f"scale, got seating_scale {scales['seating_scale']} and mass_scale "
+            f"{scales['mass_scale']}."
+        )
+
+    mass = _mapping(evidence.get("mass"), label=f"{stage}.mass")
+    old_total = _finite_number(mass.get("old_total"), label=f"{stage}.mass.old_total")
+    new_total = _finite_number(mass.get("new_total"), label=f"{stage}.mass.new_total")
+    if old_total <= 0.0 or new_total <= 0.0:
+        failures.append(f"{stage}: household mass must be positive before and after.")
+    deviation = abs(new_total - old_total) / max(abs(old_total), 1.0)
+    effective_tolerance = max(tolerance, _FLOAT_RELATIVE_TOLERANCE)
+    if deviation > effective_tolerance:
+        failures.append(
+            f"{stage}: household mass deviation {deviation} exceeds the effective "
+            f"tolerance {effective_tolerance}; the donors must be funded from the "
+            "incumbent households, not added."
+        )
+
     bands = evidence.get("bands")
     if not isinstance(bands, list | tuple):
         raise ValueError(f"{stage}.bands must be a list.")
-    failures: list[str] = []
     seen: list[int] = []
+    donor_total = 0
+    donor_mass = 0.0
+    heaviest_donor = 0.0
     for row in bands:
         if not isinstance(row, Mapping):
             failures.append(f"{stage}: band row is not an object.")
@@ -1168,8 +1234,22 @@ def _spi_income_band_donor_support_gate(
                 row.get("donor_households"), label=f"{stage}.donor_households"
             )
         )
+        expected_donors = int(
+            _finite_number(
+                row.get("expected_donor_households"),
+                label=f"{stage}.expected_donor_households",
+            )
+        )
         carriers = int(_finite_number(row.get("carriers"), label=f"{stage}.carriers"))
         weight = _finite_number(row.get("donor_weight"), label=f"{stage}.donor_weight")
+        published = _finite_number(
+            row.get("published_taxpayers"), label=f"{stage}.published_taxpayers"
+        )
+        donor_total += donors
+        donor_mass += weight * donors
+        heaviest_donor = max(heaviest_donor, weight)
+        if donors <= 0:
+            failures.append(f"{stage}: band from {lower} seats no donor.")
         if donors != carriers:
             failures.append(
                 f"{stage}: band from {lower} has {donors} donors but {carriers} carriers."
@@ -1178,26 +1258,77 @@ def _spi_income_band_donor_support_gate(
             failures.append(
                 f"{stage}: band from {lower} donor weight {weight} is not positive."
             )
-        published = _finite_number(
-            row.get("published_taxpayers"), label=f"{stage}.published_taxpayers"
-        )
-        if abs(weight * donors - published) > 0.5 and donors > 0:
-            # A scaled rung stacks fewer donors than the declared count; its
-            # weighted taxpayers then fall short of the published band mass by
-            # construction, which the evidence still has to show honestly.
-            if donors == donors_per_band:
-                failures.append(
-                    f"{stage}: band from {lower} weighted taxpayers "
-                    f"{weight * donors} differ from the published {published}."
-                )
+        if weight > maximum_donor_weight * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+            failures.append(
+                f"{stage}: band from {lower} donor weight {weight} exceeds the "
+                f"maximum {maximum_donor_weight}."
+            )
+        if full_seating and (donors != expected_donors or donors < minimum_donors):
+            failures.append(
+                f"{stage}: band from {lower} seats {donors} donors at full scale; "
+                f"the plan seats {expected_donors} and the minimum is "
+                f"{minimum_donors}."
+            )
+        # A scaled frame seats fewer donors or lighter ones, so its bands fall
+        # short of the published mass by construction; the receipt shows it.
+        if full_scale and abs(weight * donors - published) > taxpayer_tolerance:
+            failures.append(
+                f"{stage}: band from {lower} weighted taxpayers "
+                f"{weight * donors} differ from the published {published}."
+            )
     if sorted(seen) != sorted(expected_bands):
         failures.append(
             f"{stage}: bands {sorted(seen)} differ from the declared {sorted(expected_bands)}."
         )
+    donor_count = int(
+        _finite_number(evidence.get("donor_count"), label=f"{stage}.donor_count")
+    )
+    if donor_count != donor_total:
+        failures.append(
+            f"{stage}: receipt donor_count {donor_count} differs from the bands' "
+            f"{donor_total}."
+        )
+
+    funding = evidence.get("funding")
+    if not isinstance(funding, list | tuple) or not funding:
+        raise ValueError(f"{stage}.funding must be a non-empty list.")
+    funded_mass = 0.0
+    smallest_factor = 1.0
+    for row in funding:
+        if not isinstance(row, Mapping):
+            failures.append(f"{stage}: funding row is not an object.")
+            continue
+        factor = _finite_number(row.get("factor"), label=f"{stage}.funding.factor")
+        funded_mass += _finite_number(
+            row.get("donor_mass"), label=f"{stage}.funding.donor_mass"
+        )
+        smallest_factor = min(smallest_factor, factor)
+        if not (
+            minimum_funding_factor * (1.0 - _FLOAT_RELATIVE_TOLERANCE) <= factor <= 1.0
+        ):
+            failures.append(
+                f"{stage}: funding stratum {row.get('stratum')!r} factor {factor} "
+                f"is outside [{minimum_funding_factor}, 1]."
+            )
+    reallocated = _finite_number(
+        evidence.get("reallocated_mass"), label=f"{stage}.reallocated_mass"
+    )
+    for label, value in (("bands", donor_mass), ("funding strata", funded_mass)):
+        if abs(value - reallocated) > effective_tolerance * max(abs(reallocated), 1.0):
+            failures.append(
+                f"{stage}: the {label} carry donor mass {value}, the receipt "
+                f"reallocated {reallocated}."
+            )
     details = {
         "bands_checked": len(bands),
-        "donors_per_band": donors_per_band,
-        "evidence_donors_per_band": evidence.get("donors_per_band"),
+        "donor_count": donor_count,
+        "seating_scale": scales["seating_scale"],
+        "mass_scale": scales["mass_scale"],
+        "reallocated_mass": reallocated,
+        "relative_mass_deviation": deviation,
+        "heaviest_donor_weight": heaviest_donor,
+        "smallest_funding_factor": smallest_factor,
+        "funding_strata": len(funding),
     }
     return (
         _fail(stage, check, failures, details)

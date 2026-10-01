@@ -1347,84 +1347,187 @@ def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows(
         run(None)
 
 
-def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None:
-    bands = [200_000, 500_000, 1_000_000, 2_000_000]
-    taxpayers = {
-        200_000: 359_000.0,
-        500_000: 61_000.0,
-        1_000_000: 20_000.0,
-        2_000_000: 10_000.0,
+def _spi_income_band_donor_evidence() -> dict[str, object]:
+    plan = {
+        200_000: (1_436, 359_000.0),
+        500_000: (244, 61_000.0),
+        1_000_000: (120, 20_000.0),
+        2_000_000: (120, 10_000.0),
     }
     rows = [
         {
             "lower_bound": lower,
-            "donor_households": 120,
-            "carriers": 120,
-            "donor_weight": taxpayers[lower] / 120,
-            "weighted_taxpayers": taxpayers[lower],
-            "published_taxpayers": taxpayers[lower],
+            "expected_donor_households": count,
+            "donor_households": count,
+            "carriers": count,
+            "planned_donor_weight": taxpayers / count,
+            "donor_weight": taxpayers / count,
+            "weighted_taxpayers": taxpayers,
+            "published_taxpayers": taxpayers,
         }
-        for lower in bands
+        for lower, (count, taxpayers) in plan.items()
     ]
-    evidence = {
+    return {
         "stage": "spi_income_band_donors",
-        "donors_per_band": 120,
+        "minimum_donors_per_band": 120,
+        "maximum_donor_weight": 250.0,
+        "seating_scale": 1.0,
+        "mass_scale": 1.0,
+        "sample_fraction": 1.0,
+        "donor_count": 1_920,
+        "reallocated_mass": 450_000.0,
+        "mass": {"old_total": 28_600_000.0, "new_total": 28_600_000.0},
         "bands": rows,
+        "funding": [
+            {
+                "stratum": "LONDON",
+                "donor_households": 1_200,
+                "incumbent_mass": 3_700_000.0,
+                "donor_mass": 300_000.0,
+                "factor": 1.0 - 300_000.0 / 3_700_000.0,
+            },
+            {
+                "stratum": "SOUTH_EAST",
+                "donor_households": 720,
+                "incumbent_mass": 3_900_000.0,
+                "donor_mass": 150_000.0,
+                "factor": 1.0 - 150_000.0 / 3_900_000.0,
+            },
+            {
+                "stratum": "WALES",
+                "donor_households": 0,
+                "incumbent_mass": 1_400_000.0,
+                "donor_mass": 0.0,
+                "factor": 1.0,
+            },
+        ],
     }
-    parameters = {
-        "stage": "spi_income_band_donors",
-        "check": "spi_income_band_donor_support",
-        "donors_per_band": 120,
-        "band_lower_bounds": bands,
-    }
-    assert _passed(
-        uk_stage_health_gate(
-            evidence=evidence,
-            stage="spi_income_band_donors",
-            check="spi_income_band_donor_support",
-            parameters=parameters,
-        )
+
+
+_SPI_INCOME_BAND_DONOR_GATE_PARAMETERS = {
+    "stage": "spi_income_band_donors",
+    "check": "spi_income_band_donor_support",
+    "minimum_donors_per_band": 120,
+    "maximum_donor_weight": 250.0,
+    "minimum_funding_factor": 0.5,
+    "maximum_band_taxpayer_deviation": 0.5,
+    "maximum_relative_mass_deviation": 1e-9,
+    "band_lower_bounds": [200_000, 500_000, 1_000_000, 2_000_000],
+}
+
+
+def _spi_income_band_donor_gate(evidence: dict[str, object]):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=_SPI_INCOME_BAND_DONOR_GATE_PARAMETERS,
     )
+
+
+def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None:
+    evidence = _spi_income_band_donor_evidence()
+    result = _spi_income_band_donor_gate(evidence)
+    assert _passed(result)
+    assert result.details["donor_count"] == 1_920
+    assert result.details["heaviest_donor_weight"] == 250.0
+    rows = evidence["bands"]
     # A band whose copy lost its carrier fails.
     broken = [dict(row) for row in rows]
     broken[-1]["carriers"] = 119
-    result = uk_stage_health_gate(
-        evidence={**evidence, "bands": broken},
-        stage="spi_income_band_donors",
-        check="spi_income_band_donor_support",
-        parameters=parameters,
-    )
+    result = _spi_income_band_donor_gate({**evidence, "bands": broken})
     assert not result.passed and "119 carriers" in " ".join(result.failures)
     # A missing band fails against the declared four.
-    result = uk_stage_health_gate(
-        evidence={**evidence, "bands": rows[:-1]},
-        stage="spi_income_band_donors",
-        check="spi_income_band_donor_support",
-        parameters=parameters,
-    )
+    result = _spi_income_band_donor_gate({**evidence, "bands": rows[:-1]})
     assert not result.passed and "differ from the declared" in " ".join(result.failures)
-    # A scaled rung (fewer donors than declared) is not held to the published
-    # mass, but a full stack whose weights do not sum to it is.
-    scaled = [{**row, "donor_households": 2, "carriers": 2} for row in rows]
-    assert _passed(
-        uk_stage_health_gate(
-            evidence={**evidence, "donors_per_band": 2, "bands": scaled},
-            stage="spi_income_band_donors",
-            check="spi_income_band_donor_support",
-            parameters=parameters,
-        )
-    )
+    # A full stack whose weights do not sum to the published mass fails.
     off = [dict(row) for row in rows]
     off[0]["donor_weight"] = 1.0
-    result = uk_stage_health_gate(
-        evidence={**evidence, "bands": off},
-        stage="spi_income_band_donors",
-        check="spi_income_band_donor_support",
-        parameters=parameters,
-    )
+    result = _spi_income_band_donor_gate({**evidence, "bands": off})
     assert not result.passed and "differ from the published" in " ".join(
         result.failures
     )
+    # A donor above the maximum weight fails, as does a band seated below the
+    # minimum at full scale.
+    heavy = [dict(row) for row in rows]
+    heavy[0].update(donor_households=718, carriers=718, donor_weight=500.0)
+    failures = " ".join(
+        _spi_income_band_donor_gate({**evidence, "bands": heavy}).failures
+    )
+    assert "exceeds the maximum 250.0" in failures
+    assert "the plan seats 1436" in failures
+
+
+def test_spi_income_band_donor_support_gate_holds_the_mass_conserved() -> None:
+    evidence = _spi_income_band_donor_evidence()
+    # Given donors added on top of the incoming mass (the pre-#1063 stage),
+    # the gate refuses.
+    added = {**evidence, "mass": {"old_total": 28_600_000.0, "new_total": 29_050_000.0}}
+    result = _spi_income_band_donor_gate(added)
+    assert not result.passed and "funded from the incumbent households" in " ".join(
+        result.failures
+    )
+    # A stratum scaled below the funding floor fails.
+    funding = [dict(row) for row in evidence["funding"]]
+    funding[0]["factor"] = 0.49
+    result = _spi_income_band_donor_gate({**evidence, "funding": funding})
+    assert not result.passed and "outside [0.5, 1]" in " ".join(result.failures)
+    # Funding rows that do not account for the reallocated mass fail.
+    funding = [dict(row) for row in evidence["funding"]]
+    funding[1]["donor_mass"] = 100_000.0
+    result = _spi_income_band_donor_gate({**evidence, "funding": funding})
+    assert not result.passed and "funding strata carry donor mass" in " ".join(
+        result.failures
+    )
+    # The receipt must be the reviewed rule's.
+    result = _spi_income_band_donor_gate({**evidence, "maximum_donor_weight": 500.0})
+    assert not result.passed and "differs from the gate's 250.0" in " ".join(
+        result.failures
+    )
+    with pytest.raises(ValueError, match="funding must be a non-empty list"):
+        _spi_income_band_donor_gate({**evidence, "funding": []})
+
+
+def test_spi_income_band_donor_support_gate_scales_only_off_the_full_sample() -> None:
+    evidence = _spi_income_band_donor_evidence()
+    # Given a small frame: fewer, lighter donors. The bands fall short of the
+    # published mass by construction and the gate passes on the receipt.
+    scale = 0.5
+    rows = [
+        {
+            **row,
+            "donor_households": 2,
+            "carriers": 2,
+            "donor_weight": row["planned_donor_weight"] * scale,
+        }
+        for row in evidence["bands"]
+    ]
+    donor_mass = sum(row["donor_weight"] * 2 for row in rows)
+    scaled = {
+        **evidence,
+        "seating_scale": 8 / 1_920,
+        "mass_scale": scale,
+        "sample_fraction": 0.01,
+        "donor_count": 8,
+        "reallocated_mass": donor_mass,
+        "bands": rows,
+        "funding": [
+            {
+                "stratum": "LONDON",
+                "donor_households": 8,
+                "incumbent_mass": 2.0 * donor_mass,
+                "donor_mass": donor_mass,
+                "factor": 0.5,
+            }
+        ],
+    }
+    assert _passed(_spi_income_band_donor_gate(scaled))
+    # The same receipt on a full-sample build fails: a full build seats and
+    # funds the donors at full scale.
+    result = _spi_income_band_donor_gate({**scaled, "sample_fraction": 1.0})
+    assert not result.passed and "at full scale" in " ".join(result.failures)
+    result = _spi_income_band_donor_gate({**scaled, "mass_scale": 0.0})
+    assert not result.passed and "outside (0, 1]" in " ".join(result.failures)
 
 
 def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:

@@ -1648,10 +1648,14 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "headroom",
                 "maximum_copy_weight",
                 "maximum_relative_mass_deviation",
-                # PolicyEngine/chronicle#280 lane spi_income_band_donor_support check: the
-                # reserved bands and the donors each must carry.
+                # spi_income_band_donor_support check (PolicyEngine/chronicle#280
+                # lane; mass-conserving since #1063): the reserved bands, the
+                # seating rule's constants and the funding floor.
                 "band_lower_bounds",
-                "donors_per_band",
+                "minimum_donors_per_band",
+                "maximum_donor_weight",
+                "minimum_funding_factor",
+                "maximum_band_taxpayer_deviation",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
                 # prior weights, with the published gas-connected share, and
                 # a converged (not truncated) terminal residual (#1012).

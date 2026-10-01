@@ -818,6 +818,13 @@ def build_manifest(
                 stage_name="student_loans",
                 candidate_source=candidate_source,
             ),
+            # The reserved income rows are a support channel funded from the
+            # incumbent households (microcosm#1063): the terminal gate demands
+            # their conserving receipt like any other stage's.
+            "spi_income_band_donors": _source_stage_family_coverage_contract(
+                stage_name="spi_income_band_donors",
+                candidate_source=candidate_source,
+            ),
             "hmrc_spi_income": _hmrc_family_coverage_contract(
                 candidate_source=candidate_source
             ),
@@ -915,9 +922,9 @@ def _source_stage_family_coverage_contract(
             "assert the mass was conserved."
         )
     required_mass_change_reason = declared_reasons[-1]
-    # Every spine stage conserves household mass since microcosm#1045 retired
-    # the band-donor stack; the validator keeps ``mass_increasing_support``
-    # only until the SPI income-band donors follow (microcosm#1063).
+    # Every spine stage conserves household mass: microcosm#1045 retired the
+    # CGT band-donor stack and microcosm#1063 made the SPI income-band donors
+    # a funded support channel, so no family adds mass.
     mass_change_semantics = "mass_conserving"
     return {
         "status": "required_at_build",

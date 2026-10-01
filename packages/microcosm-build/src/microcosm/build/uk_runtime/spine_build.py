@@ -701,10 +701,13 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "draw_capital_gains_prior_from_banded_quantiles":
                     stage_seeds[str(operation.parameters["salt"])] = seed
-                elif operation.kind == "stack_income_band_donor_households":
-                    stage_seeds["stack_income_band_donor_households"] = seed
-                elif operation.kind == "resample_band_donor_leaves":
-                    stage_seeds["band_donor_resample"] = seed
+                elif operation.kind in (
+                    "stack_income_band_donor_households",
+                    "resample_band_donor_leaves",
+                ):
+                    # Identity-keyed draws: the seed is declared under the
+                    # salt it is hashed with (microcosm#1063).
+                    stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "impute_spi_housing_shell":
                     stage_seeds[stage.stage] = seed
                 elif operation.kind == "price_domestic_energy":

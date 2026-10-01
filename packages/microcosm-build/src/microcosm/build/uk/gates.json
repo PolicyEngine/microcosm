@@ -494,7 +494,11 @@
       "parameters": {
         "stage": "spi_income_band_donors",
         "check": "spi_income_band_donor_support",
-        "donors_per_band": 120,
+        "minimum_donors_per_band": 120,
+        "maximum_donor_weight": 250.0,
+        "minimum_funding_factor": 0.5,
+        "maximum_band_taxpayer_deviation": 0.5,
+        "maximum_relative_mass_deviation": 1e-09,
         "band_lower_bounds": [
           200000,
           500000,
@@ -502,7 +506,7 @@
           2000000
         ]
       },
-      "notes": "Stage-time support gate for spi_income_band_donors (PolicyEngine/chronicle#280 lane): every HMRC Table 2.5 band from GBP 200,000 carries its reserved donor households at positive band-exact weight with one carrier each, and the bands are exactly the declared four."
+      "notes": "Stage-time support gate for spi_income_band_donors (PolicyEngine/chronicle#280 lane; mass-conserving since microcosm#1063): every HMRC Table 2.5 band from GBP 200,000 carries reserved donor households with one carrier each at equal positive weight no greater than the declared maximum, and the bands are exactly the declared four. The donors' mass is reallocated from the households of each donor's region: total household mass is conserved to the declared deviation and no region's incumbents are scaled below the declared funding factor. At full scale every band seats its planned count (never fewer than the minimum) and carries its published taxpayers to the declared deviation; a full-sample build must be at full scale, and a small frame records its seating and mass scales instead."
     },
     {
       "id": "uk_stage_hmrc_cgt_gains_spine_summary",
