@@ -75,6 +75,24 @@ class MeasureProvider(Protocol):
     def compute(self, entity: str, variable: str) -> tuple[np.ndarray, str]: ...
 
 
+#: Prefix of the measure-input column a resolved counterfactual delta lands in.
+COUNTERFACTUAL_DELTA_COLUMN_PREFIX = "counterfactual_delta__"
+
+
+def counterfactual_column(binding: Mapping[str, Any]) -> str:
+    """The slash-free measure-input column of a counterfactual binding's delta.
+
+    A provider with ``counterfactual_delta(binding, period)`` resolves the
+    binding's per-row delta into this column; slashes in the metric name are
+    replaced because the prepared frame's HDF writer refuses them.
+    """
+
+    metric = str(binding.get("metric_name") or "")
+    if not metric:
+        raise ValueError("a counterfactual binding needs a metric_name")
+    return COUNTERFACTUAL_DELTA_COLUMN_PREFIX + re.sub(r"[^0-9A-Za-z_]", "_", metric)
+
+
 @dataclass(frozen=True)
 class MaterializationSkip:
     """One target measure the interpreter could not prepare."""
@@ -184,6 +202,7 @@ def resolve_target_measures(
         "provider": _measure_provider_receipt(provider),
     }
     all_skips: list[dict[str, Any]] = []
+    specs_by_name = {spec.name: spec for spec in registry.specs}
 
     for round_index in range(max_rounds):
         probe = adapter_factory()
@@ -215,11 +234,24 @@ def resolve_target_measures(
         for skip in skipped:
             reason = str(skip.reason)
             if "counterfactual_delta" in reason or "counterfactual delta" in reason:
-                _raise_measure_resolution(
-                    "counterfactual target measure cannot be resolved",
-                    receipt,
-                    all_skips,
+                key, values, route = _resolve_counterfactual_skip(
+                    skip,
+                    specs_by_name=specs_by_name,
+                    contract=contract,
+                    provider=provider,
+                    period=period,
+                    provided_this_round=provided_this_round,
+                    provided_before=provided_before,
+                    receipt=receipt,
+                    all_skips=all_skips,
                 )
+                if values is not None:
+                    measure_inputs[key] = values
+                    provided_this_round.add(key)
+                    receipt["attached"][f"{key[0]}.{key[1]}"] = route
+                    receipt["provider"] = _measure_provider_receipt(provider)
+                    progressed = True
+                continue
             match = _MISSING_COLUMN.match(reason)
             if match is None:
                 _raise_measure_resolution(
@@ -279,6 +311,59 @@ def resolve_target_measures(
         receipt,
         all_skips,
     )
+
+
+def _resolve_counterfactual_skip(
+    skip: MaterializationSkip,
+    *,
+    specs_by_name: Mapping[str, Any],
+    contract: Mapping[str, Mapping[str, Any]],
+    provider: MeasureProvider,
+    period: int | str,
+    provided_this_round: set[tuple[str, str]],
+    provided_before: set[tuple[str, str]],
+    receipt: dict[str, Any],
+    all_skips: list[dict[str, Any]],
+) -> tuple[tuple[str, str], np.ndarray | None, str]:
+    """Resolve one counterfactual skip through the provider, or refuse.
+
+    Returns the measure-input key and the delta, or ``None`` values when this
+    round already provided the key (several fan-out specs share one binding).
+    """
+
+    resolve = getattr(provider, "counterfactual_delta", None)
+    spec = specs_by_name.get(skip.name)
+    target = (
+        None
+        if spec is None
+        else contract.get(str(spec.metadata.get("contract_target_id")))
+    )
+    if not callable(resolve) or target is None:
+        _raise_measure_resolution(
+            "counterfactual target measure cannot be resolved",
+            receipt,
+            all_skips,
+        )
+    binding = target["bindings"]["policyengine"]
+    entity = str(binding.get("from_entity") or spec.entity)
+    key = (entity, counterfactual_column(binding))
+    if key in provided_this_round:
+        return key, None, ""
+    if key in provided_before:
+        _raise_measure_resolution(
+            f"{entity}.{key[1]} remained unmaterializable after injection",
+            receipt,
+            all_skips,
+        )
+    try:
+        values, route = resolve(binding, binding.get("measurement_period", period))
+    except Exception as exc:  # noqa: BLE001 - receipt preserves cause
+        _raise_measure_resolution(
+            f"provider failed computing counterfactual {entity}.{key[1]}: {exc}",
+            receipt,
+            all_skips,
+        )
+    return key, np.asarray(values, dtype=float), str(route)
 
 
 def _measure_resolution_contract(

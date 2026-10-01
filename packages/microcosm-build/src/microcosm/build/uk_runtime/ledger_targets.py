@@ -1443,10 +1443,16 @@ class UKFrameTargetAdapter:
         period: int | str,
     ) -> np.ndarray:
         del period
+        from microcosm.build.target_materialization import counterfactual_column
+
         entity = str(binding.get("from_entity") or "person")
         metric_name = str(binding.get("metric_name") or "")
-        if metric_name and metric_name in self.tables[entity]:
-            return np.asarray(self.tables[entity][metric_name], dtype=float)
+        # The measure resolver injects a resolved delta under the slash-free
+        # counterfactual column (microcosm#1069 c11); a precomputed column
+        # under the metric name itself is the legacy route.
+        for name in (counterfactual_column(binding), metric_name):
+            if name and name in self.tables[entity]:
+                return np.asarray(self.tables[entity][name], dtype=float)
         raise ValueError(
             f"frame does not carry precomputed counterfactual delta {metric_name!r}"
         )

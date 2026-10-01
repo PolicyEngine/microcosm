@@ -830,12 +830,12 @@
       "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "dwp.workplace_pension.employer_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
       "dwp.workplace_pension.employee_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
-      "hmrc.salary_sacrifice.amount": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
       "dwp.attendance_allowance.recipients_england": "Post-freeze fact family (DWP Stat-Xplore Attendance Allowance), no uk-data metric (microcosm#1069 c10).",
       "dwp.attendance_allowance.recipients_wales": "Post-freeze fact family (DWP Stat-Xplore Attendance Allowance), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
-      "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10)."
+      "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
+      "hmrc.salary_sacrifice.it_relief_total": "New declaration backed by HMRC Table 6.2 (PolicyEngine/chronicle#302 via #305): the all-rates income-tax relief on salary sacrifice, resolved by the live counterfactual route (microcosm#1069 c11)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1208,12 +1208,12 @@
       "dfc_ni.pension_credit.benefit_units",
       "dwp.workplace_pension.employer_contributions",
       "dwp.workplace_pension.employee_contributions",
-      "hmrc.salary_sacrifice.amount",
       "dwp.attendance_allowance.recipients_england",
       "dwp.attendance_allowance.recipients_wales",
       "dwp.hb.households_pension_age",
       "dwp.hb.households_pension_age_social_rented",
-      "dwp.hb.households_pension_age_private_rented"
+      "dwp.hb.households_pension_age_private_rented",
+      "hmrc.salary_sacrifice.it_relief_total"
     ]
   },
   "profile_parity": {
@@ -2950,7 +2950,9 @@
         "source_concept": "hmrc.ss_nics_relief_employer"
       },
       "category_id": "hmrc.salary_sacrifice_national_insurance_relief",
-      "label": "National Insurance contributions relief employer"
+      "label": "National Insurance contributions relief employer",
+      "uprating_index": "policyengine_uk_parameter:gov.hmrc.national_insurance.class_1.rates.employer",
+      "selector_note": "HMRC Table 6.2's 2024-25 employer NICs relief, charged at 13.8%, restated to the rate the engine charges in 2025 (15% from April 2025) by the pinned engine's gov.hmrc.national_insurance.class_1.rates.employer between 1 January 2024 and 1 January 2025, so the row anchors the sacrificed amount at the 2024-25 level, as R10's conversion row did (microcosm#1069 c11, R7)."
     },
     {
       "target_id": "hmrc.salary_sacrifice.users_below_cap",
@@ -25984,47 +25986,6 @@
       "period_match_policy": "exact"
     },
     {
-      "target_id": "hmrc.salary_sacrifice.amount",
-      "family": "hmrc_salary_sacrifice",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.pensions.contributions.salary_sacrifice.amount"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/salary_sacrifice_amount",
-          "value_variable": "pension_contributions_via_salary_sacrifice",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "HMRC Private pension statistics Table 6.2, 2024-25: the employer National Insurance relief on salary-sacrificed pension contributions (£3.4bn) divided by the 13.8% employer rate, a declared conversion (about £24.6bn) binding the sacrificed amount until the relief rows bind directly through the counterfactual route (microcosm#1069 R10; c11 retires this row)."
-        },
-        "axiom": {
-          "metric_name": "hmrc/salary_sacrifice_amount",
-          "status": "pending",
-          "value_rule": "uk.pensions.contributions.salary_sacrifice.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.ss_nics_relief_employer",
-        "entity_name": "person"
-      },
-      "value_operation": "linear_combination",
-      "value_operands": [
-        {
-          "weight": 7.246376811594,
-          "source_concept": "hmrc.ss_nics_relief_employer",
-          "label": "employer_nics_relief_over_13_8_percent"
-        }
-      ],
-      "category_id": "hmrc.salary_sacrifice_national_insurance_relief",
-      "label": "Salary-sacrificed pension contributions (from employer NICs relief)"
-    },
-    {
       "target_id": "dwp.attendance_allowance.recipients_england",
       "family": "dwp_attendance_allowance",
       "geography_levels": [
@@ -26582,6 +26543,42 @@
       "label": "Housing Benefit benefit units, pension age, private rented sector",
       "value_operation": "monthly_window_average",
       "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "hmrc.salary_sacrifice.it_relief_total",
+      "family": "hmrc_salary_sacrifice",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.salary_sacrifice.income_tax_relief"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
+          "kind": "input_substitution_counterfactual",
+          "zeroed_input": "pension_contributions_via_salary_sacrifice",
+          "folded_into": "employment_income",
+          "output_delta": "counterfactual_minus_baseline",
+          "output_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "HMRC Private pension statistics Table 6.2, 2024-25: income-tax relief on salary-sacrificed pension contributions, all rates, as the rise in income tax when the sacrifice is returned to pay (one counterfactual simulation from the same frame at the calibration year, uk-data's recipe; microcosm#1069 c11, R7). income_tax carries the High Income Child Benefit charge and the annual-allowance charge, so the delta includes their response to the returned pay (measured on the c11 arm). The rate-band rows wait for a band test that reads after-allowance thresholds and the Scottish bands."
+        },
+        "axiom": {
+          "metric_name": "hmrc/salary_sacrifice_it_relief_total",
+          "status": "pending",
+          "value_rule": "uk.tax.salary_sacrifice.income_tax_relief"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.ss_income_tax_relief_total"
+      },
+      "category_id": "hmrc.salary_sacrifice_income_tax_relief",
+      "label": "Income Tax relief total"
     },
     {
       "target_id": "hmrc.self_employment_income.amount",

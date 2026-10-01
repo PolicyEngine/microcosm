@@ -4072,10 +4072,6 @@
       "geography_level": "country",
       "geography_id": "K03000001"
     },
-    "hmrc.salary_sacrifice.amount": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
     "dwp.attendance_allowance.recipients_england": {
       "geography_level": "country",
       "geography_id": "E92000001"
@@ -4095,6 +4091,10 @@
     "dwp.hb.households_pension_age_private_rented": {
       "geography_level": "country",
       "geography_id": "K03000001"
+    },
+    "hmrc.salary_sacrifice.it_relief_total": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
@@ -4292,7 +4292,10 @@
     {
       "name": "hmrc.salary_sacrifice.nics_relief_employer",
       "from": "2024",
-      "to": "2025"
+      "to": "2025",
+      "index": "policyengine_uk_parameter:gov.hmrc.national_insurance.class_1.rates.employer",
+      "factor": "1.08695652173913",
+      "value_before_uprating": "3400000000.0"
     },
     {
       "name": "hmrc/employment_income_income_band_100_000_to_150_000",
@@ -11469,7 +11472,7 @@
       "value_before_uprating": "522000000.0"
     },
     {
-      "name": "hmrc.salary_sacrifice.amount",
+      "name": "hmrc.salary_sacrifice.it_relief_total",
       "from": "2024",
       "to": "2025"
     }
@@ -11949,9 +11952,14 @@
           "matched_fact_count_overall": 2,
           "matched_fact_count_at_or_before_period": 2,
           "resolved_period": 2025,
-          "resolved_value": 3400000000.0,
+          "resolved_value": 3695652173.9130435,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479",
+          "uprating": {
+            "index": "policyengine_uk_parameter:gov.hmrc.national_insurance.class_1.rates.employer",
+            "factor": "1.08695652173913",
+            "value_before_uprating": "3400000000.0"
+          }
         }
       ]
     },
@@ -30336,21 +30344,6 @@
         }
       ]
     },
-    "hmrc.salary_sacrifice.amount": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "hmrc.salary_sacrifice.amount",
-          "status": "active",
-          "matched_fact_count_overall": 2,
-          "matched_fact_count_at_or_before_period": 2,
-          "resolved_period": 2025,
-          "resolved_value": 24637681159.419598,
-          "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479"
-        }
-      ]
-    },
     "dwp.attendance_allowance.recipients_england": {
       "status": "active",
       "candidates": [
@@ -30428,6 +30421,21 @@
           "resolved_value": 216778.66666666666,
           "resolved_fact_period": "2025-12",
           "resolved_fact_key": "ledger_aggregate_fact_v2_f46445e7e639bfd9fea6921b"
+        }
+      ]
+    },
+    "hmrc.salary_sacrifice.it_relief_total": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.salary_sacrifice.it_relief_total",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 8800000000.0,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ab19a7f36038519a7f359742"
         }
       ]
     }

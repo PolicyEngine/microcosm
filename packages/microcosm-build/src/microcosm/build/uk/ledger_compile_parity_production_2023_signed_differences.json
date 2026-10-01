@@ -870,13 +870,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 21014492753.6226,
-   "name": "hmrc.salary_sacrifice.amount",
-   "period": 2023,
-   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 1200000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
    "period": 2023,
@@ -893,6 +886,13 @@
    "kind": "ledger_only",
    "ledger_value": 4400000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7200000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_total",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

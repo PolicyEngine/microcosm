@@ -69,7 +69,10 @@ UK_MONTHLY_UPRATING_ADJUDICATION = (
 #: The parameter paths a UK reference may name behind the prefix. One per SPI
 #: income component the family binds, each the index the engine itself uprates
 #: that variable with, plus the new State Pension weekly rate for the state
-#: pension rows (the engine pays the tax-year rate for the whole period).
+#: pension rows (the engine pays the tax-year rate for the whole period), and
+#: the employer Class 1 rate for the employer NICs relief on salary sacrifice
+#: (HMRC's 2024-25 relief at 13.8% restated to the rate the engine charges in
+#: the calibration year, microcosm#1069 c11).
 UK_ENGINE_INDEX_PARAMETERS: tuple[str, ...] = (
     "gov.economic_assumptions.indices.obr.average_earnings",
     "gov.economic_assumptions.indices.obr.per_capita.mixed_income",
@@ -77,6 +80,7 @@ UK_ENGINE_INDEX_PARAMETERS: tuple[str, ...] = (
     "gov.economic_assumptions.indices.obr.private_pension_index",
     "gov.economic_assumptions.indices.ons.household_interest_income",
     "gov.dwp.state_pension.new_state_pension.amount",
+    "gov.hmrc.national_insurance.class_1.rates.employer",
 )
 UK_ENGINE_INDEX_CONCEPTS: tuple[str, ...] = tuple(
     f"{UK_ENGINE_PARAMETER_INDEX_PREFIX}{path}" for path in UK_ENGINE_INDEX_PARAMETERS

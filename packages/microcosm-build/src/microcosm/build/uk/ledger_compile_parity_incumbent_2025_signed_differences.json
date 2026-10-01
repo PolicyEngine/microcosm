@@ -2067,13 +2067,6 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 24637681159.419598,
-   "name": "hmrc.salary_sacrifice.amount",
-   "period": 2025,
-   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
-  },
-  {
-   "kind": "ledger_only",
    "ledger_value": 1800000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
    "period": 2025,
@@ -2090,6 +2083,13 @@
    "kind": "ledger_only",
    "ledger_value": 5500000000.0,
    "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8800000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_total",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
@@ -6238,7 +6238,7 @@
   {
    "fixture_value": 2987000000.0,
    "kind": "calibration_drift",
-   "ledger_value": 3400000000.0,
+   "ledger_value": 3695652173.9130435,
    "name": "hmrc.salary_sacrifice.nics_relief_employer",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."

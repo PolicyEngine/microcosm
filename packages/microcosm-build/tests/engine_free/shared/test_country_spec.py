@@ -1146,7 +1146,8 @@ class TestExistingPackagesGeneralize:
         # 52 SPI Table 3.8 contribution rows (four measures by thirteen bands);
         # the DWP employer and employee contribution totals and the
         # salary-sacrifice amount, less the salary-sacrifice users total; two
-        # Attendance Allowance and three pension-age Housing Benefit rows
+        # Attendance Allowance and three pension-age Housing Benefit rows; the
+        # income-tax relief total on salary sacrifice in place of the amount row
         assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"

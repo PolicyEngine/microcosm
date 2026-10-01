@@ -369,10 +369,10 @@
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.total_income_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
-      "hmrc.salary_sacrifice.amount": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
+      "hmrc.salary_sacrifice.it_relief_total": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.nics_relief_employee": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.nics_relief_employer": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.users_above_cap": "hmrc.salary_sacrifice_pension_users",
@@ -701,10 +701,10 @@
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
       "hmrc.itl.total_income_by_total_income_band": "Total income by total income band",
-      "hmrc.salary_sacrifice.amount": "Salary-sacrificed pension contributions (from employer NICs relief)",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "It relief basic rate",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "It relief higher rate",
+      "hmrc.salary_sacrifice.it_relief_total": "Income Tax relief total",
       "hmrc.salary_sacrifice.nics_relief_employee": "National Insurance contributions relief employee",
       "hmrc.salary_sacrifice.nics_relief_employer": "National Insurance contributions relief employer",
       "hmrc.salary_sacrifice.users_above_cap": "Users above cap",
@@ -1472,6 +1472,7 @@
         "contract_target_id": "hmrc.salary_sacrifice.nics_relief_employer",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk_parameter:gov.hmrc.national_insurance.class_1.rates.employer",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
     },
@@ -46236,34 +46237,6 @@
       ]
     },
     {
-      "name": "hmrc.salary_sacrifice.amount",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.ss_nics_relief_employer",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "hmrc/salary_sacrifice_amount",
-      "family": "hmrc_salary_sacrifice",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.salary_sacrifice.amount",
-        "measure_kind": "prepared_column"
-      },
-      "value_operation": "linear_combination",
-      "value_operands": [
-        {
-          "weight": 7.246376811594,
-          "source_concept": "hmrc.ss_nics_relief_employer",
-          "label": "employer_nics_relief_over_13_8_percent"
-        }
-      ],
-      "uprating_from_period": "2024",
-      "uprating_to_period": 2025
-    },
-    {
       "name": "dwp.attendance_allowance.recipients_england",
       "ledger_selector": {
         "source_name": "dwp",
@@ -46479,6 +46452,25 @@
       },
       "period_match_policy": "source_window",
       "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "hmrc.salary_sacrifice.it_relief_total",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.ss_income_tax_relief_total",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/salary_sacrifice_it_relief_total",
+      "family": "hmrc_salary_sacrifice",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.salary_sacrifice.it_relief_total",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     }
   ]
 }

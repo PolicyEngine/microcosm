@@ -369,6 +369,10 @@ class UKMeasureResolver:
             if frame is None:
                 frame, _provenance = load_uk_national_frame(source_path)
         self.frame = frame
+        self._factory = factory
+        self._source_path = source_path
+        self._counterfactuals: dict[tuple[str, str | None], Any] = {}
+        self._counterfactual_measures: dict[str, dict[str, Any]] = {}
         reserved = {
             str(name)
             for name in frame.table("person")
@@ -504,8 +508,95 @@ class UKMeasureResolver:
             self._uc_paid_measures_used.add(variable)
         return result
 
+    def counterfactual_delta(
+        self, binding: Mapping[str, Any], period: int | str
+    ) -> tuple[np.ndarray, str]:
+        """A binding's per-row output delta under its input substitution.
+
+        One extra simulation per (zeroed input, folded-into) pair, from the same
+        source at the measurement year: the zeroed input is set to zero and its
+        amount added to the folded-into input (salary sacrifice returned to
+        pay, uk-data's recipe), and the output's delta against this resolver's
+        baseline comes back for the binding's entity (microcosm#1069 c11).
+        Banded deltas are refused: their band test compares adjusted net income
+        with after-allowance thresholds and ignores the Scottish bands.
+        """
+
+        self.validate_period(period)
+        if binding.get("band"):
+            raise ValueError(
+                "banded counterfactual measures are deferred: the band test "
+                "compares adjusted net income with after-allowance thresholds "
+                "and ignores the Scottish bands (microcosm#1069 c11)"
+            )
+        if binding.get("kind") != "input_substitution_counterfactual":
+            raise ValueError(f"unsupported counterfactual kind {binding.get('kind')!r}")
+        zeroed = str(binding["zeroed_input"])
+        folded = binding.get("folded_into")
+        folded = None if folded is None else str(folded)
+        output = str(binding["output_variable"])
+        entity = str(binding.get("from_entity") or "person")
+        direction = str(binding.get("output_delta", "counterfactual_minus_baseline"))
+        if direction not in (
+            "counterfactual_minus_baseline",
+            "baseline_minus_counterfactual",
+        ):
+            raise ValueError(f"unsupported output_delta {direction!r}")
+        counterfactual = self._counterfactual_simulation(zeroed, folded)
+        baseline_values, _ = compute_uk_measure_input(
+            self.frame, self.simulation, entity, output, self.year
+        )
+        counterfactual_values, _ = compute_uk_measure_input(
+            self.frame, counterfactual, entity, output, self.year
+        )
+        delta = np.asarray(counterfactual_values, dtype=float) - np.asarray(
+            baseline_values, dtype=float
+        )
+        if direction == "baseline_minus_counterfactual":
+            delta = -delta
+        metric = str(binding.get("metric_name") or output)
+        self._counterfactual_measures[metric] = {
+            "entity": entity,
+            "zeroed_input": zeroed,
+            "folded_into": folded,
+            "output_variable": output,
+            "output_delta": direction,
+            "rows_nonzero": int(np.count_nonzero(delta)),
+        }
+        route = (
+            f"policyengine-uk counterfactual: {zeroed} set to zero"
+            + (f" and folded into {folded}" if folded else "")
+            + f"; {entity}.{output} {direction}"
+        )
+        return delta, route
+
+    def _counterfactual_simulation(self, zeroed: str, folded: str | None) -> Any:
+        key = (zeroed, folded)
+        if key in self._counterfactuals:
+            return self._counterfactuals[key]
+        simulation = self._factory(dataset=str(self._source_path))
+        amount = np.asarray(self.simulation.calculate(zeroed, self.year), dtype=float)
+        if not np.isfinite(amount).all():
+            raise ValueError(f"{zeroed} must be finite to substitute it.")
+        if folded is not None:
+            base = np.asarray(self.simulation.calculate(folded, self.year), dtype=float)
+            if base.shape != amount.shape:
+                raise ValueError(
+                    f"{zeroed} and {folded} must share an entity to fold one into the other."
+                )
+            simulation.set_input(folded, self.year, base + amount)
+        simulation.set_input(zeroed, self.year, np.zeros_like(amount))
+        self._counterfactuals[key] = simulation
+        return simulation
+
     def receipt(self) -> dict[str, Any]:
         receipt = dict(self._receipt)
+        counterfactual_measures = getattr(self, "_counterfactual_measures", None)
+        if counterfactual_measures:
+            receipt["counterfactual_measures"] = {
+                name: dict(entry)
+                for name, entry in sorted(counterfactual_measures.items())
+            }
         if self._uc_tcl_measures_used:
             receipt["uc_tcl_comparison_contract"] = {
                 **uc_tcl_comparison_contract(self.year),

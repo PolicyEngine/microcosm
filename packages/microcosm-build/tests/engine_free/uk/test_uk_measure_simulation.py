@@ -570,7 +570,10 @@ def test_exclusion_applier_warns_within_week_of_expiry():
 #: a drifting count is a register change that must be re-adjudicated,
 #: never absorbed.
 _PACKAGED_EXCLUSION_CENSUS = {
-    "hmrc.salary_sacrifice.": 5,
+    # microcosm#1069 c11: the live counterfactual route binds the two NICs
+    # relief rows and the income-tax relief total; the three rate bands wait
+    # for the band-test fix.
+    "hmrc.salary_sacrifice.": 3,
     "_1_000_000_to_inf": 10,
     "slc.": 5,
     "dwp/uc_payment_dist/": 17,
@@ -632,7 +635,7 @@ _A16_CONCEPT_ROWS = ("ons.savings_interest_income",)
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 62
+    assert len(names) == len(set(names)) == 60
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -941,3 +944,97 @@ def test_cgt_taxable_income_nets_the_allowances_the_engine_formula_nets():
         # them too; an allowance above income floors at 0.
         [0.0, 17_430.0, 47_430.0, 7_430.0, 57_430.0, 0.0],
     )
+
+
+# microcosm#1069 c11: the live counterfactual route (salary sacrifice returned to pay).
+class _TaxSimulation:
+    """A stub engine whose tax and NI follow the pay and salary-sacrifice inputs."""
+
+    created = 0
+
+    def __init__(self, *, dataset):
+        type(self).created += 1
+        self.inputs = {
+            "employment_income": np.array([30_000.0, 50_000.0, 0.0]),
+            "pension_contributions_via_salary_sacrifice": np.array([3_000.0, 0.0, 0.0]),
+        }
+        names = (*self.inputs, "income_tax", "ni_employee")
+        self.tax_benefit_system = SimpleNamespace(
+            variables={
+                name: SimpleNamespace(
+                    entity=SimpleNamespace(key="person"), value_type=float
+                )
+                for name in names
+            }
+        )
+
+    def set_input(self, variable, year, values):
+        self.inputs[variable] = np.asarray(values, dtype=float)
+
+    def calculate(self, variable, year, map_to=None):
+        if variable in self.inputs:
+            return self.inputs[variable]
+        taxable = np.maximum(self.inputs["employment_income"] - 12_570.0, 0.0)
+        return {"income_tax": 0.2 * taxable, "ni_employee": 0.08 * taxable}[variable]
+
+
+def _relief_binding(output, **extra):
+    return {
+        "metric_name": f"hmrc/salary_sacrifice_{output}_relief",
+        "kind": "input_substitution_counterfactual",
+        "zeroed_input": "pension_contributions_via_salary_sacrifice",
+        "folded_into": "employment_income",
+        "output_delta": "counterfactual_minus_baseline",
+        "output_variable": output,
+        "from_entity": "person",
+        **extra,
+    }
+
+
+def test_counterfactual_delta_returns_the_sacrificed_pay_relief(monkeypatch, tmp_path):
+    _TaxSimulation.created = 0
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=_TaxSimulation),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=FrameStub(),
+    )
+
+    tax, route = resolver.counterfactual_delta(_relief_binding("income_tax"), 2025)
+    ni, _ = resolver.counterfactual_delta(_relief_binding("ni_employee"), 2025)
+
+    # £3,000 of sacrificed pay returned to the first person: 20% income tax and
+    # 8% NI on it; nobody else moves.
+    np.testing.assert_allclose(tax, [600.0, 0.0, 0.0])
+    np.testing.assert_allclose(ni, [240.0, 0.0, 0.0])
+    assert "folded into employment_income" in route
+    # One baseline and one counterfactual simulation serve both bindings.
+    assert _TaxSimulation.created == 2
+    measures = resolver.receipt()["counterfactual_measures"]
+    assert measures["hmrc/salary_sacrifice_income_tax_relief"]["rows_nonzero"] == 1
+
+
+def test_counterfactual_delta_refuses_bands_and_other_periods(monkeypatch, tmp_path):
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_uk",
+        SimpleNamespace(__version__="9.9.9", Microsimulation=_TaxSimulation),
+    )
+    resolver = UKMeasureResolver(
+        simulation_source=tmp_path / "input.h5",
+        scratch_dir=tmp_path,
+        year=2025,
+        frame=FrameStub(),
+    )
+    with pytest.raises(ValueError, match="banded counterfactual measures are deferred"):
+        resolver.counterfactual_delta(
+            _relief_binding("income_tax", band={"variable": "adjusted_net_income"}),
+            2025,
+        )
+    with pytest.raises(ValueError, match="does not match target period"):
+        resolver.counterfactual_delta(_relief_binding("income_tax"), 2024)

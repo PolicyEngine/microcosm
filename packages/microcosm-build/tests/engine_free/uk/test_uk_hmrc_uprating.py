@@ -13,7 +13,7 @@ def test_every_declared_engine_index_and_the_count_index_have_an_applier() -> No
         "hmrc.itl_2026.total_tax_growth_by_total_income_band",
     }
     assert set(appliers) <= set(UK_UPRATING_APPLIERS)
-    assert len(UK_ENGINE_INDEX_PARAMETERS) == 6
+    assert len(UK_ENGINE_INDEX_PARAMETERS) == 7
 
 def test_engine_index_moves_the_amount_by_the_parameter_ratio_and_receipts_it() -> None:
     registry = TargetRegistry(
