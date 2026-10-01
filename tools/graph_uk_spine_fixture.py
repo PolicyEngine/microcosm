@@ -100,6 +100,9 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     UKLCFSConsumptionStageTransform,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.pension_credit_take_up import (
+    UKPensionCreditTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -151,11 +154,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 35
+UK_FIXTURE_STAGE_COUNT = 36
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 35-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 36-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -1575,6 +1578,9 @@ def _build_implementations(
         "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
             stage=stages["uc_capital_coherence"]
         ),
+        "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
+            stage=stages["pension_credit_take_up"], engine=engine
+        ),
         "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
             stage=stages["uc_deduction_attributes"]
         ),
@@ -1615,7 +1621,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 35-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 36-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")

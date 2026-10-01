@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1233,
-  "contract_target_count": 320,
-  "active_reference_count": 1210,
+  "candidate_count": 1247,
+  "contract_target_count": 334,
+  "active_reference_count": 1224,
   "status_counts": {
-    "active": 1210,
+    "active": 1224,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 16
   },
@@ -3995,6 +3995,62 @@
     "dwp.state_pension.recipients_pre_2016_by_weekly_amount": {
       "geography_level": "country",
       "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_couple": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_single": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_savings_only_couple": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_savings_only_single": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_both_couple": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_both_single": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_65_69": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_70_74": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_75_79": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_80_84": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_85_89": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.pension_credit.benefit_units_90_plus": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dfc_ni.pension_credit.benefit_units": {
+      "geography_level": "country",
+      "geography_id": "N92000002"
     }
   },
   "genuine_sum_residue": [
@@ -28772,6 +28828,230 @@
           "resolved_value": 23048.0,
           "resolved_fact_period": "2025-11",
           "resolved_fact_key": "ledger_aggregate_fact_v2_01743bfc73ac3ee49e3fa953"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1390586.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_1959918af196c44861e31167"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_couple": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_guarantee_only_couple",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 96794.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_091a1b6931243d1d3f5b35c1"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_guarantee_only_single": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_guarantee_only_single",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 715624.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_122348c34ab5eb4857e379e0"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_savings_only_couple": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_savings_only_couple",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 22458.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_48eceb66dbc0a8badeed5d21"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_savings_only_single": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_savings_only_single",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 142408.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4bba18fa22663b03e2c56da8"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_both_couple": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_both_couple",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 47246.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_53774b182677de4df96ecd2b"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_both_single": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_both_single",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 366055.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_35b6b695fc790496848d8a94"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_65_69": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_65_69",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 179022.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c6e9a9036eab7716e57dd68b"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_70_74": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_70_74",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 282852.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d8c9b2a912de0a21e93b5e8d"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_75_79": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_75_79",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 367571.25,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_6e88be95734a1e2312fb284d"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_80_84": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_80_84",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 261310.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f92bbdf9046d27d8c45149a0"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_85_89": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_85_89",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 177613.5,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_cf3443a3e0be02b52bf5651f"
+        }
+      ]
+    },
+    "dwp.pension_credit.benefit_units_90_plus": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.pension_credit.benefit_units_90_plus",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 122210.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_92e1c482a72763db14b6264d"
+        }
+      ]
+    },
+    "dfc_ni.pension_credit.benefit_units": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dfc_ni.pension_credit.benefit_units",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 60195.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_31088d4513e7b7e4b21233d7"
         }
       ]
     }

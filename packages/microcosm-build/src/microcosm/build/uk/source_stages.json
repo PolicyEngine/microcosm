@@ -4400,6 +4400,58 @@
    "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by is_uc_couple cells (two retained FRS claimant/partner roles, independently of legal is_married), then applies the monotone reported-UC OR refresh."
   },
   {
+   "stage": "pension_credit_take_up",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "DWP Income-related benefits: estimates of take-up, financial year ending 2024 (Pension Credit caseload take-up by component), applied to PolicyEngine-UK pre-take-up Pension Credit entitlement after the SPI income chain.",
+   "grain": "benunit",
+   "artifacts": [],
+   "operations": [
+    {
+     "kind": "materialize_rules_engine_predictors",
+     "predictors": [
+      "guarantee_credit",
+      "savings_credit",
+      "is_pension_credit_eligible"
+     ],
+     "consumed_only": true
+    },
+    {
+     "kind": "aggregate_person_to_benunit",
+     "method": "any_positive",
+     "consumed_only": true,
+     "aggregates": {
+      "pension_credit_reported_anchor": "pension_credit_reported"
+     }
+    },
+    {
+     "kind": "assign_component_take_up_residual",
+     "output": "would_claim_pc",
+     "draw": "would_claim_pc",
+     "seed": 0,
+     "anchor": "pension_credit_reported_anchor",
+     "bands": [
+      {
+       "name": "guarantee_credit",
+       "rule": "is_pension_credit_eligible AND guarantee_credit > 0",
+       "rate_key": "pension_credit_guarantee_credit"
+      },
+      {
+       "name": "savings_credit_only",
+       "rule": "is_pension_credit_eligible AND guarantee_credit <= 0 AND savings_credit > 0",
+       "rate_key": "pension_credit_savings_credit_only"
+      }
+     ],
+     "weight_mapping": "household_to_benunit",
+     "residual_rate": "(rate * entitled - reporters) / (entitled - reporters), weighted, clipped to [0, 1]"
+    }
+   ],
+   "outputs": [],
+   "rewrites": [
+    "would_claim_pc"
+   ],
+   "notes": "Runs after the SPI income chain and UC capital coherence, before CGT cloning (microcosm#1069 R9). One temporary engine materialization gives each benefit unit's pre-take-up Pension Credit entitlement (guarantee_credit, savings_credit, is_pension_credit_eligible; consumed only). Entitled units fall into DWP's take-up components, Guarantee Credit (with or without Savings Credit) and Savings Credit only; within a component a reporter claims and the other entitled units claim at r = (t * E - R) / (E - R), t being DWP's financial year ending 2024 caseload take-up (69% and 37%), E the component's entitled units and R its reporters, weighted at the stage's household weights. A unit with no entitlement claims only if it reports. The uniform draw is frs_take_up's would_claim_pc identity stream, whose early draw this rewrite replaces; units with every adult at or over State Pension age are the only ones the engine finds eligible."
+  },
+  {
    "stage": "uc_deduction_attributes",
    "survey": "DWP Universal Credit deductions statistics, March 2025 to February 2026",
    "source": "Department for Work and Pensions supplementary Tables 2, 5 and 6, sha-pinned by Chronicle package dwp-uc-deductions-march-2025-february-2026.",

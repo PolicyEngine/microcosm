@@ -217,6 +217,14 @@
       "dfc_ni.state_pension": {
         "provider_id": "dfc_ni",
         "label": "State Pension"
+      },
+      "dwp.pension_credit": {
+        "provider_id": "dwp",
+        "label": "Pension Credit"
+      },
+      "dfc_ni.pension_credit": {
+        "provider_id": "dfc_ni",
+        "label": "Pension Credit"
       }
     },
     "target_categories": {

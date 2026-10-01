@@ -1619,6 +1619,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "spi_prior_mass_share",
                 # microcosm#1069 c6 spi_support_channel stage-health check.
                 "pension_age_spi_prior_mass_share",
+                # microcosm#1069 c7 pension_credit_take_up stage-health check.
+                "maximum_take_up_deviation",
+                "minimum_entitled_units",
                 "absolute_tolerance",
                 "household_weight_kind",
                 "minimum_spi_households",

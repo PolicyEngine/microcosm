@@ -809,7 +809,21 @@
       "dwp.state_pension.recipients_pre_2016_scotland": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "dwp.state_pension.recipients_pre_2016_wales": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "dwp.state_pension.recipients_new_by_weekly_amount": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
-      "dwp.state_pension.recipients_pre_2016_by_weekly_amount": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069)."
+      "dwp.state_pension.recipients_pre_2016_by_weekly_amount": "Post-freeze fact family (DWP Stat-Xplore State Pension caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_guarantee_only_couple": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_guarantee_only_single": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_savings_only_couple": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_savings_only_single": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_both_couple": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_both_single": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_65_69": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_70_74": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_75_79": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_80_84": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_85_89": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.pension_credit.benefit_units_90_plus": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dfc_ni.pension_credit.benefit_units": "Post-freeze fact family (DfC Northern Ireland Pension Credit statistics, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1162,7 +1176,21 @@
       "dwp.state_pension.recipients_pre_2016_scotland",
       "dwp.state_pension.recipients_pre_2016_wales",
       "dwp.state_pension.recipients_new_by_weekly_amount",
-      "dwp.state_pension.recipients_pre_2016_by_weekly_amount"
+      "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
+      "dwp.pension_credit.benefit_units",
+      "dwp.pension_credit.benefit_units_guarantee_only_couple",
+      "dwp.pension_credit.benefit_units_guarantee_only_single",
+      "dwp.pension_credit.benefit_units_savings_only_couple",
+      "dwp.pension_credit.benefit_units_savings_only_single",
+      "dwp.pension_credit.benefit_units_both_couple",
+      "dwp.pension_credit.benefit_units_both_single",
+      "dwp.pension_credit.benefit_units_65_69",
+      "dwp.pension_credit.benefit_units_70_74",
+      "dwp.pension_credit.benefit_units_75_79",
+      "dwp.pension_credit.benefit_units_80_84",
+      "dwp.pension_credit.benefit_units_85_89",
+      "dwp.pension_credit.benefit_units_90_plus",
+      "dfc_ni.pension_credit.benefit_units"
     ]
   },
   "profile_parity": {
@@ -23946,6 +23974,1697 @@
       "period_match_policy": "source_window"
     },
     {
+      "target_id": "dwp.pension_credit.benefit_units",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): every claim in payment in Great Britain, as the mean of the four quarterly points inside calendar 2025 (February, May, August, November), the State Pension window (microcosm#1069 R1). Bound at benefit-unit grain on pension_credit > 0."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, Great Britain",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_guarantee_only_couple",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pension_credit.type",
+            "equals": "guarantee_only"
+          },
+          {
+            "concept": "uk.benefit_unit.relation_type",
+            "equals": "couple"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_guarantee_only_couple",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "guarantee_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "savings_credit",
+              "operator": "<=",
+              "value": 0
+            },
+            {
+              "variable": "relation_type",
+              "operator": "==",
+              "value": "COUPLE"
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims of Guarantee Credit only by a benefit unit that has a partner, all ages, as the mean of the four quarterly points inside calendar 2025. The type is read from the engine's paid components: Guarantee Credit and Savings Credit are each positive or zero on a unit with Pension Credit in payment; the partner cell is the engine's relation_type (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_guarantee_only_couple",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has a partner",
+          "type_of_pension_credit": "Guarantee Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, Guarantee Credit only, has a partner",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_guarantee_only_single",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pension_credit.type",
+            "equals": "guarantee_only"
+          },
+          {
+            "concept": "uk.benefit_unit.relation_type",
+            "equals": "single"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_guarantee_only_single",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "guarantee_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "savings_credit",
+              "operator": "<=",
+              "value": 0
+            },
+            {
+              "variable": "relation_type",
+              "operator": "==",
+              "value": "SINGLE"
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims of Guarantee Credit only by a benefit unit that has no partner, all ages, as the mean of the four quarterly points inside calendar 2025. The type is read from the engine's paid components: Guarantee Credit and Savings Credit are each positive or zero on a unit with Pension Credit in payment; the partner cell is the engine's relation_type (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_guarantee_only_single",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has no partner",
+          "type_of_pension_credit": "Guarantee Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, Guarantee Credit only, has no partner",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_savings_only_couple",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pension_credit.type",
+            "equals": "savings_only"
+          },
+          {
+            "concept": "uk.benefit_unit.relation_type",
+            "equals": "couple"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_savings_only_couple",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "guarantee_credit",
+              "operator": "<=",
+              "value": 0
+            },
+            {
+              "variable": "savings_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "relation_type",
+              "operator": "==",
+              "value": "COUPLE"
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims of Savings Credit only by a benefit unit that has a partner, all ages, as the mean of the four quarterly points inside calendar 2025. The type is read from the engine's paid components: Guarantee Credit and Savings Credit are each positive or zero on a unit with Pension Credit in payment; the partner cell is the engine's relation_type (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_savings_only_couple",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has a partner",
+          "type_of_pension_credit": "Savings Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, Savings Credit only, has a partner",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_savings_only_single",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pension_credit.type",
+            "equals": "savings_only"
+          },
+          {
+            "concept": "uk.benefit_unit.relation_type",
+            "equals": "single"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_savings_only_single",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "guarantee_credit",
+              "operator": "<=",
+              "value": 0
+            },
+            {
+              "variable": "savings_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "relation_type",
+              "operator": "==",
+              "value": "SINGLE"
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims of Savings Credit only by a benefit unit that has no partner, all ages, as the mean of the four quarterly points inside calendar 2025. The type is read from the engine's paid components: Guarantee Credit and Savings Credit are each positive or zero on a unit with Pension Credit in payment; the partner cell is the engine's relation_type (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_savings_only_single",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has no partner",
+          "type_of_pension_credit": "Savings Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, Savings Credit only, has no partner",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_both_couple",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pension_credit.type",
+            "equals": "both"
+          },
+          {
+            "concept": "uk.benefit_unit.relation_type",
+            "equals": "couple"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_both_couple",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "guarantee_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "savings_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "relation_type",
+              "operator": "==",
+              "value": "COUPLE"
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims of Both Guarantee and Savings Credit by a benefit unit that has a partner, all ages, as the mean of the four quarterly points inside calendar 2025. The type is read from the engine's paid components: Guarantee Credit and Savings Credit are each positive or zero on a unit with Pension Credit in payment; the partner cell is the engine's relation_type (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_both_couple",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has a partner",
+          "type_of_pension_credit": "Both Guarantee and Savings Credit"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, Both Guarantee and Savings Credit, has a partner",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_both_single",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.benefits.pension_credit.type",
+            "equals": "both"
+          },
+          {
+            "concept": "uk.benefit_unit.relation_type",
+            "equals": "single"
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_both_single",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "guarantee_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "savings_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "relation_type",
+              "operator": "==",
+              "value": "SINGLE"
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims of Both Guarantee and Savings Credit by a benefit unit that has no partner, all ages, as the mean of the four quarterly points inside calendar 2025. The type is read from the engine's paid components: Guarantee Credit and Savings Credit are each positive or zero on a unit with Pension Credit in payment; the partner cell is the engine's relation_type (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_both_single",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has no partner",
+          "type_of_pension_credit": "Both Guarantee and Savings Credit"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, Both Guarantee and Savings Credit, has no partner",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_65_69",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 65
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 69
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_65_69",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 65
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": "<=",
+              "value": 69
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims whose claimant is aged 65-69, every type and partner status, as the mean of the four quarterly points inside calendar 2025. The engine reads the age of the benefit unit's eldest adult: both partners must have reached State Pension age to claim, so the claimant and the eldest adult share the band except where a couple straddles a band edge (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_65_69",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "65-69",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, claimant aged 65 to 69",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_70_74",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 70
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 74
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_70_74",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 70
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": "<=",
+              "value": 74
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims whose claimant is aged 70-74, every type and partner status, as the mean of the four quarterly points inside calendar 2025. The engine reads the age of the benefit unit's eldest adult: both partners must have reached State Pension age to claim, so the claimant and the eldest adult share the band except where a couple straddles a band edge (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_70_74",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "70-74",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, claimant aged 70 to 74",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_75_79",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 75
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 79
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_75_79",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 75
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": "<=",
+              "value": 79
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims whose claimant is aged 75-79, every type and partner status, as the mean of the four quarterly points inside calendar 2025. The engine reads the age of the benefit unit's eldest adult: both partners must have reached State Pension age to claim, so the claimant and the eldest adult share the band except where a couple straddles a band edge (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_75_79",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "75-79",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, claimant aged 75 to 79",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_80_84",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 80
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 84
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_80_84",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 80
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": "<=",
+              "value": 84
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims whose claimant is aged 80-84, every type and partner status, as the mean of the four quarterly points inside calendar 2025. The engine reads the age of the benefit unit's eldest adult: both partners must have reached State Pension age to claim, so the claimant and the eldest adult share the band except where a couple straddles a band edge (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_80_84",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "80-84",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, claimant aged 80 to 84",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_85_89",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 85
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": "<=",
+            "value": 89
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_85_89",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 85
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": "<=",
+              "value": 89
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims whose claimant is aged 85-89, every type and partner status, as the mean of the four quarterly points inside calendar 2025. The engine reads the age of the benefit unit's eldest adult: both partners must have reached State Pension age to claim, so the claimant and the eldest adult share the band except where a couple straddles a band edge (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_85_89",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "85-89",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, claimant aged 85 to 89",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.pension_credit.benefit_units_90_plus",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 90
+          },
+          {
+            "concept": "uk.geography.country",
+            "operator": "in",
+            "value": [
+              "england",
+              "scotland",
+              "wales"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/pension_credit/benefit_units_90_plus",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 90
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Pension Credit caseload, Great Britain (claims, one per benefit unit; PolicyEngine/chronicle#302 via #305): claims whose claimant is aged 90 and over, every type and partner status, as the mean of the four quarterly points inside calendar 2025. The engine reads the age of the benefit unit's eldest adult: both partners must have reached State Pension age to claim, so the claimant and the eldest adult share the band except where a couple straddles a band edge (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dwp/pension_credit/benefit_units_90_plus",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "90 and over",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.pension_credit",
+      "label": "Pension Credit benefit units, claimant aged 90 and over",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dfc_ni.pension_credit.benefit_units",
+      "family": "dwp_pension_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.pension_credit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "northern_ireland"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dfc_ni/pension_credit/benefit_units",
+          "filters": [
+            {
+              "variable": "pension_credit",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "NORTHERN_IRELAND",
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DfC Northern Ireland benefit statistics, Pension Credit claimants (PolicyEngine/chronicle#302 via #305): all claimants (one claim per benefit unit), as the mean of the four quarterly points inside calendar 2025. With the Great Britain rows it completes the UK caseload (microcosm#1069 c7)."
+        },
+        "axiom": {
+          "metric_name": "dfc_ni/pension_credit/benefit_units",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dfc_ni",
+        "source_concept": [
+          "dfc_ni.pension_credit_claimants"
+        ],
+        "source_measure_id": "claimants_all",
+        "dimensions": [],
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dfc_ni.pension_credit",
+      "label": "Pension Credit benefit units, Northern Ireland",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -27207,6 +28926,14 @@
       "dfc_ni.state_pension": {
         "provider_id": "dfc_ni",
         "label": "State Pension"
+      },
+      "dwp.pension_credit": {
+        "provider_id": "dwp",
+        "label": "Pension Credit"
+      },
+      "dfc_ni.pension_credit": {
+        "provider_id": "dfc_ni",
+        "label": "Pension Credit"
       }
     }
   }

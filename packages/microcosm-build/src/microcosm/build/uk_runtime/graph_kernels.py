@@ -45,7 +45,13 @@ from microcosm.graph import (
 from microcosm.graph.population import dtype_for_token
 
 from .. import stage_evidence
-from . import bus_use_incidence, frs_hmrc_source, uc_relationships, was_wealth
+from . import (
+    bus_use_incidence,
+    frs_hmrc_source,
+    uc_capital_coherence,
+    uc_relationships,
+    was_wealth,
+)
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -90,6 +96,7 @@ _STAGE_MODULES = {
     "spi_housing_shell": "spi_housing_shell",
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
+    "pension_credit_take_up": "pension_credit_take_up",
     "uc_deduction_attributes": "uc_deduction_attributes",
     "cgt_support_split": "cgt_support",
     "cgt_incidence_clone": "cgt_structure",
@@ -119,6 +126,9 @@ _STAGE_HELPER_MODULES = {
     "etb_services": (uk_engine_adapter,),
     "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
     "uc_capital_coherence": (uc_relationships,),
+    # The Pension Credit redraw reuses the UC stage's household-to-benefit-unit
+    # weight mapping and the adapter's engine materialization.
+    "pension_credit_take_up": (uc_capital_coherence, uk_engine_adapter),
 }
 
 _COMPUTE = Capabilities(
@@ -390,7 +400,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 35-stage spine "
+            "UK parity fixture must describe the current 36-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -424,6 +434,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
     from .nts_bus_travel import UKNTSBusTravelStageTransform
+    from .pension_credit_take_up import UKPensionCreditTakeUpStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
@@ -604,6 +615,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             ),
             "uc_capital_coherence": UKUCCapitalCoherenceStageTransform(
                 stage=stages["uc_capital_coherence"]
+            ),
+            "pension_credit_take_up": UKPensionCreditTakeUpStageTransform(
+                stage=stages["pension_credit_take_up"], engine=engine
             ),
             "uc_deduction_attributes": UKUCDeductionAttributesStageTransform(
                 stage=stages["uc_deduction_attributes"]

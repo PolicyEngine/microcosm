@@ -66,6 +66,9 @@ UC_REPORTER_REDRAW_STAGE_NAMES = [
 UC_COHERENCE_STAGE_NAMES = [
     "uc_capital_coherence",
 ]
+PENSION_CREDIT_TAKE_UP_STAGE_NAMES = [
+    "pension_credit_take_up",
+]
 E9_STAGE_NAMES = [
     "uc_deduction_attributes",
 ]
@@ -91,6 +94,7 @@ UK_SOURCE_STAGE_NAMES = [
     *E6_STAGE_NAMES,
     *UC_REPORTER_REDRAW_STAGE_NAMES,
     *UC_COHERENCE_STAGE_NAMES,
+    *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
     *E9_STAGE_NAMES,
     *E8_STAGE_NAMES,
 ]
@@ -159,6 +163,7 @@ class TestUKSourceStagesManifest:
             *E6_STAGE_NAMES,
             *UC_REPORTER_REDRAW_STAGE_NAMES,
             *UC_COHERENCE_STAGE_NAMES,
+            *PENSION_CREDIT_TAKE_UP_STAGE_NAMES,
             *E9_STAGE_NAMES,
         ]
 
@@ -230,6 +235,7 @@ class TestUKSourceStagesManifest:
                     "spi_housing_shell": _identity,
                     "uc_reporter_redraw": _identity,
                     "uc_capital_coherence": _identity,
+                    "pension_credit_take_up": _identity,
                     "uc_deduction_attributes": _identity,
                     "cgt_support_split": _identity,
                     "cgt_incidence_clone": _identity,

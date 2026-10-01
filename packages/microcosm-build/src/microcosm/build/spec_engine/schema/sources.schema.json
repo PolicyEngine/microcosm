@@ -6439,6 +6439,66 @@
       "kind",
       "output",
       "draw",
+      "seed",
+      "anchor",
+      "bands",
+      "weight_mapping",
+      "residual_rate"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_component_take_up_residual"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "bands": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "name",
+         "rule",
+         "rate_key"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "rule": {
+          "type": "string"
+         },
+         "rate_key": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "residual_rate": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
       "anchor",
       "rate_key",
       "seed"

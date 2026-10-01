@@ -565,6 +565,19 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert months == (
             esa_quarters[1:] if "_by_weekly_amount." in reference.name else esa_quarters
         )
+    # The Pension Credit caseload rows bind the same four quarterly points
+    # (microcosm#1069 c7).
+    pension_credit = [
+        reference
+        for reference in references
+        if reference.family == "dwp_pension_credit"
+    ]
+    assert len(pension_credit) == 14
+    for reference in pension_credit:
+        assert reference.ledger_selector["period_value"] == esa_quarters
+        assert reference.value_operation == "monthly_window_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
@@ -574,5 +587,6 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
             "dwp_housing_benefit",
             "dwp_legacy_benefits",
             "dwp_state_pension",
+            "dwp_pension_credit",
         }
     )

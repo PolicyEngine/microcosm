@@ -43,6 +43,8 @@ def uk_stage_health_gate(
         return _spi_support_channel_gate(stage, evidence, parameters)
     if check == "spi_income_spine":
         return _spi_income_spine_gate(stage, evidence, parameters)
+    if check == "pension_credit_take_up":
+        return _pension_credit_take_up_gate(stage, evidence, parameters)
     if check == "source_signal":
         return _source_signal_gate(stage, evidence, parameters)
     if check == "age_tail_targets":
@@ -794,6 +796,59 @@ def _spi_support_channel_gate(
         parameters["minimum_spi_households"]
     ):
         failures.append(f"{stage}: spi_households below declared minimum.")
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _pension_credit_take_up_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """Each component band realizes its DWP take-up rate (microcosm#1069 R9).
+
+    A band whose reporters alone exceed the rate realizes their share instead;
+    the receipt flags it and the gate requires the realized share to be at
+    least the rate there.
+    """
+
+    check = "pension_credit_take_up"
+    tolerance = _finite_number(
+        parameters["maximum_take_up_deviation"],
+        label=f"{stage}.maximum_take_up_deviation",
+    )
+    minimum_units = int(parameters["minimum_entitled_units"])
+    bands = evidence.get("bands")
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    if not isinstance(bands, list) or not bands:
+        failures.append(f"{stage}: the receipt carries no take-up bands.")
+        bands = []
+    for band in bands:
+        band = _mapping(band, label=f"{stage}.bands[]")
+        name = str(band.get("band"))
+        rate = _finite_number(band.get("rate"), label=f"{stage}.{name}.rate")
+        units = int(band.get("entitled_units", 0))
+        realized = band.get("realized_take_up")
+        details[name] = {"rate": rate, "realized_take_up": realized, "units": units}
+        if units < minimum_units or realized is None:
+            failures.append(f"{stage}: band {name} has {units} entitled units.")
+            continue
+        realized = _finite_number(realized, label=f"{stage}.{name}.realized_take_up")
+        if band.get("reporters_exceed_rate") is True:
+            if realized + 1e-12 < rate:
+                failures.append(
+                    f"{stage}: band {name} reporters exceed the rate but realize "
+                    f"{realized:.4f} < {rate:.4f}."
+                )
+        elif abs(realized - rate) > tolerance:
+            failures.append(
+                f"{stage}: band {name} realizes take-up {realized:.4f} against the "
+                f"rate {rate:.4f} (tolerance {tolerance})."
+            )
     return (
         _fail(stage, check, failures, details)
         if failures

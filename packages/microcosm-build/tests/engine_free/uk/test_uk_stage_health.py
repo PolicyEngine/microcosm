@@ -1466,3 +1466,41 @@ def test_spi_support_channel_checks_the_declared_pension_age_share() -> None:
         parameters,
     )
     assert not missing.passed
+
+
+def test_pension_credit_take_up_checks_each_band_against_its_rate() -> None:
+    def band(name, rate, realized, *, exceed=False, units=10):
+        return {
+            "band": name,
+            "rate": rate,
+            "realized_take_up": realized,
+            "reporters_exceed_rate": exceed,
+            "entitled_units": units,
+        }
+
+    parameters = {
+        "stage": "pension_credit_take_up",
+        "check": "pension_credit_take_up",
+        "maximum_take_up_deviation": 0.05,
+        "minimum_entitled_units": 1,
+    }
+
+    def gate(*bands):
+        return uk_stage_health_gate(
+            evidence={"stage": "pension_credit_take_up", "bands": list(bands)},
+            stage="pension_credit_take_up",
+            check="pension_credit_take_up",
+            parameters=parameters,
+        )
+
+    assert _passed(
+        gate(
+            band("guarantee_credit", 0.69, 0.70),
+            band("savings_credit_only", 0.37, 0.36),
+        )
+    )
+    assert not gate(band("guarantee_credit", 0.69, 0.60)).passed
+    assert _passed(gate(band("guarantee_credit", 0.69, 0.80, exceed=True)))
+    assert not gate(band("guarantee_credit", 0.69, 0.50, exceed=True)).passed
+    assert not gate(band("guarantee_credit", 0.69, None, units=0)).passed
+    assert not gate().passed

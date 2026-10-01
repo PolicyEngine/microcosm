@@ -125,6 +125,9 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
+from microcosm.build.uk_runtime.pension_credit_take_up import (
+    UKPensionCreditTakeUpStageTransform,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -1519,6 +1522,11 @@ def prepare_uk_spine_execution(
     if "uc_capital_coherence" in stage_names:
         implementations["uc_capital_coherence"] = UKUCCapitalCoherenceStageTransform(
             stage=stages_by_name["uc_capital_coherence"]
+        )
+    if "pension_credit_take_up" in stage_names:
+        implementations["pension_credit_take_up"] = UKPensionCreditTakeUpStageTransform(
+            stage=stages_by_name["pension_credit_take_up"],
+            engine=engine,
         )
     if "uc_deduction_attributes" in stage_names:
         implementations["uc_deduction_attributes"] = (

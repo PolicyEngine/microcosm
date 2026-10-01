@@ -217,9 +217,18 @@
       "dfc_ni.state_pension": {
         "provider_id": "dfc_ni",
         "label": "State Pension"
+      },
+      "dwp.pension_credit": {
+        "provider_id": "dwp",
+        "label": "Pension Credit"
+      },
+      "dfc_ni.pension_credit": {
+        "provider_id": "dfc_ni",
+        "label": "Pension Credit"
       }
     },
     "target_categories": {
+      "dfc_ni.pension_credit.benefit_units": "dfc_ni.pension_credit",
       "dfc_ni.state_pension.amount": "dfc_ni.state_pension",
       "dfc_ni.state_pension.recipients": "dfc_ni.state_pension",
       "dfe.funded_childcare.early_learning_2_year_olds": "dfe.funded_childcare",
@@ -252,6 +261,19 @@
       "dwp.hb.households_private_rented": "dwp.housing_benefit",
       "dwp.hb.households_social_rented": "dwp.housing_benefit",
       "dwp.jsa_claimants": "dwp.legacy_benefits",
+      "dwp.pension_credit.benefit_units": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_65_69": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_70_74": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_75_79": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_80_84": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_85_89": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_90_plus": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_both_couple": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_both_single": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_guarantee_only_couple": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_guarantee_only_single": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_savings_only_couple": "dwp.pension_credit",
+      "dwp.pension_credit.benefit_units_savings_only_single": "dwp.pension_credit",
       "dwp.state_pension.amount": "dwp.state_pension",
       "dwp.state_pension.recipients": "dwp.state_pension",
       "dwp.state_pension.recipients_female_66_69_new": "dwp.state_pension",
@@ -527,6 +549,7 @@
       "welshgov.council_tax_stock.total": "welshgov.council_tax_stock"
     },
     "target_labels": {
+      "dfc_ni.pension_credit.benefit_units": "Pension Credit benefit units, Northern Ireland",
       "dfc_ni.state_pension.amount": "State Pension paid, Northern Ireland",
       "dfc_ni.state_pension.recipients": "State Pension recipients, Northern Ireland",
       "dfe.funded_childcare.early_learning_2_year_olds": "Early learning 2 year olds",
@@ -559,6 +582,19 @@
       "dwp.hb.households_private_rented": "Housing Benefit claimants, private rented",
       "dwp.hb.households_social_rented": "Housing Benefit claimants, social rented",
       "dwp.jsa_claimants": "Jobseeker\u2019s Allowance claimants",
+      "dwp.pension_credit.benefit_units": "Pension Credit benefit units, Great Britain",
+      "dwp.pension_credit.benefit_units_65_69": "Pension Credit benefit units, claimant aged 65 to 69",
+      "dwp.pension_credit.benefit_units_70_74": "Pension Credit benefit units, claimant aged 70 to 74",
+      "dwp.pension_credit.benefit_units_75_79": "Pension Credit benefit units, claimant aged 75 to 79",
+      "dwp.pension_credit.benefit_units_80_84": "Pension Credit benefit units, claimant aged 80 to 84",
+      "dwp.pension_credit.benefit_units_85_89": "Pension Credit benefit units, claimant aged 85 to 89",
+      "dwp.pension_credit.benefit_units_90_plus": "Pension Credit benefit units, claimant aged 90 and over",
+      "dwp.pension_credit.benefit_units_both_couple": "Pension Credit benefit units, Both Guarantee and Savings Credit, has a partner",
+      "dwp.pension_credit.benefit_units_both_single": "Pension Credit benefit units, Both Guarantee and Savings Credit, has no partner",
+      "dwp.pension_credit.benefit_units_guarantee_only_couple": "Pension Credit benefit units, Guarantee Credit only, has a partner",
+      "dwp.pension_credit.benefit_units_guarantee_only_single": "Pension Credit benefit units, Guarantee Credit only, has no partner",
+      "dwp.pension_credit.benefit_units_savings_only_couple": "Pension Credit benefit units, Savings Credit only, has a partner",
+      "dwp.pension_credit.benefit_units_savings_only_single": "Pension Credit benefit units, Savings Credit only, has no partner",
       "dwp.state_pension.amount": "State Pension paid, Great Britain residents",
       "dwp.state_pension.recipients": "State Pension recipients, Great Britain residents",
       "dwp.state_pension.recipients_female_66_69_new": "State Pension recipients, female 66 to 69, New State Pension",
@@ -44221,6 +44257,584 @@
         "contract_target_id": "dwp.state_pension.recipients_pre_2016_by_weekly_amount",
         "measure_kind": "prepared_column",
         "uk_uc_expected_source_months": "[\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_guarantee_only_couple",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has a partner",
+          "type_of_pension_credit": "Guarantee Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_guarantee_only_couple",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_guarantee_only_couple",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_guarantee_only_single",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has no partner",
+          "type_of_pension_credit": "Guarantee Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_guarantee_only_single",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_guarantee_only_single",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_savings_only_couple",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has a partner",
+          "type_of_pension_credit": "Savings Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_savings_only_couple",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_savings_only_couple",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_savings_only_single",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has no partner",
+          "type_of_pension_credit": "Savings Credit only"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_savings_only_single",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_savings_only_single",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_both_couple",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has a partner",
+          "type_of_pension_credit": "Both Guarantee and Savings Credit"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_both_couple",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_both_couple",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_both_single",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "all",
+          "partner_indicator": "Has no partner",
+          "type_of_pension_credit": "Both Guarantee and Savings Credit"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_both_single",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_both_single",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_65_69",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "65-69",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_65_69",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_65_69",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_70_74",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "70-74",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_70_74",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_70_74",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_75_79",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "75-79",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_75_79",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_75_79",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_80_84",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "80-84",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_80_84",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_80_84",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_85_89",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "85-89",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_85_89",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_85_89",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.pension_credit.benefit_units_90_plus",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.pension_credit_caseload"
+        ],
+        "source_measure_id": "total_claims",
+        "groupby_dimension": "dwp.pension_credit_type_partner_age",
+        "dimensions": [
+          "age_bands_and_single_year",
+          "partner_indicator",
+          "type_of_pension_credit"
+        ],
+        "dimension_values": {
+          "age_bands_and_single_year": "90 and over",
+          "partner_indicator": "all",
+          "type_of_pension_credit": "all"
+        },
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/pension_credit/benefit_units_90_plus",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.pension_credit.benefit_units_90_plus",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dfc_ni.pension_credit.benefit_units",
+      "ledger_selector": {
+        "source_name": "dfc_ni",
+        "source_concept": [
+          "dfc_ni.pension_credit_claimants"
+        ],
+        "source_measure_id": "claimants_all",
+        "dimensions": [],
+        "entity_name": "benefit_unit",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "N92000002"
+      },
+      "entity": "benunit",
+      "measure": "dfc_ni/pension_credit/benefit_units",
+      "family": "dwp_pension_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dfc_ni.pension_credit.benefit_units",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
       },
       "period_match_policy": "source_window",
       "value_operation": "monthly_window_average"

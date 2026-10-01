@@ -179,6 +179,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_pension_credit_take_up": ("stage_health", "transferred", None),
     "uk_stage_cgt_support_split_mass": (
         "stage_health",
         "transferred",
@@ -1230,6 +1231,7 @@ def _gate_battery_payload(
         "spi_support_channel",
         "hmrc_spi_income_spine",
         "uc_capital_coherence",
+        "pension_credit_take_up",
         "uc_deduction_attributes",
         "cgt_support_split",
         "cgt_incidence_clone",
@@ -1253,6 +1255,7 @@ def _gate_battery_payload(
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
+        "uk_stage_pension_credit_take_up": "pension_credit_take_up",
         "uk_stage_cgt_support_split_mass": "cgt_support_split",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",

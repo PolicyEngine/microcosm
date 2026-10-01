@@ -1,11 +1,11 @@
 {
- "compiled_count": 899,
+ "compiled_count": 913,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 767
+  "ledger_only": 781
  },
- "difference_count": 904,
+ "difference_count": 918,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -128,6 +128,13 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 60195.0,
+   "name": "dfc_ni.pension_credit.benefit_units",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 330147.5,
    "name": "dfc_ni.state_pension.recipients",
    "period": 2023,
@@ -221,6 +228,97 @@
    "kind": "ledger_only",
    "ledger_value": 1381089.75,
    "name": "dwp.hb.households_social_rented",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1390586.25,
+   "name": "dwp.pension_credit.benefit_units",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 179022.25,
+   "name": "dwp.pension_credit.benefit_units_65_69",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 282852.75,
+   "name": "dwp.pension_credit.benefit_units_70_74",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 367571.25,
+   "name": "dwp.pension_credit.benefit_units_75_79",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 261310.0,
+   "name": "dwp.pension_credit.benefit_units_80_84",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 177613.5,
+   "name": "dwp.pension_credit.benefit_units_85_89",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 122210.75,
+   "name": "dwp.pension_credit.benefit_units_90_plus",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 47246.25,
+   "name": "dwp.pension_credit.benefit_units_both_couple",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 366055.25,
+   "name": "dwp.pension_credit.benefit_units_both_single",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 96794.25,
+   "name": "dwp.pension_credit.benefit_units_guarantee_only_couple",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 715624.75,
+   "name": "dwp.pension_credit.benefit_units_guarantee_only_single",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22458.0,
+   "name": "dwp.pension_credit.benefit_units_savings_only_couple",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 142408.25,
+   "name": "dwp.pension_credit.benefit_units_savings_only_single",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
