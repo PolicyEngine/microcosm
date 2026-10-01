@@ -268,3 +268,134 @@ def test_band_resample_without_age_pooling_keeps_the_legacy_pools() -> None:
 
     assert receipt["age_pool_minimum"] is None
     assert receipt["bands"][0]["age_matched_carriers"] == 0
+
+
+def test_stage1_queries_sit_at_the_middle_of_the_year_of_age() -> None:
+    person = pd.DataFrame(
+        {
+            "person_household_id": [1, 1, 2],
+            "age": [65, 66, 74],
+            "gender": ["MALE", "FEMALE", "MALE"],
+        }
+    )
+    household = pd.DataFrame({"household_id": [1, 2], "region": ["LONDON", "WALES"]})
+
+    predictors = spi_income._stage1_query_predictors(person, household)
+
+    assert predictors["age"].tolist() == [65.5, 66.5, 74.5]
+    assert predictors["region"].tolist() == ["LONDON", "LONDON", "WALES"]
+
+
+def test_whole_year_frame_ages_draw_state_pension_from_their_own_year() -> None:
+    # Donors carry a fractional age and State Pension from 66.0. A frame
+    # person aged 66 queried at the whole year sits on the forest's split at
+    # that birthday; at the middle of the year every 66-year-old draws from
+    # the donors who have reached State Pension age (microcosm#1069).
+    from microcosm.frame import WeightKind
+
+    rng = np.random.default_rng(0)
+    count = 4_000
+    ages = rng.integers(60, 75, size=count) + rng.random(count)
+    donor = pd.DataFrame(
+        {
+            "age": ages,
+            "gender": np.where(rng.random(count) < 0.5, "MALE", "FEMALE"),
+            "region": "LONDON",
+        }
+    )
+    targets = pd.DataFrame(
+        {
+            spi_income.SPI_HMRC_STATE_PENSION_INCOME_COLUMN: np.where(
+                ages >= 66.0, 9_000.0 + 1_500.0 * rng.random(count), 0.0
+            ),
+            "employment_income": np.where(ages < 66.0, 25_000.0, 4_000.0)
+            * rng.random(count),
+        }
+    )
+    person = pd.DataFrame(
+        {
+            "person_household_id": np.ones(900, dtype=int),
+            "age": np.repeat([65, 66, 67], 300),
+            "gender": "MALE",
+        }
+    )
+    household = pd.DataFrame({"household_id": [1], "region": ["LONDON"]})
+    encoded_donor, encoded_query = spi_income._encode_predictor_pair(
+        donor, spi_income._stage1_query_predictors(person, household)
+    )
+    frame = spi_income._person_fit_frame(
+        predictors=encoded_donor,
+        targets=targets,
+        weights=np.ones(count),
+        weight_kind=WeightKind.DESIGN,
+    )
+    forest = spi_income._qrf_class()(n_estimators=50, seed=42).fit(
+        frame,
+        list(encoded_donor.columns),
+        list(targets.columns),
+        weights="design",
+    )
+
+    draws = forest.predict(encoded_query)
+
+    receives = draws[spi_income.SPI_HMRC_STATE_PENSION_INCOME_COLUMN].to_numpy() > 0.0
+    by_age = {
+        age: receives[person["age"].to_numpy() == age].mean() for age in (65, 66, 67)
+    }
+    assert by_age == {65: 0.0, 66: 1.0, 67: 1.0}
+
+
+def _pension_age_band_inputs(carrier_age: float):
+    person, donor, household = _band_resample_inputs(carrier_age=carrier_age)
+    # Every donor sits in the 65 to 74 band: the first 30 drawn at 65 without
+    # State Pension, the rest at 66 to 74 with it.
+    donor["agerange"] = 6
+    donor["age"] = [65.5] * 30 + [70.0] * 30
+    donor[spi_income.SPI_HMRC_STATE_PENSION_INCOME_COLUMN] = [0.0] * 30 + [
+        10_000.0
+    ] * 30
+    return person, donor, household
+
+
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize(("carrier_age", "receives"), [(66.0, True), (65.0, False)])
+def test_band_carriers_draw_donors_on_their_side_of_state_pension_age(
+    seed: int, carrier_age: float, receives: bool
+) -> None:
+    person, donor, household = _pension_age_band_inputs(carrier_age)
+    factors = dict.fromkeys(spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
+
+    result, receipt = spi_income._resample_band_donor_leaves(
+        person,
+        donor,
+        household=household,
+        spi_people=pd.Series([True]),
+        uprating_factors=factors,
+        lower_bounds=(200_000,),
+        regional_pool_minimum=5,
+        seed=seed,
+        age_pool_minimum=10,
+        state_pension_age=66,
+    )
+
+    drawn = result.loc[0, spi_income.SPI_HMRC_STATE_PENSION_INCOME_COLUMN]
+    assert bool(drawn > 0.0) is receives
+    assert receipt["state_pension_age"] == 66
+    assert receipt["bands"][0]["state_pension_age_matched_carriers"] == 1
+
+
+def test_band_resample_refuses_state_pension_age_pooling_without_donor_ages() -> None:
+    person, donor, household = _band_resample_inputs(carrier_age=66.0)
+    factors = dict.fromkeys(spi_income.SPI_INCOME_QRF_OUTPUT_COLUMNS, 1.0)
+    with pytest.raises(ValueError, match="needs the prepared donor's age"):
+        spi_income._resample_band_donor_leaves(
+            person,
+            donor,
+            household=household,
+            spi_people=pd.Series([True]),
+            uprating_factors=factors,
+            lower_bounds=(200_000,),
+            regional_pool_minimum=5,
+            seed=0,
+            state_pension_age=66,
+        )

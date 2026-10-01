@@ -259,6 +259,13 @@ SPI_DONOR_AGE_DRAW_METHOD = (
     "Pension age, and the band's below-State-Pension-age population share is "
     "drawn from its non-recipients"
 )
+#: Donors carry a drawn fractional age and frame people a whole-year one, so
+#: the stage-1 forest is queried at the middle of each person's year of age.
+#: At the whole year a person sits on any split the forest places at that
+#: birthday; at State Pension age, below which no donor draws State Pension,
+#: about half of the frame's 66-year-olds drew a 65-year-old donor's zero
+#: State Pension leaf (microcosm#1069, c4 measurement arm).
+SPI_STAGE1_QUERY_AGE_RULE = "whole-year age plus half a year"
 _SPI_REGION_MAP = {
     1: "NORTH_EAST",
     2: "NORTH_WEST",
@@ -681,7 +688,10 @@ def impute_uk_spi_income_support(
             raise TypeError("donor_table must be a pandas DataFrame.")
         raw_donor = donor_table.copy(deep=True)
     donor = _prepare_spi_donor(raw_donor, seed=seed, age_model=donor_age_model)
-    donor_age_draw = dict(donor.attrs.get("age_draw", {}))
+    donor_age_draw = {
+        **donor.attrs.get("age_draw", {}),
+        "stage1_query_age": SPI_STAGE1_QUERY_AGE_RULE,
+    }
     donor_full = donor
     donor_fit_weights = donor["FACT"].to_numpy(dtype=np.float64)
     if donor_sample_size is not None:
@@ -746,10 +756,9 @@ def impute_uk_spi_income_support(
         )
     person = _seed_frs_hmrc_auxiliary_leaves(person, spi_people=spi_people)
 
-    recipient_predictors = _person_predictors(
+    recipient_predictors = _stage1_query_predictors(
         person.loc[spi_channel_people],
         household,
-        income_predictors=(),
     )
     donor_predictors, encoded_recipient = _encode_predictor_pair(
         donor[["age", "gender", "region"]],
@@ -816,6 +825,9 @@ def impute_uk_spi_income_support(
             household=household,
             spi_people=spi_people,
             uprating_factors=uprating_factors,
+            state_pension_age=(
+                None if donor_age_model is None else donor_age_model.state_pension_age
+            ),
             **dict(band_donor_resample),
         )
     guard_receipts: list[Mapping[str, object]] = []
@@ -937,11 +949,7 @@ def impute_uk_spi_income_support(
         guard_receipts.append(receipt)
 
     if base_redraw_columns:
-        base_predictors = _person_predictors(
-            person.loc[base_people],
-            household,
-            income_predictors=(),
-        )
+        base_predictors = _stage1_query_predictors(person.loc[base_people], household)
         _, encoded_base = _encode_predictor_pair(
             donor[["age", "gender", "region"]],
             base_predictors,
@@ -1030,6 +1038,7 @@ def _resample_band_donor_leaves(
     regional_pool_minimum: int,
     seed: int,
     age_pool_minimum: int | None = None,
+    state_pension_age: int | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Give every reserved band carrier a band-conditional tape draw.
 
@@ -1044,7 +1053,11 @@ def _resample_band_donor_leaves(
     ``age_pool_minimum`` the band pool first narrows to the records in the
     carrier's published SPI age band (composites, which carry none, never
     age-match) when that pool holds at least ``age_pool_minimum`` records,
-    and the regional narrowing then applies within it (microcosm#1069). One
+    and the regional narrowing then applies within it (microcosm#1069). With
+    ``state_pension_age`` the band pool first keeps only the records whose
+    drawn age is on the carrier's side of State Pension age, since the
+    published age band 65 to 74 straddles it and a carrier at or over it must
+    not inherit the zero State Pension leaf of a donor drawn below it. One
     record is drawn FACT-weighted with replacement and all stage-1 leaves are
     copied from it, then uprated exactly as the forest draws were; the
     accounting aggregates derive after the draw as usual. Composite records
@@ -1060,6 +1073,10 @@ def _resample_band_donor_leaves(
         not isinstance(age_pool_minimum, int) or age_pool_minimum <= 0
     ):
         raise ValueError("age_pool_minimum must be a positive integer or None.")
+    if state_pension_age is not None and (
+        not isinstance(state_pension_age, int) or state_pension_age <= 0
+    ):
+        raise ValueError("state_pension_age must be a positive integer or None.")
     lowers = sorted(int(value) for value in lower_bounds)
     if not lowers or len(set(lowers)) != len(lowers):
         raise ValueError("band donor lower bounds must be distinct.")
@@ -1143,18 +1160,38 @@ def _resample_band_donor_leaves(
         if donor_agerange is not None
         else np.zeros(len(carrier_rows), dtype=np.int64)
     )
+    if state_pension_age is not None and "age" not in donor.columns:
+        raise ValueError("State Pension age pooling needs the prepared donor's age.")
+    donor_pension_age = (
+        donor["age"].to_numpy(dtype=float) >= state_pension_age
+        if state_pension_age is not None
+        else None
+    )
+    carrier_pension_age = (
+        carrier_rows["age"].to_numpy(dtype=float) >= state_pension_age
+        if state_pension_age is not None
+        else np.zeros(len(carrier_rows), dtype=bool)
+    )
     rng = np.random.default_rng(seed)
     drawn = np.empty(len(carrier_rows), dtype=np.int64)
     matched = np.zeros(len(carrier_rows), dtype=bool)
     age_matched = np.zeros(len(carrier_rows), dtype=bool)
-    pool_cache: dict[tuple[int, str, int], tuple[np.ndarray, bool, bool]] = {}
-    for index, (band, region, code) in enumerate(
-        zip(bands, regions, carrier_agerange, strict=True)
+    side_matched = np.zeros(len(carrier_rows), dtype=bool)
+    pool_cache: dict[
+        tuple[int, str, int, bool], tuple[np.ndarray, bool, bool, bool]
+    ] = {}
+    for index, (band, region, code, pension_age) in enumerate(
+        zip(bands, regions, carrier_agerange, carrier_pension_age, strict=True)
     ):
         lower = int(band)
-        key = (lower, region, int(code))
+        key = (lower, region, int(code), bool(pension_age))
         if key not in pool_cache:
             base = pools[lower]
+            base_is_sided = False
+            if donor_pension_age is not None:
+                sided = base[donor_pension_age[base] == bool(pension_age)]
+                if sided.size:
+                    base, base_is_sided = sided, True
             base_is_aged = False
             if donor_agerange is not None:
                 aged = base[donor_agerange[base] == int(code)]
@@ -1166,8 +1203,9 @@ def _resample_band_donor_leaves(
                 regional if regional_ok else base,
                 regional_ok,
                 base_is_aged,
+                base_is_sided,
             )
-        pool, matched[index], age_matched[index] = pool_cache[key]
+        pool, matched[index], age_matched[index], side_matched[index] = pool_cache[key]
         weights = fact[pool]
         drawn[index] = int(rng.choice(pool, p=weights / weights.sum()))
     leaves = leaf_values[drawn] * factors
@@ -1198,6 +1236,7 @@ def _resample_band_donor_leaves(
                 "pool_weighted_taxpayers": float(fact[pool].sum()),
                 "regional_matched_carriers": int(matched[mask].sum()),
                 "age_matched_carriers": int(age_matched[mask].sum()),
+                "state_pension_age_matched_carriers": int(side_matched[mask].sum()),
                 "realized_min_total_income": (
                     float(realized.min()) if realized.size else None
                 ),
@@ -1218,6 +1257,7 @@ def _resample_band_donor_leaves(
         ),
         "regional_pool_minimum": regional_pool_minimum,
         "age_pool_minimum": age_pool_minimum,
+        "state_pension_age": state_pension_age,
         "seed": seed,
         "weighting": "FACT",
         "with_replacement": True,
@@ -1677,6 +1717,17 @@ def _person_predictors(
     if result[["gender", "region"]].isna().any().any():
         raise ValueError("SPI QRF categorical predictors contain missing values.")
     return result
+
+
+def _stage1_query_predictors(
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+) -> pd.DataFrame:
+    """Stage-1 query predictors: age at the middle of the year of age."""
+
+    predictors = _person_predictors(person, household, income_predictors=())
+    predictors["age"] = np.floor(predictors["age"].to_numpy(dtype=np.float64)) + 0.5
+    return predictors
 
 
 def _encode_predictor_pair(
