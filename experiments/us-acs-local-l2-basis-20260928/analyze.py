@@ -115,14 +115,41 @@ def row(payload: dict) -> dict:
     return out
 
 
+#: Per-geography fields the committed receipts keep; the full payloads stay in
+#: the artifacts directory and on the Modal volume.
+GEOGRAPHY_FIELDS = (
+    "n",
+    "kish_ess",
+    "kish_ess_design",
+    "kish_ess_ratio",
+    "n_records_holding_half_weight",
+)
+
+
+def compact(payload: dict) -> dict:
+    """The receipt with per-state and per-district rows cut to GEOGRAPHY_FIELDS."""
+
+    concentration = payload["metrics"]["concentration"]
+    for key in ("per_state", "per_cd"):
+        concentration[key] = {
+            code: {field: row[field] for field in GEOGRAPHY_FIELDS}
+            for code, row in concentration[key].items()
+        }
+    return payload
+
+
 def load() -> pd.DataFrame:
+    for path in sorted(RUNS.glob("*.json")):
+        text = path.read_text()
+        if text.startswith("{\n"):  # a full, indented payload from collect
+            path.write_text(
+                json.dumps(compact(json.loads(text)), separators=(",", ":")) + "\n"
+            )
     rows = [row(json.loads(path.read_text())) for path in sorted(RUNS.glob("*.json"))]
     frame = pd.DataFrame(rows)
-    frame["arm"] = np.where(
-        frame.holdout_fold.notna(),
-        "holdout fold 0",
-        "full surface",
-    )
+    frame["arm"] = [
+        "full surface" if pd.isna(fold) else "holdout" for fold in frame.holdout_fold
+    ]
     return frame.sort_values(
         ["arm", "mass_parametrization", "l2_basis", "prior_acs_share", "l2_lambda"]
     )
@@ -132,6 +159,66 @@ def _fmt(value, spec: str) -> str:
     if value is None or (isinstance(value, float) and np.isnan(value)):
         return ""
     return format(value, spec)
+
+
+#: The configurations the write-up compares, in order, with a short label.
+KEY_CONFIGS = (
+    ("release_repro", "Release: share 0.5, projection, λ 0"),
+    ("soft_chi_s050_0.03", "Share 0.5, chi-square λ 0.03"),
+    ("proj_chi_s050_0.03", "Share 0.5, chi-square λ 0.03 (projection)"),
+    ("soft_chi_s050_0.1", "Share 0.5, chi-square λ 0.1"),
+    ("soft_chi_s050_1", "Share 0.5, chi-square λ 1"),
+    ("soft_chi_s700_0.01", "Share 0.7, chi-square λ 0.01"),
+    ("soft_chi_s900_0", "Share 0.9, no penalty"),
+    ("soft_chi_s900_0.01", "Share 0.9, chi-square λ 0.01"),
+    ("soft_chi_s964_0", "Share 0.964, no penalty"),
+)
+
+
+def _holdout_id(run_id: str, fold: int) -> str:
+    if run_id == "release_repro":
+        run_id = "proj_s050_0"
+    return ("hold_" if fold == 0 else f"hold{fold}_") + run_id
+
+
+def key_config_table(frame: pd.DataFrame) -> str:
+    """The write-up's comparison: concentration, training fit and holdout."""
+
+    by_id = frame.set_index("run_id")
+    columns = (
+        "Configuration",
+        "National ESS",
+        "Top-1% share",
+        "State ESS min",
+        "CD ESS median / min",
+        "CDs < 50",
+        "MA ESS",
+        "Train within 10%",
+        "Held-out error, fold 0 / 1",
+    )
+    lines = [
+        "| " + " | ".join(columns) + " |",
+        "|---|" + "---:|" * (len(columns) - 1),
+    ]
+    for run_id, label in KEY_CONFIGS:
+        if run_id not in by_id.index:
+            continue
+        r = by_id.loc[run_id]
+        held = []
+        for fold in (0, 1):
+            hid = _holdout_id(run_id, fold)
+            held.append(
+                f"{by_id.loc[hid, 'holdout_mean_capped_error']:.4f}"
+                if hid in by_id.index
+                else "–"
+            )
+        lines.append(
+            f"| {label} | {r.kish_ess:,.0f} | {r.top_1pct_share:.1%} | "
+            f"{r.state_ess_min:,.0f} | {r.cd_ess_median:,.0f} / {r.cd_ess_min:,.0f} | "
+            f"{int(r.cds_below_50)} | {r.ma_ess:,.0f} | {r.within_10pct:.1%} | "
+            f"{' / '.join(held)} |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def floor_table(frame: pd.DataFrame) -> str:
@@ -200,9 +287,12 @@ def markdown(frame: pd.DataFrame) -> str:
                     cells.append(_fmt(r[key], spec))
             lines.append("| " + " | ".join(cells) + " |")
         sections.append("\n".join(lines))
-    held = frame[frame.arm == "holdout fold 0"]
+    held = frame[frame.arm == "holdout"].sort_values(
+        ["holdout_fold", "prior_acs_share", "mass_parametrization", "l2_lambda"]
+    )
     if len(held):
         hold_columns = (
+            ("Fold", "holdout_fold", ".0f"),
             ("Parametrization", "mass_parametrization", "s"),
             ("Prior ACS share", "prior_acs_share", ".3g"),
             ("λ", "l2_lambda", "g"),
@@ -215,7 +305,7 @@ def markdown(frame: pd.DataFrame) -> str:
             ("Prior: held-out within 10%", "prior_holdout_within_10pct", ".1%"),
         )
         lines = [
-            "### Rotated holdout, fold 0 (20% of targets never seen by the solve)",
+            "### Rotated holdout (each fold is 20% of targets, never seen by the solve)",
             "",
             "| " + " | ".join(name for name, _, _ in hold_columns) + " |",
             "|" + "---:|" * len(hold_columns),
@@ -317,6 +407,17 @@ def main() -> None:
     frame.to_csv(out / "frontier.csv", index=False)
     (out / "frontier.md").write_text(markdown(frame))
     (out / "floors.md").write_text(floor_table(frame))
+    table = key_config_table(frame)
+    (out / "key_configs.md").write_text(table)
+    readme = HERE / "README.md"
+    start, end = (
+        "<!-- key-configs:start (written by analyze.py) -->",
+        "<!-- key-configs:end -->",
+    )
+    text = readme.read_text()
+    head, _, rest = text.partition(start)
+    _, _, tail = rest.partition(end)
+    readme.write_text(f"{head}{start}\n{table}{end}{tail}")
     chart(frame, out / "frontier.png")
     print(markdown(frame))
 

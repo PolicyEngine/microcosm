@@ -130,6 +130,23 @@ Evidence:
   non-monotone but still lands two to six times further from the optimum than
   softmax.
 
+## At the ACS release's scale
+
+On the published ACS local release (1,588,854 households, 4,459 targets),
+recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-20260928/`):
+
+- **Parametrization.** Projection and softmax land on the same frontier. At
+  `l2_lambda = 0` softmax finds ESS 16,132 at loss 0.0160, against
+  projection's 13,646 at 0.0155, and neither dominates. At `0.03`, softmax is
+  slightly ahead on one holdout fold.
+- **Record basis.** The record basis at `0.1` lowers national ESS from 13,646
+  to 8,689, as its `w ∝ d ** 2` optimum predicts.
+- **Chi-square basis.** The chi-square basis raises ESS smoothly with
+  `l2_lambda`. At `0.03` it gives better held-out fit than the release on two
+  rotated folds, with half a point less training fit.
+- **What limits ESS is the starting weights.** The experiment's README has the
+  frontier, the holdout, candidate ESS floors and the recommendation.
+
 ## Using it
 
 ```python
