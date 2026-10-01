@@ -922,10 +922,15 @@ def _source_stage_family_coverage_contract(
             "assert the mass was conserved."
         )
     required_mass_change_reason = declared_reasons[-1]
+    from microcosm.build.uk_runtime.release_input_coverage import (
+        UK_FAMILY_MASS_CHANGE_SEMANTICS,
+    )
+
     # Every spine stage conserves household mass: microcosm#1045 retired the
     # CGT band-donor stack and microcosm#1063 made the SPI income-band donors
-    # a funded support channel, so no family adds mass.
-    mass_change_semantics = "mass_conserving"
+    # a funded support channel, so no family adds mass and the validator
+    # accepts no other semantics.
+    mass_change_semantics = UK_FAMILY_MASS_CHANGE_SEMANTICS
     return {
         "status": "required_at_build",
         "stage": stage_name,
