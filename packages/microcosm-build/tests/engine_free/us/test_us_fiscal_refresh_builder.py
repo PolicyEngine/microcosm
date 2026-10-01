@@ -2047,6 +2047,9 @@ def test_builder_exact_k_stages_without_moving_pointers(tmp_path, monkeypatch) -
         def __init__(self, **kwargs):
             constructed.update(kwargs)
 
+        def record_identity(self, **identity):
+            constructed["identity"] = identity
+
     monkeypatch.setattr(builder, "StagingTelemetry", RecordingTelemetry)
     telemetry = builder._staging_telemetry(
         args, release_root=tmp_path, release_id="populace-us-2024-k20000-fixture"
@@ -2059,6 +2062,70 @@ def test_builder_exact_k_stages_without_moving_pointers(tmp_path, monkeypatch) -
     assert constructed["background_uploads"] is True
     # Without a write token the run warns and stays local; it is never refused.
     assert constructed["check_write_access"] is True
+
+
+def test_release_staging_records_process_telemetry(tmp_path, monkeypatch) -> None:
+    builder = _load_builder_module()
+    constructed: dict[str, object] = {}
+
+    class RecordingTelemetry:
+        def __init__(self, **kwargs):
+            constructed.update(kwargs)
+
+        def record_identity(self, **identity):
+            constructed["identity"] = identity
+
+    monkeypatch.setattr(builder, "StagingTelemetry", RecordingTelemetry)
+    monkeypatch.setattr(
+        builder.sys,
+        "argv",
+        ["build_us_fiscal_refresh_release.py", "--base-h5", "/Users/someone/base.h5"],
+    )
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=builder.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+    builder._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+
+    assert constructed["record_resources"] is True
+    assert constructed["record_outcome"] is True
+    assert constructed["heartbeat_seconds"] == builder.STAGING_HEARTBEAT_SECONDS
+    identity = constructed["identity"]
+    # Option names and a digest, never argument values (local paths).
+    assert identity["options"] == ["--base-h5"]
+    assert "/Users/someone" not in json.dumps(identity)
+    assert len(identity["argv_sha256"]) == 64
+    assert identity["host"]["cpu_count"] >= 1
+
+
+def test_work_counter_reports_progress_to_the_active_run(monkeypatch) -> None:
+    builder = _load_builder_module()
+    reports: list[tuple[int, int, str, dict]] = []
+
+    class Telemetry:
+        def work_progress(self, done, total, *, unit, **details):
+            reports.append((done, total, unit, details))
+
+    monkeypatch.setattr(builder, "_ACTIVE_TELEMETRY", Telemetry())
+    counter = builder._WorkCounter(unit="engine batch", total=4)
+    counter.advance(pass_name="base")
+    counter.advance(3, pass_name="charitable", cached=True)
+    counter.advance(pass_name="overflow")
+
+    assert [(done, total) for done, total, _, _ in reports] == [(1, 4), (4, 4), (4, 4)]
+    assert reports[1][3] == {"pass_name": "charitable", "cached": True}
+
+
+def test_work_counter_is_silent_without_telemetry(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "_ACTIVE_TELEMETRY", None)
+    counter = builder._WorkCounter(unit="engine batch", total=2)
+    counter.advance()
+    assert counter.done == 1
 
 
 def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
