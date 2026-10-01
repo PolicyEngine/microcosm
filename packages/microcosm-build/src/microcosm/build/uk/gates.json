@@ -142,6 +142,27 @@
       "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
     },
     {
+      "id": "uk_stage_was_lisa_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "was_lisa",
+        "check": "support_clip",
+        "columns": [
+          "lifetime_isa_balance"
+        ],
+        "max_clipped_low_rows_by_column": {
+          "lifetime_isa_balance": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "lifetime_isa_balance": 0
+        }
+      },
+      "notes": "Stage-time support-clip health gate over the WAS Lifetime ISA receipt (microcosm#1003): the balance is drawn from the QRF fitted on the credible donor holders, so every draw lies inside their realised range and non-holders are zero; the zero allowances make any clip a signal."
+    },
+    {
       "id": "uk_stage_nts_bus_travel_support",
       "gate": "stage_health",
       "phase": "transferred",
@@ -684,10 +705,11 @@
           "etb_vat_support_bounds.json",
           "etb_services_support_bounds.json",
           "uc_deduction_support_bounds.json",
-          "nts_bus_travel_support_bounds.json"
+          "nts_bus_travel_support_bounds.json",
+          "was_lisa_support_bounds.json"
         ]
       },
-      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930."
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930. The was_lisa person balance is bounded by the WAS person donor's credible holders since microcosm#1003."
     },
     {
       "id": "uk_aggregate_admin",
@@ -747,6 +769,7 @@
           "household.household_is_cgt_support_copy",
           "household.household_is_spi_income_band_donor",
           "household.household_is_spi_synthetic",
+          "household.household_lifetime_isa_balance",
           "household.household_local_bus_trips",
           "household.spi_income_band_donor_lower_bound",
           "household.intermediate_zone_code",
@@ -783,12 +806,14 @@
           "person.esa_health_condition_proxy",
           "person.esa_support_group_proxy",
           "person.gift_aid",
+          "person.has_lifetime_isa",
           "person.highest_education",
           "person.is_before_universal_credit_qualifying_young_person_terminal_date",
           "person.is_in_non_advanced_education",
           "person.is_parent",
           "person.is_uc_claimant",
           "person.legacy_jobseeker_proxy",
+          "person.lifetime_isa_balance",
           "person.local_bus_single_fare_share",
           "person.local_bus_trips",
           "person.local_bus_use_band",

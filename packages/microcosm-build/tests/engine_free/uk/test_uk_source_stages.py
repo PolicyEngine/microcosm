@@ -41,6 +41,8 @@ E4_STAGE_NAMES = [
 ]
 E5_STAGE_NAMES = [
     "was_wealth",
+    # #1003: the Lifetime ISA holdings read the was_wealth household draws.
+    "was_lisa",
     "regional_property_uprating",
 ]
 E6_STAGE_NAMES = [
@@ -215,6 +217,7 @@ class TestUKSourceStagesManifest:
                     "frs_household_draws": _identity,
                     "frs_brma": _identity,
                     "was_wealth": _identity,
+                    "was_lisa": _identity,
                     "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
                     "lcfs_consumption": _identity,
@@ -330,6 +333,10 @@ class TestDeclaredOutputsAreWrittenColumns:
             UC_DEDUCTION_NONNEGATIVE_OUTPUT_COLUMNS,
             UC_DEDUCTION_OUTPUT_COLUMNS,
         )
+        from microcosm.build.uk_runtime.was_lisa import (
+            UK_WAS_LISA_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_LISA_OUTPUT_COLUMNS,
+        )
         from microcosm.build.uk_runtime.was_wealth import (
             UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
             UK_WAS_WEALTH_OUTPUT_COLUMNS,
@@ -368,6 +375,11 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert (
             stages["was_wealth"].nonnegative_outputs
             == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["was_lisa"].outputs == UK_WAS_LISA_OUTPUT_COLUMNS
+        assert (
+            stages["was_lisa"].nonnegative_outputs
+            == UK_WAS_LISA_NONNEGATIVE_OUTPUT_COLUMNS
         )
         assert stages["uc_deduction_attributes"].outputs == UC_DEDUCTION_OUTPUT_COLUMNS
         assert (
@@ -543,6 +555,16 @@ class TestE3ManifestLockstep:
             "fold_into",
             "support_clip",
             "allocate_within_group_waterfall",
+            "record_mass_conservation_receipt",
+        ]
+        assert [op.kind for op in stages["was_lisa"].operations] == [
+            "clean_was_lisa_donor",
+            "materialize_rules_engine_predictors",
+            "impute_lifetime_isa_ownership",
+            "impute_lifetime_isa_balance",
+            "support_clip",
+            "cap_lifetime_isa_to_financial_wealth",
+            "aggregate_person_to_household",
             "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["regional_property_uprating"].operations] == [
@@ -1001,6 +1023,9 @@ def test_every_column_writing_stage_declares_the_receipt_its_module_records() ->
     from microcosm.build.uk_runtime.regional_uprating import (
         UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON,
     )
+    from microcosm.build.uk_runtime.was_lisa import (
+        UK_WAS_LISA_MASS_CONSERVATION_REASON,
+    )
     from microcosm.build.uk_runtime.was_wealth import (
         UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
     )
@@ -1010,6 +1035,7 @@ def test_every_column_writing_stage_declares_the_receipt_its_module_records() ->
     stages = spec.sources.stage_map()
     expected = {
         "was_wealth": UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+        "was_lisa": UK_WAS_LISA_MASS_CONSERVATION_REASON,
         "regional_property_uprating": (
             UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
         ),

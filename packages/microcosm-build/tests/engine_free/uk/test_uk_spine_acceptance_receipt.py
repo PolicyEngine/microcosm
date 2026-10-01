@@ -103,6 +103,10 @@ def _apply_pending_roster_transformations(
     # from their own incomes right after the SPI income chain.
     assert "spi_housing_shell" not in roster
     roster.insert(roster.index("hmrc_spi_income_spine") + 1, "spi_housing_shell")
+    # #1003 re-mint pending: the Lifetime ISA holdings read the was_wealth
+    # household draws, so they run right after was_wealth.
+    assert "was_lisa" not in roster
+    roster.insert(roster.index("was_wealth") + 1, "was_lisa")
     return tuple(roster)
 
 

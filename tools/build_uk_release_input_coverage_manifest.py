@@ -825,6 +825,10 @@ def build_manifest(
                 stage_name="was_wealth",
                 candidate_source=candidate_source,
             ),
+            "was_lisa": _source_stage_family_coverage_contract(
+                stage_name="was_lisa",
+                candidate_source=candidate_source,
+            ),
             "nts_bus_travel": _source_stage_family_coverage_contract(
                 stage_name="nts_bus_travel",
                 candidate_source=candidate_source,

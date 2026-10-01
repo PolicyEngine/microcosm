@@ -129,6 +129,7 @@ from microcosm.build.uk_runtime.uc_deduction_attributes import (
 from microcosm.build.uk_runtime.uc_reporter_redraw import (
     UKUCReporterRedrawStageTransform,
 )
+from microcosm.build.uk_runtime.was_lisa import UKWASLISAStageTransform
 from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame import Frame
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
@@ -150,11 +151,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 34
+UK_FIXTURE_STAGE_COUNT = 35
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 34-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 35-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -582,10 +583,80 @@ def _write_frs_raw(root: Path) -> dict[str, dict[str, object]]:
     return artifacts
 
 
+def _was_person_donor() -> pd.DataFrame:
+    """Synthetic WAS round-8 persons of the 64 synthetic WAS households.
+
+    Mixed-case raw names as in the deposit. Adults and dependent children per
+    household follow the household tab's NumAdultR8/NumCh18R8; Lifetime ISA
+    holders are younger adults with small values (below the households' gross
+    financial wealth, which WAS counts them in), one banded value, one
+    ONS-imputed holder, one ONS-imputed non-holder, one self-employment
+    sentinel and one holder in an age band the product rules exclude (recoded
+    by the stage's credibility rule).
+    """
+
+    rows: list[dict[str, float]] = []
+    for household in range(_DONOR_ROWS):
+        adults = 1 + household % 3
+        children = household % 3
+        for person in range(adults + children):
+            adult = person < adults
+            band = (
+                4 + (household * 3 + person * 5) % 14
+                if adult
+                else 1 + (household + person) % 3
+            )
+            holder = adult and person == 0 and household % 2 == 0 and 4 <= band <= 9
+            impossible = adult and person == 0 and household == 5
+            if impossible:
+                band = 13
+            value = float(5 + household % 20) if (holder or impossible) else 0.0
+            banded = holder and household == 10
+            rows.append(
+                {
+                    "CASER8": float(household + 1),
+                    "PersonR8": float(person + 1),
+                    "IsDepR8": 2.0 if adult else 1.0,
+                    "DVAge17R8": float(band),
+                    "SexR8": float(1 + (household + person) % 2),
+                    # Household 3's first adult carries a sentinel earnings code,
+                    # which the stage recodes to zero and receipts.
+                    "DVGIEmpR8": (
+                        (
+                            -8.0
+                            if household == 3 and person == 0
+                            else 15_000.0 + 1_000.0 * ((household * 7 + person) % 40)
+                        )
+                        if adult
+                        else -9.0
+                    ),
+                    "fisa_binary3r8_i": 1.0 if value > 0 else (0.0 if adult else -9.0),
+                    "fisa_binary3r8_iflag": (
+                        1.0 if (holder and household == 14) or household == 7 else 0.0
+                    ),
+                    "FLISAVR8": (-8.0 if banded else value) if value > 0 else -9.0,
+                    "flisavr8_iflag": 1.0 if banded else 0.0,
+                    "FLISABR8": 1.0 if banded else -9.0,
+                    "flisabr8_iflag": 0.0,
+                    "DVFLISAvR8": value,
+                }
+            )
+    return pd.DataFrame(rows)
+
+
 def _was_donor() -> pd.DataFrame:
     rows = np.arange(_DONOR_ROWS, dtype=float)
+    lisa_totals = (
+        _was_person_donor()
+        .groupby("CASER8")["DVFLISAvR8"]
+        .sum()
+        .reindex(rows + 1.0, fill_value=0.0)
+        .to_numpy()
+    )
     return pd.DataFrame(
         {
+            "CASER8": rows + 1.0,
+            "DVFLISAVR8_aggr": lisa_totals,
             "R8xshhwgt": 1.0 + rows % 7 / 10.0,
             "DVLUKValR8_sum": 10.0 + rows,
             "DVPropertyR8": 20_000.0 + rows * 500.0,
@@ -1204,6 +1275,10 @@ def _fixture_stages(
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
             )
+        elif stage.stage == "was_lisa":
+            stage = _replace_operation(
+                stage, "impute_lifetime_isa_balance", n_estimators=_QRF_ESTIMATORS
+            )
         elif stage.stage == "nts_bus_travel":
             stage = _replace_operation(
                 stage, "impute_bus_use_band", n_estimators=_QRF_ESTIMATORS
@@ -1364,6 +1439,7 @@ def _build_implementations(
     stages: Mapping[str, SourceStageSpec],
     raw_dir: Path,
     was: pd.DataFrame,
+    was_person: pd.DataFrame,
     nts_household: pd.DataFrame,
     nts_individual: pd.DataFrame,
     nts_trip: pd.DataFrame,
@@ -1436,6 +1512,12 @@ def _build_implementations(
         "frs_brma": UKFRSBRMAStageTransform(stage=stages["frs_brma"], engine=engine),
         "was_wealth": UKWASWealthStageTransform(
             stage=stages["was_wealth"], engine=engine, donor=was
+        ),
+        "was_lisa": UKWASLISAStageTransform(
+            stage=stages["was_lisa"],
+            engine=engine,
+            donor_household=was,
+            donor_person=was_person,
         ),
         "nts_bus_travel": UKNTSBusTravelStageTransform(
             stage=stages["nts_bus_travel"],
@@ -1533,7 +1615,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 34-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 35-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1603,11 +1685,13 @@ def generate(output: Path) -> None:
     stage_map = {stage.stage: stage for stage in stages}
 
     was = _was_donor()
+    was_person = _was_person_donor()
     nts_household, nts_individual, nts_trip, nts_stage, nts_ticket = _nts_donors()
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
     spi_donor = _spi_donor()
     _write_csv(sources / "was.csv", was)
+    _write_csv(sources / "was_person.csv", was_person)
     _write_csv(sources / "nts_household.csv", nts_household)
     _write_csv(sources / "nts_individual.csv", nts_individual)
     _write_csv(sources / "nts_trip.csv", nts_trip)
@@ -1634,6 +1718,7 @@ def generate(output: Path) -> None:
         stages=stage_map,
         raw_dir=raw_dir,
         was=was,
+        was_person=was_person,
         nts_household=nts_household,
         nts_individual=nts_individual,
         nts_trip=nts_trip,
@@ -1692,6 +1777,7 @@ def generate(output: Path) -> None:
         "inputs": {
             "frs_raw": "frs_raw",
             "was": "was.csv",
+            "was_person": "was_person.csv",
             "nts_household": "nts_household.csv",
             "nts_individual": "nts_individual.csv",
             "nts_trip": "nts_trip.csv",

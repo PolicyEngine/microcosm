@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -353,7 +353,20 @@ def _artifact_by_table(stage: SourceStageSpec) -> dict[str, Mapping[str, Any]]:
     return by_table
 
 
-def _read_pinned_tab(path: Path, artifact: Mapping[str, Any]) -> pd.DataFrame:
+def _read_pinned_tab(
+    path: Path,
+    artifact: Mapping[str, Any],
+    *,
+    columns: Collection[str] | None = None,
+) -> pd.DataFrame:
+    """Read a size- and sha256-pinned tab with lower-cased column names.
+
+    ``columns`` (matched case-insensitively) reads only those columns, for wide
+    tabs where a full read costs gigabytes (the WAS round-8 person tab has
+    4,079 columns); every one must be present, and the pins are checked on the
+    whole file first either way.
+    """
+
     if not path.exists():
         raise FileNotFoundError(f"FRS spine tab is missing: {path}.")
     expected_size = int(artifact["size_bytes"])
@@ -370,8 +383,23 @@ def _read_pinned_tab(path: Path, artifact: Mapping[str, Any]) -> pd.DataFrame:
             f"FRS spine tab {path.name} hashes to {actual_sha}, "
             f"not the pinned {expected_sha}."
         )
-    raw = pd.read_csv(path, sep="\t")
+    if columns is None:
+        raw = pd.read_csv(path, sep="\t")
+    else:
+        wanted = {str(column).lower() for column in columns}
+        raw = pd.read_csv(
+            path, sep="\t", usecols=lambda column: str(column).lower() in wanted
+        )
     raw.columns = raw.columns.str.lower()
+    if columns is not None:
+        if raw.columns.duplicated().any():
+            duplicates = sorted(set(raw.columns[raw.columns.duplicated()]))
+            raise ValueError(
+                f"{path.name} has duplicate column(s) after lower-casing: {duplicates}."
+            )
+        missing = sorted(wanted - set(raw.columns))
+        if missing:
+            raise ValueError(f"{path.name} is missing required column(s): {missing}.")
     converted = raw.apply(pd.to_numeric, errors="coerce")
     if path.stem == "job" and "salsac" in raw.columns:
         converted["salsac_raw"] = raw["salsac"].astype(str)

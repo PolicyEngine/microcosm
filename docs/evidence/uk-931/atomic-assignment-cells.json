@@ -5734,13 +5734,13 @@
         },
         {
           "area_code": "S14000067",
-          "ess": 3.494549246629244,
+          "ess": "withheld",
           "expected_rows": 0.8495759781402032,
           "level": "constituency",
           "region_code": "S99999999",
-          "rows": 4.0,
-          "sources": 4.0,
-          "z": 3.4486229619883035
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "S14000068",
@@ -8774,13 +8774,13 @@
         },
         {
           "area_code": "E08000001",
-          "ess": 3.5704411706610144,
+          "ess": "withheld",
           "expected_rows": 1.834024628196246,
           "level": "la",
           "region_code": "E12000002",
-          "rows": 4.0,
-          "sources": 3.0,
-          "z": 1.630836952650422
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "E08000002",
@@ -10774,19 +10774,19 @@
             "sources_lt_50": 650
           },
           "ess": {
-            "median": 0.5,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "n_areas": 650,
           "rows": {
-            "median": 0.5,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "sources": {
-            "median": 0.5,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           }
         },
@@ -11161,19 +11161,19 @@
             "sources_lt_50": 361
           },
           "ess": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "n_areas": 361,
           "rows": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "sources": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           }
         }
@@ -11188,20 +11188,20 @@
           "areas_with_expected_ge_5": 0,
           "max_abs_z": null,
           "max_relative_error_expected_ge_100": null,
-          "min_ess": 0.0,
-          "min_rows": 0.0,
-          "min_sources": 0.0,
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
           "share_abs_z_gt_3": null
         },
         "la": {
           "areas": 361,
           "areas_with_expected_ge_100": 0,
           "areas_with_expected_ge_5": 8,
-          "max_abs_z": 1.960185329533569,
+          "max_abs_z": 1.7792633920213976,
           "max_relative_error_expected_ge_100": null,
-          "min_ess": 0.0,
-          "min_rows": 0.0,
-          "min_sources": 0.0,
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
           "share_abs_z_gt_3": 0.0
         }
       },
@@ -14422,13 +14422,13 @@
         },
         {
           "area_code": "E14001383",
-          "ess": 4.543112270491409,
+          "ess": "withheld",
           "expected_rows": 0.8779568353843269,
           "level": "constituency",
           "region_code": "E12000003",
-          "rows": 5.0,
-          "sources": 4.0,
-          "z": 4.44181524733946
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "E14001384",
@@ -20112,13 +20112,13 @@
         },
         {
           "area_code": "E08000013",
-          "ess": 4.3954301911509805,
+          "ess": "withheld",
           "expected_rows": 1.23301269213974,
           "level": "la",
           "region_code": "E12000002",
-          "rows": 5.0,
-          "sources": 4.0,
-          "z": 3.4368557547919285
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "E08000014",
@@ -21992,19 +21992,19 @@
             "sources_lt_50": 650
           },
           "ess": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "n_areas": 650,
           "rows": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "sources": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           }
         },
@@ -22379,19 +22379,19 @@
             "sources_lt_50": 361
           },
           "ess": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "n_areas": 361,
           "rows": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           },
           "sources": {
-            "median": 1.0,
-            "min": 0.0,
+            "median": null,
+            "min": null,
             "p10": 0.0
           }
         }
@@ -22411,20 +22411,20 @@
           "areas_with_expected_ge_5": 0,
           "max_abs_z": null,
           "max_relative_error_expected_ge_100": null,
-          "min_ess": 0.0,
-          "min_rows": 0.0,
-          "min_sources": 0.0,
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
           "share_abs_z_gt_3": null
         },
         "la": {
           "areas": 361,
           "areas_with_expected_ge_100": 0,
           "areas_with_expected_ge_5": 8,
-          "max_abs_z": 1.9429417808796687,
+          "max_abs_z": 1.4985125208022148,
           "max_relative_error_expected_ge_100": null,
-          "min_ess": 0.0,
-          "min_rows": 0.0,
-          "min_sources": 0.0,
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
           "share_abs_z_gt_3": 0.0
         }
       },
@@ -24047,13 +24047,13 @@
         },
         {
           "area_code": "E14001223",
-          "ess": 5.152613339985145,
+          "ess": "withheld",
           "expected_rows": 7.417830112135873,
           "level": "constituency",
           "region_code": "E12000007",
-          "rows": 6.0,
-          "sources": 6.0,
-          "z": -0.5239101332605105
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "E14001224",
@@ -29907,13 +29907,13 @@
         },
         {
           "area_code": "E07000073",
-          "ess": 10.50753327339876,
+          "ess": "withheld",
           "expected_rows": 9.938938321688275,
           "level": "la",
           "region_code": "E12000006",
-          "rows": 11.0,
-          "sources": 9.0,
-          "z": 0.3390168019620868
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "E07000074",
@@ -33218,18 +33218,18 @@
           },
           "ess": {
             "median": 9.118373837188708,
-            "min": 1.6938881792291236,
+            "min": null,
             "p10": 5.1484791747885525
           },
           "n_areas": 650,
           "rows": {
             "median": 10.0,
-            "min": 2.0,
+            "min": null,
             "p10": 6.0
           },
           "sources": {
             "median": 7.0,
-            "min": 2.0,
+            "min": null,
             "p10": 4.0
           }
         },
@@ -33605,18 +33605,18 @@
           },
           "ess": {
             "median": 13.763460276308816,
-            "min": 0.0,
+            "min": null,
             "p10": 5.965875927872619
           },
           "n_areas": 361,
           "rows": {
             "median": 16.0,
-            "min": 0.0,
+            "min": null,
             "p10": 7.0
           },
           "sources": {
             "median": 9.0,
-            "min": 0.0,
+            "min": null,
             "p10": 5.0
           }
         }
@@ -33631,10 +33631,10 @@
           "areas_with_expected_ge_5": 649,
           "max_abs_z": 3.667074195015453,
           "max_relative_error_expected_ge_100": null,
-          "min_ess": 1.6938881792291236,
-          "min_rows": 2.0,
-          "min_sources": 2.0,
-          "share_abs_z_gt_3": 0.007704160246533128
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
+          "share_abs_z_gt_3": 0.007763975155279503
         },
         "la": {
           "areas": 361,
@@ -33642,9 +33642,9 @@
           "areas_with_expected_ge_5": 355,
           "max_abs_z": 2.9242915524512685,
           "max_relative_error_expected_ge_100": 0.0691829874090789,
-          "min_ess": 0.0,
-          "min_rows": 0.0,
-          "min_sources": 0.0,
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
           "share_abs_z_gt_3": 0.0
         }
       },
@@ -35265,13 +35265,13 @@
         },
         {
           "area_code": "E14001223",
-          "ess": 3.51391796609051,
+          "ess": "withheld",
           "expected_rows": 7.417830112135873,
           "level": "constituency",
           "region_code": "E12000007",
-          "rows": 4.0,
-          "sources": 3.0,
-          "z": -1.2629410351663422
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "E14001224",
@@ -41125,13 +41125,13 @@
         },
         {
           "area_code": "E07000073",
-          "ess": 5.7425976641442835,
+          "ess": "withheld",
           "expected_rows": 9.939383611017385,
           "level": "la",
           "region_code": "E12000006",
-          "rows": 6.0,
-          "sources": 6.0,
-          "z": -1.2586334817077316
+          "rows": "withheld",
+          "sources": "withheld",
+          "z": null
         },
         {
           "area_code": "E07000074",
@@ -44436,18 +44436,18 @@
           },
           "ess": {
             "median": 9.07468089311904,
-            "min": 1.6567307229122428,
+            "min": null,
             "p10": 5.579519044811266
           },
           "n_areas": 650,
           "rows": {
             "median": 10.0,
-            "min": 2.0,
+            "min": null,
             "p10": 6.0
           },
           "sources": {
             "median": 7.0,
-            "min": 2.0,
+            "min": null,
             "p10": 4.0
           }
         },
@@ -44823,18 +44823,18 @@
           },
           "ess": {
             "median": 13.716548013069318,
-            "min": 0.0,
+            "min": null,
             "p10": 6.514957816027997
           },
           "n_areas": 361,
           "rows": {
             "median": 15.0,
-            "min": 0.0,
+            "min": null,
             "p10": 7.0
           },
           "sources": {
             "median": 9.0,
-            "min": 0.0,
+            "min": null,
             "p10": 6.0
           }
         }
@@ -44854,10 +44854,10 @@
           "areas_with_expected_ge_5": 649,
           "max_abs_z": 4.071008252058869,
           "max_relative_error_expected_ge_100": null,
-          "min_ess": 1.6567307229122428,
-          "min_rows": 2.0,
-          "min_sources": 2.0,
-          "share_abs_z_gt_3": 0.0030816640986132513
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
+          "share_abs_z_gt_3": 0.0031007751937984496
         },
         "la": {
           "areas": 361,
@@ -44865,9 +44865,9 @@
           "areas_with_expected_ge_5": 355,
           "max_abs_z": 2.772278632961248,
           "max_relative_error_expected_ge_100": 0.1079834426741643,
-          "min_ess": 0.0,
-          "min_rows": 0.0,
-          "min_sources": 0.0,
+          "min_ess": null,
+          "min_rows": null,
+          "min_sources": null,
           "share_abs_z_gt_3": 0.0
         }
       },
@@ -44909,7 +44909,7 @@
     "spine": "spine-r.h5",
     "spine_sha256": "921612e88eefcf21511ac6ad5faf60a1514f577490188c6e39aec49cb4224f27"
   },
-  "purpose": "Assignment-level before/after evidence for the UK geography-first reordering (step 2): legacy sequential ladder draw versus the identity-keyed single-stage draw, design weights, no solve; per-area counts below the minimum are suppressed together with their z-scores, and no unit records appear.",
+  "purpose": "Assignment-level before/after evidence for the UK geography-first reordering (step 2): legacy sequential ladder draw versus the identity-keyed single-stage draw, design weights, no solve; per-area counts below the minimum are suppressed together with their z-scores, one more count per level with suppressed counts is withheld so the level total cannot recover them, the level minima are withheld there and the z summaries cover published areas only; no unit records appear.",
   "supports": {
     "uk_ew_output_area_2021": "1b0dec268be0141f03ec05dc3b55c13733cc2bb20be5e403d76d73c8e27dc797",
     "uk_ni_data_zone_2021": "facb9923f589cb68eefa8fad37911e618b6137964ff58a231976ef62584b669f",

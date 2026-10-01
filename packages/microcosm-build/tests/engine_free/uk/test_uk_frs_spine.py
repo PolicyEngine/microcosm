@@ -2221,6 +2221,35 @@ def test_read_pinned_tab_refuses_a_zero_placeholder_pin(tmp_path) -> None:
         read_pinned_tab(tab, placeholder)
 
 
+def test_read_pinned_tab_reads_only_the_declared_columns(tmp_path) -> None:
+    """A wide tab reads selectively after the whole file's pins are checked."""
+
+    import hashlib
+
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    tab = tmp_path / "was_round_8_person.tab"
+    tab.write_text(
+        "CASER8\tPersonR8\tDVFLISAvR8\tunused\n1\t1\t500\tx\n1\t2\t0\ty\n",
+        encoding="utf-8",
+    )
+    pins = {
+        "sha256": hashlib.sha256(tab.read_bytes()).hexdigest(),
+        "size_bytes": tab.stat().st_size,
+    }
+
+    table = read_pinned_tab(tab, pins, columns=("caser8", "PERSONR8", "DVFLISAvR8"))
+
+    assert list(table.columns) == ["caser8", "personr8", "dvflisavr8"]
+    assert table["dvflisavr8"].tolist() == [500, 0]
+    with pytest.raises(
+        ValueError, match=r"missing required column\(s\): \['flisavr8'\]"
+    ):
+        read_pinned_tab(tab, pins, columns=("CASER8", "FLISAVR8"))
+    with pytest.raises(ValueError, match="not the pinned"):
+        read_pinned_tab(tab, {**pins, "sha256": "f" * 64}, columns=("CASER8",))
+
+
 def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
     tables = _fixture_tables()
     tables["househol"][0]["GROSS4"] = ""
@@ -2250,6 +2279,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "nts_ticket_tab",
         "published_fact_surface",
         "qrf_donor",
+        "was_person_tab",
         "was_qrf_donor",
     }
     # Every private input, the three NTS tabs included since the SN 5340
@@ -2264,6 +2294,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         str(artifact["role"]): str(artifact["sha256"])
         for stage_name in (
             "was_wealth",
+            "was_lisa",
             "nts_bus_travel",
             "lcfs_consumption",
             "etb_vat",
@@ -2291,6 +2322,7 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
     assert declared["nts_bus_travel"] == {"local_bus_use_band": 0}
+    assert declared["was_lisa"] == {"has_lifetime_isa": 0, "lifetime_isa_balance": 0}
     assert declared["lcfs_consumption"] == {
         "has_fuel_consumption": 0,
         "lcfs_consumption": 0,

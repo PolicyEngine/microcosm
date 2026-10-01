@@ -24,7 +24,10 @@ records, at design weights and with no solve:
 It is a diagnostic recorder only: it never gates and release builds do not
 run it. Disclosure (UKDS EUL CD137 clause 8, CD171 s5.2.1): the evidence JSON
 carries no unit records and reports any per-area count below
-``--minimum-count`` as "<n".
+``--minimum-count`` as "<n"; at each level with such a count one more
+published count is withheld ("withheld"), and the summaries that could carry a
+suppressed value are withheld or computed over published areas only
+(``resuppress_evidence``).
 
 Example:
     uv run python tools/measure_uk_atomic_assignment.py \
@@ -492,6 +495,159 @@ def _suppressed_area(row: dict, minimum: int) -> dict:
     }
 
 
+#: A published count withheld only to protect suppressed ones at its level.
+WITHHELD = "withheld"
+_AREA_COUNT_FIELDS = ("rows", "ess", "sources")
+
+
+def _complement_order(level: str, code: str) -> str:
+    """A value-independent order over areas (the complement choice must not
+    depend on the counts it protects)."""
+
+    return hashlib.sha256(f"{level}:{code}".encode()).hexdigest()
+
+
+def _complement_suppressed(areas: list[dict], minimum: int) -> list[dict]:
+    """Withhold one published count per level that has suppressed counts.
+
+    Every household row lies in exactly one area per level, and the expected
+    rows sum to the level total (which the integer pool counts and the public
+    census shares fix in any case), so the total less the published counts is
+    the sum of the suppressed ones. With zeros published, each suppressed count
+    lies between 1 and ``minimum - 1``, and a sum at either end of that range
+    pins every one of them (microcosm#1057 review round 2, item 8). At each such
+    level the first area, in a value-independent order, whose count exceeds the
+    minimum is withheld as well (its z-score, ESS and source count with it), so
+    the residual carries an unknown of at least ``minimum + 1``. A level that
+    already carries a withheld area is left as it is, so the pass is idempotent.
+    """
+
+    out = [dict(area) for area in areas]
+    for level in sorted({area["level"] for area in out}):
+        members = [area for area in out if area["level"] == level]
+        if not any(
+            isinstance(area["rows"], str) and area["rows"] != WITHHELD
+            for area in members
+        ):
+            continue
+        if any(area["rows"] == WITHHELD for area in members):
+            continue
+        eligible = sorted(
+            (
+                area
+                for area in members
+                if not isinstance(area["rows"], str) and area["rows"] > minimum
+            ),
+            key=lambda area: _complement_order(level, area["area_code"]),
+        )
+        if not eligible:
+            raise ValueError(
+                f"level {level!r} has suppressed counts but no count above the "
+                "minimum to withhold beside them."
+            )
+        chosen = eligible[0]
+        for field in _AREA_COUNT_FIELDS:
+            chosen[field] = WITHHELD
+        chosen["z"] = None
+    return out
+
+
+def _published_z_summary(
+    areas: list[dict], level: str
+) -> tuple[float | None, float | None]:
+    """max |z| and the share above 3 over the level's published areas only
+    (expected rows of at least 5), so no summary carries a suppressed z."""
+
+    z = [
+        abs(float(area["z"]))
+        for area in areas
+        if area["level"] == level
+        and area["z"] is not None
+        and float(area["expected_rows"]) >= 5.0
+    ]
+    if not z:
+        return None, None
+    return max(z), sum(value > 3 for value in z) / len(z)
+
+
+def level_summary_cells(cell: dict, level: str) -> tuple[str, str]:
+    """A receipts table's two summary cells for one level of a committed cell.
+
+    Returns the "min rows / ESS / sources" cell and the "max abs z / share abs
+    z>3 (n published)" cell, rendered from the re-suppressed evidence, so a
+    receipts table cannot republish a minimum or a z summary that the evidence
+    withholds (microcosm#1059 review round 2, item 7). ``n`` counts the level's
+    published areas with at least five expected rows, the denominator of the
+    share.
+    """
+
+    summary = cell["levels"][level]
+    if summary["min_rows"] is None:
+        minima = "withheld"
+    else:
+        minima = (
+            f"{summary['min_rows']:.0f} / {summary['min_ess']:.1f} / "
+            f"{summary['min_sources']:.0f}"
+        )
+    published = sum(
+        1
+        for area in cell["areas"]
+        if area["level"] == level
+        and area["z"] is not None
+        and float(area["expected_rows"]) >= 5.0
+    )
+    if summary["max_abs_z"] is None:
+        z = f"n/a ({published})"
+    else:
+        z = (
+            f"{summary['max_abs_z']:.2f} / {summary['share_abs_z_gt_3']:.4f} "
+            f"({published})"
+        )
+    return minima, z
+
+
+def resuppress_evidence(evidence: dict) -> dict:
+    """The committed disclosure rule applied to a written evidence payload.
+
+    Primary suppression (``_suppressed_area``) runs when a cell is written; this
+    pass adds the complementary suppression of each level and withholds the
+    summaries that would reveal a suppressed value: the level minima of rows,
+    ESS and sources, the breach-table minima and any breach quantile inside the
+    suppressed range, and it recomputes the z summaries over published areas.
+    It is idempotent, so the committed file is a fixed point.
+    """
+
+    minimum = int(evidence["minimum_count"])
+    out = json.loads(json.dumps(evidence))
+    for cell in out["cells"]:
+        cell["areas"] = _complement_suppressed(cell["areas"], minimum)
+        for level, summary in cell["levels"].items():
+            protected = any(
+                isinstance(area[field], str)
+                for area in cell["areas"]
+                if area["level"] == level
+                for field in _AREA_COUNT_FIELDS
+            )
+            if protected:
+                summary["min_rows"] = None
+                summary["min_ess"] = None
+                summary["min_sources"] = None
+            summary["max_abs_z"], summary["share_abs_z_gt_3"] = _published_z_summary(
+                cell["areas"], level
+            )
+            breaches = cell["breaches"].get(level, {})
+            for field in _AREA_COUNT_FIELDS:
+                stats = breaches.get(field)
+                if not isinstance(stats, dict):
+                    continue
+                for name, value in list(stats.items()):
+                    if not isinstance(value, (int, float)):
+                        continue
+                    if (protected and name == "min") or 0 < value < minimum:
+                        stats[name] = None
+    return out
+
+
 def _peak_rss_bytes() -> int:
     usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     return int(usage if sys.platform == "darwin" else usage * 1024)
@@ -592,7 +748,10 @@ def main(argv: list[str] | None = None) -> None:
             "reordering (step 2): legacy sequential ladder draw versus the "
             "identity-keyed single-stage draw, design weights, no solve; per-area "
             "counts below the minimum are suppressed together with their "
-            "z-scores, and no unit records appear."
+            "z-scores, one more count per level with suppressed counts is "
+            "withheld so the level total cannot recover them, the level minima "
+            "are withheld there and the z summaries cover published areas only; "
+            "no unit records appear."
         ),
         "date": dt.date.today().isoformat(),
         "model_period": model_period,
@@ -612,6 +771,7 @@ def main(argv: list[str] | None = None) -> None:
         "minimum_count": args.minimum_count,
         "cells": cells,
     }
+    evidence = resuppress_evidence(evidence)
     args.evidence_out.parent.mkdir(parents=True, exist_ok=True)
     args.evidence_out.write_text(
         json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
