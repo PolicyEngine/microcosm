@@ -1128,7 +1128,7 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 1283
+            len(references) == 1230
         )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
@@ -1143,9 +1143,8 @@ class TestExistingPackagesGeneralize:
         # less the OBR State Pension line, now a diagnostic, and the signed-out
         # empty new State Pension £40-£60 band; 14 Pension Credit caseload rows
         # (Great Britain total, six type-by-partner cells, six age bands, NI);
-        # 52 SPI Table 3.8 contribution rows (four measures by thirteen bands);
-        # the DWP employer and employee contribution totals and the
-        # salary-sacrifice amount, less the salary-sacrifice users total; two
+        # the DWP employer contribution total, less the salary-sacrifice users
+        # total (the Table 3.8 rows and the DWP employee total left the fit); two
         # Attendance Allowance and three pension-age Housing Benefit rows; the
         # income-tax relief total on salary sacrifice in place of the amount row
         assert references["obr.esa"].value_operation == "calendar_year_window"

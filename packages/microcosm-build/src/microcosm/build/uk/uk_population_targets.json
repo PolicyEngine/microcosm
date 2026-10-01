@@ -824,12 +824,7 @@
       "dwp.pension_credit.benefit_units_85_89": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "dwp.pension_credit.benefit_units_90_plus": "Post-freeze fact family (DWP Stat-Xplore Pension Credit caseload, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "dfc_ni.pension_credit.benefit_units": "Post-freeze fact family (DfC Northern Ireland Pension Credit statistics, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
-      "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
-      "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
-      "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
-      "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "dwp.workplace_pension.employer_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
-      "dwp.workplace_pension.employee_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
       "dwp.attendance_allowance.recipients_england": "Post-freeze fact family (DWP Stat-Xplore Attendance Allowance), no uk-data metric (microcosm#1069 c10).",
       "dwp.attendance_allowance.recipients_wales": "Post-freeze fact family (DWP Stat-Xplore Attendance Allowance), no uk-data metric (microcosm#1069 c10).",
       "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
@@ -1132,10 +1127,6 @@
       "hmrc.itl.income_tax_by_total_income_band",
       "hmrc.spi.savings_interest_income.amount_by_total_income_band",
       "hmrc.spi.savings_interest_income.count_by_total_income_band",
-      "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band",
-      "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band",
-      "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band",
-      "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band",
       "hmrc.spi_region.taxpayers_by_region_12570_15000",
       "hmrc.spi_region.taxpayers_by_region_15000_20000",
       "hmrc.spi_region.taxpayers_by_region_20000_30000",
@@ -1207,7 +1198,6 @@
       "dwp.pension_credit.benefit_units_90_plus",
       "dfc_ni.pension_credit.benefit_units",
       "dwp.workplace_pension.employer_contributions",
-      "dwp.workplace_pension.employee_contributions",
       "dwp.attendance_allowance.recipients_england",
       "dwp.attendance_allowance.recipients_wales",
       "dwp.hb.households_pension_age",
@@ -18228,186 +18218,6 @@
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (PolicyEngine/chronicle#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
-      "target_id": "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band",
-      "family": "hmrc_spi",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.pensions.contributions.net_pay.amount",
-        "groupby_dimension": "hmrc.total_income_band"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/net_pay_pension_contributions_amount_income_band",
-          "value_variable": "employee_pension_contributions",
-          "from_entity": "person",
-          "map_to": "household",
-          "groupby_variable": "total_income",
-          "notes": "HMRC Survey of Personal Incomes 2023-24, collated Table 3.8 (deductions and reliefs by range of total income; PolicyEngine/chronicle#302 via #305): employee contributions deducted from pay before tax (the engine's employee_pension_contributions: reported workplace contributions not made by salary sacrifice), summed by person-level total income band; band edges come from the fact dimension (microcosm#1069 c8, R5)."
-        },
-        "axiom": {
-          "metric_name": "hmrc/net_pay_pension_contributions_amount_income_band",
-          "status": "pending",
-          "value_rule": "uk.pensions.contributions.net_pay.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.spi_net_pay_pension_contributions_amount",
-        "groupby_dimension": "hmrc.total_income_band",
-        "entity_name": "person"
-      },
-      "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Pension contributions under net pay arrangements, amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.average_earnings between 1 January 2023 and 1 January 2025, the earnings applier R5 rules for contributions (microcosm#1069)."
-    },
-    {
-      "target_id": "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band",
-      "family": "hmrc_spi",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "groupby_dimension": "hmrc.total_income_band",
-        "filters": [
-          {
-            "concept": "uk.pensions.contributions.net_pay.amount",
-            "operator": ">",
-            "value": 0
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/net_pay_pension_contributions_count_income_band",
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "groupby_variable": "total_income",
-          "notes": "HMRC Survey of Personal Incomes 2023-24, collated Table 3.8 (deductions and reliefs by range of total income; PolicyEngine/chronicle#302 via #305): employee contributions deducted from pay before tax (the engine's employee_pension_contributions: reported workplace contributions not made by salary sacrifice), counted where positive by person-level total income band; band edges come from the fact dimension (microcosm#1069 c8, R5).",
-          "filters": [
-            {
-              "variable": "employee_pension_contributions",
-              "operator": ">",
-              "value": 0
-            }
-          ]
-        },
-        "axiom": {
-          "metric_name": "hmrc/net_pay_pension_contributions_count_income_band",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.spi_net_pay_pension_contributions_count",
-        "groupby_dimension": "hmrc.total_income_band",
-        "entity_name": "person"
-      },
-      "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Pension contributions under net pay arrangements, count by total income band",
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers for the Table 2.5 band containing this band, as the other SPI counts are (microcosm#1069)."
-    },
-    {
-      "target_id": "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band",
-      "family": "hmrc_spi",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.pensions.contributions.relief_at_source.amount",
-        "groupby_dimension": "hmrc.total_income_band"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/relief_at_source_pension_contributions_amount_income_band",
-          "value_variable": "personal_pension_contributions",
-          "from_entity": "person",
-          "map_to": "household",
-          "groupby_variable": "total_income",
-          "notes": "HMRC Survey of Personal Incomes 2023-24, collated Table 3.8 (deductions and reliefs by range of total income; PolicyEngine/chronicle#302 via #305): contributions paid from taxed income with basic-rate relief added by the scheme (the engine's personal_pension_contributions, FRS personal and stakeholder pensions), summed by person-level total income band; band edges come from the fact dimension (microcosm#1069 c8, R5)."
-        },
-        "axiom": {
-          "metric_name": "hmrc/relief_at_source_pension_contributions_amount_income_band",
-          "status": "pending",
-          "value_rule": "uk.pensions.contributions.relief_at_source.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.spi_relief_at_source_pension_contributions_amount",
-        "groupby_dimension": "hmrc.total_income_band",
-        "entity_name": "person"
-      },
-      "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Pension contributions under relief at source, amount by total income band",
-      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.average_earnings between 1 January 2023 and 1 January 2025, the earnings applier R5 rules for contributions (microcosm#1069)."
-    },
-    {
-      "target_id": "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band",
-      "family": "hmrc_spi",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count",
-        "groupby_dimension": "hmrc.total_income_band",
-        "filters": [
-          {
-            "concept": "uk.pensions.contributions.relief_at_source.amount",
-            "operator": ">",
-            "value": 0
-          }
-        ]
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "hmrc/relief_at_source_pension_contributions_count_income_band",
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "groupby_variable": "total_income",
-          "notes": "HMRC Survey of Personal Incomes 2023-24, collated Table 3.8 (deductions and reliefs by range of total income; PolicyEngine/chronicle#302 via #305): contributions paid from taxed income with basic-rate relief added by the scheme (the engine's personal_pension_contributions, FRS personal and stakeholder pensions), counted where positive by person-level total income band; band edges come from the fact dimension (microcosm#1069 c8, R5).",
-          "filters": [
-            {
-              "variable": "personal_pension_contributions",
-              "operator": ">",
-              "value": 0
-            }
-          ]
-        },
-        "axiom": {
-          "metric_name": "hmrc/relief_at_source_pension_contributions_count_income_band",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.spi_relief_at_source_pension_contributions_count",
-        "groupby_dimension": "hmrc.total_income_band",
-        "entity_name": "person"
-      },
-      "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Pension contributions under relief at source, count by total income band",
-      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
-      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's projected growth in Income Tax payers for the Table 2.5 band containing this band, as the other SPI counts are (microcosm#1069)."
-    },
-    {
       "target_id": "hmrc.spi_region.taxpayers_by_region_12570_15000",
       "family": "hmrc_spi_region",
       "geography_levels": [
@@ -25894,95 +25704,6 @@
       },
       "category_id": "dwp.workplace_pensions",
       "label": "Employer workplace pension contributions, Great Britain",
-      "period_match_policy": "exact"
-    },
-    {
-      "target_id": "dwp.workplace_pension.employee_contributions",
-      "family": "dwp_workplace_pensions",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.pensions.contributions.employee.amount"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "dwp/workplace_pension/employee_contributions",
-          "value_variable": "employee_pension_contributions",
-          "from_entity": "person",
-          "map_to": "household",
-          "household_conditions": [
-            {
-              "variable": "region",
-              "entity": "household",
-              "reduce": "any",
-              "operator": "in",
-              "value": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "LONDON",
-                "SOUTH_EAST",
-                "SOUTH_WEST",
-                "WALES",
-                "SCOTLAND"
-              ],
-              "map_to": "person"
-            }
-          ],
-          "notes": "DWP Workplace pension participation and savings trends 2025 (ONS ASHE, Great Britain, all savers, 2025 earnings terms; PolicyEngine/chronicle#302 via #305): gross employee contributions, DWP's employee part (net of tax) plus its tax relief part, against the engine's employee contributions (microcosm#1069 c9, R6)."
-        },
-        "axiom": {
-          "metric_name": "dwp/workplace_pension/employee_contributions",
-          "status": "pending",
-          "value_rule": "uk.pensions.contributions.employee.amount"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "dwp",
-        "source_concept": "dwp.workplace_pension_annual_saving",
-        "entity_name": "person",
-        "dimensions": [
-          "price_basis",
-          "saver_population",
-          "saving_component",
-          "sector"
-        ],
-        "period_type": "calendar_year",
-        "period_value": 2025
-      },
-      "value_operation": "linear_combination",
-      "value_operands": [
-        {
-          "weight": 1,
-          "source_concept": "dwp.workplace_pension_annual_saving",
-          "dimension_values": {
-            "price_basis": "2025_earnings_terms",
-            "saver_population": "all_savers",
-            "saving_component": "employee_contributions",
-            "sector": "all"
-          },
-          "label": "employee_contributions_net_of_tax"
-        },
-        {
-          "weight": 1,
-          "source_concept": "dwp.workplace_pension_annual_saving",
-          "dimension_values": {
-            "price_basis": "2025_earnings_terms",
-            "saver_population": "all_savers",
-            "saving_component": "tax_relief",
-            "sector": "all"
-          },
-          "label": "tax_relief"
-        }
-      ],
-      "category_id": "dwp.workplace_pensions",
-      "label": "Employee workplace pension contributions (gross), Great Britain",
       "period_match_policy": "exact"
     },
     {
