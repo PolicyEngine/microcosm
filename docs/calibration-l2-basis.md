@@ -49,15 +49,17 @@ solves at `l2_lambda` values `a < b` gives
 `(b - a) * (P(w_b) - P(w_a)) <= 0`. With unequal design weights, calibration can
 raise Kish ESS above the design's, and pulling back toward `d` then lowers it.
 In the ACS local release, calibration lowers ESS from the design's 36,288 to
-13,631, and as `l2_lambda → ∞` the solve returns to the design's figure; the
+13,631 in the published weights (13,646 in the sweep's reproduction), and as `l2_lambda → ∞` the solve returns to the design's figure; the
 sweep measures the path in between.
 
 The path tests check each solve against the exact optimum of the same convex
 program, computed by CLARABEL on the tests' own problems (fixture
 `tests/fixtures/l2_basis_path_reference.json`, generator
-`experiments/us-acs-local-l2-basis-20260928/test_path_reference.py`). The
-largest excess measured there is 0.0026, and the monotonicity slack is derived
-from twice that. The exact optima also show the textbook structure: between
+`experiments/us-acs-local-l2-basis-20260928/path_reference.py`). The
+largest excess measured there is 0.0026. The excess bound `eps` = 0.006 is
+empirical (twice that maximum, rounded up to 1e-3); the monotonicity slack
+`2·eps/Δλ` is derived from it, since two `eps`-optimal solves of the same
+feasible set satisfy `(λb − λa)(Pb − Pa) ≤ 2·eps`. The exact optima also show the textbook structure: between
 `l2_lambda = 0.01` and `0.3` the optimal distance is flat, because the solve
 meets every feasible target exactly and picks the closest such point to `d`,
 which is GREG's solution.
@@ -94,10 +96,26 @@ component along the constraint already removed. For a smooth objective that
 reduced gradient vanishes at the constrained optimum; the capped-MAPE loss has
 kinks, so Adam still oscillates there on the scale of `lr`, as it does under
 `mass="free"`. The ratio cap remains a per-step clamp, alternated with the
-softmax-invariant renormalization for up to 32 rounds (a step that runs out is
-counted in `options["iterate_selection_receipt"]`), plus the closing float64
-projection that both parametrizations share. It requires `mass="conserve"` and
-no L0 gates.
+softmax-invariant renormalization for up to 32 rounds, plus the closing
+float64 projection that both parametrizations share. It requires
+`mass="conserve"` and no L0 gates.
+
+**Known limitation: the cap rounds run out at production scale.** Each
+renormalization lifts the clamped records back over the cap by a shrinking
+amount, so the rounds converge geometrically but need not reach float32
+exactness in 32. A step that runs out ends on a clamp, and its next forward
+pass optimizes `total·softmax(log_w)` slightly past the cap.
+`options["iterate_selection_receipt"]["softmax_cap_rounds_exhausted_epochs"]`
+counts those steps. On small problems it is rare. On the ACS local release it
+is the normal state: 165-400 of the last 400 epochs in every run that records
+it, 400 at the share-0.5, `l2_lambda = 0.03` configuration on one fold. Only the
+closing projection makes the returned vector exact. The returned loss stays
+within 0.3% of the last trajectory loss in every run that records the count,
+but that bounds the last step and the closing projection together; the in-loop
+overshoot is not recorded, so its size is not measured. An
+exact capped-softmax step (water-filling the excess onto the uncapped records)
+would remove the limitation. Until then, prefer `"projection"` at that scale,
+where the stall does not bite (below).
 
 Evidence:
 
@@ -127,7 +145,7 @@ Evidence:
   `results/optimizer_reference_summary.json` in that experiment directory.
   The small problems where every target presses on the total show the stall.
   On the larger problems with targets in both directions, projection is never
-  non-monotone but still lands two to six times further from the optimum than
+  non-monotone but still lands 1.9 to 6.7 times further from the optimum than
   softmax.
 
 ## At the ACS release's scale
@@ -135,15 +153,24 @@ Evidence:
 On the published ACS local release (1,588,854 households, 4,459 targets),
 recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-20260928/`):
 
-- **Parametrization.** Projection and softmax land on the same frontier. At
-  `l2_lambda = 0` softmax finds ESS 16,132 at loss 0.0160, against
-  projection's 13,646 at 0.0155, and neither dominates. At `0.03`, softmax is
-  slightly ahead on ESS and on both holdout folds.
+- **Parametrization.** The per-record gradients there are near Adam's `eps`
+  with mixed signs, so the projection stall does not occur. The two
+  parametrizations trace the same training frontier for `l2_lambda ≤ 0.03`
+  (at `0` neither dominates: softmax ESS 16,132 at loss 0.0160, projection
+  13,646 at 0.0155). At `0.1` and above, projection falls inside softmax's
+  frontier: at `1` it reaches ESS 30,582 at loss 0.0785, where softmax's path,
+  interpolated between its `0.3` and `1` solves, gives about 0.055. Equal
+  `l2_lambda` is not an equal-ESS comparison. At `0.03` the held-out
+  comparison is a toss-up: softmax has slightly lower capped error, projection
+  more held-out targets within 10% on both folds. With the cap-loop limitation
+  above, projection is the recommended parametrization.
 - **Record basis.** The record basis at `0.1` lowers national ESS from 13,646
   to 8,689, as its `w ∝ d ** 2` optimum predicts.
 - **Chi-square basis.** The chi-square basis raises ESS smoothly with
-  `l2_lambda`. At `0.03` it gives better held-out fit than the release on two
-  rotated folds, with half a point less training fit.
+  `l2_lambda`. At `0.03` under projection it fits held-out targets better than
+  the release on both measures (capped error and share within 10%) on both
+  rotated folds it was run on, with 0.3 points less training fit. Those folds
+  also chose `l2_lambda`, so the held-out gain is optimistic by that selection.
 - **What limits ESS is the starting weights.** The experiment's README has the
   frontier, the holdout, candidate ESS floors and the recommendation.
 
@@ -159,7 +186,8 @@ result = calibrate(
     max_weight_ratio=5.0,
     l2_lambda=...,
     l2_basis="chi_square",
-    mass_parametrization="softmax",
+    # mass_parametrization="softmax" for problems where every target presses
+    # the same way; see the cap-loop limitation above.
 )
 result.options["l2_basis"], result.options["mass_parametrization"]
 result.chi_square_distance, result.effective_sample_size
@@ -173,7 +201,9 @@ manifest's `calibration` block. Both join the tool's solver-settings stamp,
 so `--resume` and the already-complete shortcut refuse weights solved under
 any other solver setting (cap, loss cap, `l2_lambda`, `l2_basis`,
 `mass_parametrization`, seed, epoch batch); a stamp written before these two
-options existed reads as the historical solve. `calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
+options existed reads as the historical solve. The manifest's refresh recipe
+carries the three flags whenever they differ from the historical solve.
+`calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
 and `refit_mass_parametrization`; `refit_l0_selection` and `static_aging` take
 `l2_basis`.
 
@@ -185,7 +215,9 @@ that concentration is already high by construction. The 57,240 donor-spine
 records (the Build O sparse release) carry half the design mass with a within-
 spine ESS of 9,174, while the 1,531,614 ACS records carry the other half with a
 within-spine ESS of 812,434. National design ESS is therefore 36,288 (2.3% of
-records). Massachusetts shows the same split. Its 35,056 ACS records have a
+records). Massachusetts shows the same split
+(`massachusetts_by_spine_at_release_design` in that experiment's
+`results/seeding_options.json`). Its 35,056 ACS records have a
 design ESS of 20,238, while its 1,522 donor records carry 49.6% of the state's
 design mass with an ESS of 255, the national release's own Massachusetts figure,
 since the donor spine is that release's records at half weight. Together the

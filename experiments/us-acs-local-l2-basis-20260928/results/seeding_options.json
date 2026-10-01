@@ -1,4 +1,38 @@
 {
+ "massachusetts_by_spine_at_release_design": {
+  "acs_2024_1yr": {
+   "n": 35056,
+   "design_mass_share_of_state": 0.5036198963506815,
+   "kish_ess": 20237.750812809973,
+   "district_kish_ess": {
+    "2501": 2245.440000658762,
+    "2502": 2429.6424771281504,
+    "2503": 2056.491766048132,
+    "2504": 2376.31453254353,
+    "2505": 2375.4514577005943,
+    "2506": 2274.714348026484,
+    "2507": 2443.778808256828,
+    "2508": 2020.412898933117,
+    "2509": 2094.734066413283
+   }
+  },
+  "asec_puf": {
+   "n": 1522,
+   "design_mass_share_of_state": 0.4963801036493185,
+   "kish_ess": 254.60923423077767,
+   "district_kish_ess": {
+    "2501": 32.09235383013841,
+    "2502": 29.003733515531984,
+    "2503": 30.104505478078796,
+    "2504": 33.64169551224773,
+    "2505": 27.032732826257174,
+    "2506": 32.49606834899152,
+    "2507": 25.012107627587316,
+    "2508": 22.12643826984022,
+    "2509": 23.832111827976274
+   }
+  }
+ },
  "checkpoint": "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/checkpoint",
  "seed": 20260930,
  "placement": "donor clones: district drawn within the record's state with probability proportional to ACS starting mass in the district (state-only case of location v1; an upper bound on spread)",

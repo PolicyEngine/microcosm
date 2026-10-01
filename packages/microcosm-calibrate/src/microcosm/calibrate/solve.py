@@ -1183,6 +1183,7 @@ def _optimize(
             )
             if float(closing_loss.item()) > best_loss:
                 # retain_best requires free mass, so never under softmax.
+                assert not softmax_mass, "best-iterate retention under softmax"
                 weights = torch.exp(best_log_w)
                 selected_epoch = best_epoch
                 selected_loss = best_loss

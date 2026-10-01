@@ -159,7 +159,9 @@ def _require_soi_mode(soi_mode: str) -> str:
 
 
 def release_refresh_recipe(
-    soi_mode: str, cd_holdout_fraction: float | None = None
+    soi_mode: str,
+    cd_holdout_fraction: float | None = None,
+    penalty: dict | None = None,
 ) -> str:
     """The one-command release refresh, pinned to the SOI surface it built.
 
@@ -167,7 +169,9 @@ def release_refresh_recipe(
     the recorded surface even if the parser default changes again, and, for
     every ``state_cd`` build, ``--cd-holdout-fraction`` at the recorded value
     (0 included, full precision), since ``state_cd`` otherwise defaults to a
-    10% holdout.
+    10% holdout. ``penalty`` (the recorded ``l2_lambda``, ``l2_basis`` and
+    ``mass_parametrization``) adds each setting that differs from the
+    historical solve, so the recipe rebuilds the solve that was recorded.
     """
 
     _require_soi_mode(soi_mode)
@@ -176,12 +180,31 @@ def release_refresh_recipe(
         if soi_mode == SOI_MODE_STATE_CD and cd_holdout_fraction is not None
         else ""
     )
+    flags = {
+        "l2_lambda": "--l2-lambda",
+        "l2_basis": "--l2-basis",
+        "mass_parametrization": "--mass-parametrization",
+    }
+    recorded = {
+        key: HISTORICAL_PENALTY[key]
+        if (penalty or {}).get(key) is None
+        else (penalty or {})[key]
+        for key in flags
+    }
+    solve = "".join(
+        f"{flag} {float(recorded[key])!r} "
+        if key == "l2_lambda"
+        else f"{flag} {recorded[key]} "
+        for key, flag in flags.items()
+        if recorded[key] != HISTORICAL_PENALTY[key]
+    )
     return (
         "uv run tools/build_us_acs_local_release.py --stage all "
         "--staging-h5 <run>/acs_multispine_staging.h5 "
         "--feed <ledger-facts.jsonl> --feed-sha256 <sha> "
         f"--soi-mode {soi_mode} "
         f"{holdout}"
+        f"{solve}"
         "--ladder build/us/us_puma_ladder_2020.npz "
         "--checkpoint-dir <run>/checkpoints "
         "--out-h5 <run>/populace_us_2024_acs_local.h5 "
@@ -2323,7 +2346,8 @@ def _ess_concentration_limitation(diagnostics: dict) -> dict:
             f"Kish ESS is {ess} = {ess_fraction:.2%} of {households} "
             f"households with max_weight_ratio="
             f"{diagnostics.get('max_weight_ratio')}, l2_lambda={l2_lambda:g}, "
-            f"l2_basis={diagnostics.get('l2_basis')!r} and "
+            f"l2_basis="
+            f"{diagnostics.get('l2_basis', HISTORICAL_PENALTY['l2_basis'])!r} and "
             f"mass_parametrization={parametrization!r}; chi-square distance "
             f"from the design weights {diagnostics.get('chi_square_distance')}."
         ),
@@ -3110,7 +3134,9 @@ def do_package(args) -> dict:
         ),
         "staging": LEGACY_STAGING_REFRESH_RECIPE,
         "release": release_refresh_recipe(
-            soi_mode, (identity.get("cd_holdout") or {}).get("fraction")
+            soi_mode,
+            (identity.get("cd_holdout") or {}).get("fraction"),
+            penalty={key: diagnostics.get(key) for key in HISTORICAL_PENALTY},
         ),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "

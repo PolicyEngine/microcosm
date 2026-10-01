@@ -1,14 +1,18 @@
 """Build the ESS-versus-fit frontier from the sweep's metrics.
 
 Reads ``results/runs/*.json`` (one ``sweep.py`` payload per run) and writes
-``results/frontier.csv``, ``results/frontier.md`` and
-``results/frontier.png``.
+``results/frontier.csv``, ``results/frontier.md``, ``results/floors.md``,
+``results/key_configs.md`` (also spliced into the README) and
+``results/frontier.png``. ``dup_*`` runs are head-equivalence reruns, kept out
+of the frontier; ``results/head_equivalence.json`` compares their weights,
+byte for byte, with the original runs' (``weights.npz`` beside the checkpoint).
 
 Run: ``uv run --with matplotlib python experiments/us-acs-local-l2-basis-20260928/analyze.py``
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -17,6 +21,14 @@ import pandas as pd
 
 HERE = Path(__file__).resolve().parent
 RUNS = HERE / "results" / "runs"
+LOCAL_RUNS = Path(
+    "/Users/maxghenis/PolicyEngine/_build_artifacts/acs-local-l2-basis-20260928/runs"
+)
+#: Reruns of a first-head run at a later kernel head, and the run they repeat.
+HEAD_PAIRS = {
+    "dup_release_repro": "release_repro",
+    "dup_soft_chi_s050_0.03": "soft_chi_s050_0.03",
+}
 FAMILIES = ("soi", "snap", "medicaid", "pop_state", "pop_cd")
 #: Candidate release-gate floors on Kish ESS, and the relative floor (share of
 #: the prior's own ESS in the same geography).
@@ -31,6 +43,11 @@ PRIOR_COLORS = {0.5: "#2a78d6", 0.7: "#eb6834", 0.9: "#1baf7a", 0.964: "#eda100"
 def _prior(payload: dict) -> float:
     share = payload["spec"].get("acs_share")
     return 0.5 if share is None else round(float(share), 3)
+
+
+def _head(payload: dict) -> str | None:
+    head = payload["provenance"]["git"].get("head_from_env")
+    return head[:8] if head else None
 
 
 def row(payload: dict) -> dict:
@@ -52,6 +69,7 @@ def row(payload: dict) -> dict:
     cd_ratio = np.array([v["kish_ess_ratio"] for v in concentration["per_cd"].values()])
     out = {
         "run_id": spec["run_id"],
+        "kernel_head": _head(payload),
         "prior_acs_share": _prior(payload),
         "mass_parametrization": spec["mass_parametrization"],
         "l2_basis": spec["l2_basis"],
@@ -145,7 +163,11 @@ def load() -> pd.DataFrame:
             path.write_text(
                 json.dumps(compact(json.loads(text)), separators=(",", ":")) + "\n"
             )
-    rows = [row(json.loads(path.read_text())) for path in sorted(RUNS.glob("*.json"))]
+    rows = [
+        row(json.loads(path.read_text()))
+        for path in sorted(RUNS.glob("*.json"))
+        if path.stem not in HEAD_PAIRS
+    ]
     frame = pd.DataFrame(rows)
     frame["arm"] = [
         "full surface" if pd.isna(fold) else "holdout" for fold in frame.holdout_fold
@@ -163,15 +185,16 @@ def _fmt(value, spec: str) -> str:
 
 #: The configurations the write-up compares, in order, with a short label.
 KEY_CONFIGS = (
-    ("release_repro", "Release: share 0.5, projection, λ 0"),
-    ("soft_chi_s050_0.03", "Share 0.5, chi-square λ 0.03"),
-    ("proj_chi_s050_0.03", "Share 0.5, chi-square λ 0.03 (projection)"),
-    ("soft_chi_s050_0.1", "Share 0.5, chi-square λ 0.1"),
-    ("soft_chi_s050_1", "Share 0.5, chi-square λ 1"),
-    ("soft_chi_s700_0.01", "Share 0.7, chi-square λ 0.01"),
-    ("soft_chi_s900_0", "Share 0.9, no penalty"),
-    ("soft_chi_s900_0.01", "Share 0.9, chi-square λ 0.01"),
-    ("soft_chi_s964_0", "Share 0.964, no penalty"),
+    ("release_repro", "Release (reproduced): share 0.5, projection, λ 0"),
+    ("proj_chi_s050_0.03", "Share 0.5, projection, chi-square λ 0.03"),
+    ("soft_chi_s050_0.03", "Share 0.5, softmax, chi-square λ 0.03"),
+    ("proj_chi_s050_0.1", "Share 0.5, projection, chi-square λ 0.1"),
+    ("soft_chi_s050_0.1", "Share 0.5, softmax, chi-square λ 0.1"),
+    ("soft_chi_s050_1", "Share 0.5, softmax, chi-square λ 1"),
+    ("soft_chi_s700_0.01", "Share 0.7, softmax, chi-square λ 0.01"),
+    ("soft_chi_s900_0", "Share 0.9, softmax, no penalty"),
+    ("soft_chi_s900_0.01", "Share 0.9, softmax, chi-square λ 0.01"),
+    ("soft_chi_s964_0", "Share 0.964, softmax, no penalty"),
 )
 
 
@@ -195,6 +218,7 @@ def key_config_table(frame: pd.DataFrame) -> str:
         "MA ESS",
         "Train within 10%",
         "Held-out error, fold 0 / 1",
+        "Held-out within 10%, fold 0 / 1",
     )
     lines = [
         "| " + " | ".join(columns) + " |",
@@ -204,19 +228,21 @@ def key_config_table(frame: pd.DataFrame) -> str:
         if run_id not in by_id.index:
             continue
         r = by_id.loc[run_id]
-        held = []
+        held, held_within = [], []
         for fold in (0, 1):
             hid = _holdout_id(run_id, fold)
+            found = hid in by_id.index
             held.append(
-                f"{by_id.loc[hid, 'holdout_mean_capped_error']:.4f}"
-                if hid in by_id.index
-                else "–"
+                f"{by_id.loc[hid, 'holdout_mean_capped_error']:.4f}" if found else "–"
+            )
+            held_within.append(
+                f"{by_id.loc[hid, 'holdout_within_10pct']:.1%}" if found else "–"
             )
         lines.append(
             f"| {label} | {r.kish_ess:,.0f} | {r.top_1pct_share:.1%} | "
             f"{r.state_ess_min:,.0f} | {r.cd_ess_median:,.0f} / {r.cd_ess_min:,.0f} | "
             f"{int(r.cds_below_50)} | {r.ma_ess:,.0f} | {r.within_10pct:.1%} | "
-            f"{' / '.join(held)} |"
+            f"{' / '.join(held)} | {' / '.join(held_within)} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -401,6 +427,44 @@ def chart(frame: pd.DataFrame, path: Path) -> None:
     fig.savefig(path, dpi=150, facecolor=surface)
 
 
+def head_equivalence() -> dict:
+    """Each rerun's weights and trajectory against its original's, exactly."""
+
+    pairs = {}
+    for dup, original in HEAD_PAIRS.items():
+        paths = [LOCAL_RUNS / run / "weights.npz" for run in (dup, original)]
+        receipts = [RUNS / f"{run}.json" for run in (dup, original)]
+        if not all(path.exists() for path in (*paths, *receipts)):
+            pairs[dup] = {"original": original, "status": "not collected"}
+            continue
+        heads = [_head(json.loads(path.read_text())) for path in receipts]
+        arrays = [np.load(path) for path in paths]
+        weights = [a["weights"] for a in arrays]
+        trajectories = [
+            np.concatenate(
+                [a[k] for k in sorted(a.files) if k.startswith("trajectory_")]
+            )
+            for a in arrays
+        ]
+        pairs[dup] = {
+            "original": original,
+            "heads": {"rerun": heads[0], "original": heads[1]},
+            "weights_sha256": [
+                hashlib.sha256(np.ascontiguousarray(w).tobytes()).hexdigest()
+                for w in weights
+            ],
+            "weights_byte_identical": bool(
+                weights[0].dtype == weights[1].dtype
+                and weights[0].tobytes() == weights[1].tobytes()
+            ),
+            "trajectory_byte_identical": bool(
+                trajectories[0].tobytes() == trajectories[1].tobytes()
+            ),
+            "max_abs_weight_difference": float(np.max(np.abs(weights[0] - weights[1]))),
+        }
+    return pairs
+
+
 def main() -> None:
     frame = load()
     out = HERE / "results"
@@ -409,6 +473,9 @@ def main() -> None:
     (out / "floors.md").write_text(floor_table(frame))
     table = key_config_table(frame)
     (out / "key_configs.md").write_text(table)
+    (out / "head_equivalence.json").write_text(
+        json.dumps(head_equivalence(), indent=1) + "\n"
+    )
     readme = HERE / "README.md"
     start, end = (
         "<!-- key-configs:start (written by analyze.py) -->",

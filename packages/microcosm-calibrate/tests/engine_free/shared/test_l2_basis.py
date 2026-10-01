@@ -405,7 +405,7 @@ def test_path_solves_reach_the_exact_optimum(case: dict) -> None:
 
     The fixture holds the exact optimum of the same convex program for these
     very problems (``experiments/us-acs-local-l2-basis-20260928/
-    test_path_reference.py``); its problem digests guard against generator
+    path_reference.py``); its problem digests guard against generator
     drift. The loss cap never binds on them, so the solver's capped loss and
     the program's loss coincide.
     """
@@ -423,9 +423,10 @@ def test_path_solves_reach_the_exact_optimum(case: dict) -> None:
 
 @pytest.mark.parametrize("case", PATH_CASES, ids=path_case_id)
 def test_chi_square_distance_is_nonincreasing_in_lambda(case: dict) -> None:
-    """The regularization-path identity, with its slack derived, not fitted.
+    """The regularization-path identity, with its slack derived from ``eps``.
 
-    For exact minimizers at ``lam_a < lam_b``, adding the two optimality
+    ``eps`` itself is empirical: the fixture's bound, twice the largest
+    measured excess rounded up to 1e-3. For exact minimizers at ``lam_a < lam_b``, adding the two optimality
     inequalities gives ``(lam_b - lam_a) * (P_b - P_a) <= 0``. Solves within
     ``eps`` of optimal (the differential test above) weaken it to
     ``P_b <= P_a + 2 * eps / (lam_b - lam_a)``. Only pairs where that slack is

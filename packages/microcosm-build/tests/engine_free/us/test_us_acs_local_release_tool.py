@@ -1912,6 +1912,44 @@ def test_package_manifest_records_the_penalty_settings(
     assert manifest["calibration"]["l2_basis"] == "chi_square"
     assert manifest["calibration"]["mass_parametrization"] == "softmax"
     assert manifest["calibration"]["chi_square_distance"] == 0.21
+    recipe = shlex.split(manifest["refresh_recipe"]["release"])
+    assert recipe[recipe.index("--l2-lambda") + 1] == "0.003"
+    assert recipe[recipe.index("--l2-basis") + 1] == "chi_square"
+    assert recipe[recipe.index("--mass-parametrization") + 1] == "softmax"
+
+
+def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
+    """Non-default penalty settings ride the recipe; defaults stay implicit."""
+
+    module = _load_tool_module()
+    plain = module.release_refresh_recipe("state")
+    for flag in ("--l2-lambda", "--l2-basis", "--mass-parametrization"):
+        assert flag not in plain
+    # A legacy summary records none of them: the historical solve.
+    legacy = {"l2_lambda": None, "l2_basis": None, "mass_parametrization": None}
+    assert module.release_refresh_recipe("state", penalty=legacy) == plain
+    assert (
+        module.release_refresh_recipe("state", penalty=module.HISTORICAL_PENALTY)
+        == plain
+    )
+    penalized = shlex.split(
+        module.release_refresh_recipe(
+            "state",
+            penalty={
+                "l2_lambda": 0.03,
+                "l2_basis": "chi_square",
+                "mass_parametrization": "projection",
+            },
+        )
+    )
+    assert penalized[penalized.index("--l2-lambda") + 1] == "0.03"
+    assert penalized[penalized.index("--l2-basis") + 1] == "chi_square"
+    assert "--mass-parametrization" not in penalized
+    # The recipe's arguments are ones the tool itself accepts.
+    args = module._parse_args(penalized[3:])
+    assert args.l2_lambda == 0.03
+    assert args.l2_basis == "chi_square"
+    assert args.mass_parametrization == "projection"
 
 
 def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
@@ -1972,6 +2010,9 @@ def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:
         }
     )
     assert penalized["id"] == "effective_sample_size_under_nondefault_solve"
+    # A summary from before l2_basis was recorded used the record basis.
+    legacy_penalized = module._ess_concentration_limitation({**base, "l2_lambda": 0.1})
+    assert "l2_basis='record'" in legacy_penalized["reason"]
     assert penalized["status"] == "recorded_concentration"
     assert "l2_lambda=0.003" in penalized["reason"]
     assert "'chi_square'" in penalized["reason"]

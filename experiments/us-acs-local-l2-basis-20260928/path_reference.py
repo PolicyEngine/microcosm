@@ -13,12 +13,11 @@ The program (``target_loss_cap`` never binds on these surfaces; checked):
 
 Run (cvxpy is not a workspace dependency):
 
-    uv run --with cvxpy python experiments/us-acs-local-l2-basis-20260928/test_path_reference.py
+    uv run --with cvxpy python experiments/us-acs-local-l2-basis-20260928/path_reference.py
 """
 
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import json
 import sys
@@ -106,7 +105,6 @@ def main() -> None:
     # Twice the worst measured excess, rounded up to a 1e-3 step, absorbs
     # platform float differences in the Adam path.
     bound = float(np.ceil(2.0 * worst * 1000.0) / 1000.0)
-    source = (TESTS / "engine_free" / "shared" / "test_l2_basis.py").read_bytes()
     payload = {
         "schema": "microcosm.l2_basis_path_reference.v1",
         "solver": "cvxpy CLARABEL",
@@ -119,7 +117,6 @@ def main() -> None:
         "max_weight_ratio=5.0, l2_basis='chi_square', seed=0) per case",
         "measured_max_excess_objective": worst,
         "excess_objective_bound": bound,
-        "test_module_sha256_when_generated": hashlib.sha256(source).hexdigest(),
         "cases": entries,
     }
     FIXTURE.write_text(json.dumps(payload, indent=1, sort_keys=True) + "\n")

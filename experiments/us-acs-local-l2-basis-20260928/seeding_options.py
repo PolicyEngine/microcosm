@@ -201,9 +201,25 @@ def main() -> None:
             np.random.default_rng(SEED),
         )
     )
+    # The release design's Massachusetts split by spine, which the doc quotes.
+    ma = households["state_fips"].astype(str).to_numpy() == MASSACHUSETTS
+    districts = households["congressional_district_geoid"].astype(str).to_numpy()
+    ma_by_spine = {}
+    for label in SPINES:
+        rows = ma & (spine == label)
+        ma_by_spine[label] = {
+            "n": int(rows.sum()),
+            "design_mass_share_of_state": float(design[rows].sum() / design[ma].sum()),
+            "kish_ess": kish(design[rows]),
+            "district_kish_ess": {
+                code: kish(design[rows & (districts == code)])
+                for code in sorted(set(districts[ma]))
+            },
+        }
     out = HERE / "results"
     out.mkdir(exist_ok=True)
     payload = {
+        "massachusetts_by_spine_at_release_design": ma_by_spine,
         "checkpoint": str(DEFAULT_CHECKPOINT),
         "seed": SEED,
         "placement": (

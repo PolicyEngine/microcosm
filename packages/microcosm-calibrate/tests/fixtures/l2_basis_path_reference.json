@@ -679,6 +679,5 @@
  "program": "mean |A w - b| / max(|b|, 1) + lambda * sum((w - d)^2 / d) / sum(d); 0 <= w <= 5 d; sum(w) = sum(d) under conserve",
  "schema": "microcosm.l2_basis_path_reference.v1",
  "solver": "cvxpy CLARABEL",
- "solver_settings": "calibrate(epochs=1500, learning_rate=0.02, max_weight_ratio=5.0, l2_basis='chi_square', seed=0) per case",
- "test_module_sha256_when_generated": "ce2727f5ec4afbc5d8f78c76936051eb71ccbb0b8dadcbf2684186f4beefbd23"
+ "solver_settings": "calibrate(epochs=1500, learning_rate=0.02, max_weight_ratio=5.0, l2_basis='chi_square', seed=0) per case"
 }
