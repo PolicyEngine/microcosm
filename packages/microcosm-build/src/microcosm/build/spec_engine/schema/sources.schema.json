@@ -8163,6 +8163,8 @@
       "kind",
       "predictors",
       "chain_order",
+      "stratified_targets",
+      "derived_totals",
       "seed"
      ],
      "properties": {
@@ -8193,10 +8195,30 @@
         "type": "string"
        }
       },
-      "debt_segment_predictors": {
+      "stratified_targets": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "internal_components": {
        "type": "array",
        "items": {
         "type": "string"
+       }
+      },
+      "derived_totals": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
        }
       },
       "region_remap": {

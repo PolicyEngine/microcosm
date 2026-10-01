@@ -735,6 +735,98 @@ def test_support_clip_gate_fails_closed_on_a_missing_allowance() -> None:
     assert any("no clipped_high_rows allowance" in f for f in result.failures)
 
 
+def _wealth_coherence_evidence() -> dict:
+    return {
+        "stage": "was_wealth",
+        "tenure_coherence": {
+            "mortgage_debt_off_mortgaged_tenure_rows": 0,
+            "main_residence_value_off_owner_tenure_rows": 0,
+            "owner_share_without_main_residence_value": 0.001,
+            "donor_owner_share_without_main_residence_value": 0.0,
+        },
+        "identities": {
+            "property_wealth_violation_rows": 0,
+            "corporate_wealth_violation_rows": 0,
+            "gross_financial_wealth_violation_rows": 0,
+            "net_financial_wealth_violation_rows": 0,
+            "property_wealth_capped_rows": 3,
+        },
+    }
+
+
+_WEALTH_COHERENCE_PARAMETERS = {
+    "stage": "was_wealth",
+    "check": "wealth_coherence",
+    "maximum_owner_share_without_main_residence_excess": 0.005,
+}
+
+
+def _wealth_coherence(evidence: dict):
+    return uk_stage_health_gate(
+        evidence=evidence,
+        stage="was_wealth",
+        check="wealth_coherence",
+        parameters=_WEALTH_COHERENCE_PARAMETERS,
+    )
+
+
+def test_wealth_coherence_gate_passes_a_coherent_receipt() -> None:
+    result = _wealth_coherence(_wealth_coherence_evidence())
+
+    assert _passed(result)
+    assert result.details["mortgage_debt_off_mortgaged_tenure_rows"] == 0
+    # The donor-range cap is recorded, never a failure.
+    assert result.details["capped_rows"] == {"property_wealth_capped_rows": 3}
+
+
+@pytest.mark.parametrize(
+    ("block", "key"),
+    [
+        ("tenure_coherence", "mortgage_debt_off_mortgaged_tenure_rows"),
+        ("tenure_coherence", "main_residence_value_off_owner_tenure_rows"),
+        ("identities", "property_wealth_violation_rows"),
+        ("identities", "corporate_wealth_violation_rows"),
+        ("identities", "gross_financial_wealth_violation_rows"),
+        ("identities", "net_financial_wealth_violation_rows"),
+    ],
+)
+def test_wealth_coherence_gate_requires_every_count_and_requires_it_zero(
+    block: str, key: str
+) -> None:
+    evidence = _wealth_coherence_evidence()
+    evidence[block][key] = 2
+    failed = _wealth_coherence(evidence)
+    assert not _passed(failed)
+    assert f"{key} is 2, expected 0" in failed.failures[0]
+
+    del evidence[block][key]
+    missing = _wealth_coherence(evidence)
+    assert not _passed(missing)
+    assert f"receipt is missing {key}" in missing.failures[0]
+
+
+def test_wealth_coherence_gate_bounds_owners_without_a_main_residence() -> None:
+    evidence = _wealth_coherence_evidence()
+    evidence["tenure_coherence"]["owner_share_without_main_residence_value"] = 0.084
+    failed = _wealth_coherence(evidence)
+    assert not _passed(failed)
+    assert "no main-residence value" in failed.failures[0]
+
+    # The bound is on the excess over the donor's own share.
+    evidence["tenure_coherence"]["donor_owner_share_without_main_residence_value"] = (
+        0.08
+    )
+    assert _passed(_wealth_coherence(evidence))
+
+
+def test_wealth_coherence_gate_fails_closed_without_its_receipt_blocks() -> None:
+    result = _wealth_coherence({"stage": "was_wealth", "support_clip": {}})
+
+    assert not _passed(result)
+    assert any("missing tenure_coherence" in f for f in result.failures)
+    assert any("missing identities" in f for f in result.failures)
+
+
 def _latent_receipt() -> dict:
     row = {"target": 0.5, "realized": 0.51, "tolerance": 0.05, "rows": 1000}
     return {

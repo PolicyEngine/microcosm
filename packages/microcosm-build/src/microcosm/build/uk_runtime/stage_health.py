@@ -65,6 +65,8 @@ def uk_stage_health_gate(
         return _latent_attribute_realization_gate(stage, evidence)
     if check == "household_composition":
         return _household_composition_gate(stage, evidence, parameters)
+    if check == "wealth_coherence":
+        return _wealth_coherence_gate(stage, evidence, parameters)
     if check == "energy_rake":
         return _energy_rake_gate(stage, evidence, parameters)
     if check == "bus_travel_facts":
@@ -1961,6 +1963,104 @@ def latent_attribute_tolerance(*, target: float, rows: int) -> float:
 
 def _binomial_tolerance(*, target: float, rows: int) -> float:
     return latent_attribute_tolerance(target=target, rows=rows)
+
+
+#: Receipt counts the WAS wealth stage must report as zero (microcosm#1063):
+#: the two tenure rules, and one count per accounting identity.
+_WEALTH_TENURE_ZERO_KEYS = (
+    "mortgage_debt_off_mortgaged_tenure_rows",
+    "main_residence_value_off_owner_tenure_rows",
+)
+_WEALTH_IDENTITY_ZERO_KEYS = (
+    "property_wealth_violation_rows",
+    "corporate_wealth_violation_rows",
+    "gross_financial_wealth_violation_rows",
+    "net_financial_wealth_violation_rows",
+)
+
+
+def _wealth_coherence_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The WAS wealth columns are coherent with tenure and with each other.
+
+    The stage draws the main residence and the mortgage debt inside their
+    tenure stratum and derives every total from drawn components; this gate
+    re-reads the receipt so the battery, not only the transform, holds that
+    no household off a mortgaged tenure carries mortgage debt, none off an
+    owner tenure carries a main-residence value, every total equals its
+    components, and owners without a main-residence value are no more common
+    than on the donor beyond the reviewed excess.
+    """
+
+    check = "wealth_coherence"
+    failures: list[str] = []
+    details: dict[str, object] = {}
+    blocks: dict[str, Mapping[str, object]] = {}
+    for block in ("tenure_coherence", "identities"):
+        value = evidence.get(block)
+        if not isinstance(value, Mapping):
+            failures.append(f"{stage}: receipt is missing {block}.")
+            continue
+        blocks[block] = value
+    for block, keys in (
+        ("tenure_coherence", _WEALTH_TENURE_ZERO_KEYS),
+        ("identities", _WEALTH_IDENTITY_ZERO_KEYS),
+    ):
+        receipt = blocks.get(block)
+        if receipt is None:
+            continue
+        for key in keys:
+            value = receipt.get(key)
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                failures.append(f"{stage}: {block} receipt is missing {key}.")
+                continue
+            details[key] = int(value)
+            if int(value) != 0:
+                failures.append(f"{stage}: {key} is {int(value)}, expected 0.")
+    tenure = blocks.get("tenure_coherence")
+    if tenure is not None:
+        maximum_excess = _finite_number(
+            parameters["maximum_owner_share_without_main_residence_excess"],
+            label=f"{stage}.maximum_owner_share_without_main_residence_excess",
+        )
+        try:
+            share = _finite_number(
+                tenure.get("owner_share_without_main_residence_value"),
+                label=f"{stage}.owner_share_without_main_residence_value",
+            )
+            donor_share = _finite_number(
+                tenure.get("donor_owner_share_without_main_residence_value"),
+                label=f"{stage}.donor_owner_share_without_main_residence_value",
+            )
+        except ValueError as error:
+            failures.append(str(error))
+        else:
+            details["owner_share_without_main_residence_value"] = share
+            details["donor_owner_share_without_main_residence_value"] = donor_share
+            details["maximum_owner_share_without_main_residence_excess"] = (
+                maximum_excess
+            )
+            if share - donor_share > maximum_excess:
+                failures.append(
+                    f"{stage}: {share:.6g} of owner households carry no "
+                    f"main-residence value against {donor_share:.6g} on the "
+                    f"donor, above the reviewed excess {maximum_excess:.6g}."
+                )
+    identities = blocks.get("identities")
+    if identities is not None:
+        details["capped_rows"] = {
+            str(key): int(value)
+            for key, value in identities.items()
+            if str(key).endswith("_rows")
+            and "capped" in str(key)
+            and isinstance(value, int | float)
+        }
+    if failures:
+        return _fail(stage, check, failures, details)
+    return _pass(stage, check, details)
 
 
 def _household_composition_gate(

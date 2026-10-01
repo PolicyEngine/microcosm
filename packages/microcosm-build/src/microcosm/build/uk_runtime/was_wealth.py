@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -26,6 +27,15 @@ from microcosm.build.uk_runtime.support_clip import (
     UKSupportClipResult,
     support_clip_to_donor_with_receipt,
 )
+from microcosm.build.uk_runtime.tenure_constants import (
+    UK_OWNER_TENURE_CATEGORIES,
+    UK_TENURE_CATEGORIES,
+    UK_TENURE_OWNED_OUTRIGHT,
+    UK_TENURE_OWNED_WITH_MORTGAGE,
+    UK_TENURE_PRIVATE_RENT,
+    UK_TENURE_SOCIAL_RENT,
+    UK_TENURE_TYPE_TO_CATEGORY,
+)
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
@@ -33,6 +43,16 @@ WAS_DONOR_FILENAME = "was_round_8_hhold_eul_may_2025_230525.tab"
 WAS_DONOR_SHA256 = "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374"
 WAS_DONOR_SIZE_BYTES = 39_073_613
 
+#: The tenure category column both sides carry (never a predictor itself: the
+#: strata read it and the one-hot flags below enter the forests).
+UK_WAS_TENURE_CATEGORY_COLUMN = "tenure_category"
+#: One flag per tenure category but the first (owned outright is the base
+#: level), built the same way on the donor (``Ten1R8``, ``DVPriRntR8``) and on
+#: the recipient (the frame's ``tenure_type``), so housing-association and
+#: council renters are matched to social-renter donors (microcosm#1063).
+UK_WAS_TENURE_PREDICTORS = tuple(
+    f"tenure_{category}" for category in UK_TENURE_CATEGORIES[1:]
+)
 UK_WAS_WEALTH_PREDICTORS = (
     "household_net_income",
     "num_adults",
@@ -43,7 +63,7 @@ UK_WAS_WEALTH_PREDICTORS = (
     "capital_income",
     "num_bedrooms",
     "council_tax",
-    "is_renting",
+    *UK_WAS_TENURE_PREDICTORS,
     "region",
 )
 UK_WAS_ENGINE_PREDICTORS = (
@@ -54,13 +74,57 @@ UK_WAS_ENGINE_PREDICTORS = (
     "employment_income",
     "self_employment_income",
     "capital_income",
-    "is_renting",
 )
-#: Extra base predictor of the debt chain segment only (segments 1-3 are
-#: unchanged so E5's fourteen columns stay byte-equal); declared in the manifest
-#: as ``debt_segment_predictors`` and drift-asserted at run time.
-UK_WAS_DEBT_SEGMENT_PREDICTORS = ("has_mortgage_tenure",)
 UK_WAS_DEBT_OUTPUT_COLUMNS = ("mortgage_debt", "consumer_debt")
+#: Columns drawn only inside a tenure stratum and zero by rule outside it
+#: (microcosm#1063): the main residence exists only for owner-occupiers, and
+#: ``mortgage_debt`` only on a mortgaged tenure. Each maps to the tenure
+#: categories of its stratum; the manifest declares the same mapping as
+#: ``stratified_targets`` and the run asserts it.
+UK_WAS_STRATIFIED_TARGETS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "main_residence_value": UK_OWNER_TENURE_CATEGORIES,
+        "mortgage_debt": (UK_TENURE_OWNED_WITH_MORTGAGE,),
+    }
+)
+#: Components the chain draws but the stage does not emit: the remainder of a
+#: published total over the components the engine reads, so every total is the
+#: sum of its drawn parts rather than a draw of its own.
+UK_WAS_OTHER_PROPERTY_COLUMN = "other_property_value"
+UK_WAS_OTHER_FINANCIAL_COLUMN = "other_financial_assets"
+UK_WAS_INTERNAL_COMPONENT_COLUMNS = (
+    UK_WAS_OTHER_PROPERTY_COLUMN,
+    UK_WAS_OTHER_FINANCIAL_COLUMN,
+)
+#: Totals derived from drawn components, in derivation order. WAS round 8
+#: satisfies each identity on every donor row (checked when the donor is
+#: cleaned): DVPropertyR8 is the sum of the property values, HFINWR8_SUM is
+#: at least the listed financial assets, and net financial wealth is gross
+#: less the financial liabilities.
+UK_WAS_DERIVED_TOTALS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "property_wealth": (
+            "owned_land",
+            "main_residence_value",
+            "other_residential_property_value",
+            "non_residential_property_value",
+            UK_WAS_OTHER_PROPERTY_COLUMN,
+        ),
+        "corporate_wealth": ("corporate_wealth_excl_isa", "stocks_and_shares_isa"),
+        "gross_financial_wealth": (
+            "savings",
+            "cash_isa",
+            "corporate_wealth",
+            UK_WAS_OTHER_FINANCIAL_COLUMN,
+        ),
+    }
+)
+#: ``net_financial_wealth = gross_financial_wealth - consumer_debt -
+#: student_loan_balance`` (the liabilities are subtracted, so it is declared
+#: apart from the sums above).
+UK_WAS_NET_FINANCIAL_LIABILITIES = ("consumer_debt", "student_loan_balance")
+#: Absolute tolerance, in pounds, of the donor identity checks.
+UK_WAS_IDENTITY_TOLERANCE_GBP = 1.0
 UK_WAS_WEALTH_OUTPUT_COLUMNS = (
     "owned_land",
     "property_wealth",
@@ -115,8 +179,25 @@ UK_WAS_ENGINE_PREDICTOR_ENTITIES: Mapping[str, str] = {
     "employment_income": "person",
     "self_employment_income": "person",
     "capital_income": "person",
-    "is_renting": "household",
 }
+
+#: WAS round-8 ``Ten1R8`` owner codes onto the shared tenure categories: 1 owns
+#: outright, 2 is buying with a mortgage and 3 is part rent, part mortgage
+#: (UKDS SN 7215 data dictionary). Codes 4 (rented) and 5 (rent-free) split on
+#: ``DVPriRntR8``: 1 is a private renting household, anything else rents from a
+#: council or housing association (the 1,726 rented rows with ``DVPriRntR8``
+#: 2 are exactly the ``LLordR8`` 1 and 2 rows of the pinned tab). Any other
+#: code is unclassified, counted in the receipt and read as private rent, the
+#: FRS spine's own fallback for an unknown tenure.
+WAS_OWNER_TENURE_CODES: Mapping[int, str] = MappingProxyType(
+    {
+        1: UK_TENURE_OWNED_OUTRIGHT,
+        2: UK_TENURE_OWNED_WITH_MORTGAGE,
+        3: UK_TENURE_OWNED_WITH_MORTGAGE,
+    }
+)
+WAS_RENTED_TENURE_CODES: tuple[int, ...] = (4, 5)
+WAS_PRIVATE_RENT_CODE = 1
 
 #: UKDS negative sentinel codes observed in the round-8 household tab.
 #: Recoded to zero ONLY for columns whose domain cannot be negative and
@@ -125,7 +206,7 @@ UK_WAS_ENGINE_PREDICTOR_ENTITIES: Mapping[str, str] = {
 #: unasked in the WAS household file; the predictor-quality question is
 #: registered for the end-of-workstream revisit on microcosm#145).
 #: DVPriRntR8's -9 is structural not-applicable (not a private renter), so
-#: the is_renting == 1 mapping is already correct; genuinely negative
+#: the private-renter reading (code 1) is already correct; genuinely negative
 #: domains (net financial wealth, self-employment losses, BHC income) are
 #: never recoded. Signed difference vs the incumbent, which trains on the
 #: raw sentinel values.
@@ -168,6 +249,11 @@ _RAW_TO_CLEAN = {
     "HFINWNTR8_exSLC_Sum": "net_financial_wealth_exsl",
     "HFINWR8_SUM": "gross_financial_wealth",
     "HMortGR8": "mortgage_debt",
+    # Diagnostics only (microcosm#1063): the main-residence mortgage and the
+    # debt on other property, so the receipt can say what the tenure rule on
+    # ``mortgage_debt`` leaves out. Neither is a predictor or an output.
+    "TotMortR8": "main_residence_mortgage",
+    "OthMortR8_sum": "other_property_mortgage",
     "Ten1R8": "tenure_code",
     "DVhvalueR8": "main_residence_value",
     "DVHseValR8_sum": "other_residential_property_value",
@@ -182,15 +268,24 @@ _RAW_TO_CLEAN = {
 
 @dataclass
 class UKWASWealthResult:
-    """Transformed frame and donor-support clip receipt."""
+    """Transformed frame, donor-support clip receipt and coherence receipts."""
 
     frame: Frame
     support_clip: UKSupportClipReceipt
+    #: Tenure coherence of the housing columns: the two structural-zero counts
+    #: the stage-health gate requires to be zero, and the donor comparisons.
+    tenure_coherence: Mapping[str, object] = field(default_factory=dict)
+    #: Rows on which a derived total departs from its components (zero by
+    #: construction unless the support clip moved a total) and the rows the
+    #: donor-range cap adjusted.
+    identities: Mapping[str, object] = field(default_factory=dict)
 
     def evidence(self) -> dict[str, object]:
         return {
             "stage": UK_WAS_WEALTH_STAGE_NAME,
             "support_clip": self.support_clip.evidence(),
+            "tenure_coherence": dict(self.tenure_coherence),
+            "identities": dict(self.identities),
         }
 
 
@@ -240,7 +335,7 @@ class UKWASWealthStageTransform:
                 )
             )
         )
-        _assert_debt_segment_predictors(self.stage)
+        _assert_chain_declaration(self.stage)
         household_predictors = recipient_predictors(frame, self.engine)
         imputation = impute_was_wealth(
             donor,
@@ -249,10 +344,21 @@ class UKWASWealthStageTransform:
             n_estimators=_qrf_n_estimators(self.stage),
         )
         self.last_fit_weight_records = imputation.fit_weight_records
-        clip_result = support_clip_to_donor(imputation.draws, donor)
+        capped, capped_rows = cap_derived_totals_to_donor_range(imputation.draws, donor)
+        clip_result = support_clip_to_donor(capped, donor)
         household_draws = clip_result.clipped
+        identities = {
+            **wealth_identity_violations(household_draws),
+            **capped_rows,
+        }
         household_draws["num_vehicles"] = (
             np.rint(household_draws["num_vehicles"]).clip(lower=0).astype("int64")
+        )
+        tenure_coherence = tenure_coherence_receipt(
+            donor=donor,
+            recipient_category=household_predictors[UK_WAS_TENURE_CATEGORY_COLUMN],
+            recipient_draws=household_draws,
+            recipient_weights=frame.weights_for("household").values,
         )
         person = frame.table("person").copy()
         household = frame.table("household").copy()
@@ -281,6 +387,8 @@ class UKWASWealthStageTransform:
         self.last_result = UKWASWealthResult(
             frame=result,
             support_clip=clip_result.receipt,
+            tenure_coherence=tenure_coherence,
+            identities=identities,
         )
         return result
 
@@ -317,7 +425,10 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
     for column in _SENTINEL_RECODE_COLUMNS:
         values = cleaned[column]
         cleaned[column] = values.where(~values.isin(_SENTINEL_CODES), 0)
-    cleaned["is_renting"] = cleaned["private_rent_code"] == 1
+    # Private renting households, the flag the Lifetime ISA stage reads on
+    # both sides (``was_lisa``); this stage's own tenure predictors are the
+    # four-way flags below.
+    cleaned["is_renting"] = cleaned["private_rent_code"] == WAS_PRIVATE_RENT_CODE
     # Private pension wealth other than current-employment defined-benefit
     # entitlements (WAS total private pension wealth less DVValDBT_SCAPE;
     # defined-benefit-type components are valued at the SCAPE discount rate,
@@ -344,18 +455,109 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
     cleaned["consumer_debt"] = (
         cleaned["gross_financial_wealth"] - cleaned["net_financial_wealth_exsl"]
     ).clip(lower=0)
-    cleaned["has_mortgage_tenure"] = cleaned["tenure_code"].isin({2, 3})
+    cleaned[UK_WAS_TENURE_CATEGORY_COLUMN] = was_tenure_category(
+        cleaned["tenure_code"], cleaned["private_rent_code"]
+    )
+    cleaned["tenure_code_unclassified"] = ~cleaned["tenure_code"].isin(
+        {*WAS_OWNER_TENURE_CODES, *WAS_RENTED_TENURE_CODES}
+    )
+    for predictor in UK_WAS_TENURE_PREDICTORS:
+        cleaned[predictor] = cleaned[UK_WAS_TENURE_CATEGORY_COLUMN] == (
+            predictor.removeprefix("tenure_")
+        )
+    cleaned[UK_WAS_OTHER_PROPERTY_COLUMN] = _donor_remainder(
+        cleaned,
+        total="property_wealth",
+        components=UK_WAS_DERIVED_TOTALS["property_wealth"][:-1],
+    )
+    cleaned[UK_WAS_OTHER_FINANCIAL_COLUMN] = _donor_remainder(
+        cleaned,
+        total="gross_financial_wealth",
+        components=UK_WAS_DERIVED_TOTALS["gross_financial_wealth"][:-1],
+    )
+    _assert_donor_net_financial_identity(cleaned)
     cleaned["region"] = cleaned["region_code"].map(REGIONS)
     return cleaned[
         [
             *UK_WAS_WEALTH_PREDICTORS,
             "weight",
+            UK_WAS_TENURE_CATEGORY_COLUMN,
+            "tenure_code_unclassified",
+            "is_renting",
             "corporate_wealth_excl_isa",
-            "has_mortgage_tenure",
+            *UK_WAS_INTERNAL_COMPONENT_COLUMNS,
+            "main_residence_mortgage",
+            "other_property_mortgage",
             *UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS,
             "student_loan_balance",
         ]
     ]
+
+
+def was_tenure_category(
+    tenure_code: pd.Series, private_rent_code: pd.Series
+) -> pd.Series:
+    """The donor's tenure category from ``Ten1R8`` and ``DVPriRntR8``."""
+
+    code = pd.to_numeric(tenure_code, errors="coerce")
+    private = pd.to_numeric(private_rent_code, errors="coerce") == WAS_PRIVATE_RENT_CODE
+    category = pd.Series(UK_TENURE_PRIVATE_RENT, index=tenure_code.index, dtype=object)
+    for owner_code, owner_category in WAS_OWNER_TENURE_CODES.items():
+        category[code == owner_code] = owner_category
+    rented = code.isin(WAS_RENTED_TENURE_CODES)
+    category[rented & ~private] = UK_TENURE_SOCIAL_RENT
+    return category
+
+
+def recipient_tenure_category(tenure_type: pd.Series) -> pd.Series:
+    """The recipient's tenure category from the frame's ``tenure_type``."""
+
+    names = tenure_type.map(_enum_name)
+    unknown = sorted(set(names) - set(UK_TENURE_TYPE_TO_CATEGORY))
+    if unknown:
+        raise ValueError(
+            f"recipient tenure_type carries values outside the engine's enum: {unknown}."
+        )
+    return names.map(UK_TENURE_TYPE_TO_CATEGORY)
+
+
+def _donor_remainder(
+    cleaned: pd.DataFrame, *, total: str, components: Sequence[str]
+) -> pd.Series:
+    """A published total less its listed components, refused when negative.
+
+    The remainder becomes a drawn component, so a donor row whose components
+    exceed its total would make the total underivable from its parts.
+    """
+
+    remainder = cleaned[total] - cleaned[list(components)].sum(axis=1)
+    short = remainder < -UK_WAS_IDENTITY_TOLERANCE_GBP
+    if short.any():
+        raise ValueError(
+            f"WAS donor {total} is below the sum of {list(components)} on "
+            f"{int(short.sum())} row(s); the total cannot be derived from its "
+            "components."
+        )
+    return remainder.clip(lower=0.0)
+
+
+def _assert_donor_net_financial_identity(cleaned: pd.DataFrame) -> None:
+    """``net = gross - consumer_debt - student_loan_balance`` on every donor row."""
+
+    derived = (
+        cleaned["gross_financial_wealth"]
+        - cleaned["consumer_debt"]
+        - cleaned["student_loan_balance"]
+    )
+    off = (derived - cleaned["net_financial_wealth"]).abs() > (
+        UK_WAS_IDENTITY_TOLERANCE_GBP
+    )
+    if off.any():
+        raise ValueError(
+            "WAS donor net financial wealth is not gross financial wealth less "
+            f"consumer debt and the student loan balance on {int(off.sum())} "
+            "row(s)."
+        )
 
 
 def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
@@ -416,13 +618,13 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
             raise KeyError(f"recipient household table is missing {predictor!r}.")
         result[predictor] = household[predictor].to_numpy()
     result["region"] = result["region"].map(_enum_name).replace(REGION_REMAP)
-    result["is_renting"] = result["is_renting"].astype(bool)
     if "tenure_type" not in household.columns:
         raise KeyError("recipient household table is missing 'tenure_type'.")
-    result["has_mortgage_tenure"] = (
-        household["tenure_type"].map(_enum_name) == "OWNED_WITH_MORTGAGE"
-    )
-    return result.loc[:, (*UK_WAS_WEALTH_PREDICTORS, "has_mortgage_tenure")]
+    category = recipient_tenure_category(household["tenure_type"])
+    for predictor in UK_WAS_TENURE_PREDICTORS:
+        result[predictor] = (category == predictor.removeprefix("tenure_")).to_numpy()
+    result[UK_WAS_TENURE_CATEGORY_COLUMN] = category.to_numpy()
+    return result.loc[:, (*UK_WAS_WEALTH_PREDICTORS, UK_WAS_TENURE_CATEGORY_COLUMN)]
 
 
 @dataclass(frozen=True)
@@ -435,7 +637,17 @@ class UKWASWealthImputationResult:
     segment_seeds: tuple[int, ...] = ()
 
 
-def was_wealth_segment_seeds(seed: int, segments: int = 4) -> tuple[int, ...]:
+#: The chain's segments, each with its own model and child seed:
+#: 1 land; 2 main residence (owner stratum); 3 the other property components;
+#: 4 pension and share-like wealth; 5 the financial components, vehicles and
+#: the student loan balance; 6 mortgage debt (mortgaged stratum); 7 consumer
+#: debt. Totals are derived between segments from the components drawn so far.
+UK_WAS_CHAIN_SEGMENTS = 7
+
+
+def was_wealth_segment_seeds(
+    seed: int, segments: int = UK_WAS_CHAIN_SEGMENTS
+) -> tuple[int, ...]:
     """Derive one independent RNG root per chain segment from the stage seed.
 
     :meth:`RegimeGatedQRF.start_chain` spawns its fit and draw streams from
@@ -445,16 +657,14 @@ def was_wealth_segment_seeds(seed: int, segments: int = 4) -> tuple[int, ...]:
     licensed donor that coupling collapsed P(shares > 0 | property_wealth = 0)
     to 0.011 against 0.055 observed; the production child seeds recover 0.039
     (hold-out receipt re-run with exactly this derivation). The declared stage
-    seed stays the root and the children are deterministic.
+    seed stays the root and the children are deterministic; ``spawn`` is
+    prefix-stable, so the first ``k`` seeds do not depend on ``segments``.
     """
 
     return tuple(
         int(child.generate_state(1, dtype=np.uint32)[0])
         for child in np.random.SeedSequence(int(seed)).spawn(int(segments))
     )
-
-
-UK_WAS_CHAIN_SEGMENTS = 4
 
 
 def impute_was_wealth(
@@ -467,10 +677,16 @@ def impute_was_wealth(
 ) -> UKWASWealthImputationResult:
     """Fit segmented checkpointed QRF chains and draw WAS wealth outputs.
 
-    ``segments`` runs only the first *k* chain segments (a test seam: the
-    fourth, debt, segment draws from the fourth child seed, so the first three
-    segments' draws are identical whether or not it runs, and the E5 columns
-    stay byte-equal by construction).
+    The targets of ``UK_WAS_STRATIFIED_TARGETS`` are fitted on the donors of
+    their tenure stratum and drawn for the recipients of the same stratum
+    only; every other recipient holds zero by rule. The totals of
+    ``UK_WAS_DERIVED_TOTALS`` and ``net_financial_wealth`` are never drawn:
+    each is computed from its drawn components, so the accounting identities
+    the donor satisfies hold on every recipient.
+
+    ``segments`` runs only the first *k* chain segments (a test seam: each
+    segment draws from its own child seed, so the earlier segments' draws are
+    identical whether or not the later ones run).
     """
 
     from microcosm.fit import RegimeGatedQRF
@@ -479,10 +695,25 @@ def impute_was_wealth(
         raise ValueError(
             f"segments must be between 1 and {UK_WAS_CHAIN_SEGMENTS}, got {segments!r}."
         )
+    for table, side in ((donor, "donor"), (recipient_predictor_frame, "recipient")):
+        if UK_WAS_TENURE_CATEGORY_COLUMN not in table.columns:
+            raise KeyError(
+                f"WAS {side} table is missing {UK_WAS_TENURE_CATEGORY_COLUMN!r}."
+            )
+    donor_category = donor[UK_WAS_TENURE_CATEGORY_COLUMN].astype(str).to_numpy()
+    recipient_category = (
+        recipient_predictor_frame[UK_WAS_TENURE_CATEGORY_COLUMN].astype(str).to_numpy()
+    )
 
     donor_encoded, recipient_encoded, encoded_predictors = encode_qrf_predictor_pair(
         donor, recipient_predictor_frame
     )
+    # The tenure rule on the donor's conditioning copies: a later target is
+    # fitted on values the recipients can hold. ``mortgage_debt`` is all of the
+    # household's mortgages (HMortGR8), so donors off a mortgaged tenure carry
+    # mortgages on other property; the stage receipt records the mass.
+    for target, categories in UK_WAS_STRATIFIED_TARGETS.items():
+        donor_encoded.loc[~np.isin(donor_category, categories), target] = 0.0
     segment_seeds = was_wealth_segment_seeds(seed)
     segment_models = iter(
         RegimeGatedQRF(n_estimators=n_estimators, seed=segment_seed)
@@ -491,22 +722,44 @@ def impute_was_wealth(
     raw = pd.DataFrame(index=recipient_encoded.index)
     fit_records: list[FitWeightRecord] = []
 
-    def run_segment(base_predictors: Sequence[str], targets: Sequence[str]) -> None:
+    def run_segment(
+        base_predictors: Sequence[str],
+        targets: Sequence[str],
+        *,
+        stratum: Sequence[str] | None = None,
+    ) -> None:
         model = next(segment_models)
+        if stratum is None:
+            donor_rows, recipient_rows = donor_encoded, recipient_encoded
+        else:
+            donor_rows = donor_encoded.loc[np.isin(donor_category, stratum)]
+            recipient_rows = recipient_encoded.loc[np.isin(recipient_category, stratum)]
+            if donor_rows.empty:
+                raise ValueError(
+                    f"WAS donor has no household in the tenure stratum "
+                    f"{list(stratum)} that {list(targets)} is fitted on."
+                )
         state = model.start_chain(
-            donor_encoded,
+            donor_rows,
             list(base_predictors),
             list(targets),
             weights="weight",
         )
-        segment_raw = pd.DataFrame(index=recipient_encoded.index)
-        recipient_base = pd.concat(
-            [recipient_encoded.loc[:, list(base_predictors)]],
-            axis=1,
-        )
+        segment_raw = pd.DataFrame(index=recipient_rows.index)
+        recipient_base = recipient_rows.loc[:, list(base_predictors)]
         for target in targets:
+            raw[target] = 0.0
+            if recipient_rows.empty:
+                # No recipient holds the target: nothing is fitted, and the
+                # audit still records the weight kind the chain resolved.
+                fit_records.append(
+                    FitWeightRecord(
+                        f"{UK_WAS_WEALTH_FIT_NAME}:{target}", state.weight_kind
+                    )
+                )
+                continue
             result = model.fit_draw_next(
-                donor_encoded,
+                donor_rows,
                 recipient_base,
                 segment_raw,
                 state=state,
@@ -518,18 +771,42 @@ def impute_was_wealth(
                 )
             )
             segment_raw[target] = result.raw_draw
-            raw[target] = result.raw_draw
+            raw.loc[recipient_rows.index, target] = np.asarray(
+                result.raw_draw, dtype=float
+            )
             state = result.state
 
+    def derive_total(total: str) -> None:
+        raw[total] = raw.loc[:, list(UK_WAS_DERIVED_TOTALS[total])].sum(axis=1)
+
     base = encoded_predictors
-    run_segment(base, ("owned_land", "property_wealth"))
+    run_segment(base, ("owned_land",))
     if segments == 1:
+        return _partial_result(raw, fit_records, segment_seeds)
+    recipient_encoded["owned_land"] = raw["owned_land"]
+    run_segment(
+        (*base, "owned_land"),
+        ("main_residence_value",),
+        stratum=UK_WAS_STRATIFIED_TARGETS["main_residence_value"],
+    )
+    if segments == 2:
+        return _partial_result(raw, fit_records, segment_seeds)
+    recipient_encoded["main_residence_value"] = raw["main_residence_value"]
+    run_segment(
+        (*base, "owned_land", "main_residence_value"),
+        (
+            "other_residential_property_value",
+            "non_residential_property_value",
+            UK_WAS_OTHER_PROPERTY_COLUMN,
+        ),
+    )
+    derive_total("property_wealth")
+    if segments == 3:
         return _partial_result(raw, fit_records, segment_seeds)
     donor_encoded["corporate_wealth"] = donor_encoded["corporate_wealth"].astype(float)
     donor_encoded["private_pension_wealth"] = donor_encoded[
         "private_pension_wealth"
     ].astype(float)
-    recipient_encoded["owned_land"] = raw["owned_land"]
     recipient_encoded["property_wealth"] = raw["property_wealth"]
     # Private pension wealth is drawn first in the position the old folded
     # corporate_wealth (84.7% pension by donor mass) occupied; the share-like
@@ -542,10 +819,8 @@ def impute_was_wealth(
             "stocks_and_shares_isa",
         ),
     )
-    raw["corporate_wealth"] = (
-        raw["corporate_wealth_excl_isa"] + raw["stocks_and_shares_isa"]
-    )
-    if segments == 2:
+    derive_total("corporate_wealth")
+    if segments == 4:
         return _partial_result(raw, fit_records, segment_seeds)
     recipient_encoded["private_pension_wealth"] = raw["private_pension_wealth"]
     recipient_encoded["corporate_wealth"] = raw["corporate_wealth"]
@@ -560,35 +835,55 @@ def impute_was_wealth(
             "corporate_wealth",
         ),
         (
-            "gross_financial_wealth",
-            "net_financial_wealth",
-            "main_residence_value",
-            "other_residential_property_value",
-            "non_residential_property_value",
             "savings",
+            "cash_isa",
+            UK_WAS_OTHER_FINANCIAL_COLUMN,
             "num_vehicles",
             "student_loan_balance",
-            "cash_isa",
         ),
     )
-    if segments == 3:
+    derive_total("gross_financial_wealth")
+    if segments == 5:
         return _partial_result(raw, fit_records, segment_seeds)
     prior_outputs = tuple(
         column
         for column in UK_WAS_WEALTH_OUTPUT_COLUMNS
-        if column not in UK_WAS_DEBT_OUTPUT_COLUMNS
+        if column not in (*UK_WAS_DEBT_OUTPUT_COLUMNS, "net_financial_wealth")
     )
     for output in prior_outputs:
         recipient_encoded[output] = raw[output]
     run_segment(
-        (*base, *UK_WAS_DEBT_SEGMENT_PREDICTORS, *prior_outputs),
-        UK_WAS_DEBT_OUTPUT_COLUMNS,
+        (*base, *prior_outputs),
+        ("mortgage_debt",),
+        stratum=UK_WAS_STRATIFIED_TARGETS["mortgage_debt"],
     )
+    if segments == 6:
+        return _partial_result(raw, fit_records, segment_seeds)
+    recipient_encoded["mortgage_debt"] = raw["mortgage_debt"]
+    run_segment((*base, *prior_outputs, "mortgage_debt"), ("consumer_debt",))
+    raw["net_financial_wealth"] = derived_net_financial_wealth(raw)
     return UKWASWealthImputationResult(
-        draws=raw.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS],
+        draws=raw.loc[:, (*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS)],
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
     )
+
+
+#: Drawn components the stage does not emit, kept beside the outputs so the
+#: totals can be re-derived after the donor-range cap.
+UK_WAS_DRAWN_ONLY_COLUMNS = (
+    "corporate_wealth_excl_isa",
+    *UK_WAS_INTERNAL_COMPONENT_COLUMNS,
+)
+
+
+def derived_net_financial_wealth(draws: pd.DataFrame) -> pd.Series:
+    """Gross financial wealth less the financial liabilities."""
+
+    liabilities = sum(
+        draws[column].clip(lower=0.0) for column in UK_WAS_NET_FINANCIAL_LIABILITIES
+    )
+    return draws["gross_financial_wealth"] - liabilities
 
 
 def _partial_result(
@@ -596,12 +891,111 @@ def _partial_result(
     fit_records: list[FitWeightRecord],
     segment_seeds: tuple[int, ...],
 ) -> UKWASWealthImputationResult:
-    produced = [column for column in UK_WAS_WEALTH_OUTPUT_COLUMNS if column in raw]
+    produced = [
+        column
+        for column in (*UK_WAS_WEALTH_OUTPUT_COLUMNS, *UK_WAS_DRAWN_ONLY_COLUMNS)
+        if column in raw
+    ]
     return UKWASWealthImputationResult(
         draws=raw.loc[:, produced],
         fit_weight_records=tuple(fit_records),
         segment_seeds=segment_seeds,
     )
+
+
+#: Components a derived total gives up, in order, when the sum of donor-valued
+#: draws leaves the donor's range for the total. The remainder goes first; the
+#: main residence and the share-like total are never reduced (each is within
+#: its own donor range, which the total's range contains).
+_UK_WAS_TOTAL_CAP_ORDER: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "property_wealth": (
+            UK_WAS_OTHER_PROPERTY_COLUMN,
+            "non_residential_property_value",
+            "other_residential_property_value",
+            "owned_land",
+        ),
+        "corporate_wealth": ("corporate_wealth_excl_isa", "stocks_and_shares_isa"),
+        "gross_financial_wealth": (
+            UK_WAS_OTHER_FINANCIAL_COLUMN,
+            "cash_isa",
+            "savings",
+        ),
+    }
+)
+
+
+def cap_derived_totals_to_donor_range(
+    draws: pd.DataFrame, donor: pd.DataFrame
+) -> tuple[pd.DataFrame, dict[str, int]]:
+    """Keep every derived total inside the donor's range without breaking it.
+
+    Each component is a donor value, but their sum can pass the donor's
+    largest total. The excess is taken out of the components in the declared
+    order and the total recomputed, so the identity survives where a clip of
+    the total alone would break it. Returns the adjusted draws and the rows
+    adjusted per total (zero on a build whose joint draws stay in range).
+    """
+
+    capped = draws.copy()
+    fired: dict[str, int] = {}
+
+    def reduce(total: str, excess: pd.Series) -> None:
+        remaining = excess.clip(lower=0.0)
+        for component in _UK_WAS_TOTAL_CAP_ORDER[total]:
+            take = np.minimum(remaining, capped[component].clip(lower=0.0))
+            capped[component] = capped[component] - take
+            remaining = remaining - take
+        capped[total] = capped.loc[:, list(UK_WAS_DERIVED_TOTALS[total])].sum(axis=1)
+
+    for total, components in UK_WAS_DERIVED_TOTALS.items():
+        # Recomputed first: a reduced share-like total moves gross financial
+        # wealth with it.
+        capped[total] = capped.loc[:, list(components)].sum(axis=1)
+        maximum = float(pd.to_numeric(donor[total], errors="coerce").max())
+        excess = capped[total] - maximum
+        fired[f"{total}_capped_rows"] = int((excess > 0).sum())
+        if fired[f"{total}_capped_rows"]:
+            reduce(total, excess)
+    net = pd.to_numeric(donor["net_financial_wealth"], errors="coerce")
+    capped["net_financial_wealth"] = derived_net_financial_wealth(capped)
+    above = capped["net_financial_wealth"] - float(net.max())
+    fired["net_financial_wealth_capped_high_rows"] = int((above > 0).sum())
+    if fired["net_financial_wealth_capped_high_rows"]:
+        reduce("gross_financial_wealth", above)
+        capped["net_financial_wealth"] = derived_net_financial_wealth(capped)
+    below = float(net.min()) - capped["net_financial_wealth"]
+    fired["net_financial_wealth_capped_low_rows"] = int((below > 0).sum())
+    if fired["net_financial_wealth_capped_low_rows"]:
+        remaining = below.clip(lower=0.0)
+        for liability in UK_WAS_NET_FINANCIAL_LIABILITIES:
+            take = np.minimum(remaining, capped[liability].clip(lower=0.0))
+            capped[liability] = capped[liability] - take
+            remaining = remaining - take
+        capped["net_financial_wealth"] = derived_net_financial_wealth(capped)
+    return capped, fired
+
+
+def wealth_identity_violations(table: pd.DataFrame) -> dict[str, int]:
+    """Rows on which a total departs from its components, by identity."""
+
+    tolerance = UK_WAS_IDENTITY_TOLERANCE_GBP
+    violations: dict[str, int] = {}
+    for total, components in UK_WAS_DERIVED_TOTALS.items():
+        available = [column for column in components if column in table.columns]
+        if len(available) == len(components):
+            gap = table[total] - table.loc[:, available].sum(axis=1)
+            violations[f"{total}_violation_rows"] = int((gap.abs() > tolerance).sum())
+        else:
+            # The emitted frame carries no remainder column: the total must
+            # still cover the components it does carry.
+            gap = table[total] - table.loc[:, available].sum(axis=1)
+            violations[f"{total}_below_components_rows"] = int((gap < -tolerance).sum())
+    gap = table["net_financial_wealth"] - derived_net_financial_wealth(table)
+    violations["net_financial_wealth_violation_rows"] = int(
+        (gap.abs() > tolerance).sum()
+    )
+    return violations
 
 
 def encode_qrf_predictor_pair(
@@ -614,9 +1008,9 @@ def encode_qrf_predictor_pair(
 
     Mirrors the SPI stage's paired dummy encoding and the incumbent's
     dummy-encoded region. Donor rows with an unmapped region code (the
-    incumbent's absent GOR code 3) become all-zero dummy rows. The
-    predictor list defaults to the WAS wealth set; the E6 has-fuel bridge
-    passes its own.
+    incumbent's absent GOR code 3) become all-zero dummy rows. The tenure
+    category is a label for the strata, not a number, and is left out of the
+    encoded tables; its one-hot flags enter as 0/1 floats.
     """
 
     numeric_predictors = tuple(
@@ -633,10 +1027,10 @@ def encode_qrf_predictor_pair(
     dummies = dummies.reindex(sorted(dummies.columns), axis=1)
 
     def _encode(table: pd.DataFrame, block: pd.DataFrame) -> pd.DataFrame:
-        encoded = table.drop(columns=["region"]).copy()
-        if "is_renting" in encoded.columns:
-            encoded["is_renting"] = encoded["is_renting"].astype(bool).astype(float)
-        for column in UK_WAS_DEBT_SEGMENT_PREDICTORS:
+        encoded = table.drop(
+            columns=["region", UK_WAS_TENURE_CATEGORY_COLUMN], errors="ignore"
+        ).copy()
+        for column in ("is_renting", *UK_WAS_TENURE_PREDICTORS):
             if column in encoded.columns:
                 encoded[column] = encoded[column].astype(bool).astype(float)
         for column in encoded.columns:
@@ -656,6 +1050,132 @@ def encode_qrf_predictor_pair(
         recipient_encoded,
         (*numeric_predictors, *tuple(dummies.columns)),
     )
+
+
+def _weighted_share(mask: np.ndarray, weights: np.ndarray) -> float:
+    total = float(weights.sum())
+    return float(weights[mask].sum() / total) if total > 0.0 else 0.0
+
+
+#: Housing columns whose share of positive values the receipt reports by
+#: tenure on both sides.
+UK_WAS_TENURE_RECEIPT_COLUMNS = (
+    "main_residence_value",
+    "mortgage_debt",
+    "property_wealth",
+    "other_residential_property_value",
+)
+
+
+def tenure_coherence_receipt(
+    *,
+    donor: pd.DataFrame,
+    recipient_category: pd.Series,
+    recipient_draws: pd.DataFrame,
+    recipient_weights: Sequence[float],
+) -> dict[str, object]:
+    """Tenure coherence of the housing columns, donor against recipient.
+
+    The first two counts are the structural zeros the stage-health gate
+    requires: no mortgage debt off a mortgaged tenure and no main-residence
+    value off an owner tenure. The rest compares the recipient frame with the
+    donor at each side's own weights, and records the donor mortgage mass the
+    tenure rule leaves out (mortgages on other property held off a mortgaged
+    tenure, and the remainder such as lifetime mortgages).
+    """
+
+    donor_category = donor[UK_WAS_TENURE_CATEGORY_COLUMN].astype(str).to_numpy()
+    donor_weights = pd.to_numeric(donor["weight"], errors="coerce").to_numpy(float)
+    category = np.asarray(recipient_category.astype(str))
+    weights = np.asarray(recipient_weights, dtype=float)
+    owner = np.isin(category, UK_OWNER_TENURE_CATEGORIES)
+    mortgaged = category == UK_TENURE_OWNED_WITH_MORTGAGE
+    donor_owner = np.isin(donor_category, UK_OWNER_TENURE_CATEGORIES)
+    donor_mortgaged = donor_category == UK_TENURE_OWNED_WITH_MORTGAGE
+
+    def values(table: pd.DataFrame, column: str) -> np.ndarray:
+        return pd.to_numeric(table[column], errors="coerce").fillna(0.0).to_numpy(float)
+
+    main = values(recipient_draws, "main_residence_value")
+    debt = values(recipient_draws, "mortgage_debt")
+    donor_main = values(donor, "main_residence_value")
+    donor_debt = values(donor, "mortgage_debt")
+    donor_debt_mass = float((donor_debt * donor_weights).sum())
+    donor_off_tenure = float((donor_debt * donor_weights)[~donor_mortgaged].sum())
+    positive_share: dict[str, dict[str, dict[str, float]]] = {}
+    for column in UK_WAS_TENURE_RECEIPT_COLUMNS:
+        recipient_positive = values(recipient_draws, column) > 0.0
+        donor_positive = values(donor, column) > 0.0
+        positive_share[column] = {
+            tenure: {
+                "donor": _weighted_share(
+                    donor_positive[donor_category == tenure],
+                    donor_weights[donor_category == tenure],
+                ),
+                "recipient": _weighted_share(
+                    recipient_positive[category == tenure],
+                    weights[category == tenure],
+                ),
+            }
+            for tenure in UK_TENURE_CATEGORIES
+        }
+    return {
+        "mortgage_debt_off_mortgaged_tenure_rows": int(
+            ((debt > 0.0) & ~mortgaged).sum()
+        ),
+        "main_residence_value_off_owner_tenure_rows": int(
+            ((main > 0.0) & ~owner).sum()
+        ),
+        "owner_rows": int(owner.sum()),
+        "owner_rows_without_main_residence_value": int(((main <= 0.0) & owner).sum()),
+        "owner_share_without_main_residence_value": _weighted_share(
+            main[owner] <= 0.0, weights[owner]
+        ),
+        "donor_owner_share_without_main_residence_value": _weighted_share(
+            donor_main[donor_owner] <= 0.0, donor_weights[donor_owner]
+        ),
+        "mortgaged_share_without_mortgage_debt": _weighted_share(
+            debt[mortgaged] <= 0.0, weights[mortgaged]
+        ),
+        "donor_mortgaged_share_without_mortgage_debt": _weighted_share(
+            donor_debt[donor_mortgaged] <= 0.0, donor_weights[donor_mortgaged]
+        ),
+        # Read before the regional property uprating, which moves the main
+        # residence value and leaves the debt alone.
+        "mortgaged_share_debt_above_main_residence_value": _weighted_share(
+            debt[mortgaged] > main[mortgaged], weights[mortgaged]
+        ),
+        "donor_mortgaged_share_debt_above_main_residence_value": _weighted_share(
+            donor_debt[donor_mortgaged] > donor_main[donor_mortgaged],
+            donor_weights[donor_mortgaged],
+        ),
+        "donor_mortgage_debt_mass": donor_debt_mass,
+        "donor_mortgage_debt_mass_off_mortgaged_tenure": donor_off_tenure,
+        "donor_mortgage_debt_share_off_mortgaged_tenure": (
+            donor_off_tenure / donor_debt_mass if donor_debt_mass > 0.0 else 0.0
+        ),
+        "donor_other_property_mortgage_mass_off_mortgaged_tenure": float(
+            (values(donor, "other_property_mortgage").clip(min=0.0) * donor_weights)[
+                ~donor_mortgaged
+            ].sum()
+        ),
+        "donor_main_residence_mortgage_mass_off_mortgaged_tenure": float(
+            (values(donor, "main_residence_mortgage").clip(min=0.0) * donor_weights)[
+                ~donor_mortgaged
+            ].sum()
+        ),
+        "donor_unclassified_tenure_rows": int(
+            donor["tenure_code_unclassified"].astype(bool).sum()
+        ),
+        "donor_rows_by_tenure": {
+            tenure: int((donor_category == tenure).sum())
+            for tenure in UK_TENURE_CATEGORIES
+        },
+        "recipient_rows_by_tenure": {
+            tenure: int((category == tenure).sum()) for tenure in UK_TENURE_CATEGORIES
+        },
+        "positive_share_by_tenure": positive_share,
+    }
 
 
 def support_clip_to_donor(
@@ -751,17 +1271,40 @@ def _donor_artifact(stage: SourceStageSpec) -> Mapping[str, Any]:
     )
 
 
-def _assert_debt_segment_predictors(stage: SourceStageSpec) -> None:
-    """The chain op must declare exactly the debt segment's extra predictors."""
+def _assert_chain_declaration(stage: SourceStageSpec) -> None:
+    """The chain op must declare the strata and the derived totals the run uses."""
 
     operation = next(
         op for op in stage.operations if op.kind == "fit_weighted_qrf_chain"
     )
-    declared = tuple(operation.parameters.get("debt_segment_predictors", ()))
-    if declared != UK_WAS_DEBT_SEGMENT_PREDICTORS:
+    declared_strata = {
+        str(target): tuple(categories)
+        for target, categories in dict(
+            operation.parameters.get("stratified_targets", {})
+        ).items()
+    }
+    if declared_strata != dict(UK_WAS_STRATIFIED_TARGETS):
         raise ValueError(
-            "was_wealth debt_segment_predictors drifted: manifest declares "
-            f"{declared!r}, runtime uses {UK_WAS_DEBT_SEGMENT_PREDICTORS!r}."
+            "was_wealth stratified_targets drifted: manifest declares "
+            f"{declared_strata!r}, runtime uses {dict(UK_WAS_STRATIFIED_TARGETS)!r}."
+        )
+    declared_totals = {
+        str(total): tuple(components)
+        for total, components in dict(
+            operation.parameters.get("derived_totals", {})
+        ).items()
+    }
+    runtime_totals = {
+        **dict(UK_WAS_DERIVED_TOTALS),
+        "net_financial_wealth": (
+            "gross_financial_wealth",
+            *(f"-{column}" for column in UK_WAS_NET_FINANCIAL_LIABILITIES),
+        ),
+    }
+    if declared_totals != runtime_totals:
+        raise ValueError(
+            "was_wealth derived_totals drifted: manifest declares "
+            f"{declared_totals!r}, runtime uses {runtime_totals!r}."
         )
 
 

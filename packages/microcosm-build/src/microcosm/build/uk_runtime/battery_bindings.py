@@ -1675,6 +1675,9 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "trip_rates_period_value",
                 "maximum_user_share_deviation",
                 "maximum_trip_rate_deviation",
+                # #1063 wealth_coherence check: the reviewed excess of owner
+                # households without a main-residence value over the donor's.
+                "maximum_owner_share_without_main_residence_excess",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

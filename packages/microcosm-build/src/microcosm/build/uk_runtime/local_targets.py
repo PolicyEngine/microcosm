@@ -17,6 +17,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.tenure_constants import (
+    UK_TENURE_OWNED_OUTRIGHT,
+    UK_TENURE_OWNED_WITH_MORTGAGE,
+    UK_TENURE_PRIVATE_RENT,
+    UK_TENURE_SOCIAL_RENT,
+    UK_TENURE_TYPE_TO_CATEGORY,
+)
+
 AREA_TYPES = ("constituency", "la")
 AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
     "constituency": "constituency",
@@ -45,6 +53,13 @@ LA_EXTRA_METRICS = (
 #: the engine enum, so it binds the Welsh cells that publish it. Appended
 #: last, so the positional metric indices of A-H are unchanged.
 COUNCIL_TAX_BANDS = tuple("ABCDEFGHI")
+#: Local tenure metric -> the shared tenure category it counts, in matrix order.
+_TENURE_METRIC_CATEGORIES = {
+    "tenure/owned_outright": UK_TENURE_OWNED_OUTRIGHT,
+    "tenure/owned_mortgage": UK_TENURE_OWNED_WITH_MORTGAGE,
+    "tenure/private_rent": UK_TENURE_PRIVATE_RENT,
+    "tenure/social_rent": UK_TENURE_SOCIAL_RENT,
+}
 COUNTRY_TO_REGION = {
     "England": "SOUTH_EAST",
     "Scotland": "SCOTLAND",
@@ -310,16 +325,11 @@ def compute_household_metrics(
         matrix["ons/equiv_housing_costs"] = housing_costs
 
         tenure_type = _values(_calculate(sim, "tenure_type", period))
-        matrix["tenure/owned_outright"] = (tenure_type == "OWNED_OUTRIGHT").astype(
-            float
+        tenure_category = (
+            pd.Series(tenure_type).map(UK_TENURE_TYPE_TO_CATEGORY).to_numpy()
         )
-        matrix["tenure/owned_mortgage"] = (tenure_type == "OWNED_WITH_MORTGAGE").astype(
-            float
-        )
-        matrix["tenure/private_rent"] = (tenure_type == "RENT_PRIVATELY").astype(float)
-        matrix["tenure/social_rent"] = (
-            (tenure_type == "RENT_FROM_COUNCIL") | (tenure_type == "RENT_FROM_HA")
-        ).astype(float)
+        for metric, category in _TENURE_METRIC_CATEGORIES.items():
+            matrix[metric] = (tenure_category == category).astype(float)
 
         is_private_renter = (tenure_type == "RENT_PRIVATELY").astype(float)
         benunit_rent = _values(_calculate(sim, "benunit_rent", period))

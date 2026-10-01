@@ -89,6 +89,7 @@ UK_LOCAL_GATE_SCOPE = (
 
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
+    "uk_stage_was_wealth_coherence",
     "uk_stage_was_lisa_support",
     "uk_stage_nts_bus_travel_support",
     "uk_stage_nts_bus_travel_facts",

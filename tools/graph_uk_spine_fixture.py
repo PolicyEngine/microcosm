@@ -665,6 +665,7 @@ def _was_person_donor() -> pd.DataFrame:
 
 def _was_donor() -> pd.DataFrame:
     rows = np.arange(_DONOR_ROWS, dtype=float)
+    position = rows.astype(int)
     lisa_totals = (
         _was_person_donor()
         .groupby("CASER8")["DVFLISAvR8"]
@@ -672,47 +673,89 @@ def _was_donor() -> pd.DataFrame:
         .reindex(rows + 1.0, fill_value=0.0)
         .to_numpy()
     )
+    # Tenure in the round-8 codebook: 1 owns outright, 2 buys with a mortgage,
+    # 3 part rent / part mortgage, 4 rents, 5 lives rent-free. DVPriRntR8 is 1
+    # for a private renting household, 2 for a council or housing-association
+    # tenant and -9 (not applicable) for owners.
+    tenure = np.take([1, 2, 3, 4, 4, 5], position % 6)
+    owner = np.isin(tenure, [1, 2, 3])
+    mortgaged = np.isin(tenure, [2, 3])
+    private_rent = np.where(owner, -9, np.where(position % 6 == 4, 2, 1))
+    # The accounting identities of the real tab hold on every row: the
+    # property total is the sum of the property values, gross financial
+    # wealth covers the listed assets, and net is gross less the liabilities.
+    main_residence = np.where(owner, 100_000.0 + rows * 2_000.0, 0.0)
+    other_houses = np.where(position % 3 == 0, 1_000.0 + rows * 50.0, 0.0)
+    buildings = np.where(position % 4 == 0, 3_000.0 + rows * 60.0, 0.0)
+    land = np.where(position % 5 == 0, 10.0 + rows, 0.0)
+    other_property = np.where(position % 7 == 0, 500.0 + rows * 5.0, 0.0)
+    employee_shares = 1.0 + rows
+    uk_shares = 3.0 + rows
+    stocks_isa = 5.0 + rows
+    cash_isa = 7.0 + rows
+    collectives = 9.0 + rows
+    savings = 500.0 + rows * 20.0
+    gross_financial = (
+        savings
+        + cash_isa
+        + stocks_isa
+        + employee_shares
+        + uk_shares
+        + collectives
+        + 30.0
+        + rows
+    )
+    consumer_debt = (position % 5) * 40.0
+    student_loans = np.where(position % 3 == 1, 5_000.0 + rows * 5.0, 0.0)
+    main_mortgage = np.where(mortgaged, 10_000.0 + rows * 100.0, 0.0)
+    # A mortgage on other property, held off a mortgaged tenure by a few
+    # owners outright and renters, as on the real tab.
+    other_mortgage = np.where(
+        ~mortgaged & (other_houses > 0.0) & (position % 2 == 0), 2_000.0 + rows, 0.0
+    )
     return pd.DataFrame(
         {
             "CASER8": rows + 1.0,
             "DVFLISAVR8_aggr": lisa_totals,
             "R8xshhwgt": 1.0 + rows % 7 / 10.0,
-            "DVLUKValR8_sum": 10.0 + rows,
-            "DVPropertyR8": 20_000.0 + rows * 500.0,
-            "DVFESHARESR8_aggr": 1.0 + rows,
-            "DVFShUKVR8_aggr": 3.0 + rows,
-            "DVIISAVR8_aggR": 5.0 + rows,
-            "DVCISAVR8_aggr": 7.0 + rows,
-            "DVFCollVR8_aggr": 9.0 + rows,
+            "DVLUKValR8_sum": land,
+            "DVPropertyR8": main_residence
+            + other_houses
+            + buildings
+            + land
+            + other_property,
+            "DVFESHARESR8_aggr": employee_shares,
+            "DVFShUKVR8_aggr": uk_shares,
+            "DVIISAVR8_aggR": stocks_isa,
+            "DVCISAVR8_aggr": cash_isa,
+            "DVFCollVR8_aggr": collectives,
             "totalpenr8_aggr": 100.0 + rows * 10.0,
             "dvvaldbt_scaper8_aggr": 40.0 + rows,
-            "NumAdultR8": 1 + rows.astype(int) % 3,
-            "NumCh18R8": rows.astype(int) % 3,
+            "NumAdultR8": 1 + position % 3,
+            "NumCh18R8": position % 3,
             "DVGIPPENR8_AGGR": 11.0 + rows,
             "DVGISER8_AGGR": 13.0 + rows,
             "DVGIINVR8_aggr": 15.0 + rows,
             "DVGIEMPR8_AGGR": 17.0 + rows,
-            "HBedRmR8": 1 + rows.astype(int) % 5,
-            "GORR8": np.take([8, 11, 12, 1], rows.astype(int) % 4),
-            "DVPriRntR8": 1 + rows.astype(int) % 2,
+            "HBedRmR8": 1 + position % 5,
+            "GORR8": np.take([8, 11, 12, 1], position % 4),
+            "DVPriRntR8": private_rent,
             "CTAmtR8": 900.0 + rows * 10.0,
-            "HFINWNTR8_Sum": -50.0 + rows * 4.0,
-            "HFINWNTR8_exSLC_Sum": 20.0 + rows - rows % 5,
-            "HMortGR8": np.where(
-                np.isin(np.take([1, 2, 3, 4], rows.astype(int) % 4), [2, 3]),
-                10_000.0 + rows * 100.0,
-                0.0,
-            ),
-            "Ten1R8": np.take([1, 2, 3, 4], rows.astype(int) % 4),
-            "HFINWR8_SUM": 30.0 + rows,
-            "DVhvalueR8": 100_000.0 + rows * 2_000.0,
-            "DVHseValR8_sum": 1_000.0 + rows * 50.0,
-            "DVBlDValR8_sum": 3_000.0 + rows * 60.0,
+            "HFINWNTR8_Sum": gross_financial - consumer_debt - student_loans,
+            "HFINWNTR8_exSLC_Sum": gross_financial - consumer_debt,
+            "HMortGR8": main_mortgage + other_mortgage,
+            "TotMortR8": main_mortgage,
+            "OthMortR8_sum": other_mortgage,
+            "Ten1R8": tenure,
+            "HFINWR8_SUM": gross_financial,
+            "DVhvalueR8": main_residence,
+            "DVHseValR8_sum": other_houses,
+            "DVBlDValR8_sum": buildings,
             "DVTotinc_bhcR8": 20_000.0 + rows * 1_000.0,
-            "DVSaValR8_aggr": 500.0 + rows * 20.0,
-            "vcarnr8": rows.astype(int) % 4,
-            "Tot_LosR8_aggr": 9_000.0 + rows * 10.0,
-            "Tot_los_exc_SLCR8_aggr": 4_000.0 + rows * 5.0,
+            "DVSaValR8_aggr": savings,
+            "vcarnr8": position % 4,
+            "Tot_LosR8_aggr": 9_000.0 + rows * 10.0 + student_loans,
+            "Tot_los_exc_SLCR8_aggr": 9_000.0 + rows * 10.0,
         }
     )
 

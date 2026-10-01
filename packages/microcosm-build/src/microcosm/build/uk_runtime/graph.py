@@ -234,6 +234,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "region"),
             ("household", "main_residence_value"),
             ("household", "property_wealth"),
+            ("household", "owned_land"),
+            ("household", "other_residential_property_value"),
+            ("household", "non_residential_property_value"),
             ("household", "household_support_channel"),
         }
     ),
@@ -648,7 +651,14 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("household", "household_local_bus_trips", "float64"),
     ),
     "regional_property_uprating": _cells(
-        "household", ("main_residence_value", "property_wealth")
+        "household",
+        (
+            "main_residence_value",
+            "property_wealth",
+            "owned_land",
+            "other_residential_property_value",
+            "non_residential_property_value",
+        ),
     ),
     "lcfs_consumption": (
         *_cells(
@@ -1355,7 +1365,7 @@ def uk_spine_operation_inventory(
                 "artifact_outputs": [output.name for output in node.artifact_outputs],
                 "randomness": "Existing literal/child seeds and draw order are preserved inside the registered transform.",
                 "coupling": (
-                    "Donor and recipient region encoding, four segmented fit/draw chains and their child seeds remain coupled."
+                    "Donor and recipient region and tenure encoding, seven segmented fit/draw chains with their child seeds, the tenure strata and the totals derived from drawn components remain coupled."
                     if stage.stage == "was_wealth"
                     else "Source assembly, declared household sample selection and same-kind mass normalization execute once in CREATE."
                     if stage.stage == "frs_spine"

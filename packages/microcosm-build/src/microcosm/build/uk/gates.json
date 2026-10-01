@@ -99,6 +99,7 @@
           "num_vehicles",
           "other_residential_property_value",
           "owned_land",
+          "private_pension_wealth",
           "property_wealth",
           "savings",
           "stocks_and_shares_isa",
@@ -116,6 +117,7 @@
           "num_vehicles": 0,
           "other_residential_property_value": 0,
           "owned_land": 0,
+          "private_pension_wealth": 0,
           "property_wealth": 0,
           "savings": 0,
           "stocks_and_shares_isa": 0,
@@ -133,13 +135,27 @@
           "num_vehicles": 0,
           "other_residential_property_value": 0,
           "owned_land": 0,
+          "private_pension_wealth": 0,
           "property_wealth": 0,
           "savings": 0,
           "stocks_and_shares_isa": 0,
           "student_loan_balance": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+      "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. private_pension_wealth joined the gated columns with microcosm#1063 (it had been an output without an allowance); the derived totals are clipped like every other column, and a clipped total would also break its identity in the wealth_coherence gate."
+    },
+    {
+      "id": "uk_stage_was_wealth_coherence",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "was_wealth",
+        "check": "wealth_coherence",
+        "maximum_owner_share_without_main_residence_excess": 0.005
+      },
+      "notes": "Stage-time coherence gate over the WAS wealth receipt (microcosm#1063). Zero rows may carry mortgage_debt off the mortgaged tenure or main_residence_value off an owner tenure: both columns are fitted and drawn inside their tenure stratum, so a non-zero count is a defect of the stage, not of a draw. Every derived total must equal its components on every row (property_wealth, corporate_wealth, gross_financial_wealth, and net_financial_wealth as gross less consumer debt and the student loan balance); the stage derives them, so only a support clip of a total can open a gap, and the support gate allows none. The weighted share of owner households without a main-residence value may exceed the donor's own share by at most the reviewed excess (the donor's share is zero on the pinned round-8 tab, where every owner reports a value). The receipt's donor comparisons (positive shares by tenure, the mortgaged share owing more than the main-residence value, the donor mortgage mass the tenure rule leaves out) and the rows the donor-range cap adjusted are recorded in the details and carry no threshold."
     },
     {
       "id": "uk_stage_was_lisa_support",

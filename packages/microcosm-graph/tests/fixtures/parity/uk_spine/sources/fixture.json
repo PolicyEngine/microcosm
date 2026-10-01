@@ -4353,7 +4353,7 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior.",
+      "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior. The factor is read off the main residence and has always scaled the property total; since microcosm#1063 it scales the total's other components in the frame as well (land, other houses, buildings), so an owner's property_wealth stays the sum of its components after the uprating. Mortgage debt is never uprated.",
       "operations": [
         {
           "factor": "avg_house_price / unweighted_mean(main_residence_value | region, >0)",
@@ -4373,7 +4373,10 @@
       "outputs": [],
       "rewrites": [
         "main_residence_value",
-        "property_wealth"
+        "property_wealth",
+        "owned_land",
+        "other_residential_property_value",
+        "non_residential_property_value"
       ],
       "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
       "stage": "regional_property_uprating",
@@ -5095,8 +5098,7 @@
             "private_pension_income",
             "employment_income",
             "self_employment_income",
-            "capital_income",
-            "is_renting"
+            "capital_income"
           ]
         },
         {
@@ -5226,30 +5228,35 @@
         "mortgage_debt",
         "consumer_debt"
       ],
-      "notes": "Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. The debt segment (fourth chain segment, fourth child seed) reads WAS round-8 derived variables HMortGR8 (total outstanding mortgage debt), HFINWNTR8_exSLC_Sum (net financial wealth excluding student loans; gross less it is the non-student-loan financial liabilities) and Ten1R8 (tenure; codes 2 and 3 are buying with a mortgage and part own/part rent, confirmed by the I1 audit of the pinned tab); UKDS SN 7215 documentation is the codebook. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent's dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8's -9 is structural not-applicable so the is_renting mapping is unchanged; genuinely negative domains are never recoded.",
+      "notes": "Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; private pension wealth (WAS total private pension wealth less the current defined-benefit component; DB-type components at the SCAPE rate, money-purchase components at reported fund values) is drawn as its own output private_pension_wealth and no longer folded into corporate_wealth, which keeps only the share-like holdings - pension rights are disregarded capital in every means test (UC Regs 2013 Sch 10 para 10 and the HB/JSA/ESA/IS/SPC parallels; uk-data#452) - and the downstream chain segment conditions on both components; each chain segment starts its own fit and draw RNG streams from a child seed derived deterministically from the declared seed (start_chain respawns from the model seed on every call, so one shared model coupled the k-th target of every segment); corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. Tenure enters every chain segment as one four-way category built the same way on both sides (microcosm#1063): the donor's from Ten1R8 and DVPriRntR8 (owned outright; buying with a mortgage or part rent, part mortgage; rented or rent-free from a private landlord; rented from a council or housing association), the recipient's from the frame's tenure_type (council and housing association together), so the stage reads no engine tenure formula. Two columns are structural in tenure and are fitted and drawn inside their stratum only, zero by rule elsewhere: main_residence_value on the owner tenures (every WAS owner has a positive value and no renter has one) and mortgage_debt on the mortgaged tenure. mortgage_debt is HMortGR8, all of the household's mortgages, so the rule leaves out the mortgages on other property that donors off a mortgaged tenure hold (about a tenth of the donor's mortgage mass, recorded in the receipt against TotMortR8 and OthMortR8_sum, which are read for that record only); the donor's conditioning copy carries the same rule, so consumer_debt is fitted on values recipients can hold. Totals are not drawn: property_wealth is the sum of land, the main residence, other houses, buildings and a drawn remainder (buy-to-let, overseas and other property), gross_financial_wealth is savings, the cash ISA, the share-like holdings and a drawn remainder, and net_financial_wealth is gross less consumer debt and the student loan balance - identities the pinned tab satisfies on every row and the cleaning step refuses a donor that breaks. A sum of donor-valued components that leaves the donor's range for the total gives up the excess from the remainder first, and the receipt counts the rows. Seven chain segments, each with its own child seed: land; the main residence; the other property components; pension and share-like wealth; the financial components, vehicles and the student loan balance; mortgage debt; consumer debt. HFINWNTR8_exSLC_Sum is net financial wealth excluding student loans, so gross less it is the non-student-loan financial liabilities; UKDS SN 7215 documentation is the codebook. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent's dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8's -9 is structural not-applicable so the private-renter reading is unchanged; genuinely negative domains are never recoded.",
       "operations": [
         {
           "derived": {
             "cash_isa": "DVCISAVR8_aggr",
             "consumer_debt": "max(HFINWR8_SUM - HFINWNTR8_exSLC_Sum, 0)",
             "corporate_wealth_excl_isa": "DVFESHARESR8_aggr + DVFShUKVR8_aggr + DVFCollVR8_aggr",
-            "has_mortgage_tenure": "Ten1R8 in {2, 3}",
             "is_renting": "DVPriRntR8 == 1",
+            "other_financial_assets": "HFINWR8_SUM - (DVSaValR8_aggr + DVCISAVR8_aggr + corporate_wealth), refused when negative",
+            "other_property_value": "DVPropertyR8 - (DVhvalueR8 + DVHseValR8_sum + DVBlDValR8_sum + DVLUKValR8_sum), refused when negative",
             "private_pension_wealth": "totalpenr8_aggr - dvvaldbt_scaper8_aggr",
             "region": "GORR8 via incumbent REGIONS map",
             "stocks_and_shares_isa": "DVIISAVR8_aggr",
-            "student_loan_balance": "Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr"
+            "student_loan_balance": "Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr",
+            "tenure_category": "Ten1R8 1 owned_outright; 2 or 3 owned_with_mortgage; 4 or 5 private_rent when DVPriRntR8 == 1, otherwise social_rent; any other code private_rent, counted in the receipt"
           },
           "direct_maps": {
             "gross_financial_wealth": "HFINWR8_SUM",
+            "main_residence_mortgage": "TotMortR8",
             "main_residence_value": "DVhvalueR8",
             "mortgage_debt": "HMortGR8",
             "net_financial_wealth": "HFINWNTR8_Sum",
             "net_financial_wealth_exsl": "HFINWNTR8_exSLC_Sum",
             "non_residential_property_value": "DVBlDValR8_sum",
             "num_vehicles": "vcarnr8",
+            "other_property_mortgage": "OthMortR8_sum",
             "other_residential_property_value": "DVHseValR8_sum",
             "owned_land": "DVLUKValR8_sum",
+            "private_rent_code": "DVPriRntR8",
             "property_wealth": "DVPropertyR8",
             "savings": "DVSaValR8_aggr",
             "tenure_code": "Ten1R8",
@@ -5269,39 +5276,67 @@
             "private_pension_income",
             "employment_income",
             "self_employment_income",
-            "capital_income",
-            "is_renting"
+            "capital_income"
           ]
         },
         {
           "categorical_predictors": [
             "region",
-            "is_renting"
+            "tenure_owned_with_mortgage",
+            "tenure_private_rent",
+            "tenure_social_rent"
           ],
           "chain_order": [
             "owned_land",
+            "main_residence_value",
+            "other_residential_property_value",
+            "non_residential_property_value",
+            "other_property_value",
             "property_wealth",
             "private_pension_wealth",
             "corporate_wealth_excl_isa",
             "stocks_and_shares_isa",
             "corporate_wealth",
-            "gross_financial_wealth",
-            "net_financial_wealth",
-            "main_residence_value",
-            "other_residential_property_value",
-            "non_residential_property_value",
             "savings",
+            "cash_isa",
+            "other_financial_assets",
             "num_vehicles",
             "student_loan_balance",
-            "cash_isa",
+            "gross_financial_wealth",
             "mortgage_debt",
-            "consumer_debt"
+            "consumer_debt",
+            "net_financial_wealth"
           ],
-          "debt_segment_predictors": [
-            "has_mortgage_tenure"
-          ],
+          "derived_totals": {
+            "corporate_wealth": [
+              "corporate_wealth_excl_isa",
+              "stocks_and_shares_isa"
+            ],
+            "gross_financial_wealth": [
+              "savings",
+              "cash_isa",
+              "corporate_wealth",
+              "other_financial_assets"
+            ],
+            "net_financial_wealth": [
+              "gross_financial_wealth",
+              "-consumer_debt",
+              "-student_loan_balance"
+            ],
+            "property_wealth": [
+              "owned_land",
+              "main_residence_value",
+              "other_residential_property_value",
+              "non_residential_property_value",
+              "other_property_value"
+            ]
+          },
           "integer_outputs": [
             "num_vehicles"
+          ],
+          "internal_components": [
+            "other_property_value",
+            "other_financial_assets"
           ],
           "kind": "fit_weighted_qrf_chain",
           "n_estimators": 4,
@@ -5315,13 +5350,24 @@
             "capital_income",
             "num_bedrooms",
             "council_tax",
-            "is_renting",
+            "tenure_owned_with_mortgage",
+            "tenure_private_rent",
+            "tenure_social_rent",
             "region"
           ],
           "region_remap": {
             "NORTHERN_IRELAND": "WALES"
           },
           "seed": 0,
+          "stratified_targets": {
+            "main_residence_value": [
+              "owned_outright",
+              "owned_with_mortgage"
+            ],
+            "mortgage_debt": [
+              "owned_with_mortgage"
+            ]
+          },
           "weights": "explicit"
         },
         {

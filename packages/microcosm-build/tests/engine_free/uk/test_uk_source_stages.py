@@ -875,9 +875,14 @@ class TestE3ManifestLockstep:
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 
-    def test_e5_debt_segment_predictors_lockstep(self) -> None:
+    def test_e5_tenure_strata_and_derived_totals_lockstep(self) -> None:
         from microcosm.build.uk_runtime.was_wealth import (
-            UK_WAS_DEBT_SEGMENT_PREDICTORS,
+            UK_WAS_DERIVED_TOTALS,
+            UK_WAS_INTERNAL_COMPONENT_COLUMNS,
+            UK_WAS_NET_FINANCIAL_LIABILITIES,
+            UK_WAS_STRATIFIED_TARGETS,
+            UK_WAS_TENURE_PREDICTORS,
+            UK_WAS_WEALTH_OUTPUT_COLUMNS,
             UK_WAS_WEALTH_PREDICTORS,
         )
 
@@ -886,15 +891,38 @@ class TestE3ManifestLockstep:
         qrf = stages["was_wealth"].operations[2]
 
         assert qrf.kind == "fit_weighted_qrf_chain"
-        assert tuple(qrf.parameters["debt_segment_predictors"]) == (
-            UK_WAS_DEBT_SEGMENT_PREDICTORS
-        )
-        # The extra predictor belongs to the debt segment only: the shared
-        # base list, and so E5's first three segments, are unchanged.
-        assert not set(UK_WAS_DEBT_SEGMENT_PREDICTORS) & set(
-            qrf.parameters["predictors"]
-        )
         assert tuple(qrf.parameters["predictors"]) == UK_WAS_WEALTH_PREDICTORS
+        # Tenure enters every segment as the four-way flags (microcosm#1063);
+        # the engine's is_renting, which omits housing-association renters, is
+        # no predictor of the stage.
+        assert set(UK_WAS_TENURE_PREDICTORS) <= set(qrf.parameters["predictors"])
+        assert "is_renting" not in qrf.parameters["predictors"]
+        assert "debt_segment_predictors" not in qrf.parameters
+        assert {
+            target: tuple(categories)
+            for target, categories in qrf.parameters["stratified_targets"].items()
+        } == dict(UK_WAS_STRATIFIED_TARGETS)
+        declared = {
+            total: tuple(components)
+            for total, components in qrf.parameters["derived_totals"].items()
+        }
+        assert declared.pop("net_financial_wealth") == (
+            "gross_financial_wealth",
+            *(f"-{column}" for column in UK_WAS_NET_FINANCIAL_LIABILITIES),
+        )
+        assert declared == dict(UK_WAS_DERIVED_TOTALS)
+        assert tuple(qrf.parameters["internal_components"]) == (
+            UK_WAS_INTERNAL_COMPONENT_COLUMNS
+        )
+        # The chain order names every output, each internal component and the
+        # dropped share-like component exactly once.
+        assert sorted(qrf.parameters["chain_order"]) == sorted(
+            {
+                *UK_WAS_WEALTH_OUTPUT_COLUMNS,
+                *UK_WAS_INTERNAL_COMPONENT_COLUMNS,
+                "corporate_wealth_excl_isa",
+            }
+        )
 
     def test_e5_qrf_operation_declares_integer_seed(self) -> None:
         spec = load_country_spec("uk")

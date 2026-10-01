@@ -1383,6 +1383,7 @@ class TestUKGatesManifest:
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
+            "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
@@ -1487,6 +1488,7 @@ class TestUKGatesManifest:
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
         assert flagged == [
             "uk_stage_was_wealth_support",
+            "uk_stage_was_wealth_coherence",
             "uk_stage_was_lisa_support",
             "uk_stage_nts_bus_travel_support",
             "uk_stage_nts_bus_travel_facts",
