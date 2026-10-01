@@ -42,6 +42,10 @@ from microcosm.build.uk_runtime.regional_uprating import (
     load_regional_land_values_resource,
     uprate_household_property_by_region,
 )
+from microcosm.build.uk_runtime.spi_band_donors import (
+    HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR,
+    SPI_INCOME_BAND_DONOR_CLONE_INDEX,
+)
 from microcosm.build.uk_runtime.was_wealth import (
     allocate_student_loan_balance_to_people,
 )
@@ -559,7 +563,17 @@ def e7_identity_receipt(
         synthetic = household_t["household_is_spi_synthetic"].astype(bool).to_numpy()
         channel = np.where(synthetic, "spi", "frs")
         household_out["household_support_channel"] = channel
-        household_out["household_support_clone_index"] = np.where(synthetic, 1, 0)
+        # The SPI support copy sits at clone index 1 and the income band donors,
+        # which carry the same synthetic flag, at their own index; a frame built
+        # before the donor stage carries no donor flag and no donors.
+        donor = (
+            household_t[HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR].astype(bool).to_numpy()
+            if HOUSEHOLD_IS_SPI_INCOME_BAND_DONOR in household_t.columns
+            else np.zeros(len(household_t), dtype=bool)
+        )
+        household_out["household_support_clone_index"] = np.where(
+            synthetic, np.where(donor, SPI_INCOME_BAND_DONOR_CLONE_INDEX, 1), 0
+        )
 
         missing_keys = {"source_year", "source_household_id"} - set(household_t.columns)
         if missing_keys:
@@ -1411,7 +1425,18 @@ def e8_identity_receipt(
         .set_index("person_id")["student_loan_plan"]
         .reindex(stored_plan.index)
     )
-    plan_matches_store = bool(stored_plan.equals(recomputed_plan))
+
+    # Compared by value: the stored column comes back from HDF5 under one
+    # string dtype and the recomputed one under another, and ``Series.equals``
+    # calls two equal columns of different string dtypes unequal.
+    def plans_equal(left: pd.Series, right: pd.Series) -> bool:
+        return bool(
+            np.array_equal(
+                left.astype(object).to_numpy(), right.astype(object).to_numpy()
+            )
+        )
+
+    plan_matches_store = plans_equal(stored_plan, recomputed_plan)
     permuted_result = assign_student_loan_plans(
         _reverse_rows(frame), stocks=stocks, year=year
     )
@@ -1420,7 +1445,7 @@ def e8_identity_receipt(
         .set_index("person_id")["student_loan_plan"]
         .reindex(stored_plan.index)
     )
-    plan_permutation_stable = bool(recomputed_plan.equals(permuted_plan))
+    plan_permutation_stable = plans_equal(recomputed_plan, permuted_plan)
     if not plan_matches_store:
         problems["student_loan_plan_stored"] = True
     if not plan_permutation_stable:

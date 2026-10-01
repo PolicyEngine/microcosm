@@ -120,6 +120,22 @@ class TestE7Receipt:
             "source_household_key",
         ]
 
+    def test_the_income_band_donors_sit_at_their_own_clone_index(self) -> None:
+        # The donors carry the synthetic flag of the SPI support copy but are
+        # stacked at clone index 2; reading every synthetic household as index
+        # 1 failed the receipt on every spine built since the donor stage.
+        tool = _load_tool()
+        frame = _frame()
+        household = frame.table("household")
+        household["household_is_spi_income_band_donor"] = [False, True]
+        household["household_support_clone_index"] = [0, 2]
+        receipt = tool.e7_identity_receipt(frame, permutation_seed=7)
+        assert receipt["matches_stored_columns"] is True
+
+        household["household_support_clone_index"] = [0, 1]
+        receipt = tool.e7_identity_receipt(frame, permutation_seed=7)
+        assert receipt["matches_stored_columns"] is False
+
     def test_an_artifact_without_the_e7_layer_is_refused(self) -> None:
         # Previously this returned a green receipt over an empty comparison.
         tool = _load_tool()
