@@ -579,6 +579,9 @@ def test_spi_spine_parsed_inputs_match_the_path_resolution(
     support_frame = UKSPISupportChannelStageTransform(
         stage=_committed_stage("spi_support_channel"),
         sample_fraction=0.0002,
+        # The pension-age allocation stratum (microcosm#1069 c6) reads State
+        # Pension age from the engine unless the test passes it.
+        state_pension_age=66,
     )(_base_frame(time_period=HMRC_SPI_BUILD_PERIOD))
     income_stage = _with_mutated_operation(
         _committed_stage("hmrc_spi_income_spine"),
