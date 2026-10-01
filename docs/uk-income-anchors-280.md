@@ -351,7 +351,9 @@ after the reorder were still falling 0.11 to 0.75 points).
 ## Not done here
 
 - The property-income amount rows stay signed out: the spine's
-  `property_income` is the FRS rent received (sub-lets and other property)
-  while the SPI concept is landlords' net income after expenses.
+  `property_income` is FRS rent from other property (before tax, after
+  allowable expenses) plus sub-letting rent as reported, which SUBALLOW
+  records as before or after expenses, while the SPI concept is landlords'
+  net income after expenses.
 - The ESA rows' migration residual and the SPI support channel's benefit fill
   (microcosm#840, #867, #869) are spine items.

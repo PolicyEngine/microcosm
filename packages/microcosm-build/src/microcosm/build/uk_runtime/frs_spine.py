@@ -640,11 +640,12 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
       SUBLTAMT and INRINC count it for every tenure, so renting and rent-free
       households count too. It goes to the household reference person.
       ``household`` must be indexed by ``household_id``.
-    - ROYYR1, the person's rent before tax from other property. It is always
-      recorded as a positive amount; RENTPROF = 2 (question RentProf) marks
-      it as a loss, which DWP's derived INRINC records as negative. A loss
-      counts as zero: the engine has no property loss input, and a loss is
-      not set against the household's SUBRENT.
+    - ROYYR1, the person's rent from other property, before tax and after
+      allowable expenses (question PropRent). The questionnaire cannot take a
+      negative amount, so a loss is entered as a positive amount and
+      RENTPROF = 2 (question RentProf) marks it. A loss counts as zero: the
+      engine has no property loss input, and a loss is not set against the
+      household's SUBRENT.
 
     SUBRENT is used as reported. SUBALLOW records whether it is before (1) or
     after (2) allowable expenses, but the FRS records no sub-letting expense
@@ -654,8 +655,8 @@ def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.nda
     each amount is floored at zero before the two are added.
 
     CVPAY is not included. It is the rent a boarder or lodger pays the
-    householder (question CvPay), recorded on the boarder's or lodger's own
-    adult record, so it is not their income.
+    householder (question CvPay, "How much rent did [name] pay"), recorded on
+    the boarder's or lodger's own adult record, so it is not their income.
     """
 
     is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
