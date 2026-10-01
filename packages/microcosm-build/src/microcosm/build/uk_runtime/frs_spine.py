@@ -171,6 +171,10 @@ FRS_CARE_HOURS_BY_BAND = {
     10: 35.0,  # varies, 35 hours or more
 }
 
+# FRS adult RENTPROF (question RentProf): whether the rent from other property
+# in ROYYR1 is a profit (1) or a loss (2). ROYYR1 itself is always positive.
+FRS_RENTPROF_LOSS = 2
+
 OUTPUT_COLUMNS = (
     "person_id",
     "person_benunit_id",
@@ -577,21 +581,7 @@ def _add_person_income(
     household: pd.DataFrame,
     oddjob: pd.DataFrame,
 ) -> None:
-    is_head = _number(person, "hrpid") == 1
-    household_property = _number(household, "tentyp2").isin((5, 6)).astype(
-        float
-    ) * _number(household, "subrent")
-    property_by_household = pd.Series(household_property.values, index=household.index)
-    pe_person["property_income"] = (
-        np.maximum(
-            0,
-            is_head.to_numpy(dtype=float)
-            * person["household_id"].map(property_by_household).fillna(0).to_numpy()
-            + _number(person, "cvpay").to_numpy()
-            + _number(person, "royyr1").to_numpy(),
-        )
-        * WEEKS_IN_YEAR
-    )
+    pe_person["property_income"] = frs_property_income(person, household)
     maintenance_to_self = np.maximum(
         np.where(
             _number(person, "mntus1") == 2,
@@ -632,6 +622,52 @@ def _add_person_income(
     pe_person["free_school_breakfasts"] = _positive(person, "fsbval") * WEEKS_IN_YEAR
     pe_person["free_school_fruit_veg"] = _positive(person, "fsfvval") * WEEKS_IN_YEAR
     pe_person["free_school_meals"] = _positive(person, "fsmval") * WEEKS_IN_YEAR
+
+
+def frs_property_income(person: pd.DataFrame, household: pd.DataFrame) -> np.ndarray:
+    """Annual property income each person reports in the FRS.
+
+    Two FRS amounts, both weekly in the released data:
+
+    - SUBRENT, the rent the household received from sub-letting. The FRS asks
+      every household (SubLet), whatever its tenure, and DWP's derived
+      SUBLTAMT and INRINC count it for every tenure, so renting and rent-free
+      households count too. It goes to the household reference person.
+      ``household`` must be indexed by ``household_id``.
+    - ROYYR1, the person's rent from other property, before tax and after
+      allowable expenses (question PropRent). The questionnaire cannot take a
+      negative amount, so a loss is entered as a positive amount and
+      RENTPROF = 2 (question RentProf) marks it. A loss counts as zero: the
+      engine has no property loss input, and a loss is not set against the
+      household's SUBRENT.
+
+    SUBRENT is used as reported. SUBALLOW records whether it is before (1) or
+    after (2) allowable expenses, but the FRS records no sub-letting expense
+    amount to take off the before-expenses answers.
+
+    Negative values are FRS missing-value codes (-1 to -9), not amounts, so
+    each amount is floored at zero before the two are added.
+
+    CVPAY is not included. It is the rent a boarder or lodger pays the
+    householder (question CvPay, "How much rent did [name] pay"), recorded on
+    the boarder's or lodger's own adult record, so it is not their income.
+    """
+
+    is_head = (_number(person, "hrpid") == 1).to_numpy(dtype=float)
+    subrent = pd.Series(
+        _positive(household, "subrent").to_numpy(), index=household.index
+    )
+    persons_household_subrent = (
+        person["household_id"].map(subrent).fillna(0).to_numpy(dtype="float64")
+    )
+    rent_from_other_property = (
+        _positive(person, "royyr1")
+        .where(_number(person, "rentprof") != FRS_RENTPROF_LOSS, 0)
+        .to_numpy(dtype="float64")
+    )
+    return (
+        is_head * persons_household_subrent + rent_from_other_property
+    ) * WEEKS_IN_YEAR
 
 
 def _odd_job_income(person: pd.DataFrame, oddjob: pd.DataFrame) -> np.ndarray:

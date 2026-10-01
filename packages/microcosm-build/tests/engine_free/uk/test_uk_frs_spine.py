@@ -232,8 +232,10 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "MNTUSAM1": 1.0,
         "MNTAMT1": 9.0,
         "MNTAMT2": 2.0,
+        # CVPAY is rent a boarder or lodger pays, so it is never their income.
         "CVPAY": 1.0,
         "ROYYR1": 2.0,
+        "RENTPROF": 1,
         "ROYYR2": 3.0,
         "ROYYR3": 4.0,
         "ROYYR4": 5.0,
@@ -1053,13 +1055,16 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     )
     other = person.loc[person["person_id"] == 2001].iloc[0]
     assert other["care_hours"] == 0.0
+    # Household 2's sub-letting rent (6) goes to its reference person.
+    assert other["property_income"] == pytest.approx(8 * WEEKS_IN_YEAR)
     assert adult["employment_income"] == pytest.approx(10 * WEEKS_IN_YEAR)
     assert adult["self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
     assert adult["tax_free_savings_income"] == pytest.approx(1 * WEEKS_IN_YEAR)
     assert adult["savings_interest_income"] == pytest.approx(3.5 * WEEKS_IN_YEAR)
     assert adult["dividend_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
-    assert adult["property_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
+    # ROYYR1 2 only: CVPAY is not income and household 1 does not sub-let.
+    assert adult["property_income"] == pytest.approx(2 * WEEKS_IN_YEAR)
     assert adult["maintenance_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["miscellaneous_income"] == pytest.approx(41 * WEEKS_IN_YEAR)
     assert adult["private_transfer_income"] == pytest.approx(57 * WEEKS_IN_YEAR)
@@ -1082,6 +1087,52 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     )
     assert adult["salary_sacrifice_reported"] == 1
     assert adult["salary_sacrifice_asked"] == 1
+
+
+@pytest.mark.parametrize("seed", range(8))
+def test_property_income_matches_a_merge_of_the_raw_tabs(
+    tmp_path: Path, seed: int
+) -> None:
+    """The built spine against an independent reading of the raw tabs.
+
+    Covers the call site: upper-case raw names, the sernum household key,
+    child rows, an unsorted household tab and every tenure code.
+    """
+
+    rng = np.random.default_rng(seed)
+    tables = _fixture_tables()
+    tables["adult"].append(
+        {**tables["adult"][0], "PERSON": 2, "UPERSON": 2, "HRPID": 2, "R02": ""}
+    )
+
+    def amount() -> float:
+        return float(rng.choice([0.0, -1.0, rng.uniform(0, 500)]))
+
+    for household in tables["househol"]:
+        household["TENTYP2"] = int(rng.integers(1, 9))
+        household["SUBRENT"] = amount()
+    for adult in tables["adult"]:
+        adult["ROYYR1"] = amount()
+        adult["RENTPROF"] = ("", -1, 1, 2)[int(rng.integers(4))]
+        adult["CVPAY"] = float(rng.uniform(0, 400))
+    stage = _write_fixture(tmp_path, tables)
+
+    person = build_uk_frs_spine_frame(tmp_path, stage=stage).table("person")
+
+    adult = pd.read_csv(tmp_path / "adult.tab", sep="\t")
+    raw = adult.merge(
+        pd.read_csv(tmp_path / "househol.tab", sep="\t")[["SERNUM", "SUBRENT"]],
+        on="SERNUM",
+    ).apply(pd.to_numeric, errors="coerce")
+    profit = raw.ROYYR1.clip(lower=0).where(raw.RENTPROF != 2, 0).fillna(0)
+    subrent = raw.SUBRENT.clip(lower=0).where(raw.HRPID == 1, 0).fillna(0)
+    expected = pd.Series(
+        ((profit + subrent) * WEEKS_IN_YEAR).to_numpy(),
+        index=(raw.SERNUM * 1000 + raw.PERSON).astype(int),
+    )
+    built = person.set_index("person_id")["property_income"]
+    np.testing.assert_allclose(built.reindex(expected.index), expected)
+    assert (built.drop(expected.index) == 0).all()
 
 
 @pytest.mark.parametrize("couple_has_children", [False, True])
