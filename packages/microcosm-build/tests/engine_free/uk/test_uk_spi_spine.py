@@ -801,3 +801,30 @@ def test_support_stage_parameters_refuse_gate_declaration_drift() -> None:
     )
     with pytest.raises(ValueError, match="gate declaration drifted"):
         _support_stage_parameters(stage, seed=42)
+
+
+def test_readers_of_the_support_record_take_the_declared_allocation_reason() -> None:
+    """microcosm#1069 c6: the stratified sentence, not the 50% constant."""
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.release_input_coverage import (
+        load_uk_release_input_coverage_manifest,
+    )
+    from microcosm.build.uk_runtime.spi_spine import (
+        uk_spi_support_mass_change_reason,
+    )
+    from microcosm.build.uk_runtime.spi_support import (
+        SPI_PRIOR_MASS_CHANGE_REASON,
+        _spi_prior_mass_change_reason,
+    )
+
+    stage = load_country_spec("uk").sources.stage_map()["spi_support_channel"]
+    reason = uk_spi_support_mass_change_reason(stage)
+
+    # The record the support stage writes for the declared shares.
+    assert reason == _spi_prior_mass_change_reason(0.5, pension_age_share=0.5)
+    assert reason != SPI_PRIOR_MASS_CHANGE_REASON
+    # The release-cut coverage gate requires that record on the final dataset.
+    manifest = load_uk_release_input_coverage_manifest()
+    family = manifest.family_coverage["hmrc_spi_income"]
+    assert family["required_mass_change_reason"] == reason

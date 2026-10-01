@@ -1038,10 +1038,11 @@ def _hmrc_family_coverage_contract(
     *,
     candidate_source: dict[str, Any],
 ) -> dict[str, Any]:
+    from microcosm.build.source_manifest import SourceStageSpec
     from microcosm.build.uk_runtime.hmrc_source_contract import (
         assert_uk_hmrc_income_source_contract_current,
     )
-    from microcosm.build.uk_runtime.spi_support import SPI_PRIOR_MASS_CHANGE_REASON
+    from microcosm.build.uk_runtime.spi_spine import uk_spi_support_mass_change_reason
 
     assert_uk_hmrc_income_source_contract_current(SOURCE_STAGES_PATH)
     payload = _load(SOURCE_STAGES_PATH)
@@ -1118,7 +1119,9 @@ def _hmrc_family_coverage_contract(
             ),
         },
         "spi_prior_national_household_mass_share": float(prior["share"]),
-        "required_mass_change_reason": SPI_PRIOR_MASS_CHANGE_REASON,
+        "required_mass_change_reason": uk_spi_support_mass_change_reason(
+            SourceStageSpec.from_mapping(stages["spi_support_channel"])
+        ),
         "input_weight_kind": str(classification["input_weight_kind"]),
         "output_weight_kind": str(classification["output_weight_kind"]),
         "calibration_permitted": bool(classification["calibration_permitted"]),

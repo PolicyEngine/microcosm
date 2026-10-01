@@ -734,9 +734,18 @@ def _minimal_frame(context: KernelContext) -> Frame:
         # KernelContext deliberately has no legacy Frame.mass_log channel.  The
         # SPI income transform consumes only the immediately preceding support
         # allocation reason, whose exact current-spine record is reconstructible
-        # from the conserved household total and reviewed public reason.
-        from .spi_support import SPI_PRIOR_MASS_CHANGE_REASON
+        # from the conserved household total and reviewed public reason, the
+        # declared allocation's own sentence (microcosm#1069 c6).
+        from microcosm.build.country_spec import load_country_spec
 
+        from .spi_spine import uk_spi_support_mass_change_reason
+
+        sources = load_country_spec("uk").sources
+        if sources is None:
+            raise ValueError("The committed UK country spec declares no sources.")
+        reason = uk_spi_support_mass_change_reason(
+            sources.stage_map()["spi_support_channel"]
+        )
         total = context.weights["household"].total
         mass_log = (
             MassChangeRecord(
@@ -744,7 +753,7 @@ def _minimal_frame(context: KernelContext) -> Frame:
                 old_total=total,
                 new_total=total,
                 declared_factor=1.0,
-                reason=SPI_PRIOR_MASS_CHANGE_REASON,
+                reason=reason,
             ),
         )
     return Frame(

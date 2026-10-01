@@ -93,6 +93,9 @@ from microcosm.build.uk_runtime.spi_support import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.uk_runtime.spi_support import (
+    _spi_prior_mass_change_reason as _support_mass_change_reason,
+)
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
 )
@@ -1036,6 +1039,25 @@ def _support_stage_parameters(
     )
 
 
+def uk_spi_support_mass_change_reason(stage: SourceStageSpec) -> str:
+    """The reason the declared SPI support allocation writes on its MassChangeRecord.
+
+    Read from the manifest's shares, so the readers that reconstruct or require
+    the record (the SPI income stage's graph kernel and the release-input
+    coverage manifest) carry the stratified sentence once a pension-age share is
+    declared (microcosm#1069 c6).
+    """
+
+    allocation = _operation(stage, "allocate_zero_weight_prior_mass")
+    pension_age_share = allocation.parameters.get("pension_age_share")
+    return _support_mass_change_reason(
+        float(allocation.parameters["share"]),
+        pension_age_share=(
+            None if pension_age_share is None else float(pension_age_share)
+        ),
+    )
+
+
 def _assert_income_stage_parameters(
     stage: SourceStageSpec,
     *,
@@ -1238,4 +1260,5 @@ __all__ = [
     "UKSPIIncomeSpineResult",
     "UKSPIIncomeSpineStageTransform",
     "UKSPISupportChannelStageTransform",
+    "uk_spi_support_mass_change_reason",
 ]
