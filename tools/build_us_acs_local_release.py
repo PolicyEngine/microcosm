@@ -169,9 +169,10 @@ def release_refresh_recipe(
     the recorded surface even if the parser default changes again, and, for
     every ``state_cd`` build, ``--cd-holdout-fraction`` at the recorded value
     (0 included, full precision), since ``state_cd`` otherwise defaults to a
-    10% holdout. ``penalty`` (the recorded ``l2_lambda``, ``l2_basis`` and
-    ``mass_parametrization``) adds each setting that differs from the
-    historical solve, so the recipe rebuilds the solve that was recorded.
+    10% holdout. It names ``--l2-lambda``, ``--l2-basis`` and
+    ``--mass-parametrization`` at the recorded ``penalty`` (a legacy summary
+    that records none reads as the historical solve) for the same reason: the
+    recipe rebuilds the recorded solve even after a default changes.
     """
 
     _require_soi_mode(soi_mode)
@@ -196,7 +197,6 @@ def release_refresh_recipe(
         if key == "l2_lambda"
         else f"{flag} {recorded[key]} "
         for key, flag in flags.items()
-        if recorded[key] != HISTORICAL_PENALTY[key]
     )
     return (
         "uv run tools/build_us_acs_local_release.py --stage all "
@@ -1973,6 +1973,10 @@ def do_calibrate(args) -> None:
         "effective_sample_size": round(result.effective_sample_size, 1),
         "ess_fraction": round(result.effective_sample_size / n_households, 4),
         "chi_square_distance": round(result.chi_square_distance, 6),
+        # Softmax only: epochs whose cap rounds ran out (the last epoch batch).
+        "softmax_cap_rounds_exhausted_epochs": (
+            result.options.get("iterate_selection_receipt") or {}
+        ).get("softmax_cap_rounds_exhausted_epochs"),
         "realized_max_weight_ratio": round(result.realized_max_weight_ratio, 4),
         "mass_conserved_ratio": round(
             float(result.weights.sum()) / float(design_weights.sum()), 6
@@ -3185,6 +3189,7 @@ def do_package(args) -> dict:
                 "effective_sample_size",
                 "ess_fraction",
                 "chi_square_distance",
+                "softmax_cap_rounds_exhausted_epochs",
                 "realized_max_weight_ratio",
                 "mass_conserved_ratio",
             )
@@ -3466,7 +3471,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "How the mass-conserving Adam solve holds the total "
             "(microcosm.calibrate mass_parametrization). 'projection' "
             "(default) is the historical per-step uniform shift; 'softmax' "
-            "optimizes total * softmax(log_w) (docs/calibration-l2-basis.md)."
+            "optimizes total * softmax(log_w). At the ACS release's scale "
+            "softmax's per-step cap rounds run out on most epochs, so it "
+            "optimizes past the cap until the closing projection; the summary "
+            "records the count (docs/calibration-l2-basis.md)."
         ),
     )
     parser.add_argument("--seed", type=int, default=0)

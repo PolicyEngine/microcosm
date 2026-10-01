@@ -1917,7 +1917,10 @@ def calibrate(
             gates. Recorded in ``options["mass_parametrization"]`` whatever
             the mass mode, like ``l2_basis`` whatever ``l2_lambda``; a softmax
             solve also counts, in ``options["iterate_selection_receipt"]``,
-            the epochs whose cap rounds ran out.
+            the epochs whose cap rounds ran out. On the ACS local release
+            (1.6M records, a 5x cap) that is most epochs, which then optimize
+            past the cap until the closing projection; prefer
+            ``"projection"`` at that scale (docs/calibration-l2-basis.md).
         max_weight_ratio: If given, a hard per-record cap: no calibrated weight
             exceeds ``max_weight_ratio * initial_weight``. The landmine guard.
         target_records: If given, enable L0 pruning with **budget control**: the

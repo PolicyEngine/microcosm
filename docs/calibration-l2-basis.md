@@ -104,15 +104,16 @@ float64 projection that both parametrizations share. It requires
 renormalization lifts the clamped records back over the cap by a shrinking
 amount, so the rounds converge geometrically but need not reach float32
 exactness in 32. A step that runs out ends on a clamp, and its next forward
-pass optimizes `total·softmax(log_w)` slightly past the cap.
+pass optimizes `total·softmax(log_w)` past the cap, by an amount that is not
+recorded.
 `options["iterate_selection_receipt"]["softmax_cap_rounds_exhausted_epochs"]`
 counts those steps. On small problems it is rare. On the ACS local release it
 is the normal state: 165-400 of the last 400 epochs in every run that records
 it, 400 at the share-0.5, `l2_lambda = 0.03` configuration on one fold. Only the
 closing projection makes the returned vector exact. The returned loss stays
 within 0.3% of the last trajectory loss in every run that records the count,
-but that bounds the last step and the closing projection together; the in-loop
-overshoot is not recorded, so its size is not measured. An
+but projection runs, which have no cap loop, show the same gap (0.01-0.33%), so
+that says nothing about the overshoot; its size is not measured. An
 exact capped-softmax step (water-filling the excess onto the uncapped records)
 would remove the limitation. Until then, prefer `"projection"` at that scale,
 where the stall does not bite (below).
@@ -156,22 +157,23 @@ recalibrated from its own checkpoint (`experiments/us-acs-local-l2-basis-2026092
 - **Parametrization.** The per-record gradients there are near Adam's `eps`
   with mixed signs, so the projection stall does not occur. The two
   parametrizations trace the same training frontier for `l2_lambda ≤ 0.03`
-  (at `0` neither dominates: softmax ESS 16,132 at loss 0.0160, projection
-  13,646 at 0.0155). At `0.1` and above, projection falls inside softmax's
+  (at `0` softmax reaches 18% more ESS, 16,132 against 13,646, at a 3% higher
+  loss, about the size of the unpenalized solve's 2.7% run-to-run variation). At `0.1` and above, projection falls inside softmax's
   frontier: at `1` it reaches ESS 30,582 at loss 0.0785, where softmax's path,
   interpolated between its `0.3` and `1` solves, gives about 0.055. Equal
   `l2_lambda` is not an equal-ESS comparison. At `0.03` the held-out
   comparison is a toss-up: softmax has slightly lower capped error, projection
-  more held-out targets within 10% on both folds. With the cap-loop limitation
-  above, projection is the recommended parametrization.
+  more held-out targets within 10% on both folds. Projection's training loss is
+  6% lower there, against 0.3% run-to-run variation. With that and the
+  cap-loop limitation above, projection is the recommended parametrization.
 - **Record basis.** The record basis at `0.1` lowers national ESS from 13,646
   to 8,689, as its `w ∝ d ** 2` optimum predicts.
 - **Chi-square basis.** The chi-square basis raises ESS smoothly with
   `l2_lambda`. At `0.03` under projection it costs 0.3 points of training fit
-  and no held-out fit: it is slightly ahead of the release on both measures
-  (capped error and share within 10%) on both rotated folds, by margins of the
-  same order as the solve's run-to-run variation. Those folds also chose
-  `l2_lambda`.
+  and no measurable held-out fit: it is ahead of the release on both measures
+  (capped error and share within 10%) on both rotated folds. Held-out
+  run-to-run variation was not measured and those folds also chose
+  `l2_lambda`, so the gain is optimistic.
 - **What limits ESS is the starting weights.** The experiment's README has the
   frontier, the holdout, candidate ESS floors and the recommendation.
 

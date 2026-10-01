@@ -1845,6 +1845,8 @@ def test_do_calibrate_stamps_and_records_the_penalty_settings(
     assert summary["l2_basis"] == "chi_square"
     assert summary["mass_parametrization"] == "softmax"
     assert summary["chi_square_distance"] >= 0.0
+    exhausted = summary["softmax_cap_rounds_exhausted_epochs"]
+    assert isinstance(exhausted, int) and 0 <= exhausted <= 2
     assert summary["solver_settings"]["l2_basis"] == "chi_square"
     assert summary["solver_settings"]["mass_parametrization"] == "softmax"
     saved = np.load(args.checkpoint_dir / "weights_latest.npz")
@@ -1919,19 +1921,28 @@ def test_package_manifest_records_the_penalty_settings(
 
 
 def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
-    """Non-default penalty settings ride the recipe; defaults stay implicit."""
+    """The recipe names every penalty setting, so a default change cannot move it."""
 
     module = _load_tool_module()
-    plain = module.release_refresh_recipe("state")
-    for flag in ("--l2-lambda", "--l2-basis", "--mass-parametrization"):
-        assert flag not in plain
+    plain = shlex.split(module.release_refresh_recipe("state"))
+    assert plain[plain.index("--l2-lambda") + 1] == "0.0"
+    assert plain[plain.index("--l2-basis") + 1] == "record"
+    assert plain[plain.index("--mass-parametrization") + 1] == "projection"
     # A legacy summary records none of them: the historical solve.
     legacy = {"l2_lambda": None, "l2_basis": None, "mass_parametrization": None}
-    assert module.release_refresh_recipe("state", penalty=legacy) == plain
+    assert shlex.split(module.release_refresh_recipe("state", penalty=legacy)) == plain
     assert (
-        module.release_refresh_recipe("state", penalty=module.HISTORICAL_PENALTY)
+        shlex.split(
+            module.release_refresh_recipe("state", penalty=module.HISTORICAL_PENALTY)
+        )
         == plain
     )
+    # Even if the parser defaults move, the historical recipe parses back to
+    # the historical solve.
+    historical = module._parse_args(plain[3:])
+    assert historical.l2_lambda == 0.0
+    assert historical.l2_basis == "record"
+    assert historical.mass_parametrization == "projection"
     penalized = shlex.split(
         module.release_refresh_recipe(
             "state",
@@ -1944,7 +1955,7 @@ def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
     )
     assert penalized[penalized.index("--l2-lambda") + 1] == "0.03"
     assert penalized[penalized.index("--l2-basis") + 1] == "chi_square"
-    assert "--mass-parametrization" not in penalized
+    assert penalized[penalized.index("--mass-parametrization") + 1] == "projection"
     # The recipe's arguments are ones the tool itself accepts.
     args = module._parse_args(penalized[3:])
     assert args.l2_lambda == 0.03
@@ -1971,6 +1982,7 @@ def test_package_manifest_reads_a_legacy_summary_as_the_historical_solve(
     assert manifest["calibration"]["l2_basis"] == "record"
     assert manifest["calibration"]["mass_parametrization"] == "projection"
     assert manifest["calibration"]["chi_square_distance"] is None
+    assert manifest["calibration"]["softmax_cap_rounds_exhausted_epochs"] is None
 
 
 def test_concentration_limitation_is_true_to_the_penalty_solved() -> None:

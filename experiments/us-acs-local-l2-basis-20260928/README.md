@@ -16,7 +16,8 @@ on 152 records (over 36,491 Massachusetts records in the files he read), and
 district ESS of 41-64. On this checkpoint's 36,578 Massachusetts households the
 published weights give 446 with 149 records holding half, and the reproduction
 below gives 448; the published national figure is 13,631 and the reproduction's
-13,646. Threshold statistics (a 1.9 pp drop
+13,646 (`results/published_weights.json`; the record counts were not
+reconciled with his). Threshold statistics (a 1.9 pp drop
 in Massachusetts child poverty) rested on a few dozen households. He asked
 whether to anchor calibration to the design weights. This experiment measures
 what that anchor buys, what it costs, and what limits it.
@@ -30,18 +31,18 @@ what that anchor buys, what it costs, and what limits it.
    - The 1,531,614 ACS rows alone have an ESS of 812,434.
    - Calibration then moves the donor share of mass from 50% to 68% and cuts ESS to 13,646.
    - Receipts: `results/seeding_options.{json,md}`, and the national and per-spine blocks of every run.
-2. **The anchor works, and at the current seeding it costs no out-of-sample fit.**
+2. **The anchor works, and at the current seeding it costs no measurable out-of-sample fit.**
    - The chi-square penalty pulls toward the design weights themselves. The old record-weighted L2 penalty pulls toward their square: at λ = 0.1 it *lowers* ESS to 8,689.
    - With the chi-square basis, ESS rises smoothly with λ.
-   - On held-out targets, projection at λ = 0.03 is no worse than the release. It is ahead on both measures and both folds (see the table), but by margins (3.6-3.8% in capped error, 0.9-1.2 points within 10%) of the same order as the unpenalized solve's run-to-run variation (its training loss moved 2.7% between two identical runs; see "How it was run"). The λ was also picked on those two folds.
+   - On held-out targets, projection at λ = 0.03 is ahead of the release on both measures and both folds (see the table): 3.6-3.8% lower capped error and 0.9-1.2 points more targets within 10%. Each fold has its own solves for both configurations, and all four comparisons agree in sign. But held-out run-to-run variation was not measured, and λ was picked on those two folds, so treat the gain as optimistic.
 3. **The seeding sets the limit.** As λ grows the solve returns to the starting weights. On every tested path the national ESS stays below the prior's (at share 0.5, λ = 3 reaches 35,386 against the prior's 36,288), though the penalty is a distance, not an ESS bound, and single districts can exceed their prior's ESS (at λ = 1 some do).
    - A larger ACS share raises that limit several-fold. At share 0.9 without a penalty: ESS 93,524, Massachusetts 2,704, no district below 50, and 95.8% of targets within 10%.
    - It also worsens held-out fit, mainly on SOI targets (held-out SOI within 10% falls from 64% to 54% at share 0.9), while held-out district populations improve.
    - That is consistent with how the staging builds the rows: the ACS rows' tax variables are transferred from the donor rows by QRF (the tool's `donor_sparse_selection_training_set` limitation), so the donor rows carry tax detail the ACS rows only approximate.
-4. **The softmax parametrization is not needed at this scale, and its cap loop runs out of rounds here.**
+4. **The softmax parametrization is not needed at this scale for λ ≤ 0.03, and its cap loop runs out of rounds here.**
    - The per-record gradients here are near Adam's `eps`, with mixed signs (`results/gradient_scale.json`). The same-sign stall that the small-problem evidence shows does not occur.
-   - The two parametrizations agree for λ ≤ 0.03. At λ = 0 neither dominates (softmax ESS 16,132 at loss 0.0160, projection 13,646 at 0.0155). At λ ≥ 0.1 projection falls inside softmax's training frontier. At λ = 0.1 projection reaches ESS 22,739 at loss 0.0228, where softmax's path (interpolated between its λ = 0.03 and 0.1 solves) gives about 0.021. At λ = 1 projection reaches 30,582 at 0.0785, against about 0.055 on softmax's path (between λ = 0.3 and 1). Equal λ is not an equal-ESS comparison.
-   - Softmax's per-step cap loop runs out of its 32 rounds on most epochs at this scale: in the runs that record it (heads 9ef71ed6 and bc763cb4), 165-400 of the last batch's 400 epochs, including 400 at share 0.5, λ = 0.03 on fold 0 and every share-0.9 run. Those epochs optimize total·softmax(log_w) slightly past the 5x cap; only the closing projection makes the returned weights exact. In every run that records the count, the returned loss is within 0.3% of the last trajectory loss (0.017571 vs 0.017530 at share 0.5, λ = 0.03, fold 0). That bounds the last step and the closing projection together, not the in-loop overshoot, which is not recorded. So the effect looks small, but its size is not measured. Projection, which has no cap loop, is the recommended parametrization.
+   - The two parametrizations agree for λ ≤ 0.03. At λ = 0 softmax reaches 18% more ESS (16,132 against 13,646) at a 3% higher loss (0.0160 against 0.0155), a loss gap about the size of the unpenalized solve's run-to-run variation (2.7%; see "How it was run"). At λ ≥ 0.1 projection falls inside softmax's training frontier. At λ = 0.1 projection reaches ESS 22,739 at loss 0.0228, where softmax's path (interpolated between its λ = 0.03 and 0.1 solves) gives about 0.021. At λ = 1 projection reaches 30,582 at 0.0785, against about 0.055 on softmax's path (between λ = 0.3 and 1). Equal λ is not an equal-ESS comparison.
+   - Softmax's per-step cap loop runs out of its 32 rounds on most epochs at this scale: in the runs that record it (heads 9ef71ed6, bc763cb4 and d82ff85b), 165-400 of the last batch's 400 epochs, including 400 at share 0.5, λ = 0.03 on the full surface (the `dup_` rerun) and on fold 0, and every share-0.9 run. Those epochs optimize total·softmax(log_w) past the 5x cap, by an amount that is not recorded; only the closing projection makes the returned weights exact. The returned loss is within 0.3% of the last trajectory loss in every softmax run that records the count, but projection runs, which have no cap loop, show the same gap (0.01-0.33%), so it says nothing about the overshoot. Projection is the recommended parametrization.
 
 ## Key configurations
 
@@ -83,9 +84,9 @@ default `--mass-parametrization projection`.
   - Massachusetts from 448 to 589;
   - districts below ESS 50 from 352 to 278;
   - the smallest district from 12 to 22.
-- Out of sample it is no worse: held-out error 0.1247 and 0.1191 against 0.1296 and 0.1236, and held-out within 10% 64.2% and 67.0% against 63.3% and 65.8%. Those margins are within the order of run-to-run variation, so they are not a measured improvement.
+- Out of sample it is ahead on both measures and both folds: held-out error 0.1247 and 0.1191 against 0.1296 and 0.1236, and held-out within 10% 64.2% and 67.0% against 63.3% and 65.8%. Held-out run-to-run variation was not measured and λ was picked on these folds, so treat that as "no worse, probably slightly better".
 - In sample it costs a little: training loss rises from 0.0155 to 0.0181, and training targets within 10% fall from 97.6% to 97.3%.
-- Softmax at λ = 0.03 gives a little more ESS (21,835) and lower held-out error, but its held-out within 10% is slightly *below* the release's on fold 0 (63.1% vs 63.3%), its training fit is worse, and its cap loop runs out at this scale (finding 4). Projection is the default and the better-supported choice.
+- Softmax at λ = 0.03 gives a little more ESS (21,835). Against projection, its held-out fit is a toss-up (lower capped error, fewer targets within 10%, both by small margins). What separates them is training fit (loss 0.0192 against 0.0181, 6% higher, against 0.3% run-to-run variation at this λ) and softmax's cap loop (finding 4). Projection is the default and the better-supported choice.
 - λ = 0.1 (softmax) buys more ESS (24,895; 132 districts below 50) and lower held-out error than the release, but lower held-out within 10% on both folds (61.5% and 63.8%), and 2 pp of training fit.
 - **λ is in units of the loss.** The ACS local build weights every target equally today (`calibrate` gets no `target_loss_weights`), and IRS SOI cells are 3,819 of the 4,459 targets. A change to weight them as the national release does is planned. Re-pick λ on that loss by rerunning this harness with its target weights before shipping a default.
 
@@ -128,7 +129,7 @@ configuration's three solves (full surface, fold 0, fold 1):
   share-0.9 release would pass it only with a penalty around 0.1.
 - **An absolute district floor of 15:** it also separates (release at most 11.7, λ = 0.03 at least 22.4), with some margin.
 - **No state floor:** a state floor near 200 sits inside the solves' spread (177-216), so it would flap.
-- **With an ACS share of 0.9 or more:** raise the floors to every district at least 50 and every state at least 500. At share 0.9 the smallest district is 64-85 and the smallest state 599-612.
+- **With an ACS share of 0.9 or more:** raise the floors to every district at least 50 and every state at least 500. Across every solve at shares 0.9 and 0.964 (full surface and folds, every λ), the smallest district is at least 64 and the smallest state at least 549, so the state floor's margin is about 10%. At share 0.964 the relative gate leaves 13-30 districts unpenalized and 0 from λ = 0.01.
 
 Main's tool already records ESS by state and district in the calibration
 summary, so the gate is a finalize-stage check on data it already has.
@@ -162,7 +163,8 @@ summary, so the gate is a finalize-stage check on data it already has.
 - **Analysis.** `analyze.py` builds the frontier, the floors, the key table
   and the chart from those metrics. `seeding_options.py` measures starting
   ESS under other shares and under donor location clones.
-  `gradient_scale.py` measures the gradient scale. `optimizer_reference.py`
+  `gradient_scale.py` measures the gradient scale, and `published_weights.py`
+  the published weights' own concentration. `optimizer_reference.py`
   and `path_reference.py` compare the kernel with CLARABEL's exact
   optimum on small problems.
 - **Kernel heads.** The grid ran on three heads: 35ad6657 (the full-surface
@@ -175,20 +177,24 @@ summary, so the gate is a finalize-stage check on data it already has.
   receipt field), an `assert` on an unreachable branch, a guard that only
   raises, and an `L0RefitResult` property; the other changed calibrate
   modules came from main and are not on `calibrate`'s path.
-- **Run-to-run variation.** The solves are not bit-reproducible across Modal
-  containers. Two first-head runs (`release_repro` and softmax λ = 0.03) were
-  repeated at d82ff85b as `dup_*` (`results/rerun_variation.json`). Neither
-  pair is byte-identical. The trajectories already differ at epoch 0 for
+- **Run-to-run variation.** Two first-head runs (`release_repro` and softmax
+  λ = 0.03) were repeated at d82ff85b as `dup_*`
+  (`results/rerun_variation.json`). Neither pair is byte-identical. The trajectories already differ at epoch 0 for
   softmax (the loss at the starting weights, 1.2e-6 relative) and at epoch 1
   for the release (7e-8 relative), which no code change between the heads
   touches. Over 800 epochs that grows to:
   - final loss: −2.7% for the release, −0.3% at λ = 0.03;
-  - per-record weights: median 0.3-0.5% and 99th percentile 4-9% apart;
+  - per-record weights: median 0.3-0.6% and 99th percentile 4-9% apart;
   - every concentration measure in the key table within 1%, training within 10% within 0.05 points;
   - districts below a quarter of their starting ESS: 15 and 16 for the release, 0 and 0 at λ = 0.03.
 
-  The cause (thread scheduling, CPU type or library code path) was not
-  isolated. The penalized solve varies much less than the unpenalized one.
+  No same-head pair was run, so a head change and the container are
+  confounded. But the receipts' kernel-module hashes show `solve.py` changed
+  once (35ad6657 to 9ef71ed6, then identical at bc763cb4 and d82ff85b), and
+  `matrix`, `target` and the frame modules are identical at every head. The
+  cause (thread scheduling, CPU type or library code path) was not isolated.
+  The penalized solve varies much less than the unpenalized one. Only training
+  metrics were rerun; held-out variation was not measured.
 
 ## Limits
 

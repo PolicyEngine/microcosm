@@ -357,12 +357,14 @@ def _path_reference() -> dict:
 def _problem_fingerprint(frame: Frame, targets: TargetSet) -> list[float]:
     """Moments that pin the generated problem, up to float rounding.
 
-    Not a byte digest: a SHA-256 of the generated arrays, written on macOS
-    arm64, failed on Linux CI for one of the twelve cases while the other
-    eleven matched, so the generated floats are not bit-stable. For each
-    target, the measure's sum, sum of squares and position-weighted sum, then
-    the target value; then the same three moments of the design weights. Any
-    change to the generator moves these far more than rounding does.
+    Not a byte digest. A SHA-256 of the generated arrays, written on macOS
+    arm64, failed on Linux CI (run 36893146111) for
+    ``s0_lognormal_conserve_softmax`` while ``s0_lognormal_free_projection``,
+    which generates the same problem, passed in the same run; the cause was
+    not isolated. For each target, the measure's sum, sum of squares and
+    position-weighted sum, then the target value; then the same three moments
+    of the design weights. Any change to the generator moves these far more
+    than rounding does.
     """
     household = frame.table("household")
     design = frame.resolve_weights("household").values.astype(np.float64)
