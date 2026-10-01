@@ -232,6 +232,23 @@ def grid() -> list[dict]:
                 "holdout_fold": 1,
             }
         )
+    # Provenance: the grid ran on three kernel heads. These rerun two
+    # first-head configurations at a later head; their weights must match
+    # byte for byte (compare_heads in analyze.py).
+    specs.append(
+        {
+            "run_id": "dup_release_repro",
+            "mass_parametrization": "projection",
+        }
+    )
+    specs.append(
+        {
+            "run_id": "dup_soft_chi_s050_0.03",
+            "l2_lambda": 0.03,
+            "l2_basis": "chi_square",
+            "mass_parametrization": "softmax",
+        }
+    )
     specs.append(
         {
             "run_id": "hold_proj_chi_s050_0.1",
