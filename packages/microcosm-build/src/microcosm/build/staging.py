@@ -13,6 +13,7 @@ import json
 import math
 import shutil
 import sys
+import threading
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -71,6 +72,14 @@ class StagingTelemetry:
         api: Optional ``huggingface_hub.HfApi``-shaped object for tests.
         upload_interval_seconds: Minimum interval between best-effort progress
             uploads. Final states always upload.
+        update_pointers: Whether uploads also refresh the repository-level
+            ``latest_staging.json`` pointer and ``runs.json`` index. A run
+            that must never move a shared pointer (an exact-count release)
+            sets this to ``False`` and writes only under its own run prefix.
+        background_uploads: Upload from a worker thread instead of the build
+            thread, so a slow or unreachable Hub never stalls the build. The
+            terminal ``complete``/``fail`` upload is still awaited, for at most
+            ``final_upload_timeout_seconds``.
     """
 
     run_id: str
@@ -80,6 +89,9 @@ class StagingTelemetry:
     path_prefix: str = DEFAULT_STAGING_PREFIX
     api: Any = None
     upload_interval_seconds: float = 30.0
+    update_pointers: bool = True
+    background_uploads: bool = False
+    final_upload_timeout_seconds: float = 120.0
     started_at: str = field(default_factory=_now)
 
     def __post_init__(self) -> None:
@@ -105,6 +117,20 @@ class StagingTelemetry:
         )
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
+        # Local writes and the uploader's snapshots take this lock, so a
+        # background upload never ships a half-written file.
+        self._io_lock = threading.RLock()
+        self._pending_artifacts: list[tuple[Path, str]] = []
+        self._upload_requested = threading.Event()
+        self._uploads_closing = False
+        self._upload_thread: threading.Thread | None = None
+        if self._upload_session is not None and self.background_uploads:
+            self._upload_thread = threading.Thread(
+                target=self._upload_worker,
+                name=f"staging-upload-{self.run_id}",
+                daemon=True,
+            )
+            self._upload_thread.start()
         self._progress: dict[str, Any] = {
             "schema_version": STAGING_SCHEMA_VERSION,
             "run_id": self.run_id,
@@ -166,17 +192,81 @@ class StagingTelemetry:
         if not force and now - self._last_upload_at < self.upload_interval_seconds:
             return
         self._last_upload_at = now
-        for filename in (
-            "run_manifest.json",
-            "progress.json",
-            "calibration_progress.json",
-            "events.ndjson",
-        ):
-            local = self.run_dir / filename
-            if local.exists():
-                self._upload_file(local, f"{self.repo_run_prefix}/{filename}")
-        self._upload_latest_pointer()
-        self._upload_runs_index()
+        if self._upload_thread is None:
+            self._upload_cycle()
+        else:
+            self._upload_requested.set()
+
+    def _upload_cycle(self) -> None:
+        with self._io_lock:
+            pending = [
+                (self._upload_copy(local), path_in_repo)
+                for local, path_in_repo in self._pending_artifacts
+                if local.exists()
+            ]
+            self._pending_artifacts.clear()
+            for filename in (
+                "run_manifest.json",
+                "progress.json",
+                "calibration_progress.json",
+                "events.ndjson",
+            ):
+                local = self.run_dir / filename
+                if local.exists():
+                    pending.append(
+                        (self._upload_copy(local), f"{self.repo_run_prefix}/{filename}")
+                    )
+        for local, path_in_repo in pending:
+            self._upload_file(local, path_in_repo)
+        if self.update_pointers:
+            self._upload_latest_pointer()
+            self._upload_runs_index()
+
+    def _upload_copy(self, local: Path) -> Path:
+        """The file to upload: a snapshot when a worker thread uploads it.
+
+        The build thread keeps appending to these files while the worker
+        uploads, so the worker ships a copy taken under the write lock.
+        """
+
+        if self._upload_thread is None:
+            return local
+        snapshots = self.run_dir / ".upload"
+        snapshots.mkdir(exist_ok=True)
+        copy = snapshots / local.name
+        shutil.copyfile(local, copy)
+        return copy
+
+    def _upload_worker(self) -> None:
+        while True:
+            self._upload_requested.wait()
+            self._upload_requested.clear()
+            try:
+                self._upload_cycle()
+            except Exception as error:  # pragma: no cover - defensive
+                print(
+                    f"warning: staging upload cycle failed: {error}",
+                    file=sys.stderr,
+                )
+            if self._uploads_closing and not self._upload_requested.is_set():
+                return
+
+    def _finish_uploads(self) -> None:
+        """Wait for the terminal upload when uploads run in the background."""
+
+        thread = self._upload_thread
+        if thread is None:
+            return
+        self._uploads_closing = True
+        self._upload_requested.set()
+        thread.join(timeout=self.final_upload_timeout_seconds)
+        if thread.is_alive():
+            print(
+                "warning: the final staging upload did not finish within "
+                f"{self.final_upload_timeout_seconds:g} s; local staging "
+                "artifacts are complete.",
+                file=sys.stderr,
+            )
 
     def _upload_latest_pointer(self) -> None:
         payload = {
@@ -249,38 +339,41 @@ class StagingTelemetry:
         }
 
     def _write_run_manifest(self) -> None:
-        _write_json(
-            self.run_dir / "run_manifest.json",
-            {
-                "schema_version": STAGING_SCHEMA_VERSION,
-                "run_id": self.run_id,
-                "candidate_release_id": self.candidate_release_id,
-                "started_at": self.started_at,
-                "repo_id": self.repo_id,
-                "path_prefix": self.path_prefix,
-                "artifacts": self._artifacts,
-            },
-        )
+        with self._io_lock:
+            _write_json(
+                self.run_dir / "run_manifest.json",
+                {
+                    "schema_version": STAGING_SCHEMA_VERSION,
+                    "run_id": self.run_id,
+                    "candidate_release_id": self.candidate_release_id,
+                    "started_at": self.started_at,
+                    "repo_id": self.repo_id,
+                    "path_prefix": self.path_prefix,
+                    "artifacts": self._artifacts,
+                },
+            )
 
     def _write_progress(self) -> None:
-        _write_json(self.run_dir / "progress.json", self._progress)
+        with self._io_lock:
+            _write_json(self.run_dir / "progress.json", self._progress)
 
     def _write_calibration_progress(self) -> None:
-        _write_json(
-            self.run_dir / "calibration_progress.json",
-            {
-                "schema_version": STAGING_SCHEMA_VERSION,
-                "run_id": self.run_id,
-                "candidate_release_id": self.candidate_release_id,
-                "updated_at": _now(),
-                "events": self._calibration_events,
-            },
-        )
+        with self._io_lock:
+            _write_json(
+                self.run_dir / "calibration_progress.json",
+                {
+                    "schema_version": STAGING_SCHEMA_VERSION,
+                    "run_id": self.run_id,
+                    "candidate_release_id": self.candidate_release_id,
+                    "updated_at": _now(),
+                    "events": self._calibration_events,
+                },
+            )
 
     def _append_event(self, event: dict[str, Any]) -> None:
         path = self.run_dir / "events.ndjson"
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a") as stream:
+        with self._io_lock, path.open("a") as stream:
             stream.write(json.dumps(_jsonable(event), allow_nan=False) + "\n")
 
     def stage(
@@ -359,7 +452,12 @@ class StagingTelemetry:
         }
         self._write_run_manifest()
         if local.exists():
-            self._upload_file(local, f"{self.repo_run_prefix}/{source.name}")
+            path_in_repo = f"{self.repo_run_prefix}/{source.name}"
+            if self._upload_thread is None:
+                self._upload_file(local, path_in_repo)
+            else:
+                with self._io_lock:
+                    self._pending_artifacts.append((local, path_in_repo))
         self._maybe_upload(force=force_upload)
 
     def fail(self, error: BaseException) -> None:
@@ -371,6 +469,7 @@ class StagingTelemetry:
             error_type=type(error).__name__,
             traceback=traceback.format_exc(),
         )
+        self._finish_uploads()
 
     def complete(self) -> None:
         self.stage(
@@ -379,3 +478,4 @@ class StagingTelemetry:
             message="Staging run completed.",
             force_upload=True,
         )
+        self._finish_uploads()

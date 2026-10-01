@@ -4,6 +4,7 @@ import importlib.util
 import inspect
 import json
 import os
+import signal
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -2035,15 +2036,27 @@ def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
     assert "requires --base-h5" in capsys.readouterr().err
 
 
-def test_builder_exact_k_requires_pointer_suppression(capsys) -> None:
+def test_builder_exact_k_stages_without_moving_pointers(tmp_path, monkeypatch) -> None:
     builder = _load_builder_module()
     argv = _exact_k_builder_argv("20000")
     argv.remove("--no-staging")
+    args = builder._parse_args(argv)
+    constructed: dict[str, object] = {}
 
-    with pytest.raises(SystemExit):
-        builder._parse_args(argv)
+    class RecordingTelemetry:
+        def __init__(self, **kwargs):
+            constructed.update(kwargs)
 
-    assert "ExactKPointerSuppressionError" in capsys.readouterr().err
+    monkeypatch.setattr(builder, "StagingTelemetry", RecordingTelemetry)
+    telemetry = builder._staging_telemetry(
+        args, release_root=tmp_path, release_id="populace-us-2024-k20000-fixture"
+    )
+
+    assert isinstance(telemetry, RecordingTelemetry)
+    # #578: an exact-count release never moves a shared pointer, so its
+    # telemetry stays under its own run prefix.
+    assert constructed["update_pointers"] is False
+    assert constructed["background_uploads"] is True
 
 
 def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
@@ -13427,6 +13440,31 @@ def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
         module.main()
 
     assert [str(error) for error in recorded] == ["build exploded"]
+
+
+def test_sigterm_marks_the_staging_run_failed(monkeypatch) -> None:
+    module = _load_builder_module()
+    recorded: list[BaseException] = []
+
+    class Telemetry:
+        def fail(self, error):
+            recorded.append(error)
+
+    def terminated(argv=None):
+        os.kill(os.getpid(), signal.SIGTERM)
+        raise AssertionError("SIGTERM should have ended the build")
+
+    before = signal.getsignal(signal.SIGTERM)
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", Telemetry())
+    monkeypatch.setattr(module, "_main", terminated)
+
+    with pytest.raises(SystemExit) as raised:
+        module.main()
+
+    assert raised.value.code == 128 + signal.SIGTERM
+    assert [type(error).__name__ for error in recorded] == ["BuildTerminatedError"]
+    assert str(recorded[0]) == "The build was terminated by SIGTERM."
+    assert signal.getsignal(signal.SIGTERM) is before
 
 
 def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) -> None:

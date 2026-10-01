@@ -1,4 +1,5 @@
 import json
+import threading
 
 import microcosm.build.staging as staging_module
 from microcosm.build.staging import StagingTelemetry
@@ -243,3 +244,89 @@ def test_us_version_1_bundle_matches_fixed_fixture(tmp_path, monkeypatch):
     assert (run_dir / "events.ndjson").read_text().splitlines() == (
         V1_FIXTURE / "events.ndjson"
     ).read_text().splitlines()
+
+
+def test_pointer_free_runs_upload_only_under_their_prefix(tmp_path) -> None:
+    api = FakeApi()
+    telemetry = StagingTelemetry(
+        run_id="run-k",
+        candidate_release_id="populace-us-2024-k20000-fixture",
+        run_dir=tmp_path / "run-k",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        update_pointers=False,
+    )
+    telemetry.stage("target_compilation", force_upload=True)
+    telemetry.complete()
+
+    uploaded_paths = {upload[1] for upload in api.uploads}
+    assert "runs/run-k/progress.json" in uploaded_paths
+    assert all(path.startswith("runs/run-k/") for path in uploaded_paths)
+
+
+class BlockingApi(FakeApi):
+    """Holds every upload until released, like a slow or unreachable Hub."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.release = threading.Event()
+
+    def upload_file(self, **kwargs):
+        self.release.wait(timeout=10)
+        return super().upload_file(**kwargs)
+
+    def hf_hub_download(self, **kwargs):
+        raise FileNotFoundError("no runs index yet")
+
+
+def test_background_uploads_never_block_the_build(tmp_path) -> None:
+    api = BlockingApi()
+    telemetry = StagingTelemetry(
+        run_id="run-bg",
+        candidate_release_id="populace-us-2024-bg-20260618T000000Z",
+        run_dir=tmp_path / "run-bg",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        background_uploads=True,
+    )
+
+    # The Hub is stuck, yet the build thread keeps going and writes locally.
+    for stage in ("target_registry", "load_base_frame", "target_compilation"):
+        telemetry.stage(stage, force_upload=True)
+    progress = json.loads((tmp_path / "run-bg" / "progress.json").read_text())
+    assert progress["stage"] == "target_compilation"
+    assert api.uploads == []
+
+    api.release.set()
+    telemetry.complete()
+
+    # The terminal state is awaited and uploaded, from a consistent snapshot.
+    uploaded = {path: local for local, path, _, _ in api.uploads}
+    final = json.loads(open(uploaded["runs/run-bg/progress.json"]).read())
+    assert final["status"] == "passed"
+    events = open(uploaded["runs/run-bg/events.ndjson"]).read().splitlines()
+    assert json.loads(events[-1])["stage"] == "complete"
+    assert telemetry.uploads_succeeded > 0
+
+
+def test_background_final_upload_wait_is_bounded(tmp_path, capsys) -> None:
+    api = BlockingApi()
+    telemetry = StagingTelemetry(
+        run_id="run-stuck",
+        candidate_release_id="populace-us-2024-stuck-20260618T000000Z",
+        run_dir=tmp_path / "run-stuck",
+        repo_id="policyengine/populace-us-staging",
+        api=api,
+        upload_interval_seconds=0,
+        background_uploads=True,
+        final_upload_timeout_seconds=0.2,
+    )
+
+    telemetry.complete()
+
+    assert "did not finish within 0.2 s" in capsys.readouterr().err
+    progress = json.loads((tmp_path / "run-stuck" / "progress.json").read_text())
+    assert progress["status"] == "passed"
+    api.release.set()
