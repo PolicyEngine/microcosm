@@ -394,18 +394,12 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     # calibration-competition residuals are deferred for four weeks. The SE
     # 12,570-15,000 income-tax deferral is retired in turn (microcosm#1012):
     # with the SPI households' housing imputed from their own incomes the row
-    # fits at +24.5 %, back inside the bound.
-    assert set(register) == {
-        "hmrc/state_pension_income_band_50_000_to_70_000@2025",
-    }
-    for name in sorted(register):
-        record = register[name]
-        assert record.approved_by == "juaristi22"
-        assert record.adjudication.startswith(
-            "PolicyEngine/microcosm#1006 (issue comment 5812206367"
-        )
-        assert record.approved_on == "2026-09-23"
-        assert record.expires_on == "2026-10-21"
+    # fits at +24.5 %, back inside the bound. The state-pension 50-70k
+    # deferral (ruling D6) is retired in turn (microcosm#1069): with the SPI
+    # channel's State Pension at 66 repaired the row fits at +23.0 % to +24.0 %
+    # across the c5-fix and c6 arms, back inside the bound. The register is
+    # empty.
+    assert set(register) == set()
 
 
 # Aggregate errors from the fresh UC #882 development run: 1,500 epochs with
