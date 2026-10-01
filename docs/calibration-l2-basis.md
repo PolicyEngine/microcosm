@@ -169,10 +169,11 @@ The ACS local-area tool takes the same settings as
 `--l2-lambda`, `--l2-basis {record,chi_square}` and
 `--mass-parametrization {projection,softmax}`. It records them, with the
 realized chi-square distance, in `calibration_summary.json` and in the build
-manifest's `calibration` block. `--resume` refuses a checkpoint solved under
-other penalty settings: `l2_lambda`, `mass_parametrization`, and `l2_basis`
-when either side's penalty is positive. It does not check the cap, loss cap
-or seed. `calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
+manifest's `calibration` block. Both join the tool's solver-settings stamp,
+so `--resume` and the already-complete shortcut refuse weights solved under
+any other solver setting (cap, loss cap, `l2_lambda`, `l2_basis`,
+`mass_parametrization`, seed, epoch batch); a stamp written before these two
+options existed reads as the historical solve. `calibrate_l0_refit` takes `l2_basis` / `refit_l2_basis`
 and `refit_mass_parametrization`; `refit_l0_selection` and `static_aging` take
 `l2_basis`.
 
@@ -189,8 +190,9 @@ design ESS of 20,238, while its 1,522 donor records carry 49.6% of the state's
 design mass with an ESS of 255, the national release's own Massachusetts figure,
 since the donor spine is that release's records at half weight. Together the
 state's design ESS is 1,020, and each of its nine districts is 108-134 (the ACS
-records alone give 2,020-2,444 per district). At `l2_lambda → ∞` those combined
-figures are the ceilings. Reaching the ACS-only figures needs a larger ACS
+records alone give 2,020-2,444 per district). As `l2_lambda → ∞` the solve
+returns to those combined figures. The penalty bounds the distance from them,
+not ESS itself, but no tested setting lifted national ESS above them. Reaching the ACS-only figures needs a larger ACS
 share of the mass in the staging (`--acs-share`), which is a construction
 decision outside calibration; `experiments/us-acs-local-l2-basis-20260928/
 seeding_options.py` measures the starting ESS under other shares and under

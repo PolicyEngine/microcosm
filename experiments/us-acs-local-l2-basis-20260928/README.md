@@ -30,8 +30,8 @@ what that anchor buys, what it costs, and what limits it.
    - The chi-square penalty pulls toward the design weights themselves. The old record-weighted L2 penalty pulls toward their square: at λ = 0.1 it *lowers* ESS to 8,689.
    - With the chi-square basis, ESS rises smoothly with λ.
    - On held-out targets, λ = 0.03 fits better than the release (see the table), consistent with a small penalty trading a little training fit for less overfitting.
-3. **The ceiling is the seeding.** As λ grows the solve returns to the starting weights, so no λ lifts ESS above the prior's.
-   - A larger ACS share raises the ceiling several-fold. At share 0.9 without a penalty: ESS 93,524, Massachusetts 2,704, no district below 50, and 95.8% of targets within 10%.
+3. **The seeding sets the limit.** As λ grows the solve returns to the starting weights. On every tested path the national ESS stays below the prior's (at share 0.5, λ = 3 reaches 35,386 against the prior's 36,288), though the penalty is a distance, not an ESS bound, and single districts can exceed their prior's ESS (at λ = 1 some do).
+   - A larger ACS share raises that limit several-fold. At share 0.9 without a penalty: ESS 93,524, Massachusetts 2,704, no district below 50, and 95.8% of targets within 10%.
    - It also worsens held-out fit, mainly on SOI targets (held-out SOI within 10% falls from 64% to 54% at share 0.9), while held-out district populations improve.
    - That is consistent with how the staging builds the rows: the ACS rows' tax variables are transferred from the donor rows by QRF (the tool's `donor_sparse_selection_training_set` limitation), so the donor rows carry tax detail the ACS rows only approximate.
 4. **The softmax parametrization is not needed at this scale.**
@@ -71,15 +71,15 @@ Two decisions, kept separate because they trade different things.
 **1. Calibration: adopt the chi-square penalty at the current seeding.**
 On today's loss, use `--l2-basis chi_square --l2-lambda 0.03` with
 `--mass-parametrization softmax`.
-- It is a Pareto improvement on everything measured here:
+- It improves every concentration measure and the held-out fit, at a small cost in training fit:
   - national ESS from 13,646 to 21,835;
   - Massachusetts from 448 to 620;
   - districts below ESS 50 from 352 to 239;
-  - the smallest district from 12 to 23.
-- Training targets within 10% fall from 97.6% to 97.1%.
-- Held-out error is lower than the release's on both folds (0.1242 vs 0.1296, and 0.1166 vs 0.1236).
+  - the smallest district from 12 to 23;
+  - held-out error lower than the release's on both folds (0.1242 vs 0.1296, and 0.1166 vs 0.1236);
+  - but training loss rises from 0.0155 to 0.0192, and training targets within 10% fall from 97.6% to 97.1%.
 - λ = 0.1 buys more ESS (24,895; 132 districts below 50) and still beats the release out of sample, at 2 pp of training fit.
-- Projection at λ = 0.03 lands just behind softmax on every measure (ESS 20,690 vs 21,835; held-out 0.1247 and 0.1191 vs 0.1242 and 0.1166), so the parametrization is a minor choice.
+- Projection at λ = 0.03 trades the other way by small margins: less ESS (20,690 vs 21,835) and slightly worse held-out error (0.1247 and 0.1191 vs 0.1242 and 0.1166), but better training fit (loss 0.0181 vs 0.0192; 97.3% vs 97.1% within 10%). The parametrization is a minor choice; softmax is preferred here for the held-out fit.
 - **λ is in units of the loss.** The ACS local build weights every target equally today (`calibrate` gets no `target_loss_weights`), and IRS SOI cells are 3,819 of the 4,459 targets. A change to weight them as the national release does is planned. Re-pick λ on that loss by rerunning this harness with its target weights before shipping a default; the shape of the trade is unlikely to change, but its scale may.
 
 **2. Construction: the ACS share of the mass is the bigger lever, and it costs out-of-sample fit.**
@@ -95,8 +95,9 @@ aggregate SOI fit. It also overlaps the support-mix bake-off (#1067, decision
 d701), which recommends ACS rows plus CPS, seeded in proportion to their
 counts, for the local file.
 
-**ESS floor as a release gate.** At the current seeding, a district floor of
-50 is out of reach without wrecking fit (it needs λ ≈ 1, at 76% within 10%).
+**ESS floor as a release gate.** At the current seeding, no tested
+configuration gets every district to ESS 50: even λ = 1 (76% within 10%)
+leaves 4 districts below it, and λ = 3 leaves 1.
 So the gate should catch regressions now and rise with the seeding:
 - **now:** every state at least 200, every district at least 20, and no
   district below a quarter of its starting ESS. The release fails all three
