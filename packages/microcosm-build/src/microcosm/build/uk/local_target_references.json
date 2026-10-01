@@ -225,6 +225,10 @@
       "dfc_ni.pension_credit": {
         "provider_id": "dfc_ni",
         "label": "Pension Credit"
+      },
+      "dwp.workplace_pensions": {
+        "provider_id": "dwp",
+        "label": "Workplace pensions"
       }
     },
     "target_categories": {

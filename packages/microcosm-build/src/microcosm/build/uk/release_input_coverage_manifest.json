@@ -468,7 +468,7 @@
    "required_mass_change_reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
     "survey": "Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence"
@@ -491,7 +491,7 @@
     "capital_gains"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
     "survey": "Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence"
@@ -513,7 +513,7 @@
    "required_mass_change_reason": "Capital-gains support split divides the wealthiest households of each HMRC Table 3 income band into light copies at equal weight; every household's mass and the total household mass are conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "HMRC Capital Gains Tax statistics, July 2026 release, Table 3 for 2024-25, via the vendored conditioning facts",
     "survey": "Family Resources Survey 2024-25, SPI synthetic support and HMRC Capital Gains Tax statistics Table 3 (2024-25 individuals by size of gain and taxable income)"
@@ -542,7 +542,7 @@
    "required_mass_change_reason": "ETB public-services imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab, DfT rail fare index, and public NHS activity/cost table.",
     "survey": "Effects of Taxes and Benefits 1977-2024 and NHS age-gender public table"
@@ -562,7 +562,7 @@
    "required_mass_change_reason": "ETB VAT expenditure-rate imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.",
     "survey": "Effects of Taxes and Benefits 1977-2024"
@@ -584,7 +584,7 @@
    "required_mass_change_reason": "CGT asset-type assignment on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
     "survey": "HMRC Capital Gains Tax statistics 2026 release, Table 8 (UK residential property disposals, 2024-25, administrative), Table 4.1 (individuals claiming Business Asset Disposal Relief or Investors' Relief by band of qualifying gain, 2024-25, administrative) and Table 7 (disposals, proceeds and gains by asset type, 2023-24, sample-based), vendored from the pinned Chronicle feed"
@@ -608,7 +608,7 @@
     "capital_gains"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "conditioning_resource": "hmrc_cgt_conditioning_facts.json",
     "conditioning_resource_sha256": "067ba21c12aeb4e95e6a8a16141dbaa075e8787ed875a005f549cab6e91a6b56",
@@ -697,7 +697,7 @@
     "full_frs_tei_band_unavailable"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2024",
@@ -738,7 +738,7 @@
    "required_mass_change_reason": "LCFS consumption imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs and the vendored Chronicle facts for NEED 2023 mean kWh, the FY2024-25 Ofgem cap levels, road-fuel outturn (DESNZ, HMRC, ONS), the DfT VEH1103 licensed-car stock, NTS bus use and the DfT and devolved bus finance tables.",
     "survey": "Living Costs and Food Survey 2023-24"
@@ -764,7 +764,7 @@
    "required_mass_change_reason": "NTS bus-travel imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "Department for Transport National Travel Survey, UK Data Service SN 5340 (End User Licence, 19th edition, November 2025), DOI 10.5255/UKDA-SN-5340-19; local licensed tab files (household, individual, trip); England residents only from 2013.",
     "survey": "National Travel Survey 2002-2024"
@@ -785,7 +785,7 @@
     "property_wealth"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
     "survey": "Public regional property reference"
@@ -801,15 +801,17 @@
    "output_weight_kind": "importance",
    "outputs": [
     "pension_contributions_via_salary_sacrifice",
-    "employee_pension_contributions"
+    "employee_pension_contributions",
+    "employment_income"
    ],
-   "required_mass_change_reason": "Salary-sacrifice support stage rewrites pension columns only; household rows and typed household weights pass through and total household mass is conserved.",
+   "required_mass_change_reason": "Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved.",
    "rewrites": [
     "pension_contributions_via_salary_sacrifice",
-    "employee_pension_contributions"
+    "employee_pension_contributions",
+    "employment_income"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
     "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis"
@@ -831,7 +833,7 @@
     "student_loan_plan"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "Explore Education Statistics Table 6a, Higher education total",
     "survey": "Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England"
@@ -853,7 +855,7 @@
    "required_mass_change_reason": "WAS Lifetime ISA imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed round-8 person and household tabs (interviews April 2020 to March 2022, Great Britain).",
     "survey": "Wealth and Assets Survey round 8"
@@ -888,7 +890,7 @@
    "required_mass_change_reason": "WAS wealth imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "2150fdd831ed2835a761b721ba44cd8f6ce45963873fec8751e424d01072c510",
+   "source_manifest_sha256": "43e06433b2d35deeeec9192678fe75d73d8a5fcdd54f2a4a2117fd64208c941d",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
     "survey": "Wealth and Assets Survey round 8"

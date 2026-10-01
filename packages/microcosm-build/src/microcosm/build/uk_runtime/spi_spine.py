@@ -12,12 +12,18 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.employer_pension_contributions import (
+    draw_employer_pension_contributions,
+    employer_scheme_and_sector,
+    load_ashe_employer_rates,
+)
 from microcosm.build.uk_runtime.frs_hmrc_source import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_PAY_COLUMN,
     FRS_HMRC_RETAINED_LEAF_COLUMNS,
     FRS_HMRC_UBISJA_COLUMN,
     _materialize_source_leaves,
+    _raw_source_person_ids,
     _read_raw_frs_table,
 )
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_population_policy
@@ -255,13 +261,19 @@ class UKFRSHMRCSpineLeavesResult:
     frame: Frame
     source_signal_rows: dict[str, int]
     structural_zero_columns: tuple[str, ...]
+    employer_pension_contributions: Mapping[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
-        return {
+        evidence: dict[str, object] = {
             "stage": UK_FRS_HMRC_SPINE_LEAVES_STAGE_NAME,
             "source_signal_rows": dict(self.source_signal_rows),
             "structural_zero_columns": list(self.structural_zero_columns),
         }
+        if self.employer_pension_contributions is not None:
+            evidence["employer_pension_contributions"] = dict(
+                self.employer_pension_contributions
+            )
+        return evidence
 
 
 @dataclass(frozen=True)
@@ -339,7 +351,9 @@ class UKFRSHMRCSpineLeavesStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         validate_uk_national_frame(frame)
-        artifacts = _artifact_by_table(self.stage, expected=("adult", "benefits"))
+        artifacts = _artifact_by_table(
+            self.stage, expected=("adult", "benefits", "job", "penprov")
+        )
         adult, adult_identity = _read_raw_frs_table(
             self.frs_raw_dir / str(artifacts["adult"]["locator"]),
             expected_filename="adult.tab",
@@ -352,10 +366,26 @@ class UKFRSHMRCSpineLeavesStageTransform:
             source_vintage=str(artifacts["benefits"].get("vintage", "unspecified")),
             required_columns=("sernum", "person", "benefit", "benamt", "var2"),
         )
+        penprov, penprov_identity = _read_raw_frs_table(
+            self.frs_raw_dir / str(artifacts["penprov"]["locator"]),
+            expected_filename="penprov.tab",
+            source_vintage=str(artifacts["penprov"].get("vintage", "unspecified")),
+            required_columns=("sernum", "person", "stemppen"),
+        )
+        job, job_identity = _read_raw_frs_table(
+            self.frs_raw_dir / str(artifacts["job"]["locator"]),
+            expected_filename="job.tab",
+            source_vintage=str(artifacts["job"].get("vintage", "unspecified")),
+            required_columns=("sernum", "person", "jobsect"),
+        )
         _assert_identity_matches_artifact(adult_identity.evidence(), artifacts["adult"])
         _assert_identity_matches_artifact(
             benefits_identity.evidence(), artifacts["benefits"]
         )
+        _assert_identity_matches_artifact(
+            penprov_identity.evidence(), artifacts["penprov"]
+        )
+        _assert_identity_matches_artifact(job_identity.evidence(), artifacts["job"])
         source_leaves = _materialize_source_leaves(adult, benefits)
         person = frame.table("person").copy()
         missing_ids = sorted(set(source_leaves.index) - set(person["person_id"]))
@@ -374,21 +404,33 @@ class UKFRSHMRCSpineLeavesStageTransform:
         aligned = source_leaves.reindex(person["person_id"], fill_value=0.0)
         for column in FRS_HMRC_RETAINED_LEAF_COLUMNS:
             person[column] = aligned[column].to_numpy(dtype=float)
-        if "employee_pension_contributions" not in person:
+        # Employer contributions: each member of an employer scheme draws an
+        # ASHE contribution rate for their scheme type and sector, applied to
+        # their pay (microcosm#1069 R6), replacing the incumbent's three times
+        # the employee contribution.
+        if "employment_income" not in person:
             raise ValueError(
-                "FRS HMRC spine leaves require employee_pension_contributions "
-                "to derive employer pension contributions."
+                "FRS HMRC spine leaves require employment_income to draw employer "
+                "pension contributions."
             )
-        employee = pd.to_numeric(
-            person["employee_pension_contributions"], errors="coerce"
+        pay = pd.to_numeric(person["employment_income"], errors="coerce")
+        if pay.isna().any():
+            raise ValueError("employment_income must be finite.")
+        scheme, sector = employer_scheme_and_sector(
+            person["person_id"].to_numpy(),
+            penprov.assign(
+                source_person_id=_raw_source_person_ids(penprov, label="PENPROV")
+            ),
+            job.assign(source_person_id=_raw_source_person_ids(job, label="JOB")),
         )
-        if employee.isna().any() or (employee < 0.0).any():
-            raise ValueError(
-                "employee_pension_contributions must be finite and non-negative."
-            )
-        person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN] = 3.0 * employee.to_numpy(
-            dtype=float
+        employer_amounts, employer_receipt = draw_employer_pension_contributions(
+            person["person_id"].to_numpy(),
+            employment_income=pay.to_numpy(dtype=float),
+            scheme=scheme,
+            sector=sector,
+            rates=load_ashe_employer_rates(),
         )
+        person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN] = employer_amounts
         result_frame = uk_national_frame(
             person=person,
             benunit=frame.table("benunit"),
@@ -409,6 +451,7 @@ class UKFRSHMRCSpineLeavesStageTransform:
             structural_zero_columns=tuple(
                 column for column, rows in source_signal_rows.items() if rows == 0
             ),
+            employer_pension_contributions=employer_receipt,
         )
         object.__setattr__(self, "last_result", result)
         return result.frame

@@ -493,6 +493,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "DEDUC1": 2.0,
                 "SPNAMT": 3.0,
                 "SALSAC": "1",
+                "JOBSECT": 1 + household_id % 2,
             }
         )
         pensions.append(
@@ -517,6 +518,18 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "PENAMT": 4.0,
             }
         )
+        if household_id % 2 == 0:
+            # An occupational scheme for the employer contribution draw
+            # (microcosm#1069 c9); the FRS spine reads only personal pensions.
+            penprov.append(
+                {
+                    "SERNUM": household_id,
+                    "BENUNIT": 1,
+                    "PERSON": 1,
+                    "STEMPPEN": 2,
+                    "PENAMT": 0.0,
+                }
+            )
         oddjobs.append(
             {
                 "SERNUM": household_id,

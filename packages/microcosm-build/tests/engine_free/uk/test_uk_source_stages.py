@@ -468,6 +468,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stages["salary_sacrifice"].outputs == (
             SALSAC_OUTPUT,
             "employee_pension_contributions",
+            "employment_income",
         )
         assert stages["student_loans"].outputs == ("student_loan_plan",)
 
@@ -621,7 +622,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
             "retain_adjudicated_frs_hmrc_leaves",
-            "derive",
+            "draw_employer_pension_contributions_from_rate_bands",
         ]
         assert [op.kind for op in stages["spi_support_channel"].operations] == [
             "stack_zero_weight_donors",

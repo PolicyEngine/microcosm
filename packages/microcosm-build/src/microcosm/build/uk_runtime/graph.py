@@ -238,7 +238,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "lcfs_consumption": None,
     "etb_vat": None,
     "etb_services": None,
-    "frs_hmrc_spine_leaves": frozenset({("person", "employee_pension_contributions")}),
+    # The employer pension draw applies an ASHE rate to pay (microcosm#1069).
+    "frs_hmrc_spine_leaves": frozenset({("person", "employment_income")}),
     "spi_support_channel": None,
     "spi_income_band_donors": None,
     "hmrc_spi_income_spine": None,
@@ -796,6 +797,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         (
             "pension_contributions_via_salary_sacrifice",
             "employee_pension_contributions",
+            # Converted records' pay drops by the sacrificed amount (microcosm#1069).
+            "employment_income",
         ),
     ),
     "student_loans": (_Cell("person", "student_loan_plan", "string"),),

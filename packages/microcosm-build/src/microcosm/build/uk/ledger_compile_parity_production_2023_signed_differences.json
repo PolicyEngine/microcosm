@@ -1,11 +1,11 @@
 {
- "compiled_count": 965,
+ "compiled_count": 966,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 833
+  "ledger_only": 834
  },
- "difference_count": 970,
+ "difference_count": 971,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -830,6 +830,13 @@
    "kind": "ledger_only",
    "ledger_value": 3130000.0,
    "name": "dwp.uc.households_with_deduction",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21014492753.6226,
+   "name": "hmrc.salary_sacrifice.amount",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

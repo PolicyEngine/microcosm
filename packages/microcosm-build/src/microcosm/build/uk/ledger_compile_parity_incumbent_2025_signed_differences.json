@@ -1,11 +1,11 @@
 {
- "compiled_count": 1276,
+ "compiled_count": 1278,
  "counts_by_kind": {
-  "calibration_drift": 554,
-  "fixture_only": 54,
-  "ledger_only": 693
+  "calibration_drift": 553,
+  "fixture_only": 55,
+  "ledger_only": 696
  },
- "difference_count": 1301,
+ "difference_count": 1304,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -53,6 +53,13 @@
    "fixture_value": 3518.0,
    "kind": "fixture_only",
    "name": "dwp/uc_payment_dist/SINGLE_annual_payment_nan_to_nan",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7884800.0,
+   "kind": "fixture_only",
+   "name": "hmrc.salary_sacrifice.users_total",
    "period": 2025,
    "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
   },
@@ -1227,6 +1234,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 66200000000.0,
+   "name": "dwp.workplace_pension.employee_contributions",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 104200000000.0,
+   "name": "dwp.workplace_pension.employer_contributions",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 32000000.0,
    "name": "hmrc.cgt.badr_ir_qualifying_gains_by_band.gain_0_to_9999",
    "period": 2025,
@@ -2008,6 +2029,13 @@
    "name": "hmrc.itl.total_income_by_total_income_band.band_50000_100000",
    "period": 2025,
    "reason": "Coverage the incumbent lacks (PolicyEngine/chronicle#280 lane): HMRC's Income Tax liabilities Table 2.5 taxpayers, total income and tax by band as the calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI 2023-24 savings-interest rows by band uprated by the household interest index; the incumbent registry binds neither (chronicle#282)."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24637681159.419598,
+   "name": "hmrc.salary_sacrifice.amount",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },
   {
    "kind": "ledger_only",
@@ -6193,14 +6221,6 @@
    "kind": "calibration_drift",
    "ledger_value": 4300000.0,
    "name": "hmrc.salary_sacrifice.users_below_cap",
-   "period": 2025,
-   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
-  },
-  {
-   "fixture_value": 7884800.0,
-   "kind": "calibration_drift",
-   "ledger_value": 7700000.0,
-   "name": "hmrc.salary_sacrifice.users_total",
    "period": 2025,
    "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
   },

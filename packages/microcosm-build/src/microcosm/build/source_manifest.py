@@ -108,6 +108,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_wic_claim",
         "disaggregate_aggregate_records",
         "draw_capital_gains_prior_from_banded_quantiles",
+        "draw_employer_pension_contributions_from_rate_bands",
         "draw_spi_donor_ages_by_population",
         "fit_labor_market_models",
         "fit_tip_income_model",

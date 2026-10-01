@@ -97,7 +97,8 @@ _STAGE2_REVIEWED_ABSENT_PREDICTORS = {
 
 _EXPECTED_OPERATION_KINDS = (
     "retain_adjudicated_frs_hmrc_leaves",
-    "derive",
+    # Employer pension contributions from ASHE rate bands (microcosm#1069 c9).
+    "draw_employer_pension_contributions_from_rate_bands",
     "stack_zero_weight_donors",
     "gate_zero_weight_strata",
     "allocate_zero_weight_prior_mass",

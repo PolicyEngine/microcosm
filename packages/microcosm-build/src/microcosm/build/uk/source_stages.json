@@ -1233,6 +1233,41 @@
      "tax_year_start": 2024,
      "ukds_study_number": 9563,
      "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "job",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "job.tab",
+     "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
+     "size_bytes": 10518760,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "penprov",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "penprov.tab",
+     "sha256": "9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1",
+     "size_bytes": 513614,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "employer_rate_bands",
+     "kind": "public_aggregate_reference",
+     "resource": "ashe_employer_pension_contribution_rates.json",
+     "format": "json",
+     "runtime_sha256_required": true
     }
    ],
    "operations": [
@@ -1314,10 +1349,20 @@
      "fail_on_full_concept_alias": true
     },
     {
-     "kind": "derive",
+     "kind": "draw_employer_pension_contributions_from_rate_bands",
      "output": "employer_pension_contributions",
-     "formula": "3 * employee_pension_contributions",
-     "source": "incumbent enhanced-FRS frs.py employer-pension contribution estimate"
+     "artifact_role": "employer_rate_bands",
+     "resource": "ashe_employer_pension_contribution_rates.json",
+     "scheme_source": "PENPROV.STEMPPEN 1 to 4 (employer schemes; occupational before group personal, group stakeholder, other)",
+     "sector_source": "JOB.JOBSECT (first job with a stated sector)",
+     "occupational_split": "defined benefit or defined contribution by ASHE Table P2 job counts in the sector",
+     "rate_basis": "full pay (employment_income)",
+     "top_band_ceiling": 0.3,
+     "seed": 0,
+     "salts": [
+      "employer_pension_occupational_type",
+      "employer_pension_contribution_rate"
+     ]
     }
    ],
    "outputs": [
@@ -1336,7 +1381,7 @@
     "srp_regular_code5",
     "employer_pension_contributions"
    ],
-   "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then ports the incumbent employer-pension-contributions estimate."
+   "notes": "Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then draws employer pension contributions: each member of an employer scheme (PENPROV.STEMPPEN 1 to 4) with earnings takes an ASHE 2024 employer contribution rate for their scheme type and sector (Table P10 band shares, full pay, all industries; occupational schemes split into defined benefit and defined contribution by the sector's Table P2 job counts), uniform within the band (top band 20% to 30%), times pay. It replaces the incumbent's three times the employee contribution (microcosm#1069 c9, R6)."
   },
   {
    "stage": "spi_support_channel",
@@ -5170,26 +5215,29 @@
      "target": 5400000,
      "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
      "rate_cap": 0.5,
-     "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed",
+     "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed; employment_income lowered by the amount sacrificed",
      "seed": 2024,
      "salt": "salary_sacrifice_conversion",
      "receipt": "weighted_headcount",
-     "reason": "Salary-sacrifice support stage rewrites pension columns only; household rows and typed household weights pass through and total household mass is conserved."
+     "reason": "Salary-sacrifice support stage rewrites pension columns and converted records' pay; household rows and typed household weights pass through and total household mass is conserved."
     }
    ],
    "outputs": [
     "pension_contributions_via_salary_sacrifice",
-    "employee_pension_contributions"
+    "employee_pension_contributions",
+    "employment_income"
    ],
    "nonnegative_outputs": [
     "pension_contributions_via_salary_sacrifice",
-    "employee_pension_contributions"
+    "employee_pension_contributions",
+    "employment_income"
    ],
    "rewrites": [
     "pension_contributions_via_salary_sacrifice",
-    "employee_pension_contributions"
+    "employee_pension_contributions",
+    "employment_income"
    ],
-   "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts."
+   "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts into salary sacrifice and lowering their pay by the same amount, since the engine reads employment_income after sacrifice; before microcosm#1069 c9 the pay stayed whole and the converted record lost its net-pay relief."
   },
   {
    "stage": "student_loans",

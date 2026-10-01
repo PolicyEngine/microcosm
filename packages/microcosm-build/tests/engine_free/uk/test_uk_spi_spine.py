@@ -116,10 +116,18 @@ def _leaves_stage(
             "var2": [0, 0, 0],
         }
     )
+    # Person 1001 (sernum 1) is in a public-sector occupational scheme; person
+    # 2001 (sernum 2) has only a personal pension, no employer scheme.
+    penprov = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "stemppen": [2, 5]})
+    job = pd.DataFrame({"sernum": [1, 2], "person": [1, 1], "jobsect": [2, 1]})
     adult_path = tmp_path / "adult.tab"
     benefits_path = tmp_path / "benefits.tab"
+    penprov_path = tmp_path / "penprov.tab"
+    job_path = tmp_path / "job.tab"
     adult.to_csv(adult_path, sep="\t", index=False)
     benefits.to_csv(benefits_path, sep="\t", index=False)
+    penprov.to_csv(penprov_path, sep="\t", index=False)
+    job.to_csv(job_path, sep="\t", index=False)
 
     def artifact(path: Path, table: str) -> dict[str, object]:
         import hashlib
@@ -144,11 +152,13 @@ def _leaves_stage(
             "artifacts": [
                 artifact(adult_path, "adult"),
                 artifact(benefits_path, "benefits"),
+                artifact(penprov_path, "penprov"),
+                artifact(job_path, "job"),
             ],
             "operations": [
                 {"kind": "retain_adjudicated_frs_hmrc_leaves"},
                 {
-                    "kind": "derive",
+                    "kind": "draw_employer_pension_contributions_from_rate_bands",
                     "output": EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
                 },
             ],
@@ -180,7 +190,14 @@ def test_spine_leaves_align_by_raw_person_id_not_position(tmp_path: Path) -> Non
     assert person["hmrc_spi_incapacity_benefit_income"].tolist() == pytest.approx(
         [2.0 * 365.25 / 7.0, 0.0]
     )
-    assert person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN].tolist() == [9.0, 6.0]
+    # Employer contributions come from an ASHE rate draw on pay (microcosm#1069
+    # c9): person 2001 has no employer scheme; person 1001's public-sector
+    # occupational scheme pays between 0% and 30% of their 10 of pay.
+    employer = person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN].tolist()
+    assert employer[0] == 0.0
+    assert 0.0 <= employer[1] <= 3.0
+    evidence = transform.last_result.evidence()["employer_pension_contributions"]
+    assert evidence["members_with_earnings"] == 1
 
 
 def test_spine_leaves_fail_closed_on_unknown_raw_person(tmp_path: Path) -> None:

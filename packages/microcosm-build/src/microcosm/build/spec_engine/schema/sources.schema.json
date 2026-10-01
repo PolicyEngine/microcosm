@@ -8643,6 +8643,38 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "output",
+      "artifact_role",
+      "resource",
+      "scheme_source",
+      "sector_source",
+      "occupational_split",
+      "rate_basis",
+      "top_band_ceiling",
+      "seed",
+      "salts"
+     ],
+     "properties": {
+      "kind": {
+       "const": "draw_employer_pension_contributions_from_rate_bands"
+      },
+      "output": {"type": "string"},
+      "artifact_role": {"type": "string"},
+      "resource": {"type": "string"},
+      "scheme_source": {"type": "string"},
+      "sector_source": {"type": "string"},
+      "occupational_split": {"type": "string"},
+      "rate_basis": {"type": "string"},
+      "top_band_ceiling": {"type": "number"},
+      "seed": {"type": "integer"},
+      "salts": {"type": "array", "items": {"type": "string"}}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "artifact_role",
       "resource",
       "population_period",

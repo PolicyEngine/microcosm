@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1299,
-  "contract_target_count": 338,
-  "active_reference_count": 1276,
+  "candidate_count": 1301,
+  "contract_target_count": 340,
+  "active_reference_count": 1278,
   "status_counts": {
-    "active": 1276,
+    "active": 1278,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 16
   },
@@ -139,10 +139,6 @@
       "geography_id": "K02000001"
     },
     "hmrc.salary_sacrifice.nics_relief_employer": {
-      "geography_level": "country",
-      "geography_id": "K02000001"
-    },
-    "hmrc.salary_sacrifice.users_total": {
       "geography_level": "country",
       "geography_id": "K02000001"
     },
@@ -4067,11 +4063,24 @@
     "dfc_ni.pension_credit.benefit_units": {
       "geography_level": "country",
       "geography_id": "N92000002"
+    },
+    "dwp.workplace_pension.employer_contributions": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.workplace_pension.employee_contributions": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "hmrc.salary_sacrifice.amount": {
+      "geography_level": "country",
+      "geography_id": "K02000001"
     }
   },
   "genuine_sum_residue": [
     "dfe.funded_childcare.working_parent_children_2_to_4",
     "dfi_ni.bus.passenger_receipts",
+    "dwp.workplace_pension.employer_contributions",
     "nithc.public_transport_support",
     "ons.population.age_0_9_by_region@E12000001",
     "ons.population.age_0_9_by_region@E12000002",
@@ -11438,6 +11447,11 @@
       "index": "hmrc.itl_2026.total_tax_growth_by_total_income_band",
       "factor": "1.21312442637997",
       "value_before_uprating": "522000000.0"
+    },
+    {
+      "name": "hmrc.salary_sacrifice.amount",
+      "from": "2024",
+      "to": "2025"
     }
   ],
   "targets": {
@@ -11918,21 +11932,6 @@
           "resolved_value": 3400000000.0,
           "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479"
-        }
-      ]
-    },
-    "hmrc.salary_sacrifice.users_total": {
-      "status": "active",
-      "candidates": [
-        {
-          "name": "hmrc.salary_sacrifice.users_total",
-          "status": "active",
-          "matched_fact_count_overall": 1,
-          "matched_fact_count_at_or_before_period": 1,
-          "resolved_period": 2025,
-          "resolved_value": 7700000.0,
-          "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_06d585b8684b5fe0ce25f6ec"
         }
       ]
     },
@@ -30284,6 +30283,51 @@
           "resolved_value": 60195.0,
           "resolved_fact_period": "2025-11",
           "resolved_fact_key": "ledger_aggregate_fact_v2_31088d4513e7b7e4b21233d7"
+        }
+      ]
+    },
+    "dwp.workplace_pension.employer_contributions": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.workplace_pension.employer_contributions",
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 104200000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_084d676d6e9bd618bb35e125"
+        }
+      ]
+    },
+    "dwp.workplace_pension.employee_contributions": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.workplace_pension.employee_contributions",
+          "status": "active",
+          "matched_fact_count_overall": 24,
+          "matched_fact_count_at_or_before_period": 24,
+          "resolved_period": 2025,
+          "resolved_value": 66200000000.0,
+          "resolved_fact_period": "2025",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_9077833a715946b65beb9f3d"
+        }
+      ]
+    },
+    "hmrc.salary_sacrifice.amount": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "hmrc.salary_sacrifice.amount",
+          "status": "active",
+          "matched_fact_count_overall": 2,
+          "matched_fact_count_at_or_before_period": 2,
+          "resolved_period": 2025,
+          "resolved_value": 24637681159.419598,
+          "resolved_fact_period": "2024",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479"
         }
       ]
     }

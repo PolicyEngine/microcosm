@@ -24,8 +24,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 626,
-    "excluded_rows": 26,
+    "mapped_rows": 625,
+    "excluded_rows": 27,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -364,7 +364,6 @@
       "obr/salary_sacrifice_employer_ni_relief": "hmrc.salary_sacrifice.nics_relief_employer",
       "obr/salary_sacrifice_users_above_cap": "hmrc.salary_sacrifice.users_above_cap",
       "obr/salary_sacrifice_users_below_cap": "hmrc.salary_sacrifice.users_below_cap",
-      "obr/salary_sacrifice_users_total": "hmrc.salary_sacrifice.users_total",
       "obr/sdlt": "obr.sdlt",
       "obr/statutory_maternity_pay": "obr.statutory_maternity_pay",
       "obr/tv_licence_fee": "obr.tv_licence_fee",
@@ -680,7 +679,8 @@
       "ons/tenure_england_social_rent": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
       "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
       "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
-      "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted."
+      "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted.",
+      "obr/salary_sacrifice_users_total": "R10 (microcosm#1069 c9): the salary-sacrifice users total contradicts the staged support and the two headcounts either side of £2,000 already bind it; it leaves the fit."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -827,7 +827,10 @@
       "hmrc.spi.net_pay_pension_contributions.amount_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "hmrc.spi.net_pay_pension_contributions.count_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "hmrc.spi.relief_at_source_pension_contributions.amount_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
-      "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069)."
+      "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
+      "dwp.workplace_pension.employer_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
+      "dwp.workplace_pension.employee_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
+      "hmrc.salary_sacrifice.amount": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -894,7 +897,6 @@
       "hmrc.salary_sacrifice.it_relief_additional_rate",
       "hmrc.salary_sacrifice.nics_relief_employee",
       "hmrc.salary_sacrifice.nics_relief_employer",
-      "hmrc.salary_sacrifice.users_total",
       "hmrc.salary_sacrifice.users_below_cap",
       "hmrc.salary_sacrifice.users_above_cap",
       "hmrc.spi.employment_income.amount_by_total_income_band",
@@ -1198,7 +1200,10 @@
       "dwp.pension_credit.benefit_units_80_84",
       "dwp.pension_credit.benefit_units_85_89",
       "dwp.pension_credit.benefit_units_90_plus",
-      "dfc_ni.pension_credit.benefit_units"
+      "dfc_ni.pension_credit.benefit_units",
+      "dwp.workplace_pension.employer_contributions",
+      "dwp.workplace_pension.employee_contributions",
+      "hmrc.salary_sacrifice.amount"
     ]
   },
   "profile_parity": {
@@ -2936,49 +2941,6 @@
       },
       "category_id": "hmrc.salary_sacrifice_national_insurance_relief",
       "label": "National Insurance contributions relief employer"
-    },
-    {
-      "target_id": "hmrc.salary_sacrifice.users_total",
-      "family": "hmrc_salary_sacrifice",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "map_to": "household",
-        "concept": "uk.person.count"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/salary_sacrifice_users_total",
-          "filters": [
-            {
-              "variable": "pension_contributions_via_salary_sacrifice",
-              "operator": ">",
-              "value": 0
-            }
-          ],
-          "value_variable": "person_count",
-          "from_entity": "person",
-          "map_to": "household",
-          "threshold_price_base_year": 2023,
-          "notes": "The GBP 2,000 cap is defined at FRS base-year (2023) prices; deflate salary-sacrifice amounts before banding (compute/income.py:71-95)."
-        },
-        "axiom": {
-          "metric_name": "obr/salary_sacrifice_users_total",
-          "status": "pending",
-          "value_rule": "uk.person.count"
-        }
-      },
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.salary_sacrifice_pension_users",
-        "dimension_values": {
-          "salary_sacrifice_threshold_position": "all"
-        }
-      },
-      "category_id": "hmrc.salary_sacrifice_pension_users",
-      "label": "Users total"
     },
     {
       "target_id": "hmrc.salary_sacrifice.users_below_cap",
@@ -25853,6 +25815,206 @@
       "period_match_policy": "source_window"
     },
     {
+      "target_id": "dwp.workplace_pension.employer_contributions",
+      "family": "dwp_workplace_pensions",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.pensions.contributions.employer.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/workplace_pension/employer_contributions",
+          "value_expression": "employer_pension_contributions + pension_contributions_via_salary_sacrifice",
+          "from_entity": "person",
+          "map_to": "household",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Workplace pension participation and savings trends 2025 (ONS ASHE, Great Britain, all savers, 2025 earnings terms; PolicyEngine/chronicle#302 via #305): employer contributions into workplace pensions in calendar 2025, against the engine's employer contributions plus salary sacrifice, which ASHE and DWP count as an employer contribution (microcosm#1069 c9, R6)."
+        },
+        "axiom": {
+          "metric_name": "dwp/workplace_pension/employer_contributions",
+          "status": "pending",
+          "value_rule": "uk.pensions.contributions.employer.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.workplace_pension_annual_saving",
+        "entity_name": "person",
+        "dimensions": [
+          "price_basis",
+          "saver_population",
+          "saving_component",
+          "sector"
+        ],
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "dimension_values": {
+          "price_basis": "2025_earnings_terms",
+          "saver_population": "all_savers",
+          "saving_component": "employer_contributions",
+          "sector": "all"
+        }
+      },
+      "category_id": "dwp.workplace_pensions",
+      "label": "Employer workplace pension contributions, Great Britain",
+      "period_match_policy": "exact"
+    },
+    {
+      "target_id": "dwp.workplace_pension.employee_contributions",
+      "family": "dwp_workplace_pensions",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.pensions.contributions.employee.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/workplace_pension/employee_contributions",
+          "value_variable": "employee_pension_contributions",
+          "from_entity": "person",
+          "map_to": "household",
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Workplace pension participation and savings trends 2025 (ONS ASHE, Great Britain, all savers, 2025 earnings terms; PolicyEngine/chronicle#302 via #305): gross employee contributions, DWP's employee part (net of tax) plus its tax relief part, against the engine's employee contributions (microcosm#1069 c9, R6)."
+        },
+        "axiom": {
+          "metric_name": "dwp/workplace_pension/employee_contributions",
+          "status": "pending",
+          "value_rule": "uk.pensions.contributions.employee.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.workplace_pension_annual_saving",
+        "entity_name": "person",
+        "dimensions": [
+          "price_basis",
+          "saver_population",
+          "saving_component",
+          "sector"
+        ],
+        "period_type": "calendar_year",
+        "period_value": 2025
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "dwp.workplace_pension_annual_saving",
+          "dimension_values": {
+            "price_basis": "2025_earnings_terms",
+            "saver_population": "all_savers",
+            "saving_component": "employee_contributions",
+            "sector": "all"
+          },
+          "label": "employee_contributions_net_of_tax"
+        },
+        {
+          "weight": 1,
+          "source_concept": "dwp.workplace_pension_annual_saving",
+          "dimension_values": {
+            "price_basis": "2025_earnings_terms",
+            "saver_population": "all_savers",
+            "saving_component": "tax_relief",
+            "sector": "all"
+          },
+          "label": "tax_relief"
+        }
+      ],
+      "category_id": "dwp.workplace_pensions",
+      "label": "Employee workplace pension contributions (gross), Great Britain",
+      "period_match_policy": "exact"
+    },
+    {
+      "target_id": "hmrc.salary_sacrifice.amount",
+      "family": "hmrc_salary_sacrifice",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.pensions.contributions.salary_sacrifice.amount"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/salary_sacrifice_amount",
+          "value_variable": "pension_contributions_via_salary_sacrifice",
+          "from_entity": "person",
+          "map_to": "household",
+          "notes": "HMRC Private pension statistics Table 6.2, 2024-25: the employer National Insurance relief on salary-sacrificed pension contributions (£3.4bn) divided by the 13.8% employer rate, a declared conversion (about £24.6bn) binding the sacrificed amount until the relief rows bind directly through the counterfactual route (microcosm#1069 R10; c11 retires this row)."
+        },
+        "axiom": {
+          "metric_name": "hmrc/salary_sacrifice_amount",
+          "status": "pending",
+          "value_rule": "uk.pensions.contributions.salary_sacrifice.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.ss_nics_relief_employer",
+        "entity_name": "person"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 7.246376811594,
+          "source_concept": "hmrc.ss_nics_relief_employer",
+          "label": "employer_nics_relief_over_13_8_percent"
+        }
+      ],
+      "category_id": "hmrc.salary_sacrifice_national_insurance_relief",
+      "label": "Salary-sacrificed pension contributions (from employer NICs relief)"
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -29122,6 +29284,10 @@
       "dfc_ni.pension_credit": {
         "provider_id": "dfc_ni",
         "label": "Pension Credit"
+      },
+      "dwp.workplace_pensions": {
+        "provider_id": "dwp",
+        "label": "Workplace pensions"
       }
     }
   }

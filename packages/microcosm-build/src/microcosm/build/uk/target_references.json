@@ -225,6 +225,10 @@
       "dfc_ni.pension_credit": {
         "provider_id": "dfc_ni",
         "label": "Pension Credit"
+      },
+      "dwp.workplace_pensions": {
+        "provider_id": "dwp",
+        "label": "Workplace pensions"
       }
     },
     "target_categories": {
@@ -335,6 +339,8 @@
       "dwp.uc.two_child_limit.households_affected": "dwp.universal_credit_two_child_limit",
       "dwp.uc.two_child_limit.households_claimant_pip": "dwp.universal_credit_two_child_limit",
       "dwp.uc.two_child_limit.households_disabled_child_element": "dwp.universal_credit_two_child_limit",
+      "dwp.workplace_pension.employee_contributions": "dwp.workplace_pensions",
+      "dwp.workplace_pension.employer_contributions": "dwp.workplace_pensions",
       "hmrc.cgt.badr_ir_qualifying_gains_by_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.badr_ir_taxpayers_by_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.gains_by_age_band": "hmrc.capital_gains_tax",
@@ -354,6 +360,7 @@
       "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.itl.total_income_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.salary_sacrifice.amount": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
@@ -361,7 +368,6 @@
       "hmrc.salary_sacrifice.nics_relief_employer": "hmrc.salary_sacrifice_national_insurance_relief",
       "hmrc.salary_sacrifice.users_above_cap": "hmrc.salary_sacrifice_pension_users",
       "hmrc.salary_sacrifice.users_below_cap": "hmrc.salary_sacrifice_pension_users",
-      "hmrc.salary_sacrifice.users_total": "hmrc.salary_sacrifice_pension_users",
       "hmrc.spi.dividend_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.dividend_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.employment_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
@@ -660,6 +666,8 @@
       "dwp.uc.two_child_limit.households_affected": "Households affected",
       "dwp.uc.two_child_limit.households_claimant_pip": "Households claimant Personal Independence Payment",
       "dwp.uc.two_child_limit.households_disabled_child_element": "Households disabled child element",
+      "dwp.workplace_pension.employee_contributions": "Employee workplace pension contributions (gross), Great Britain",
+      "dwp.workplace_pension.employer_contributions": "Employer workplace pension contributions, Great Britain",
       "hmrc.cgt.badr_ir_qualifying_gains_by_band": "Capital Gains Tax BADR and Investors' Relief qualifying gains by band",
       "hmrc.cgt.badr_ir_taxpayers_by_band": "Capital Gains Tax BADR and Investors' Relief claimants by band of qualifying gain",
       "hmrc.cgt.gains_by_age_band": "Capital Gains Tax gains by age band",
@@ -679,6 +687,7 @@
       "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
       "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
       "hmrc.itl.total_income_by_total_income_band": "Total income by total income band",
+      "hmrc.salary_sacrifice.amount": "Salary-sacrificed pension contributions (from employer NICs relief)",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "It relief basic rate",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "It relief higher rate",
@@ -686,7 +695,6 @@
       "hmrc.salary_sacrifice.nics_relief_employer": "National Insurance contributions relief employer",
       "hmrc.salary_sacrifice.users_above_cap": "Users above cap",
       "hmrc.salary_sacrifice.users_below_cap": "Users below cap",
-      "hmrc.salary_sacrifice.users_total": "Users total",
       "hmrc.spi.dividend_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.dividend_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.employment_income.amount_by_total_income_band": "Amount by total income band",
@@ -1452,26 +1460,6 @@
       },
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
-    },
-    {
-      "name": "hmrc.salary_sacrifice.users_total",
-      "ledger_selector": {
-        "source_name": "hmrc",
-        "source_concept": "hmrc.salary_sacrifice_pension_users",
-        "dimension_values": {
-          "salary_sacrifice_threshold_position": "all"
-        },
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "obr/salary_sacrifice_users_total",
-      "family": "hmrc_salary_sacrifice",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "hmrc.salary_sacrifice.users_total",
-        "measure_kind": "prepared_column"
-      }
     },
     {
       "name": "hmrc.salary_sacrifice.users_below_cap",
@@ -46146,6 +46134,120 @@
       },
       "period_match_policy": "source_window",
       "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.workplace_pension.employer_contributions",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.workplace_pension_annual_saving",
+        "entity_name": "person",
+        "dimensions": [
+          "price_basis",
+          "saver_population",
+          "saving_component",
+          "sector"
+        ],
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "dimension_values": {
+          "price_basis": "2025_earnings_terms",
+          "saver_population": "all_savers",
+          "saving_component": "employer_contributions",
+          "sector": "all"
+        },
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/workplace_pension/employer_contributions",
+      "family": "dwp_workplace_pensions",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.workplace_pension.employer_contributions",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "exact",
+      "value_operation": "sum"
+    },
+    {
+      "name": "dwp.workplace_pension.employee_contributions",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.workplace_pension_annual_saving",
+        "entity_name": "person",
+        "dimensions": [
+          "price_basis",
+          "saver_population",
+          "saving_component",
+          "sector"
+        ],
+        "period_type": "calendar_year",
+        "period_value": 2025,
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "person",
+      "measure": "dwp/workplace_pension/employee_contributions",
+      "family": "dwp_workplace_pensions",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.workplace_pension.employee_contributions",
+        "measure_kind": "prepared_column"
+      },
+      "period_match_policy": "exact",
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 1,
+          "source_concept": "dwp.workplace_pension_annual_saving",
+          "dimension_values": {
+            "price_basis": "2025_earnings_terms",
+            "saver_population": "all_savers",
+            "saving_component": "employee_contributions",
+            "sector": "all"
+          },
+          "label": "employee_contributions_net_of_tax"
+        },
+        {
+          "weight": 1,
+          "source_concept": "dwp.workplace_pension_annual_saving",
+          "dimension_values": {
+            "price_basis": "2025_earnings_terms",
+            "saver_population": "all_savers",
+            "saving_component": "tax_relief",
+            "sector": "all"
+          },
+          "label": "tax_relief"
+        }
+      ]
+    },
+    {
+      "name": "hmrc.salary_sacrifice.amount",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.ss_nics_relief_employer",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001"
+      },
+      "entity": "person",
+      "measure": "hmrc/salary_sacrifice_amount",
+      "family": "hmrc_salary_sacrifice",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.salary_sacrifice.amount",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "linear_combination",
+      "value_operands": [
+        {
+          "weight": 7.246376811594,
+          "source_concept": "hmrc.ss_nics_relief_employer",
+          "label": "employer_nics_relief_over_13_8_percent"
+        }
+      ],
+      "uprating_from_period": "2024",
+      "uprating_to_period": 2025
     }
   ]
 }

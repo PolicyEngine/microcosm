@@ -880,6 +880,67 @@
           "expected_row_count": 182
         }
       ]
+    },
+    {
+      "resource": "ashe_employer_pension_contribution_rates.json",
+      "purpose": "ONS ASHE 2024 workplace pension tables: the share of jobs in each employer contribution band (full pay) by pension type and sector, all industries (Table P10), and jobs by pension type and sector (Table P2). Consumed by the FRS HMRC spine-leaves stage, which draws each employer-scheme member's employer contribution rate for their scheme type and sector (microcosm#1069 c9, R6).",
+      "consumers": [
+        "uk_runtime.employer_pension_contributions"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "ashe_p10_employer_rate_band_share_full_pay_by_type_and_sector",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.workplace_pension_employer_contribution_band_share",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2024"
+            ],
+            "dimensions": [
+              "contribution_basis",
+              "employer_contribution_rate_band",
+              "pension_type",
+              "sector",
+              "sic2007_section",
+              "sic2007_summary_category"
+            ],
+            "dimension_values": {
+              "contribution_basis": "full_pay",
+              "sic2007_section": "all",
+              "sic2007_summary_category": "all"
+            }
+          },
+          "expected_row_count": 68
+        },
+        {
+          "label": "ashe_p2_jobs_by_type_and_sector",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.workplace_pension_jobs_by_type",
+            "geography_id": "K02000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2024"
+            ],
+            "dimensions": [
+              "pension_type",
+              "sector",
+              "sic2007_section",
+              "sic2007_summary_category",
+              "weekly_earnings_band"
+            ],
+            "dimension_values": {
+              "sic2007_section": "all",
+              "sic2007_summary_category": "all",
+              "weekly_earnings_band": "all"
+            }
+          },
+          "expected_row_count": 13
+        }
+      ]
     }
   ]
 }
