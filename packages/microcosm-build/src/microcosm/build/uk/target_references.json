@@ -412,7 +412,6 @@
       "obr.pension_credit": "obr.efo_expenditure",
       "obr.pip": "obr.efo_expenditure",
       "obr.sdlt": "obr.efo_receipts",
-      "obr.state_pension": "obr.efo_expenditure",
       "obr.statutory_maternity_pay": "obr.efo_expenditure",
       "obr.tv_licence_fee": "obr.efo_expenditure",
       "obr.universal_credit": "obr.efo_expenditure",
@@ -720,7 +719,6 @@
       "obr.pension_credit": "Pension credit",
       "obr.pip": "Personal Independence Payment",
       "obr.sdlt": "Stamp Duty Land Tax",
-      "obr.state_pension": "State pension",
       "obr.statutory_maternity_pay": "Statutory maternity pay",
       "obr.tv_licence_fee": "TV licence fee",
       "obr.universal_credit": "Universal Credit expenditure",
@@ -1192,26 +1190,6 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.pip",
-        "measure_kind": "prepared_column"
-      },
-      "assertion_policy": "allow_source_projection",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "name": "obr.state_pension",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.state_pension",
-        "entity_name": "person",
-        "geography_level": "country",
-        "geography_id": "K02000001"
-      },
-      "entity": "person",
-      "measure": "obr/state_pension",
-      "family": "obr",
-      "period": 2025,
-      "metadata": {
-        "contract_target_id": "obr.state_pension",
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",

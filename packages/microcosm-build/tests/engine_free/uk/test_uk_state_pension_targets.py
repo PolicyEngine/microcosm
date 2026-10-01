@@ -212,3 +212,114 @@ def test_the_shape_rows_reconcile_with_the_great_britain_level() -> None:
     assert ages == pytest.approx(total, abs=1_000)
     assert areas == pytest.approx(total, abs=1_000)
     assert values["dfc_ni.state_pension.recipients"] == pytest.approx(330_147.5)
+
+
+STATE_PENSION_DIAGNOSTICS = {
+    "obr.state_pension": "dwp.state_pension.amount",
+    "dwp.state_pension.forecast_expenditure": "dwp.state_pension.amount",
+    "dwp.state_pension.forecast_expenditure_paid_abroad": "dwp.state_pension.amount",
+    "dwp.state_pension.forecast_caseload": "dwp.state_pension.recipients",
+    "dwp.state_pension.forecast_caseload_paid_abroad": "dwp.state_pension.recipients",
+}
+
+
+def test_the_obr_line_is_a_diagnostic_beside_the_resident_level() -> None:
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UK_REQUIRED_TARGET_DIAGNOSTICS,
+    )
+
+    contract = load_uk_population_contract()
+    diagnostics = contract["diagnostic_references"]
+    assert "obr.state_pension" not in {t["target_id"] for t in contract["targets"]}
+    parity = contract["registry_parity"]
+    assert "obr/state_pension" in parity["excluded"]
+    assert "obr/state_pension" not in parity["mapped"]
+    assert {
+        name: diagnostics[name]["attach_to_target"]
+        for name in STATE_PENSION_DIAGNOSTICS
+    } == STATE_PENSION_DIAGNOSTICS
+    # Closed world: every declared diagnostic is required by the target it
+    # attaches to, and every requirement is declared.
+    required = {
+        name: target
+        for target, names in UK_REQUIRED_TARGET_DIAGNOSTICS.items()
+        for name in names
+    }
+    assert {
+        name: declaration["attach_to_target"]
+        for name, declaration in diagnostics.items()
+    } == required
+
+
+def test_the_state_pension_diagnostics_carry_the_published_forecasts() -> None:
+    """Feed-gated: each diagnostic resolves its exact FY2025-26 fact."""
+
+    from microcosm.build.uk_runtime.ledger_targets import (
+        _attached_diagnostic_metadata,
+    )
+
+    root = _TEST_PATHS.repository
+    configured = os.environ.get("CHRONICLE_UK_FACTS")
+    feed = Path(configured) if configured else root / STABLE_UK_FACT_FEED_NAME
+    if feed.is_dir():
+        feed = feed / "consumer_facts.jsonl"
+    if not feed.is_file():
+        pytest.skip("pinned UK Chronicle consumer feed is not present")
+    with feed.open(encoding="utf-8") as handle:
+        facts = tuple(
+            json.loads(line)
+            for line in handle
+            if '"obr.state_pension"' in line or "benefit-expenditure-caseload" in line
+        )
+
+    amount = _attached_diagnostic_metadata(facts, "dwp.state_pension.amount")
+    recipients = _attached_diagnostic_metadata(facts, "dwp.state_pension.recipients")
+
+    assert amount["obr_state_pension_diagnostic_role"] == "diagnostic_only_not_in_fit"
+    assert float(amount["obr_state_pension_diagnostic_value_gbp"]) == pytest.approx(
+        146_185_954_351.574
+    )
+    assert float(amount["dwp_forecast_state_pension_diagnostic_value_gbp"]) == (
+        pytest.approx(146_071_196_250.359)
+    )
+    assert float(
+        amount["dwp_forecast_state_pension_paid_abroad_diagnostic_value_gbp"]
+    ) == pytest.approx(5_629_144_317.972)
+    assert (
+        float(recipients["dwp_forecast_state_pension_caseload_diagnostic_value_count"])
+        == 13_204_000
+    )
+    assert (
+        float(
+            recipients[
+                "dwp_forecast_state_pension_caseload_paid_abroad_diagnostic_value_count"
+            ]
+        )
+        == 1_088_000
+    )
+    assert {
+        value
+        for key, value in {**amount, **recipients}.items()
+        if key.endswith("_status")
+    } == {"available"}
+
+
+def test_a_missing_state_pension_diagnostic_refuses_the_resident_level(
+    tmp_path, monkeypatch
+) -> None:
+    from microcosm.build.uk_runtime import ledger_targets
+
+    contract = load_uk_population_contract()
+    del contract["diagnostic_references"]["obr.state_pension"]
+    (tmp_path / "uk_population_targets.json").write_text(json.dumps(contract))
+    original_files = ledger_targets.importlib_resources.files
+    monkeypatch.setattr(
+        ledger_targets.importlib_resources,
+        "files",
+        lambda package: (
+            tmp_path if package == "microcosm.build.uk" else original_files(package)
+        ),
+    )
+
+    with pytest.raises(ValueError, match="'obr.state_pension': missing"):
+        ledger_targets._attached_diagnostic_metadata((), "dwp.state_pension.amount")

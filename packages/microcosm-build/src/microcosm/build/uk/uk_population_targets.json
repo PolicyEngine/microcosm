@@ -24,8 +24,8 @@
     "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
     "pinned_version": "1.56.16",
     "registry_rows": 652,
-    "mapped_rows": 627,
-    "excluded_rows": 25,
+    "mapped_rows": 626,
+    "excluded_rows": 26,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
       "dwp/esa_claimants": "dwp.esa_claimants",
@@ -366,7 +366,6 @@
       "obr/salary_sacrifice_users_below_cap": "hmrc.salary_sacrifice.users_below_cap",
       "obr/salary_sacrifice_users_total": "hmrc.salary_sacrifice.users_total",
       "obr/sdlt": "obr.sdlt",
-      "obr/state_pension": "obr.state_pension",
       "obr/statutory_maternity_pay": "obr.statutory_maternity_pay",
       "obr/tv_licence_fee": "obr.tv_licence_fee",
       "obr/universal_credit_in_cap": "obr.universal_credit_in_cap",
@@ -680,7 +679,8 @@
       "ons/tenure_england_rented_privately": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
       "ons/tenure_england_social_rent": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
       "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
-      "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted."
+      "obr/capital_gains_tax": "Observed FY2024-25 treatment (#875): the incumbent OBR cash forecast is retained only as diagnostic provenance. It has no same-basis liability mapping and is removed from fitting; no source value is adjusted.",
+      "obr/state_pension": "Resident treatment (microcosm#1069 R4): the incumbent OBR FY State Pension forecast counts Great Britain plus pensioners paid abroad and leaves out Northern Ireland. The DWP Stat-Xplore and DfC resident level is bound instead and the exact OBR FY2025-26 figure is retained only as diagnostic provenance on dwp.state_pension.amount; no source value is adjusted."
     },
     "unmapped_declarations": {
       "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
@@ -865,7 +865,6 @@
       "obr.jobseekers_allowance",
       "obr.pension_credit",
       "obr.pip",
-      "obr.state_pension",
       "obr.statutory_maternity_pay",
       "obr.tv_licence_fee",
       "obr.universal_credit_in_cap",
@@ -2463,41 +2462,6 @@
       },
       "category_id": "obr.efo_expenditure",
       "label": "Personal Independence Payment",
-      "value_operation": "calendar_year_window"
-    },
-    {
-      "target_id": "obr.state_pension",
-      "family": "obr",
-      "geography_levels": [
-        "country"
-      ],
-      "measurement": {
-        "entity": "person",
-        "concept": "uk.benefits.state_pension.amount",
-        "map_to": "household"
-      },
-      "bindings": {
-        "policyengine": {
-          "metric_name": "obr/state_pension",
-          "value_variable": "state_pension",
-          "from_entity": "person",
-          "map_to": "household",
-          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (PolicyEngine/chronicle#280 lane)."
-        },
-        "axiom": {
-          "metric_name": "obr/state_pension",
-          "status": "pending",
-          "value_rule": "uk.benefits.state_pension.amount"
-        }
-      },
-      "assertion_policy": "allow_source_projection",
-      "ledger_selector": {
-        "source_name": "obr",
-        "source_concept": "obr.state_pension",
-        "entity_name": "person"
-      },
-      "category_id": "obr.efo_expenditure",
-      "label": "State pension",
       "value_operation": "calendar_year_window"
     },
     {
@@ -26846,6 +26810,11 @@
   "diagnostic_references": {
     "obr.capital_gains_tax": {
       "attach_to_target": "hmrc.cgt.liability_total",
+      "metadata_prefix": "cgt_cash_diagnostic",
+      "value_unit": "gbp",
+      "receipt_metadata": {
+        "cgt_cash_reconciliation_status": "unresolved"
+      },
       "required_period_type": "fiscal_year",
       "required_assertion": "source_projection",
       "reference": {
@@ -26869,6 +26838,158 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:93699bb9caa7ec0d6833f420"
       },
       "notes": "Original March 2026 OBR FY2025-26 cash forecast retained unchanged as diagnostic provenance only. No liability-to-cash payment bridge is identified; never insert this diagnostic into the fitting registry."
+    },
+    "obr.state_pension": {
+      "attach_to_target": "dwp.state_pension.amount",
+      "metadata_prefix": "obr_state_pension_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "obr.state_pension",
+        "ledger_selector": {
+          "source_name": "obr",
+          "source_concept": "obr.state_pension",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K02000001"
+        },
+        "entity": "person",
+        "measure": "obr/state_pension",
+        "family": "obr",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "efo_forecast_definition_differs"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:567e55f9f73df2808c1c4be8"
+      },
+      "notes": "March 2026 OBR FY2025-26 State Pension forecast retained unchanged as diagnostic provenance (microcosm#1069 R4). It matches DWP's Great Britain total including pensioners paid outside the UK and, on that evidence, leaves out Northern Ireland, so it measures a different quantity from the bound resident level; never insert it into the fitting registry."
+    },
+    "dwp.state_pension.forecast_expenditure": {
+      "attach_to_target": "dwp.state_pension.amount",
+      "metadata_prefix": "dwp_forecast_state_pension_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "dwp.state_pension.forecast_expenditure",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.benefit_expenditure_amount",
+          "entity_name": "government",
+          "geography_level": "country",
+          "geography_id": "K03000001",
+          "dimension_values": {
+            "benefit_forecast_line": "state_pension__total"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/state_pension/forecast_expenditure",
+        "family": "dwp_state_pension",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "forecast_table_line_definition_differs"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:0d513485be6af9f8b0ee51a6"
+      },
+      "notes": "DWP benefit expenditure and caseload tables, Spring 2026, FY2025-26 (PolicyEngine/chronicle#302 via #305), retained as diagnostic provenance beside the resident level (microcosm#1069 R2): the forecast line counts Great Britain including pensioners paid outside the UK and, being a fiscal-year projection, is a different quantity from the bound calendar-2025 resident rows. Never insert it into the fitting registry."
+    },
+    "dwp.state_pension.forecast_expenditure_paid_abroad": {
+      "attach_to_target": "dwp.state_pension.amount",
+      "metadata_prefix": "dwp_forecast_state_pension_paid_abroad_diagnostic",
+      "value_unit": "gbp",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "dwp.state_pension.forecast_expenditure_paid_abroad",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.benefit_expenditure_amount",
+          "entity_name": "government",
+          "geography_level": "country",
+          "geography_id": "K03000001",
+          "dimension_values": {
+            "benefit_forecast_line": "state_pension__state_pension_paid_outside_uk_included_above"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/state_pension/forecast_expenditure_paid_abroad",
+        "family": "dwp_state_pension",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "forecast_table_line_definition_differs"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:64a0093265b3a376331360ed"
+      },
+      "notes": "DWP benefit expenditure and caseload tables, Spring 2026, FY2025-26 (PolicyEngine/chronicle#302 via #305), retained as diagnostic provenance beside the resident level (microcosm#1069 R2): the forecast line counts Great Britain including pensioners paid outside the UK and, being a fiscal-year projection, is a different quantity from the bound calendar-2025 resident rows. Never insert it into the fitting registry."
+    },
+    "dwp.state_pension.forecast_caseload": {
+      "attach_to_target": "dwp.state_pension.recipients",
+      "metadata_prefix": "dwp_forecast_state_pension_caseload_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "dwp.state_pension.forecast_caseload",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.benefit_caseload_count",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K03000001",
+          "dimension_values": {
+            "benefit_forecast_line": "state_pension__total_state_pension_caseload"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/state_pension/forecast_caseload",
+        "family": "dwp_state_pension",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "forecast_table_line_definition_differs"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:20717cd0a29cd2184abe1e6f"
+      },
+      "notes": "DWP benefit expenditure and caseload tables, Spring 2026, FY2025-26 (PolicyEngine/chronicle#302 via #305), retained as diagnostic provenance beside the resident level (microcosm#1069 R2): the forecast line counts Great Britain including pensioners paid outside the UK and, being a fiscal-year projection, is a different quantity from the bound calendar-2025 resident rows. Never insert it into the fitting registry."
+    },
+    "dwp.state_pension.forecast_caseload_paid_abroad": {
+      "attach_to_target": "dwp.state_pension.recipients",
+      "metadata_prefix": "dwp_forecast_state_pension_caseload_paid_abroad_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "source_projection",
+      "reference": {
+        "name": "dwp.state_pension.forecast_caseload_paid_abroad",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.benefit_caseload_count",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K03000001",
+          "dimension_values": {
+            "benefit_forecast_line": "state_pension__state_pension_paid_outside_uk_included_above"
+          }
+        },
+        "entity": "person",
+        "measure": "dwp/state_pension/forecast_caseload_paid_abroad",
+        "family": "dwp_state_pension",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "forecast_table_line_definition_differs"
+        },
+        "assertion_policy": "allow_source_projection",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:fc1a88f15ba47efd9dc496ef"
+      },
+      "notes": "DWP benefit expenditure and caseload tables, Spring 2026, FY2025-26 (PolicyEngine/chronicle#302 via #305), retained as diagnostic provenance beside the resident level (microcosm#1069 R2): the forecast line counts Great Britain including pensioners paid outside the UK and, being a fiscal-year projection, is a different quantity from the bound calendar-2025 resident rows. Never insert it into the fitting registry."
     }
   },
   "hierarchy": {

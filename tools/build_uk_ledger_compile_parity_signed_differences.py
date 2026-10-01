@@ -110,6 +110,25 @@ _ESA_CUBE_ROWS = (
     "dwp.esa_contrib_claimants",
     "dwp.esa_income_claimants",
 )
+
+#: microcosm#1069: the resident State Pension level replaces the OBR line in
+#: the fit (ruling R4); the exact OBR forecast stays as diagnostic provenance.
+_OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE = (
+    "microcosm#1069 (ruling R4) moves the OBR FY2025-26 State Pension forecast "
+    "out of the fit: it counts Great Britain plus pensioners paid abroad and "
+    "leaves out Northern Ireland, a different quantity from the resident level "
+    "the DWP Stat-Xplore and DfC rows bind. The exact forecast is retained as "
+    "diagnostic provenance on dwp.state_pension.amount, so the frozen fixture's "
+    "fitted row is fixture-only on the current surface."
+)
+_STATE_PENSION_PREFIXES = ("dwp.state_pension.", "dfc_ni.state_pension.")
+_STATE_PENSION_LEDGER_ONLY_RATIONALE = (
+    "microcosm#1069 binds the resident State Pension from DWP Stat-Xplore (Great "
+    "Britain) and DfC (Northern Ireland) on the four quarterly points inside "
+    "calendar 2025 (PolicyEngine/chronicle#302 via #305): the level, age band by "
+    "sex by type, area by type and weekly amount band by type. The frozen fixture "
+    "has no State Pension caseload or resident-level row."
+)
 _INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
 
 _CGT_OBSERVED_RATIONALES = {
@@ -593,6 +612,13 @@ def _add_signed_rationale_notes(
             row["reason"] = _WELSHGOV_COUNTRY_BASIS_RATIONALE
         elif name.startswith("welshgov.council_tax_stock.band_i"):
             row["reason"] = _WELSH_BAND_I_LEDGER_ONLY_RATIONALE
+        elif name == "obr.state_pension" and row.get("kind") == "fixture_only":
+            row["reason"] = _OBR_STATE_PENSION_DIAGNOSTIC_RATIONALE
+        elif (
+            name.startswith(_STATE_PENSION_PREFIXES)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _STATE_PENSION_LEDGER_ONLY_RATIONALE
         elif fixture_resource != "registry_parity_fixture_2025.json":
             continue
         elif name in _CGT_OBSERVED_RATIONALES:

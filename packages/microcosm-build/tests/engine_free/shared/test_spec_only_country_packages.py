@@ -315,9 +315,10 @@ def _is_compiler_identity_field(*, key: str, value: object, location: str) -> bo
     )
     # A Ledger fact identity (``ledger.aggregate_fact.v2:<hex>``) is content
     # addressing data, never an entrypoint; the colon separates the key kind
-    # from its digest and the digest can happen to start with a letter.
+    # from its digest and the digest can happen to start with a letter. A
+    # diagnostic reference pins the same identity as its ``ledger_fact_key``.
     ledger_fact_identity = (
-        key == "aggregate_fact_key"
+        key in {"aggregate_fact_key", "ledger_fact_key"}
         and isinstance(value, str)
         and re.fullmatch(r"ledger\.[a-z_]+\.v\d+:[0-9a-f]{24}", value) is not None
     )
