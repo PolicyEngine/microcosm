@@ -782,6 +782,10 @@ UK_REQUIRED_TARGET_DIAGNOSTICS: Mapping[str, tuple[str, ...]] = MappingProxyType
             "dwp.state_pension.forecast_caseload",
             "dwp.state_pension.forecast_caseload_paid_abroad",
         ),
+        # microcosm#1069 c10: DWP pays Winter Fuel to everyone and HMRC recovers
+        # it above GBP 35,000, where the engine withholds it; the recipient count
+        # sits beside the bound OBR line until payment and recovery separate.
+        "obr.winter_fuel_allowance": ("dwp.winter_fuel_payment.recipients",),
     }
 )
 _DIAGNOSTIC_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year", "calendar_year"))

@@ -29,8 +29,9 @@ EXPECTED_SOURCE_MONTHS = "uk_uc_expected_source_months"
 # since the PolicyEngine/chronicle#280 lane the three ESA caseload rows, bound on the four
 # quarterly points DWP publishes inside calendar 2025 (February, May, August,
 # November) from the payment-type cube (chronicle#282). Since microcosm#1069
-# the State Pension and Pension Credit Stat-Xplore cubes bind on the same four
-# calendar-2025 points (PolicyEngine/chronicle#302 via #305).
+# the State Pension, Pension Credit and Attendance Allowance Stat-Xplore cubes
+# bind on the same four calendar-2025 points (PolicyEngine/chronicle#302 via
+# #305).
 SOURCE_MONTH_FAMILIES = frozenset(
     {
         "dwp_universal_credit",
@@ -38,6 +39,7 @@ SOURCE_MONTH_FAMILIES = frozenset(
         "dwp_legacy_benefits",
         "dwp_state_pension",
         "dwp_pension_credit",
+        "dwp_attendance_allowance",
     }
 )
 #: Operations over an explicit month list; they may cross calendar years.

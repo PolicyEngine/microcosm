@@ -107,7 +107,11 @@ def test_a_window_month_after_the_calibration_year_is_refused() -> None:
 
 
 def test_the_pension_families_declare_their_source_months() -> None:
-    assert {"dwp_state_pension", "dwp_pension_credit"} <= SOURCE_MONTH_FAMILIES
+    assert {
+        "dwp_state_pension",
+        "dwp_pension_credit",
+        "dwp_attendance_allowance",
+    } <= SOURCE_MONTH_FAMILIES
     metadata = uc_source_month_metadata(
         list(MONTHS), value_operation=MONTHLY_WINDOW_COUNT_X_MEAN
     )

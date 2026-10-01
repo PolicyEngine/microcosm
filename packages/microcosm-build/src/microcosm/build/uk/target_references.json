@@ -229,6 +229,10 @@
       "dwp.workplace_pensions": {
         "provider_id": "dwp",
         "label": "Workplace pensions"
+      },
+      "dwp.attendance_allowance": {
+        "provider_id": "dwp",
+        "label": "Attendance Allowance"
       }
     },
     "target_categories": {
@@ -243,6 +247,8 @@
       "dft.bus_fare_receipts.london": "dft.local_bus_finances",
       "dft.bus_net_support.england": "dft.local_bus_finances",
       "dft.bus_net_support.london": "dft.local_bus_finances",
+      "dwp.attendance_allowance.recipients_england": "dwp.attendance_allowance",
+      "dwp.attendance_allowance.recipients_wales": "dwp.attendance_allowance",
       "dwp.benefit_cap.capped_households": "dwp.benefit_cap",
       "dwp.benefit_cap.capped_households_1000_01_to_1100": "dwp.benefit_cap",
       "dwp.benefit_cap.capped_households_100_01_to_200": "dwp.benefit_cap",
@@ -262,6 +268,9 @@
       "dwp.esa_contrib_claimants": "dwp.legacy_benefits",
       "dwp.esa_income_claimants": "dwp.legacy_benefits",
       "dwp.hb.households": "dwp.housing_benefit",
+      "dwp.hb.households_pension_age": "dwp.legacy_benefits",
+      "dwp.hb.households_pension_age_private_rented": "dwp.legacy_benefits",
+      "dwp.hb.households_pension_age_social_rented": "dwp.legacy_benefits",
       "dwp.hb.households_private_rented": "dwp.housing_benefit",
       "dwp.hb.households_social_rented": "dwp.housing_benefit",
       "dwp.jsa_claimants": "dwp.legacy_benefits",
@@ -570,6 +579,8 @@
       "dft.bus_fare_receipts.london": "London",
       "dft.bus_net_support.england": "England",
       "dft.bus_net_support.london": "London",
+      "dwp.attendance_allowance.recipients_england": "Attendance Allowance recipients, England",
+      "dwp.attendance_allowance.recipients_wales": "Attendance Allowance recipients, Wales",
       "dwp.benefit_cap.capped_households": "Capped households",
       "dwp.benefit_cap.capped_households_1000_01_to_1100": "Capped households, \u00a31,000.01 to \u00a31,100 a month",
       "dwp.benefit_cap.capped_households_100_01_to_200": "Capped households, \u00a3100.01 to \u00a3200 a month",
@@ -589,6 +600,9 @@
       "dwp.esa_contrib_claimants": "Employment and Support Allowance contrib claimants",
       "dwp.esa_income_claimants": "Employment and Support Allowance income claimants",
       "dwp.hb.households": "Housing Benefit claimants, all tenures",
+      "dwp.hb.households_pension_age": "Housing Benefit benefit units, pension age",
+      "dwp.hb.households_pension_age_private_rented": "Housing Benefit benefit units, pension age, private rented sector",
+      "dwp.hb.households_pension_age_social_rented": "Housing Benefit benefit units, pension age, social rented sector",
       "dwp.hb.households_private_rented": "Housing Benefit claimants, private rented",
       "dwp.hb.households_social_rented": "Housing Benefit claimants, social rented",
       "dwp.jsa_claimants": "Jobseeker\u2019s Allowance claimants",
@@ -46248,6 +46262,223 @@
       ],
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.attendance_allowance.recipients_england",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.attendance_allowance_cases_with_entitlement"
+        ],
+        "source_measure_id": "total_cases_with_entitlement",
+        "dimensions": [
+          "aa_award_type",
+          "age_bands_and_single_year",
+          "gender"
+        ],
+        "dimension_values": {
+          "aa_award_type": "all",
+          "age_bands_and_single_year": "all",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "E92000001"
+      },
+      "entity": "person",
+      "measure": "dwp/attendance_allowance/recipients_england",
+      "family": "dwp_attendance_allowance",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.attendance_allowance.recipients_england",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.attendance_allowance.recipients_wales",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.attendance_allowance_cases_with_entitlement"
+        ],
+        "source_measure_id": "total_cases_with_entitlement",
+        "dimensions": [
+          "aa_award_type",
+          "age_bands_and_single_year",
+          "gender"
+        ],
+        "dimension_values": {
+          "aa_award_type": "all",
+          "age_bands_and_single_year": "all",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
+        "geography_level": "country",
+        "geography_id": "W92000004"
+      },
+      "entity": "person",
+      "measure": "dwp/attendance_allowance/recipients_wales",
+      "family": "dwp_attendance_allowance",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.attendance_allowance.recipients_wales",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.hb.households_pension_age",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "Pension age",
+          "private_or_social_rented": "all"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/hb/households_pension_age",
+      "family": "dwp_housing_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.hb.households_pension_age",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.hb.households_pension_age_social_rented",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "Pension age",
+          "private_or_social_rented": "Social Rented Sector"
+        },
+        "source_measure_id": "claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/hb/households_pension_age_social_rented",
+      "family": "dwp_housing_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.hb.households_pension_age_social_rented",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
+    },
+    {
+      "name": "dwp.hb.households_pension_age_private_rented",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "Pension age",
+          "private_or_social_rented": "Private Rented Sector"
+        },
+        "source_measure_id": "claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ],
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/hb/households_pension_age_private_rented",
+      "family": "dwp_housing_benefit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.hb.households_pension_age_private_rented",
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-01\",\"2025-02\",\"2025-03\",\"2025-04\",\"2025-05\",\"2025-06\",\"2025-07\",\"2025-08\",\"2025-09\",\"2025-10\",\"2025-11\",\"2025-12\"]"
+      },
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_average"
     }
   ]
 }

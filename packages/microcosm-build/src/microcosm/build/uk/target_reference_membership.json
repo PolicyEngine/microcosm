@@ -1,11 +1,11 @@
 {
   "source_fact_feed": "chronicle-uk-825406f9-consumer-facts",
   "target_period": 2025,
-  "candidate_count": 1301,
-  "contract_target_count": 340,
-  "active_reference_count": 1278,
+  "candidate_count": 1306,
+  "contract_target_count": 345,
+  "active_reference_count": 1283,
   "status_counts": {
-    "active": 1278,
+    "active": 1283,
     "no_fact_at_or_before_period": 7,
     "signed_excluded": 16
   },
@@ -4075,6 +4075,26 @@
     "hmrc.salary_sacrifice.amount": {
       "geography_level": "country",
       "geography_id": "K02000001"
+    },
+    "dwp.attendance_allowance.recipients_england": {
+      "geography_level": "country",
+      "geography_id": "E92000001"
+    },
+    "dwp.attendance_allowance.recipients_wales": {
+      "geography_level": "country",
+      "geography_id": "W92000004"
+    },
+    "dwp.hb.households_pension_age": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.hb.households_pension_age_social_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
+    },
+    "dwp.hb.households_pension_age_private_rented": {
+      "geography_level": "country",
+      "geography_id": "K03000001"
     }
   },
   "genuine_sum_residue": [
@@ -30328,6 +30348,86 @@
           "resolved_value": 24637681159.419598,
           "resolved_fact_period": "2024",
           "resolved_fact_key": "ledger_aggregate_fact_v2_026ae1169f5f0f997bb06479"
+        }
+      ]
+    },
+    "dwp.attendance_allowance.recipients_england": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.attendance_allowance.recipients_england",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 1597003.0,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_70b671884790c8bf52c7fbb6"
+        }
+      ]
+    },
+    "dwp.attendance_allowance.recipients_wales": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.attendance_allowance.recipients_wales",
+          "status": "active",
+          "matched_fact_count_overall": 4,
+          "matched_fact_count_at_or_before_period": 4,
+          "matched_fact_count_in_source_window": 4,
+          "resolved_period": 2025,
+          "resolved_value": 124117.75,
+          "resolved_fact_period": "2025-11",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_22a183260c3229f9cf14a1a3"
+        }
+      ]
+    },
+    "dwp.hb.households_pension_age": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_pension_age",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 1107464.1666666667,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5f65e5ab6439a1308e1ce27a"
+        }
+      ]
+    },
+    "dwp.hb.households_pension_age_social_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_pension_age_social_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 890663.5833333334,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5688aae2091cc34caf9ef695"
+        }
+      ]
+    },
+    "dwp.hb.households_pension_age_private_rented": {
+      "status": "active",
+      "candidates": [
+        {
+          "name": "dwp.hb.households_pension_age_private_rented",
+          "status": "active",
+          "matched_fact_count_overall": 12,
+          "matched_fact_count_at_or_before_period": 12,
+          "matched_fact_count_in_source_window": 12,
+          "resolved_period": 2025,
+          "resolved_value": 216778.66666666666,
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f46445e7e639bfd9fea6921b"
         }
       ]
     }

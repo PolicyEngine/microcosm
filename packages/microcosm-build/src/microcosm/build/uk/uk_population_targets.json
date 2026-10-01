@@ -830,7 +830,12 @@
       "hmrc.spi.relief_at_source_pension_contributions.count_by_total_income_band": "Post-freeze fact family (HMRC SPI 2023-24 Table 3.8, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069).",
       "dwp.workplace_pension.employer_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
       "dwp.workplace_pension.employee_contributions": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
-      "hmrc.salary_sacrifice.amount": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9)."
+      "hmrc.salary_sacrifice.amount": "Post-freeze fact family (DWP workplace pension savings trends / HMRC Table 6.2, PolicyEngine/chronicle#302 via #305), no uk-data metric (microcosm#1069 c9).",
+      "dwp.attendance_allowance.recipients_england": "Post-freeze fact family (DWP Stat-Xplore Attendance Allowance), no uk-data metric (microcosm#1069 c10).",
+      "dwp.attendance_allowance.recipients_wales": "Post-freeze fact family (DWP Stat-Xplore Attendance Allowance), no uk-data metric (microcosm#1069 c10).",
+      "dwp.hb.households_pension_age": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
+      "dwp.hb.households_pension_age_social_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10).",
+      "dwp.hb.households_pension_age_private_rented": "Post-freeze fact family (DWP Stat-Xplore Housing Benefit, pension age), no uk-data metric (microcosm#1069 c10)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1203,7 +1208,12 @@
       "dfc_ni.pension_credit.benefit_units",
       "dwp.workplace_pension.employer_contributions",
       "dwp.workplace_pension.employee_contributions",
-      "hmrc.salary_sacrifice.amount"
+      "hmrc.salary_sacrifice.amount",
+      "dwp.attendance_allowance.recipients_england",
+      "dwp.attendance_allowance.recipients_wales",
+      "dwp.hb.households_pension_age",
+      "dwp.hb.households_pension_age_social_rented",
+      "dwp.hb.households_pension_age_private_rented"
     ]
   },
   "profile_parity": {
@@ -26015,6 +26025,565 @@
       "label": "Salary-sacrificed pension contributions (from employer NICs relief)"
     },
     {
+      "target_id": "dwp.attendance_allowance.recipients_england",
+      "family": "dwp_attendance_allowance",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.attendance_allowance.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "england"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/attendance_allowance/recipients_england",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "attendance_allowance",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "ENGLAND",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Attendance Allowance cases with entitlement (PolicyEngine/chronicle#302 via #305): cases with entitlement in England, every award rate, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c10). Scotland is not bound: its Attendance Allowance caseload moves to Pension Age Disability Payment through 2025, which the engine does not model."
+        },
+        "axiom": {
+          "metric_name": "dwp/attendance_allowance/recipients_england",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.attendance_allowance_cases_with_entitlement"
+        ],
+        "source_measure_id": "total_cases_with_entitlement",
+        "dimensions": [
+          "aa_award_type",
+          "age_bands_and_single_year",
+          "gender"
+        ],
+        "dimension_values": {
+          "aa_award_type": "all",
+          "age_bands_and_single_year": "all",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.attendance_allowance",
+      "label": "Attendance Allowance recipients, England",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.attendance_allowance.recipients_wales",
+      "family": "dwp_attendance_allowance",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.attendance_allowance.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.geography.country",
+            "equals": "wales"
+          }
+        ],
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/attendance_allowance/recipients_wales",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "filters": [
+            {
+              "variable": "attendance_allowance",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "country",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "==",
+              "value": "WALES",
+              "map_to": "person"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Attendance Allowance cases with entitlement (PolicyEngine/chronicle#302 via #305): cases with entitlement in Wales, every award rate, as the mean of the four quarterly points inside calendar 2025 (microcosm#1069 c10). Scotland is not bound: its Attendance Allowance caseload moves to Pension Age Disability Payment through 2025, which the engine does not model."
+        },
+        "axiom": {
+          "metric_name": "dwp/attendance_allowance/recipients_wales",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": [
+          "dwp.attendance_allowance_cases_with_entitlement"
+        ],
+        "source_measure_id": "total_cases_with_entitlement",
+        "dimensions": [
+          "aa_award_type",
+          "age_bands_and_single_year",
+          "gender"
+        ],
+        "dimension_values": {
+          "aa_award_type": "all",
+          "age_bands_and_single_year": "all",
+          "gender": "all"
+        },
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
+      },
+      "category_id": "dwp.attendance_allowance",
+      "label": "Attendance Allowance recipients, Wales",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.hb.households_pension_age",
+      "family": "dwp_housing_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.housing_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 66
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/households_pension_age",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "housing_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 66
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Housing Benefit caseload by client type and tenure (PolicyEngine/chronicle#259 / #260): pension-age claims , mean monthly Great Britain caseload over the twelve months of calendar 2025, the window of the existing Housing Benefit rows. DWP's pension-age client type is a claim whose claimant or partner has reached State Pension age; the engine reads the age of the benefit unit's eldest adult against 66, the State Pension age of everyone who reaches it in 2025 (microcosm#1069 c10, #867)."
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/households_pension_age",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "Pension age",
+          "private_or_social_rented": "all"
+        },
+        "source_measure_id": "total_claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "category_id": "dwp.legacy_benefits",
+      "label": "Housing Benefit benefit units, pension age",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.hb.households_pension_age_social_rented",
+      "family": "dwp_housing_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.housing_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 66
+          },
+          {
+            "concept": "uk.household.tenure",
+            "operator": "in",
+            "value": [
+              "rent_from_council",
+              "rent_from_housing_association"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/households_pension_age_social_rented",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "housing_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 66
+            },
+            {
+              "variable": "benunit_tenure_type",
+              "operator": "in",
+              "value": [
+                "RENT_FROM_COUNCIL",
+                "RENT_FROM_HA"
+              ]
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Housing Benefit caseload by client type and tenure (PolicyEngine/chronicle#259 / #260): pension-age claims social rented sector, mean monthly Great Britain caseload over the twelve months of calendar 2025, the window of the existing Housing Benefit rows. DWP's pension-age client type is a claim whose claimant or partner has reached State Pension age; the engine reads the age of the benefit unit's eldest adult against 66, the State Pension age of everyone who reaches it in 2025 (microcosm#1069 c10, #867)."
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/households_pension_age_social_rented",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "Pension age",
+          "private_or_social_rented": "Social Rented Sector"
+        },
+        "source_measure_id": "claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "category_id": "dwp.legacy_benefits",
+      "label": "Housing Benefit benefit units, pension age, social rented sector",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
+      "target_id": "dwp.hb.households_pension_age_private_rented",
+      "family": "dwp_housing_benefit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.housing_benefit.amount",
+            "operator": ">",
+            "value": 0
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 66
+          },
+          {
+            "concept": "uk.household.tenure",
+            "operator": "in",
+            "value": [
+              "rent_privately"
+            ]
+          }
+        ],
+        "source_months": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/hb/households_pension_age_private_rented",
+          "value_variable": "benunit_count",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "housing_benefit",
+              "operator": ">",
+              "value": 0
+            },
+            {
+              "variable": "eldest_adult_age",
+              "operator": ">=",
+              "value": 66
+            },
+            {
+              "variable": "benunit_tenure_type",
+              "operator": "in",
+              "value": [
+                "RENT_PRIVATELY"
+              ]
+            }
+          ],
+          "household_conditions": [
+            {
+              "variable": "region",
+              "entity": "household",
+              "reduce": "any",
+              "operator": "in",
+              "value": [
+                "NORTH_EAST",
+                "NORTH_WEST",
+                "YORKSHIRE",
+                "EAST_MIDLANDS",
+                "WEST_MIDLANDS",
+                "EAST_OF_ENGLAND",
+                "LONDON",
+                "SOUTH_EAST",
+                "SOUTH_WEST",
+                "WALES",
+                "SCOTLAND"
+              ],
+              "map_to": "benunit"
+            }
+          ],
+          "notes": "DWP Stat-Xplore Housing Benefit caseload by client type and tenure (PolicyEngine/chronicle#259 / #260): pension-age claims private rented sector, mean monthly Great Britain caseload over the twelve months of calendar 2025, the window of the existing Housing Benefit rows. DWP's pension-age client type is a claim whose claimant or partner has reached State Pension age; the engine reads the age of the benefit unit's eldest adult against 66, the State Pension age of everyone who reaches it in 2025 (microcosm#1069 c10, #867)."
+        },
+        "axiom": {
+          "metric_name": "dwp/hb/households_pension_age_private_rented",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.housing_benefit_claimants",
+        "groupby_dimension": "dwp.hb_client_type",
+        "dimensions": [
+          "client_type",
+          "private_or_social_rented"
+        ],
+        "dimension_values": {
+          "client_type": "Pension age",
+          "private_or_social_rented": "Private Rented Sector"
+        },
+        "source_measure_id": "claimants",
+        "period_type": "month",
+        "period_value": [
+          "2025-01",
+          "2025-02",
+          "2025-03",
+          "2025-04",
+          "2025-05",
+          "2025-06",
+          "2025-07",
+          "2025-08",
+          "2025-09",
+          "2025-10",
+          "2025-11",
+          "2025-12"
+        ]
+      },
+      "category_id": "dwp.legacy_benefits",
+      "label": "Housing Benefit benefit units, pension age, private rented sector",
+      "value_operation": "monthly_window_average",
+      "period_match_policy": "source_window"
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -29059,6 +29628,34 @@
         "ledger_fact_key": "ledger.aggregate_fact.v2:fc1a88f15ba47efd9dc496ef"
       },
       "notes": "DWP benefit expenditure and caseload tables, Spring 2026, FY2025-26 (PolicyEngine/chronicle#302 via #305), retained as diagnostic provenance beside the resident level (microcosm#1069 R2): the forecast line counts Great Britain including pensioners paid outside the UK and, being a fiscal-year projection, is a different quantity from the bound calendar-2025 resident rows. Never insert it into the fitting registry."
+    },
+    "dwp.winter_fuel_payment.recipients": {
+      "attach_to_target": "obr.winter_fuel_allowance",
+      "metadata_prefix": "dwp_winter_fuel_recipients_diagnostic",
+      "value_unit": "count",
+      "required_period_type": "fiscal_year",
+      "required_assertion": "observation",
+      "reference": {
+        "name": "dwp.winter_fuel_payment.recipients",
+        "ledger_selector": {
+          "source_name": "dwp",
+          "source_concept": "dwp.winter_fuel_payment_beneficiaries",
+          "entity_name": "person",
+          "geography_level": "country",
+          "geography_id": "K04000001"
+        },
+        "entity": "person",
+        "measure": "dwp/winter_fuel_payment/recipients",
+        "family": "dwp_winter_fuel",
+        "period": 2025,
+        "metadata": {
+          "diagnostic_role": "payment_before_recovery_definition_differs"
+        },
+        "assertion_policy": "observed_only",
+        "period_match_policy": "exact",
+        "ledger_fact_key": "ledger.aggregate_fact.v2:31256472aba8a0b143c30697"
+      },
+      "notes": "DWP Winter Fuel Payment statistics, winter 2025/26 recipients in England and Wales (11.0m), retained as diagnostic provenance beside the bound OBR line (microcosm#1069 c10): DWP counts everyone paid and HMRC recovers the payment above £35,000 later, while the engine withholds the household payment above £35,000 (PolicyEngine/policyengine-uk#1760), so the count measures a different quantity until the engine separates payment from recovery. Never insert it into the fitting registry."
     }
   },
   "hierarchy": {
@@ -29288,6 +29885,10 @@
       "dwp.workplace_pensions": {
         "provider_id": "dwp",
         "label": "Workplace pensions"
+      },
+      "dwp.attendance_allowance": {
+        "provider_id": "dwp",
+        "label": "Attendance Allowance"
       }
     }
   }

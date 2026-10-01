@@ -1,11 +1,11 @@
 {
- "compiled_count": 966,
+ "compiled_count": 971,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 834
+  "ledger_only": 839
  },
- "difference_count": 971,
+ "difference_count": 976,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -191,6 +191,20 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1597003.0,
+   "name": "dwp.attendance_allowance.recipients_england",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 124117.75,
+   "name": "dwp.attendance_allowance.recipients_wales",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 1005791.5,
    "name": "dwp.esa_claimants",
    "period": 2023,
@@ -214,6 +228,27 @@
    "kind": "ledger_only",
    "ledger_value": 1685702.9166666667,
    "name": "dwp.hb.households",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1107464.1666666667,
+   "name": "dwp.hb.households_pension_age",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 216778.66666666666,
+   "name": "dwp.hb.households_pension_age_private_rented",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 890663.5833333334,
+   "name": "dwp.hb.households_pension_age_social_rented",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

@@ -229,6 +229,10 @@
       "dwp.workplace_pensions": {
         "provider_id": "dwp",
         "label": "Workplace pensions"
+      },
+      "dwp.attendance_allowance": {
+        "provider_id": "dwp",
+        "label": "Attendance Allowance"
       }
     },
     "target_categories": {
