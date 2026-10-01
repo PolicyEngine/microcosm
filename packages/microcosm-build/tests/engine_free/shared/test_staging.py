@@ -1,5 +1,6 @@
 import json
 import threading
+import time
 
 import microcosm.build.staging as staging_module
 from microcosm.build.staging import StagingTelemetry
@@ -429,3 +430,134 @@ def test_restage_uploads_a_local_run_without_moving_the_pointer(tmp_path):
         update_index=False,
     )
     assert "runs.json" not in written
+
+
+def test_resources_are_recorded_on_events_and_progress(tmp_path) -> None:
+    telemetry = StagingTelemetry(
+        run_id="run-r",
+        candidate_release_id="populace-us-2024-r",
+        run_dir=tmp_path / "run-r",
+        record_resources=True,
+    )
+    telemetry.stage("target_compilation")
+
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "run-r" / "events.ndjson").read_text().splitlines()
+    ]
+    resources = events[-1]["resources"]
+    assert resources["cpu_user_seconds"] >= 0
+    assert resources["peak_rss_bytes"] > 0
+    progress = json.loads((tmp_path / "run-r" / "progress.json").read_text())
+    assert set(progress["resources"]) >= {"cpu_user_seconds", "peak_rss_bytes"}
+
+
+def test_work_progress_reports_a_rate_and_clears_on_the_next_stage(tmp_path) -> None:
+    telemetry = StagingTelemetry(
+        run_id="run-w",
+        candidate_release_id="populace-us-2024-w",
+        run_dir=tmp_path / "run-w",
+    )
+    telemetry.stage("target_compilation")
+    telemetry.work_progress(10, 2124, unit="engine batch", pass_name="base")
+
+    progress = json.loads((tmp_path / "run-w" / "progress.json").read_text())
+    assert progress["work"]["stage"] == "target_compilation"
+    assert (progress["work"]["done"], progress["work"]["total"]) == (10, 2124)
+    assert progress["work"]["elapsed_seconds"] >= 0
+    assert progress["work"]["details"] == {"pass_name": "base"}
+    # Work reports add no events.
+    events = (tmp_path / "run-w" / "events.ndjson").read_text().splitlines()
+    assert [json.loads(line)["stage"] for line in events] == [
+        "created",
+        "target_compilation",
+    ]
+
+    telemetry.stage("calibrating")
+    progress = json.loads((tmp_path / "run-w" / "progress.json").read_text())
+    assert "work" not in progress
+
+
+def test_heartbeat_keeps_a_silent_stage_visibly_alive(tmp_path) -> None:
+    telemetry = StagingTelemetry(
+        run_id="run-h",
+        candidate_release_id="populace-us-2024-h",
+        run_dir=tmp_path / "run-h",
+        heartbeat_seconds=0.05,
+    )
+    telemetry.stage("target_compilation")
+    progress_path = tmp_path / "run-h" / "progress.json"
+    deadline = time.monotonic() + 5
+    while "heartbeat_at" not in json.loads(progress_path.read_text()):
+        assert time.monotonic() < deadline, "no heartbeat within 5 s"
+        time.sleep(0.02)
+    progress = json.loads(progress_path.read_text())
+    assert progress["stage"] == "target_compilation"
+    assert "resources" in progress
+
+    telemetry.complete()
+    assert telemetry._heartbeat_thread is not None
+    assert not telemetry._heartbeat_thread.is_alive()
+
+
+def test_recorded_outcome_classes_the_failure(tmp_path) -> None:
+    telemetry = StagingTelemetry(
+        run_id="run-f",
+        candidate_release_id="populace-us-2024-f",
+        run_dir=tmp_path / "run-f",
+        record_outcome=True,
+    )
+    telemetry.stage("release_gates")
+    telemetry.fail(RuntimeError("Release gates failed: QRF tail concentration"))
+
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "run-f" / "events.ndjson").read_text().splitlines()
+    ]
+    details = events[-1]["details"]
+    assert details["failure_class"] == "gate_refused"
+    assert details["failed_during"] == "release_gates"
+    assert details["elapsed_seconds"] >= 0
+
+
+def test_outcome_fields_are_off_by_default(tmp_path) -> None:
+    telemetry = StagingTelemetry(
+        run_id="run-d",
+        candidate_release_id="populace-us-2024-d",
+        run_dir=tmp_path / "run-d",
+    )
+    telemetry.complete()
+
+    last = (tmp_path / "run-d" / "events.ndjson").read_text().splitlines()[-1]
+    assert json.loads(last)["details"] == {}
+    assert "resources" not in json.loads(last)
+
+
+def test_failures_are_classed() -> None:
+    class BuildTerminatedError(SystemExit):
+        pass
+
+    assert staging_module.classify_failure(BuildTerminatedError(143)) == "terminated"
+    assert staging_module.classify_failure(KeyboardInterrupt()) == "interrupted"
+    assert staging_module.classify_failure(MemoryError()) == "out_of_memory"
+    assert (
+        staging_module.classify_failure(RuntimeError("Release gates failed: x"))
+        == "gate_refused"
+    )
+    assert (
+        staging_module.classify_failure(SystemExit("The feed pin does not match."))
+        == "refused"
+    )
+    assert staging_module.classify_failure(ValueError("bad column")) == "error"
+
+
+def test_identity_is_recorded_in_the_run_manifest(tmp_path) -> None:
+    telemetry = StagingTelemetry(
+        run_id="run-i",
+        candidate_release_id="populace-us-2024-i",
+        run_dir=tmp_path / "run-i",
+    )
+    telemetry.record_identity(git_commit="abc123", host={"cpu_count": 18})
+
+    manifest = json.loads((tmp_path / "run-i" / "run_manifest.json").read_text())
+    assert manifest["identity"] == {"git_commit": "abc123", "host": {"cpu_count": 18}}

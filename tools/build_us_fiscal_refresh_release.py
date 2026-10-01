@@ -68,7 +68,11 @@ from microcosm.build.gates import (
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
+from microcosm.build.staging import (
+    DEFAULT_STAGING_PREFIX,
+    StagingTelemetry,
+    host_identity,
+)
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -5171,6 +5175,8 @@ class _HouseholdBatchedPostExportScorer:
         parts: dict[PostExportKey, list[tuple[np.ndarray, np.ndarray]]] = {
             key: [] for key in keys
         }
+        # Each sweep is reported on its own: the count restarts per sweep.
+        sweep = _WorkCounter(unit="scoring batch", total=len(batches))
         for batch_frame in batches:
             with _automatic_gc_suspended():
                 simulation = self._construct(batch_frame, reform_system=reform_system)
@@ -5197,6 +5203,7 @@ class _HouseholdBatchedPostExportScorer:
                     release_engine_simulation(simulation)
                 del simulation, engine
             _collect_batch_garbage()
+            sweep.advance(sweep_label=label, keys=len(keys))
         _collect_family_garbage()
         return {
             key: _concatenate_post_export_parts(key_parts)
@@ -5426,6 +5433,7 @@ def _reform_household_income_tax(
             reform_income_tax[household_positions] = batch_income_tax
             del batch_income_tax, reformed, reformed_dataset, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name=reform_spec.measure, batch=batch, batches=len(batches))
     del reform_system
     _collect_family_garbage()
     return reform_income_tax
@@ -6786,6 +6794,7 @@ def _materialize_base_simulation_columns(
                 columns[column] = pool_values
             del batch_columns, batch_frame
         _collect_batch_garbage()
+        _advance_work(pass_name="base", batch=batch, batches=len(batches))
     _collect_family_garbage()
 
     assert column_order is not None
@@ -6833,6 +6842,17 @@ def _materialize_target_frame(
     _assert_no_formula_owned_columns(base_frame)
     system = CountryTaxBenefitSystem()
     n_households = base_frame.n("household")
+    # One base pass plus one income-tax pass per requested JCT family, each
+    # over the same household batches.
+    global _ACTIVE_WORK
+    requested_measures = {spec.measure for spec in target_specs}
+    passes = 1 + sum(
+        spec.measure in requested_measures for spec in US_JCT_TAX_EXPENDITURE_REFORMS
+    )
+    batch_count = len(
+        tuple(_household_position_batches(n_households, maximum_microsim_batch_size))
+    )
+    _ACTIVE_WORK = _WorkCounter(unit="engine batch", total=passes * batch_count)
     # The base simulation uses the JCT reform loop's household partition.
     base_columns, base_simulation_batching = _materialize_base_simulation_columns(
         base_frame,
@@ -6891,6 +6911,7 @@ def _materialize_target_frame(
             if cached is not None:
                 reform_income_tax, cache_digest, cache_path = cached
                 cache_stats["hits"] = int(cache_stats["hits"]) + 1
+                _advance_work(batch_count, pass_name=reform_spec.measure, cached=True)
                 cache_entry = {
                     "measure": reform_spec.measure,
                     "neutralized_variable": reform_spec.neutralized_variable,
@@ -6979,6 +7000,7 @@ def _materialize_target_frame(
             "jct_reform_families_simulated": jct_reform_families_simulated,
         },
     }
+    _ACTIVE_WORK = None
     return (
         target_frame,
         registry,
@@ -11414,6 +11436,40 @@ def _assert_exact_k_original_pool_alignment(
 _ACTIVE_TELEMETRY: StagingTelemetry | None = None
 
 
+class _WorkCounter:
+    """Engine batches done out of a stage's planned total.
+
+    Reported to the staging run's progress document, so a stage that runs for
+    hours (target compilation, post-export scoring) shows how far it is and
+    at what rate. Telemetry only: nothing in the build reads it.
+    """
+
+    def __init__(self, *, unit: str, total: int) -> None:
+        self.unit = unit
+        self.total = max(int(total), 0)
+        self.done = 0
+
+    def advance(self, units: int = 1, **details: object) -> None:
+        self.done = (
+            min(self.done + units, self.total) if self.total else self.done + units
+        )
+        telemetry = _ACTIVE_TELEMETRY
+        if telemetry is None:
+            return
+        try:
+            telemetry.work_progress(self.done, self.total, unit=self.unit, **details)
+        except Exception as error:  # pragma: no cover - telemetry is best-effort
+            print(f"warning: could not report work progress: {error}", file=sys.stderr)
+
+
+_ACTIVE_WORK: _WorkCounter | None = None
+
+
+def _advance_work(units: int = 1, **details: object) -> None:
+    if _ACTIVE_WORK is not None:
+        _ACTIVE_WORK.advance(units, **details)
+
+
 class _ReleaseDryRun:
     """One ``--dry-run-gates-report`` run.
 
@@ -12064,8 +12120,46 @@ def _staging_telemetry(
         background_uploads=True,
         # No write token: warn, keep telemetry local, build as usual.
         check_write_access=True,
+        # Process telemetry: CPU and memory at every stage, a heartbeat so a
+        # killed run is visible within minutes, and classed failures.
+        record_resources=True,
+        heartbeat_seconds=STAGING_HEARTBEAT_SECONDS,
+        record_outcome=True,
     )
+    _ACTIVE_TELEMETRY.record_identity(**_staging_run_identity())
     return _ACTIVE_TELEMETRY
+
+
+STAGING_HEARTBEAT_SECONDS = 60.0
+
+
+def _staging_run_identity() -> dict[str, object]:
+    """What produced this run, for comparing runs like with like.
+
+    The command line is recorded as its option names and a digest, never its
+    values: staging documents are served publicly and argument values are
+    local paths.
+    """
+
+    argv = list(sys.argv[1:])
+    identity: dict[str, object] = {
+        "tool": Path(sys.argv[0]).name if sys.argv else None,
+        "options": sorted(
+            {arg.split("=", 1)[0] for arg in argv if arg.startswith("--")}
+        ),
+        "argv_sha256": hashlib.sha256("\0".join(argv).encode()).hexdigest(),
+        "host": host_identity(),
+        "thread_pool_default": _THREAD_POOL_DEFAULT,
+    }
+    try:
+        identity["git_commit"] = _git_output("rev-parse", "HEAD")
+    except (OSError, subprocess.SubprocessError):
+        identity["git_commit"] = None
+    try:
+        identity["runtime"] = _runtime_versions()
+    except Exception as error:  # pragma: no cover - defensive
+        identity["runtime_error"] = type(error).__name__
+    return identity
 
 
 class _TerminalBatchTelemetry:
