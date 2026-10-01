@@ -1937,8 +1937,9 @@ def test_refresh_recipe_rebuilds_the_recorded_solve(tmp_path: Path) -> None:
         )
         == plain
     )
-    # Even if the parser defaults move, the historical recipe parses back to
-    # the historical solve.
+    # Every flag is spelled out (asserted above), so the parse below does not
+    # lean on the parser's defaults: the historical recipe is the historical
+    # solve whatever those defaults become.
     historical = module._parse_args(plain[3:])
     assert historical.l2_lambda == 0.0
     assert historical.l2_basis == "record"

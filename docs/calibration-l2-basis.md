@@ -109,7 +109,8 @@ recorded.
 `options["iterate_selection_receipt"]["softmax_cap_rounds_exhausted_epochs"]`
 counts those steps. On small problems it is rare. On the ACS local release it
 is the normal state: 165-400 of the last 400 epochs in every run that records
-it, 400 at the share-0.5, `l2_lambda = 0.03` configuration on one fold. Only the
+it, including 400 at the share-0.5, `l2_lambda = 0.03` configuration on the
+full surface and on one fold, and 400 in every share-0.9 run. Only the
 closing projection makes the returned vector exact. The returned loss stays
 within 0.3% of the last trajectory loss in every run that records the count,
 but projection runs, which have no cap loop, show the same gap (0.01-0.33%), so
