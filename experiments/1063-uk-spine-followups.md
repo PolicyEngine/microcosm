@@ -145,6 +145,41 @@ families charged the whole benefit, 11.1m children in payment against 13.5m befo
 
 c9 addresses each at its source (see the commit); the certifier is to be re-run on the final build.
 
+## The employment-income band shortfall (ruling 2026-10-02: fix, do not defer)
+
+The three lowest `hmrc/employment_income_income_band_*` rows are SPI 2023-24 Table 3.6 amounts: the
+employment income received by taxpayers whose total income falls in the band, projected to 2025. The
+frame's taxpayer counts and total income in those bands sit within a few percent of HMRC; what was
+short was the share of the band's income that is pay, 20–31% at design weights. Two roots:
+
+- The registry projected the Table 3.6 amount rows with flat national indices (average earnings for
+  employment, mixed income for self-employment, the pension index for private pensions) while the
+  count, total-income and tax rows by band use HMRC's own band-specific growth (Income Tax
+  Liabilities Table 2.5). An amount held in a fixed nominal band moves with the band's membership:
+  HMRC projects the £12,570–15,000 band's total income +5.0% from 2023-24 to calendar 2025, the
+  £15,000–20,000 band's −2.3% and the £20,000–30,000 band's +0.3%, against the flat +10.7%. The
+  39 amount references now use the band growth; the three lowest employment targets move from
+  £18.7bn, £53.8bn and £190.4bn to £17.7bn, £47.5bn and £172.5bn, and the frame's design-weight gaps
+  from −19.8%, −31.2% and −25.1% to −15.5%, −22.1% and −17.4%. Dividend and savings-interest amounts
+  keep their own indices (they move with rates, not membership). The SPI tape re-banded under the
+  engine's own indices agrees with HMRC's direction in every band.
+- The remaining gap is the frame's composition of the low bands. Banding the frame on core income
+  only (pay, profits, private pensions, State Pension), its earners in the £12,570–15,000 band are
+  1.36m, HMRC's 1.36m exactly, with £17.8bn of pay against the band-aware £17.7bn; adding the
+  non-employment leaves (savings interest, dividends, property, miscellaneous) lifts 0.14m of them and
+  £2.2bn of pay out of the band, and the engine's broader banding concept a further £0.6bn. In the
+  £15,000–20,000 band the core-only comparison still leaves pay 8.6% and earners 14% short, with State
+  Pensioners 7% above HMRC's count. The places to look, in order: the SPI stage-2 rewrite of dividend,
+  property and savings income onto FRS rows (`hmrc_spi_income_spine`; on the tape the low earners who
+  sit in these bands carry about £350 of such income, the frame's FRS-channel low earners show 7% with
+  dividends averaging £17,500), the total-income concept the band measure uses against SPI's, and the
+  SPI channel's age mix in the low bands (58% of the band on main, 43% on the stack). Spine work, a
+  follow-up.
+
+The South East £12,570–15,000 income-tax cell's +32% is this pull: the solver raised the weights of
+the low-paid households that carry it (three-fold on the 200 that carry most of its gain) to fill the
+under-projected employment rows; its own target is already band-aware.
+
 ## Review round 1 (Vahid, 2026-10-02)
 
 - The five internal disability carriers leave the export allow-list and are dropped at the release
