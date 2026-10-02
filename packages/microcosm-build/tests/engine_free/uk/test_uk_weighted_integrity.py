@@ -665,11 +665,10 @@ def test_committed_exclusion_registers_load() -> None:
     # (microcosm#1063 c9): the two FRS education inputs the enhanced-FRS
     # reference barely carries, and the sparse charity-gifts leaf back at
     # the concentration threshold. The gate fails any of them as stale the
-    # day a build brings the column inside the fence.
-    assert set(input_mass["efrs-post-calibration"]) == {
-        "adult_ema",
-        "dfe_education_spending",
-    }
+    # day a build brings the column inside the fence, which the 2 October
+    # final build did for adult_ema (+74% against the reference): its entry
+    # is retired.
+    assert set(input_mass["efrs-post-calibration"]) == {"dfe_education_spending"}
     assert set(qrf_tail) == {"charitable_investment_gifts"}
     for record in (*input_mass["efrs-post-calibration"].values(), *qrf_tail.values()):
         assert record.approved_by == "juaristi22"

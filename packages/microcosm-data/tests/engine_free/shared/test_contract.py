@@ -92,13 +92,6 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
 # The committed per-reference register (microcosm#1063 c9): the policy payloads
 # sealed into the input-mass evidence digest.
 UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {
-    "adult_ema": {
-        "reason": "The candidate carries the FRS adult EMA input through the build (38.9m against the incumbent's 4.4m, +786%): the enhanced-FRS reference stores this education-maintenance input at a fraction of the FRS amount, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#1063 c9 (certifier rehearsal R5 on the 2026-09-30 build, 2026-10-01; ruling 2026-10-02 in session)",
-        "approved_on": "2026-10-02",
-        "expires_on": "2027-04-02",
-    },
     "dfe_education_spending": {
         "reason": "The candidate carries DfE education spending through the build (GBP 98.8bn against the incumbent's GBP 52.8m, +187,061%): the enhanced-FRS reference carries almost none of this input, so the comparison measures the reference's omission, not the candidate's. The input stays on the release surface and in the coverage manifest.",
         "approved_by": "juaristi22",
@@ -146,7 +139,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "e19786e2c2f14ea8760a2cf612a86ce0010f95340c623ab64477c858942a34ab"
+    "d28a1fd613d61a21b06c6fccc3e3c95c0dd0173b0957c85bc4618170cac0907f"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {

@@ -259,9 +259,41 @@ The weight-shape warning stands (folded max-to-median 1,028 vs main's 609; bound
 change the spine (a new carrier column; the arms bitwise unchanged), so the final build and the
 certifier run again from the fixed head.
 
+## Final build, second run (64c460b66, 2026-10-03)
+
+Spine `spine-1063-64c460b66.h5` (sha256 b7202ef6…): bitwise identical to the first run's in every shared
+column and every household weight; the only difference is the new carrier, set on exactly the 7,843
+converted records the stage reports. Candidate `runs/uk-national-1063-64c460b66/microcosm_uk_2024_25.h5`
+(sha256 aa31bdf6…): the same calibration (loss 0.00713, 7/7 seam gates) and the same evaluation
+(0.00817 vs 0.327; 1,020 wins vs 30). E7 and E8 pass; E8 reports the restored pre-sacrifice pay, anchor
+targets equal to the stage's and the residential arms identical under permutation. The certifier
+reaches all 20 gates: 17 pass, three fail.
+
+- `uk_nonnegative_columns` and `uk_qrf_tail_concentration` looked for declared stage outputs on the
+  release candidate, where the export now drops them (the five disability carriers and the
+  pre-conversion pay carrier). Both bindings now read an export-dropped declared column from the
+  spine frame the certifier supplies, at the spine's weights; without that frame the absence still
+  fails.
+- `uk_input_mass_parity` against the uk-data 1.56.16 enhanced FRS (±452%): `access_fund` +535%,
+  `jsa_income_reported` +1,058%, `working_tax_credit_reported` +747%, and a stale `adult_ema`
+  exclusion (+74% now; entry retired). Measured on the candidate against the spine's design weights:
+  98% of the access-fund mass is one FRS household (sernum 14443, South East) and its two CGT copies,
+  whose 19-year-old reports an access fund that the FRS weeklyises to £1,035.62 (`ACCSSAMT`, period
+  code 5) and the spine annualises to £54,037, eleven times the next largest value; the calibration
+  takes the household to its 10x bound (design 896, calibrated 8,927). The JSA and tax-credit masses sit
+  in the SPI synthetic channel (76 and 274 of the nonzero rows), where the stage-2 QRF imputes these
+  legacy-benefit leaves onto taxpayer rows at FRS rates, and in a handful of rows at or near the
+  bound (ratios 6–10). None of this is new: at design weights the stack spine carries less JSA mass
+  than the 30 September main spine (3.1e8 vs 4.7e8) and similar tax-credit and access-fund masses,
+  and the 30 September main candidate sat at +421% and +428% on the same two columns, just under the
+  tolerance, with the same 0.5% of households at the 10x bound. The three findings are the
+  calibration's weight concentration and the SPI channel's legacy-benefit leaves, not the stack's
+  stages; the rulings on them (an FRS outlier fence on `access_fund`, the SPI channel's treatment of
+  `jsa_income_reported` and `working_tax_credit_reported`, or reviewed exclusions) are hers.
+
 ## Still owed
 
-- The rebuilt final build with the certifier and E7/E8 from the fixed head.
+- The certifier's three input-mass findings on the second run (above): her rulings.
 - Her calls: Child Benefit opt-out pool order (fully charged first, then the taper, as built; or one
   pool over every charged family); `other_residential_property_value` (WAS `DVHseVal`) excludes
   buy-to-let (`DVBltVal`), which sits in the drawn remainder; the Table 8a rows stay fenced
