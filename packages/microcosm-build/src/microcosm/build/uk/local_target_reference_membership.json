@@ -5586,7 +5586,7 @@
       "target_id": "ons.rent.private_rent",
       "geography_level": "local_authority",
       "reason_id": "private_rent_pipr_scotland_brma_grain",
-      "rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred.",
+      "rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090).",
       "area_ids": [
         "S12000005",
         "S12000006",
@@ -412222,7 +412222,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000006",
@@ -412234,7 +412234,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000008",
@@ -412246,7 +412246,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000010",
@@ -412258,7 +412258,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000011",
@@ -412270,7 +412270,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000013",
@@ -412282,7 +412282,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000014",
@@ -412294,7 +412294,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000017",
@@ -412306,7 +412306,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000018",
@@ -412318,7 +412318,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000019",
@@ -412330,7 +412330,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000020",
@@ -412342,7 +412342,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000021",
@@ -412354,7 +412354,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000023",
@@ -412366,7 +412366,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000026",
@@ -412378,7 +412378,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000027",
@@ -412390,7 +412390,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000028",
@@ -412402,7 +412402,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000029",
@@ -412414,7 +412414,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000030",
@@ -412426,7 +412426,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000033",
@@ -412438,7 +412438,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000034",
@@ -412450,7 +412450,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000035",
@@ -412462,7 +412462,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000036",
@@ -412474,7 +412474,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000038",
@@ -412486,7 +412486,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000039",
@@ -412498,7 +412498,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000040",
@@ -412510,7 +412510,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000041",
@@ -412522,7 +412522,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000042",
@@ -412534,7 +412534,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000045",
@@ -412546,7 +412546,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000047",
@@ -412558,7 +412558,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000048",
@@ -412570,7 +412570,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000049",
@@ -412582,7 +412582,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@S12000050",
@@ -412594,7 +412594,7 @@
               "matched_fact_count_at_or_before_period": 0,
               "error": "ledger_reference_compile_status_no_fact_for_area",
               "signed_reason_id": "private_rent_pipr_scotland_brma_grain",
-              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. CrossGrainBridge declares target identity but cannot translate overlapping BRMA geographies to LAs, and no signed BRMA-to-LA crosswalk is present, so allocation is forbidden and all 32 cells remain deferred."
+              "signed_rationale": "The pinned PIPR monthly series carries 18 Scottish BRMA rows at statistical_scope grain and no Scottish LA rows for the 32-authority crosswalk. The BRMAs overlap the councils (uk/scotland_brma_la_overlap.json: 63 intersections, 18 councils in more than one BRMA), so CrossGrainBridge, which equates totals over a partition, cannot translate them, and a household-weighted mean of BRMA rents would give every council inside a BRMA that BRMA's average. Allocation is forbidden and all 32 cells remain deferred until PIPR binds at BRMA grain (microcosm#1090)."
             },
             {
               "name": "ons.rent.private_rent@W06000001",
