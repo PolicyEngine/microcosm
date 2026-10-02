@@ -4,16 +4,26 @@ from __future__ import annotations
 
 import copy
 import json
+import os
+import subprocess
+import sys
 
 import pytest
 
-from microcosm.graph import compile_graph, graph_from_json, graph_to_json
+from microcosm.graph import (
+    compile_graph,
+    graph_from_json,
+    graph_schema,
+    graph_to_json,
+    orrery_document,
+    orrery_json,
+)
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.orrery import (
+    main,
     orrery_document_from_schema,
     orrery_json_from_schema,
 )
-from microcosm.graph.schema import graph_schema
 from test_support.microcosm_graph.schema import (
     compiled_default_population_graph,
     compiled_graph,
@@ -211,3 +221,124 @@ def test_schema_embeds_the_exact_canonical_graph_declaration():
     document = orrery_document_from_schema(graph_schema(compiled))
     embedded = document["metadata"]["microcosm"]["graph"]
     assert canonical_json(embedded).decode() == graph_to_json(compiled.graph)
+
+
+def test_direct_graph_compiled_and_saved_schema_paths_are_identical():
+    compiled = compiled_graph()
+    schema = graph_schema(compiled, extensions={"producer": "test"})
+
+    expected = orrery_json_from_schema(schema, title="Invented build")
+    assert (
+        orrery_json(
+            compiled,
+            title="Invented build",
+            extensions={"producer": "test"},
+        )
+        == expected
+    )
+    assert (
+        orrery_json(
+            compiled.graph,
+            title="Invented build",
+            extensions={"producer": "test"},
+        )
+        == expected
+    )
+    assert orrery_document(compiled)["schemaVersion"] == "graph-explorer/v1"
+
+
+def test_cli_requires_an_explicit_input_type_and_matches_direct_output(tmp_path):
+    compiled = compiled_graph()
+    graph_path = tmp_path / "graph.json"
+    schema_path = tmp_path / "schema.json"
+    graph_output = tmp_path / "graph-output.json"
+    schema_output = tmp_path / "schema-output.json"
+    graph_path.write_text(graph_to_json(compiled.graph))
+    schema_path.write_bytes(canonical_json(graph_schema(compiled)))
+
+    assert (
+        main(
+            [
+                "--graph",
+                str(graph_path),
+                "--output",
+                str(graph_output),
+                "--title",
+                "Invented build",
+            ]
+        )
+        == 0
+    )
+    assert (
+        main(
+            [
+                "--schema",
+                str(schema_path),
+                "--output",
+                str(schema_output),
+                "--title",
+                "Invented build",
+            ]
+        )
+        == 0
+    )
+    expected = orrery_json(compiled, title="Invented build")
+    assert graph_output.read_text() == expected
+    assert schema_output.read_text() == expected
+
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "--graph",
+                str(graph_path),
+                "--schema",
+                str(schema_path),
+                "--output",
+                str(tmp_path / "ambiguous.json"),
+            ]
+        )
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize("raw", ['{"country":1,"country":2}', '{"x":NaN}', "[]"])
+def test_cli_refuses_invalid_json_without_output(tmp_path, raw):
+    source = tmp_path / "input.json"
+    output = tmp_path / "output.json"
+    source.write_text(raw)
+    with pytest.raises(SystemExit) as error:
+        main(["--graph", str(source), "--output", str(output)])
+    assert error.value.code == 2
+    assert not output.exists()
+
+
+def test_cli_preserves_existing_output_and_input(tmp_path):
+    compiled = compiled_graph()
+    source = tmp_path / "graph.json"
+    raw = graph_to_json(compiled.graph)
+    source.write_text(raw)
+    with pytest.raises(SystemExit) as error:
+        main(["--graph", str(source), "--output", str(source)])
+    assert error.value.code == 2
+    assert source.read_text() == raw
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires POSIX FIFO")
+def test_cli_refuses_fifo_without_waiting_for_a_writer(tmp_path):
+    source = tmp_path / "graph.json"
+    output = tmp_path / "output.json"
+    os.mkfifo(source)
+    with pytest.raises(SystemExit) as error:
+        main(["--graph", str(source), "--output", str(output)])
+    assert error.value.code == 2
+    assert not output.exists()
+
+
+def test_module_cli_starts_without_an_import_order_warning():
+    result = subprocess.run(
+        [sys.executable, "-m", "microcosm.graph.orrery", "--help"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert "--graph" in result.stdout
+    assert "RuntimeWarning" not in result.stderr

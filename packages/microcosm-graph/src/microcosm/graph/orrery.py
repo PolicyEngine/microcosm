@@ -6,16 +6,29 @@ Frame or kernel, or infers execution, verification, or release status.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import math
+import os
+import stat
+from collections.abc import Mapping
+from pathlib import Path
 
 from .canonical import canonical_json
-from .schema import validate_graph_schema
+from .decl import CompiledGraph, Graph, compile_graph
+from .schema import graph_schema, validate_graph_schema
+from .serialize import graph_from_json
 
-__all__ = ["orrery_document_from_schema", "orrery_json_from_schema"]
+__all__ = [
+    "orrery_document",
+    "orrery_document_from_schema",
+    "orrery_json",
+    "orrery_json_from_schema",
+]
 
 _SAFE_INTEGER = 2**53 - 1
+_MAX_INPUT_BYTES = 32 * 1024 * 1024
 _MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 _MAX_ITEMS = 2_000_000
 _MAX_NODES = 20_000
@@ -401,3 +414,97 @@ def orrery_json_from_schema(schema: object, *, title: str | None = None) -> str:
         )
         + "\n"
     )
+
+
+def _compiled(value: Graph | CompiledGraph) -> CompiledGraph:
+    if isinstance(value, Graph):
+        return compile_graph(value)
+    if isinstance(value, CompiledGraph):
+        return value
+    raise TypeError(
+        f"orrery_document expects Graph or CompiledGraph, got {type(value).__name__}"
+    )
+
+
+def orrery_document(
+    graph: Graph | CompiledGraph,
+    *,
+    title: str | None = None,
+    extensions: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Compile and transform a graph into a complete Orrery document."""
+
+    return orrery_document_from_schema(
+        graph_schema(_compiled(graph), extensions=extensions), title=title
+    )
+
+
+def orrery_json(
+    graph: Graph | CompiledGraph,
+    *,
+    title: str | None = None,
+    extensions: Mapping[str, object] | None = None,
+) -> str:
+    """Compile and return deterministic UTF-8-ready Orrery JSON."""
+
+    return orrery_json_from_schema(
+        graph_schema(_compiled(graph), extensions=extensions), title=title
+    )
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        _require(key not in result, "duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def _invalid_json_constant(_value: str) -> None:
+    raise ValueError("Orrery adapter: finite JSON numbers required.")
+
+
+def _read_json(path: Path) -> object:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    with os.fdopen(descriptor, "rb") as stream:
+        info = os.fstat(stream.fileno())
+        _require(stat.S_ISREG(info.st_mode), "input must be a regular file")
+        _require(info.st_size <= _MAX_INPUT_BYTES, "input byte limit")
+        raw = stream.read(_MAX_INPUT_BYTES + 1)
+    _require(len(raw) <= _MAX_INPUT_BYTES, "input byte limit")
+    return json.loads(
+        raw.decode("utf-8"),
+        object_pairs_hook=_unique_json_object,
+        parse_constant=_invalid_json_constant,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Create Orrery JSON from a graph declaration or compiler schema."""
+
+    parser = argparse.ArgumentParser(description=main.__doc__)
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--graph", type=Path, help="canonical Graph JSON")
+    inputs.add_argument("--schema", type=Path, help="microcosm.graph.schema.v1 JSON")
+    parser.add_argument("--output", type=Path, required=True, help="new Orrery JSON")
+    parser.add_argument("--title", help="Orrery document title")
+    args = parser.parse_args(argv)
+    try:
+        source = args.graph if args.graph is not None else args.schema
+        value = _read_json(source)
+        if args.graph is not None:
+            graph = graph_from_json(canonical_json(value).decode("utf-8"))
+            rendered = orrery_json(graph, title=args.title)
+        else:
+            rendered = orrery_json_from_schema(value, title=args.title)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(rendered)
+    except (OSError, TypeError, ValueError, RecursionError) as error:
+        parser.error(str(error))
+    print(f"wrote {args.output}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
