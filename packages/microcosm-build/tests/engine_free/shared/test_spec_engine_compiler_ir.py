@@ -22,7 +22,7 @@ from microcosm.build.spec_engine.model import (
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
-US_SCHEDULE_SHA256 = "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+US_SCHEDULE_SHA256 = "f9ae8ea539b6e039308123f5a36be27da7536ccca502dc2a5a607c7217ca6391"
 
 
 @pytest.fixture(scope="module")
@@ -67,13 +67,13 @@ def test_us_compiles_exact_stage_dag_and_lossless_producer_graph(
     assert len(graph.order) == 38
     assert len(set(graph.order)) == 38
     assert len(graph.ownership_matrix) == 18
-    assert graph.compiled_output_count == 227
+    assert graph.compiled_output_count == 229
     assert graph.schedule_sha256 == US_SCHEDULE_SHA256
     assert sha256_json(graph.schedule_wire()) == US_SCHEDULE_SHA256
 
     authored = graph.authored
     assert authored is not None
-    assert sum(len(node.source["outputs"]) for node in graph.nodes) == 92
+    assert sum(len(node.source["outputs"]) for node in graph.nodes) == 93
     assert compiled_us.stage_dag.edges == graph.edges
     assert compiled_us.stage_dag.waves == graph.waves
     assert compiled_us.stage_dag.order == graph.order
@@ -107,9 +107,9 @@ def test_us_seed_stream_map_is_complete_and_owner_typed(
 ) -> None:
     seed_map = compiled_us.seed_stream_map
     assert seed_map.protocol_id == "legacy-v1"
-    assert len(seed_map.sites) == 53
+    assert len(seed_map.sites) == 54
     assert len(seed_map.owners) == 54
-    assert sum(len(site.owners) for site in seed_map.sites) == 112
+    assert sum(len(site.owners) for site in seed_map.sites) == 113
     assert {site.id for site in seed_map.sites} == {
         site.id for site in resolved_us.seed_protocol.sites
     }
@@ -140,10 +140,10 @@ def test_us_node_slices_are_transitive_and_content_attested(
 def test_ir_retains_all_typed_resolution_products(compiled_us: CompiledSpecIR) -> None:
     inventory = compiled_us.typed_inventory
     assert len(inventory["entities"]) == 8
-    assert len(inventory["columns"]) == 176
+    assert len(inventory["columns"]) == 177
     assert len(inventory["artifacts"]) == 84
     assert len(inventory["scopes"]) == 7
-    assert len(inventory["references"]) == 334
+    assert len(inventory["references"]) == 335
     assert "engine_abi_lock" in compiled_us.generated_authorities
     assert "records" in compiled_us.vintage_authorities
     assert set(compiled_us.surfaces) == {
@@ -244,5 +244,5 @@ def test_bundle_without_imputation_compiles_empty_graph(
     assert compiled.producer_graph.nodes == ()
     assert compiled.stage_dag.nodes == ()
     assert compiled.nodes == ()
-    assert len(compiled.seed_stream_map.sites) == 53
+    assert len(compiled.seed_stream_map.sites) == 54
     assert compiled.seed_stream_map.owners == ()

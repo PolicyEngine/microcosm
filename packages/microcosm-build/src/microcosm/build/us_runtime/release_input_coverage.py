@@ -189,6 +189,11 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         # pinned Census ASEC person files; the certified default carries it
         # through the Build P source enrichment.
         *US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+        # PolicyEngine/microcosm#776: the immigration stage's entry clock.
+        # Without it every person gets the engine default of 5 (past the
+        # federal five-year bar), and policyengine-us#9732 removes that
+        # default, so no national default may ship without it.
+        "years_since_us_entry",
     }
 )
 

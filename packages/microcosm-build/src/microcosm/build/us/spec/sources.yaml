@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: e75217c0db3075bf2664492167d31ce7ee82c2c5f6a70e3b67e8bb6f4ddd7ecf
+  sha256: 71597370c7e172280200917160c73322d012b51d5ea5735711f4bd4341f001df
 stage_manifest:
   version: 1
   country: us
@@ -1916,6 +1916,7 @@ stages:
   outputs:
   - ssn_card_type
   - immigration_status_str
+  - years_since_us_entry
   notes: 'Citizenship is measured (PRCITSHP), not imputed. Non-citizens with any ASEC-UA legal-status
     indicator (Van Hook et al., SSRN 4662801) become OTHER_NON_CITIZEN. The CPS carries no work-authorization
     variable, so among residual non-citizens, workers and students spill to NON_CITIZEN_VALID_EAD in deterministic
@@ -1927,7 +1928,12 @@ stages:
     tests the data supports: DACA (arrival cohort among EAD holders) and CUBAN_HAITIAN_ENTRANT (nativity
     plus post-1980 arrival); other documented non-citizens stay LEGAL_PERMANENT_RESIDENT, the modal true
     status — blanket REFUGEE/TPS labels are deliberately not fabricated because they would mislabel millions
-    and over-grant refugee-class benefit exemptions.'
+    and over-grant refugee-class benefit exemptions. years_since_us_entry (microcosm#776) is the time
+    period minus an arrival year drawn uniformly within the person''s PEINUSYR band, read in the codebook
+    of the person''s own ASEC vintage (Census re-bins the top codes every year) and bounded below by birth
+    year, clipped at zero, for the foreign-born (PRCITSHP 4/5); it is age for the US-born (PRCITSHP 1-3).
+    The draw has its own salt, so it never moves a status label. It counts from physical entry, not from
+    the grant of qualified status, so it runs long for people who adjusted status.'
 - stage: hours_worked
   survey: Census CPS ASEC
   source: https://www.census.gov/programs-surveys/cps.html

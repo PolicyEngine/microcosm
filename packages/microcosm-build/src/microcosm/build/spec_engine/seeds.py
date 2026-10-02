@@ -757,6 +757,12 @@ LEGACY_V1_SITES = (
         candidate_universe="all_person_rows_then_student_candidate_mask",
     ),
     _stable_site(
+        "immigration_arrival_year_draw",
+        salt="immigration:arrival_year",
+        key_grammar=("source_year:source_person_id_if_present", "else_person_id"),
+        candidate_universe="foreign_born_person_rows_prcitshp_4_or_5",
+    ),
+    _stable_site(
         "ssi_take_up_assignment",
         salt="takes_up_ssi_if_eligible",
         key_grammar=("person_support_source_id",),

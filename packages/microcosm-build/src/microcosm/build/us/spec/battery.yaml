@@ -572,6 +572,11 @@ metric_registry:
   clone_index: 0
   metric: categorical_tvd
 - entity: person
+  family: source_operator_immigration
+  column: years_since_us_entry
+  clone_index: 0
+  metric: monetary_sign_separated
+- entity: person
   family: source_operator_medicare_take_up
   column: takes_up_medicare_if_eligible
   clone_index: 0

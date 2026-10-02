@@ -1536,6 +1536,17 @@ columns:
     domain: source_operator_workers_compensation
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
+- key: person.years_since_us_entry
+  contract:
+    entity: person
+    dtype: float64
+    unit: unit_not_declared_by_engine_metadata
+    definition_period: year
+    vintage: vintage:target_2024
+    nullable: false
+    domain: source_operator_immigration
+    public_stability: internal
+    unit_waiver: policyengine_us_unit_unavailable
 - key: spm_unit.@resolved_weight
   contract:
     entity: spm_unit

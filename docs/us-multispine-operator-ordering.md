@@ -302,7 +302,7 @@ by_origin_battery
    stack-manifest digest, fraction/seed, clone controls, and the channel-aware
    producer-precedence schedule. The DAG receipt binds all 71 edges, all input
    inventories, six derived waves, exact execution rows, the once-only source
-   finalizer, and the 19-group/70-target aggregate. Every row hashes the live
+   finalizer, and the 19-group/71-target aggregate. Every row hashes the live
    content of every declared alternative and output, the callback receipt, and
    the preceding row. The top receipt hashes the entry/output frames and chain
    terminus. Its digest is anchored in immutable Frame metadata and carried
@@ -357,7 +357,7 @@ by_origin_battery
    boundaries.
 9. A fresh `us_stacked_completeness` gate proves every declared input is
    observed or has exact source-by-role absence authority. The terminal
-   `us_by_origin_battery` then evaluates all 134 declared targets (114 person,
+   `us_by_origin_battery` then evaluates all 135 declared targets (115 person,
    12 tax-unit, 8 SPM-unit), plus joint immigration structure, using an
    immutable live-digested per-column metric registry. Metric choice never
    dispatches from physical dtype. A digest-bound structural-absence rule may
@@ -774,7 +774,7 @@ for every primary-owned physical alternative in `V + T(E)`, including
 evidence for every target listed below. A target shown in both producer columns
 requires both scopes; that is the two-target PUF/source overlap. Thus the table
 is the complete per-node producer delta over `V + T(E)`, as well as the exact
-70-target partition. Transfer rows abbreviate the registry's leading
+71-target partition. Transfer rows abbreviate the registry's leading
 `transfer:`; source names in these tables abbreviate the leading `source:`.
 
 For every transfer, schema-v3 `@late_transfer_model_config` binds that node's
@@ -804,7 +804,7 @@ finalizer applies the same rule to each of its sixteen source-receipt inputs.
 | `person/source_operator_child_support` | `child_support_expense`, `child_support_received` | — | both from `with_us_child_support_inputs` |
 | `person/source_operator_disability_benefits` | `disability_benefits` | — | from `with_us_disability_benefits` |
 | `person/source_operator_education_inputs` | `attends_eligible_educational_institution_for_american_opportunity_credit`, `educational_assistance`, `has_american_opportunity_credit_1098_t_or_exception`, `has_american_opportunity_credit_institution_ein`, `is_enrolled_at_least_half_time_for_american_opportunity_credit`, `is_pursuing_credential_for_american_opportunity_credit` | — | all from `with_us_education_inputs` |
-| `person/source_operator_immigration` | `ssn_card_type`, `immigration_status_str` | — | both from `with_us_immigration_inputs` |
+| `person/source_operator_immigration` | `immigration_status_str`, `ssn_card_type`, `years_since_us_entry` | — | all from `with_us_immigration_inputs` |
 | `person/source_operator_medicare_take_up` | `takes_up_medicare_if_eligible` | — | from `with_us_medicare_take_up_input` |
 | `person/source_operator_retirement_contributions` | `roth_401k_contributions_desired`, `roth_ira_contributions_desired`, `traditional_401k_contributions_desired` | — | all from `with_us_retirement_contribution_inputs` |
 | `person/source_operator_retirement_distributions` | `keogh_distributions`, `tax_exempt_ira_distributions`, `taxable_401k_distributions`, `taxable_403b_distributions`, `taxable_sep_distributions` | — | all from `with_us_retirement_distribution_inputs` |
@@ -903,7 +903,7 @@ The remaining 19 edges are:
 | `with_us_disability_benefits` | `transfer:person/source_operator_disability_benefits` | `disability_benefits` |
 | `with_us_education_inputs` | `transfer:person/source_operator_education_inputs` | six education outputs listed above |
 | `with_us_energy_subsidy_input` | `transfer:spm_unit/source_operator_energy_subsidy` | `spm_unit_energy_subsidy` |
-| `with_us_immigration_inputs` | `transfer:person/source_operator_immigration` | `ssn_card_type`, `immigration_status_str` |
+| `with_us_immigration_inputs` | `transfer:person/source_operator_immigration` | `ssn_card_type`, `immigration_status_str`, `years_since_us_entry` |
 | `with_us_medicare_take_up_input` | `transfer:person/source_operator_medicare_take_up` | `takes_up_medicare_if_eligible` |
 | `with_us_pregnancy_inputs` | `with_us_wic_claim_input` | `is_pregnant` |
 | `with_us_pregnancy_inputs` | `transfer:person/model_required_boolean` | `is_pregnant` |
@@ -942,9 +942,9 @@ Registry schema version 17 and execution-receipt contract version 4 bind the
 canonical input declarations, outputs, edges, waves, exact kind-specific
 virtual-resource bindings, content-hashed execution-row schema, and immutable
 transition authority version 2. The schedule SHA-256 is
-`e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f`;
+`f9ae8ea539b6e039308123f5a36be27da7536ccca502dc2a5a607c7217ca6391`;
 the full payload SHA-256 is
-`7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f`.
+`edffc2a469c05792863f2ce0cc712c1830025f711ceb800d68df391f33e7eba8`.
 Reversing registry iteration produces those same bytes.
 
 The virtual-resource payload ledger is independently versioned: ACS-universe
@@ -973,7 +973,7 @@ and valid. Neither receipt authorizes an upstream null.
 | Outer pool checkpoint identity and resume | Primary-QRF schema v6, primary execution config v5, portable worker identity v1, tail-manifest schema v2, late-registry schema v17/receipt contract v4, outer stacked materializer v13/authority v12, stacked pool-stage materializer v7, pool manifest schema v10, and the ACS-universe, QBI-mutation, tail-support, late-DAG, and signed virtual-resource-semantics identities must match exactly before any cached stage is discovered. The retiring legacy envelope remains manifest schema v4/materializer v3. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older stacked materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
 | Clone-2 capital-gains tail | Each filing status requires as many eligible recipient households as selected q99.5 donors. Eligibility requires unique single-tax-unit PUF-detail lineage and half-weight capacity for the global maximum assigned donor weight. An adequate status assigns every selected donor once; a thin status skips as a whole with a named, counted `insufficient_support` receipt. | Completed clone-1 QRF output and full PUF tail donors. At 1%, `SINGLE` and `HEAD_OF_HOUSEHOLD` attach, `JOINT` and `SEPARATE` skip, and zero-requirement `SURVIVING_SPOUSE` is `not_applicable`. | No widening or partial attachment is permitted. All 22 AGI bands provide nearest-first fallback only inside a status. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
 | Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | ACS earnings-universe materialization, primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in six derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
-| Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 29 source targets, with two overlaps, supply the 70-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |
+| Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 30 source targets, with two overlaps, supply the 71-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |
 | Fit-weight audit | Every primary and post-PUF QRF fit receipts its resolved entity weight kind, and the collected fit records pass the weights audit before a transferred checkpoint can exist. | Calibrated household weights mapped by the frame to each modeled entity. | No. A missing, inconsistent, or manually substituted weight declaration fails before checkpoint emission. |
 | Tail preservation | Tail manifest, support decisions, attached descendants, IDs, weights, provenance, joint vector, and non-tail QRF cells remain exact after completion, transfer, derive, seed, and simulation. | The schema-v2 tail manifest and support receipt bound during the PUF pass and projected into both terminal gates. | A support receipt cannot authorize mutation. Any byte or identity change in an attached status, any descendant for a skipped status, or any receipt change fails. |
 | Schedule-D derive | Both transferred parent columns are finite for every person and align to every tax unit. Bounded late-transfer groups do not write this leaf; the whole-pool tax-unit derive is its sole canonical owner. | Completed late transfer plus tail replacements. | No. A residual would fail late transfer first and derive again by name. |
@@ -981,8 +981,8 @@ and valid. Neither receipt authorizes an upstream null.
 | Take-up seed | Every administratively seeded variable completes; transfer-owned take-up cannot use a default; only explicitly non-transfer-owned inputs may use receipted engine defaults. | Seed kernels, the complete transfer surface, and declared defaults. | Transfer-owned residuals fail. A declared default is a separate modeled state, not an insufficient-support receipt. |
 | SSI simulation projection | Every nullable engine input has a declared default on the disposable projection; the engine returns exactly one SSI value per person. | The persistent derived/seeded pool plus separately receipted ephemeral defaults. | A projection default can enable simulation but cannot cure the persistent pool; terminal evaluation returns to the original inputs plus SSI. |
 | Simulated checkpoint pair and resume | The persistent input-only frame and temporary evaluation frame must share exact assembly provenance; SSI exists only on the evaluation half. The live QBI receipt must authenticate the persistent frame at emission, durable write/load, and resume. | Derived/seeded persistent inputs plus the separately materialized SSI evaluation output. | No. A forged QBI receipt, altered persistent value, invalid SSI binding, or mismatched pair invalidates the simulated checkpoint and falls back only to an independently valid earlier stage. |
-| Terminal completeness | All 134 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 70 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 134-target terminal surface. |
-| By-origin battery | All 134 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
+| Terminal completeness | All 135 registered targets exist; every positive-weight value is metric-valid; a null needs exact source/role authority, and post-PUF targets forbid absence authority. | The 48 early targets, 71 late targets, derived leaves, take-up inputs, and SSI output. | No. Only the canonical group-quarters rent rule reaches this gate as null; base WAGP/SEMP leaves are outside the 135-target terminal surface. |
+| By-origin battery | All 135 clone-0 comparison surfaces are complete and valid before support is measured. | The terminal simulation frame, comparing ASEC and ACS native origins. | No. `insufficient_support` is assigned only after null and validity checks, so it cannot hide an upstream missing value. |
 | Manifest construction and canonical publication closure | Legacy and stacked builders reauthenticate QBI live output, canonical stacked authority, terminal-gate receipts, H5/diagnostics run IDs, and artifact digests before readiness can be asserted. | The validated persistent pool, immutable stage receipts, terminal gate snapshot, and atomically staged publication files. | No. Construction rejects forged or wrong-route receipts; publication begins with a non-ready tombstone, and only one fully authenticated run can replace it with a ready manifest. |
 
 The audit leaves no generic “receipted but null” path into a hard consumer.
@@ -1142,7 +1142,7 @@ source ingestion and faithful schema harmonization
     -> derive
     -> seed take-up and other stochastic inputs
     -> simulate
-    -> completeness gate plus 134-target by-origin battery
+    -> completeness gate plus 135-target by-origin battery
     -> emit input-only pool, receipts, and terminal Logbook row
 ```
 

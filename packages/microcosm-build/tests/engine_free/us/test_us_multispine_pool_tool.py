@@ -971,8 +971,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # publication: the checkpoint identity carries policyengine_us_version,
         # and the pool engine contracts it binds were re-derived for 2.2.1.
         # pool_h5 and agreement above are unchanged, so only the identity
-        # surface moved, not the pool content.
-        "manifest": "e4692aa45f05826eb0097a7ae76dcbc712c13886a4d23a9c6a62b53752e323f1",
+        # surface moved, not the pool content. microcosm#776 moved it again:
+        # the immigration family's entry clock re-derived the pool engine
+        # contracts and late registry identities; pool_h5 and agreement are
+        # still unchanged.
+        "manifest": "465e854c56fe3b5915b8ed768cb48d936c1ae294c939cb5ead5aeea084969d00",
     }
 
 

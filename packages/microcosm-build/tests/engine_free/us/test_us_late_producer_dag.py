@@ -345,7 +345,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
 
     assert len(registry) == 38
     assert len(groups) == 19
-    assert sum(len(group.targets) for group in groups) == 70
+    assert sum(len(group.targets) for group in groups) == 71
     assert {contract.kind for contract in registry.values()} == {
         "primary_puf",
         "acs_earnings_universe",
@@ -435,9 +435,9 @@ def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
     declared = set(US_LATE_OVERLAP_OWNERSHIP_TARGETS)
 
     assert len(primary) == 65
-    assert len(source_writes) == 35
-    assert len(source_writes & transfer) == 29
-    assert len(transfer) == 70
+    assert len(source_writes) == 36
+    assert len(source_writes & transfer) == 30
+    assert len(transfer) == 71
     assert len(recipient_owned) == 60
     assert (
         callback_passthroughs
@@ -808,7 +808,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
     assert receipt["producer_count"] == 38
     assert receipt["source_producer_count"] == 16
     assert receipt["transfer_group_count"] == 19
-    assert receipt["transfer_target_count"] == 70
+    assert receipt["transfer_target_count"] == 71
     assert receipt["order"][:2] == [
         US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
         US_LATE_PRIMARY_PUF_STAGE,
@@ -1324,7 +1324,7 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
         } == {"finite_numeric"}
 
 
-def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string() -> (
+def test_late_target_dependency_kinds_partition_52_numeric_17_boolean_2_string() -> (
     None
 ):
     string_targets = {"ssn_card_type", "immigration_status_str"}
@@ -1361,7 +1361,7 @@ def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string()
             }
     numeric_targets = set(observed) - boolean_targets - string_targets
     assert (len(numeric_targets), len(boolean_targets), len(string_targets)) == (
-        51,
+        52,
         17,
         2,
     )
