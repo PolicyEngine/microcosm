@@ -113,7 +113,7 @@ def fixture_engine(frame, *, missing: tuple[str, ...] = ()) -> CertifiedEngine:
     return CertifiedEngine(label="fixture engine", variables=frozenset(columns))
 
 
-def run_fixture_probe(
+def fixture_export_probe(
     probe_tool,
     release_tool,
     export_path: Path,
@@ -126,13 +126,12 @@ def run_fixture_probe(
     census: bool = False,
     **options,
 ):
-    """Run the probe with the float32 fake engine; return (report, log).
-
-    ``fail_on`` names a variable the fake engine refuses to compute.
-    """
+    """An ``ExportProbe`` scoring with the float32 fake engine (not run);
+    returns (probe, log). ``fail_on`` names a variable the fake engine
+    refuses to compute."""
     log = _EngineLog()
     log.fail_on = fail_on
-    report = probe_tool.probe_export(
+    probe = probe_tool.ExportProbe(
         export_path,
         out_dir,
         sample_receipt=receipt,
@@ -152,7 +151,15 @@ def run_fixture_probe(
         census=census,
         **options,
     )
-    return report, log
+    return probe, log
+
+
+def run_fixture_probe(probe_tool, release_tool, export_path, out_dir, **options):
+    """Run :func:`fixture_export_probe`; return (report, log)."""
+    probe, log = fixture_export_probe(
+        probe_tool, release_tool, export_path, out_dir, **options
+    )
+    return probe.run(), log
 
 
 def verdicts_by_check(report) -> dict[tuple[str, str], dict]:

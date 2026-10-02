@@ -26,6 +26,8 @@ from __future__ import annotations
 import json
 import math
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from test_support.microcosm_build.us_post_export_probe import *
@@ -347,7 +349,7 @@ def test_a_receipt_that_does_not_match_the_subsample_fails_visibly(
     checks = verdicts_by_check(report)
     design = checks[
         (
-            "load",
+            "design",
             "the sample design rebuilt from the subsample verifies against its receipt",
         )
     ]
@@ -437,7 +439,7 @@ def test_an_unreceipted_stratum_is_reported_not_fatal(
     assert report["stages"]["demographics"]["status"] == "completed"
     design = verdicts_by_check(report)[
         (
-            "load",
+            "design",
             "the sample design rebuilt from the subsample verifies against its receipt",
         )
     ]
@@ -571,3 +573,154 @@ def test_a_reference_row_missing_fields_costs_only_its_comparison(
     for row in rows:
         assert "error" in row["reference"]
         assert row["decomposition"] == "decomposed"
+
+
+@pytest.mark.parametrize("fault", ["row_map", "reform_count", "missing_result"])
+def test_a_fault_after_the_gate_keeps_one_verdict_per_probe(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch, fault
+) -> None:
+    """Whatever breaks in the probe's own analysis after the smoke gate has
+    run, each probe gets exactly one verdict and none is a release failure:
+    a failing row map or a reform count that does not match the probes
+    costs every probe its standard error; a probe the gate recorded no
+    result for is one probe-integrity error."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    probes = fixture_engine_probes()
+    if fault == "row_map":
+
+        def broken(*args, **kwargs):
+            raise RuntimeError("row map exploded")
+
+        monkeypatch.setattr(probe_tool, "HouseholdRowMap", broken)
+    elif fault == "reform_count":
+        original = probe_tool.SimulateRecorder.__call__
+
+        def drop_last_reform(self, reform):
+            simulation = original(self, reform)
+            if reform is not None and len(self.reforms) == len(probes):
+                self.reforms.pop()
+            return simulation
+
+        monkeypatch.setattr(probe_tool.SimulateRecorder, "__call__", drop_last_reform)
+    else:
+        real_gate = builder.us_reform_coverage_smoke_gate
+
+        def gate_without_last(**kwargs):
+            result = real_gate(**kwargs)
+            result.details["results"].pop(probes[-1].id, None)
+            return result
+
+        monkeypatch.setattr(builder, "us_reform_coverage_smoke_gate", gate_without_last)
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=receipt,
+        probes=probes,
+        stages=("reform_coverage_smoke",),
+    )
+    assert report["stages"]["reform_coverage_smoke"]["status"] == "completed"
+    verdicts = [v for v in report["verdicts"] if v["stage"] == "reform_coverage_smoke"]
+    assert sorted(v["check"] for v in verdicts) == sorted(
+        f"probe {probe.id}" for probe in probes
+    )
+    assert not report["summary"]["authoritative_failures"]
+    rows = report["stages"]["reform_coverage_smoke"]["probes"]
+    if fault == "missing_result":
+        assert len(rows) == len(probes) - 1
+        (missing,) = [v for v in verdicts if v["verdict"] == "error"]
+        assert missing["check"] == f"probe {probes[-1].id}"
+        assert missing in report["summary"]["probe_failures"]
+    else:
+        assert len(rows) == len(probes)
+        for row in rows:
+            assert row["standard_error"] is None
+            assert row["decomposition"].startswith("analysis not run")
+            assert row["authority"] == "informational"
+
+
+def test_a_receipt_without_probe_records_costs_only_take_all(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    older = json.loads(json.dumps(receipt))
+    del older["probes"]
+    report, _ = run_fixture_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "probe",
+        receipt=older,
+        stages=("reform_coverage_smoke",),
+    )
+    rows = report["stages"]["reform_coverage_smoke"]["probes"]
+    assert len(rows) == len(fixture_engine_probes())
+    assert all(row["take_all"] is False for row in rows)
+    assert all(row["decomposition"] == "decomposed" for row in rows)
+
+
+def test_cancelling_non_carrier_effects_deny_take_all_exactness(
+    probe_tool, builder, fake_reforms, chain, tmp_path, monkeypatch
+) -> None:
+    """A take-all probe whose sampled non-carrier households carry effects
+    that cancel in sum is not exact: two households carry an effect outside
+    the certainty set, so the verdict needs a variance, not rule 3."""
+    frame, path, receipt, _ = chain
+    monkeypatch.setattr(builder, "installed_us_engine", lambda: fixture_engine(frame))
+    probe, _ = fixture_export_probe(
+        probe_tool,
+        builder,
+        path,
+        tmp_path / "base",
+        receipt=receipt,
+        stages=("stored_inputs",),
+    )
+    probe.run()
+    design = probe.design
+    rare = next(p for p in fixture_engine_probes() if p.id == "rare_keogh")
+    carriers = probe.carriers_by_probe["rare_keogh"]
+    others = [
+        h for h in design.household_ids[~design.certainty] if h not in set(carriers)
+    ][:2]
+    ids = np.asarray([*carriers, *others], dtype=np.int64)
+    unweighted = pd.Series([0.0] * len(carriers) + [5.0, -5.0], index=ids)
+    weight_of = pd.Series(design.adjusted_weights, index=design.household_ids)
+    weighted = unweighted * weight_of.reindex(ids).to_numpy()
+    weighted.iloc[-1] = -weighted.iloc[-2]  # the two cancel exactly in sum
+    effects = probe_tool.HouseholdEffects(
+        weighted,
+        unweighted=unweighted,
+        entity="tax_unit",
+        weight_scale=1.0,
+        magnitude=1.0,
+    )
+    monkeypatch.setattr(
+        probe_tool,
+        "household_effects",
+        lambda *a, **k: (effects, "tax_unit", "decomposed"),
+    )
+    probe.design_problems = []
+    analysis = probe._smoke_analysis(
+        rare,
+        {"period": 2024, "effect": 0.0},
+        {("income_tax", 2024, None): None},
+        {("income_tax", 2024, None): None},
+        None,
+        carriers,
+    )
+    assert analysis["noncarrier_effect"] == 0.0
+    assert analysis["noncarrier_effect_households"] == 2
+    authority, _ = probe_tool.classify_probe(
+        signed_magnitude=0.0,
+        floor=1.0,
+        standard_error=analysis["standard_error"],
+        take_all=True,
+        drawn_effect_households=analysis["drawn_effect_households"],
+        effective_households=analysis["effective_variance_households"],
+        noncarrier_effect_households=analysis["noncarrier_effect_households"],
+        census=False,
+    )
+    assert authority == "informational"

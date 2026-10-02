@@ -1375,7 +1375,7 @@ class ExportProbe:
                 "(--census) to score the export as a full population."
             )
         # A subsample whose every stratum was taken whole is a census too
-        # (set again from the rebuilt design in _load).
+        # (set again from the rebuilt design in _design).
         self.census = sample_receipt is None
         if not source_settlement:
             source_export = None
@@ -2116,12 +2116,8 @@ class ExportProbe:
         analysis behind its authority. A failure in that analysis is the
         probe tool's, not the release's: it leaves the standard error unset
         (so the verdict is informational) and names the error."""
-        pool = (
-            None
-            if self.receipt is None
-            else {str(r["probe"]): r for r in self.receipt["probes"]}.get(str(probe.id))
-        )
-        take_all = bool(pool and pool["certainty"])
+        pool = self._receipt_probe(probe.id)
+        take_all = bool(pool.get("certainty"))
         magnitude = signed_magnitude(result["effect"], probe.expected_sign)
         carriers = self.carriers_by_probe.get(str(probe.id), np.asarray([], np.int64))
         analysis: dict[str, Any] = {
@@ -2136,11 +2132,14 @@ class ExportProbe:
             "noncarrier_effect_households": None,
         }
         try:
-            analysis.update(
-                self._smoke_analysis(
-                    probe, result, baseline, reform_results, row_map, carriers
+            if baseline is None:
+                analysis["decomposition"] = "analysis not run"
+            else:
+                analysis.update(
+                    self._smoke_analysis(
+                        probe, result, baseline, reform_results, row_map, carriers
+                    )
                 )
-            )
         except Exception as error:  # the probe's own failure, not the release's
             analysis["decomposition"] = (
                 f"analysis error ({type(error).__name__}: {error}); no standard error"
@@ -2171,17 +2170,29 @@ class ExportProbe:
             "margin_to_floor": magnitude - float(probe.min_abs_effect),
             "passed": bool(result["passed"]),
             **analysis,
-            "pool_carrier_households": None
-            if pool is None
-            else int(pool["carrier_households"]),
-            "expected_sampled_carriers": None
-            if pool is None
-            else float(pool["expected_sampled_carriers"]),
+            "pool_carrier_households": pool.get("carrier_households"),
+            "expected_sampled_carriers": pool.get("expected_sampled_carriers"),
             "take_all": take_all,
             "sampled_carrier_households": int(len(carriers)),
             "authority": authority,
             "authority_reason": reason,
         }
+
+    def _receipt_probe(self, probe_id) -> dict[str, Any]:
+        """The receipt's record of one probe (empty if there is none, or if
+        the receipt does not record probes)."""
+        if self.receipt is None:
+            return {}
+        records = self.receipt.get("probes") or ()
+        return next(
+            (
+                dict(record)
+                for record in records
+                if isinstance(record, Mapping)
+                and str(record.get("probe")) == str(probe_id)
+            ),
+            {},
+        )
 
     def _smoke_analysis(
         self, probe, result, baseline, reform_results, row_map, carriers
