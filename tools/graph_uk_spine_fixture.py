@@ -617,7 +617,7 @@ def _was_person_donor() -> pd.DataFrame:
     """Synthetic WAS round-8 persons of the 64 synthetic WAS households.
 
     Mixed-case raw names as in the deposit. Adults and dependent children per
-    household follow the household tab's NumAdultR8/NumCh18R8; Lifetime ISA
+    household follow the household tab's NumAdultR8/NumChildR8; Lifetime ISA
     holders are younger adults with small values (below the households' gross
     financial wealth, which WAS counts them in), one banded value, one
     ONS-imputed holder, one ONS-imputed non-holder, one self-employment
@@ -743,7 +743,7 @@ def _was_donor() -> pd.DataFrame:
             "totalpenr8_aggr": 100.0 + rows * 10.0,
             "dvvaldbt_scaper8_aggr": 40.0 + rows,
             "NumAdultR8": 1 + position % 3,
-            "NumCh18R8": position % 3,
+            "NumChildR8": position % 3,
             "DVGIPPENR8_AGGR": 11.0 + rows,
             "DVGISER8_AGGR": 13.0 + rows,
             "DVGIINVR8_aggr": 15.0 + rows,
@@ -751,7 +751,11 @@ def _was_donor() -> pd.DataFrame:
             "HBedRmR8": 1 + position % 5,
             "GORR8": np.take([8, 11, 12, 1], position % 4),
             "DVPriRntR8": private_rent,
-            "CTAmtR8": 900.0 + rows * 10.0,
+            "DVCTaxAmtAnnualR8": 900.0 + rows * 10.0,
+            # Net rent where the household holds property beyond its home.
+            "DVNetRentAmtAnnualR8_aggr": np.where(
+                other_houses > 0.0, 2_000.0 + rows * 40.0, 0.0
+            ),
             "HFINWNTR8_Sum": gross_financial - consumer_debt - student_loans,
             "HFINWNTR8_exSLC_Sum": gross_financial - consumer_debt,
             "HMortGR8": main_mortgage + other_mortgage,

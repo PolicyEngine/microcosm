@@ -120,3 +120,32 @@ def benunit_financial_investment_income(
         .to_numpy(dtype=float)
     )
 
+
+def household_family_role_counts(
+    person: pd.DataFrame, household: pd.DataFrame
+) -> tuple[np.ndarray, np.ndarray]:
+    """Claimants and partners, and every other member, per household.
+
+    In household row order. The persisted FRS adult-file role
+    ``is_uc_claimant`` splits each household into its adults and its dependent
+    children the way survey household grids do (WAS ``NumAdultR8`` and
+    ``NumChildR8`` sum to the household size), rather than at the engine's
+    age-18 ``is_adult`` (uk-data#486, microcosm#1095).
+    """
+
+    missing = sorted({"person_household_id", "is_uc_claimant"} - set(person))
+    if missing:
+        raise KeyError(f"household role-count inputs missing: {missing}")
+    role = person["is_uc_claimant"]
+    if not pd.api.types.is_bool_dtype(role.dtype):
+        raise ValueError("is_uc_claimant must be a boolean column.")
+    claimant = role.to_numpy(dtype=bool)
+    members = person["person_household_id"].to_numpy()
+    ids = household["household_id"].to_numpy()
+    adults = (
+        pd.Series(claimant.astype(float)).groupby(members, sort=False).sum()
+    ).reindex(ids, fill_value=0.0)
+    children = (
+        pd.Series((~claimant).astype(float)).groupby(members, sort=False).sum()
+    ).reindex(ids, fill_value=0.0)
+    return adults.to_numpy(dtype=float), children.to_numpy(dtype=float)

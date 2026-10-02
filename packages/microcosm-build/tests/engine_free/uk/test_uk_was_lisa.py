@@ -245,6 +245,8 @@ def _recipient_frame(households: int = 64):
                     "self_employment_income": 0.0,
                     "private_pension_income": 0.0,
                     "capital_income": 0.0,
+                    "property_income": 0.0,
+                    "is_uc_claimant": adult,
                 }
             )
             person_id += 1
