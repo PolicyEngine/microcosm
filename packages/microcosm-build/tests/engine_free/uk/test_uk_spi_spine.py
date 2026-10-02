@@ -54,6 +54,7 @@ def _base_frame(*, time_period: str = "2023") -> object:
             "person_benunit_id": [201, 101],
             "age": [44, 40],
             "gender": ["FEMALE", "MALE"],
+            "is_uc_claimant": [True, True],
             "employment_income": [20.0, 10.0],
             "self_employment_income": [0.0, 0.0],
             "savings_interest_income": [2.0, 1.0],
@@ -697,6 +698,31 @@ def test_income_stage_parameters_refuse_a_base_channel_redraw() -> None:
     )
     stage = SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
     with pytest.raises(ValueError, match="must not redraw FRS-channel incomes"):
+        _assert_income_stage_parameters(
+            stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
+        )
+
+
+@pytest.mark.parametrize(
+    ("kind", "parameter", "value", "message"),
+    [
+        ("fit_weighted_qrf_stage1", "recipient_role_column", None, "recipient role"),
+        ("fit_weighted_qrf_stage1", "recipient_role_column", "is_adult", "role"),
+        (
+            "fit_weighted_qrf_stage2",
+            "target_population",
+            "spi_synthetic_support_channel",
+            "target population",
+        ),
+    ],
+)
+def test_income_stage_parameters_refuse_a_recipient_domain_drift(
+    kind, parameter, value, message
+) -> None:
+    stage = _with_mutated_operation(
+        _committed_stage("hmrc_spi_income_spine"), kind, **{parameter: value}
+    )
+    with pytest.raises(ValueError, match=message):
         _assert_income_stage_parameters(
             stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
         )

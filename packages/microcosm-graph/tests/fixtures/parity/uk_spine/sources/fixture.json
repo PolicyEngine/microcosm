@@ -2671,7 +2671,7 @@
         "hmrc_spi_total_investment_income",
         "hmrc_spi_assessable_income"
       ],
-      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path.",
+      "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, drawing for its claimants and partners aged 16 and over so dependants aged 16 to 19 keep their FRS twin's values (uk-data#504, microcosm#1095), initializes FRS charity columns to zero, trains FRS-only stage 2 on the FRS rows' reported values, leaves every FRS-channel income as reported (no base-channel redraw of dividends; uk-data#498, microcosm#1095), and emits a sidecar-only 208-fact replay report for the spine path.",
       "operations": [
         {
           "artifact_roles": [
@@ -2809,6 +2809,7 @@
           ],
           "rebase_income_to_build_period": true,
           "recipient_minimum_age": 16,
+          "recipient_role_column": "is_uc_claimant",
           "require_all_outputs": true,
           "require_all_predictors": true,
           "sample_size": 64,
@@ -3009,7 +3010,7 @@
             "other_investment_income": "This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: the incumbent UK data build's frs_only.py defines exactly six income predictors and the certified Microcosm UK base candidate has no other_investment_income column."
           },
           "seed": 43,
-          "target_population": "spi_synthetic_support_channel",
+          "target_population": "spi_synthetic_support_channel claimants and partners (is_uc_claimant) aged 16 and over",
           "training_population": "uk_frs_raw_spine_base_support_channel",
           "weight": "household_weight",
           "weight_mapping": "household_to_person"
@@ -4639,7 +4640,7 @@
             2000000
           ],
           "candidate_order": "person_id ascending breaks equal draw keys",
-          "candidate_population": "raw FRS base channel adults aged 16 and over",
+          "candidate_population": "raw FRS base channel claimants and partners (is_uc_claimant) aged 16 and over",
           "carrier_column": "person_is_spi_income_band_carrier",
           "clone_index": 2,
           "conservation": "exact_total",
