@@ -24,6 +24,7 @@ from microcosm.build.uk_runtime.tenure_constants import (
     UK_TENURE_SOCIAL_RENT,
     UK_TENURE_TYPE_TO_CATEGORY,
 )
+from microcosm.build.uk_runtime.uc_relationships import uc_family_child_member
 
 AREA_TYPES = ("constituency", "la")
 AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL = {
@@ -295,7 +296,18 @@ def compute_household_metrics(
     matrix["uc_households"] = on_uc_hh
 
     if area_type == "constituency":
-        num_children = _values(_calculate(sim, "num_children", period))
+        # The national UC-by-children rebind's composition (microcosm#1095):
+        # the engine's age-18 num_children moved 2.77% of UC-reporting units
+        # into another band, mostly by dropping 18- and 19-year-old
+        # qualifying young people.
+        claimant = _values(_calculate(sim, "is_uc_claimant", period)).astype(bool)
+        qualifying = _values(
+            _calculate(
+                sim, "is_child_or_qualifying_young_person_for_universal_credit", period
+            )
+        ).astype(bool)
+        children = uc_family_child_member(claimant, qualifying, age)
+        num_children = _map_result(sim, children.astype(float), "person", "benunit")
         on_uc_bool = on_uc > 0
         child_bands = (
             ("uc_hh_0_children", num_children == 0),
